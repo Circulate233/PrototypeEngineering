@@ -1,0 +1,160 @@
+package com.circulation.prototype_eng.recipe.requirement;
+
+import ae2.api.stacks.AEKey;
+import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.nbt.NBTBase;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagString;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+
+/** Stable dynamic alternatives from all available source keys, without storage or world access. */
+public final class DynamicInputCandidates {
+    private static final Comparator<String> RESOURCE_ID_ORDER = Comparator.nullsFirst(Comparator.naturalOrder());
+
+    private DynamicInputCandidates() {
+    }
+
+    /**
+     * Callers merge nonzero available snapshot keys across all distinct storage contexts first. Every
+     * matching unique key participates before truncation. The default order is type ID, resource ID,
+     * then canonical full key NBT; no hash or JVM object identity participates in ordering.
+     *
+     * <p>Canonical bytes are computed once per matching key. Cost and memory scale with all matches
+     * and their NBT, then sorting costs O(matches*log(matches)); maxCandidates bounds only the result.
+     */
+    public static List<AEKey> enumerate(Collection<AEKey> availableKeys, DynamicInputGroup group) {
+        Objects.requireNonNull(group, "group");
+        var configuredOrder = group.candidateOrder();
+        if (configuredOrder != null) {
+            return enumerate(availableKeys, group, configuredOrder);
+        }
+        var matches = matching(availableKeys, group);
+        var ordered = new ObjectArrayList<StableKey>(matches.size());
+        for (var key : matches) {
+            var resourceId = key.getId();
+            ordered.add(new StableKey(key, key.getType().getId().toString(),
+                resourceId == null ? null : resourceId.toString(), canonical(key.toTag())));
+        }
+        ordered.sort(DynamicInputCandidates::compare);
+        for (int index = 1; index < ordered.size(); index++) {
+            if (compare(ordered.get(index - 1), ordered.get(index)) == 0) {
+                throw new IllegalArgumentException("Unequal resource keys share a serialized identity; provide a stable explicit order");
+            }
+        }
+        var result = new ObjectArrayList<AEKey>(Math.min(group.maxCandidates(), ordered.size()));
+        for (int index = 0; index < ordered.size() && index < group.maxCandidates(); index++) {
+            result.add(ordered.get(index).key());
+        }
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /**
+     * Extension order for types whose serialization cannot distinguish all keys. The comparator must
+     * be pure, total on unequal keys and stable across restoration, without identity/hash tie-breaks.
+     * Equal-order unequal keys are rejected across the full result before applying maxCandidates.
+     */
+    public static List<AEKey> enumerate(Collection<AEKey> availableKeys, DynamicInputGroup group, Comparator<AEKey> stableOrder) {
+        Objects.requireNonNull(stableOrder, "stableOrder");
+        var matches = matching(availableKeys, group);
+        matches.sort(stableOrder);
+        for (int index = 1; index < matches.size(); index++) {
+            if (stableOrder.compare(matches.get(index - 1), matches.get(index)) == 0) {
+                throw new IllegalArgumentException("Explicit resource order must distinguish unequal keys");
+            }
+        }
+        var result = new ObjectArrayList<AEKey>(Math.min(group.maxCandidates(), matches.size()));
+        for (int index = 0; index < matches.size() && index < group.maxCandidates(); index++) {
+            result.add(matches.get(index));
+        }
+        return ObjectLists.unmodifiable(result);
+    }
+
+    private static ObjectArrayList<AEKey> matching(Collection<AEKey> availableKeys, DynamicInputGroup group) {
+        Objects.requireNonNull(availableKeys, "availableKeys");
+        Objects.requireNonNull(group, "group");
+        var matches = new ObjectArrayList<AEKey>();
+        var seen = new ObjectOpenHashSet<AEKey>();
+        for (var key : availableKeys) {
+            Objects.requireNonNull(key, "available key");
+            if (seen.add(key) && group.matcher().matches(key, group.pattern())) {
+                matches.add(key);
+            }
+        }
+        return matches;
+    }
+
+    private static int compare(StableKey first, StableKey second) {
+        int order = first.typeId().compareTo(second.typeId());
+        if (order == 0) {
+            order = RESOURCE_ID_ORDER.compare(first.resourceId(), second.resourceId());
+        }
+        return order != 0 ? order : Arrays.compareUnsigned(first.tag(), second.tag());
+    }
+
+    private static byte[] canonical(NBTTagCompound tag) {
+        Objects.requireNonNull(tag, "serialized key");
+        var bytes = new ByteArrayOutputStream();
+        try (var output = new DataOutputStream(bytes)) {
+            writeCanonical(tag, output);
+        } catch (IOException failure) {
+            // The destination is memory; encoding failures indicate an invalid/unserializable key.
+            throw new UncheckedIOException("Cannot encode stable resource identity", failure);
+        }
+        return bytes.toByteArray();
+    }
+
+    private static void writeCanonical(NBTBase tag, DataOutputStream output) throws IOException {
+        output.writeByte(tag.getId());
+        switch (tag) {
+            case NBTTagCompound compound -> {
+                var names = new ObjectArrayList<>(compound.getKeySet());
+                names.sort(Comparator.naturalOrder());
+                output.writeInt(names.size());
+                for (var name : names) {
+                    writeString(name, output);
+                    writeCanonical(Objects.requireNonNull(compound.getTag(name), "compound value"), output);
+                }
+            }
+            case NBTTagList list -> {
+                output.writeByte(list.getTagType());
+                output.writeInt(list.tagCount());
+                for (int index = 0; index < list.tagCount(); index++) {
+                    writeCanonical(list.get(index), output);
+                }
+            }
+            case NBTTagString string -> writeString(string.getString(), output);
+            default -> {
+                // Public binary serialization includes every numeric/array value, including long arrays
+                // that have no public getter in 1.12. No reflection or potentially abbreviated toString.
+                var leaf = new NBTTagCompound();
+                leaf.setTag("value", tag);
+                CompressedStreamTools.write(leaf, output);
+            }
+        }
+    }
+
+    private static void writeString(String value, DataOutputStream output) throws IOException {
+        output.writeInt(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            output.writeChar(value.charAt(index));
+        }
+    }
+
+    private record StableKey(AEKey key, String typeId, @Nullable String resourceId, byte[] tag) {
+    }
+}

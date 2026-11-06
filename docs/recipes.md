@@ -2,7 +2,7 @@
 
 `MachineRecipe` 已恢复为按需求职责分组的公开定义。它保存 id、时长、配方组及 `RecipeRequirementType<?> → List<RecipeRequirement<?>>`，不再以固定输入、输出和 FE 字段限定配方。需求类型绑定自己的 `RecipeRequirementSystem<C>`；资源身份继续使用 AE2 的 AEKey/AEKeyType，不再建立 PMKey 的替代类型体系。
 
-本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。当前已迁移定义、组件调度、整阶段协调结算、资源/FE 三阶段需求及同步属性/单进程循环；本轮资源概率、加权随机输出和检查点已接入并通过本阶段验证。模糊/动态输入、选择器、需求 overlay、解析锁、完整保存恢复、扫描/取消和真实并行调度仍在迁移中。
+本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。资源概率、加权输出和检查点已完成上一阶段验证；当前模糊/动态输入、解析锁、嵌套需求路径和选择器已接入并通过本阶段验证，证据见[实施进度](implementation-status.md)。需求 overlay、完整保存恢复、扫描/取消和真实并行调度仍在迁移中。
 
 ## 公开注册与需求扩展
 
@@ -17,6 +17,8 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 ```
 
 `MyRequirement` 和系统由使用方定义。负载必须不可变；随机选择、材料锁、进度和其他变化放在每个 `RecipeProcess` 的组件中。配方按需求类型 ID 稳定排序，同类型内维持声明顺序，与 PM 的 executeStage 一致。配方内需求 ID 唯一；相同类型 ID 不允许绑定不同的类型对象。
+
+嵌套需求使用 `RequirementPath(parent, typeId, requirementId)` 区分完整祖先路径，同一个 child 定义可在不同包装器中拥有独立状态。路径字符串按每个 ID 的长度分帧，不依赖分隔符字符、hash 或对象身份推断边界。RecipeRequirement.acquire 在获取时建立路径 scope，并为返回事务的 result、reservations、commit、complete、rollback 捕获同一路径；回调结束恢复父 scope。随机盐、属性内部 ID、输入解析锁和选择状态都使用完整路径，不能只凭局部 child ID 区分。
 
 注册事件只负责收集定义，与机器 tick 事件、需求阶段、进程组件回调是不同机制。
 
@@ -38,9 +40,9 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 1. 依次调用各类型系统的 start、tick 或 end，收集事务及其 `reservations()`；取得的资源/FE 令牌只交给阶段协调器，单个需求不得自行完成它们。
 2. 全部成功后，将全部真实 StorageContext 按固定顺序加锁，校验并 apply 全部令牌，然后按需求顺序执行业务 commit。commit 在此表示可补偿的业务应用，不是最终完成。
-3. 业务 commit 全部成功后才依次 complete，释放业务与存储补偿权，再统一解锁和通知。complete 不允许业务拒绝或抛错。
+3. 业务 commit 全部成功后才依次 complete，释放业务与存储补偿权，再统一解锁和通知。complete 不允许业务拒绝或抛错；外部实现违反契约时，完成链仍尝试其余业务清理、子事务完成和每个资源/FE token 完成，再聚合错误。
 4. 遇到 Blocked/Failure、令牌失效或获取/应用/业务异常时，锁内先逆序 rollback 业务事务，再逆序撤销资源/FE 令牌；包括返回阻塞/失败的那笔。异常保留原错误，继续其余补偿并聚合 suppressed。
-5. 完成阶段的契约错误、完成后的通知错误立即暴露，不把已经跨过完成边界的事务当作未提交状态再次回滚。
+5. 完成阶段的契约错误和完成后的通知错误在继续其余完成/通知后暴露，不把已经跨过完成边界的事务当作未提交状态再次回滚，也不让较早 complete 异常跳过后续本地清理。
 
 这里统一了旧接口注释与执行器对 Blocked 的矛盾，以实际整阶段回滚行为为准。资源不足使用 Blocked，契约错误使用异常；捕获只用于异常清理，不作为常规流程。
 
@@ -61,7 +63,7 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
         new EnergyRequirement(startFE, tickInputFE, tickOutputFE, endFE, false));
 ```
 
-两个 payload 是可扩展配方模型中的内置需求，不限制外部 RecipeRequirementType。ResourceRequirement 的各列表使用不可变 GenericStack；物品、流体及其他 AEKey 类型共用算法，start 消费 inputs、tick 消费/产出每刻列表、end 产出 outputs，另带 ResourceChance 和可选 END RandomOutputPool。EnergyRequirement 按 PM 的 start/tick/end 输入输出语义保存独立 long FE，不定义 FE key。两类需求都读取当前进程的 PROCESS_PARALLELISM；资源再按概率得到的执行次数缩放，FE 保持有效并行数量缩放。ENERGY_EFFICIENCY 目前仅声明扩展 ID，不能把数量倍率等同于机器并发槽位数或加工速度。
+两个 payload 是可扩展配方模型中的内置需求，不限制外部 RecipeRequirementType。ResourceRequirement 的各列表使用不可变 GenericStack；物品、流体及其他 AEKey 类型共用算法，start 消费固定 inputs 并解析 fuzzyInputs/dynamicInputs、tick 消费/产出每刻列表、end 产出 outputs，另带 ResourceChance 和可选 END RandomOutputPool。EnergyRequirement 按 PM 的 start/tick/end 输入输出语义保存独立 long FE，不定义 FE key。两类需求都读取当前进程的 PROCESS_PARALLELISM；资源再按概率得到的执行次数缩放，FE 保持有效并行数量缩放。ENERGY_EFFICIENCY 目前仅声明扩展 ID，不能把数量倍率等同于机器并发槽位数或加工速度。
 
 资源同 key 条目先精确聚合，按声明和仓室顺序分配，别名通过真实 context 去重；快照/模拟和确切预留在同一个 context 锁内完成。FE 的单次需求分配也只遍历每个真实来源一次，按未预留余额/空间及当前单次限额取交集，不累计重复模拟同一余额。多个需求共享存储时，后续需求看到前面已经占用的数量/容量；任一需求阻塞会释放整个阶段的占用。
 
@@ -77,7 +79,7 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
 
 `RecipeParallelism.effective()` 使用进程属性 PROCESS_PARALLELISM，取 floor 并至少为 1；有限大值转换受 int 上限限制。资源和 FE 数量以该倍率缩放，正数量乘法溢出饱和到 Long.MAX_VALUE，非法负数量拒绝。MAX_CONCURRENT_PROCESSES、PROCESS_PARALLELISM、PROCESS_SPEED 是独立职责，ENERGY_EFFICIENCY 仅提供扩展 ID，当前内置需求未使用效率公式。PM 旧 PARALLELISM component/system 已是注释空壳，不恢复成第二套需求；扫描时确定安全有效倍率仍待迁移，并须避免把已受父 modifier 影响的 value 再写入继承相同 modifier 的 base。
 
-`RecipeRequirements.ATTRIBUTES` 绑定 `AttributeRequirement` / `AttributeRequirementSystem`，保留可配置 applyAtStart 和 removeAtEnd。START acquisition 立即施加 modifier，使同阶段后续需求读取更新后的倍率；内部 ID 由需求实例和属性 ID 确定，委托外部 modifier 的 operation/apply。START rollback 只删除自己成功添加的 modifier，不恢复整层快照，以免覆盖其他需求在业务 commit/rollback 中做的属性或 base 变化。END acquisition 和业务 commit 都保留 modifier，到全部业务 commit 成功后的 complete 才执行无失败局部清理；这既避免最终输出检查提前降倍率，也使被阻塞或异常的 END 不需要重排恢复 modifier。
+`RecipeRequirements.ATTRIBUTES` 绑定 `AttributeRequirement` / `AttributeRequirementSystem`，保留可配置 applyAtStart 和 removeAtEnd。START acquisition 立即施加 modifier，使同阶段后续需求读取更新后的倍率；内部 ID 由完整需求路径和属性 ID 确定，委托外部 modifier 的 operation/apply。START rollback 只删除自己成功添加的 modifier，不恢复整层快照，以免覆盖其他需求在业务 commit/rollback 中做的属性或 base 变化。END acquisition 和业务 commit 都保留 modifier，到全部业务 commit 成功后的 complete 才执行无失败局部清理；这既避免最终输出检查提前降倍率，也使被阻塞或异常的 END 不需要重排恢复 modifier。
 
 `RecipeProcess.tick()` 是同步单进程入口：NEW 先执行 START，成功后检查完成条件；未达时长才执行 TICK，成功后再检查 END。零时长在 START 后直接 END，不获取 TICK。Blocked 保持当前生命周期和进度，下一次重试同一阶段；业务 Failure 进入终态 FAILED，COMPLETED/FAILED 再次 tick 只返回已有结果。进程执行不允许递归或同进程并发，宿主扫描、槽位创建、取消和移除尚未接入。
 
@@ -89,7 +91,7 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
 
 BinomialSampler 保留 PM 的 gameplay 近似策略：概率大于 0.5 先用对称性；默认关闭小 n 精确 Bernoulli，均值小于 16 时用 Poisson 近似，其余用固定 seed 生成的 2048 项 Gaussian 表，再裁剪到 [0,n]。这不是所有范围的精确二项分布。ProbabilityTuning 提供不可变策略，默认 exactSmallBinomial=false、阈值 1024，可显式启用和调整阈值；默认发布入口不依赖 Forge 配置。RecipeProcess 在构造时捕获一份策略，资源系统显式传入，运行中变更全局策略不会使已有进程的阻塞重试重新抽样。恢复时仍需保存 seed、调参和完整进程状态；正式持久化尚未完成。
 
-资源系统按需求 ID、阶段和成功刻数隔离随机盐。同一阶段的固定输入/输出共用执行次数；固定容量保留 PM 的 `max(parallelism, ceil(C/100) * parallelism)` 检查。检查量大于实际量时，用真实临时令牌做 preflight，覆盖同 key 与共享槽位的总需求；检查完释放全部临时令牌，再为实际数量重新取得阶段令牌。0% 仍保留完整并行量的固定容量检查，但不实际消耗/产出；不同需求可重复使用已释放的检查容量，实际执行量之间仍受前面真实预留约束。没有所需的有效来源/目标仍阻塞，preflight 不是永久占用或允许实际透支的证明。
+资源系统按完整需求路径、阶段和成功刻数隔离随机盐。同一阶段的固定输入/输出共用执行次数；固定容量保留 PM 的 `max(parallelism, ceil(C/100) * parallelism)` 检查。检查量大于实际量时，用真实临时令牌做 preflight，覆盖同 key 与共享槽位的总需求；检查完释放全部临时令牌，再为实际数量重新取得阶段令牌。0% 仍保留完整并行量的固定容量检查，但不实际消耗/产出；不同需求可重复使用已释放的检查容量，实际执行量之间仍受前面真实预留约束。没有所需的有效来源/目标仍阻塞，preflight 不是永久占用或允许实际透支的证明。
 
 RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最多 pickCount 个候选条目，非正权重忽略；不同条目即使具有同一 AEKey 也可同时选中，再合并数量。新 WeightedSampling 用 `nextLong(totalWeight)` 整数抽签，替代 PM 的 `nextDouble() * totalWeight` 转 long，避免大权重总和的浮点精度损失；保留权重效果，但同 seed 的逐次结果不要求与旧算法相同。输出容量按实际确定的 AEKey 和数量预留，固定保守检查也合并这些真实随机输出，不使用旧 largest-count 候选假设。
 
@@ -98,6 +100,24 @@ RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最�
 `RecipeRequirements.CHECKPOINT` 绑定 `CheckpointRequirement(time, childRequirement, scaleWithProcess)`。time=0 在 START 执行子需求完整 START/TICK/END，覆盖零时长配方；子 TICK 使用零宽的冻结 Tick 范围，不推进外层时钟。其他检查点在外层 TICK 的 scaled 进度或 unscaled 成功刻数跨过阈值时执行子生命周期。
 
 子生命周期依次获取事务和令牌，Blocked/Failure 立即停止获取后续子阶段；全部令牌上交外层同一阶段统一应用、补偿和完成，子需求不自行结算资源。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证，尚未提供独立检查点持久化、取消或扫描状态。
+
+## 模糊动态输入、解析锁与选择器
+
+`FuzzyInputGroup` 保存有序 AEKey 候选和每执行数量，按声明顺序选首个足量 key；空候选组明确不可满足。`DynamicInputGroup` 保存 AEKey pattern、公开 NamedResourceMatcher、数量、可选 displayedCandidates、maxCandidates 和可选稳定全序比较器。ResourceMatcher 是真实可扩展的纯 predicate；NamedResourceMatcher 将稳定 ID 直接绑定到不可变匹配实现，不通过可随时替换的全局注册表查运行中进程。displayedCandidates 仅供展示，不过滤实际来源。
+
+动态候选来自有效输入仓室快照中非零可用的 key，先按真实 context 去重并汇合。每个不同 key 都参与匹配，全扫描匹配结果后按 typeId、resourceId、完整 key NBT 的规范字节排序，再截取 maxCandidates；compound 字段名排序、list 保留顺序，叶子值用公开完整二进制编码，不以 hash、对象身份或可能省略内容的 NBT toString 排序。不同 key 序列化身份相同时拒绝，扩展类型可提供纯、稳定且区分所有不相等 key 的比较器。maxCandidates 只限制返回数量，不能作为总扫描/排序/NBT 内存预算；真实 planned 集成仍需另行分配工作预算。
+
+内置 EXACT 用 AEKey.equals，ITEM_ONLY 保留 PM 的同 item + metadata、忽略 NBT。不能用 AEItemKey.dropSecondary 替代 ITEM_ONLY：该方法重新构造默认 ItemStack，也丢弃 metadata。自定义 matcher 和排序器须在配方/进程生命周期与未来恢复中保持行为稳定。
+
+START 解析通过 `ResourceInputResolver` 计算保守 checkTimes，先计入固定输入，再逐个模糊组、动态组从可用量中扣除前面已经规划的数量，避免多组重复使用同一余额。0% 也按至少完整并行量选择和预检；已有解析锁保持原 key，不因库存顺序变化重新选择。`ResourceInputLocks` 是逻辑选择状态，不是库存互斥锁或数量令牌，键包含完整 RequirementPath、stage、FUZZY/DYNAMIC kind 和 groupIndex。
+
+解析结果先保持 pending；只有实际资源获取全部成功后才安装逻辑锁，即使实际执行次数为 0 也保留成功选择。后续同阶段失败会同时撤销资源令牌和当前获取新增的锁；rollback 只移除自己安装且仍为预期 key 的项，不恢复整张映射或删除原有选择。snapshot/restore 提供排他生命周期边界的内存状态入口，当前未实现 NBT 编解码或完整进程恢复。
+
+`RecipeRequirements.SELECTIVE` 绑定有序 `SelectiveRequirement`。每个候选 START 返回后捕获业务结果和 token 列表，Blocked/Failure 候选立即回滚其业务与令牌，继续尝试后项，不能对拒绝候选 commit。首个成功候选在 acquisition 中建立可见的 provisional selection，使同一复合生命周期随后 TICK/END 已能看到选择；全部候选不可用时建立 index=-1 的 disabled 成功选择，成功 START 后本次进程固定禁用，不因后来的材料变化重新选择。
+
+选择状态按完整路径归进程所有；后续 TICK/END 只派发已选子需求，外层统一结算其令牌。START rollback 撤销本次选择、已获取子业务和该选择自己安装的属性 modifier；START commit 先应用子业务，再按声明顺序调用 SelectiveModifierDescriptor 绑定的真实 SelectiveModifier.apply，并标记提交。SelectiveContext 暴露机器、进程、选择路径、候选索引及 modifier 名称/序号，属性效果通过有效 apply 作用域中的 tracked put 记录所有权。内部 modifier ID 长度分帧并包含路径、descriptor 序号和名称，包装仍委托外部 AttributeModifier 行为；直接修改其他状态不自动获得该接口的补偿能力。
+
+END 获取/业务 commit 保留选择属性效果，到全部业务成功后的 complete 才完成子事务并清理本选择的局部 modifier；被阻塞或业务异常的 END 不提前清效果。子 complete 抛错时仍尝试选择清理，外层与检查点完成链继续其余 complete 和资源/FE token 完成，再报告聚合错误；已跨终态边界不回滚或重放。当前只提供内存选择状态，NBT 保存恢复、取消、扫描及需求 overlay 仍未实现。
 
 ## 资源存储纠正
 
@@ -118,16 +138,16 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 加权输出保留每个输出循环按权重无放回选取多个候选；`ignore_output_full` 保留部分产出并丢弃余量的效果。容量预留须覆盖实际确定的 key 和数量，不能只检查数量最大的候选而宣称覆盖所有随机结果。
 - 选择性包装器保留按顺序选择首个 START 成功的子需求、全程沿用选择、无可用候选时本次进程禁用但不阻塞，以及外部 modifier 施加进程属性效果。阻塞重试不能遗漏候选输入，也不能提前删除仍应生效的 modifier。
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
-- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求，以及本轮资源 chance、随机输出和检查点已落地；模糊/动态输入、解析锁、选择及其 modifier 引用、需求 overlay 和完整保存恢复仍未落地。planned 迁移还需要这些定义、调参和状态的明确快照/投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
+- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点已经接入；本阶段模糊/动态输入、路径 scope、逻辑解析锁和选择器已接入并通过验证。需求 overlay 和完整保存恢复仍未落地。planned 迁移还需要这些定义、调参和状态的明确快照/投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
 
-整阶段资源/FE/业务完成边界、同步属性/单进程循环、资源概率/随机输出和检查点已实现。下一步接解析锁、模糊/动态、选择器和需求 overlay，再完成完整保存恢复、扫描/取消与 planned 集成。实现时保留外部需求、matcher、modifier 和 overlay 扩展职责，修正旧实现的模拟、选择、刻索引和补偿缺陷；这一排序不取消任何能力。
+下一步接需求 overlay，继续完整保存恢复、扫描/取消与 planned 集成。实现时保留外部需求、matcher、modifier 和 overlay 扩展职责，修正旧实现的模拟、选择、刻索引和补偿缺陷；这一排序不取消任何能力。
 
 ## 验证与未完成部分
 
 新增行为用例覆盖外部组件的相位顺序、软依赖/替换/重装、异常终止；外部需求经过公开配方池注册后，覆盖同类型/跨类型顺序、部分获取后的整阶段回滚、重试、各阶段分派、进程状态隔离以及获取/回滚/提交错误的传播。旧资源守恒测试保留，不再冒充公开配方链路的验收。
 
-本轮增加公开配方池→MachineHatches→固定资源/FE 三阶段的行为验证：输出阻塞及重试、别名去重、多个需求争用、单来源 FE 操作限额和明确允许的余量丢弃；阶段用例另覆盖业务提交异常补偿和终态通知故障，能源用例覆盖真实并发与跨资源结算。准确数量和 MCP 证据见[实施进度](implementation-status.md)。
+此前公开配方池→MachineHatches→固定资源/FE 三阶段的行为验证覆盖输出阻塞及重试、别名去重、多个需求争用、单来源 FE 操作限额和明确允许的余量丢弃；阶段用例另覆盖业务提交异常补偿和终态通知故障，能源用例覆盖真实并发与跨资源结算。准确数量和 MCP 证据见[实施进度](implementation-status.md)。
 
-属性与单进程生命周期的逻辑验证及逐类 IDEA MCP 检查已通过。资源概率、随机输出和检查点本阶段也已通过逻辑构建验证、逐类 IDEA MCP 全问题检查及 MCP build_project；测试范围、准确数量和报告见[实施进度](implementation-status.md)。这些证据不替代尚未执行的游戏、完整持久化或真实调度集成验证。
+属性与单进程生命周期的逻辑验证及逐类 IDEA MCP 检查已通过。上一阶段资源概率、随机输出和检查点也已通过逻辑构建验证、逐类 IDEA MCP 全问题检查及 MCP build_project。本阶段模糊动态/路径/解析锁/选择器及完成链已通过 `spotlessApply build` 逻辑验证、逐类 IDEA MCP 全问题检查和 MCP build_project；测试范围、准确数量和报告见[实施进度](implementation-status.md)。这些证据不替代尚未执行的游戏、完整持久化或真实调度集成验证。
 
-尚未完成：模糊/动态输入、解析锁、选择器和需求 overlay、完整进程持久化与恢复、多工位扫描/取消、机器生命周期、真实并发/亲和性/planned 预留补偿与工作预算、结构宿主和 JEI。当前概率、随机输出、检查点和同步单进程循环不能据此宣称完整加工宿主或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。
+尚未完成：需求 overlay、完整进程持久化与恢复、多工位扫描/取消、机器生命周期、真实并发/亲和性/planned 预留补偿与工作预算、结构宿主和 JEI。当前同步需求与内存状态不能据此宣称完整加工宿主、NBT 整体恢复或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。

@@ -4,14 +4,15 @@
 
 ## 当前检查点
 
-- 当前阶段：资源概率、加权随机产物和检查点已完成并验证；本阶段本地提交，不推送，具体提交以 Git 日志为准。此前属性/单进程循环为 `176694a`、需求/FE 协调为 `f2f44c4`；原工作区其他格式/注解整理继续保留。
-- 最近验证（2026-11-07）：本机 IDEA MCP 对 102 个 src Java 文件及生成 Tags 共 103 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/probability-checkpoints-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 103 项逻辑用例。NBT 编解码、GUI/游戏尚未运行验证。
+- 当前阶段：模糊动态输入、逻辑解析锁、嵌套需求作用域和选择器已完成并验证；本阶段本地提交，不推送，具体提交以 Git 日志为准。此前概率/检查点为 `d74e0e2`、属性/单进程循环为 `176694a`、需求/FE 协调为 `f2f44c4`；原工作区其他格式/注解整理继续保留。
+- 最近验证（2026-11-07）：本机 IDEA MCP 对 121 个 src Java 文件及生成 Tags 共 122 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/input-selection-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 132 项逻辑用例。NBT 编解码、GUI/游戏尚未运行验证。
 - 当前实现：资源与 FE 独立存储，共用无 AEKey 字段的预留生命周期及真实 context 同步。RequirementTransaction 上交令牌；整阶段先应用资源和业务，全部成功才 complete，拒绝/异常统一补偿。MachineHatches 绑定公开仓室；固定资源/FE payload 已接入 START/TICK/END、来源去重、单次 FE 限额和允许的余量丢弃。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv；未引入 FE key。
 - 当前进程：MachineAttributes 按 ID 叠加父层、本地 modifier 与 base，数值三操作顺序继承 PM，外部 modifier 保留接口。资源/FE 按有效并行数饱和缩放；属性需求 START 局部添加/撤销、END 在 complete 清理。RecipeProcess.tick 保留完成前后双检查，double 绝对进度与 long 成功刻数在资源同一提交边界推进，Tick 上下文预先冻结；阻塞不多扣料、终态通知故障不重放。组件回调一次捕获并包围处理循环。MachineAttributes 不在读路径写缓存；并行进程执行期必须保持父层稳定。
 - 高级需求进展：ResourceChance 支持 >100% 与属性乘数，进程固定抽样策略，TICK 盐使用成功刻数；固定数量保守预检占用在真正预留前释放，零概率检查可共享。随机池按候选 entry 无放回，按实际选中 AEKey 预留；全选时批量缩放，其余仍需逐次抽取，后续 planned 必须预算。检查点 time=0 在 START 执行子完整生命周期，其他按冻结 scaled/unscaled 时间线跨阈值触发；子令牌全部归外层结算，拒绝立即停止，异常完整清理。
+- 新增高级需求：模糊组按声明顺序、动态组按 type/resource ID/完整规范 NBT 排序后截断；matcher 和排序器保留外部实现。固定/前组需求先扣余量，成功获取才装逻辑锁，回滚只撤自身选择。RequirementPath 按完整包装层级寻址，字符串长度分帧；全部事务回调恢复捕获作用域。选择器 provisional 状态支持嵌套获取，拒绝候选完整补偿；START 失败清选择，END 失败保留 modifier，成功 complete 才移除自有属性。完成故障继续尝试其余回调、令牌及通知，不重放。动态 maxCandidates 只限制返回数，完整扫描/排序/NBT 成本仍待预算。
 - 既有仓室：资源两侧独立 ScrollBar；能源 GUI 原纵向条与速率/自动设置；能源重载使用当前配置容量并裁剪保存量，资源保留保存容量。原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器 Gecko/Bloom 管线仍待迁移。
-- 下一步：迁移解析锁、模糊/动态输入、选择器与需求 overlay；源码入口和旧缺陷见 migration-audit。再补严格进程恢复/扫描/取消，并继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。扫描写入已计算并行值时不能再次继承倍乘；当前持锁批结算不能跨 lane 等待，也不替代 planned 协议。
-- 未完成：模糊/动态/选择器与需求 overlay、完整保存恢复/取消、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
+- 下一步：迁移需求 overlay；源码入口和旧缺陷见 migration-audit。再补严格进程恢复/扫描/取消，并继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。扫描写入已计算并行值时不能再次继承倍乘；当前持锁批结算不能跨 lane 等待，也不替代 planned 协议。
+- 未完成：需求 overlay、完整保存恢复/取消、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。内存选择 snapshot/restore 不是完整持久化。都是保留范围，不能按“未实现”裁掉。
 
 ## 必须记住的约束
 

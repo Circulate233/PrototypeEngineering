@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.recipe.requirement.AttributeRequirementSyst
 import com.circulation.prototype_eng.recipe.requirement.CheckpointRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.EnergyRequirementSystem;
 import com.circulation.prototype_eng.recipe.requirement.ResourceRequirementSystem;
+import com.circulation.prototype_eng.recipe.requirement.SelectiveRequirementSystem;
 import net.minecraft.util.ResourceLocation;
 
 /** Built-in execution responsibilities; downstream types use the same public registration path. */
@@ -17,6 +18,8 @@ public final class RecipeRequirements {
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "resources"), new ResourceRequirementSystem());
     public static final RecipeRequirementType<EnergyRequirement> ENERGY =
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "energy"), new EnergyRequirementSystem());
+    public static final RecipeRequirementType<SelectiveRequirement> SELECTIVE =
+        new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "selective"), new SelectiveRequirementSystem());
 
     private RecipeRequirements() {
     }

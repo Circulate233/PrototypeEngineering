@@ -60,11 +60,7 @@ public final class RecipeStageExecutor {
                 for (var transaction : transactions) {
                     transaction.commit();
                 }
-            }, () -> {
-                for (var transaction : transactions) {
-                    transaction.complete();
-                }
-            }, () -> rollback(transactions, null));
+            }, () -> complete(transactions), () -> rollback(transactions, null));
             if (!accepted) {
                 return RecipeText.StorageChanged.blocked();
             }
@@ -72,6 +68,28 @@ public final class RecipeStageExecutor {
             ResourceTransactions.rollback(reservations, () -> rollback(transactions, null));
         }
         return result;
+    }
+
+    /** The terminal boundary has been crossed; a broken callback must not skip later completions. */
+    private static void complete(List<RequirementTransaction> transactions) {
+        Throwable failure = null;
+        for (var transaction : transactions) {
+            try {
+                transaction.complete();
+            } catch (RuntimeException | Error completion) {
+                if (failure == null) {
+                    failure = completion;
+                } else if (failure != completion) {
+                    failure.addSuppressed(completion);
+                }
+            }
+        }
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
     }
 
     private static void rollback(List<RequirementTransaction> transactions, Throwable primary) {

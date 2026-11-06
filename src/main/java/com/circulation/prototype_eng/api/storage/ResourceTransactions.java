@@ -25,7 +25,8 @@ public final class ResourceTransactions {
     /**
      * Apply all reservations, then reversible business changes, before releasing any compensation
      * rights. Business rollback runs before reverse token rollback, under all participant locks.
-     * Completion must not fail; faults during completion or notification never trigger rollback.
+     * Completion must not fail; if it does, all remaining completions are still attempted and faults
+     * are aggregated. Completion/notification faults never trigger rollback.
      * Callbacks may access only enrolled storage domains and must not wait for another execution lane.
      */
     public static boolean commit(List<? extends ResourceReservation> reservations, Runnable apply,
@@ -89,10 +90,7 @@ public final class ResourceTransactions {
                 return false;
             }
             // Crossing this boundary relinquishes compensation rights. Never roll back a terminal token.
-            complete.run();
-            for (var reservation : participants) {
-                reservation.complete();
-            }
+            completeAll(participants, complete);
             return true;
         } catch (RuntimeException | Error failure) {
             primary = failure;
@@ -103,6 +101,23 @@ public final class ResourceTransactions {
             }
             publishAll(ordered, primary);
         }
+    }
+
+    private static void completeAll(List<? extends ResourceReservation> reservations, Runnable complete) {
+        Throwable failure = null;
+        try {
+            complete.run();
+        } catch (RuntimeException | Error completion) {
+            failure = completion;
+        }
+        for (var reservation : reservations) {
+            try {
+                reservation.complete();
+            } catch (RuntimeException | Error completion) {
+                failure = accumulate(failure, completion);
+            }
+        }
+        rethrow(failure);
     }
 
     private static void publishAll(List<StorageContext> contexts, Throwable primary) {

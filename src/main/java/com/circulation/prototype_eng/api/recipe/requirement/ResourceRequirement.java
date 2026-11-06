@@ -10,21 +10,31 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Fixed resource IO payload, combining PM item/fluid IO with AE2's extensible key types.
+ * Resource IO payload, combining PM item/fluid IO with AE2's extensible key types.
  * This is one built-in requirement, not the recipe model or a replacement resource type system.
  * Counts describe one execution, scaled by effective parallelism and chance at acquisition.
- * Optional weighted outputs run at END; fuzzy/dynamic input selection is separate migration work.
+ * Fuzzy/dynamic groups resolve and lock one key per group at START; weighted outputs run at END.
  */
 public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
                                   List<GenericStack> outputsPerTick, List<GenericStack> outputs,
                                   boolean voidExcessOutputs, ResourceChance chance,
-                                  @Nullable RandomOutputPool randomOutputs) {
+                                  @Nullable RandomOutputPool randomOutputs, List<FuzzyInputGroup> fuzzyInputs,
+                                  List<DynamicInputGroup> dynamicInputs) {
     public ResourceRequirement {
         inputs = copy(inputs);
         inputsPerTick = copy(inputsPerTick);
         outputsPerTick = copy(outputsPerTick);
         outputs = copy(outputs);
         Objects.requireNonNull(chance);
+        fuzzyInputs = copyGroups(fuzzyInputs);
+        dynamicInputs = copyGroups(dynamicInputs);
+    }
+
+    public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
+                               List<GenericStack> outputsPerTick, List<GenericStack> outputs,
+                               boolean voidExcessOutputs, ResourceChance chance, @Nullable RandomOutputPool randomOutputs) {
+        this(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs, chance, randomOutputs,
+            ObjectLists.emptyList(), ObjectLists.emptyList());
     }
 
     public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
@@ -47,6 +57,12 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
             }
             result.add(stack);
         }
+        return ObjectLists.unmodifiable(result);
+    }
+
+    private static <T> List<T> copyGroups(List<T> groups) {
+        var result = new ObjectArrayList<T>(groups.size());
+        for (var group : groups) { result.add(Objects.requireNonNull(group)); }
         return ObjectLists.unmodifiable(result);
     }
 }

@@ -29,7 +29,7 @@ public final class AttributeRequirementSystem implements RecipeRequirementSystem
                                                    boolean apply) {
         var attributes = process.attributes();
         var payload = requirement.payload();
-        String modifierId = "req:" + requirement.id() + ":" + payload.attribute();
+        String modifierId = "req:" + process.requirementPath() + ":" + payload.attribute();
         boolean added = apply && attributes.addModifier(payload.attribute(), new RequirementModifier(modifierId, payload.modifier()));
         return new AttributeChange(process, payload.attribute(), modifierId, apply, added);
     }

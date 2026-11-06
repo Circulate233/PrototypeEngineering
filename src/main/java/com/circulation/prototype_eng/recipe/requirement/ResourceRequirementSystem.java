@@ -52,20 +52,29 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         var payload = requirement.payload();
         var pool = stage == RecipeStage.END ? payload.randomOutputs() : null;
         boolean randomOutputs = pool != null && pool.hasOutputs();
-        if (inputs.isEmpty() && outputs.isEmpty() && !randomOutputs) {
+        boolean resolveInputs = stage == RecipeStage.START && (!payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty());
+        if (inputs.isEmpty() && outputs.isEmpty() && !randomOutputs && !resolveInputs) {
             return RequirementTransaction.SUCCESS;
         }
         var reservations = new ObjectArrayList<ResourceReservation>();
+        ResourceInputResolver.Selection selection = null;
         try {
             var hatches = MachineHatches.get(process.owner()).resources();
             String id = requirement.id().toString();
             int parallelism = RecipeParallelism.effective(process);
             double chance = payload.chance().effective(process);
-            String salt = "resource:" + id + ":" + stage
+            String salt = "resource:" + process.requirementPath() + ":" + stage
                 + (stage == RecipeStage.TICK ? ":" + process.state().successfulTicks() : "");
             long times = chance == 100 ? parallelism
                 : ChanceMath.sampleTimes(process.random(salt), parallelism, chance, process.probabilityTuning());
             long checkTimes = Math.max(parallelism, ChanceMath.maxTimes(parallelism, chance));
+            if (resolveInputs) {
+                selection = ResourceInputResolver.resolve(process, requirement, hatches, checkTimes, scaled(inputs, checkTimes));
+                if (selection.result() != ProcessResult.SUCCESS) {
+                    return new ReservedRequirement(selection.result(), reservations);
+                }
+                inputs = selection.inputs();
+            }
             var consumed = scaled(inputs, times);
             var produced = scaled(outputs, times);
             Object2LongLinkedOpenHashMap<AEKey> random = null;
@@ -88,11 +97,32 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             if (result == ProcessResult.SUCCESS) {
                 result = reserve(hatches, produced, false, needsOutput, payload.voidExcessOutputs(), id, reservations);
             }
-            return new ReservedRequirement(result, reservations);
+            var reserved = new ReservedRequirement(result, reservations);
+            if (result == ProcessResult.SUCCESS && selection != null) {
+                selection.install();
+                return new ResolvedResources(reserved, selection);
+            }
+            return reserved;
         } catch (RuntimeException | Error failure) {
+            if (selection != null) {
+                try {
+                    selection.rollback();
+                } catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) { failure.addSuppressed(cleanup); }
+                }
+            }
             ReservedRequirement.rollbackAfterFailure(reservations, failure);
             throw failure;
         }
+    }
+
+    /** Chosen identities are provisional until the enclosing stage succeeds, just like its tokens. */
+    private record ResolvedResources(ReservedRequirement reserved, ResourceInputResolver.Selection selection)
+        implements RequirementTransaction {
+        @Override public ProcessResult result() { return reserved.result(); }
+        @Override public List<ResourceReservation> reservations() { return reserved.reservations(); }
+        @Override public void commit() { }
+        @Override public void rollback() { selection.rollback(); }
     }
 
     /**

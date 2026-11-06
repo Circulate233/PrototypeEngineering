@@ -6,12 +6,15 @@ import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
 
@@ -32,6 +35,8 @@ public final class RecipeProcess {
     private boolean ticking;
     @Nullable
     private Tick activeTick;
+    @Nullable
+    private RequirementPath activeRequirement;
 
     public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed) {
         this(owner, recipe, seed, ProbabilityTuning.defaultTuning());
@@ -80,6 +85,46 @@ public final class RecipeProcess {
     /** Frozen scaled/unscaled timeline for requirements executing the current TICK stage. */
     public Tick tickContext() {
         return Objects.requireNonNull(activeTick, "No TICK stage is executing");
+    }
+
+    /** The executing definition's stable path, including checkpoint/selection wrapper ancestry. */
+    public RequirementPath requirementPath() {
+        return Objects.requireNonNull(activeRequirement, "No requirement callback is executing");
+    }
+
+    /** Framework boundary used by RecipeRequirement.acquire; all returned callbacks retain this scope. */
+    public RequirementTransaction acquireRequirement(RecipeRequirement<?> requirement, Supplier<RequirementTransaction> acquisition) {
+        var path = requirement.path(activeRequirement);
+        var transaction = withRequirementPath(path, () -> Objects.requireNonNull(acquisition.get(), "requirement transaction"));
+        return transaction == RequirementTransaction.SUCCESS ? transaction : new ScopedRequirement(this, path, transaction);
+    }
+
+    private <T> T withRequirementPath(RequirementPath path, Supplier<T> action) {
+        RequirementPath previous = activeRequirement;
+        activeRequirement = path;
+        try {
+            return action.get();
+        } finally {
+            activeRequirement = previous;
+        }
+    }
+
+    private record ScopedRequirement(RecipeProcess process, RequirementPath path, RequirementTransaction delegate)
+        implements RequirementTransaction {
+        @Override public ProcessResult result() { return process.withRequirementPath(path, delegate::result); }
+        @Override public List<? extends ResourceReservation> reservations() {
+            return process.withRequirementPath(path, delegate::reservations);
+        }
+        @Override public void commit() { scoped(delegate::commit); }
+        @Override public void complete() { scoped(delegate::complete); }
+        @Override public void rollback() { scoped(delegate::rollback); }
+
+        private void scoped(Runnable action) {
+            process.withRequirementPath(path, () -> {
+                action.run();
+                return null;
+            });
+        }
     }
 
     /**

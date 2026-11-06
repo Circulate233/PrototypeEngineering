@@ -35,6 +35,28 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
         return acquireLifecycle(process, checkpoint.requirement(), tick);
     }
 
+    /** Child completion is terminal; finish every child before exposing an aggregated failure. */
+    private static void completeAll(List<RequirementTransaction> transactions) {
+        Throwable failure = null;
+        for (var transaction : transactions) {
+            try {
+                transaction.complete();
+            } catch (RuntimeException | Error completion) {
+                if (failure == null) {
+                    failure = completion;
+                } else if (failure != completion) {
+                    failure.addSuppressed(completion);
+                }
+            }
+        }
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+    }
+
     @Override
     public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<CheckpointRequirement> requirement) {
         var checkpoint = requirement.payload();
@@ -118,9 +140,7 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
 
         @Override
         public void complete() {
-            for (var transaction : transactions) {
-                transaction.complete();
-            }
+            completeAll(transactions);
         }
 
         @Override
