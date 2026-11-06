@@ -23,6 +23,33 @@ public final class RecipeStageExecutor {
     }
 
     /**
+     * Acquires the real START requirements of an unattached NEW candidate, then compensates every
+     * acquisition. No business or storage commit, completion, TICK or END is performed.
+     * External START callbacks still run and must satisfy the normal reversible acquisition contract.
+     */
+    public static ProcessResult probeStart(RecipeProcess process) {
+        requireProbeBoundary(process);
+        var transactions = new ObjectArrayList<RequirementTransaction>();
+        var reservations = new ObjectArrayList<ResourceReservation>();
+        ProcessResult result;
+        try {
+            result = acquire(process, RecipeStage.START, transactions, reservations);
+        } catch (RuntimeException | Error failure) {
+            process.invalidatePersistenceBoundary();
+            rollbackAfterFailure(transactions, reservations, failure);
+            throw failure;
+        }
+        try {
+            ResourceTransactions.rollback(reservations, () -> rollback(transactions, null));
+            requireProbeBoundary(process);
+        } catch (RuntimeException | Error failure) {
+            process.invalidatePersistenceBoundary();
+            throw failure;
+        }
+        return result;
+    }
+
+    /**
      * The final participant applies process lifecycle/progress in the same reversible boundary.
      * It is supplied before acquisition and is rolled back even when acquisition itself fails.
      */
@@ -33,25 +60,12 @@ public final class RecipeStageExecutor {
         }
         var transactions = new ObjectArrayList<RequirementTransaction>();
         var reservations = new ObjectArrayList<ResourceReservation>();
-        ProcessResult result = ProcessResult.SUCCESS;
+        ProcessResult result;
         try {
-            for (var requirement : process.recipe().orderedRequirements()) {
-                var transaction = Objects.requireNonNull(requirement.acquire(process, stage), "requirement transaction");
-                transactions.add(transaction);
-                reservations.addAll(Objects.requireNonNull(transaction.reservations(), "transaction reservations"));
-                result = Objects.requireNonNull(transaction.result(), "transaction result");
-                if (result != ProcessResult.SUCCESS) { break; }
-            }
+            result = acquire(process, stage, transactions, reservations);
         } catch (RuntimeException | Error failure) {
             transactions.add(transition);
-            // Exceptional cleanup only. Preserve the original fault and expose every cleanup fault.
-            try {
-                ResourceTransactions.rollback(reservations, () -> rollback(transactions, failure));
-            } catch (RuntimeException | Error cleanupFailure) {
-                if (failure != cleanupFailure) {
-                    failure.addSuppressed(cleanupFailure);
-                }
-            }
+            rollbackAfterFailure(transactions, reservations, failure);
             throw failure;
         }
         transactions.add(transition);
@@ -68,6 +82,40 @@ public final class RecipeStageExecutor {
             ResourceTransactions.rollback(reservations, () -> rollback(transactions, null));
         }
         return result;
+    }
+
+    private static void requireProbeBoundary(RecipeProcess process) {
+        Objects.requireNonNull(process).requirePersistenceBoundary();
+        if (process.host() != null || process.state().lifecycle() != RecipeProcess.Lifecycle.NEW) {
+            throw new IllegalArgumentException("START probe requires an unattached NEW process");
+        }
+    }
+
+    private static ProcessResult acquire(RecipeProcess process, RecipeStage stage,
+                                         List<RequirementTransaction> transactions, List<ResourceReservation> reservations) {
+        ProcessResult result = ProcessResult.SUCCESS;
+        for (var requirement : process.recipe().orderedRequirements()) {
+            var transaction = Objects.requireNonNull(requirement.acquire(process, stage), "requirement transaction");
+            transactions.add(transaction);
+            reservations.addAll(Objects.requireNonNull(transaction.reservations(), "transaction reservations"));
+            result = Objects.requireNonNull(transaction.result(), "transaction result");
+            if (result != ProcessResult.SUCCESS) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private static void rollbackAfterFailure(List<RequirementTransaction> transactions,
+                                             List<ResourceReservation> reservations, Throwable failure) {
+        // Exceptional cleanup only. Preserve the original fault and expose every cleanup fault.
+        try {
+            ResourceTransactions.rollback(reservations, () -> rollback(transactions, failure));
+        } catch (RuntimeException | Error cleanupFailure) {
+            if (failure != cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+        }
     }
 
     /** The terminal boundary has been crossed; a broken callback must not skip later completions. */

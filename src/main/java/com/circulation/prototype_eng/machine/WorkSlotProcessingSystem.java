@@ -8,7 +8,7 @@ import net.minecraft.util.ResourceLocation;
 
 /** Ordinary component-system entry; scheduling and runtime authority belong to the calling host. */
 public final class WorkSlotProcessingSystem implements MachineSystem<MachineWorkSlots> {
-    private static final ResourceLocation ID = new ResourceLocation(Tags.MOD_ID, "work_slot_processing");
+    public static final ResourceLocation ID = new ResourceLocation(Tags.MOD_ID, "work_slot_processing");
 
     @Override public ResourceLocation id() { return ID; }
 

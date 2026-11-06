@@ -2,7 +2,7 @@
 
 `MachineRecipe` 已恢复为按需求职责分组的公开定义。它保存 id、时长、配方组及 `RecipeRequirementType<?> → List<RecipeRequirement<?>>`，不再以固定输入、输出和 FE 字段限定配方。需求类型绑定自己的 `RecipeRequirementSystem<C>`；资源身份继续使用 AE2 的 AEKey/AEKeyType，不再建立 PMKey 的替代类型体系。
 
-本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。资源概率、加权输出、检查点、模糊/动态输入、解析锁、嵌套需求路径、选择器、需求 overlay 和严格单进程 NBT 已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。当前工作槽宿主、同步驱动与整组 NBT 恢复已接入，已通过本阶段验证；扫描/取消、机器/世界集成和真实并行调度仍在迁移中。
+本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。资源概率、加权输出、检查点、模糊/动态输入、解析锁、嵌套需求路径、选择器、需求 overlay、严格单进程 NBT 和工作槽宿主/整组恢复已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。当前 group 目录/索引交集、有界扫描、外部 factory/constraint、resolved base 与真实 START acquisition/rollback、首刻局部 preparation 已接入，已通过本阶段构建与 MCP 检查；取消、机器/世界集成和真实并行调度仍在迁移中。
 
 ## 公开注册与需求扩展
 
@@ -48,7 +48,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。当前同步批次不是跨 lane/join 的 distributed 提交实现。
 
-`RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回，避免下一次调用重放已完成阶段。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过本阶段验证，多工位扫描和取消协议仍未接入。
+`RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回，避免下一次调用重放已完成阶段。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过此前工作槽阶段验证，当前多工位扫描待验证，取消协议仍未接入。
 
 ## 已接入的固定需求和来源组件
 
@@ -77,11 +77,11 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
 
 `localSnapshot()` 复制两层局部映射并返回不可变视图，保留不可变 modifier 引用；`restoreLocal()` 全量校验后替换，失败不改变原层。它只保存局部 base/modifier，不包含父层和构造缺省值，也不是 NBT 编码或完整保存恢复。属性层由机器/进程独占执行者修改，父层在子进程并发读取期间保持稳定，所有权通过调度 join 转移；没有用 volatile dirty 或缓存写入冒充安全并发读取。
 
-`RecipeParallelism.effective()` 使用进程属性 PROCESS_PARALLELISM，取 floor 并至少为 1；有限大值转换受 int 上限限制。资源和 FE 数量以该倍率缩放，正数量乘法溢出饱和到 Long.MAX_VALUE，非法负数量拒绝。MAX_CONCURRENT_PROCESSES、PROCESS_PARALLELISM、PROCESS_SPEED 是独立职责，ENERGY_EFFICIENCY 仅提供扩展 ID，当前内置需求未使用效率公式。PM 旧 PARALLELISM component/system 已是注释空壳，不恢复成第二套需求；扫描时确定安全有效倍率仍待迁移，并须避免把已受父 modifier 影响的 value 再写入继承相同 modifier 的 base。
+`RecipeParallelism.effective()` 使用进程属性 PROCESS_PARALLELISM，取 floor 并至少为 1；有限大值转换受 int 上限限制。资源和 FE 数量以该倍率缩放，正数量乘法溢出饱和到 Long.MAX_VALUE，非法负数量拒绝。MAX_CONCURRENT_PROCESSES、PROCESS_PARALLELISM、PROCESS_SPEED 是独立职责，ENERGY_EFFICIENCY 仅提供扩展 ID，当前内置需求未使用效率公式。PM 旧 PARALLELISM component/system 已是注释空壳，不恢复成第二套需求；当前扫描使用 resolved base 防父 modifier 重复应用，并探测真实 START，已通过本阶段构建与 MCP 检查，见“有界扫描与 START 探测”。
 
 `RecipeRequirements.ATTRIBUTES` 绑定 `AttributeRequirement` / `AttributeRequirementSystem`，保留可配置 applyAtStart 和 removeAtEnd。START acquisition 立即施加 modifier，使同阶段后续需求读取更新后的倍率；内部 ID 由完整需求路径和属性 ID 确定，委托外部 modifier 的 operation/apply。START rollback 只删除自己成功添加的 modifier，不恢复整层快照，以免覆盖其他需求在业务 commit/rollback 中做的属性或 base 变化。END acquisition 和业务 commit 都保留 modifier，到全部业务 commit 成功后的 complete 才执行无失败局部清理；这既避免最终输出检查提前降倍率，也使被阻塞或异常的 END 不需要重排恢复 modifier。
 
-`RecipeProcess.tick()` 是同步单进程入口：NEW 先执行 START，成功后检查完成条件；未达时长才执行 TICK，成功后再检查 END。零时长在 START 后直接 END，不获取 TICK。Blocked 保持当前生命周期和进度，下一次重试同一阶段；业务 Failure 进入终态 FAILED，COMPLETED/FAILED 再次 tick 只返回已有结果。进程执行不允许递归或同进程并发；当前工作槽负责受检挂接、逐槽驱动和终态移除，扫描与取消仍未接入。
+`RecipeProcess.tick()` 是同步单进程入口：NEW 先执行 START，成功后检查完成条件；未达时长才执行 TICK，成功后再检查 END。零时长在 START 后直接 END，不获取 TICK。Blocked 保持当前生命周期和进度，下一次重试同一阶段；业务 Failure 进入终态 FAILED，COMPLETED/FAILED 再次 tick 只返回已有结果。进程执行不允许递归或同进程并发；当前工作槽负责受检挂接、逐槽驱动和终态移除，扫描已接入待验证，取消仍未接入。
 
 进度采用 double 的绝对工作刻数，声明 durationTicks 也是工作刻数；每次成功 TICK 增加 max(0, PROCESS_SPEED)，long successfulTicks 只增加 1，提供不受速度缩放的确定性刻时钟。TICK 开始前只读一次速度并冻结 `Tick(progressBefore, progressAfter, indexBefore, indexAfter)`，需求可通过 tickContext 读取；阻塞时该次进度和成功刻数都不前进。资源每刻随机盐使用尚未推进的 successfulTicks，检查点使用冻结的 scaled/unscaled 前后范围；不把绝对 progress 当作 0..1 的完成比例。
 
@@ -117,7 +117,7 @@ START 解析通过 `ResourceInputResolver` 计算保守 checkTimes，先计入�
 
 选择状态按完整路径归进程所有；后续 TICK/END 只派发已选子需求，外层统一结算其令牌。START rollback 撤销本次选择、已获取子业务和该选择自己安装的属性 modifier/需求 overlay 层；START commit 先应用子业务，再按声明顺序调用 SelectiveModifierDescriptor 绑定的真实 SelectiveModifier.apply，并标记提交。SelectiveContext 暴露机器、进程、选择路径、候选索引及 modifier 名称/序号，属性和需求 overlay 效果通过有效 apply 作用域中的 tracked put 记录所有权。内部 modifier/overlay layer ID 长度分帧并包含路径、descriptor 序号和名称，属性包装仍委托外部 AttributeModifier 行为；直接修改其他状态不自动获得该接口的补偿能力。
 
-END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全部业务成功后的 complete 才完成子事务并清理本选择的局部效果；被阻塞或业务异常的 END 不提前清效果。子 complete 抛错时仍尝试选择清理，外层与检查点完成链继续其余 complete 和资源/FE token 完成，再报告聚合错误；已跨终态边界不回滚或重放。选择状态已接入严格 NBT 保存恢复并完成此前验证，取消和扫描仍未实现。
+END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全部业务成功后的 complete 才完成子事务并清理本选择的局部效果；被阻塞或业务异常的 END 不提前清效果。子 complete 抛错时仍尝试选择清理，外层与检查点完成链继续其余 complete 和资源/FE token 完成，再报告聚合错误；已跨终态边界不回滚或重放。选择状态已接入严格 NBT 保存恢复并完成此前验证，扫描已接入待验证，取消仍未实现。
 
 ## 每进程需求 overlay
 
@@ -161,11 +161,11 @@ ResourceKeyNbt 保存显式 AEKeyType ID 与 key data，先解析准确类型再
 
 BuiltinProcessValidation 校验可证明的内置范围：路径、START 锁类别、稳定资源组匹配、选择索引、未执行分支、已执行分支所需状态和效果唯一所有权。自定义 overlay 必须配置宿主 validator；曾改变资源组或 checkpoint/selector 结构的历史，不能靠当前 payload 或已移除的层推测，宿主须提供历史完整性依据。嵌套正阈值 checkpoint 只看到外层那一个触发 tick，完整历史区间没有保存；仅 time=0、可证明重合或互斥的阈值可强制推断，其余激活完整性由宿主验证。外部 wrapper/component 须声明 children、codec、恢复依赖和跨组件 validator，不能借内置 walker 宣称任意扩展已验证。
 
-严格单进程状态 codec 和新实例验收已通过此前阶段验证。当前工作槽整组恢复在该入口之后统一挂接，见下一节，已通过本阶段验证；扫描/取消、机器/世界恢复及真实 planned 尚未完成。PN owner/epoch、lease 和 ready authority 不从旧存档恢复，宿主须重新取得运行权限。当前格式也不自动读取或升级 PM 的旧 NBT。
+严格单进程状态 codec 和新实例验收已通过此前阶段验证。当前工作槽整组恢复在该入口之后统一挂接，见下一节，已通过此前工作槽阶段验证；当前扫描待验证，取消、机器/世界恢复及真实 planned 尚未完成。PN owner/epoch、lease 和 ready authority 不从旧存档恢复，宿主须重新取得运行权限。当前格式也不自动读取或升级 PM 的旧 NBT。
 
 ## 工作槽宿主、驱动与整组恢复
 
-当前 [MachineWorkSlots](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/MachineWorkSlots.java)、[WorkSlotDefinition](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/WorkSlotDefinition.java)、[WorkSlot](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/WorkSlot.java)、[RecipeExecutor](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/process/RecipeExecutor.java)、[WorkSlotProcessingSystem](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/machine/WorkSlotProcessingSystem.java) 与 [MachineWorkSlotsNbt](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/MachineWorkSlotsNbt.java) 已接入并通过本阶段逻辑构建、逐类 IDEA MCP 全问题检查及 MCP build_project。准确范围、数量和报告由[实施进度](implementation-status.md)维护；未进行游戏运行验证。
+当前 [MachineWorkSlots](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/MachineWorkSlots.java)、[WorkSlotDefinition](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/WorkSlotDefinition.java)、[WorkSlot](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/WorkSlot.java)、[RecipeExecutor](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/process/RecipeExecutor.java)、[WorkSlotProcessingSystem](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/machine/WorkSlotProcessingSystem.java) 与 [MachineWorkSlotsNbt](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/MachineWorkSlotsNbt.java) 已接入并通过此前工作槽阶段逻辑构建、逐类 IDEA MCP 全问题检查及 MCP build_project。准确范围、数量和报告由[实施进度](implementation-status.md)维护；未进行游戏运行验证。
 
 工作槽按声明顺序建立，不允许重名；空布局建立隐式 `main`，使用传入的机器默认配方组。定义中的组保持不可变声明顺序，`isCore` 与 `restartPolicy` 保存到 runtime/NBT；两者当前只是元数据。默认 `LOCKED_RETRY` 保持阻塞进程，`RESCAN` 的冷却、丢弃与重新扫描尚未实现；旧 PM 也只声明该策略，没有运行路径，不能据枚举名称宣称已支持重扫。
 
@@ -190,13 +190,33 @@ Blocked 保留同一进程及选择/进度，下次重试；正常 COMPLETED/FAI
 
 旧 planned 的 [createPlannedSlots](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/planned/RegistryBackedMachinePlannedExecution.kt:142) 另造 [PlannedWorkSlot](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/planned/RegistryBackedMachinePlannedExecution.kt:245)，其 process 永远 null、非 null setter 抛错，仅消费 name/groups 与槽位 identity。当前 WorkSlot 是传统进程宿主实际状态类，无需为复现这种假槽机械增加接口。未来 planned context 应复用稳定 WorkSlotDefinition 等元数据并提供真实 planned 状态及所有权，不能假称该状态承载 RecipeProcess；真实 planned 的功能、扩展与多线程能力仍完整保留待迁移。
 
-## 扫描迁移边界
+## 有界扫描与 START 探测
 
-扫描器尚未实现。旧 PM 的组范围、可选索引、并行约束及非单调二分风险已有只读审计，具体入口见[扫描与索引审计](migration-audit.md#扫描索引与并行探测审计)。未来扫描须保留外部 process factory、约束和组件扩展职责；旧扫描直接构造进程不构成取消该扩展的依据。槽位空组的显式进入语义不能扩张为全局无界扫描。
+当前 [RecipeCatalog](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeCatalog.java)、[RecipeScanner](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanner.java)、[RecipeCandidateIndex](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeCandidateIndex.java)、[RecipeProcessFactory](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeProcessFactory.java)、[RecipeParallelismConstraint](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeParallelismConstraint.java)、[ScanLimits](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/ScanLimits.java) 与 [RecipeScanningSystem](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/machine/RecipeScanningSystem.java) 已接入，已通过本阶段构建与 MCP 检查。旧 PM 的组、索引与非单调风险及当前修正见[扫描与索引审计](migration-audit.md#扫描索引与并行探测审计)。
 
-并行 k 的全 START 探测必须获取实际需求事务并完整回滚，不能用 RecipeProcess.tick 模拟，因为它也可能执行 TICK/END 并推进时间线。完整 START 对模糊候选的有序贪心选择不保证单调：A=5、B=8，首组候选 [A,B] 每次需 4，第二组仅 A 每次需 2；k=1 首组取 A4 后第二组失败，k=2 首组改取 B8 后第二组 A4 成功。因此只能在具有明确单调契约的约束上二分，其他情况使用有预算的探测，并明确不保证全局最大值。
+RecipeCatalog 冻结配方池/声明顺序和 canonical 配方实例，相同 ID 的不同对象拒绝；重复使用同一实例只收录一次。查询先取槽位 recipeGroups 的 union 范围，再按原目录顺序返回；每个外部 index 都获得同一不可变完整 scope，null 不作筛选、empty 是硬空集，其余结果按 canonical 实例交集，不改变目录顺序。伪造、外部或越组候选拒绝。index 必须纯，且保留没有自身需求类型的通用候选，不能把 energy-only 配方从 item index 丢掉；目前没有内置资源索引，外部实现须承担其完整性。
 
-所选有效 k 不能再写成会重复应用父 modifier 的 base，也不能反解任意外部 modifier；后续需要明确的有效数量/上限语义。一次 tick 最多创建一个进程仍可能遍历全部拒绝候选、构造与探测；候选扫描、probe 次数、动态全扫描/排序/NBT、随机逐次抽样和嵌套生命周期都须纳入工作预算。数量 k 缩放资源，速度改变绝对进度，成功刻数仍每次成功 TICK 加 1；真实 planned 接入仍须保留两次 join、稳定 affinity lane 与 PN owner/epoch/预算，不能持锁跨 lane 等待。
+RecipeScanner 绑定一个 MachineWorkSlots，在独占执行边界按目录顺序扫描，选择首个空且组兼容槽；空组返回 NO_GROUPS，不回退全局目录。当前容量满返回 FULL，同 recipe ID 已在任一槽运行则跳过。每次 scan 最多一次成功 admission，调用方每个机器 tick 最多调用一次。结果包含 ADMITTED/YIELDED/EXHAUSTED/FULL/NO_GROUPS 和本次 candidate/probe 数，达到限制让出；扫描异常标记 scanner faulted，后续 scan 拒绝。
+
+ScanLimits 只限制每次检查的候选数和并行 probe 次数。游标和候选列表/搜索边界可跨调用保留，搜索固定 seed 与 ProbabilityTuning，每个 amount 都经外部 factory 构造 fresh 未公开 NEW 进程，核对 machine、canonical recipe、seed/tuning、未挂接和稳定边界；不跨 tick 保留资源 reservation、候选进程或运行权限。机器父并行上限改变会重建当前搜索。一次 pass 逐 probe 观察活动存储，候选/index 快照与上界不代表跨 tick 原子视图，也不保证动态存储下的全局最大值。
+
+默认对 base amount 从上界向 1 逐一递减探测，支持非单调需求。只有显式 `Predicate<MachineRecipe> monotonicStart` 保证 factory 局部 modifier、全部 preparation、约束、需求和存储组成的**完整 probe** 成功集为连续前缀时才二分，不能根据 type ID 自动推断。搜索界使用 long，amount=Integer.MAX_VALUE 时加减不会回绕；二分得到的 best 在 admission 前重新构造并完整探测，旧成功不等于预留权。重探测失败则下次重新观察，真实 START 始终具有最终决定权。
+
+非单调反例继续成立：A=5、B=8，模糊首组候选 [A,B] 每次需 4，第二组仅 A 每次需 2；k=1 首组取 A4 后第二组失败，k=2 首组改取 B8 后第二组 A4 成功。因此默认穷举，显式单调保证覆盖整个探测，不能只证明某个固定 IO 子检查单调。
+
+候选的 PROCESS_PARALLELISM 使用 `MachineAttributes.setResolvedBase(amount)`：amount 包含机器父层已经计算的基线，屏蔽祖先 modifier 的二次应用，仍保留 factory 安装的本地 modifier。amount 不包含本地 modifier，不能反解任意外部函数；实际有效资源数量继续由 RecipeParallelism 读取本地运算结果。普通 setBase 恢复继承 modifier，clearBase 重新显露父层；snapshot/NBT 保存 InheritModifiers，局部属性格式 Version 2 精确读取该 Boolean，拒绝缺 base 却屏蔽继承的状态，旧 Version 1 不自动升级。该新增语义同扫描阶段待验证。
+
+whole-recipe 约束为纯检查/安全上界，逐个检查整个配方，不按 requirement type 跳过未知实现；上界不得排除任何可行 base amount，必须汇总共享余额/容量。约束通过也必须调用 [RecipeStageExecutor.probeStart](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java) 获取真实 START 需求事务与资源/FE token，再将全部获取逆序 rollback，包括拒绝项；不调用 commit/complete、不推进生命周期，也不执行 TICK/END。异常继续清理并使候选不能保存，scanner 故障停止后续运行。START 回调仍需遵守正常可逆 acquisition 契约。
+
+**自定义组件投影：** 当前 [RecipeScanPreparation](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanPreparation.java) 与 [RecipeScanProbes](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanProbes.java) 已接入并补充行为用例，已通过本阶段构建与 MCP 检查。scanner 的八参数构造最后接受有序 preparations，原七参数构造默认空列表。每次完整 probe 先按顺序 prepare，再运行全部约束和真实 START acquisition/rollback；所有结果均逆序 rollback preparation，包括拒绝项。通过后 admission 保留投影前状态，即 factory 初始化与 scanner resolved base，真实首 tick 的组件回调只正常执行一次，不重复安装投影效果。
+
+preparation 只允许可逆进程局部状态，无世界/旧 owner 副作用，返回事务的 reservations 必须为空；commit/complete 永不调用。partial acquisition 仍须遵守正常可逆事务契约。若违约暴露 resource/FE token，协调器先完整释放并清理各层，再报告契约异常；一层 rollback 抛错仍继续其他层，聚合错误并禁止候选保存。prepare 返回 Blocked/Failure 时不执行后续准备或检查，但仍撤销自身及已获取层；真实 START 回滚完成后才撤销准备状态。
+
+probe 不直接调用进程组件 Pre/Normal/Post；真实 RecipeProcess.tick 在 START 前会执行 Pre/Normal。空 preparation 的默认探测仍要求 factory 初始化后即可确定首次 START 行为；组件回调会改变属性、overlay 或需求状态时，外部须提供与首次回调等价的确定性、可逆局部 preparation，否则探测可能假阳性/假阴性。该接口提供显式支持入口，不能自动验证任意自定义 factory 的等价性；普通回调没有自动补偿，不能直接拿组件 tick 模拟。actual START 始终具有最终决定权，世界副作用或不可逆首刻行为仍不属于这种局部投影契约，相关扩展与真实 planned 职责继续保留。
+
+RecipeScanningSystem 由使用方显式安装到组件系统，runBefore WorkSlotProcessingSystem，onTick 核对 scanner owner，ready Predicate 只决定本次 admission 是否扫描。它没有为既有进程提供世界/结构/PN 权限，也没有实现 RESCAN 或取消。旧固定 IO 约束对 END 输出容量和 TICK 输入/输出的预筛尚未内置，当前完整 START 通过不能证明后续阶段可行；后续须保留其效果并用全配方共享容量/上界协议修正逐条模拟问题。
+
+当前 candidate/probe 计数不限制目录 union/sort、index lookup、factory、constraint、动态全扫描/排序/key NBT、随机逐次抽样和嵌套生命周期内部工作，也不是 wall-clock/deadline 预算。数量倍率缩放资源，速度改变绝对进度，成功刻数仍每次成功 TICK 加 1；真实 planned 仍须两次 join、稳定 affinity lane 与 PN owner/epoch/向量预算，不能持锁跨 lane 等待。
 
 ## 资源存储纠正
 
@@ -217,9 +237,9 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 加权输出保留每个输出循环按权重无放回选取多个候选；`ignore_output_full` 保留部分产出并丢弃余量的效果。容量预留须覆盖实际确定的 key 和数量，不能只检查数量最大的候选而宣称覆盖所有随机结果。
 - 选择性包装器保留按顺序选择首个 START 成功的子需求、全程沿用选择、无可用候选时本次进程禁用但不阻塞，以及外部 modifier 施加进程属性效果。阻塞重试不能遗漏候选输入，也不能提前删除仍应生效的 modifier。
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
-- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过本阶段验证。planned 迁移还需要这些定义、调参和状态的明确投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
+- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。planned 迁移还需要这些定义、调参和状态的明确投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
 
-下一步补扫描/取消、机器/世界宿主集成与 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
+下一步完成扫描/首刻局部投影验证与固定 IO 预筛，再补取消、机器/世界宿主集成与 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
 
 ## 验证与未完成部分
 
@@ -227,6 +247,6 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 
 此前公开配方池→MachineHatches→固定资源/FE 三阶段的行为验证覆盖输出阻塞及重试、别名去重、多个需求争用、单来源 FE 操作限额和明确允许的余量丢弃；阶段用例另覆盖业务提交异常补偿和终态通知故障，能源用例覆盖真实并发与跨资源结算。准确数量和 MCP 证据见[实施进度](implementation-status.md)。
 
-属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。当前工作槽宿主、单 driver 与整组 NBT 恢复已通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。这些证据不替代游戏或真实调度集成验证。
+属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。此前工作槽宿主、单 driver 与整组 NBT 恢复通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。当前扫描、首刻局部 preparation、START 探测与 resolved-base/NBT Version 2 已通过本阶段构建与 MCP 检查；本阶段 230 项测试通过，178 文件零诊断，报告 `build/reports/idea/recipe-scanning-final.json`；这些证据不替代游戏或真实调度集成验证。
 
-尚未完成：机器/世界宿主恢复、多工位扫描/取消、RESCAN 执行策略、机器生命周期、真实并发/亲和性/planned 预留补偿与工作预算、结构宿主和 JEI。当前工作槽与进程 codec 不能据此宣称完整机器运行、旧 PM 存档升级或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。
+尚未完成：固定 IO 的 END/TICK 预筛、机器/世界宿主恢复、取消、RESCAN 执行策略、机器生命周期、真实并发/亲和性/planned 预留补偿与工作预算、结构宿主和 JEI。当前局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；工作槽与进程 codec 不能据此宣称完整机器运行、旧 PM 存档升级或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。

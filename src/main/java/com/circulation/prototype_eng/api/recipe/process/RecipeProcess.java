@@ -113,6 +113,9 @@ public final class RecipeProcess {
         }
     }
 
+    /** Framework failure marker for an exceptional acquisition/cleanup outside tick(). */
+    public void invalidatePersistenceBoundary() { persistenceFailure = true; }
+
     /** Constructs an unpublished restored process. Its components still require restoration and validation. */
     public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
                                           ProbabilityTuning tuning, State state) {

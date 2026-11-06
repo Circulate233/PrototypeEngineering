@@ -222,6 +222,43 @@ class NbtPersistenceTest {
     }
 
     @Test
+    void resolvedBasesRoundTripWithoutReapplyingParentsAndRequireExplicitInheritanceSemantics() {
+        var id = new ResourceLocation("persistence_test", "resolved");
+        var parent = new MachineAttributes();
+        parent.setBase(id, 2);
+        parent.addModifier(id, new NumericAttributeModifier("parent", 1, AttributeModifier.Operation.MULTIPLY_TOTAL));
+        var source = new MachineAttributes(parent, 1);
+        source.addModifier(id, new NumericAttributeModifier("local", 1, AttributeModifier.Operation.ADDITION));
+        source.setResolvedBase(id, parent.value(id));
+        var codec = new MachineAttributesNbt(new AttributeModifierNbt());
+        var saved = codec.encode(source.localSnapshot());
+        parent.setBase(id, 10);
+        var restored = new MachineAttributes(parent, 1);
+        restored.restoreLocal(codec.decode(saved));
+        assertEquals(5, restored.value(id));
+        assertEquals(source.value(id), restored.value(id));
+        var leaf = new MachineAttributes(restored, 1);
+        leaf.addModifier(id, new NumericAttributeModifier("leaf", 2, AttributeModifier.Operation.ADDITION));
+        assertEquals(7, leaf.value(id));
+
+        var missingFlag = saved.copy();
+        missingFlag.getTagList("Attributes", 10).getCompoundTagAt(0).removeTag("InheritModifiers");
+        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(missingFlag)));
+        var wrongType = saved.copy();
+        wrongType.getTagList("Attributes", 10).getCompoundTagAt(0).setInteger("InheritModifiers", 0);
+        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(wrongType)));
+        var missingBase = saved.copy();
+        missingBase.getTagList("Attributes", 10).getCompoundTagAt(0).removeTag("Base");
+        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(missingBase)));
+        var oldVersion = saved.copy();
+        oldVersion.setInteger("Version", 1);
+        assertThrows(IllegalArgumentException.class, () -> restored.restoreLocal(codec.decode(oldVersion)));
+        assertEquals(5, restored.value(id));
+        assertTrue(restored.clearBase(id));
+        assertEquals(22, restored.value(id));
+    }
+
+    @Test
     void copiesExternalCodecOutputAndInputBeforeCallingTheImplementation() {
         var shared = new NBTTagCompound();
         var external = new AttributeModifierCodec() {

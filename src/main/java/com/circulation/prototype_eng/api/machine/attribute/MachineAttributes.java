@@ -15,9 +15,10 @@ import java.util.Objects;
  * shared parent. Other reads likewise require a stable layer. This class has no internal synchronization.
  *
  * <p>Reads calculate without writing a cache and resolve the live parent by ID. Local bases override
- * inherited bases; local modifier IDs override inherited modifiers. Clearing local state reveals
- * the parent again. All bases, fallbacks and intermediate results must be finite; negative values
- * are allowed so each consumer can apply its own domain rules.
+ * inherited bases; local modifier IDs override inherited modifiers. A resolved local base already
+ * includes its parent's calculation and blocks ancestor modifiers while retaining local modifiers.
+ * Clearing local state reveals the parent again. All bases, fallbacks and intermediate results must
+ * be finite; negative values are allowed so each consumer can apply its own domain rules.
  */
 public final class MachineAttributes {
     private static final AttributeModifier.Operation[] OPERATION_ORDER = AttributeModifier.Operation.values();
@@ -72,7 +73,22 @@ public final class MachineAttributes {
     public void setBase(ResourceLocation id, double base) {
         Objects.requireNonNull(id, "id");
         finite(base, "base");
-        local.computeIfAbsent(id, _ -> new LocalState()).baseOverride = base;
+        var state = local.computeIfAbsent(id, _ -> new LocalState());
+        state.baseOverride = base;
+        state.inheritModifiers = true;
+    }
+
+    /**
+     * Freezes an already resolved parent result as this layer's base. Ancestor modifiers are not
+     * applied again; every local modifier remains active. The supplied value must not already
+     * include this layer's local modifiers, whose arbitrary functions cannot be inverted.
+     */
+    public void setResolvedBase(ResourceLocation id, double base) {
+        Objects.requireNonNull(id, "id");
+        finite(base, "resolved base");
+        var state = local.computeIfAbsent(id, _ -> new LocalState());
+        state.baseOverride = base;
+        state.inheritModifiers = false;
     }
 
     public boolean clearBase(ResourceLocation id) {
@@ -82,6 +98,7 @@ public final class MachineAttributes {
             return false;
         }
         state.baseOverride = null;
+        state.inheritModifiers = true;
         prune(id, state);
         return true;
     }
@@ -108,12 +125,12 @@ public final class MachineAttributes {
 
     /**
      * Copies both map levels into unmodifiable maps, retaining immutable modifier references. Saves
-     * only local bases/modifiers, never the parent or layer default. Preserve the layer's constructor
-     * default separately when persisting its owning machine/process.
+     * only local bases/modifiers and their inheritance mode, never the parent or layer default.
+     * Preserve the layer's constructor default separately when persisting its owning machine/process.
      */
     public Map<ResourceLocation, LocalAttribute> localSnapshot() {
         var snapshot = new Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalAttribute>();
-        local.forEach((id, state) -> snapshot.put(id, new LocalAttribute(state.baseOverride, state.modifiers)));
+        local.forEach((id, state) -> snapshot.put(id, new LocalAttribute(state.baseOverride, state.modifiers, state.inheritModifiers)));
         return Collections.unmodifiableMap(snapshot);
     }
 
@@ -124,9 +141,10 @@ public final class MachineAttributes {
         for (var entry : snapshot.entrySet()) {
             var id = Objects.requireNonNull(entry.getKey(), "attribute ID");
             var saved = Objects.requireNonNull(entry.getValue(), "local attribute");
-            var checked = new LocalAttribute(saved.baseOverride(), saved.modifiers());
+            var checked = new LocalAttribute(saved.baseOverride(), saved.modifiers(), saved.inheritModifiers());
             var state = new LocalState();
             state.baseOverride = checked.baseOverride();
+            state.inheritModifiers = checked.inheritModifiers();
             state.modifiers.putAll(checked.modifiers());
             if (replacement.putIfAbsent(id, state) != null) {
                 throw new IllegalArgumentException("Duplicate attribute ID: " + id);
@@ -136,10 +154,13 @@ public final class MachineAttributes {
     }
 
     /** A local save entry. The map is copied; modifier objects must satisfy their immutable contract. */
-    public record LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers) {
+    public record LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers, boolean inheritModifiers) {
         public LocalAttribute {
             if (baseOverride != null) {
                 finite(baseOverride, "base override");
+            }
+            if (!inheritModifiers && baseOverride == null) {
+                throw new IllegalArgumentException("Blocking inherited modifiers requires a resolved base");
             }
             Objects.requireNonNull(modifiers, "modifiers");
             var copy = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>();
@@ -158,6 +179,10 @@ public final class MachineAttributes {
             }
             modifiers = Collections.unmodifiableMap(copy);
         }
+
+        public LocalAttribute(@Nullable Double baseOverride, Map<String, AttributeModifier> modifiers) {
+            this(baseOverride, modifiers, true);
+        }
     }
 
     private boolean contains(ResourceLocation id) {
@@ -174,14 +199,15 @@ public final class MachineAttributes {
 
     private boolean hasModifiers(ResourceLocation id) {
         var state = local.get(id);
-        return state != null && !state.modifiers.isEmpty() || parent != null && parent.hasModifiers(id);
+        return state != null && !state.modifiers.isEmpty()
+            || (state == null || state.inheritModifiers) && parent != null && parent.hasModifiers(id);
     }
 
     private void collectModifiers(ResourceLocation id, Object2ObjectLinkedOpenHashMap<String, AttributeModifier> result) {
-        if (parent != null) {
+        var state = local.get(id);
+        if (parent != null && (state == null || state.inheritModifiers)) {
             parent.collectModifiers(id, result);
         }
-        var state = local.get(id);
         if (state != null) {
             result.putAll(state.modifiers);
         }
@@ -210,6 +236,7 @@ public final class MachineAttributes {
 
     private static final class LocalState {
         private @Nullable Double baseOverride;
+        private boolean inheritModifiers = true;
         private final Object2ObjectLinkedOpenHashMap<String, AttributeModifier> modifiers = new Object2ObjectLinkedOpenHashMap<>();
     }
 }

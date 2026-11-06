@@ -15,7 +15,7 @@
 - 本地化已接入：GuiText 实现 AE2S LocalizationEnum，客户端使用 getLocal，容器标题使用 text 组件；禁止 GUI 拼键和裸翻译键调用。最终本机 IDEA MCP 逐文件检查零错误、警告、弱警告，MCP 构建及 Gradle 完整构建均通过，证据见下。
 - P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段协调结算。RequirementTransaction 上交全部资源/FE 预留，业务 commit 仍可补偿，全部成功才 complete；获取/应用/业务异常完整逆序清理，完成/通知故障不再回滚终态令牌。
 - 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量定义为单次执行量，执行时使用进程有效并行数并按 PM 的 long 饱和规则缩放。资源需求已接概率/随机产物及模糊动态输入，选择器与需求 overlay 已接入，FE 保留原独立数量语义。原因由 RecipeText 本地化枚举提供。
-- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环尚未接入多工位扫描、取消及真实 planned 调度。
+- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环已接入多工位宿主与扫描 admission，取消及真实 planned 调度仍待迁移。
 - 属性需求已接入：START 添加自己的 modifier，使后续获取看到效果，失败只撤销本需求成功添加的 modifier；END 在全部业务 commit 成功后的 complete 局部清理，避免输出提前失去倍率，也避免整层快照抹去其他需求的业务修改。有限 base/amount/fallback 与每次运算结果严格校验；父属性在多个进程并行执行期间必须保持稳定，读取不写缓存。PM 的 ENERGY_EFFICIENCY 目前只声明，没有可迁移的内置能耗公式，未自造玩法计算。
 - 概率与加权输出已接入：ResourceChance 的百分比与可选属性乘数决定资源执行次数，保留 PM 的整倍数加二项抽样、正 long 饱和量及固定数量保守检查。进程固定 ProbabilityTuning，成功刻索引用于 TICK 盐；默认仍为 PM 的 Poisson/固定 Gaussian 表近似，可选择小 n 精确 Bernoulli。临时预检占用释放后才保留真实用量，允许多个零概率检查共享；输出按真实选中 AEKey 与固定输出一起预留，拒绝不会留下部分产物。加权整数抽签按 entry 无放回，全部候选必选时批量缩放；普通随机池仍按执行次数循环，其异步预算尚待 planned 集成。
 - 检查点已接入：CheckpointRequirement 可包装任意需求，在 scaled/unscaled 冻结时间线上跨阈值触发完整子 START/TICK/END；time=0 在父 START 执行一次，子 TICK 使用零宽上下文。子事务汇总所有令牌上交外层，拒绝立即停止后续子阶段，业务和资源共同补偿，complete 不能先于其他父需求 commit；临时上下文涵盖子 TICK 获取和全部业务回调，结束或抛错后恢复。进程状态及子选择/锁已接入严格 NBT；工位整组恢复已接入，机器世界生命周期仍待迁移。
@@ -25,11 +25,18 @@
 - 旧固定资源流程已改为内部 ResourceTransferPlan/Run 迁移材料，不再定义公开 MachineRecipe 或从公开池选择配方。本轮已改用独立 ResourceStorage，保留 4 项守恒/检查点/别名测试；预留、补偿和并发另有专门行为用例，不能用此固定流程代替完整需求处理器。未接入机器且无调用方的固定资源 ResourceTransferNbt 已移除；正式进程/组件持久化采用 RecipeProcessNbt；整组宿主发布使用 MachineWorkSlotsNbt，机器世界恢复仍待迁移。
 - 严格进程持久化已接入并验证：RecipeProcessNbt 固定 canonical recipe/revision/graph，保存 seed/tuning、double progress、long successfulTicks、started 与完整结果、本地属性、有序 overlay 层、解析锁、选择器自有效果，以及组件实际装配/依赖和未安装 dependent 的 pending 约束。exact NBT 类型、未知/重复/坏引用全部拒绝；fresh process 先创建所有组件再按依赖恢复，最后跨组件及宿主校验成功才返回。selector 只绑定现有效果，不重跑 START/modifier。open transaction、pending Change 和抛错 tick 拒绝保存。外部 overlay 历史必须提供 validator；嵌套正阈值 checkpoint 仅推断可证明关系，不声称恢复未保存的历史触发区间。
 - 多工位宿主及整组恢复已接入并验证：MachineWorkSlots 保留有序定义、隐式 main 与 group 白名单，通过受检查 admission 拒绝 foreign owner、重复/跨 host process 和不匹配组。MAX_CONCURRENT_PROCESSES 只限制新加入；降低上限不驱逐已运行或保存的进程。单一同步 RecipeExecutor 每槽每刻执行一次；Blocked 保留，正常终态释放并保留结构化结果，已保存终态不重跑 executor；抛错 host 禁止重跑与保存。detach 只移交独占进程，不执行 END、不退历史消耗，不冒充取消。MachineWorkSlotsNbt 先完整校验 layout/revision/结果与各进程再替换整组和 attachment，失败保留旧工位；ProcessResultNbt 共用严格结果格式。isCore/restartPolicy 是保留元数据，旧 RESCAN 倒计时本就未接线。
+- 扫描 admission 已接入并验证：RecipeCatalog 冻结配方池声明顺序、canonical 身份和工位 group 范围，外部索引使用同一完整 scope 并区分 null/empty/交集。RecipeScanner 排除运行 recipe ID，选择首个空兼容槽，每次最多发布一个 NEW 进程；候选/probe 限额可续查，默认下降穷举，完整 probe 明确单调时才二分，long 防边界溢出且 best 发布前重验。factory、seed/tuning 与 owner/lifecycle 受校验，扫描故障后拒绝继续。
+- 扫描事务与局部准备已接入：RecipeStageExecutor.probeStart 共享正式 acquire，成功/拒绝/异常都撤回全部业务和资源/FE token，不提交或推进生命周期。RecipeScanPreparation/RecipeScanProbes 按顺序准备、逆序撤回等价首刻局部状态，实际组件 callback 只执行一次；外部不可逆/世界副作用不能自动投影。setResolvedBase 屏蔽已计入的父 modifier、保留本地 modifier，属性快照及 Version2 NBT 严格记录 InheritModifiers。
+- 扫描尚缺固定 END/TICK IO 预筛与内置资源索引；目录、索引、factory/constraint、动态排序/NBT、随机逐次抽样及嵌套需求内部成本仍无完整工作/deadline 预算。START 成功不能证明后续资源可行，局部 preparation 不能自动适配任意组件回调。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
 ## 验证记录
+
+- 2026-11-07（扫描 admission 阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，230 项逻辑测试全部通过，无失败、错误或跳过。新增 28 项行为用例覆盖组/索引交集、真实调度顺序/去重、非单调模糊输入、int 最大边界与旧 best 重验、预算续查及固定 seed/tuning、父倍率与局部 modifier/NBT、START 资源/FE/选择回滚、首刻可逆投影和多处清理异常。无常量/哈希/getter 专用测试或游戏初始化。
+- 2026-11-07（扫描 admission 阶段）：本机 IDEA MCP 对 177 个 src Java 文件及生成 Tags 共 178 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告且无超时；MCP `build_project` 成功、`problems:[]`。报告 [recipe-scanning-final.json](../build/reports/idea/recipe-scanning-final.json)。全程通过本地 MCP 检查，未操作桌面或启动游戏。
+- 2026-11-07（扫描审计边界）：修复旧 group/index 范围、无类型候选交集契约、有效父倍率重复应用、非单调完整 START 二分和 int 溢出风险。START acquisition/rollback 不执行 selector commit modifier；普通组件 pre/tick 不直接模拟。固定 END/TICK 预筛、内置资源索引和内部工作预算尚待迁移，阶段提交不表示扫描或整体重开发全部完成。
 
 - 2026-11-07（工位宿主阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，202 项逻辑测试全部通过，无失败、错误或跳过。新增 13 项聚合行为用例覆盖真实 onSchedule/执行器、Blocked/终态、降低并发上限、owner/group/跨 host 排他、资源与 FE 移交不重复扣费、不执行 END、重入与故障拒绝、整组坏数据不发布、末尾解码失败及恢复别名隔离。没有常量/哈希/getter 专用测试或游戏初始化。
 - 2026-11-07（工位宿主阶段）：本机 IDEA MCP 对 164 个 src Java 文件及生成 Tags 共 165 文件逐个 `errorsOnly:false` 检查，最终零错误、警告、弱警告且无超时；MCP `build_project` 成功、`problems:[]`，报告 [work-slots-final.json](../build/reports/idea/work-slots-final.json)。修正 import、Math.clamp 与测试事务/非空契约等诊断，全程使用 MCP，未操作桌面或启动游戏。

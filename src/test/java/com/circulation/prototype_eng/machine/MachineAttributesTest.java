@@ -66,6 +66,56 @@ class MachineAttributesTest {
     }
 
     @Test
+    void resolvedParentValueIsAppliedOnceWhileLocalModifiersAndSnapshotsRemainActive() {
+        var parent = new MachineAttributes();
+        parent.setBase(SPEED, 2);
+        parent.addModifier(SPEED, new NumericAttributeModifier("parent", 1, MULTIPLY_TOTAL));
+        var child = new MachineAttributes(parent, 1);
+        child.addModifier(SPEED, new NumericAttributeModifier("local", 1, ADDITION));
+        child.addModifier(SPEED, new NumericAttributeModifier("local_total", 0.5, MULTIPLY_TOTAL));
+        child.setResolvedBase(SPEED, parent.value(SPEED));
+        assertEquals(7.5, child.value(SPEED));
+        var saved = child.localSnapshot();
+        parent.setBase(SPEED, 10);
+        assertEquals(7.5, child.value(SPEED));
+        child.setBase(SPEED, 100);
+        child.restoreLocal(saved);
+        assertEquals(7.5, child.value(SPEED));
+        child.removeModifier(SPEED, "local");
+        child.removeModifier(SPEED, "local_total");
+        assertEquals(4, child.value(SPEED));
+        assertThrows(IllegalArgumentException.class, () -> child.setResolvedBase(SPEED, Double.NaN));
+        assertEquals(4, child.value(SPEED));
+        assertThrows(IllegalArgumentException.class, () -> new MachineAttributes.LocalAttribute(null,
+            Map.of("local", new NumericAttributeModifier("local", 1, ADDITION)), false));
+    }
+
+    @Test
+    void inheritanceBlockingComposesAcrossLayersAndOrdinarySetOrClearRestoresParentModifiers() {
+        var root = new MachineAttributes();
+        root.setBase(SPEED, 2);
+        root.addModifier(SPEED, new NumericAttributeModifier("root", 1, MULTIPLY_TOTAL));
+        var middle = new MachineAttributes(root, 1);
+        middle.addModifier(SPEED, new NumericAttributeModifier("middle", 1, ADDITION));
+        middle.setResolvedBase(SPEED, root.value(SPEED));
+        var leaf = new MachineAttributes(middle, 1);
+        leaf.addModifier(SPEED, new NumericAttributeModifier("leaf", 2, ADDITION));
+        assertEquals(7, leaf.value(SPEED));
+        leaf.setResolvedBase(SPEED, middle.value(SPEED));
+        assertEquals(7, leaf.value(SPEED));
+        leaf.setBase(SPEED, 4);
+        assertEquals(7, leaf.value(SPEED));
+        assertTrue(middle.clearBase(SPEED));
+        assertEquals(14, leaf.value(SPEED));
+        assertTrue(leaf.clearBase(SPEED));
+        assertEquals(10, leaf.value(SPEED));
+        middle.setResolvedBase(SPEED, root.value(SPEED));
+        assertEquals(7, leaf.value(SPEED));
+        middle.setBase(SPEED, 4);
+        assertEquals(14, leaf.value(SPEED));
+    }
+
+    @Test
     void modifierOnlyLayersFollowNewReplacedAndRemovedParentEntries() {
         var parent = new MachineAttributes();
         var child = new MachineAttributes(parent, 1);
