@@ -40,7 +40,14 @@
 - 机器生命周期边界已接入并验证：MachineLifecycleHost/ControllerLifecycleHost 提供宿主身份与服务端线程约束，MachineLifecycle 一次挂接到实例。组件依赖顺序后接全局注册顺序，统一捕获参与者；保留 FRESH/RESTORED。未成型仅停扫描/工位，普通卸载保留进程可由新实例恢复，破坏先闭门再 broken/cancelAll/unloaded，不 END/退历史 IO。加载失败自动对同一捕获参与者发 LOAD_FAILED 清理，异常全部聚合且机器不再执行/保存。
 - 生命周期并发与故障边界：共享 VarHandle gate 拒执行/生命周期重叠和重入，生命周期先要求服务端线程与无活动 acquisition；faulted但quiescent进程仍允许外部卸载清理。损坏组件图的异常清理保留最后有效组件快照并补充无排序装配/当前全局监听，原错误仍抛出。注册表 synchronized 去重和精确订阅取消修复旧 check-add 竞态。工位 codec 检查机器保存边界，但不持有跨序列化锁；真实调度join/世界匹配/PN权限仍待接入。详见 [机器生命周期](machine-lifecycle.md)。
 
+- 结构定义与匹配已接入：复用AE2 BlockOrientation的24向，缓存整数StructureTransform；MachineStructure保留外部形状职责，模板/切片按PM顺序匹配，独立结果树保留每次occurrence计数与覆盖位置。固定controller排除、相对validator旋转、零片children锚点在规划/匹配/收集中统一，未加载实际试探不能当普通切片不匹配。
+- 结构捕获层已接入：StructureQuery显式读/拷贝契约，ReadPlan冻结并去重潜在area与query-position；WorldStructureSource只在主线程读取且不强加载。Snapshot区分未加载/缺失/捕获失败，未用潜在分支不自动否决，使用失败事实则抛错，Error直接中断；NBT捕获与交付均深拷贝。尚未接世界变更复核、机器控制器/仓室发布、严格JSON加载、预览/渲染和运行预算；代码不代表这些实机能力已完成。详见[结构说明](structures.md)及[源码审计](structure-migration-audit.md)。
+
 ## 验证记录
+
+- 2026-11-07（结构匹配IDEA证据）：本机MCP逐文件 `get_file_problems(errorsOnly:false)` 检查218个src Java及Tags共219文件，零错误、警告、弱警告且无文件超时；MCP build_project成功且problems为空。分批最终报告 `build/reports/idea/structure-matching-final.json`。
+
+- 2026-11-07（结构匹配阶段）：`gradlew.bat spotlessApply build --console=plain` 成功，299项测试无失败/错误/跳过。新增22项：24向/576朝向组合与坐标边界、捕获隔离及潜在分支、NBT/AND/OR/未加载谓词、嵌套模板/贪心切片、固定控制器、旋转validator、零片、多occurrence。没有启动Bootstrap/FML或游戏；真实World/TE/能力捕获、IBlockState行为仍缺实机证据。
 
 - 2026-11-07（机器生命周期IDEA证据）：本机MCP逐文件 `get_file_problems(errorsOnly:false)` 覆盖198个src Java文件及生成Tags共199文件，零错误、警告、弱警告且无文件超时；MCP build_project `isSuccess:true`、problems为空。分批报告 `build/reports/idea/machine-lifecycle-final.json`。
 

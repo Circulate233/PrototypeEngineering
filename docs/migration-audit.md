@@ -2,6 +2,8 @@
 
 早期 `MachineRecipe` 的固定 input/output/FE 字段及 `RecipeRun` 直接流程遗漏了 PM 的事件、组件、需求系统和进程扩展，不能视为有效迁移。高级需求、严格进程持久化、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。当前显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权和进程 NBT Version 2/回执已接入，已通过本阶段构建与 MCP 检查；机器宿主生命周期、卸载恢复/结构暂停/破坏取消现已接入并验证，具体源码复核见[机器生命周期](machine-lifecycle.md)；真实世界结构宿主和多线程调度仍未完成。JEI 接入继续等待这些基础收敛。
 
+结构定义/24向、声明捕获与模板/切片匹配现已通过本阶段逻辑测试；旧子结构controller混淆、零片锚点差异、validator未旋转和JSON放宽缺陷见[专门结构审计](structure-migration-audit.md)，当前实现与未接世界发布的界限见[结构说明](structures.md)。
+
 ## 旧代码实际调用链
 
 | 职责 | 源码入口 | 已确认行为 | 当前新实现 |
