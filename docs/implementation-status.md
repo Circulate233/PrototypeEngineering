@@ -27,12 +27,18 @@
 - 多工位宿主及整组恢复已接入并验证：MachineWorkSlots 保留有序定义、隐式 main 与 group 白名单，通过受检查 admission 拒绝 foreign owner、重复/跨 host process 和不匹配组。MAX_CONCURRENT_PROCESSES 只限制新加入；降低上限不驱逐已运行或保存的进程。单一同步 RecipeExecutor 每槽每刻执行一次；Blocked 保留，正常终态释放并保留结构化结果，已保存终态不重跑 executor；抛错 host 禁止重跑与保存。detach 只移交独占进程，不执行 END、不退历史消耗，不冒充取消。MachineWorkSlotsNbt 先完整校验 layout/revision/结果与各进程再替换整组和 attachment，失败保留旧工位；ProcessResultNbt 共用严格结果格式。isCore/restartPolicy 是保留元数据，旧 RESCAN 倒计时本就未接线。
 - 扫描 admission 已接入并验证：RecipeCatalog 冻结配方池声明顺序、canonical 身份和工位 group 范围，外部索引使用同一完整 scope 并区分 null/empty/交集。RecipeScanner 排除运行 recipe ID，选择首个空兼容槽，每次最多发布一个 NEW 进程；候选/probe 限额可续查，默认下降穷举，完整 probe 明确单调时才二分，long 防边界溢出且 best 发布前重验。factory、seed/tuning 与 owner/lifecycle 受校验，扫描故障后拒绝继续。
 - 扫描事务与局部准备已接入：RecipeStageExecutor.probeStart 共享正式 acquire，成功/拒绝/异常都撤回全部业务和资源/FE token，不提交或推进生命周期。RecipeScanPreparation/RecipeScanProbes 按顺序准备、逆序撤回等价首刻局部状态，实际组件 callback 只执行一次；外部不可逆/世界副作用不能自动投影。setResolvedBase 屏蔽已计入的父 modifier、保留本地 modifier，属性快照及 Version2 NBT 严格记录 InheritModifiers。
-- 扫描尚缺固定 END/TICK IO 预筛与内置资源索引；目录、索引、factory/constraint、动态排序/NBT、随机逐次抽样及嵌套需求内部成本仍无完整工作/deadline 预算。START 成功不能证明后续资源可行，局部 preparation 不能自动适配任意组件回调。
+- 固定 IO 预筛已接入并验证：FixedIoScanConstraint 对 flat 内置资源/能源、无动态包装/随机量/回调的候选读取有效 overlay，复用 probeStage 的整阶段预留和完整回滚。TICK/END 分别检查当前量与容量，不 commit、不推进；零时长跳 TICK，void 使用真实系统语义。跨阶段输入可能释放同 context 输出空间时跳过受影响阶段，资源跨 AEKeyType 共槽也识别，默认混合仓两侧独立时正常检查。默认 scanner 三参构造安装该约束，显式构造由调用方配置；各独立阶段通过不等于联合首 tick 保证。
+- 内置资源索引已接入并验证：ResourceRecipeIndex 使用 AEKey 倒排，Footprint 明确声明完整 factory/preparation/overlay/调参范围内的必需 START 输入下界。forFixedInputs 从受支持的真实内置输入提取，仍需显式 stableInputs 承诺；未知/动态/未声明/纯能源配方保守保留。按 context/key 取 alias 最大量，跨 context 及重复声明键的数量聚合饱和为必要下界；匹配全部声明键，保持 canonical scope 和目录顺序。不 reserve、不重建资源类型系统。
+- 扫描内部工作预算仍待迁移：目录、索引、factory/constraint、动态排序/NBT、随机逐次抽样及嵌套需求成本尚未接完整工作/deadline 预算。独立当前阶段预筛不能证明后续资源可行；动态完整生命周期的等价投影和真实 planned 仍未完成。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
 ## 验证记录
+
+- 2026-11-07（固定预筛/资源索引阶段）：`gradlew.bat spotlessApply build --console=plain` 成功，240 项逻辑测试通过，无失败、错误或跳过。新增 10 项聚合行为用例覆盖多需求/别名容量、FE 单次限额、默认扫描选并行与真实提交、零时长/void、跨类型共享槽位释放、动态回调保守跳过/有效 overlay、TICK 上下文与异常回滚、倒排 scope/通用候选、多类型 alias/hold 及总需求超过 long 的合法边界。
+- 2026-11-07（固定预筛/资源索引阶段）：本机 IDEA MCP 逐个对 181 个 src Java 文件和生成 Tags 共 182 文件执行 `errorsOnly:false`，零错误、警告、弱警告且无超时；MCP `build_project` 成功、`problems:[]`，报告 [fixed-io-index-final.json](../build/reports/idea/fixed-io-index-final.json)。全程 MCP，无桌面操作或游戏初始化。
+- 2026-11-07（固定预筛/资源索引源码复核）：保留 PM 固定阶段当前量/容量判断和 key 倒排目的，改用现有批预留避免重复使用同一余额；输入可释放后续共享输出空间时不误拒。固定输入声明只提供必要下界，索引没有证明真实 START 成功或完整未来可行性；保持未声明候选并要求声明覆盖全部外部改写。内部工作预算、取消和真实多线程仍待迁移。
 
 - 2026-11-07（扫描 admission 阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，230 项逻辑测试全部通过，无失败、错误或跳过。新增 28 项行为用例覆盖组/索引交集、真实调度顺序/去重、非单调模糊输入、int 最大边界与旧 best 重验、预算续查及固定 seed/tuning、父倍率与局部 modifier/NBT、START 资源/FE/选择回滚、首刻可逆投影和多处清理异常。无常量/哈希/getter 专用测试或游戏初始化。
 - 2026-11-07（扫描 admission 阶段）：本机 IDEA MCP 对 177 个 src Java 文件及生成 Tags 共 178 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告且无超时；MCP `build_project` 成功、`problems:[]`。报告 [recipe-scanning-final.json](../build/reports/idea/recipe-scanning-final.json)。全程通过本地 MCP 检查，未操作桌面或启动游戏。

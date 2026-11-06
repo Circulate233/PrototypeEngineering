@@ -46,7 +46,7 @@ public final class RecipeScanner {
 
     /** Safe default for arbitrary wrappers, probability, selectors and external attribute modifiers. */
     public RecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
-        this(host, catalog, RecipeProcess::new, List.of(), List.of(), _ -> false, seeds);
+        this(host, catalog, RecipeProcess::new, List.of(new FixedIoScanConstraint()), List.of(), _ -> false, seeds);
     }
 
     /**

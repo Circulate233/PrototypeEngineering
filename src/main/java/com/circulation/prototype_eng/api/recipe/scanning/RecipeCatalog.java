@@ -24,6 +24,7 @@ import java.util.Set;
 /** Frozen canonical recipes in pool/declaration order, queried only through explicit group scopes. */
 public final class RecipeCatalog {
     private final Map<ResourceLocation, MachineRecipe> recipes;
+    private final List<MachineRecipe> orderedRecipes;
     private final Map<ResourceLocation, List<MachineRecipe>> byGroup;
     private final Reference2IntOpenHashMap<MachineRecipe> order = new Reference2IntOpenHashMap<>();
 
@@ -47,9 +48,15 @@ public final class RecipeCatalog {
             }
         }
         recipes = Object2ObjectMaps.unmodifiable(canonical);
+        orderedRecipes = ObjectLists.unmodifiable(new ObjectArrayList<>(canonical.values()));
         var frozenGroups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>();
         groups.forEach((group, members) -> frozenGroups.put(group, ObjectLists.unmodifiable(members)));
         byGroup = Object2ObjectMaps.unmodifiable(frozenGroups);
+    }
+
+    /** Canonical definitions in frozen pool/declaration order, for building external indexes. */
+    public List<MachineRecipe> recipes() {
+        return orderedRecipes;
     }
 
     /** Each index sees the same full scope; its nonnull result intersects the other index results. */

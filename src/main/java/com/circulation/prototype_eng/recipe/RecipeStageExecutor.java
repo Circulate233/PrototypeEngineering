@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe;
 
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
@@ -28,24 +29,48 @@ public final class RecipeStageExecutor {
      * External START callbacks still run and must satisfy the normal reversible acquisition contract.
      */
     public static ProcessResult probeStart(RecipeProcess process) {
+        return probeStage(process, RecipeStage.START);
+    }
+
+    /**
+     * Probes one isolated stage of an unattached NEW candidate. Earlier stages and component callbacks
+     * are not executed; the caller must establish any state that this stage requires. This is not a
+     * projection of a complete lifecycle. TICK uses the candidate's first frozen tick context for both
+     * acquisition and cleanup. Every acquired transaction is rolled back without commit/complete.
+     */
+    public static ProcessResult probeStage(RecipeProcess process, RecipeStage stage) {
         requireProbeBoundary(process);
+        Objects.requireNonNull(stage);
+        try {
+            ProcessResult result;
+            if (stage == RecipeStage.TICK) {
+                var state = process.state();
+                double speed = process.attributes().value(StandardMachineAttributes.PROCESS_SPEED, 1);
+                var tick = new RecipeProcess.Tick(state.progress(), state.progress() + Math.max(0, speed),
+                    state.successfulTicks(), Math.incrementExact(state.successfulTicks()));
+                result = process.withTickContext(tick, () -> probeAcquisition(process, stage));
+            } else {
+                result = probeAcquisition(process, stage);
+            }
+            requireProbeBoundary(process);
+            return result;
+        } catch (RuntimeException | Error failure) {
+            process.invalidatePersistenceBoundary();
+            throw failure;
+        }
+    }
+
+    private static ProcessResult probeAcquisition(RecipeProcess process, RecipeStage stage) {
         var transactions = new ObjectArrayList<RequirementTransaction>();
         var reservations = new ObjectArrayList<ResourceReservation>();
         ProcessResult result;
         try {
-            result = acquire(process, RecipeStage.START, transactions, reservations);
+            result = acquire(process, stage, transactions, reservations);
         } catch (RuntimeException | Error failure) {
-            process.invalidatePersistenceBoundary();
             rollbackAfterFailure(transactions, reservations, failure);
             throw failure;
         }
-        try {
-            ResourceTransactions.rollback(reservations, () -> rollback(transactions, null));
-            requireProbeBoundary(process);
-        } catch (RuntimeException | Error failure) {
-            process.invalidatePersistenceBoundary();
-            throw failure;
-        }
+        ResourceTransactions.rollback(reservations, () -> rollback(transactions, null));
         return result;
     }
 
@@ -87,7 +112,7 @@ public final class RecipeStageExecutor {
     private static void requireProbeBoundary(RecipeProcess process) {
         Objects.requireNonNull(process).requirePersistenceBoundary();
         if (process.host() != null || process.state().lifecycle() != RecipeProcess.Lifecycle.NEW) {
-            throw new IllegalArgumentException("START probe requires an unattached NEW process");
+            throw new IllegalArgumentException("Stage probe requires an unattached NEW process");
         }
     }
 

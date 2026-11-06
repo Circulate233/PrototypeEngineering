@@ -1,51 +1,45 @@
 # 开发索引
 
-恢复上下文时先读本文件及 `git status --short`，再按当前任务读取指定章节或源码。不要一次加载全部文档。本文件只保留当前事实与下一步，历史验证写入实施进度；阶段提交时同步维护。
+恢复上下文先读本文件和 `git status --short`，再按表定位章节或源码。完整状态及历史证据在实施进度，需求在开发文档，不整批重读。
 
 ## 当前检查点
 
-- 当前阶段：扫描目录/索引扩展、合作式并行搜索、真实 START 全回滚探测及首刻局部 preparation 已完成本阶段验证；固定 END/TICK 预筛及内部工作预算仍未完成。本阶段本地提交、不推送，具体提交以 Git 日志为准。工位宿主为 `0d234ef`，严格进程持久化为 `25e86eb`；原工作区 23 份格式/注解整理继续保留。
-- 最近验证（2026-11-07）：本机 IDEA MCP 对 177 个 src Java 文件及生成 Tags 共 178 文件逐个 `errorsOnly:false`，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/recipe-scanning-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 230 项逻辑用例。真实 AE2 注册环境、GUI/游戏尚未运行验证。
-- 当前实现：资源与 FE 独立存储，共用无 AEKey 字段的预留生命周期及真实 context 同步。RequirementTransaction 上交令牌；整阶段先应用资源和业务，全部成功才 complete，拒绝/异常统一补偿。MachineHatches 绑定公开仓室；固定资源/FE payload 已接入 START/TICK/END、来源去重、单次 FE 限额和允许的余量丢弃。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv；未引入 FE key。
-- 当前进程：MachineAttributes 按 ID 叠加父层、本地 modifier 与 base，数值三操作顺序继承 PM，外部 modifier 保留接口。资源/FE 按有效并行数饱和缩放；属性需求 START 局部添加/撤销、END 在 complete 清理。RecipeProcess.tick 保留完成前后双检查，double 绝对进度与 long 成功刻数在资源同一提交边界推进，Tick 上下文预先冻结；阻塞不多扣料、终态通知故障不重放。组件回调一次捕获并包围处理循环。MachineAttributes 不在读路径写缓存；并行进程执行期必须保持父层稳定。
-- 高级需求进展：ResourceChance 支持 >100% 与属性乘数，进程固定抽样策略，TICK 盐使用成功刻数；固定数量保守预检占用在真正预留前释放，零概率检查可共享。随机池按候选 entry 无放回，按实际选中 AEKey 预留；全选时批量缩放，其余仍需逐次抽取，后续 planned 必须预算。检查点 time=0 在 START 执行子完整生命周期，其他按冻结 scaled/unscaled 时间线跨阈值触发；子令牌全部归外层结算，拒绝立即停止，异常完整清理。
-- 新增高级需求：模糊组按声明顺序、动态组按 type/resource ID/完整规范 NBT 排序后截断；matcher 和排序器保留外部实现。固定/前组需求先扣余量，成功获取才装逻辑锁，回滚只撤自身选择。RequirementPath 按完整包装层级寻址，字符串长度分帧；全部事务回调恢复捕获作用域。选择器 provisional 状态支持嵌套获取，拒绝候选完整补偿；START 失败清选择，END 失败保留 modifier，成功 complete 才移除自有属性。完成故障继续尝试其余回调、令牌及通知，不重放。动态 maxCandidates 只限制返回数，完整扫描/排序/NBT 成本仍待预算。
-- 需求 overlay：公开 typed applier/type 与不可变资源四 IO/FE 刻速率补丁，按完整路径和 writer 层 ID 写时重算；同层替换顺序固定，局部撤层保留其他写入方，Change complete 放弃 undo，clear 无 pending 句柄。有效 view 保留 canonical definition，全部 acquire 只解析一次，已获取事务参数冻结；callback 的有效 view 可作写入 target。Pipeline 显式调用、按序含重复 descriptor，selector 追踪 overlay 与属性同生命周期。外部 applier 必须纯、可重组且保持 canonical 子身份；重算故障不发布并聚合错误。层及选择所有权已接入下面的严格进程持久化。
-- 严格进程持久化：RecipeProcessNbt 固定 canonical recipe/revision/graph/duration；保留 seed/tuning、double progress、long successfulTicks、started/result、本地属性、overlay 层、解析锁、selector 归属。exact NBT、未知/重复/坏引用拒绝；fresh process 全建组件后按真实依赖恢复，selector 额外先加载 overlay，最后校验成功才返回。原 assembly 顺序和缺失 dependent 的 pending 边保留。open transaction/pending Change/抛错 tick 拒绝保存，不重跑 START/modifier；外部 overlay 必须提供历史 validator，嵌套正阈 checkpoint 只验证可证明关系。源码入口 `api/recipe/persistence`，用法见 recipes 的“严格进程保存恢复”。
-- 工位宿主：MachineWorkSlots 通过 TYPE/WorkSlotProcessingSystem 接入 onSchedule；有序定义与隐式 main、owner/group/跨 host 唯一归属校验。单同步 RecipeExecutor 每槽一次，Blocked 留槽、正常终态释放并保留结果，抛错故障关闭后续tick/save；已终态恢复不调executor。并发上限仅admission，不驱逐既有work。MachineWorkSlotsNbt 完整解码后原子替换整组与attachment，失败旧组不动；detach只移交无END/退款，仍须独立取消流程。旧isCore/restartPolicy仅元数据、RESCAN尚未接线；planned旧假槽不应机械复现，后续用稳定定义及真实planned状态。入口api/machine/workslot，完整审计见recipes/migration-audit。
-- 扫描已接入：RecipeCatalog 按池声明顺序及工位 group union 取 canonical 候选；索引 null/empty/交集独立，越域/伪造拒绝。RecipeScanner 每刻最多一条 admission，排除运行 recipe ID；候选/probe 预算跨调用续查，默认穷举下降，只有完整 probe 明确单调才二分，long 边界与 best 重验。setResolvedBase 防重复父倍率，保留本地 modifier，属性 NBT Version2 保存继承标志。START 共享真实 acquire 后全 rollback，不 commit/complete；preparation 只投影可逆局部首刻状态并撤销，正常组件回调仍执行一次。ready 只门控 admission。
-- 既有仓室：资源两侧独立 ScrollBar；能源 GUI 原纵向条与速率/自动设置；能源重载使用当前配置容量并裁剪保存量，资源保留保存容量。原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器 Gecko/Bloom 管线仍待迁移。
-- 下一步：补扫描固定 END/TICK IO 预筛和资源索引，再接取消清理、机器生命周期及真实 planned。固定阶段预筛须复用批预留/回滚、聚合共享来源，处理跨阶段释放容量与动态 modifier，不能错拒可行配方，也不能声称证明未来生命周期。取消不能调用 END 发产物；保留 PM 两次 join、稳定 affinity lane、PN owner/epoch/向量预算和迟到任务隔离，不恢复旧 authority。
-- 未完成：扫描固定 END/TICK 预筛、内置资源索引、目录/嵌套动态工作预算、取消清理、机器/世界恢复、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
+- 固定 IO 预筛与 AEKey 倒排索引已完成本阶段验证，本阶段只本地提交、不推送，具体提交以 Git 日志为准。此前扫描 admission 为 `4bdc2b8`，工位宿主为 `0d234ef`，严格进程持久化为 `25e86eb`。原工作区 23 份格式/注解修改继续保留，不能一起提交。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 240 项逻辑用例；本机 IDEA MCP 对 181 个 src Java 文件及生成 Tags 共 182 文件逐个 `errorsOnly:false`，零错误、警告、弱警告且无超时；MCP build_project 成功无问题。报告 `build/reports/idea/fixed-io-index-final.json`。真实 AE2 注册环境、GUI/游戏没有运行验证。
+- 当前扫描：按工位 group、目录优先级和运行 recipe 去重，每刻最多新增一进程；候选/probe 计数可续查，默认降序穷举，完整谓词明确单调才二分。factory/seed/tuning 固定，resolved base 避免重复父倍率；真实 START 获取后全 rollback。局部 preparation 可投影首刻状态并撤销，不能直接模拟不可逆组件回调。
+- 新增预筛：FixedIoScanConstraint 仅检查稳定 flat 内置资源/FE 的当前 TICK/END 条件，读取有效 overlay，复用整阶段预留/回滚；零时长跳 TICK，跨阶段输入可能释放同 context 输出空间时跳过对应阶段。它不保证完整首 tick。默认 scanner 三参构造安装，显式构造由调用方配置。
+- 新增索引：ResourceRecipeIndex 用显式 Footprint 必需 START 下界构建倒排；forFixedInputs 从内置输入提取但仍需稳定性承诺，未知/动态/未声明配方保留。按 context/key 取 alias 最大量，数量饱和作为下界，匹配全部声明键并保持 scope/顺序。内部工作/deadline 预算尚未接入。
 
-## 必须记住的约束
+## 下一步
 
-- 纯库，`prototype_eng` / `com.circulation.prototype_eng`；不添加正式机器、配方或玩法数值。
-- 保留 PM/PN 功能效果与真实多线程性能能力；优先复用适合的旧实现，再审查并修正架构缺陷，不盲目重造。
-- Java 25，Kotlin 重写；fastutil 优先；必要的字段原子操作优先共享 VarHandle；无非必要反射，无异常控制流。
-- 资源身份复用 AEKey/AEKeyType；核心存储独立设计。资源与能源均保留十阶、三方向；资源混合仓输入/输出独立，每侧多类型；FE 独立。公开扩展职责保留接口，外部实现不依赖内置 TileEntity。
-- GUI 直接基于 AEBaseGui，无编辑器/第二套基类；本项目翻译枚举实现 AE2S LocalizationEnum，客户端使用 getLocal、容器标题使用 text 组件，禁止 GUI 拼键或直接传裸翻译键。JEI 每配方池一个默认或自定义接口实例；CT 最后。
-- 每个类必须通过本机 IDEA MCP `get_file_problems`（`errorsOnly:false`）取得无错误、警告及弱警告的证据；编译和人工审查不能替代。不操作桌面界面；工具未挂载时连接已启用的 `http://127.0.0.1:64343/sse`，通过 `tools/list` 查找工具，不改 IDE 设置。
-- Applied-Flux 暂缓，未来坐标保留 `v1.0.0:dev` 的 v。
-- 不启动 Minecraft 客户端/服务端。本地阶段提交，不推送。只测试静态推断不足的行为，不测常量/哈希/getter。
+1. 审查并迁移取消与失效清理，再接机器/世界生命周期。普通 PM 清槽仅丢弃 process；planned 有独立取消原因与撤销链，不能机械混为 END。取消不发产物，不默认退历史已提交消耗；必须清自有效果、未提交预留及外部生命周期资源。
+2. 接真实多线程与 planned：保留 PM 两次 join、稳定 affinity lane、PN owner/epoch/向量预算、迟到任务隔离。旧 epoch/lease/ready 不能从存档恢复为运行权限。目录、index、factory、动态扫描/排序/NBT、随机逐次抽样及嵌套生命周期都仍需内部预算。
+3. 机器/结构、投影/渲染、研究/队伍/计算、JEI、最后 CraftTweaker 都是保留范围。当前工作槽/进程持久化和扫描不代表整体机器或重开发已完成。
+
+## 必须遵守
+
+- 纯库：`prototype_eng` / `com.circulation.prototype_eng`。不添加正式机器、配方或玩法数值。接口按真实扩展职责放 api 包，不制造 XxxImpl 镜像。先审查 PM/PN 原行为，再复用和修正。
+- Java 25，Kotlin 逻辑改写；集合优先 fastutil；必要字段原子操作优先共享 VarHandle；无非必要反射，无异常控制流。仅为无法静态确认的行为写测试，不测常量/哈希/getter。
+- AEKey/AEKeyType 负责资源身份；核心存储独立，不用 MEStorage 承载核心。资源与 FE 仓室保留原等级/方向/资产及公开扩展；混合资源仓输入输出独立，各侧多类型。FE 保持独立接口与存储。
+- GUI 直接基于 AEBaseGui，无编辑器/第二套基类。本地化枚举实现 AE2S LocalizationEnum，客户端 getLocal、容器标题 text，禁止裸翻译键/GUI 拼键。JEI 每配方池一个默认或自定义接口实例。Applied-Flux 暂缓，未来保留 `v1.0.0:dev` 的 v。
+- 每个 Java 文件必须通过本机 IDEA MCP `get_file_problems(errorsOnly:false)`，零错误、警告及弱警告。工具未挂载时连接已启用的 `http://127.0.0.1:64343/sse`，通过 tools/list 查找；不操作桌面、不改 IDE 设置。构建不能替代检查。
+- 不启动 Minecraft 客户端/服务端，不加入 Bootstrap/FML 测试初始化。阶段本地提交，不推送；保留原有工作区修改。
 
 ## 按需阅读
 
-| 要解决的问题 | 阅读入口 |
+| 当前任务 | 入口 |
 |---|---|
-| 当前完成度、验证证据 | [implementation-status.md](implementation-status.md) 的“当前状态”和相应日期记录 |
-| 存储重构 | [storage-redesign.md](storage-redesign.md)，再读相关后端/适配器 |
-| 组件/配方 API、事务语义 | [recipes.md](recipes.md) 的相应章节 |
-| 原 PM 事件/需求具体在哪里 | [migration-audit.md](migration-audit.md) 的源码映射表 |
-| 现有仓室及 GUI 的行为 | [hatches.md](hatches.md)，核心与 AE2/Forge/GUI 适配边界 |
-| 需求发生分歧 | [development-spec.md](development-spec.md) 的 R 编号或相关章节；先 rg 定位，不全文读取 |
-| 资源来源/许可证 | [assets.md](assets.md) |
+| 需求、功能保留范围 | [development-spec.md](development-spec.md) 的 R 编号/对应章节 |
+| 实际完成度和历史验证 | [implementation-status.md](implementation-status.md) |
+| 组件/需求/事务、持久化、工位、扫描 | [recipes.md](recipes.md) 对应章节；源码 api/recipe、api/machine/workslot |
+| PM/PN 实际源码与旧缺陷 | [migration-audit.md](migration-audit.md) 对应映射表 |
+| 存储/预留/同步 | [storage-redesign.md](storage-redesign.md)，api/storage、api/energy |
+| 仓室、GUI及保留效果 | [hatches.md](hatches.md)；资源来源见 [assets.md](assets.md) |
 
-## 本地源码定位
+## 本地源码
 
 - 新项目：`F:/new/PrototypeEngineering`。
-- PM：`F:/clone/PrototypeMachinery`；存储看 `src/main/kotlin/{api,impl}/storage`，预留看 `impl/scheduler/planned`。
-- PN：`F:/new/PrototypeNetwork`；合并时保留 owner/epoch、工作资源预算和恢复保证，去除跨模组冗余接线。
-- AE2：`F:/clone/Applied-Energistics-2`；MMCE：`F:/clone/ModularMachinery-Community-Edition`。
+- PM：`F:/clone/PrototypeMachinery`；存储在 `src/main/kotlin/{api,impl}/storage`，planned 在 `impl/scheduler/planned`。
+- PN：`F:/new/PrototypeNetwork`。AE2S：`F:/clone/Applied-Energistics-2`。MMCE：`F:/clone/ModularMachinery-Community-Edition`。
 
-索引不替代源码审查。只写实际已完成与已验证的状态；新增约束、检查点和下一步发生变化时同步更新。
+索引不替代源码审查；阶段提交时同步本文件与实施进度，只记录实际证据。
