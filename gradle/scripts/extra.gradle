@@ -6,6 +6,18 @@ tasks.withType(Javadoc).configureEach {
     dependsOn tasks.named('syncDevResourcesToClasses'), tasks.named('syncDevClassesToResources')
 }
 
+tasks.named('compileTestJava').configure {
+    // The template sync tasks also write the main output used by the tests.
+    dependsOn tasks.named('syncDevResourcesToClasses'), tasks.named('syncDevClassesToResources')
+}
+
+// MDG adds the named Minecraft/Forge classes to the main source set only.
+// Behaviour tests use the same API classes without launching a game process.
+sourceSets.test {
+    compileClasspath += sourceSets.main.compileClasspath
+    runtimeClasspath += sourceSets.main.compileClasspath
+}
+
 def minecraftVersion = '1.12.2'
 def cleanroomVersion = '0.6.13-alpha'
 

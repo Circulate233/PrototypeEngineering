@@ -1,0 +1,40 @@
+package com.circulation.prototype_eng.energy;
+
+import ae2.api.config.Actionable;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class EnergyBufferTest {
+    @Test
+    void forgeTransfersAndMachineConsumptionShareOneLongBalance() {
+        int[] notifications = {0};
+        var buffer = new EnergyBuffer(Long.MAX_VALUE, () -> notifications[0]++);
+        var forge = new ForgeEnergyInput(buffer);
+
+        forge.receiveEnergy(Integer.MAX_VALUE, false);
+        forge.receiveEnergy(Integer.MAX_VALUE, false);
+        long received = 2L * Integer.MAX_VALUE;
+        assertEquals(Integer.MAX_VALUE, forge.getEnergyStored());
+        assertEquals(received, buffer.storedEnergy());
+        assertEquals(Integer.MAX_VALUE, forge.receiveEnergy(Integer.MAX_VALUE, true));
+        assertEquals(received, buffer.extractEnergy(Long.MAX_VALUE, Actionable.SIMULATE));
+        assertEquals(received, buffer.storedEnergy());
+        assertEquals(2, notifications[0]);
+
+        assertEquals(0, forge.extractEnergy(Integer.MAX_VALUE, false));
+        assertEquals(received, buffer.extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(0, buffer.storedEnergy());
+        assertEquals(3, notifications[0]);
+    }
+
+    @Test
+    void restoreNearCapacityThenFillAndConsumeDoesNotOverflow() {
+        var buffer = new EnergyBuffer(Long.MAX_VALUE, () -> {});
+        buffer.restore(Long.MAX_VALUE - 3);
+        assertEquals(3, buffer.receiveEnergy(Long.MAX_VALUE, Actionable.SIMULATE));
+        assertEquals(3, buffer.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(Long.MAX_VALUE, buffer.extractEnergy(Long.MAX_VALUE, Actionable.MODULATE));
+        assertEquals(0, buffer.storedEnergy());
+    }
+}
