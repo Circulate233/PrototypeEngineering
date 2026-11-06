@@ -33,7 +33,7 @@
 - 显式取消与失败清理已接入并验证：RecipeProcess.cancel 进入 CANCELLED，业务 Failure 进入 FAILED，保留 committed started/progress/ticks 与结构化 Failure 原因，不执行 END、不退历史 IO。按根需求执行逆序调用 cancel，再对预先捕获的组件按依赖逆序调用 ProcessAbortListener；回调故障继续其余参与者并聚合，poison 禁止执行与保存。host.cancel 协调结果与挂接，cancelAll 逆槽尝试全部工作；故障宿主能清其他稳定进程但不能复活，失败进程留槽诊断。普通区块卸载/保存不自动取消；现已接结构失效暂停与控制器破坏取消的宿主边界。
 - 精确内置归属已补齐：RequirementAttributeState 跟踪完整路径/属性及实际安装的 Renamed modifier 对象；START rollback、END 与 abort 只删除准确自有对象，foreign 同 ID 碰撞不 claim，替换违约保留 foreign 并抛错。END removeAtEnd=true 清本路径历史安装目标，false 保留；abort 清所有 owned。修复私有包装导致默认 codec 无法保存活动内置属性的问题；localModifier 只读本层，避免归属检查复制整份属性图。Selector 只向选中未完成 child 传播取消；组件清理逆 selection、overlay 后 modifier 各族逆序，逻辑锁清空，其他写入方效果保留。
 - 取消持久化与执行边界已验证：进程 NBT Version2 保存归属/清理回执，恢复绑定已有对象并检查已记录效果缺席，不重放 START/modifier/abort；FAILED/CANCELLED 不留活动内置归属，非 abort 状态不能带回执。回执不证明任意外部历史副作用，外部 validator 仍必需。任何抛错 tick 或清理故障后，同一进程拒绝再次 tick，即使资源已补偿或已经终态；正常 Blocked 仍可重试。每层 overlay 写时核验直接子项的 canonical identity/顺序不变，防止 selector 重排后取消错误 child。
-- 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
+- 尚未实现：机器类型/控制器TileEntity和真实调度接线、严格结构JSON与注册、预览/渲染、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
@@ -41,9 +41,14 @@
 - 生命周期并发与故障边界：共享 VarHandle gate 拒执行/生命周期重叠和重入，生命周期先要求服务端线程与无活动 acquisition；faulted但quiescent进程仍允许外部卸载清理。损坏组件图的异常清理保留最后有效组件快照并补充无排序装配/当前全局监听，原错误仍抛出。注册表 synchronized 去重和精确订阅取消修复旧 check-add 竞态。工位 codec 检查机器保存边界，但不持有跨序列化锁；真实调度join/世界匹配/PN权限仍待接入。详见 [机器生命周期](machine-lifecycle.md)。
 
 - 结构定义与匹配已接入：复用AE2 BlockOrientation的24向，缓存整数StructureTransform；MachineStructure保留外部形状职责，模板/切片按PM顺序匹配，独立结果树保留每次occurrence计数与覆盖位置。固定controller排除、相对validator旋转、零片children锚点在规划/匹配/收集中统一，未加载实际试探不能当普通切片不匹配。
-- 结构捕获层已接入：StructureQuery显式读/拷贝契约，ReadPlan冻结并去重潜在area与query-position；WorldStructureSource只在主线程读取且不强加载。Snapshot区分未加载/缺失/捕获失败，未用潜在分支不自动否决，使用失败事实则抛错，Error直接中断；NBT捕获与交付均深拷贝。尚未接世界变更复核、机器控制器/仓室发布、严格JSON加载、预览/渲染和运行预算；代码不代表这些实机能力已完成。详见[结构说明](structures.md)及[源码审计](structure-migration-audit.md)。
+- 结构捕获层已接入：StructureQuery显式读/拷贝/等价契约，ReadPlan冻结并去重潜在area与query-position；WorldStructureSource只在主线程读取且不强加载。Snapshot区分未加载/缺失/捕获失败，未用潜在分支不自动否决，使用失败事实则抛错，Error直接中断；NBT捕获与交付均深拷贝。evaluate独立记录实际读取证明，包含失败slice probe/验证器；事实不等价则重捕获全计划并按当前结果匹配，时间改变而条件仍真也可正常发布，旧访问错误可由新短路分支跳过。
+- 结构发布及公开仓室重建已接入：StructureRefresh服务端prepare、脱离宿主的worker Request.evaluate、服务端publish/fail；latest request和稳定配置代对象拒旧成功/失配/失败与ABA。MachineLifecycle.refreshStructure在同一TRANSITION gate内复核及一起安装匹配树/仓室，再通知真正formed变化；同朝向重新发现也替换绑定。真正当前失配才清绑定，失稳候选返回false保留等待重试；最后事实复核的必要读取失败仍抛错，不能隐成无限重试。当前失败故障机器，已失权异常只报告，不故障替代配置；入口拒重入，卸载实例不能重新发布。
+- 实际世界适配：ControllerLifecycleHost固定World，活controller检查World/位置/invalid/已加载/同TE身份，清理仍可在TE移除后执行。HatchCapabilities专用事实和发现共用公开接口，resource/FE输入/FE输出独立收集，复核provider及能力身份和有效性，不要求内置TE继承；Request与协调器暴露捕获诊断。尚待实际控制器及PN owner变化调用、调度join/失稳重试、工作预算、严格JSON与预览/渲染，真实World/TE/Forge未运行验证。详见[结构说明](structures.md)及[源码审计](structure-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（结构发布阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，315项测试零失败/错误/跳过；新增16项实际读取证明/宿主测试，涵盖未访问分支、失败slice增长、时间重算、可变事实显式比较、旧分支异常短路、真实worker、同方向换仓、三公开职责、陈旧结果/配置ABA/卸载、发现失稳重试、故障隔离、重入和执行重叠。最后复核读取异常也验证为当前故障，不能无限重试。没有游戏/Bootstrap/FML初始化或常量/hash/getter测试。
+- 2026-11-07（结构发布IDEA证据）：本机MCP逐个 `get_file_problems(errorsOnly:false)` 覆盖226个src Java及Tags共227文件，最终零错误、警告、弱警告且无文件超时；MCP build_project为isSuccess:true、problems为空。报告 `build/reports/idea/structure-publication-final.json`。全程MCP，不操作桌面；原23份格式/注解diff逐字比对未变。实际控制器调用和真实调度仍未完成，当前发布契约不代表这些能力已完成。
 
 - 2026-11-07（结构匹配IDEA证据）：本机MCP逐文件 `get_file_problems(errorsOnly:false)` 检查218个src Java及Tags共219文件，零错误、警告、弱警告且无文件超时；MCP build_project成功且problems为空。分批最终报告 `build/reports/idea/structure-matching-final.json`。
 

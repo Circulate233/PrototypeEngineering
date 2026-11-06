@@ -23,7 +23,7 @@
 | 普通卸载/失效 | 先关闭执行门，再卸载监听；不 cancel、不 END、不退历史 IO。稳定工位可保存，由新实例恢复并重新验证结构后续跑。 |
 | 控制器破坏 | 先关闭工作门；依次尝试 broken 监听、已捕获的本机工作槽 cancelAll、INVALIDATED 卸载。无论前项失败都尝试后项；取消仅清自有效果，不退历史消耗。重复破坏/卸载不重放。 |
 
-本阶段的结构入口只发布已发现的仓室绑定，不宣称完整多方块 predicate、结构组件重建或世界扫描已完成。附加 `RecipeScanningSystem.ready` 仍只约束 admission；loaded/formed/broken/faulted 的公共门同时约束扫描和 `WorkSlotProcessingSystem`。低层 `RecipeProcess.tick`、`MachineWorkSlots.tickProcesses` 等仍要求调用方拥有并确认合法的执行权，不能绕过世界宿主自行调度。
+结构匹配已通过 `StructureRefresh` 接到生命周期：`refreshStructure` 在 TRANSITION gate 内复核请求、当前事实和公开仓室，最后一起安装匹配树及绑定；失去稳定性的候选等待重试，真正失配才清绑定。当前异常故障机器，已经失去配置权限的异常仍报告但不故障替代配置；同朝向仍成型的重新发现更新仓室而不重复成型事件。实际控制器 TileEntity 与调度器的调用仍待接线，详见[结构说明](structures.md)。附加 `RecipeScanningSystem.ready` 仍只约束 admission；loaded/formed/broken/faulted 的公共门同时约束扫描和 `WorkSlotProcessingSystem`。低层 `RecipeProcess.tick`、`MachineWorkSlots.tickProcesses` 等仍要求调用方拥有并确认合法的执行权，不能绕过世界宿主自行调度。
 
 ## 失败、并发与保存
 
@@ -47,10 +47,10 @@
 | PN `NetworkDeviceRuntimeIntegrationImpl.java:348–390,733–757` | FRESH/RESTORED 用于身份恢复/实际放置者初始化；卸载/破坏清 station/source/device/planned 运行注册，不是退历史配方消耗。 |
 | PN `NetworkDeviceRuntimeComponentImpl.java:81–100` | 仅身份持久化，恢复把工作状态/epoch 重置为待发现；后续仍须从当前宿主重新授予权限。 |
 
-PM planned 的 prepare join 在 `PlannedParallelCoordinator.kt:102`、resolve join 在 140，中间主线程 decide、之后 commit；它们与普通 concurrent join 不同。旧结构 predicate 在 worker 直接读 world/TileEntity 的问题也尚待修正，不能因本阶段有服务端回调就声称世界读取安全。
+PM planned 的 prepare join 在 `PlannedParallelCoordinator.kt:102`、resolve join 在 140，中间主线程 decide、之后 commit；它们与普通 concurrent join 不同。结构 predicate 已改为 worker 只读捕获快照，并在服务端发布前复核；真实调度 join、owner/epoch 以及世界宿主注册没有由这个读取协议自动完成。
 
 ## 验证范围
 
 17 项新增聚合测试覆盖监听身份与并发注册/取消、事件捕获顺序、加载失败清理、破坏/卸载聚合与幂等、跨线程/重入/重叠、结构暂停及旁路组件、工位卸载保存与新实例恢复不重 START、取消不 END/退款、活动预留拒绝、faulted 进程清理及损坏组件图的异常清理。没有常量/哈希/getter 专用测试，没有初始化 Bootstrap/FML 或运行游戏。
 
-完整构建与逐文件本机 IDEA MCP 证据以 [实施进度](implementation-status.md) 为准。实际 TileEntity 生命周期、世界结构发现、真实多线程调度、PN 当前身份/队伍/epoch 和 planned 补偿仍是必须完成的后续项。
+结构发布另有 16 项读取证明/宿主接线测试，包含真实 worker 和执行重叠；完整构建与逐文件本机 IDEA MCP 证据以 [实施进度](implementation-status.md) 为准。实际 TileEntity 生命周期及能力发现的游戏验证、真实多线程调度、PN 当前身份/队伍/epoch 和 planned 补偿仍是必须完成的后续项。

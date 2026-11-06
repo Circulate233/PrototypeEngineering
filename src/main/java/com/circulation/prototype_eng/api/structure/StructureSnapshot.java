@@ -15,11 +15,15 @@ import java.util.Objects;
  * This snapshot grants no world permission and does not prove freshness at a later publication.
  */
 public final class StructureSnapshot {
-    private final Object2ObjectOpenHashMap<StructureBounds, Fact<Boolean>> areas = new Object2ObjectOpenHashMap<>();
-    private final Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Fact<?>> reads = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<StructureBounds, Fact<Boolean>> areas;
+    private final Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Fact<?>> reads;
     private final List<Failure> failures;
+    @Nullable private final StructureReadPlan.Builder trace;
 
     private StructureSnapshot(StructureReadPlan plan, StructureReadSource source) {
+        areas = new Object2ObjectOpenHashMap<>();
+        reads = new Object2ObjectOpenHashMap<>();
+        trace = null;
         var problems = new ObjectArrayList<Failure>();
         for (var area : plan.areas()) {
             source.requireServerThread();
@@ -38,6 +42,15 @@ public final class StructureSnapshot {
         failures = List.copyOf(problems);
     }
 
+    private StructureSnapshot(StructureSnapshot captured, StructureReadPlan.Builder trace) {
+        areas = captured.areas;
+        reads = captured.reads;
+        failures = captured.failures;
+        this.trace = Objects.requireNonNull(trace);
+    }
+
+    StructureSnapshot tracking(StructureReadPlan.Builder trace) { return new StructureSnapshot(this, trace); }
+
     /** All source access completes synchronously before the detached snapshot is returned. */
     public static StructureSnapshot capture(StructureReadPlan plan, StructureReadSource source) {
         Objects.requireNonNull(plan);
@@ -48,6 +61,7 @@ public final class StructureSnapshot {
     public boolean isAreaLoaded(StructureBounds bounds) {
         var fact = areas.get(Objects.requireNonNull(bounds));
         if (fact == null) { throw new IllegalArgumentException("Undeclared structure area: " + bounds); }
+        if (trace != null) { trace.area(bounds); }
         if (fact.failure() != null) { throw new IllegalStateException("Area capture failed: " + bounds, fact.failure()); }
         return Objects.requireNonNull(fact.value());
     }
@@ -64,12 +78,35 @@ public final class StructureSnapshot {
             }
             throw new IllegalArgumentException("Undeclared structure read: " + query.id() + " at " + position);
         }
+        if (trace != null) { trace.read(request.position(), query); }
         if (fact.failure() != null) { throw new IllegalStateException("Structure capture failed: " + query.id() + " at " + position, fact.failure()); }
         return query.copy(fact.value());
     }
 
     /** Includes failures in unvisited potential branches; callers must not silently discard diagnostics. */
     public List<Failure> failures() { return failures; }
+
+    /** Failed rechecks request a fresh match: the changed branch may no longer visit that failure. */
+    boolean equivalent(StructureSnapshot other, StructureReadPlan used) {
+        for (var bounds : used.areas()) {
+            var first = areas.get(bounds);
+            var second = other.areas.get(bounds);
+            if (first == null || second == null || first.failure() != null || second.failure() != null
+                || !Objects.equals(first.value(), second.value())) { return false; }
+        }
+        for (var read : used.reads()) {
+            if (!equivalentRead(other, read)) { return false; }
+        }
+        return true;
+    }
+
+    @SuppressWarnings("unchecked") // Query identity binds both stored values to T.
+    private <T> boolean equivalentRead(StructureSnapshot other, StructureReadPlan.Read<T> read) {
+        var first = (Fact<T>) reads.get(read);
+        var second = (Fact<T>) other.reads.get(read);
+        return first != null && second != null && first.failure() == null && second.failure() == null
+            && read.query().equivalent(first.value(), second.value());
+    }
 
     private <T> void capture(StructureReadPlan.Read<T> read, StructureReadSource source, ObjectArrayList<Failure> problems) {
         try {

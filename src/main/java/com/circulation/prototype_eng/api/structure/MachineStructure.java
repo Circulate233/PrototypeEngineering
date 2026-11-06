@@ -9,6 +9,8 @@ import org.jetbrains.annotations.Nullable;
  * External structure-shape responsibility. Definitions are immutable; transformed shapes must
  * rotate offsets, predicates, validators and children together. Matching publishes one complete
  * result or null; it must not mutate the snapshot or retain a stale result from a previous attempt.
+ * Matching is deterministic from the immutable definition, anchors and snapshot only. External
+ * mutable state or undeclared live reads would invalidate the publication proof.
  */
 public interface MachineStructure {
     ResourceLocation id();

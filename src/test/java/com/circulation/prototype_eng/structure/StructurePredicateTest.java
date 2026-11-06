@@ -151,7 +151,7 @@ class StructurePredicateTest {
 
     private static StructureQuery<String> stringQuery(String path) {
         return new StructureQuery<>(new ResourceLocation("test", path),
-                (_, _) -> fail("No World reader may run in this test"), UnaryOperator.identity());
+                (_, _) -> fail("No World reader may run in this test"), UnaryOperator.identity(), String::equals);
     }
 
     private static final class FakeSource implements StructureReadSource {

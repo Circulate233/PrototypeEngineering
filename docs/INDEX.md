@@ -4,15 +4,15 @@
 
 ## 当前检查点
 
-- 结构定义/24向/快照/模板切片匹配已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前宿主生命周期为 `1505a65`，取消/归属/NBT V2为 `23eed7e`，固定预筛/索引为 `033d6a9`。原23份格式/注解修改仍单独保留。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过299项逻辑测试。本机IDEA MCP已逐个检查218个src Java及Tags共219文件，`errorsOnly:false`，零错误/警告/弱警告且无文件超时；MCP build_project成功。最终检查证据见 `build/reports/idea/structure-matching-final.json`。不启动游戏，实际World/TileEntity/Forge交互未运行验证。
-- 当前结构：直接复用AE BlockOrientation，24个整数变换；显式query/area捕获后worker只读snapshot，NBT双向copy。模板/贪心切片、固定controller排除、validator/children旋转、零片child=base-step、每occurrence计数均已接；最大潜在范围不作为整体加载条件。尚未接实际发布复核、JSON/预览/仓室重建和规划/匹配预算。入口 `docs/structures.md`，旧行为 `docs/structure-migration-audit.md`。
+- 结构结果发布/读取证明/公开仓室重建已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前结构匹配为 `9f74f62`，宿主生命周期为 `1505a65`，取消/归属/NBT V2为 `23eed7e`。原23份格式/注解修改逐字比对保留，未纳入阶段提交。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过315项逻辑测试。本机IDEA MCP已逐个检查226个src Java及Tags共227文件，`errorsOnly:false`，零错误/警告/弱警告且无文件超时；MCP build_project成功。最终证据见 `build/reports/idea/structure-publication-final.json`。全部通过MCP，不操作桌面；实际World/TileEntity/Forge交互未运行验证。
+- 当前结构：AE 24向、模板/贪心切片与快照基础见 `docs/structures.md`。新增evaluate追踪实际读取，包括失败切片probe；query显式等价比较，变化则fresh capture/match，未访问潜在分支不误拒。StructureRefresh的request/config身份拒迟到与ABA，worker只算快照；发布在生命周期gate内复核事实/provider/能力并一起安装树和新MachineHatches，同方向也重建。真正失配才清绑定，失稳返回false由调度边界重试/显式invalidate，当前异常故障，旧配置异常不故障新配置。ControllerLifecycleHost固定World且分离活TE检查和清理线程检查；真实TE/owner变化调用仍待接。
 - 当前生命周期：四类事件+FRESH/RESTORED；未成型仅停扫描/工位，普通卸载保留并由新实例load/结构确认后续跑；破坏broken/cancelAll/unloaded，加载失败LOAD_FAILED，全部清理聚合，不END/退历史IO。VarHandle gate拒重叠但不替代join，坏图异常清理仍抛错。详见 `docs/machine-lifecycle.md`。
 - 当前配方：完整需求/组件/局部属性、概率/选择/overlay、工位保存与取消已接；终态自有清理和回执为NBT V2，faulted不可再tick/save，正常Blocked可重试。扫描按group/去重/候选probe预算，每次最多1个NEW，默认非单调下降搜索，START真获取后全rollback；flat IO预筛是独立当前量条件，资源索引需显式稳定下界，内部工作预算仍待接。详见 `docs/recipes.md` 和迁移审计对应章节。
 
 ## 下一步
 
-1. 接实际机器定义/控制器TileEntity，将结构计划和匹配结果接到生命周期及公开仓室发现；必须复核捕获后世界变更和实际发布许可，不能把旧snapshot直接当成型权限。结构规划/深递归/潜在最大范围需要预算，当前不能每tick无界准备。
+1. 接实际机器类型/控制器TileEntity，调用已经完成的StructureRefresh和生命周期入口。定义/方向/owner权限变化须join、invalidate、轮换配置代；失败worker走fail，失稳publish=false须在发布边界重试或显式暂停，不能直接恢复调度。结构规划/深递归/潜在最大范围及主线程重算回退仍需要预算。
 2. 接真实多线程与 planned：保留 PM 两次 join、稳定 affinity lane、PN owner/epoch/向量预算、迟到任务隔离。旧 epoch/lease/ready 不能从存档恢复为运行权限。目录、index、factory、动态扫描/排序/NBT、随机逐次抽样及嵌套生命周期都仍需内部预算。
 3. 严格两阶段JSON/注册发布、结构预览/BOM/display override、模型隐藏/渲染、研究/队伍/计算、JEI与最后CraftTweaker继续迁移。全范围仍保留，当前结构匹配与生命周期基础不代表完整机器已完成。
 

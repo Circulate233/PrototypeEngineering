@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.UnaryOperator;
 
 /**
@@ -19,11 +20,20 @@ public final class StructureQuery<T> {
     private final ResourceLocation id;
     private final BiFunction<World, BlockPos, T> reader;
     private final UnaryOperator<T> copier;
+    private final BiPredicate<T, T> equivalence;
 
-    public StructureQuery(ResourceLocation id, BiFunction<World, BlockPos, T> reader, UnaryOperator<T> copier) {
+    /**
+     * Equivalence must imply indistinguishable values for every consumer of this descriptor.
+     * It receives detached, non-null copies; it must be pure. False may conservatively cause a
+     * fresh match, but true must never hide a change visible to a predicate. No default equals
+     * assumption is made for external facts. Null/absence is handled separately.
+     */
+    public StructureQuery(ResourceLocation id, BiFunction<World, BlockPos, T> reader, UnaryOperator<T> copier,
+                          BiPredicate<T, T> equivalence) {
         this.id = Objects.requireNonNull(id);
         this.reader = Objects.requireNonNull(reader);
         this.copier = Objects.requireNonNull(copier);
+        this.equivalence = Objects.requireNonNull(equivalence);
     }
 
     public ResourceLocation id() { return id; }
@@ -41,4 +51,9 @@ public final class StructureQuery<T> {
 
     @Nullable
     T copy(@Nullable T value) { return value == null ? null : Objects.requireNonNull(copier.apply(value), "Copied structure fact"); }
+
+    boolean equivalent(@Nullable T first, @Nullable T second) {
+        if (first == null || second == null) { return first == second; }
+        return equivalence.test(copy(first), copy(second));
+    }
 }

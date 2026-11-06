@@ -3,6 +3,8 @@ package com.circulation.prototype_eng.api.machine.lifecycle;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.structure.StructureAssembly;
+import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -12,6 +14,8 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 /**
  * Server-side machine boundaries migrated from PM. Attach once, after world attachment and before
@@ -44,6 +48,7 @@ public final class MachineLifecycle {
     private volatile boolean formed;
     private volatile boolean broken;
     private volatile boolean faulted;
+    @Nullable private volatile StructureMatch structureMatch;
     @Nullable private Captured lastCaptured;
 
     @SuppressWarnings("unused") // Public controller entry using the shared lifecycle registry.
@@ -61,8 +66,10 @@ public final class MachineLifecycle {
     }
 
     public MachineInstance machine() { return machine; }
+    public MachineLifecycleHost host() { return host; }
     public State state() { return state; }
     public boolean formed() { return formed; }
+    @Nullable public StructureMatch structureMatch() { return structureMatch; }
 
     /** Readiness for ordinary recipe systems, not a transferable worker permission. */
     public boolean processingAllowed() {
@@ -103,20 +110,62 @@ public final class MachineLifecycle {
             requireLoaded();
             var captured = capture();
             requireQuiescent(captured);
-            boolean previous = formed;
-            if (hatches == null) { machine.components().remove(MachineHatches.TYPE); }
-            else { machine.components().put(MachineHatches.TYPE, hatches); }
-            formed = hatches != null;
-            if (previous != formed) {
-                try {
-                    publish(new MachineLifecycleEvent.FormedChanged(context(), previous), captured.listeners());
-                } catch (RuntimeException | Error failure) {
+            installStructure(hatches, null, captured);
+        } finally {
+            leave();
+        }
+    }
+
+    /**
+     * Publication after the scheduler has joined workers. Validates a request and prepares all
+     * bindings under the same ownership gate as their installation. A revoked/obsolete request
+     * does nothing; null preparation means retry without publishing a false formed transition.
+     * A completed UNFORMED candidate clears formation. Current exceptions fault the machine.
+     * Rechecks authority after discovery callbacks, before installing or notifying listeners.
+     */
+    public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare) {
+        Objects.requireNonNull(applicable);
+        Objects.requireNonNull(prepare);
+        enterTransition();
+        try {
+            if (state != State.LOADED || broken) { return false; }
+            requireHealthy();
+            if (!applicable.getAsBoolean()) { return false; }
+            var captured = capture();
+            requireQuiescent(captured);
+            try {
+                var assembly = prepare.get();
+                if (assembly == null || !applicable.getAsBoolean()) { return false; }
+                installStructure(assembly.hatches(), assembly.match(), captured);
+                return true;
+            } catch (RuntimeException | Error failure) {
+                // A failed obsolete attempt still reports its exception, but cannot poison the
+                // replacement generation. Failure to determine authority is itself unrecoverable.
+                try { if (applicable.getAsBoolean()) { faulted = true; } }
+                catch (RuntimeException | Error authorityFailure) {
                     faulted = true;
-                    throw failure;
+                    if (failure != authorityFailure) { failure.addSuppressed(authorityFailure); }
                 }
+                throw failure;
             }
         } finally {
             leave();
+        }
+    }
+
+    private void installStructure(@Nullable MachineHatches hatches, @Nullable StructureMatch match, Captured captured) {
+        boolean previous = formed;
+        if (hatches == null) { machine.components().remove(MachineHatches.TYPE); }
+        else { machine.components().put(MachineHatches.TYPE, hatches); }
+        structureMatch = match;
+        formed = hatches != null;
+        if (previous != formed) {
+            try {
+                publish(new MachineLifecycleEvent.FormedChanged(context(), previous), captured.listeners());
+            } catch (RuntimeException | Error failure) {
+                faulted = true;
+                throw failure;
+            }
         }
     }
 

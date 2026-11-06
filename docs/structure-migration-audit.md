@@ -112,4 +112,12 @@ JSON 转换又无条件删除 `offset=(0,0,0)` 且 `pattern.pos=(0,0,0)` 的元�
 | registry replaceAll 是 clear 后逐个填充。 | [StructureRegistryImpl.kt:74](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/structure/StructureRegistryImpl.kt:74)：ConcurrentHashMap 不保证整批原子发布，读者能看到空或部分版本。 |
 | 单个文件 parse 失败仍可能转换并发布其余定义。 | [StructureLoader.kt:243](F:/clone/PrototypeMachinery/src/main/kotlin/common/structure/loader/StructureLoader.kt:243)、[286](F:/clone/PrototypeMachinery/src/main/kotlin/common/structure/loader/StructureLoader.kt:286)：报告 ok=false 不代表旧注册表未变化。可修为完整候选验证后一次发布。 |
 
-上述为源码证据与迁移约束，不替代新实现的构建、逐文件 IDEA MCP 检查和行为验证。真实加载/卸载、NBT/capability capture、控制器失效与迟到结果隔离仍须在后续阶段记录实际证据。
+## 5. 发布边界的迁移结果
+
+已保留 PM 的先完整发现后安装、稳定坐标顺序、真正 formed 变化才通知，以及失配暂停而不取消工位。修复同方向跳过重建：每次接受结果都以当前实际位置/provider 构造新 MachineHatches，匹配树与绑定在同一生命周期 gate 内安装，事件能观察到同一轮结果。
+
+迟到结果由 latest request 对象及配置代身份拒绝；方向/定义/owner 权限变化要求轮换配置对象，防止 A→B→A。ControllerLifecycleHost 固定 World，活控制器检查仅在结构入口执行，包含 invalid、位置已加载和同 TE 身份；移除后清理仍可用绑定服务端线程执行。
+
+实际读取追踪包含失败切片探测和验证器，省略未访问潜在分支；StructureQuery 显式指定事实等价。证明变化时重新捕获并重新匹配，避免 WORLD_TIME 每 tick 改变导致长期拒绝，也允许新短路分支跳过旧访问位置上的错误。最终事实与 provider/公开能力再次复核；发现失稳请求重试而不是伪造失配。观察性 reader/能力回调及服务端串行仍是前提，不能用无限重复检查支持任意第三方查询副作用。
+
+已补 prepare/publish 回调重入拒绝、配置失权后的失败不故障替代配置，以及失败 worker 的服务端收束。16 项逻辑测试与本机 MCP 证据记录在[实施进度](implementation-status.md)。真实控制器 TileEntity、调度注册/join/预算、PN 权限代的实际调用及 NBT/capability 世界验证仍未完成，不能把逻辑 fixture 当作实机证据。

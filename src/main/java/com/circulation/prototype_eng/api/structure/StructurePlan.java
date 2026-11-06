@@ -26,4 +26,11 @@ public final class StructurePlan {
     /** Independent attempts cannot retain a successful tree after a later failed match. */
     @Nullable
     public StructureMatch match(StructureSnapshot snapshot) { return structure.match(Objects.requireNonNull(snapshot), controller, controller); }
+
+    /** Worker-safe evaluation; each invocation records its own actual reads, including failed probes. */
+    public StructureEvaluation evaluate(StructureSnapshot snapshot) {
+        var used = new StructureReadPlan.Builder();
+        var match = match(Objects.requireNonNull(snapshot).tracking(used));
+        return new StructureEvaluation(this, snapshot, used.build(), match);
+    }
 }

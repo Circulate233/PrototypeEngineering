@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class StructureMatchingTest {
     private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"), (_, _) -> {
         throw new AssertionError("Logical matching tests must not read a Minecraft world");
-    }, UnaryOperator.identity());
+    }, UnaryOperator.identity(), String::equals);
     private static final StructurePredicate YES = StructurePredicates.all(List.of());
     private static final StructurePredicate NO = StructurePredicates.any(List.of());
 

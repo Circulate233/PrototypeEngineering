@@ -13,6 +13,7 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -257,7 +258,7 @@ class StructureSnapshotTest {
 
     private static <T> StructureQuery<T> query(String path, UnaryOperator<T> copier) {
         return new StructureQuery<>(new ResourceLocation("test", path),
-                (_, _) -> fail("A fake source must never call the World reader"), copier);
+                (_, _) -> fail("A fake source must never call the World reader"), copier, Objects::equals);
     }
 
     private static final class FakeSource implements StructureReadSource {

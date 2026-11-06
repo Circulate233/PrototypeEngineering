@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
 import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.api.HatchCapabilities;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
@@ -24,7 +25,8 @@ import java.util.function.UnaryOperator;
 @SuppressWarnings("unused")
 public final class StructureQueries {
     /** Minecraft block states are immutable and may be shared with snapshot readers. */
-    public static final StructureQuery<IBlockState> BLOCK_STATE = immutable("block_state", World::getBlockState);
+    public static final StructureQuery<IBlockState> BLOCK_STATE = new StructureQuery<>(id("block_state"),
+        World::getBlockState, UnaryOperator.identity(), (first, second) -> first == second);
 
     /** Preserves PM's block identity and material checks rather than invoking a custom isAir hook. */
     public static final StructureQuery<Boolean> NON_AIR = immutable("non_air", (world, position) -> {
@@ -38,9 +40,17 @@ public final class StructureQueries {
         return state.getBlock().hasTileEntity(state);
     });
 
+    /** Public unsided contracts, using the same validity rules as machine discovery. */
+    public static final StructureQuery<Boolean> RESOURCE_HATCH = immutable("resource_hatch",
+        (world, position) -> HatchCapabilities.findResource(world.getTileEntity(position), null) != null);
+    public static final StructureQuery<Boolean> ENERGY_INPUT_HATCH = immutable("energy_input_hatch",
+        (world, position) -> HatchCapabilities.findEnergyInput(world.getTileEntity(position), null) != null);
+    public static final StructureQuery<Boolean> ENERGY_OUTPUT_HATCH = immutable("energy_output_hatch",
+        (world, position) -> HatchCapabilities.findEnergyOutput(world.getTileEntity(position), null) != null);
+
     /** Absent tiles yield null; the query copier detaches mutable NBT on capture and delivery. */
     public static final StructureQuery<NBTTagCompound> TILE_NBT = new StructureQuery<>(id("tile_nbt"),
-        StructureQueries::readTileNbt, NBTTagCompound::copy);
+        StructureQueries::readTileNbt, NBTTagCompound::copy, Objects::equals);
 
     public static final StructureQuery<Integer> DIMENSION = immutable("dimension", (world, _) -> world.provider.getDimension());
 
@@ -74,11 +84,11 @@ public final class StructureQueries {
         return new StructureQuery<>(id, (world, position) -> {
             var tile = world.getTileEntity(position);
             return tile != null && tile.hasCapability(capability, side);
-        }, UnaryOperator.identity());
+        }, UnaryOperator.identity(), Boolean::equals);
     }
 
     private static <T> StructureQuery<T> immutable(String path, BiFunction<World, BlockPos, T> reader) {
-        return new StructureQuery<>(id(path), reader, UnaryOperator.identity());
+        return new StructureQuery<>(id(path), reader, UnaryOperator.identity(), Objects::equals);
     }
 
     private static ResourceLocation id(String path) { return new ResourceLocation(Tags.MOD_ID, path); }
