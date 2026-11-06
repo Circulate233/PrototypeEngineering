@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.recipe.process;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -36,6 +37,8 @@ public final class RecipeProcess {
     private int acquiredTransactions;
     private boolean persistenceFailure;
     @Nullable
+    private MachineWorkSlots host;
+    @Nullable
     private Tick activeTick;
     @Nullable
     private RequirementPath activeRequirement;
@@ -54,6 +57,25 @@ public final class RecipeProcess {
 
     public MachineInstance owner() {
         return owner;
+    }
+
+    /** Transient attachment identity, never a persisted scheduler or world authority. */
+    @Nullable
+    public MachineWorkSlots host() { return host; }
+
+    /** Host assembly boundary; a process may never occupy two work slots or hosts. */
+    public void attachTo(MachineWorkSlots newHost) {
+        requirePersistenceBoundary();
+        if (Objects.requireNonNull(newHost).owner() != owner || host != null) {
+            throw new IllegalStateException("Process already attached or belongs to a different machine");
+        }
+        host = newHost;
+    }
+
+    public void detachFrom(MachineWorkSlots previousHost) {
+        requirePersistenceBoundary();
+        if (host == null || host != previousHost) { throw new IllegalStateException("Process is not attached to the expected host"); }
+        host = null;
     }
 
     public MachineRecipe recipe() {

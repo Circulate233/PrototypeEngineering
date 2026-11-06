@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.BuiltinOverlayCodecs;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
+import com.circulation.prototype_eng.api.persistence.ProcessResultNbt;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -15,7 +16,6 @@ import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
-import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
@@ -76,6 +76,9 @@ public final class RecipeProcessNbt {
     }
 
     public static Builder builder(MachineRecipe recipe, String revision) { return new Builder(recipe, revision); }
+
+    /** Canonical recipe frozen into this codec, for explicit host persistence bindings. */
+    public MachineRecipe recipe() { return recipe; }
 
     public NBTTagCompound encode(RecipeProcess process) {
         process.requirePersistenceBoundary();
@@ -253,43 +256,13 @@ public final class RecipeProcessNbt {
         tag.setDouble("Progress", state.progress());
         tag.setLong("SuccessfulTicks", state.successfulTicks());
         tag.setBoolean("Started", state.started());
-        var result = new NBTTagCompound();
-        switch (state.result()) {
-            case ProcessResult.Success ignored -> result.setString("Kind", "SUCCESS");
-            case ProcessResult.Blocked blocked -> writeResult(result, "BLOCKED", blocked.reason(), blocked.arguments());
-            case ProcessResult.Failure failure -> writeResult(result, "FAILURE", failure.reason(), failure.arguments());
-        }
-        tag.setTag("Result", result);
+        tag.setTag("Result", ProcessResultNbt.INSTANCE.encode(state.result()));
         return tag;
-    }
-
-    private static void writeResult(NBTTagCompound tag, String kind, String reason, List<String> arguments) {
-        tag.setString("Kind", kind);
-        tag.setString("Reason", reason);
-        var list = new NBTTagList();
-        for (var argument : arguments) { list.appendTag(new NBTTagString(Objects.requireNonNull(argument))); }
-        tag.setTag("Arguments", list);
     }
 
     private static RecipeProcess.State readState(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Lifecycle", "Progress", "SuccessfulTicks", "Started", "Result");
-        var result = StrictNbt.requireCompound(tag, "Result");
-        ProcessResult decoded;
-        if (StrictNbt.requireString(result, "Kind").equals("SUCCESS")) {
-            StrictNbt.requireKeys(result, "Kind");
-            decoded = ProcessResult.SUCCESS;
-        } else {
-            StrictNbt.requireKeys(result, "Kind", "Reason", "Arguments");
-            var list = StrictNbt.requireList(result, "Arguments", Constants.NBT.TAG_STRING);
-            var arguments = new ObjectArrayList<String>();
-            for (int i = 0; i < list.tagCount(); i++) { arguments.add(list.getStringTagAt(i)); }
-            var reason = StrictNbt.requireString(result, "Reason");
-            decoded = switch (StrictNbt.requireString(result, "Kind")) {
-                case "BLOCKED" -> new ProcessResult.Blocked(reason, arguments);
-                case "FAILURE" -> new ProcessResult.Failure(reason, arguments);
-                default -> throw new IllegalArgumentException("Unknown saved process result");
-            };
-        }
+        var decoded = ProcessResultNbt.INSTANCE.decode(StrictNbt.requireCompound(tag, "Result"));
         return new RecipeProcess.State(RecipeProcess.Lifecycle.valueOf(StrictNbt.requireString(tag, "Lifecycle")),
             StrictNbt.requireDouble(tag, "Progress"), StrictNbt.requireLong(tag, "SuccessfulTicks"), decoded,
             StrictNbt.requireBoolean(tag, "Started"));
