@@ -2,7 +2,7 @@ package com.circulation.prototype_eng.storage;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
-import ae2.helpers.externalstorage.GenericStackInv;
+import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -13,9 +13,20 @@ public final class HatchSlotActions {
     }
 
     @Nullable
-    public static GenericStack click(GenericStackInv inventory, int slot, @Nullable GenericStack carried,
+    public static GenericStack click(SlottedResourceStorage inventory, int slot, @Nullable GenericStack carried,
                                      long cursorLimit, boolean acceptsInput, boolean rightClick) {
-        if (!inventory.canExtract() || cursorLimit <= 0) {
+        inventory.context().lock();
+        try {
+            return clickLocked(inventory, slot, carried, cursorLimit, acceptsInput, rightClick);
+        } finally {
+            inventory.context().unlock();
+        }
+    }
+
+    @Nullable
+    private static GenericStack clickLocked(SlottedResourceStorage inventory, int slot, @Nullable GenericStack carried,
+                                            long cursorLimit, boolean acceptsInput, boolean rightClick) {
+        if (!inventory.isValid() || cursorLimit <= 0) {
             return carried;
         }
         GenericStack stored = inventory.getStack(slot);
@@ -42,9 +53,9 @@ public final class HatchSlotActions {
             return remaining == 0 ? null : new GenericStack(carried.what(), remaining);
         }
         // A swap must fit both destinations completely before either side changes.
-        if (!rightClick && stored.amount() <= cursorLimit && inventory.canInsert()
-            && inventory.isAllowedIn(slot, carried.what()) && carried.amount() <= inventory.getMaxAmount(carried.what())) {
-            inventory.setStack(slot, carried);
+        if (!rightClick && stored.amount() <= cursorLimit
+            && inventory.isAllowedIn(slot, carried.what()) && carried.amount() <= inventory.getMaxAmount(carried.what())
+            && inventory.tryReplaceSlot(slot, stored, carried)) {
             return stored;
         }
         return carried;

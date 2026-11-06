@@ -5,36 +5,46 @@ import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
-import ae2.helpers.externalstorage.GenericStackInv;
+import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import java.util.function.Consumer;
+import java.util.List;
 
 /** Slot view for automation. A slot retains its input/output role even in mixed hatches. */
 public final class HatchInventoryPort implements GenericInternalInventory {
-    private final BufferedResourceHatch hatch;
-    private final boolean includeInput;
-    private final boolean includeOutput;
+    @Nullable private final SlottedResourceStorage input;
+    @Nullable private final SlottedResourceStorage output;
+    private final List<StorageContext> contexts;
+    private final ThreadLocal<Boolean> batching = new ThreadLocal<>();
 
     public HatchInventoryPort(BufferedResourceHatch hatch, boolean includeInput, boolean includeOutput) {
-        this.hatch = Objects.requireNonNull(hatch);
-        this.includeInput = includeInput;
-        this.includeOutput = includeOutput;
+        Objects.requireNonNull(hatch);
+        input = includeInput ? hatch.input() : null;
+        output = includeOutput ? hatch.output() : null;
+        if (input != null && output != null && input.context() != output.context()) {
+            contexts = input.context().order() < output.context().order()
+                ? List.of(input.context(), output.context()) : List.of(output.context(), input.context());
+        } else if (input != null) {
+            contexts = List.of(input.context());
+        } else {
+            contexts = output == null ? List.of() : List.of(output.context());
+        }
     }
 
     private int inputSize() {
-        return includeInput && hatch.input() != null ? hatch.input().size() : 0;
+        return input == null ? 0 : input.size();
     }
 
     @Override
     public int size() {
-        return inputSize() + (includeOutput && hatch.output() != null ? hatch.output().size() : 0);
+        return inputSize() + (output == null ? 0 : output.size());
     }
 
-    private GenericStackInv inventory(int slot) {
+    private SlottedResourceStorage inventory(int slot) {
         Objects.checkIndex(slot, size());
-        return slot < inputSize() ? hatch.input() : hatch.output();
+        return Objects.requireNonNull(slot < inputSize() ? input : output, "Missing hatch storage side");
     }
 
     private int localSlot(int slot) {
@@ -44,7 +54,18 @@ public final class HatchInventoryPort implements GenericInternalInventory {
     @Override
     @Nullable
     public GenericStack getStack(int slot) {
-        return inventory(slot).getStack(localSlot(slot));
+        SlottedResourceStorage inv = inventory(slot);
+        inv.context().lock();
+        try {
+            GenericStack stack = inv.getStack(localSlot(slot));
+            if (stack == null || slot < inputSize()) {
+                return stack;
+            }
+            long available = inv.availableAmount(localSlot(slot));
+            return available == 0 ? null : new GenericStack(stack.what(), available);
+        } finally {
+            inv.context().unlock();
+        }
     }
 
     @Override
@@ -60,94 +81,119 @@ public final class HatchInventoryPort implements GenericInternalInventory {
         return stack == null ? 0 : stack.amount();
     }
 
-    private GenericStackInv anyInventory() {
-        return includeInput && hatch.input() != null ? hatch.input() : includeOutput ? hatch.output() : null;
+    @Nullable
+    private SlottedResourceStorage anyInventory() {
+        return input != null ? input : output;
     }
 
     @Override
     public long getMaxAmount(AEKey key) {
-        GenericStackInv inv = anyInventory();
-        return inv == null || !inv.isSupportedType(key) ? 0 : inv.getMaxAmount(key);
+        SlottedResourceStorage inv = anyInventory();
+        return inv == null || !inv.isSupportedType(key.getType()) ? 0 : inv.getMaxAmount(key);
     }
 
     @Override
     public long getCapacity(AEKeyType type) {
-        GenericStackInv inv = anyInventory();
+        SlottedResourceStorage inv = anyInventory();
         return inv == null || !inv.isSupportedType(type) ? 0 : inv.getCapacity(type);
     }
 
     @Override
     public boolean canInsert() {
-        return hatch.isValid() && inputSize() != 0;
+        return input != null && input.isValid();
     }
 
     @Override
     public boolean canExtract() {
-        return hatch.isValid() && includeOutput && hatch.output() != null;
+        return output != null && output.isValid();
     }
 
     @Override
     public boolean isSupportedType(AEKeyType type) {
-        GenericStackInv inv = anyInventory();
+        SlottedResourceStorage inv = anyInventory();
         return inv != null && inv.isSupportedType(type);
     }
 
     @Override
     public boolean isAllowedIn(int slot, AEKey key) {
-        GenericStackInv inv = inventory(slot);
+        SlottedResourceStorage inv = inventory(slot);
         return canInsert() && slot < inputSize() && inv.isAllowedIn(localSlot(slot), key);
     }
 
     @Override
     public long insert(int slot, AEKey key, long amount, Actionable mode) {
-        GenericStackInv inv = inventory(slot);
+        SlottedResourceStorage inv = inventory(slot);
         return isAllowedIn(slot, key) ? inv.insert(localSlot(slot), key, amount, mode) : 0;
     }
 
     @Override
     public long extract(int slot, AEKey key, long amount, Actionable mode) {
-        GenericStackInv inv = inventory(slot);
+        SlottedResourceStorage inv = inventory(slot);
         return canExtract() && slot >= inputSize() ? inv.extract(localSlot(slot), key, amount, mode) : 0;
     }
 
     @Override
     public void setStack(int slot, @Nullable GenericStack next) {
-        GenericStackInv inv = inventory(slot);
-        GenericStack previous = getStack(slot);
-        if (Objects.equals(previous, next)) {
-            return;
-        }
-        if (!hatch.isValid()) {
-            throw new IllegalStateException("Hatch is no longer available");
-        }
-        if (next != null && (next.amount() <= 0 || !inv.isAllowedIn(localSlot(slot), next.what())
+        SlottedResourceStorage inv = inventory(slot);
+        inv.context().lock();
+        try {
+            GenericStack previous = inv.getStack(localSlot(slot));
+            if (Objects.equals(previous, next)) {
+                return;
+            }
+            if (!inv.isValid()) {
+                throw new IllegalStateException("Hatch is no longer available");
+            }
+            if (next != null && (next.amount() <= 0 || !inv.isAllowedIn(localSlot(slot), next.what())
                 || next.amount() > inv.getMaxAmount(next.what()))) {
-            throw new IllegalArgumentException("Stack does not fit this hatch slot");
-        }
-        boolean sameKey = previous != null && next != null && previous.what().equals(next.what());
-        boolean removes = previous != null && (!sameKey || next.amount() < previous.amount());
-        boolean adds = next != null && (!sameKey || next.amount() > previous.amount());
-        if ((removes && slot < inputSize()) || (adds && slot >= inputSize())) {
-            throw new UnsupportedOperationException("Cannot reverse this hatch slot's direction");
-        }
-        inv.setStack(localSlot(slot), next);
-    }
-
-    private void each(Consumer<GenericStackInv> action) {
-        if (includeInput && hatch.input() != null) {
-            action.accept(hatch.input());
-        }
-        if (includeOutput && hatch.output() != null) {
-            action.accept(hatch.output());
+                throw new IllegalArgumentException("Stack does not fit this hatch slot");
+            }
+            boolean sameKey = previous != null && next != null && previous.what().equals(next.what());
+            boolean removes = previous != null && (!sameKey || next.amount() < previous.amount());
+            boolean adds = next != null && (!sameKey || next.amount() > previous.amount());
+            if ((removes && slot < inputSize()) || (adds && slot >= inputSize())) {
+                throw new UnsupportedOperationException("Cannot reverse this hatch slot's direction");
+            }
+            if (!inv.tryReplaceSlot(localSlot(slot), previous, next)) {
+                throw new IllegalStateException("Hatch slot replacement conflicts with a reservation");
+            }
+        } finally {
+            inv.context().unlock();
         }
     }
 
     @Override
-    public void beginBatch() { each(GenericStackInv::beginBatch); }
+    public void beginBatch() {
+        if (Boolean.TRUE.equals(batching.get())) {
+            throw new IllegalStateException("Inventory batch is already open");
+        }
+        contexts.forEach(StorageContext::lock);
+        batching.set(true);
+    }
+
     @Override
-    public void endBatch() { each(GenericStackInv::endBatch); }
+    public void endBatch() {
+        finishBatch();
+        onChange();
+    }
+
     @Override
-    public void endBatchSuppressed() { each(GenericStackInv::endBatchSuppressed); }
+    public void endBatchSuppressed() {
+        finishBatch();
+    }
+
     @Override
-    public void onChange() { each(GenericStackInv::onChange); }
+    public void onChange() {
+        contexts.forEach(StorageContext::publishChanges);
+    }
+
+    private void finishBatch() {
+        if (!Boolean.TRUE.equals(batching.get())) {
+            throw new IllegalStateException("Inventory batch is not open on this thread");
+        }
+        for (int i = contexts.size() - 1; i >= 0; i--) {
+            contexts.get(i).unlockDeferred();
+        }
+        batching.remove();
+    }
 }

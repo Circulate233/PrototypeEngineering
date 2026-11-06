@@ -4,11 +4,11 @@
 
 ## 当前检查点
 
-- 最近实现提交：`c8fa7f5`，十阶三方向资源/能源仓室共 60 个注册项、PM 原模型/纹理、本地化枚举、资源独立滚动与能源纵向条/设置交互，以及 IDEA 诊断修正。已本地提交，未推送；原工作区其他格式/注解整理保留为未提交改动。
-- 最近验证（2026-11-07）：本机 IDEA MCP 对 57 个 src Java 文件及生成 Tags 逐文件 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/final.json`。MCP `build_project` 成功且无问题，最终 `gradlew.bat build` 通过 25 项逻辑用例（其中 7 项能源）；GUI/游戏尚未运行验证。
-- 当前实现：资源输入/输出各自使用 ScrollBar，最多显示 5 行并随分辨率压缩；能源 GUI 为 176×214，使用 PM 原纵向能量条，支持速率、自动标志、Enter 提交和完整 long 提示。能源重载使用当前配置容量并裁剪保存量，资源仓仍保留保存容量。仓室原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器自定义 Gecko/Bloom 管线仍待迁移。
-- 当前任务：独立存储 API/后端重构。现有 `ResourceHatch → MEStorage` 与 `Buffer extends GenericStackInv` 均需要替换，不能视为最终 API。
-- 下一步：核对 PM 存储预留/补偿完整调用链，设计本库的资源存储、快照、预留和提交边界，替换仓室后端及 AE/Forge/GUI 适配。已发现的部分提取/账本补偿风险见 storage-redesign 的“待修正的源码风险”。
+- 当前阶段：独立资源存储重构完成并通过验证；本阶段代码与文档本地提交，不推送，具体提交以 Git 日志为准。此前 `c8fa7f5` 的十阶三方向仓室、原模型/纹理、本地化枚举及 GUI 行为保留；原工作区其他格式/注解整理继续保留。
+- 最近验证（2026-11-07）：本机 IDEA MCP 对 67 个 src Java 文件及生成 Tags 共 68 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/storage-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 37 项逻辑用例。双侧恢复测试从解码后数据开始，NBT 编解码、GUI/游戏尚未运行验证。
+- 当前实现：ResourceHatch 返回 ResourceStorage；SlottedResourceBuffer 独立持有余额、输入数量/输出容量预留及补偿状态，所有适配共享 context。按实际 context 顺序锁定整批提交/补偿，混合仓两侧先校验再恢复。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv。FE 仍独立且尚未并发集成。
+- 既有仓室：资源两侧独立 ScrollBar；能源 GUI 原纵向条与速率/自动设置；能源重载使用当前配置容量并裁剪保存量，资源保留保存容量。原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器 Gecko/Bloom 管线仍待迁移。
+- 下一步：将资源预留接入真正需求阶段并加入独立 FE 结算，再继续进程/扫描和 planned 调度迁移。遵守 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算边界；当前存储批结算不替代这些调度能力。旧 ledger 成功 finalize 缺口、PN 提交后生命周期误判等风险见 storage-redesign。
 - 未完成：完整配方进程/属性/overlay、内置需求、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
 
 ## 必须记住的约束
@@ -30,7 +30,7 @@
 | 存储重构 | [storage-redesign.md](storage-redesign.md)，再读相关后端/适配器 |
 | 组件/配方 API、事务语义 | [recipes.md](recipes.md) 的相应章节 |
 | 原 PM 事件/需求具体在哪里 | [migration-audit.md](migration-audit.md) 的源码映射表 |
-| 现有仓室及 GUI 的行为 | [hatches.md](hatches.md)，注意这是待替换后端的记录 |
+| 现有仓室及 GUI 的行为 | [hatches.md](hatches.md)，核心与 AE2/Forge/GUI 适配边界 |
 | 需求发生分歧 | [development-spec.md](development-spec.md) 的 R 编号或相关章节；先 rg 定位，不全文读取 |
 | 资源来源/许可证 | [assets.md](assets.md) |
 

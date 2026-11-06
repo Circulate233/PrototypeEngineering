@@ -1,29 +1,36 @@
 package com.circulation.prototype_eng.api.storage;
 
-import ae2.api.storage.MEStorage;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Machine-side resource access. Input and output have independent contents.
- * Call only on the owning server thread and reacquire after the host unloads.
- * Implementations may use any backend that honours the MEStorage contract.
+ * Storage is independently synchronized; host discovery still belongs to the server thread.
+ * Implementations share the physical balance's StorageContext across all adapter aliases.
  */
 public interface ResourceHatch {
     /** Materials the machine can consume, or null if this hatch has no input. */
     @Nullable
-    MEStorage input();
+    ResourceStorage input();
 
     /** Storage for machine products, or null if this hatch has no output. */
     @Nullable
-    MEStorage output();
+    ResourceStorage output();
 
-    /** Stable identity of the underlying input balance. Override when returning temporary adapter views. */
+    /**
+     * Stable identity of the underlying input balance. Temporary views must share its context.
+     */
     @Nullable
-    default Object inputStorageIdentity() { return input(); }
+    default Object inputStorageIdentity() {
+        var storage = input();
+        return storage == null ? null : storage.context();
+    }
 
     /** Stable identity of the output balance, distinct from input for a mixed hatch. */
     @Nullable
-    default Object outputStorageIdentity() { return output(); }
+    default Object outputStorageIdentity() {
+        var storage = output();
+        return storage == null ? null : storage.context();
+    }
 
     /** Whether this particular host instance can still participate in work. */
     boolean isValid();

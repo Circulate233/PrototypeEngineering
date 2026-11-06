@@ -1,20 +1,26 @@
 # 仓室核心与扩展接入
 
-**后端设计正在纠正：** 用户明确要求独立存储契约，只复用 AE2 资源类型。下文记录的是目前旧 MEStorage/GenericStackInv 后端的实现行为；它需要按[存储重构约束](storage-redesign.md)替换，不再作为最终仓室 API。方向隔离、GUI 交互及既有测试所覆盖的效果仍须保留。
+资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 契约和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。完整调度、FE 并发接入及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。
 
-当前已接入临时存储后端、公开发现契约、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现，通过最终构建及逐文件 IDEA MCP 检查；游戏内验收仍待补齐。
+当前已接入独立资源存储、公开发现契约、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现。本轮完整构建通过 37 项逻辑用例，IDEA MCP 对全部 68 个 Java 文件检查零诊断；详细证据及测试边界见[实施进度](implementation-status.md)，游戏内验收仍待补齐。
 
 ## 资源仓室
 
-`api.storage.ResourceHatch` 提供 `input()`、`output()` 和 `isValid()`。前两者返回 AE2 的 `MEStorage`；没有对应方向时返回 null。机器从输入存储取料、向输出存储交付产物；所有调用发生在宿主服务端线程。
+`api.storage.ResourceHatch` 提供 `input()`、`output()` 和 `isValid()`。前两者返回本库的 `ResourceStorage`；没有对应方向时返回 null。机器从输入存储取料、向输出存储交付产物。宿主与能力发现仍在服务端线程执行，取得的资源存储通过共享锁支持跨线程读写。
 
-内置 `storage.BufferedResourceHatch` 接收方向、每侧槽位数、按 AEKeyType 指定的每槽容量及内容变化回调。槽位可容纳任一支持类型，混合仓输入与输出使用不同的 GenericStackInv。`HatchTier` 和 `HatchConfig` 已接入十阶默认值；它们配置临时后端，不表示独立存储重构已完成。
+内置 `storage.BufferedResourceHatch` 接收方向、每侧槽位数、按 AEKeyType 指定的每槽容量及内容变化回调。输入和输出分别由独立的 `SlottedResourceBuffer` 持有数量、槽位和预留状态，并通过 `SlottedResourceStorage` 暴露。每槽可容纳任一支持类型，同一个 key 可以出现在多个槽位；按 key 的数量查询与按槽操作共用真实余额。`HatchTier` 和 `HatchConfig` 配置十阶默认槽数及容量。
 
-`automation()` 是外部自动化视图：插入只写输入侧，抽取及可抽取数量查询只读取输出侧。保存数据的 `Input` 与 `Output` 分别编码；不会把相同 key 的两侧数量合并。`invalidate()` 后，已取得的机器和自动化存储引用也停止转移资源。宿主负责在卸载或失效时调用它。
+每侧 `StorageContext` 是该真实余额的稳定身份，持有 ReentrantLock、revision、失效状态与变更通知；同一余额的所有视图沿用这个 context，混合仓两侧的 context 不同。`StorageSnapshot` 包含 context、revision 和不可变的可用数量映射。预留输入数量或输出容量时核对快照身份及版本，失效、过期快照和数量不足由 `ReservationResult` 明确返回。普通插入、抽取和原子槽位替换均遵守已有预留。
+
+`ResourceReservation` 区分准备、应用、完成与回滚。应用输入扣取后保留返还容量，应用输出后保留新数量，直到完成时才释放补偿权；因此自动化不能提前取走待结算产物。`ResourceTransactions` 按 context 顺序锁定参与者，在同一边界内应用或补偿，并在释放所有锁后发布变更通知。调度归属、epoch 与执行 lane 的检查仍由外围运行流程负责，不能把存储锁视为完整机器调度已经完成。
+
+`automation()` 保留为 AE2 MEStorage 视图：插入只写输入侧，抽取及 `getAvailableStacks` 只读取输出侧未预留的可用数量。保存数据的 `Input` 与 `Output` 按槽位分别编码，不会把相同 key 的两侧数量合并。保存和加载使用两侧 context 锁；加载先验证两侧内容，再恢复，活动预留期间拒绝恢复。卸载或失效会单向失效原 context，已取得的机器及自动化引用随之停止转移；重新挂载创建新核心和视图。跨 TileEntity 保存仍不构成磁盘事务。
+
+核心读写重入同一个 context 锁，变更回调在外层释放后发布。`ResourceHatchBlockEntity` 的回调只通过共享 VarHandle 标记待保存，服务端 tick 及失效/卸载回调调用 `markDirty()`，不让 worker 直接操作世界状态。
 
 ## 独立 FE
 
-`api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量契约。外部实现可以只提供需要的职责。`EnergyBuffer` 用普通 long 字段保存服务端线程持有的余额；模拟操作不修改余额或发出内容变化通知。真实多线程调度及其存储一致性仍须在后续重构中接入。
+`api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量契约。外部实现可以只提供需要的职责。`EnergyBuffer` 用普通 long 字段保存服务端线程持有的余额；模拟操作不修改余额或发出内容变化通知。FE 尚未接入资源存储的并发预留及跨资源提交边界，真实多线程调度中的物料与 FE 一致性仍须后续集成。
 
 当前三方向适配使用 `ForgeEnergyPort`：输入仓允许外部充入，输出仓允许外部抽取，混合仓允许两者；机器使用对应的 EnergyInput/EnergyOutput 职责访问同一余额。Forge 的 int 查询值饱和到 Integer.MAX_VALUE，内部余额仍为 long，传输返回值表示本次实际数量。
 
@@ -26,15 +32,15 @@
 
 外部 TileEntity 可以在 `getCapability` 中暴露 `api.HatchCapabilities.RESOURCE`、`ENERGY_INPUT` 或 `ENERGY_OUTPUT`，不需要继承内置 TileEntity。机器通过 `findResource` / `findEnergyInput` / `findEnergyOutput` 获取仍有效的契约；接口实例与存档均由宿主管理，能力注册不提供脱离宿主的默认实例或通用 NBT 格式。能力入口已经声明，外部宿主参与完整机器运行的验收仍待后续集成。
 
-当前临时接口仍要求资源后端提供 MEStorage，模拟和执行遵循其返回数量契约；最终接口须改为本库独立存储契约，AE2 存储只保留在适配层。失效后的旧引用不得继续改变真实存储。`inputStorageIdentity()` / `outputStorageIdentity()` 分别标识两侧真实存储；当前默认使用对应的 MEStorage 对象，临时适配视图必须覆盖为稳定的底层身份。机器据此避免把同一份库存的多个视图重复预算；输入与输出独立时身份也必须独立。
+外部资源仓后端实现本库 `ResourceStorage`，有槽位时可实现 `SlottedResourceStorage`，不需要实现或继承 MEStorage / GenericStackInv。实现必须提供一致的 context、快照、预留、实际转移数量、补偿及失效行为；不能通过另一个入口绕过预留。`inputStorageIdentity()` / `outputStorageIdentity()` 默认返回对应存储的 context，适配别名必须共享同一底层 context。机器据此避免把同一份库存的多个视图重复预算；输入与输出独立时身份也必须独立。
 
 ## 内置方块与适配
 
 资源方块 ID 为 `prototype_eng:input_hatch_<等级>`、`output_hatch_<等级>`、`mixed_hatch_<等级>`；能源方块为 `energy_input_hatch_<等级>`、`energy_output_hatch_<等级>`、`energy_mixed_hatch_<等级>`。等级为 1–10，共 60 个方块及对应物品，目前放在红石创造物品栏。默认等级参数沿用 PM 并可配置，合成配方与正式玩法由使用方定义。
 
-`ResourceHatchBlockEntity` 暴露公开资源仓契约、AE2 MEStorage 和 GenericInternalInventory；物品及其他已注册资源能力通过 AE2 的 GenericInternalInventoryAdapters 接入。`HatchInventoryPort` 保留每个槽位的方向，外部不得从输入取出或向输出写入。它的直接 setStack 是有方向约束的契约调用；方向反转、越容量和非法替换立即失败，正常传输使用 insert/extract 的实际数量返回值。
+`ResourceHatchBlockEntity` 暴露公开资源仓契约及指向同一核心的 AE2 MEStorage / GenericInternalInventory 视图；物品及其他已注册资源能力通过 AE2 的 GenericInternalInventoryAdapters 接入。`HatchInventoryPort` 保留每个槽位的方向，外部不得从输入取出或向输出写入。输出槽的 getStack/getAmount 只展示未预留数量，完全预留时按空槽处理。直接 setStack 以真实已提交内容作条件替换，方向反转、越容量和非法替换立即失败，预留争用明确拒绝；正常传输使用 insert/extract 的实际数量返回值。通知批处理按 context 顺序加锁，不建立另一份余额。
 
-流体 fill 与 drain 分别交给输入、输出视图。AE2 的 GenericStackFluidStorage 在无指定 key 的 drain 中选中第一个流体槽后直接返回；把混合仓所有槽直接交给同一个适配器，会让输入流体遮住另一种输出流体。这里使用同一核心上的两个方向视图，没有复制余额。
+流体 fill 与 drain 分别交给输入、输出视图。AE2 的 GenericStackFluidStorage 在无指定 key 的 drain 中选中第一个流体槽后直接返回；把混合仓所有槽直接交给同一个适配器，会让输入流体遮住另一种输出流体。这里使用两个方向视图，并由输出视图过滤完全预留的槽位，避免已被预留的首槽遮住后面的可抽资源。一次 fill/drain 及每侧属性查询在该侧 context 锁内完成，不跨持两侧锁，也没有复制余额。
 
 能源实体按模式暴露公开 EnergyInput/EnergyOutput，并使用 ForgeEnergyPort 暴露 Forge ENERGY。卸载/失效使已取得的转移引用失效；重新挂载时创建新视图，旧引用不会重新激活。保存仍可读取失效核心的实际内容；三方向、动态限额、重载和旧引用失效已由能源逻辑用例验证。
 
@@ -48,9 +54,11 @@ ResourceHatchGui 和 EnergyHatchGui 直接继承 AEBaseGui，复用 AE2 背景�
 
 资源输入/输出区域各有独立的 AE2 ScrollBar，最多显示 5 行并随分辨率压缩。滚动保留原始槽位索引，隐藏槽禁用，避免界面位置变化造成操作对象混淆。能源界面为 176×214，使用 PM 原 16×66 纵向能量条，支持输入/输出限额与自动标志设置、Enter 提交及完整 long 数值 tooltip；实际 GUI 交互与不同分辨率显示尚待游戏内验证。
 
-资源容器在实际 GenericStackInv 上处理物品转移，避免修改 ConfigGuiInventory 返回的显示副本。输入可以放入和手动取回，输出只可取出；混合仓界面分组显示两侧。支持普通点击、右键拆分/单个放入、Shift 转移、数字键和丢弃；大缓存按原生物品堆叠上限取入玩家库存。资源槽不参与原版拖拽分配，防止显示包装栈进入玩家物品栏；玩家库存仍保留原版拖拽。
+AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv，不能直接接收 GenericInternalInventory。这里使用薄适配器 `HatchGuiInventory` 实现 InternalInventory 和 GenericStackDisplayInventory：服务端直接读取 SlottedResourceStorage 的已提交内容，客户端只缓存收到的同步 ItemStack。它不持有服务器余额，服务端 setItemDirect 明确拒绝，所有玩家写入由容器授权动作完成。GUI 显示完整已提交量，自动化视图则只显示可转移量，两者用途不同。
 
-手持可被 AE2 策略识别的流体等资源容器：右键输入槽倒入，左键资源槽装出，配合 Shift 请求整容器操作。服务端额外禁止向输出槽发送 EMPTY_ITEM/EMPTY_ENTIRE_ITEM 写入，禁止 AE2 通用 SwapSlotsPacket 直接移动资源显示包装栈；数字键交换走实际数量路径。客户端限制不作为库存权限依据。
+资源容器及 `HatchSlotActions` 在真实 SlottedResourceStorage 上处理物品转移。输入可以放入和手动取回，输出只可取出；混合仓界面分组显示两侧。支持普通点击、右键拆分/单个放入、Shift 转移、数字键和丢弃；大缓存按原生物品堆叠上限取入玩家库存。点击及交换使用共享锁和 tryReplaceSlot，Shift 的抽取、背包合并及余量回退处于同一侧锁范围，防止并行操作抢走回退容量。收集物品时依次访问两侧，不持有输入锁再进入输出。资源槽不参与原版拖拽分配，防止显示包装栈进入玩家物品栏；玩家库存仍保留原版拖拽。
+
+手持可被 AE2 策略识别的流体等资源容器：右键输入槽倒入，左键资源槽装出，配合 Shift 请求整容器操作。ResourceHatchContainer 自行路由四种装入/倒出动作，复用 AEBaseContainer 的 held-item 转移策略；模拟、实际转移和失败回退处于同一侧 context 锁内。服务端仍禁止向输出槽发送 EMPTY_ITEM/EMPTY_ENTIRE_ITEM 写入，禁止 AE2 通用 SwapSlotsPacket 直接移动资源显示包装栈；数字键交换走实际数量路径。客户端限制不作为库存权限依据。
 
 打开界面前向该玩家发送实体布局和容量，再由容器同步资源槽/能源数值。转移时不重复发送整份 TileEntity NBT，以免替换正被其他玩家界面使用的缓存。GUI 与模型类只由客户端代理引用。
 
@@ -79,7 +87,7 @@ ResourceHatchGui 和 EnergyHatchGui 直接继承 AEBaseGui，复用 AE2 背景�
 
 ## 验证范围
 
-最终 `gradlew.bat build` 通过 25 项逻辑用例（其中 7 项能源），覆盖多类型双缓存流转、失效、方向/key 限制、鼠标转移守恒，以及能源三方向、动态操作限额和重载裁剪等行为。57 个 src Java 文件与生成 Tags 的 IDEA MCP 检查均无错误、警告及弱警告；GUI/模型资源静态核对通过，详细证据见 [实施进度](implementation-status.md)。
+上一轮仓室与能源实现的构建、逻辑用例及逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)，覆盖多类型双缓存流转、失效、方向/key 限制、鼠标转移守恒，以及能源三方向、动态操作限额和重载裁剪等行为。它们不能替代本轮独立存储后端的验证。本轮适配层编译和逐文件 IDEA MCP 检查已完成，完整逻辑测试与全量检查仍在进行，最终结果以实施进度记录为准。
 
 NBT 完整往返、Forge 实际能力发现、玩家交互和重启恢复尚未验证。直接在普通 JUnit 类加载器调用 AE2 的 key 持久化，会触发需要 FML 可选接口处理的物品初始化；当前不为此引入整套替代游戏环境，也不声称已覆盖实际保存恢复。
 

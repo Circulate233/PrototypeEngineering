@@ -1,6 +1,6 @@
 # PM 事件、组件与配方迁移审查
 
-早期 `MachineRecipe` 的固定 input/output/FE 字段及 `RecipeRun` 直接流程遗漏了 PM 的事件、组件、需求系统和进程扩展，不能视为有效迁移。本轮已纠正公共配方定义，并迁移组件调度和需求阶段核心；完整进程、内置需求、独立存储及多线程调度仍未完成。JEI 接入继续等待这些基础收敛。
+早期 `MachineRecipe` 的固定 input/output/FE 字段及 `RecipeRun` 直接流程遗漏了 PM 的事件、组件、需求系统和进程扩展，不能视为有效迁移。目前已纠正公共配方定义，并迁移组件调度、需求阶段核心及独立资源存储；完整进程、内置需求和多线程调度仍未完成。JEI 接入继续等待这些基础收敛。
 
 ## 旧代码实际调用链
 
@@ -27,7 +27,7 @@
 - RecipeRequirementSystem 注释存在“Blocked 应 commit”的表述，而 FactoryRecipeProcessorSystem 实际会对阻塞阶段整体回滚。新契约必须统一，不能同时复制矛盾说明。
 - 旧进程组件恢复会跳过无法解析的组件类型，部分恢复代码吞异常。新持久化不能静默丢失已选择保留的状态。
 - 当前部分收取/付款缓存可以作为资源操作研究材料，但不能替代需求阶段的提交契约；是否采用、如何参与回滚，必须在需求系统实现中明确验证。
-- 存储 API 必须独立设计，不以 MEStorage 为核心契约；AE2 只提供资源类型及外部集成能力。原 MEStorage/GenericStackInv 后端需要按[存储重构约束](storage-redesign.md)替换。
+- 存储 API 必须独立设计，不以 MEStorage 为核心契约；AE2 只提供资源类型及外部集成能力。目前已用 ResourceStorage/SlottedResourceStorage 和独立 SlottedResourceBuffer 替换原后端，预留/补偿的具体语义、旧账本 finalize 缺口和 PN 生命周期风险见[存储审查](storage-redesign.md)。这不代表 planned 调度集成已完成。
 
 本轮组件实现沿用软依赖与 Kahn 排序，改用 fastutil 和独立不可变依赖快照；系统顺序使用显式 ID。重建派生系统索引避免组件替换后残留旧系统关系。图仍由单一执行所有者维护，未来通过调度屏障转移所有权；不以增加 volatile 标志冒充并发容器。
 

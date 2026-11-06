@@ -17,12 +17,28 @@ import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.ITickable;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public final class ResourceHatchBlockEntity extends TileEntity {
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+
+public final class ResourceHatchBlockEntity extends TileEntity implements ITickable {
+    private static final VarHandle STORAGE_DIRTY;
+
+    static {
+        try {
+            STORAGE_DIRTY = MethodHandles.lookup().findVarHandle(ResourceHatchBlockEntity.class, "storageDirty", boolean.class);
+        } catch (ReflectiveOperationException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
+    }
+
+    @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
+    private boolean storageDirty;
     private final Reference2ObjectMap<Capability<?>, Object> adapters = new Reference2ObjectOpenHashMap<>();
     private HatchMode mode;
     private HatchTier tier;
@@ -52,7 +68,7 @@ public final class ResourceHatchBlockEntity extends TileEntity {
     public BufferedResourceHatch storage() {
         if (hatch == null) {
             capacities = capacities == null ? HatchConfig.resourceCapacities(tier) : capacities;
-            hatch = new BufferedResourceHatch(mode, slots, capacities, this::markDirty);
+            hatch = new BufferedResourceHatch(mode, slots, capacities, this::requestStorageSave);
             port = new HatchInventoryPort(hatch, true, true);
             fluids = new HatchFluidHandler(hatch);
             if (isInvalid()) {
@@ -60,6 +76,21 @@ public final class ResourceHatchBlockEntity extends TileEntity {
             }
         }
         return hatch;
+    }
+
+    private void requestStorageSave() {
+        STORAGE_DIRTY.setRelease(this, true);
+    }
+
+    @Override
+    public void update() {
+        flushStorageChanges();
+    }
+
+    private void flushStorageChanges() {
+        if (world != null && !world.isRemote && (boolean) STORAGE_DIRTY.getAndSet(this, false)) {
+            markDirty();
+        }
     }
 
     public HatchMode mode() {
@@ -167,6 +198,7 @@ public final class ResourceHatchBlockEntity extends TileEntity {
         if (hatch != null) {
             hatch.invalidate();
         }
+        flushStorageChanges();
         adapters.clear();
         super.invalidate();
     }
@@ -176,6 +208,7 @@ public final class ResourceHatchBlockEntity extends TileEntity {
         if (hatch != null) {
             hatch.invalidate();
         }
+        flushStorageChanges();
         adapters.clear();
         super.onChunkUnload();
     }

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.recipe;
 
 import ae2.api.config.Actionable;
-import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
@@ -13,7 +12,7 @@ import java.util.Objects;
 
 /**
  * Internal fixed-resource migration prototype; not the extensible recipe processor. Actual receipts
- * and undelivered products stay owned by this run. Its old storage dependency still needs replacing.
+ * and undelivered products stay owned by this run. This is not the planned transaction processor.
  */
 public final class ResourceTransferRun {
     public enum Status { COLLECTING_INPUTS, WAITING_FOR_ENERGY, WORKING, WAITING_FOR_OUTPUT, COMPLETE }
@@ -46,7 +45,7 @@ public final class ResourceTransferRun {
 
     /** Simulation chooses a candidate; only actual receipts advance it. Pool order is recipe priority. */
     @Nullable
-    public static ResourceTransferPlan findPlan(List<ResourceTransferPlan> plans, List<? extends ResourceHatch> hatches, IActionSource source) {
+    public static ResourceTransferPlan findPlan(List<ResourceTransferPlan> plans, List<? extends ResourceHatch> hatches) {
         var visited = new ReferenceOpenHashSet<Object>();
         for (ResourceTransferPlan recipe : plans) {
             boolean matches = true;
@@ -57,7 +56,7 @@ public final class ResourceTransferRun {
                     if (!hatch.isValid()) { continue; }
                     var inventory = hatch.input();
                     if (inventory == null || !visited.add(Objects.requireNonNull(hatch.inputStorageIdentity()))) { continue; }
-                    missing -= checked(inventory.extract(required.what(), missing, Actionable.SIMULATE, source), missing);
+                    missing -= checked(inventory.extract(required.what(), missing, Actionable.SIMULATE), missing);
                     if (missing == 0) { break; }
                 }
                 if (missing != 0) { matches = false; break; }
@@ -68,7 +67,7 @@ public final class ResourceTransferRun {
     }
 
     /** Called at most once per machine tick, only while the structure is valid and work is enabled. */
-    public Status tick(List<? extends ResourceHatch> hatches, List<? extends EnergyInput> energy, IActionSource source) {
+    public Status tick(List<? extends ResourceHatch> hatches, List<? extends EnergyInput> energy) {
         for (int i = 0; i < acquired.length; i++) {
             GenericStack required = recipe.inputs().get(i);
             long missing = required.amount() - acquired[i];
@@ -78,7 +77,7 @@ public final class ResourceTransferRun {
                 if (!hatch.isValid()) { continue; }
                 var inventory = hatch.input();
                 if (inventory == null || !visited.add(Objects.requireNonNull(hatch.inputStorageIdentity()))) { continue; }
-                long received = checked(inventory.extract(required.what(), missing, Actionable.MODULATE, source), missing);
+                long received = checked(inventory.extract(required.what(), missing, Actionable.MODULATE), missing);
                 if (received > 0) {
                     acquired[i] += received;
                     missing -= received;
@@ -110,7 +109,7 @@ public final class ResourceTransferRun {
                 if (!hatch.isValid()) { continue; }
                 var inventory = hatch.output();
                 if (inventory == null || !visited.add(Objects.requireNonNull(hatch.outputStorageIdentity()))) { continue; }
-                long delivered = checked(inventory.insert(product.what(), remainingOutputs[i], Actionable.MODULATE, source), remainingOutputs[i]);
+                long delivered = checked(inventory.insert(product.what(), remainingOutputs[i], Actionable.MODULATE), remainingOutputs[i]);
                 if (delivered > 0) { remainingOutputs[i] -= delivered; onChanged.run(); }
             }
         }
