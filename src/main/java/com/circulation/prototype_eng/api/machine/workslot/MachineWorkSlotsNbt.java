@@ -34,6 +34,7 @@ public final class MachineWorkSlotsNbt {
     }
 
     public NBTTagCompound encode(MachineWorkSlots host) {
+        host.owner().requirePersistenceBoundary();
         var snapshot = host.snapshot();
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 1);
@@ -47,11 +48,13 @@ public final class MachineWorkSlotsNbt {
         }
         tag.setTag("Slots", slots);
         if (!host.snapshot().equals(snapshot)) { throw new IllegalStateException("Codec changed work slots during serialization"); }
+        host.owner().requirePersistenceBoundary();
         return tag;
     }
 
     /** Parse every entry into new processes before the host changes any old attachment or slot. */
     public void restore(MachineWorkSlots host, NBTTagCompound saved) {
+        host.owner().requirePersistenceBoundary();
         var old = host.snapshot();
         var tag = Objects.requireNonNull(saved).copy();
         StrictNbt.requireKeys(tag, "Version", "Revision", "Slots");
@@ -75,6 +78,7 @@ public final class MachineWorkSlotsNbt {
             decoded.add(new MachineWorkSlots.SlotSnapshot(definition, process, result));
         }
         if (!host.snapshot().equals(old)) { throw new IllegalStateException("Codec changed live work slots during restoration"); }
+        host.owner().requirePersistenceBoundary();
         host.restore(decoded);
     }
 

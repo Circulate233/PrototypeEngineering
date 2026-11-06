@@ -16,7 +16,8 @@ public enum RecipeText implements LocalizationEnum {
     NoEnergyOutput,
     EnergyMissing,
     EnergyOutputFull,
-    Cancelled;
+    Cancelled,
+    ControllerBroken;
 
     private final String translationKey = "recipe." + Tags.MOD_ID + "." + name();
 

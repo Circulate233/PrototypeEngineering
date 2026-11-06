@@ -110,8 +110,16 @@ public final class RecipeProcess {
 
     /** Only complete, quiescent stage boundaries may be serialized; no live transaction is resumable. */
     public void requirePersistenceBoundary() {
-        if (ticking || activeTick != null || activeRequirement != null || acquiredTransactions != 0 || persistenceFailure) {
+        requireQuiescent();
+        if (persistenceFailure) {
             throw new IllegalStateException("Process is executing, has acquired transactions, or failed terminal cleanup");
+        }
+    }
+
+    /** Rejects live work; unlike persistence this permits observing a faulted but inactive process. */
+    public void requireQuiescent() {
+        if (ticking || activeTick != null || activeRequirement != null || acquiredTransactions != 0) {
+            throw new IllegalStateException("Process is executing or has acquired transactions");
         }
     }
 

@@ -27,6 +27,6 @@ public final class RecipeScanningSystem implements MachineSystem<RecipeScanner> 
 
     @Override public void onTick(MachineInstance machine, RecipeScanner scanner) {
         if (scanner.host().owner() != machine) { throw new IllegalArgumentException("Scanner belongs to a different machine"); }
-        if (ready.test(machine)) { scanner.scan(limits); }
+        if (machine.canProcessRecipes() && ready.test(machine)) { scanner.scan(limits); }
     }
 }

@@ -60,6 +60,14 @@ public final class ComponentMap<E> {
     /** Captures assembly order and effective dependency edges at an exclusive save boundary. */
     public List<SavedBinding<E, ?>> snapshotBindings() {
         orderedTickEntries();
+        return assemblyBindings();
+    }
+
+    /**
+     * Unsorted assembly for exceptional lifecycle cleanup when a broken dependency graph cannot be
+     * ordered. This deliberately does not validate the graph and must not replace save validation.
+     */
+    public List<SavedBinding<E, ?>> assemblyBindings() {
         var result = new ObjectArrayList<SavedBinding<E, ?>>();
         for (var node : components.assemblyComponents()) {
             result.add(node.component().saved(node.dependencies()));

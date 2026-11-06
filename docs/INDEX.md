@@ -4,17 +4,19 @@
 
 ## 当前检查点
 
-- 显式取消、业务失败清理、精确属性归属及进程 NBT Version2 已完成本阶段验证，只本地提交、不推送，具体提交以 Git 日志为准。此前固定 IO/索引为 `033d6a9`，扫描 admission 为 `4bdc2b8`。原工作区 23 份格式/注解修改继续保留，不能一起提交。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 260 项逻辑用例；本机 IDEA MCP 对 187 个 src Java 文件及 Tags 共 188 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告且无文件超时；MCP build_project 成功。报告 `build/reports/idea/process-abort-final.json`。完整检查分批落盘，避免长批工具超时丢证据；真实 AE2 注册/GUI/游戏未运行验证。
+- 机器宿主生命周期、事件注册、卸载恢复/结构暂停/破坏取消与故障清理已完成本阶段验证；只本地提交、不推送，具体提交以 Git 日志为准。此前取消/归属/NBT V2 为 `23eed7e`，固定 IO/索引为 `033d6a9`。原工作区23份格式/注解修改继续单独保留。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过277项逻辑测试；本机IDEA MCP 对198个src Java及Tags共199文件逐个 `errorsOnly:false`，零错误/警告/弱警告且无文件超时；MCP build_project 成功。报告 `build/reports/idea/machine-lifecycle-final.json`。分批落盘；没有游戏或真实TileEntity运行验证。
 - 当前取消：NEW/RUNNING 显式 cancel→CANCELLED，业务 Failure→FAILED；保存原进度/started，不 END、不退历史 IO。根需求逆序 cancel、组件依赖逆序 onAborted，全部尝试并聚合错误。faulted process 禁止再 tick/save，正常 Blocked 可重试。host协调结果/解除，cancelAll失败仍清其他槽；普通卸载没有自动取消。
 - 当前归属：需求属性按完整path/expected对象跟踪，默认Renamed codec可保存活动属性；END按removeAtEnd，abort只清owned。Selector/锁清理及成功删除回执进入进程NBT V2，恢复不重放；只验证记录到的归属，外部历史仍需validator。overlay直接children的canonical identity/顺序写时验证。
 - 当前扫描：按工位 group、目录优先级和运行 recipe 去重，每刻最多新增一进程；候选/probe 计数可续查，默认降序穷举，完整谓词明确单调才二分。factory/seed/tuning 固定，resolved base 避免重复父倍率；真实 START 获取后全 rollback。局部 preparation 可投影首刻状态并撤销，不能直接模拟不可逆组件回调。
 - 新增预筛：FixedIoScanConstraint 仅检查稳定 flat 内置资源/FE 的当前 TICK/END 条件，读取有效 overlay，复用整阶段预留/回滚；零时长跳 TICK，跨阶段输入可能释放同 context 输出空间时跳过对应阶段。它不保证完整首 tick。默认 scanner 三参构造安装，显式构造由调用方配置。
 - 新增索引：ResourceRecipeIndex 用显式 Footprint 必需 START 下界构建倒排；forFixedInputs 从内置输入提取但仍需稳定性承诺，未知/动态/未声明配方保留。按 context/key 取 alias 最大量，数量饱和作为下界，匹配全部声明键并保持 scope/顺序。内部工作/deadline 预算尚未接入。
 
+- 当前生命周期：四类事件及FRESH/RESTORED，组件/全局统一捕获；未成型仅停扫描/工位，普通卸载保留进程，新实例load+结构确认后续跑。破坏先闭门，再broken/cancelAll/unloaded；加载失败自动LOAD_FAILED清理，全部聚合，不END/退历史IO。VarHandle gate拒重入/重叠，仍需调度join。坏组件图只在异常清理用最后有效组件快照+无排序装配，仍抛原错。入口见 `docs/machine-lifecycle.md`。
+
 ## 下一步
 
-1. 接机器/世界生命周期与结构宿主，把已实现的保存、扫描、取消用于明确策略。普通区块卸载先停止调度并保存，不能自动取消；控制器破坏、结构失效与 owner 变更应按原用途分别审查。faulted进程清理与planned未完成预留的补偿仍需运行时机制，不能宣称已完成全部失效处理。
+1. 接实际机器定义/控制器TileEntity与完整结构宿主，将已验证的生命周期边界用于真实世界接线。结构匹配需先取得安全世界快照，不能照抄旧worker直接读world/TE。宿主必须在join后保存、变更结构、卸载；PN owner/队伍变化和faulted/planned未完成操作补偿仍须集成。
 2. 接真实多线程与 planned：保留 PM 两次 join、稳定 affinity lane、PN owner/epoch/向量预算、迟到任务隔离。旧 epoch/lease/ready 不能从存档恢复为运行权限。目录、index、factory、动态扫描/排序/NBT、随机逐次抽样及嵌套生命周期都仍需内部预算。
 3. 机器/结构、投影/渲染、研究/队伍/计算、JEI、最后 CraftTweaker 都是保留范围。当前工作槽/进程持久化和扫描不代表整体机器或重开发已完成。
 
@@ -33,6 +35,7 @@
 |---|---|
 | 需求、功能保留范围 | [development-spec.md](development-spec.md) 的 R 编号/对应章节 |
 | 实际完成度和历史验证 | [implementation-status.md](implementation-status.md) |
+| 宿主生命周期、事件、卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle、machine/ControllerLifecycleHost |
 | 组件/需求/事务、持久化、工位、扫描 | [recipes.md](recipes.md) 对应章节；源码 api/recipe、api/machine/workslot |
 | PM/PN 实际源码与旧缺陷 | [migration-audit.md](migration-audit.md) 对应映射表 |
 | 存储/预留/同步 | [storage-redesign.md](storage-redesign.md)，api/storage、api/energy |

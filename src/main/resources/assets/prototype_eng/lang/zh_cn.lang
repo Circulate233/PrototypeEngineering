@@ -90,3 +90,4 @@ recipe.prototype_eng.NoEnergyOutput=需求 %s 没有可用的能源输出仓
 recipe.prototype_eng.EnergyMissing=需求 %s 还缺少 %s FE
 recipe.prototype_eng.EnergyOutputFull=需求 %s 还需要容纳 %s FE 的空间
 recipe.prototype_eng.Cancelled=配方已取消
+recipe.prototype_eng.ControllerBroken=机器控制器已被破坏

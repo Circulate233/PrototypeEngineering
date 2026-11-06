@@ -90,3 +90,4 @@ recipe.prototype_eng.NoEnergyOutput=No energy output for requirement %s
 recipe.prototype_eng.EnergyMissing=Requirement %s is missing %s FE
 recipe.prototype_eng.EnergyOutputFull=Requirement %s needs room for %s more FE
 recipe.prototype_eng.Cancelled=Recipe cancelled
+recipe.prototype_eng.ControllerBroken=Machine controller was broken

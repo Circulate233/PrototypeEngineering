@@ -225,6 +225,17 @@ public final class MachineWorkSlots {
         return ObjectLists.unmodifiable(snapshot);
     }
 
+    /** World cleanup can observe faulted slots, but cannot detach a live transaction or execution. */
+    public void requireQuiescent() {
+        if (executing) { throw new IllegalStateException("Work slots are executing"); }
+        for (var slot : slots) {
+            var process = slot.process();
+            if (process == null) { continue; }
+            if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
+            process.requireQuiescent();
+        }
+    }
+
     /**
      * Validates the entire ordered layout before replacing any slot. New processes must be unattached
      * or already owned here; all old processes must be quiescent. No executor or world callback runs.
