@@ -11,8 +11,12 @@ A Minecraft 1.12.2 mod for Cleanroom, based on the MDG branch of
 ## 开发需求
 
 本项目是 PrototypeMachinery 与 PrototypeNetwork 合并后的重新开发版本，以 AE2 Supergiant 为基础依赖。
-当前处于需求确认与模板初始化阶段，已确认决定、旧项目调查和待定范围见[开发文档 v0.2](docs/development-spec.md)。
+已开始分阶段实施，需求、旧项目调查和待定范围见[开发文档 v0.6](docs/development-spec.md)，实际完成情况见[实施进度](docs/implementation-status.md)。
 对外 Java API 独立放在 `com.circulation.prototype_eng.api`，按契约职责组织；实现类按实际用途命名，CraftTweaker 在最后阶段接入该 API。
+旧实现按功能审查后决定复用、重构或重写，重新处理合并后的职责与 Java 25 线程模型；确需字段级原子更新时优先采用 VarHandle。
+混合仓保留独立输入、输出缓存，每侧支持 AE2 多类型资源；仓室通过公开接口接入机器，允许外部实现特殊仓室。
+可选兼容 [Applied-Flux](https://github.com/FormlessDragon/Applied-Flux)：输入仓及混合仓输入侧的 FE Key 可承担能源输入仓职责，共用机器的 FE 消费契约；独立能源仓继续保留。
+具体 GUI 直接基于 `AEBaseGui` 重实现，不增加本项目的通用 GUI 基类。每个配方池关联一个 JEI 页面接口实例：默认参考 MMCE 自动生成，也可由开发者提供独立的自定义实现。
 
 # Differences from kappa Unimined branch
 
