@@ -1,0 +1,19 @@
+package com.circulation.prototype_eng.api.machine.attribute;
+
+import com.circulation.prototype_eng.Tags;
+import net.minecraft.util.ResourceLocation;
+
+/** Standard IDs; machine concurrency, per-process quantity and progress speed remain independent. */
+public final class StandardMachineAttributes {
+    // Public concurrency limit for downstream processors; built-in slot scanning is still being migrated.
+    @SuppressWarnings("unused")
+    public static final ResourceLocation MAX_CONCURRENT_PROCESSES = new ResourceLocation(Tags.MOD_ID, "max_concurrent_processes");
+    public static final ResourceLocation PROCESS_PARALLELISM = new ResourceLocation(Tags.MOD_ID, "process_parallelism");
+    public static final ResourceLocation PROCESS_SPEED = new ResourceLocation(Tags.MOD_ID, "process_speed");
+    // Declared for extensions; no energy requirement currently applies an efficiency formula.
+    @SuppressWarnings("unused")
+    public static final ResourceLocation ENERGY_EFFICIENCY = new ResourceLocation(Tags.MOD_ID, "energy_efficiency");
+
+    private StandardMachineAttributes() {
+    }
+}

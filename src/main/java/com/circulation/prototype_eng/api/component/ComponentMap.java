@@ -12,7 +12,8 @@ import java.util.Objects;
 /**
  * Typed component assembly and ordered phase execution migrated from PM's MachineComponentMap.
  * One owner executes/mutates it at a time. A tick captures its entire dispatch list once, so edits
- * made by callbacks take effect on the next tick. A callback failure immediately aborts dispatch.
+ * made by callbacks take effect on the next tick. The plain tick aborts on any callback failure;
+ * the body overload preserves post cleanup after entering its business body.
  */
 public final class ComponentMap<E> {
     private final TopologicalComponentMap<ComponentType<E, ?>, Binding<E, ?>> components = new TopologicalComponentMap<>();
@@ -84,6 +85,55 @@ public final class ComponentMap<E> {
         }
         for (var entry : entries) {
             entry.post(owner);
+        }
+    }
+
+    /**
+     * Captures one dispatch for pre, tick, body and post. Pre/tick faults abort before body and post,
+     * preserving PM's process callback boundary and the plain tick's fail-fast behavior. Once body
+     * starts, every captured post callback runs in order, even after a body or earlier post fault.
+     * A body fault remains primary; post faults are suppressed rather than replacing it.
+     */
+    public void tick(E owner, Runnable body) {
+        Objects.requireNonNull(body);
+        var entries = orderedTickEntries();
+        for (var entry : entries) {
+            entry.pre(owner);
+        }
+        for (var entry : entries) {
+            entry.tick(owner);
+        }
+        Throwable primary = null;
+        try {
+            body.run();
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
+        } finally {
+            postAll(owner, entries, primary);
+        }
+    }
+
+    private static <E> void postAll(E owner, List<TickEntry<E, ?>> entries, @Nullable Throwable primary) {
+        Throwable failure = primary;
+        for (var entry : entries) {
+            try {
+                entry.post(owner);
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        if (primary == null) {
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
         }
     }
 

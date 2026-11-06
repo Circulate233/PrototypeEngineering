@@ -4,12 +4,13 @@
 
 ## 当前检查点
 
-- 当前阶段：固定资源/FE 需求与整阶段协调结算已完成并验证；本阶段本地提交，不推送，具体提交以 Git 日志为准。此前独立资源存储为 `920b6ba`，仓室/GUI 阶段为 `c8fa7f5`；原工作区其他格式/注解整理继续保留。
-- 最近验证（2026-11-07）：本机 IDEA MCP 对 79 个 src Java 文件及生成 Tags 共 80 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/recipe-energy-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 52 项逻辑用例。NBT 编解码、GUI/游戏尚未运行验证。
+- 当前阶段：属性 overlay、有效并行数量和单进程 START/TICK/END 循环已完成并验证；本阶段本地提交，不推送，具体提交以 Git 日志为准。此前需求/FE 协调为 `f2f44c4`，独立资源存储为 `920b6ba`，仓室/GUI 为 `c8fa7f5`；原工作区其他格式/注解整理继续保留。
+- 最近验证（2026-11-07）：本机 IDEA MCP 对 89 个 src Java 文件及生成 Tags 共 90 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/process-attributes-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 73 项逻辑用例。NBT 编解码、GUI/游戏尚未运行验证。
 - 当前实现：资源与 FE 独立存储，共用无 AEKey 字段的预留生命周期及真实 context 同步。RequirementTransaction 上交令牌；整阶段先应用资源和业务，全部成功才 complete，拒绝/异常统一补偿。MachineHatches 绑定公开仓室；固定资源/FE payload 已接入 START/TICK/END、来源去重、单次 FE 限额和允许的余量丢弃。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv；未引入 FE key。
+- 当前进程：MachineAttributes 按 ID 叠加父层、本地 modifier 与 base，数值三操作顺序继承 PM，外部 modifier 保留接口。资源/FE 按有效并行数饱和缩放；属性需求 START 局部添加/撤销、END 在 complete 清理。RecipeProcess.tick 保留完成前后双检查，double 绝对进度与 long 成功刻数在资源同一提交边界推进，Tick 上下文预先冻结；阻塞不多扣料、终态通知故障不重放。组件回调一次捕获并包围处理循环。MachineAttributes 不在读路径写缓存；并行进程执行期必须保持父层稳定。
 - 既有仓室：资源两侧独立 ScrollBar；能源 GUI 原纵向条与速率/自动设置；能源重载使用当前配置容量并裁剪保存量，资源保留保存容量。原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器 Gecko/Bloom 管线仍待迁移。
-- 下一步：迁移进程属性、有效并行数和刻状态，再接确定性概率/解析锁/模糊动态/随机输出/选择器与 overlay；源码入口与选择器回滚等风险见 migration-audit 的高级需求表。同步补进程恢复/扫描，并继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。当前持锁批结算不能跨 lane 等待，也不替代 planned 协议。
-- 未完成：完整配方进程/属性/overlay、高级内置需求、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
+- 下一步：以已建立的属性/刻状态接确定性概率、解析锁、模糊动态、随机输出、检查点、选择器与需求 overlay；源码入口和旧缺陷见 migration-audit。再补严格进程恢复/扫描/取消，并继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。扫描写入已计算并行值时不能再次继承倍乘；当前持锁批结算不能跨 lane 等待，也不替代 planned 协议。
+- 未完成：高级内置需求与需求 overlay、完整保存恢复/取消、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
 
 ## 必须记住的约束
 

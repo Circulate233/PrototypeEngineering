@@ -76,8 +76,7 @@ public final class MachineRecipe {
         return id;
     }
 
-    /** Downstream mods use the declared duration when scheduling recipe work. */
-    @SuppressWarnings("unused")
+    /** Declared work ticks, advanced by the process speed attribute. */
     public int durationTicks() {
         return durationTicks;
     }

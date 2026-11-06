@@ -10,7 +10,8 @@ import java.util.Objects;
 /**
  * Fixed resource IO payload, combining PM item/fluid IO with AE2's extensible key types.
  * This is one built-in requirement, not the recipe model or a replacement resource type system.
- * Counts describe one execution; process attributes and advanced selection are separate concerns.
+ * Counts describe one execution and are scaled by effective process parallelism at acquisition.
+ * Probability and advanced selection are separate requirements of the ongoing migration.
  */
 public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
                                   List<GenericStack> outputsPerTick, List<GenericStack> outputs,

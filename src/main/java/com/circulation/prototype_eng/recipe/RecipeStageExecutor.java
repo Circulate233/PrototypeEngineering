@@ -19,6 +19,18 @@ public final class RecipeStageExecutor {
     private RecipeStageExecutor() {}
 
     public static ProcessResult execute(RecipeProcess process, RecipeStage stage) {
+        return execute(process, stage, RequirementTransaction.SUCCESS);
+    }
+
+    /**
+     * The final participant applies process lifecycle/progress in the same reversible boundary.
+     * It is supplied before acquisition and is rolled back even when acquisition itself fails.
+     */
+    public static ProcessResult execute(RecipeProcess process, RecipeStage stage, RequirementTransaction transition) {
+        Objects.requireNonNull(transition);
+        if (transition.result() != ProcessResult.SUCCESS || !transition.reservations().isEmpty()) {
+            throw new IllegalArgumentException("A process transition must be successful and have no storage reservations");
+        }
         var transactions = new ObjectArrayList<RequirementTransaction>();
         var reservations = new ObjectArrayList<ResourceReservation>();
         ProcessResult result = ProcessResult.SUCCESS;
@@ -31,6 +43,7 @@ public final class RecipeStageExecutor {
                 if (result != ProcessResult.SUCCESS) { break; }
             }
         } catch (RuntimeException | Error failure) {
+            transactions.add(transition);
             // Exceptional cleanup only. Preserve the original fault and expose every cleanup fault.
             try {
                 ResourceTransactions.rollback(reservations, () -> rollback(transactions, failure));
@@ -41,6 +54,7 @@ public final class RecipeStageExecutor {
             }
             throw failure;
         }
+        transactions.add(transition);
         if (result == ProcessResult.SUCCESS) {
             boolean accepted = ResourceTransactions.commit(reservations, () -> {
                 for (var transaction : transactions) {

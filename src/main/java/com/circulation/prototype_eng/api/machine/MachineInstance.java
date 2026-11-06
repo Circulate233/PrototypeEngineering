@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.machine;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
+import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
@@ -9,6 +10,12 @@ import com.circulation.prototype_eng.api.component.ComponentMap;
  */
 public final class MachineInstance {
     private final ComponentMap<MachineInstance> components = new ComponentMap<>();
+    private final MachineAttributes attributes = new MachineAttributes();
+
+    /** Baseline attributes; mutate only while this machine has exclusive execution ownership. */
+    public MachineAttributes attributes() {
+        return attributes;
+    }
 
     public ComponentMap<MachineInstance> components() { return components; }
 

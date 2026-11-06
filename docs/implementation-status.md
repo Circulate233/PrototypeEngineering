@@ -14,7 +14,9 @@
 - 美术已复制：PM item_hatch 与 energy_hatch 十阶三方向原模型 60 份、方块 PNG 144 张、CTM/Bloom 元数据 30 份（其中 6 份还带动画），另有 gui_energy_hatch 的 22 张 PNG，保留 credit 与 bloom 元素。原仓室走标准 Forge 模型与这些元数据，外部 CTM/BLOOM 层环境的实际效果未验证；机器自定义 Gecko/Bloom 管线仍待迁移。
 - 本地化已接入：GuiText 实现 AE2S LocalizationEnum，客户端使用 getLocal，容器标题使用 text 组件；禁止 GUI 拼键和裸翻译键调用。最终本机 IDEA MCP 逐文件检查零错误、警告、弱警告，MCP 构建及 Gradle 完整构建均通过，证据见下。
 - P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段协调结算。RequirementTransaction 上交全部资源/FE 预留，业务 commit 仍可补偿，全部成功才 complete；获取/应用/业务异常完整逆序清理，完成/通知故障不再回滚终态令牌。
-- 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量当前是声明的单次执行量；进程属性/并行缩放、概率/模糊动态/选择器/overlay 仍必须继续迁移，不能称为完整配方循环。原因由 RecipeText 本地化枚举提供。
+- 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量定义为单次执行量，执行时使用进程有效并行数并按 PM 的 long 饱和规则缩放。概率/模糊动态/选择器/需求 overlay 仍必须继续迁移；原因由 RecipeText 本地化枚举提供。
+- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环尚未接入多工位扫描、保存恢复、取消及真实 planned 调度。
+- 属性需求已接入：START 添加自己的 modifier，使后续获取看到效果，失败只撤销本需求成功添加的 modifier；END 在全部业务 commit 成功后的 complete 局部清理，避免输出提前失去倍率，也避免整层快照抹去其他需求的业务修改。有限 base/amount/fallback 与每次运算结果严格校验；父属性在多个进程并行执行期间必须保持稳定，读取不写缓存。PM 的 ENERGY_EFFICIENCY 目前只声明，没有可迁移的内置能耗公式，未自造玩法计算。
 - 旧固定资源流程已改为内部 ResourceTransferPlan/Run 迁移材料，不再定义公开 MachineRecipe 或从公开池选择配方。本轮已改用独立 ResourceStorage，保留 4 项守恒/检查点/别名测试；预留、补偿和并发另有专门行为用例，不能用此固定流程代替完整需求处理器。未接入机器且无调用方的固定资源 ResourceTransferNbt 已移除；正式进程/组件持久化仍为必须迁移项。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
@@ -22,6 +24,9 @@
 
 ## 验证记录
 
+- 2026-11-07（属性与单进程循环阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，73 项逻辑测试全部通过，无失败、错误或跳过。在原 52 项基础上新增 6 项属性计算/overlay/快照/非法恢复行为、7 项包围业务的组件回调顺序与异常清理、8 项进程集成行为；涵盖三阶段阻塞与重试、属性局部补偿、冻结时间线、三阶段完成后通知故障不重放、有效并行与 long 饱和边界。未新增哈希、常量或 getter 专用测试。
+- 2026-11-07（属性与单进程循环阶段）：本机 IDEA MCP 对 89 个 src Java 文件及生成 Tags 共 90 文件逐个 `errorsOnly:false`；修复泛型写法提示，对尚待扫描器使用的公开并发属性仅作精确 unused 标注并说明用途，复查后全部零错误、警告、弱警告且无超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`；报告 [process-attributes-final.json](../build/reports/idea/process-attributes-final.json)。全程使用 MCP，没有操作桌面或启动游戏。
+- 2026-11-07（源码复核）：复用 PM 属性三运算、overlay 和 FactoryRecipeProcessor 的阶段循环，修正易丢失失效信号的属性缓存及固定父实例引用；实际计数改用 double/long，状态纳入阶段提交。已核对并记录旧扫描器有效并行值写 base 后可能再次倍乘、二分上界溢出、流体随机刻索引停滞和检查点预估速度不一致；完整扫描、随机需求、检查点与持久化仍未迁移，不宣称这些路径已修复。
 - 2026-11-07（需求与 FE 协调阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，52 项逻辑测试通过、无失败或跳过。在原 37 项基础上增加 7 项跨需求阶段补偿/终态故障用例、4 项能源预留与并发用例、4 项公开配方池到固定内置需求的集成用例；能源方向/限额/重载等原用例继续通过。未增加哈希、常量或 getter 测试。
 - 2026-11-07（需求与 FE 协调阶段）：本机 IDEA MCP 对 79 个 src Java 文件与生成 Tags 共 80 个文件逐个使用 `errorsOnly:false`；修复能源边界冗余条件后复查全部改动文件，最终无错误、警告、弱警告及超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`；报告 [recipe-energy-final.json](../build/reports/idea/recipe-energy-final.json)。只使用 MCP，没有操作桌面或启动游戏。
 - 2026-11-07（源码复核）：核对 PM 固定物品/流体/FE 及高级需求，确认选择器回滚后遗留索引可能跳过 START 扣料、END 失败可能误删 modifier、重复流体/FE 模拟、随机输出容量界和动态候选截断顺序等风险。审计和后续依赖已补到 [migration-audit.md](migration-audit.md) 与 [recipes.md](recipes.md)。当前固定需求修正了逐次模拟与跨类型完成边界；高级选择/概率缺陷仍在未来迁移项中，没有声称已修完。

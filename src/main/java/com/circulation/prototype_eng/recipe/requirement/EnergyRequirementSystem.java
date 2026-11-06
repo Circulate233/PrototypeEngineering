@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
@@ -37,6 +38,9 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
                                                    long input, long output) {
         if (input == 0 && output == 0) { return RequirementTransaction.SUCCESS; }
+        int parallelism = RecipeParallelism.effective(process);
+        input = RecipeParallelism.scaleCount(input, parallelism);
+        output = RecipeParallelism.scaleCount(output, parallelism);
         var reservations = new ObjectArrayList<ResourceReservation>();
         try {
             var hatches = MachineHatches.get(process.owner());

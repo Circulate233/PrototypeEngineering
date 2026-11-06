@@ -5,6 +5,7 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
@@ -50,9 +51,10 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         try {
             var hatches = MachineHatches.get(process.owner()).resources();
             String id = requirement.id().toString();
-            ProcessResult result = reserve(hatches, inputs, true, false, id, reservations);
+            int parallelism = RecipeParallelism.effective(process);
+            ProcessResult result = reserve(hatches, inputs, true, false, id, parallelism, reservations);
             if (result == ProcessResult.SUCCESS) {
-                result = reserve(hatches, outputs, false, requirement.payload().voidExcessOutputs(), id, reservations);
+                result = reserve(hatches, outputs, false, requirement.payload().voidExcessOutputs(), id, parallelism, reservations);
             }
             return new ReservedRequirement(result, reservations);
         } catch (RuntimeException | Error failure) {
@@ -62,7 +64,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     }
 
     private static ProcessResult reserve(List<ResourceHatch> hatches, List<GenericStack> quantities, boolean input,
-                                          boolean voidExcess, String id, List<ResourceReservation> reservations) {
+                                          boolean voidExcess, String id, int parallelism, List<ResourceReservation> reservations) {
         if (quantities.isEmpty()) {
             return ProcessResult.SUCCESS;
         }
@@ -84,7 +86,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
         for (var entry : totals.object2LongEntrySet()) {
             AEKey key = entry.getKey();
-            long remaining = entry.getLongValue();
+            long remaining = RecipeParallelism.scaleCount(entry.getLongValue(), parallelism);
             for (var storage : storages) {
                 var context = storage.context();
                 context.lock();
