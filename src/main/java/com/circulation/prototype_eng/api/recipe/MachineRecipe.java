@@ -38,10 +38,14 @@ public final class MachineRecipe {
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
                          Collection<ResourceLocation> recipeGroups) {
         this.id = Objects.requireNonNull(id);
-        if (durationTicks < 0) { throw new IllegalArgumentException("Negative recipe duration"); }
+        if (durationTicks < 0) {
+            throw new IllegalArgumentException("Negative recipe duration");
+        }
         this.durationTicks = durationTicks;
         var groups = new ObjectLinkedOpenHashSet<ResourceLocation>();
-        for (var group : recipeGroups) { groups.add(Objects.requireNonNull(group)); }
+        for (var group : recipeGroups) {
+            groups.add(Objects.requireNonNull(group));
+        }
         this.recipeGroups = ObjectSets.unmodifiable(groups);
         var typesById = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>();
         var requirementIds = new ObjectOpenHashSet<ResourceLocation>();
@@ -52,21 +56,45 @@ public final class MachineRecipe {
             if (previousType != null && previousType != requirement.type()) {
                 throw new IllegalArgumentException("Different requirement types share id " + requirement.type().id());
             }
-            if (!requirementIds.add(requirement.id())) { throw new IllegalArgumentException("Duplicate requirement " + requirement.id()); }
+            if (!requirementIds.add(requirement.id())) {
+                throw new IllegalArgumentException("Duplicate requirement " + requirement.id());
+            }
             sorted.add(requirement);
         }
         // Stable sort keeps declaration order inside each type, as in PM's executeStage.
         sorted.sort(Comparator.comparing(requirement -> requirement.type().id().toString()));
         orderedRequirements = ObjectLists.unmodifiable(sorted);
         var grouped = new Object2ObjectLinkedOpenHashMap<RecipeRequirementType<?>, List<RecipeRequirement<?>>>();
-        for (var requirement : sorted) { grouped.computeIfAbsent(requirement.type(), ignored -> new ObjectArrayList<>()).add(requirement); }
-        grouped.replaceAll((type, list) -> ObjectLists.unmodifiable(new ObjectArrayList<>(list)));
+        for (var requirement : sorted) {
+            grouped.computeIfAbsent(requirement.type(), ignored -> new ObjectArrayList<>()).add(requirement);
+        }
+        grouped.replaceAll((_, list) -> ObjectLists.unmodifiable(new ObjectArrayList<>(list)));
         this.requirements = Object2ObjectMaps.unmodifiable(grouped);
     }
 
-    public ResourceLocation id() { return id; }
-    public int durationTicks() { return durationTicks; }
-    public Set<ResourceLocation> recipeGroups() { return recipeGroups; }
-    public Map<RecipeRequirementType<?>, List<RecipeRequirement<?>>> requirements() { return requirements; }
-    public List<RecipeRequirement<?>> orderedRequirements() { return orderedRequirements; }
+    public ResourceLocation id() {
+        return id;
+    }
+
+    /** Downstream mods use the declared duration when scheduling recipe work. */
+    @SuppressWarnings("unused")
+    public int durationTicks() {
+        return durationTicks;
+    }
+
+    /** Downstream mods use group membership to select recipe definitions. */
+    @SuppressWarnings("unused")
+    public Set<ResourceLocation> recipeGroups() {
+        return recipeGroups;
+    }
+
+    /** Downstream mods inspect requirements by type through this immutable view. */
+    @SuppressWarnings("unused")
+    public Map<RecipeRequirementType<?>, List<RecipeRequirement<?>>> requirements() {
+        return requirements;
+    }
+
+    public List<RecipeRequirement<?>> orderedRequirements() {
+        return orderedRequirements;
+    }
 }

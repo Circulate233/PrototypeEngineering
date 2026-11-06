@@ -1,13 +1,16 @@
 package com.circulation.prototype_eng.storage;
 
 import com.circulation.prototype_eng.api.energy.EnergyInput;
+import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.CapabilityManager;
 
-/** Capability instances belong to hosts, which also own their save format. */
+/**
+ * Capability instances belong to hosts, which also own their save format.
+ */
 public final class HatchCapabilityRegistration {
     private HatchCapabilityRegistration() {
     }
@@ -15,6 +18,7 @@ public final class HatchCapabilityRegistration {
     public static void register() {
         registerHostCapability(ResourceHatch.class);
         registerHostCapability(EnergyInput.class);
+        registerHostCapability(EnergyOutput.class);
     }
 
     private static <T> void registerHostCapability(Class<T> type) {

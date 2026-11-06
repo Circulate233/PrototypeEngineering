@@ -48,7 +48,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 用户明确要求：复用 AE2 的类型系统，不以 MEStorage 作为核心存储契约。新存储、事务和预留 API 应独立设计，以保证配方与并发需求；AE/Forge 库存接口仅用于外部适配。详见[存储重构约束](storage-redesign.md)。
 
-旧固定资源流程已移出公共配方模型，改名为内部 `ResourceTransferPlan` / `ResourceTransferRun` / `ResourceTransferNbt`。保留原有部分收取、同源去重、FE 余额、输出重试及检查点代码，便于核对资源守恒；它仍依赖旧仓室接口，是待替换的迁移材料，**不是新需求执行器、事务适配器或并发运行基线**。它不再从公开 RecipePool 选择配方。
+旧固定资源流程已移出公共配方模型，改名为内部 `ResourceTransferPlan` / `ResourceTransferRun`。保留原有部分收取、同源去重、FE 余额、输出重试及内存检查点代码，便于核对资源守恒；它仍依赖旧仓室接口，是待替换的迁移材料，**不是新需求执行器、事务适配器或并发运行基线**。它不再从公开 RecipePool 选择配方。早期 `ResourceTransferNbt` 没有任何生产或测试调用方，也未接入机器保存；已移除这份固定资源格式的死代码。正式配方进程持久化仍须按 PM 的进程/组件职责迁移，并覆盖恢复验收，不能用该原型代替。
 
 不能把现有 MEStorage 操作包装成“支持 rollback”就接入阶段事务：源可能失效，输出可能已被其他机器取走，输入退回也可能没有容量。独立存储必须明确预留、提交、补偿、失效和通知边界，连同 PM/PN 调度协议一起迁移。
 

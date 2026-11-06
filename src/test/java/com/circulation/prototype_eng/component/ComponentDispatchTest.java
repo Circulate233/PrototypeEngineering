@@ -15,10 +15,18 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ComponentDispatchTest {
-    private static ResourceLocation id(String name) { return new ResourceLocation("migration_test", name); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("migration_test", name);
+    }
+
+    private static List<String> values(TopologicalComponentMap<String, String> graph) {
+        return graph.orderedComponents().stream().map(TopologicalComponentMap.Node::component).toList();
+    }
 
     @Test
     void softDependenciesSurviveReplacementRemovalAndLateInstallation() {
@@ -44,10 +52,6 @@ class ComponentDispatchTest {
         assertEquals(List.of("prepare", "check", "consume-2", "finish", "release"), values(graph));
     }
 
-    private static List<String> values(TopologicalComponentMap<String, String> graph) {
-        return graph.orderedComponents().stream().map(TopologicalComponentMap.Node::component).toList();
-    }
-
     @Test
     void externalSystemsKeepPhaseOrderAndReplacementTakesEffectOnTheNextTick() {
         var log = new ObjectArrayList<String>();
@@ -55,26 +59,30 @@ class ComponentDispatchTest {
         var scan = new RecordingSystem("scan", log);
         var process = new RecordingSystem("process", log);
         var audit = new RecordingSystem("audit", log) {
-            @Override public Set<ResourceLocation> runAfter() { return ObjectSets.singleton(ComponentDispatchTest.id("process")); }
+            @Override
+            public Set<ResourceLocation> runAfter() {
+                return ObjectSets.singleton(ComponentDispatchTest.id("process"));
+            }
         };
-        var processorType = new ComponentType<MachineInstance, String>(id("processor"), owner -> "old",
-                ObjectArrayList.of(scan, process));
-        var auditType = new ComponentType<MachineInstance, String>(id("audit_component"), owner -> "audit",
-                ObjectArrayList.of(audit));
+        var processorType = new ComponentType<>(id("processor"), _ -> "old",
+            ObjectArrayList.of(scan, process));
+        var auditType = new ComponentType<>(id("audit_component"), _ -> "audit",
+            ObjectArrayList.of(audit));
         // Deliberately install in reverse order: system constraints must not depend on registration order.
         machine.components().create(auditType, machine);
         machine.components().create(processorType, machine);
         scan.preAction = () -> machine.components().put(processorType, "new");
         machine.onSchedule();
         assertEquals(List.of("pre:scan:old", "pre:process:old", "pre:audit:audit",
-                "tick:scan:old", "tick:process:old", "tick:audit:audit",
-                "post:scan:old", "post:process:old", "post:audit:audit"), log);
+            "tick:scan:old", "tick:process:old", "tick:audit:audit",
+            "post:scan:old", "post:process:old", "post:audit:audit"), log);
         log.clear();
-        scan.preAction = () -> {};
+        scan.preAction = () -> {
+        };
         machine.onSchedule();
         assertEquals(List.of("pre:scan:new", "pre:process:new", "pre:audit:audit",
-                "tick:scan:new", "tick:process:new", "tick:audit:audit",
-                "post:scan:new", "post:process:new", "post:audit:audit"), log);
+            "tick:scan:new", "tick:process:new", "tick:audit:audit",
+            "post:scan:new", "post:process:new", "post:audit:audit"), log);
     }
 
     @Test
@@ -83,11 +91,14 @@ class ComponentDispatchTest {
         var machine = new MachineInstance();
         var failure = new IllegalStateException("broken external system");
         var broken = new RecordingSystem("broken", log) {
-            @Override public void onTick(MachineInstance owner, String component) { throw failure; }
+            @Override
+            public void onTick(MachineInstance owner, String component) {
+                throw failure;
+            }
         };
         var later = new RecordingSystem("later", log);
-        var type = new ComponentType<MachineInstance, String>(id("processor"), owner -> "state",
-                ObjectArrayList.of(broken, later));
+        var type = new ComponentType<>(id("processor"), _ -> "state",
+            ObjectArrayList.of(broken, later));
         machine.components().create(type, machine);
         assertSame(failure, assertThrows(IllegalStateException.class, machine::onSchedule));
         assertEquals(List.of("pre:broken:state", "pre:later:state"), log);
@@ -98,17 +109,20 @@ class ComponentDispatchTest {
         var machine = new MachineInstance();
         var log = new ObjectArrayList<String>();
         var a = new RecordingSystem("a", log) {
-            @Override public Set<ResourceLocation> runAfter() { return ObjectSets.singleton(ComponentDispatchTest.id("b")); }
+            @Override
+            public Set<ResourceLocation> runAfter() {
+                return ObjectSets.singleton(ComponentDispatchTest.id("b"));
+            }
         };
         var b = new RecordingSystem("b", log);
-        var typeA = new ComponentType<MachineInstance, String>(id("a_component"), owner -> "a", ObjectArrayList.of(a));
-        var typeB = new ComponentType<MachineInstance, String>(id("b_component"), owner -> "b", ObjectArrayList.of(b));
+        var typeA = new ComponentType<>(id("a_component"), _ -> "a", ObjectArrayList.of(a));
+        var typeB = new ComponentType<>(id("b_component"), _ -> "b", ObjectArrayList.of(b));
         machine.components().create(typeA, machine);
         machine.components().create(typeB, machine);
         machine.onSchedule();
         assertEquals("tick:b:b", log.get(2));
         machine.components().remove(typeB);
-        var replacement = new ComponentType<MachineInstance, String>(id("b_component"), owner -> "b2", ObjectLists.emptyList());
+        var replacement = new ComponentType<MachineInstance, String>(id("b_component"), _ -> "b2", ObjectLists.emptyList());
         machine.components().create(replacement, machine);
         log.clear();
         machine.onSchedule();
@@ -118,10 +132,18 @@ class ComponentDispatchTest {
     private static class RecordingSystem implements MachineSystem<String> {
         private final String name;
         private final List<String> log;
-        Runnable preAction = () -> {};
+        Runnable preAction = () -> {
+        };
 
-        RecordingSystem(String name, List<String> log) { this.name = name; this.log = log; }
-        @Override public ResourceLocation id() { return ComponentDispatchTest.id(name); }
+        RecordingSystem(String name, List<String> log) {
+            this.name = name;
+            this.log = log;
+        }
+
+        @Override
+        public ResourceLocation id() {
+            return ComponentDispatchTest.id(name);
+        }
 
         @Override
         public void onEvent(MachineInstance machine, String component, MachineEvent event) {
@@ -133,7 +155,9 @@ class ComponentDispatchTest {
                 default -> throw new AssertionError(event);
             };
             log.add(phase + ":" + name + ":" + component);
-            if (event instanceof MachineTickEvent.Pre) { preAction.run(); }
+            if (event instanceof MachineTickEvent.Pre) {
+                preAction.run();
+            }
         }
     }
 }

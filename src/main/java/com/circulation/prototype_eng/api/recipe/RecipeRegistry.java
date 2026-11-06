@@ -10,7 +10,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/** Register during RecipeRegistrationEvent; frozen definitions are available after mod post-init. */
+/**
+ * Register during RecipeRegistrationEvent; frozen definitions are available after mod post-init.
+ */
 public final class RecipeRegistry {
     public static final RecipeRegistry INSTANCE = new RecipeRegistry();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, PoolRegistration> registrations = new Object2ObjectLinkedOpenHashMap<>();
@@ -20,7 +22,9 @@ public final class RecipeRegistry {
     public void register(RecipePool pool) {
         requireRegistration();
         Objects.requireNonNull(pool, "pool");
-        if (registrations.containsKey(pool.id())) { throw new IllegalArgumentException("Duplicate recipe pool: " + pool.id()); }
+        if (registrations.containsKey(pool.id())) {
+            throw new IllegalArgumentException("Duplicate recipe pool: " + pool.id());
+        }
         registrations.put(pool.id(), new PoolRegistration(pool));
     }
 
@@ -28,25 +32,33 @@ public final class RecipeRegistry {
         register(new RecipePool(id, translationKey, ObjectLists.emptyList()));
     }
 
-    /** Adds to a previously declared pool, including one owned by another addon. Recipe order is priority. */
+    /**
+     * Adds to a previously declared pool, including one owned by another addon. Recipe order is priority.
+     */
     public void registerRecipe(ResourceLocation poolId, MachineRecipe recipe) {
         requireRegistration();
         Objects.requireNonNull(recipe, "recipe");
         var pool = registrations.get(poolId);
-        if (pool == null) { throw new IllegalArgumentException("Unknown recipe pool: " + poolId); }
+        if (pool == null) {
+            throw new IllegalArgumentException("Unknown recipe pool: " + poolId);
+        }
         if (pool.recipes.containsKey(recipe.id())) {
             throw new IllegalArgumentException("Duplicate recipe in pool " + poolId + ": " + recipe.id());
         }
         pool.recipes.put(recipe.id(), recipe);
     }
 
-    /** Called by the lifecycle owner, once all Java registrations have been dispatched. */
+    /**
+     * Called by the lifecycle owner, once all Java registrations have been dispatched.
+     */
     public void freeze() {
-        if (frozenPools != null) { throw new IllegalStateException("Recipe registry already frozen"); }
+        if (frozenPools != null) {
+            throw new IllegalStateException("Recipe registry already frozen");
+        }
         for (var entry : registrations.object2ObjectEntrySet()) {
             var registration = entry.getValue();
             pools.put(entry.getKey(), new RecipePool(entry.getKey(), registration.translationKey,
-                    new ObjectArrayList<>(registration.recipes.values())));
+                new ObjectArrayList<>(registration.recipes.values())));
         }
         var ordered = new ObjectArrayList<>(pools.values());
         ordered.sort(Comparator.comparing(pool -> pool.id().toString()));
@@ -54,6 +66,8 @@ public final class RecipeRegistry {
         registrations.clear();
     }
 
+    /** Downstream mods enumerate the frozen pools after registration has finished. */
+    @SuppressWarnings("unused")
     public List<RecipePool> pools() {
         requireFrozen();
         return frozenPools;
@@ -66,11 +80,15 @@ public final class RecipeRegistry {
     }
 
     private void requireFrozen() {
-        if (frozenPools == null) { throw new IllegalStateException("Recipe registry is not ready"); }
+        if (frozenPools == null) {
+            throw new IllegalStateException("Recipe registry is not ready");
+        }
     }
 
     private void requireRegistration() {
-        if (frozenPools != null) { throw new IllegalStateException("Recipe registration has ended"); }
+        if (frozenPools != null) {
+            throw new IllegalStateException("Recipe registration has ended");
+        }
     }
 
     private static final class PoolRegistration {
@@ -79,7 +97,9 @@ public final class RecipeRegistry {
 
         PoolRegistration(RecipePool pool) {
             translationKey = pool.translationKey();
-            for (MachineRecipe recipe : pool.recipes()) { recipes.put(recipe.id(), recipe); }
+            for (MachineRecipe recipe : pool.recipes()) {
+                recipes.put(recipe.id(), recipe);
+            }
         }
     }
 }

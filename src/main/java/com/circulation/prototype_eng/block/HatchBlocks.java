@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.block;
 
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
 import net.minecraft.block.Block;
@@ -13,16 +14,34 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.GameRegistry;
 
+import java.util.Locale;
+import java.util.Objects;
+
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class HatchBlocks {
-    public static final HatchBlock INPUT = new HatchBlock("input_hatch", () -> new ResourceHatchBlockEntity(HatchMode.INPUT));
-    public static final HatchBlock OUTPUT = new HatchBlock("output_hatch", () -> new ResourceHatchBlockEntity(HatchMode.OUTPUT));
-    public static final HatchBlock MIXED = new HatchBlock("mixed_hatch", () -> new ResourceHatchBlockEntity(HatchMode.MIXED));
-    public static final HatchBlock ENERGY = new HatchBlock("energy_hatch", EnergyHatchBlockEntity::new);
+    private static final HatchBlock[] BLOCKS = createBlocks();
 
-    private HatchBlocks() {}
+    private static HatchBlock[] createBlocks() {
+        var blocks = new HatchBlock[60];
+        int index = 0;
+        for (var tier : HatchTier.values()) {
+            for (var mode : HatchMode.values()) {
+                String direction = mode.name().toLowerCase(Locale.ROOT);
+                blocks[index++] = new HatchBlock(direction + "_hatch_" + tier.level(),
+                        () -> new ResourceHatchBlockEntity(mode, tier), 5.0F);
+                blocks[index++] = new HatchBlock("energy_" + direction + "_hatch_" + tier.level(),
+                        () -> new EnergyHatchBlockEntity(mode, tier), 3.5F);
+            }
+        }
+        return blocks;
+    }
 
-    public static HatchBlock[] all() { return new HatchBlock[]{INPUT, OUTPUT, MIXED, ENERGY}; }
+    private HatchBlocks() {
+    }
+
+    public static HatchBlock[] all() {
+        return BLOCKS.clone();
+    }
 
     @SubscribeEvent
     public static void registerBlocks(RegistryEvent.Register<Block> event) {
@@ -34,7 +53,7 @@ public final class HatchBlocks {
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
         for (HatchBlock block : all()) {
-            event.getRegistry().register(new ItemBlock(block).setRegistryName(block.getRegistryName()));
+            event.getRegistry().register(new ItemBlock(block).setRegistryName(Objects.requireNonNull(block.getRegistryName())));
         }
     }
 }

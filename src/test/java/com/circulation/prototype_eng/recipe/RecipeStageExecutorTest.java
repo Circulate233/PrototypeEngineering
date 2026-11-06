@@ -17,28 +17,47 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipeStageExecutorTest {
-    private static ResourceLocation id(String name) { return new ResourceLocation("external_addon", name); }
     private static final ComponentType<RecipeProcess, Ledger> LEDGER =
-            new ComponentType<>(id("ledger"), owner -> new Ledger(), ObjectLists.emptyList());
+        new ComponentType<>(id("ledger"), _ -> new Ledger(), ObjectLists.emptyList());
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("external_addon", name);
+    }
+
+    private static RecipeProcess process(ExternalSystem system) {
+        var type = new RecipeRequirementType<>(id("charges"), system);
+        var recipe = new MachineRecipe(id("recipe"), 1, ObjectArrayList.of(
+            type.requirement(id("first"), new Charge(2)),
+            type.requirement(id("second"), new Charge(3)),
+            type.requirement(id("third"), new Charge(1))));
+        return new RecipeProcess(new MachineInstance(), recipe, 1);
+    }
 
     @Test
     void registeredExternalRequirementsRollbackWholeBlockedStageThenRetryWithoutLeakingState() {
         var system = new ExternalSystem();
-        var later = new RecipeRequirementType<Charge>(id("z_later"), system);
-        var first = new RecipeRequirementType<Charge>(id("a_first"), system);
+        var later = new RecipeRequirementType<>(id("z_later"), system);
+        var first = new RecipeRequirementType<>(id("a_first"), system);
         var registry = new RecipeRegistry();
         registry.registerPool(id("pool"), "external.pool");
         // Cross-type order is deliberately reversed. The two requirements inside a_first retain declaration order.
         registry.registerRecipe(id("pool"), new MachineRecipe(id("recipe"), 10, ObjectArrayList.of(
-                later.requirement(id("later"), new Charge(1)),
-                first.requirement(id("first"), new Charge(2)),
-                first.requirement(id("second"), new Charge(3)))));
+            later.requirement(id("later"), new Charge(1)),
+            first.requirement(id("first"), new Charge(2)),
+            first.requirement(id("second"), new Charge(3)))));
         registry.freeze();
-        var process = new RecipeProcess(new MachineInstance(), registry.get(id("pool")).recipes().getFirst(), 7);
+        var pool = Objects.requireNonNull(registry.get(id("pool")));
+        var process = new RecipeProcess(new MachineInstance(), pool.recipes().getFirst(), 7);
         var ledger = process.components().create(LEDGER, process);
         ledger.balance = 4;
         assertInstanceOf(ProcessResult.Blocked.class, RecipeStageExecutor.execute(process, RecipeStage.START));
@@ -50,7 +69,7 @@ class RecipeStageExecutorTest {
         assertSame(ProcessResult.SUCCESS, RecipeStageExecutor.execute(process, RecipeStage.START));
         assertEquals(6, ledger.balance);
         assertEquals(List.of("acquire:START:first", "acquire:START:second", "acquire:START:later",
-                "commit:first", "commit:second", "commit:later"), ledger.events);
+            "commit:first", "commit:second", "commit:later"), ledger.events);
         ledger.events.clear();
         assertSame(ProcessResult.SUCCESS, RecipeStageExecutor.execute(process, RecipeStage.TICK));
         assertEquals(0, ledger.balance);
@@ -73,8 +92,11 @@ class RecipeStageExecutorTest {
         var primary = new IllegalStateException("acquisition failed");
         var cleanup = new IllegalStateException("rollback failed");
         var process = process(new ExternalSystem() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Charge> requirement) {
-                if (requirement.id().equals(id("third"))) { throw primary; }
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Charge> requirement) {
+                if (requirement.id().equals(id("third"))) {
+                    throw primary;
+                }
                 return super.start(process, requirement);
             }
         });
@@ -96,7 +118,7 @@ class RecipeStageExecutorTest {
         ledger.faultAt = "second";
         ledger.rollbackFault = new IllegalStateException("undo failure");
         assertSame(ledger.rollbackFault, assertThrows(IllegalStateException.class,
-                () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
+            () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
         assertEquals(3, ledger.balance);
         assertEquals(List.of("acquire:START:first", "acquire:START:second", "rollback:second", "rollback:first"), ledger.events);
     }
@@ -109,15 +131,18 @@ class RecipeStageExecutorTest {
         ledger.faultAt = "second";
         ledger.commitFault = new IllegalStateException("commit failure");
         assertSame(ledger.commitFault, assertThrows(IllegalStateException.class,
-                () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
+            () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
         assertEquals(List.of("acquire:START:first", "acquire:START:second", "acquire:START:third",
-                "commit:first", "commit:second"), ledger.events);
+            "commit:first", "commit:second"), ledger.events);
     }
 
     @Test
     void expectedBusinessFailureRollsBackAndIsReturnedWithoutRunningLaterRequirements() {
         var process = process(new ExternalSystem() {
-            @Override ProcessResult rejection() { return new ProcessResult.Failure("permission_revoked"); }
+            @Override
+            ProcessResult rejection() {
+                return new ProcessResult.Failure("permission_revoked");
+            }
         });
         var ledger = process.components().create(LEDGER, process);
         ledger.balance = 3;
@@ -126,55 +151,68 @@ class RecipeStageExecutorTest {
         assertEquals(List.of("acquire:START:first", "acquire:START:second", "rollback:second", "rollback:first"), ledger.events);
     }
 
-    private static RecipeProcess process(ExternalSystem system) {
-        var type = new RecipeRequirementType<Charge>(id("charges"), system);
-        var recipe = new MachineRecipe(id("recipe"), 1, ObjectArrayList.of(
-                type.requirement(id("first"), new Charge(2)),
-                type.requirement(id("second"), new Charge(3)),
-                type.requirement(id("third"), new Charge(1))));
-        return new RecipeProcess(new MachineInstance(), recipe, 1);
+    private record Charge(int amount) {
     }
 
-    private record Charge(int amount) {}
-
     private static final class Ledger {
-        int balance;
         final List<String> events = new ObjectArrayList<>();
+        int balance;
         String faultAt;
         RuntimeException rollbackFault;
         RuntimeException commitFault;
     }
 
-    /** A consumer-defined requirement: no library resource/energy implementation is involved. */
+    /**
+     * A consumer-defined requirement: no library resource/energy implementation is involved.
+     */
     private static class ExternalSystem implements RecipeRequirementSystem<Charge> {
-        @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Charge> requirement) {
+        @Override
+        public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Charge> requirement) {
             return acquire(process, requirement, RecipeStage.START);
         }
-        @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Charge> requirement) {
+
+        @Override
+        public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Charge> requirement) {
             return acquire(process, requirement, RecipeStage.TICK);
         }
-        @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Charge> requirement) {
+
+        @Override
+        public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Charge> requirement) {
             return acquire(process, requirement, RecipeStage.END);
         }
-        ProcessResult rejection() { return new ProcessResult.Blocked("waiting_for_budget"); }
+
+        ProcessResult rejection() {
+            return new ProcessResult.Blocked("waiting_for_budget");
+        }
 
         private RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<Charge> requirement, RecipeStage stage) {
-            var ledger = process.components().get(LEDGER);
+            var ledger = Objects.requireNonNull(process.components().get(LEDGER));
             var name = requirement.id().getPath();
             ledger.events.add("acquire:" + stage + ":" + name);
             int received = Math.min(ledger.balance, requirement.payload().amount());
             ledger.balance -= received;
             ProcessResult result = received == requirement.payload().amount() ? ProcessResult.SUCCESS : rejection();
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return result; }
-                @Override public void commit() {
-                    ledger.events.add("commit:" + name);
-                    if (name.equals(ledger.faultAt) && ledger.commitFault != null) { throw ledger.commitFault; }
+                @Override
+                public ProcessResult result() {
+                    return result;
                 }
-                @Override public void rollback() {
+
+                @Override
+                public void commit() {
+                    ledger.events.add("commit:" + name);
+                    if (name.equals(ledger.faultAt) && ledger.commitFault != null) {
+                        throw ledger.commitFault;
+                    }
+                }
+
+                @Override
+                public void rollback() {
                     ledger.events.add("rollback:" + name);
                     ledger.balance += received;
-                    if (name.equals(ledger.faultAt) && ledger.rollbackFault != null) { throw ledger.rollbackFault; }
+                    if (name.equals(ledger.faultAt) && ledger.rollbackFault != null) {
+                        throw ledger.rollbackFault;
+                    }
                 }
             };
         }

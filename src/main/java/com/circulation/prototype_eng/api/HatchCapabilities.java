@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api;
 
 import com.circulation.prototype_eng.api.energy.EnergyInput;
+import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -18,6 +19,9 @@ public final class HatchCapabilities {
 
     @CapabilityInject(EnergyInput.class)
     public static Capability<EnergyInput> ENERGY_INPUT;
+
+    @CapabilityInject(EnergyOutput.class)
+    public static Capability<EnergyOutput> ENERGY_OUTPUT;
 
     private HatchCapabilities() {
     }
@@ -38,5 +42,12 @@ public final class HatchCapabilities {
         }
         EnergyInput input = host.getCapability(ENERGY_INPUT, side);
         return input != null && input.isValid() ? input : null;
+    }
+
+    @Nullable
+    public static EnergyOutput findEnergyOutput(@Nullable TileEntity host, @Nullable EnumFacing side) {
+        if (host == null || host.isInvalid() || ENERGY_OUTPUT == null) { return null; }
+        EnergyOutput output = host.getCapability(ENERGY_OUTPUT, side);
+        return output != null && output.isValid() ? output : null;
     }
 }

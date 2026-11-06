@@ -45,25 +45,52 @@ public final class ComponentMap<E> {
     }
 
     public void remove(ComponentType<E, ?> type) {
-        if (!components.contains(type)) { return; }
+        if (!components.contains(type)) {
+            return;
+        }
         components.remove(type);
         types.remove(type.id());
     }
 
-    public void clear() { components.clear(); types.clear(); }
-    public void addDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) { components.addDependency(dependent, dependency); }
-    public void removeDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) { components.removeDependency(dependent, dependency); }
+    /** Downstream mods can reset the components owned by their machine or process. */
+    @SuppressWarnings("unused")
+    public void clear() {
+        components.clear();
+        types.clear();
+    }
 
-    /** Captures all phases before invoking any callback. */
+    /** Downstream mods can add ordering constraints while assembling components. */
+    @SuppressWarnings("unused")
+    public void addDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) {
+        components.addDependency(dependent, dependency);
+    }
+
+    /** Downstream mods can remove ordering constraints when their assembly changes. */
+    @SuppressWarnings("unused")
+    public void removeDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) {
+        components.removeDependency(dependent, dependency);
+    }
+
+    /**
+     * Captures all phases before invoking any callback.
+     */
     public void tick(E owner) {
         var entries = orderedTickEntries();
-        for (var entry : entries) { entry.pre(owner); }
-        for (var entry : entries) { entry.tick(owner); }
-        for (var entry : entries) { entry.post(owner); }
+        for (var entry : entries) {
+            entry.pre(owner);
+        }
+        for (var entry : entries) {
+            entry.tick(owner);
+        }
+        for (var entry : entries) {
+            entry.post(owner);
+        }
     }
 
     private List<TickEntry<E, ?>> orderedTickEntries() {
-        if (dispatchRevision == components.revision()) { return dispatch; }
+        if (dispatchRevision == components.revision()) {
+            return dispatch;
+        }
         var graph = new TopologicalComponentMap<ComponentType<E, ?>, Binding<E, ?>>();
         var bySystem = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ComponentType<E, ?>>>();
         var systemDefinitions = new Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>>();
@@ -72,9 +99,13 @@ public final class ComponentMap<E> {
             for (var system : node.key().systems()) {
                 var id = Objects.requireNonNull(system.id(), "system id");
                 var previous = systemDefinitions.putIfAbsent(id, system);
-                if (previous != null && previous != system) { throw new IllegalArgumentException("Different systems share id " + id); }
+                if (previous != null && previous != system) {
+                    throw new IllegalArgumentException("Different systems share id " + id);
+                }
                 var owners = bySystem.computeIfAbsent(id, ignored -> new ObjectArrayList<>());
-                if (owners.contains(node.key())) { throw new IllegalArgumentException("System bound twice: " + id); }
+                if (owners.contains(node.key())) {
+                    throw new IllegalArgumentException("System bound twice: " + id);
+                }
                 owners.add(node.key());
             }
         }
@@ -83,19 +114,29 @@ public final class ComponentMap<E> {
                 for (var after : system.runAfter()) {
                     var owners = bySystem.get(after);
                     if (owners != null) {
-                        for (var other : owners) { if (other != node.key()) { graph.addDependency(node.key(), other); } }
+                        for (var other : owners) {
+                            if (other != node.key()) {
+                                graph.addDependency(node.key(), other);
+                            }
+                        }
                     }
                 }
                 for (var before : system.runBefore()) {
                     var owners = bySystem.get(before);
                     if (owners != null) {
-                        for (var other : owners) { if (other != node.key()) { graph.addDependency(other, node.key()); } }
+                        for (var other : owners) {
+                            if (other != node.key()) {
+                                graph.addDependency(other, node.key());
+                            }
+                        }
                     }
                 }
             }
         }
         var entries = new ObjectArrayList<TickEntry<E, ?>>();
-        for (var node : graph.orderedComponents()) { node.component().appendEntries(entries); }
+        for (var node : graph.orderedComponents()) {
+            node.component().appendEntries(entries);
+        }
         dispatch = ObjectLists.unmodifiable(entries);
         dispatchRevision = components.revision();
         return dispatch;
@@ -104,13 +145,23 @@ public final class ComponentMap<E> {
     private record Binding<E, C>(ComponentType<E, C> type, C component) {
         void appendEntries(ObjectArrayList<TickEntry<E, ?>> entries) {
             // PM preserves the declared order of multiple systems attached to one component.
-            for (var system : type.systems()) { entries.add(new TickEntry<>(system, component)); }
+            for (var system : type.systems()) {
+                entries.add(new TickEntry<>(system, component));
+            }
         }
     }
 
     private record TickEntry<E, C>(ComponentSystem<E, C> system, C component) {
-        void pre(E owner) { system.onPreTick(owner, component); }
-        void tick(E owner) { system.onTick(owner, component); }
-        void post(E owner) { system.onPostTick(owner, component); }
+        void pre(E owner) {
+            system.onPreTick(owner, component);
+        }
+
+        void tick(E owner) {
+            system.onTick(owner, component);
+        }
+
+        void post(E owner) {
+            system.onPostTick(owner, component);
+        }
     }
 }

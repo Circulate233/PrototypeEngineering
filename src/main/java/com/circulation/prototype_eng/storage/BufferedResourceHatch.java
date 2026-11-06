@@ -9,23 +9,27 @@ import ae2.api.storage.MEStorage;
 import ae2.helpers.externalstorage.GenericStackInv;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.localization.GuiText;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.text.ITextComponent;
-import net.minecraft.util.text.TextComponentTranslation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 import java.util.Objects;
 
-/** Owns buffers independently of their block entity or GUI. */
+/**
+ * Owns buffers independently of their block entity or GUI.
+ */
 public final class BufferedResourceHatch implements ResourceHatch {
     private final Buffer input;
     private final Buffer output;
     private final MEStorage automation = new AutomationPort();
     private boolean valid = true;
 
-    /** Capacities are per slot and per key type, in that type's native units. */
+    /**
+     * Capacities are per slot and per key type, in that type's native units.
+     */
     public BufferedResourceHatch(HatchMode mode, int slotsPerSide,
                                  Map<AEKeyType, Long> capacities, Runnable onChanged) {
         Objects.requireNonNull(mode, "mode");
@@ -37,8 +41,8 @@ public final class BufferedResourceHatch implements ResourceHatch {
         if (limits.values().longStream().anyMatch(capacity -> capacity <= 0)) {
             throw new IllegalArgumentException("Capacities must be positive");
         }
-        input = mode.hasInput() ? new Buffer(slotsPerSide, limits, onChanged) : null;
-        output = mode.hasOutput() ? new Buffer(slotsPerSide, limits, onChanged) : null;
+        input = mode.hasInput() ? new Buffer(this, slotsPerSide, limits, onChanged) : null;
+        output = mode.hasOutput() ? new Buffer(this, slotsPerSide, limits, onChanged) : null;
     }
 
     @Override
@@ -53,7 +57,9 @@ public final class BufferedResourceHatch implements ResourceHatch {
         return output;
     }
 
-    /** External automation inserts only into input and extracts only from output. */
+    /**
+     * External automation inserts only into input and extracts only from output.
+     */
     public MEStorage automation() {
         return automation;
     }
@@ -63,7 +69,9 @@ public final class BufferedResourceHatch implements ResourceHatch {
         return valid;
     }
 
-    /** Retained machine/automation storage references also stop accepting operations. */
+    /**
+     * Retained machine/automation storage references also stop accepting operations.
+     */
     public void invalidate() {
         valid = false;
     }
@@ -90,9 +98,12 @@ public final class BufferedResourceHatch implements ResourceHatch {
         }
     }
 
-    private final class Buffer extends GenericStackInv {
-        Buffer(int slots, Map<AEKeyType, Long> capacities, Runnable listener) {
+    private static final class Buffer extends GenericStackInv {
+        private final BufferedResourceHatch owner;
+
+        Buffer(BufferedResourceHatch owner, int slots, Map<AEKeyType, Long> capacities, Runnable listener) {
             super(capacities.keySet(), listener, Mode.STORAGE, slots);
+            this.owner = owner;
             capacities.forEach(this::setCapacity);
         }
 
@@ -103,17 +114,17 @@ public final class BufferedResourceHatch implements ResourceHatch {
 
         @Override
         public boolean canInsert() {
-            return valid;
+            return owner.isValid();
         }
 
         @Override
         public boolean canExtract() {
-            return valid;
+            return owner.isValid();
         }
 
         @Override
         public void getAvailableStacks(KeyCounter out) {
-            if (valid) {
+            if (owner.isValid()) {
                 super.getAvailableStacks(out);
             }
         }
@@ -141,7 +152,7 @@ public final class BufferedResourceHatch implements ResourceHatch {
 
         @Override
         public ITextComponent getDescription() {
-            return new TextComponentTranslation("prototype_eng.storage.resource_hatch");
+            return GuiText.ResourceStorage.text();
         }
     }
 }

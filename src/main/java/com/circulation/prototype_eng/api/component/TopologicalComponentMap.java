@@ -27,17 +27,9 @@ public final class TopologicalComponentMap<K, C> {
     private long revision;
     private long cachedRevision;
 
-    public record Node<K, C>(K key, C component, Set<K> dependencies) {
-        public Node {
-            Objects.requireNonNull(key);
-            Objects.requireNonNull(component);
-            var copy = new ObjectLinkedOpenHashSet<K>();
-            for (K dependency : dependencies) { copy.add(Objects.requireNonNull(dependency)); }
-            dependencies = ObjectSets.unmodifiable(copy);
-        }
+    public long revision() {
+        return revision;
     }
-
-    public long revision() { return revision; }
 
     @Nullable
     public C get(K key) {
@@ -45,15 +37,23 @@ public final class TopologicalComponentMap<K, C> {
         return node == null ? null : node.component();
     }
 
-    public boolean contains(K key) { return nodes.containsKey(key); }
+    public boolean contains(K key) {
+        return nodes.containsKey(key);
+    }
 
-    public void add(K key, C component) { add(key, component, ObjectSets.emptySet()); }
+    public void add(K key, C component) {
+        add(key, component, ObjectSets.emptySet());
+    }
 
-    /** Replaces this node's own dependencies; incoming dependencies remain attached to its key. */
+    /**
+     * Replaces this node's own dependencies; incoming dependencies remain attached to its key.
+     */
     public void add(K key, C component, Collection<? extends K> dependencies) {
         var merged = new ObjectLinkedOpenHashSet<K>(dependencies);
         var waiting = pending.get(key);
-        if (waiting != null) { merged.addAll(waiting); }
+        if (waiting != null) {
+            merged.addAll(waiting);
+        }
         var node = new Node<>(key, component, merged);
         nodes.remove(key);
         nodes.put(key, node);
@@ -66,7 +66,9 @@ public final class TopologicalComponentMap<K, C> {
         Objects.requireNonNull(dependency);
         var node = nodes.get(dependent);
         if (node == null) {
-            if (pending.computeIfAbsent(dependent, ignored -> new ObjectLinkedOpenHashSet<>()).add(dependency)) { revision++; }
+            if (pending.computeIfAbsent(dependent, ignored -> new ObjectLinkedOpenHashSet<>()).add(dependency)) {
+                revision++;
+            }
         } else if (!node.dependencies().contains(dependency)) {
             var dependencies = new ObjectLinkedOpenHashSet<>(node.dependencies());
             dependencies.add(dependency);
@@ -80,7 +82,9 @@ public final class TopologicalComponentMap<K, C> {
         if (node == null) {
             var waiting = pending.get(dependent);
             if (waiting != null && waiting.remove(dependency)) {
-                if (waiting.isEmpty()) { pending.remove(dependent); }
+                if (waiting.isEmpty()) {
+                    pending.remove(dependent);
+                }
                 revision++;
             }
         } else if (node.dependencies().contains(dependency)) {
@@ -91,7 +95,11 @@ public final class TopologicalComponentMap<K, C> {
         }
     }
 
-    public void addAfter(K target, K key, C component) { add(key, component, ObjectSets.singleton(target)); }
+    /** Downstream mods can insert a component after an existing or pending target. */
+    @SuppressWarnings("unused")
+    public void addAfter(K target, K key, C component) {
+        add(key, component, ObjectSets.singleton(target));
+    }
 
     public void addBefore(K target, K key, C component) {
         add(key, component);
@@ -101,22 +109,32 @@ public final class TopologicalComponentMap<K, C> {
     public void addFirst(K key, C component) {
         var roots = new ObjectArrayList<K>();
         for (var node : nodes.values()) {
-            if (!node.key().equals(key) && node.dependencies().stream().noneMatch(nodes::containsKey)) { roots.add(node.key()); }
+            if (!node.key().equals(key) && node.dependencies().stream().noneMatch(nodes::containsKey)) {
+                roots.add(node.key());
+            }
         }
         add(key, component);
-        for (K root : roots) { addDependency(root, key); }
+        for (K root : roots) {
+            addDependency(root, key);
+        }
     }
 
     public void addTail(K key, C component) {
         var leaves = new ObjectLinkedOpenHashSet<>(nodes.keySet());
         leaves.remove(key);
         for (var node : nodes.values()) {
-            if (!node.key().equals(key)) { leaves.removeAll(node.dependencies()); }
+            if (!node.key().equals(key)) {
+                leaves.removeAll(node.dependencies());
+            }
         }
         add(key, component, leaves);
     }
 
-    public void remove(K key) { if (nodes.remove(key) != null) { revision++; } }
+    public void remove(K key) {
+        if (nodes.remove(key) != null) {
+            revision++;
+        }
+    }
 
     public void clear() {
         nodes.clear();
@@ -124,9 +142,13 @@ public final class TopologicalComponentMap<K, C> {
         revision++;
     }
 
-    /** Immutable snapshot: later edits cannot change a phase that is already executing. */
+    /**
+     * Immutable snapshot: later edits cannot change a phase that is already executing.
+     */
     public List<Node<K, C>> orderedComponents() {
-        if (cachedRevision == revision) { return cached; }
+        if (cachedRevision == revision) {
+            return cached;
+        }
         var indegrees = new Object2IntOpenHashMap<K>();
         var dependents = new Object2ObjectOpenHashMap<K, ObjectArrayList<K>>();
         for (var node : nodes.values()) {
@@ -140,15 +162,23 @@ public final class TopologicalComponentMap<K, C> {
             indegrees.put(node.key(), degree);
         }
         var queue = new ObjectArrayList<K>(nodes.size());
-        for (K key : nodes.keySet()) { if (indegrees.getInt(key) == 0) { queue.add(key); } }
+        for (K key : nodes.keySet()) {
+            if (indegrees.getInt(key) == 0) {
+                queue.add(key);
+            }
+        }
         var ordered = new ObjectArrayList<Node<K, C>>(nodes.size());
         for (int i = 0; i < queue.size(); i++) {
             K key = queue.get(i);
             ordered.add(nodes.get(key));
             var next = dependents.get(key);
-            if (next == null) { continue; }
+            if (next == null) {
+                continue;
+            }
             for (K dependent : next) {
-                if (indegrees.addTo(dependent, -1) == 1) { queue.add(dependent); }
+                if (indegrees.addTo(dependent, -1) == 1) {
+                    queue.add(dependent);
+                }
             }
         }
         if (ordered.size() != nodes.size()) {
@@ -159,5 +189,17 @@ public final class TopologicalComponentMap<K, C> {
         cached = ObjectLists.unmodifiable(ordered);
         cachedRevision = revision;
         return cached;
+    }
+
+    public record Node<K, C>(K key, C component, Set<K> dependencies) {
+        public Node {
+            Objects.requireNonNull(key);
+            Objects.requireNonNull(component);
+            var copy = new ObjectLinkedOpenHashSet<K>();
+            for (K dependency : dependencies) {
+                copy.add(Objects.requireNonNull(dependency));
+            }
+            dependencies = ObjectSets.unmodifiable(copy);
+        }
     }
 }

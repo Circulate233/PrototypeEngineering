@@ -24,11 +24,30 @@ public final class RecipeProcess {
         this.seed = seed;
     }
 
-    public MachineInstance owner() { return owner; }
-    public MachineRecipe recipe() { return recipe; }
-    public long seed() { return seed; }
-    public ComponentMap<RecipeProcess> components() { return components; }
+    public MachineInstance owner() {
+        return owner;
+    }
 
-    /** Repeatable phase/context selection, matching PM's seed XOR salt convention. */
-    public Random random(String salt) { return new Random(seed ^ salt.hashCode()); }
+    public MachineRecipe recipe() {
+        return recipe;
+    }
+
+    /** Downstream mods can retain the seed when restoring deterministic process state. */
+    @SuppressWarnings("unused")
+    public long seed() {
+        return seed;
+    }
+
+    public ComponentMap<RecipeProcess> components() {
+        return components;
+    }
+
+    /**
+     * Repeatable phase/context selection, matching PM's seed XOR salt convention.
+     * Downstream requirement implementations use a salt to isolate their random choices.
+     */
+    @SuppressWarnings("unused")
+    public Random random(String salt) {
+        return new Random(seed ^ salt.hashCode());
+    }
 }

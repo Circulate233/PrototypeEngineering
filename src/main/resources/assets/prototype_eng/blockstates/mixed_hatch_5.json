@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "normal": {
+      "model": "prototype_eng:item_hatch/io/lv5"
+    }
+  }
+}

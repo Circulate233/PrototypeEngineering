@@ -34,7 +34,7 @@ PN 原先作为 PM 附属模组产生的访问限制、注册桥接、重复上�
 | 编号 | 决定 | 对实现的约束 |
 |---|---|---|
 | R01 | 使用纯 Java 25 | 复用 Kotlin 算法时改写为 Java；不引入 Kotlin、Kotlin 协程或 Forgelin 依赖。 |
-| R02 | 按职责设计接口与类名 | 接口表达明确的行为职责、调用契约或扩展点；值对象、配置、状态与结果可直接使用具体类。实现类按实际用途命名，不使用统一的 `XxxImpl` 命名规则，也不要求接口与实现一一配对。 |
+| R02 | 按职责设计接口与类名 | 公开扩展职责必须保留接口，外部实现不依赖内置 TileEntity 或内部具体类；值对象、配置、状态与结果可直接使用具体类。实现类按实际用途命名，不使用统一的 `XxxImpl` 命名规则，也不要求接口与实现一一配对。 |
 | R03 | 保留独立 API 包 | 对外契约集中在 `com.circulation.prototype_eng.api`，参考 AE2 按职责划分子包；内部实现位于实际功能包，源码目录与 package 对齐，不再建立机械对应的 `impl` 包树。 |
 | R04 | AE2 作为 API 基础 | AE2 API 均可按需求使用；物品、流体、库存、GUI 等直接基于该分支能力设计。库提供哪些 ME 联网/合成接口另行核对。 |
 | R05 | 使用 AE2 资源类型系统 | 物品、流体及其他支持的资源采用 `AEKey`、`AEKeyType`、`GenericStack` 等；不重建 PMKey 体系。 |
@@ -44,7 +44,7 @@ PN 原先作为 PM 附属模组产生的访问限制、注册桥接、重复上�
 | R09 | 不再开发 GUI 编辑器 | 不迁入 Web GUI 编辑器、GUI DSL、编辑器 IR 或为其服务的 Runtime JSON/表达式系统。 |
 | R10 | CraftTweaker 最后实现，共用 Java API | 随核心功能建立独立包中的通用 Java API，供 Java 扩展与最终 CT 接入共同使用；脚本桥、ZenClass 和参数转换仍在最后阶段实现，不另造脚本专属领域模型。 |
 | R11 | 允许完全不兼容旧项目 | 旧存档、结构 JSON、脚本和公开 API 均无兼容要求；无需建设旧包别名、旧数据解码器或迁移层。 |
-| R12 | 审查后复用，按合并后的需求重设计 | 旧代码已有实现、曾经编译通过或长期存在，都不能证明质量合格；逐功能判断复用、重构、重写或放弃，重点消除 PN 附属性质造成的多余限制。 |
+| R12 | 优先复用合适实现，再审查修正 | 先核对并复用 PM/PN 适合当前需求的实现，再审查质量、修正架构缺陷；旧代码已有实现、曾经编译通过或长期存在，都不能证明质量合格。逐功能判断复用、重构或重写，重点消除 PN 附属性质造成的多余限制；不能裁减已确认保留的效果。 |
 | R13 | 按 Java 25 重新评估实现 | 结合当前 JVM、标准库和线程模型审查旧实现，不限于修改编译版本或将 Kotlin 逐行翻译为 Java；仅为 Java 8 历史环境存在的设计不自动继承。 |
 | R14 | 原子字段优先采用 VarHandle | 确需跨线程原子更新时，优先使用宿主对象字段配合共享 VarHandle，减少逐实例 Atomic 包装对象；先明确线程归属与内存语义，再通过针对性验证判断收益。 |
 | R15 | 混合仓沿用 PM 独立缓存设计 | 保留输入区、输出区及各自的独立缓存。独立性按输入/输出划分，每侧可容纳 AE2 多种资源类型；不要求再按物品、流体划分缓存。 |
@@ -56,6 +56,9 @@ PN 原先作为 PM 附属模组产生的访问限制、注册桥接、重复上�
 | R21 | 保留事件、组件和配方需求扩展能力 | 迁移 PM 的机器事件/组件调度、配方需求阶段和进程组件扩展；不能把它们缩减为固定 input/output/FE 流程。AE2 资源类型替换不等于删除需求系统；旧实现中的吞异常等问题按新约束修正。 |
 | R22 | 保留功能效果和多线程性能能力 | 除明确取消/替换的部分外，不允许功能性缺失；多工位、并行、资源亲和性、planned 预留/提交/补偿等属于迁移要求。必须先确认旧实现及目的，不能盲目重造或把尚未迁移的功能标为可选。 |
 | R23 | 独立存储契约，复用 AE2 类型 | 不使用 MEStorage 作为核心存储接口。按配方事务、预留与多线程需求独立设计存储；AEKey/AEKeyType 等类型继续复用，MEStorage 和 Forge 库存仅在对外适配层使用。 |
+| R24 | 保留十阶仓室及 PM 美术 | 资源与能源各保留输入、输出、混合三方向和十阶。资源槽数/物品容量沿用 PM ItemHatchConfig，流体每槽容量沿用 FluidHatchConfig，能源容量/操作限额沿用 EnergyHatchConfig；资源美术使用 PM item_hatch 原模型纹理，能源使用 energy_hatch，保留署名与 Bloom 元素。默认值可配置，不新增正式玩法内容。 |
+| R25 | 翻译使用 AE2S 枚举契约 | 本项目本地化枚举实现 LocalizationEnum；客户端字符串使用 getLocal，服务器可用标题/文本使用 text 组件。GUI 不拼接翻译键，也不直接以裸翻译键调用翻译函数。 |
+| R26 | 逐类真实 IDEA MCP 检查 | 使用本机 MCP 的 get_file_problems（errorsOnly:false），每个类消除错误、警告及弱警告并记录范围/结果。不得操作桌面 IDE；工具未挂载时连接已经启用的本地 MCP、通过 tools/list 查找工具，不修改 IDE 设置。编译、格式检查和人工审查不能代替该证据。 |
 
 R11 允许重新设计格式，也允许保留经审查确认适用的算法和数据表达。R12–R14 是实现选择原则，不表示本轮已完成旧代码的全面质量审计或性能测试。
 
@@ -101,8 +104,8 @@ R11 允许重新设计格式，也允许保留经审查确认适用的算法和�
 | 多方块结构、朝向、匹配与 JSON 加载 | PM 有结构定义、24 向朝向、区块已加载检查、两阶段解析。 | 保留朝向、模板/切片和加载能力；新格式允许不兼容。 |
 | 机器类型、实例、配方、工位 | PM 有 ECS 组件/系统、配方阶段与多个工位。 | 保留组件扩展、系统调度及多工位；重划运行时职责。 |
 | 配方需求和资源提交 | PM 有 start/tick/end、随机/模糊/选择/检查点、属性与并行需求及提交/回滚逻辑。 | 全部保留对应效果与扩展能力；资源身份改用 AE2，修正事务协议缺陷。 |
-| 物品/流体仓室与 PMKey | PM 按资源种类、方向、10 个等级组合；混合仓有独立输入和输出缓存。 | 已确认使用 AE2 多类型资源、保留三方向及双缓存混合仓，并开放仓室接口；等级及容量待确认。 |
-| 能源仓 | PM 有独立大数值能量存储与 FE 适配。 | 已确认保留独立能源仓，并支持 Applied-Flux FE Key 作为另一种能源输入来源；方向、容量、速率待确认。 |
+| 物品/流体仓室与 PMKey | PM 按资源种类、方向、10 个等级组合；混合仓有独立输入和输出缓存。 | 已确认使用 AE2 多类型资源、保留三方向及双缓存混合仓，并开放仓室接口；十阶槽数/物品容量沿用 ItemHatchConfig，流体每槽容量沿用 FluidHatchConfig。 |
+| 能源仓 | PM 有独立大数值能量存储、三方向与十阶 FE 适配。 | 保留三方向、十阶与可配置容量/操作限额；公开能源输入、输出职责。Applied-Flux FE Key 是另一种能源输入来源，接入暂缓。 |
 | 机器 GUI | PM 使用 ModularUI、绑定和脚本覆盖。 | 已确认以具体 Java GUI 直接继承 AEBaseGui 重实现，不新增第二套通用 GUI 基类。 |
 | GUI 编辑器 | PM 有独立 Web 子项目与 Runtime JSON 接入。 | 已确认不迁入。 |
 | CraftTweaker | PM 提供机器、配方、UI 等脚本入口。 | 已确认最后阶段重做；无旧脚本兼容要求。 |
@@ -216,7 +219,7 @@ AE2 文档明确说明：其能力适配注册不会自动改造其他模组的 
 
 安装 Applied-Flux 时，输入仓和混合仓输入侧支持其 FE Key，并向机器提供能源输入职责。该职责使用输入缓存中的实际余额，仍遵守两侧隔离；输出侧的 FE Key 不回流供能。
 
-仓室容量、槽位、速率等由使用方配置；库需要提供哪些过滤、方向和容量扩展契约仍待核对。内置实现的默认参数用于开箱使用，不定义旧项目的 10 阶等级体系。
+仓室容量、槽位、速率等由使用方配置；内置实现保留 PM 十阶默认参数，资源混合仓每侧槽数沿用 ItemIOHatchConfig。多类型资源共用物品仓槽位布局，流体每槽容量沿用 FluidHatchConfig，不再另设流体仓等级槽位布局。参数来源与当前数值见 [hatches.md](hatches.md)。额外过滤、侧面扩展等行为契约仍需按实际用途核对。
 
 #### 4.3.2 仓室公开接口与外部实现
 
@@ -228,7 +231,7 @@ AE2 文档明确说明：其能力适配注册不会自动改造其他模组的 
 |---|---|
 | 发现与接入 | 外部宿主通过公开的能力暴露或提供者注册入口交付仓室契约；结构匹配与机器运行使用同一套发现规则。具体发现入口在实现时确定。 |
 | 缓存角色 | 明确提供输入、输出或两者，并能区分对应的操作目标；不要求只有输入能力的仓室伪造输出能力。 |
-| 资源访问 | 使用 AE2 key 与 long 数量，说明支持类型、容量、过滤、模拟/实际执行和返回数量语义；复用适合的 AE2 库存契约。 |
+| 资源访问 | 使用 AE2 key 与 long 数量，说明支持类型、容量、过滤、模拟/实际执行和返回数量语义；核心操作、快照、预留与事务使用本库独立契约，AE2 库存契约只用于适配。 |
 | 生命周期与一致性 | 明确可调用线程、可用性、内容变化通知、卸载失效和操作失败语义；实际执行结果必须与已发生的资源变化一致。 |
 | 状态访问 | 对外提供约定的操作或视图，不要求暴露内置缓存数组、某个具体容器实现或其私有 NBT 布局。 |
 
@@ -244,7 +247,7 @@ AE2 文档明确说明：其能力适配注册不会自动改造其他模组的 
 
 机器的 FE 需求、消费语义和能源接口保持独立。默认能源仓使用独立 FE 存储，本项目不自行定义 FE key 或注册相应 `AEKeyType`。Applied-Flux 已提供的 FE Key 是另一种受支持的存储来源，可存入通用缓存并使用多类型资源显示，经适配参与同一能源输入契约。
 
-先审查旧能源存储的大数值、模拟、容量与速率逻辑，再决定复用算法还是重新实现。默认实现使用具体 Java 能量存储类，由公开能源仓契约接入机器，并通过 Forge `IEnergyStorage` 暴露能力；外部能源仓可以提供自己的实现。若内部使用 long，应明确 Forge int 参数/返回值边界及每 tick 传输上限，禁止溢出或截断丢失。
+优先复用适合的旧能源实现，再审查大数值、模拟、容量与速率逻辑并修正缺陷。默认实现使用具体 Java 能量存储类，由公开 EnergyInput/EnergyOutput 职责接入机器，并通过 Forge `IEnergyStorage` 暴露三方向能力；外部能源仓可以提供自己的实现。内部 long 余额与 Forge int 参数/返回值须明确转换边界，禁止溢出或截断丢失。PM EnergyStorageImpl 的 maxReceive/maxExtract 限制每次操作，EnergyHatchConfig 的旧 FE/t 注释不能作为累计 tick 预算的证据；如需累计预算必须另行明确契约和实现。PM 自动输入/输出标志存在，但当前源码调查尚未发现邻居 tick 传输调用链，不能由标志推断功能已存在。
 
 FE 消耗仍参与机器工作的一致性判断。一次工作需要物料与 FE 时，应先形成完整决策，避免物料已扣除却因能量不足产生错误推进。
 
@@ -352,7 +355,7 @@ com.circulation.prototype_eng
 │   ├── structure               公开结构定义及匹配扩展契约
 │   ├── recipe                  配方池、配方定义、条件、注册和查询契约
 │   ├── storage                 资源仓室接口、输入/输出角色与接入契约，使用 AE2 类型
-│   ├── energy                  能源仓及能源输入职责、独立 FE 契约
+│   ├── energy                  能源仓及能源输入/输出职责、独立 FE 契约
 │   ├── research                保留的研究定义、注册和访问契约
 │   ├── computing               保留的计算资源与工作许可契约
 │   └── client.jei              配方池页面接口及客户端绑定入口
@@ -394,7 +397,7 @@ com.circulation.prototype_eng
 | `api.client.jei.RecipePoolJeiPage` | `integration.jei.AutoLayoutRecipePage` 或开发者自定义实例 | 每个配方池绑定一个页面接口实例，默认生成和自定义实现共用注册路径。 |
 | `api.machine.MachineDefinition` | 直接作为公开不可变具体类或 record 使用 | 数据定义自身已经有明确职责，不再拆成接口与实现。 |
 | `api.storage.ResourceHatch` | `storage.BufferedResourceHatch` 或外部自定义仓室 | 仓室接口负责输入/输出角色及机器接入，具体类决定缓存实现与特殊行为。 |
-| `api.energy.EnergyHatch` / 按需划分的能源输入职责 | 独立能源仓；Applied-Flux 输入缓存通过适配提供能源输入职责 | 共用 FE 操作语义，具体存储来源可不同；核心契约不依赖 Applied-Flux 类型。 |
+| `api.energy.EnergyInput` / `EnergyOutput` / `EnergyHatch` | 独立能源仓；Applied-Flux 输入缓存通过适配提供能源输入职责 | 保留可单独实现的输入/输出接口，EnergyHatch 可承担两者；具体存储来源可不同，核心契约不依赖 Applied-Flux 类型。 |
 | 本库独立存储契约 | 内置缓存与外部后端共同保证资源操作、快照、预留和事务 | 资源使用 AEKey/AEKeyType；GenericInternalInventory/MEStorage 位于对外适配层，不定义核心行为。 |
 
 类型与边界规则：
@@ -526,7 +529,7 @@ GUI 验收检查具体界面直接复用 AEBaseGui，公共代码通过控件组
 | D03 | 多工位、并行配方与后台计算的实现审查 | 均须迁移；先确认旧实现目的与同步保证，确有字段原子更新需要时优先采用 VarHandle。 |
 | D04 | Modern Backend 独立模组形态是否取消？ | 建议经正确性和性能审查后，将确有价值的算法并入 Java 25 主工程；独立 SPI/双 Jar 形态待确认。 |
 | D05 | 结构的 24 向、模板/切片、投影和复杂渲染如何迁移？ | 保留效果；重审缓存、线程、释放和资源所有权，GUI 编辑器除外。 |
-| D06 | 仓室/能源仓还需哪些容量、速率、过滤和侧面扩展？ | 三方向、双缓存混合仓、每侧多类型、独立 FE 及 Applied-Flux FE Key 输入等效已确认；参数由使用方决定，额外行为契约待核对。 |
+| D06 | 仓室/能源仓还需哪些过滤和侧面扩展？ | 三方向、十阶默认值、双缓存混合仓、每侧多类型、独立 FE 及 Applied-Flux FE Key 输入等效已确认；参数可配置，额外行为契约待核对。 |
 | D07 | 公开扩展职责如何划分？ | 保留组件、系统、需求、进程和调度扩展，以及仓室和 JEI 页面接口；允许 API 不兼容，不能删除对应能力。 |
 | D08 | 库能力如何验收？ | 使用独立示例与必要行为测试覆盖公开 API、多类型物料、FE、研究条件和外部实现，不以设计正式机器或玩法数值为前提。 |
 | D09 | JEI 配方转移、书签操作和结构预览联动如何迁移？ | 按池绑定默认或自定义实例；逐项核对旧有交互并保留，额外新功能另行决定，接入时核验 JEI/HEI API 版本。 |
@@ -541,6 +544,7 @@ GUI 验收检查具体界面直接复用 AEBaseGui，公共代码通过控件组
 | PM 机器与配方 | [MachineLogic](F:/clone/PrototypeMachinery/docs/MachineLogic.md)、[MachineType](F:/clone/PrototypeMachinery/src/main/kotlin/api/machine/MachineType.kt)、[MachineInstanceImpl](F:/clone/PrototypeMachinery/src/main/kotlin/impl/MachineInstanceImpl.kt) |
 | PM 仓室与资源 | [Hatches](F:/clone/PrototypeMachinery/docs/Hatches.md)、[PMKey](F:/clone/PrototypeMachinery/src/main/kotlin/api/key/PMKey.kt)、[Storage](F:/clone/PrototypeMachinery/docs/Storage.md) |
 | PM 混合仓独立缓存与路由 | [ItemIOHatchBlockEntity](F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/item/ItemIOHatchBlockEntity.kt)、[ItemIOHatchCombinedHandler](F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/item/ItemIOHatchCombinedHandler.kt)、[FluidIOHatchCombinedHandler](F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/fluid/FluidIOHatchCombinedHandler.kt) |
+| PM 十阶默认值与能源操作限额 | [ItemHatchConfig](F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/item/ItemHatchConfig.kt)、[FluidHatchConfig](F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/fluid/FluidHatchConfig.kt)、[EnergyHatchConfig](F:/clone/PrototypeMachinery/src/main/kotlin/common/block/hatch/energy/EnergyHatchConfig.kt)、[EnergyStorageImpl](F:/clone/PrototypeMachinery/src/main/kotlin/impl/storage/EnergyStorageImpl.kt) |
 | PM GUI 与后端 | [MachineUiEditorRuntime](F:/clone/PrototypeMachinery/docs/MachineUiEditorRuntime.md)、[ModernBackend](F:/clone/PrototypeMachinery/docs/ModernBackend.md) |
 | PN 旧规格与现状 | [development-spec](F:/new/PrototypeNetwork/docs/development-spec.md)、[implementation-audit](F:/new/PrototypeNetwork/docs/implementation-audit.md) |
 | PN 接口拆分样例 | [ResearchId](F:/new/PrototypeNetwork/src/main/java/com/circulation/prototype_network/api/research/ResearchId.java)、[ResearchIdImpl](F:/new/PrototypeNetwork/src/main/java/com/circulation/prototype_network/impl/research/ResearchIdImpl.java) |
@@ -562,6 +566,7 @@ GUI 验收检查具体界面直接复用 AEBaseGui，公共代码通过控件组
 - 禁止异常控制流：资源不足、容量不足和不支持的操作按正常返回值处理；配置错误、非法契约调用或内部不变量破坏立即失败，不捕获后伪装成功。
 - 完成一个可说明库能力与验证结果的阶段后进行本地 Git 提交，不推送远端；示例内容与默认参数不扩展为正式玩法需求。
 - 保留必要的设计、API 使用方式、阶段状态及实际验证记录。已实现、已编译、已运行和待验证须分别陈述。
+- 每个类通过本机 IDEA MCP 进行实际检查（get_file_problems，errorsOnly:false），修正错误、警告及弱警告并记录范围/结果。工具未挂载时连接已启用的本地 MCP，不操作桌面或修改 IDE 设置；编译、格式检查或人工审查不替代此证据。
 - 维护简短的 `docs/INDEX.md`，记录当前检查点、下一步与按需阅读入口。恢复上下文先读索引，按任务定位章节，不将完整文档批量填入上下文；实现状态与验证证据更新后同步维护索引。
 - 自动化测试仅用于静态推断难以确认的行为逻辑，例如多步骤资源操作、方向隔离、失败恢复、真实并发和客户端/服务器集成；不为常量、文件哈希、类名、包路径或机械的 getter/setter 建立测试。
 - 编译、格式检查和人工代码审查用于发现静态错误；不把这些检查包装成大量重复测试。测试用例描述可观察行为，不逐行复刻实现。

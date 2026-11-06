@@ -5,35 +5,45 @@ import ae2.api.stacks.GenericStack;
 import ae2.helpers.externalstorage.GenericStackInv;
 import org.jetbrains.annotations.Nullable;
 
-/** Cursor transactions against real quantities, never against an ItemStack used only for display. */
+/**
+ * Cursor transactions against real quantities, never against an ItemStack used only for display.
+ */
 public final class HatchSlotActions {
-    private HatchSlotActions() {}
+    private HatchSlotActions() {
+    }
 
     @Nullable
     public static GenericStack click(GenericStackInv inventory, int slot, @Nullable GenericStack carried,
                                      long cursorLimit, boolean acceptsInput, boolean rightClick) {
-        if (!inventory.canExtract() || cursorLimit <= 0) { return carried; }
+        if (!inventory.canExtract() || cursorLimit <= 0) {
+            return carried;
+        }
         GenericStack stored = inventory.getStack(slot);
         if (carried == null) {
-            if (stored == null) { return null; }
+            if (stored == null) {
+                return null;
+            }
             long amount = Math.min(cursorLimit, rightClick ? stored.amount() / 2 + stored.amount() % 2 : stored.amount());
             long extracted = inventory.extract(slot, stored.what(), amount, Actionable.MODULATE);
             return extracted == 0 ? null : new GenericStack(stored.what(), extracted);
         }
+        boolean sameKey = stored != null && stored.what().equals(carried.what());
         if (!acceptsInput) {
-            if (stored == null || !stored.what().equals(carried.what())) { return carried; }
+            if (!sameKey) {
+                return carried;
+            }
             long amount = Math.max(0, cursorLimit - carried.amount());
             long extracted = inventory.extract(slot, carried.what(), amount, Actionable.MODULATE);
             return new GenericStack(carried.what(), carried.amount() + extracted);
         }
-        if (stored == null || stored.what().equals(carried.what())) {
+        if (stored == null || sameKey) {
             long inserted = inventory.insert(slot, carried.what(), rightClick ? 1 : carried.amount(), Actionable.MODULATE);
             long remaining = carried.amount() - inserted;
             return remaining == 0 ? null : new GenericStack(carried.what(), remaining);
         }
         // A swap must fit both destinations completely before either side changes.
         if (!rightClick && stored.amount() <= cursorLimit && inventory.canInsert()
-                && inventory.isAllowedIn(slot, carried.what()) && carried.amount() <= inventory.getMaxAmount(carried.what())) {
+            && inventory.isAllowedIn(slot, carried.what()) && carried.amount() <= inventory.getMaxAmount(carried.what())) {
             inventory.setStack(slot, carried);
             return stored;
         }

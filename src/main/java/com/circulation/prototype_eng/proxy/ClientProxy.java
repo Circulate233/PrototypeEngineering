@@ -16,8 +16,18 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.relauncher.Side;
 
+import java.util.Objects;
+
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public class ClientProxy extends CommonProxy {
+    @SubscribeEvent
+    public static void registerModels(ModelRegistryEvent event) {
+        for (var block : HatchBlocks.all()) {
+            ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
+                new ModelResourceLocation(Objects.requireNonNull(block.getRegistryName()), "inventory"));
+        }
+    }
+
     @Override
     public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         return switch (getServerGuiElement(id, player, world, x, y, z)) {
@@ -25,13 +35,5 @@ public class ClientProxy extends CommonProxy {
             case EnergyHatchContainer energy -> new EnergyHatchGui(energy, player.inventory);
             case null, default -> null;
         };
-    }
-
-    @SubscribeEvent
-    public static void registerModels(ModelRegistryEvent event) {
-        for (var block : HatchBlocks.all()) {
-            ModelLoader.setCustomModelResourceLocation(Item.getItemFromBlock(block), 0,
-                    new ModelResourceLocation(block.getRegistryName(), "inventory"));
-        }
     }
 }
