@@ -73,8 +73,11 @@ public final class MachineLifecycle {
 
     /** Readiness for ordinary recipe systems, not a transferable worker permission. */
     public boolean processingAllowed() {
-        return state == State.LOADED && formed && !broken && !faulted && gate != TRANSITION;
+        return formed && schedulingAllowed();
     }
+
+    /** Ordinary components may run before formation, but never after unload, break or a fault. */
+    public boolean schedulingAllowed() { return state == State.LOADED && !broken && !faulted && gate != TRANSITION; }
 
     public void load(MachineLifecycleEvent.LoadBoundary boundary) {
         Objects.requireNonNull(boundary);

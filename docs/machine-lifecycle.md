@@ -29,7 +29,7 @@
 
 `MachineInstance.onSchedule` 对已绑定宿主经过 `MachineLifecycle`；未绑定实例用于独立库逻辑，不携带世界许可。已卸载实例不再执行组件。实际 tick/callback 异常使绑定实例不可继续执行或保存；普通配方 Blocked 仍可在合法状态重试。
 
-共享 VarHandle 对实例内的执行/生命周期阶段做 CAS 和 release/acquire 发布，拒绝重入及重叠。生命周期还检查宿主服务端线程、工作槽和进程没有未完成 acquisition。调度器必须先 join，再移交机器、属性和仓室发现的所有权；该门不等待 worker，也不实现 affinity、超时、owner/epoch 或跨机器共享世界安全。
+共享 VarHandle 对实例内的执行/生命周期阶段做 CAS 和 release/acquire 发布，拒绝重入及重叠。生命周期还检查宿主服务端线程、工作槽和进程没有未完成 acquisition。普通 TaskScheduler 已实现真实 worker/lane join，错误和中断都在接受的动作退出后才归还 owner；MAIN 尚未派发 worker 时允许登记/注销其他控制器。CAS 门本身仍不等待 worker，planned 超时、owner/epoch 和跨机器共享世界安全尚需专门协议，详见[调度说明](scheduling.md)。
 
 `requireQuiescent` 与可保存状态分开：已经抛错但不再持有活动阶段的进程，仍允许宿主清外部注册；它仍不能被保存、重跑或冒充已补偿。`MachineWorkSlotsNbt` 在编解码边界检查绑定机器状态；保存检查本身不是覆盖整个序列化过程的锁，调用方必须已经持有独占所有权。外部 codec 仍须遵守纯编解码契约。
 
@@ -53,4 +53,4 @@ PM planned 的 prepare join 在 `PlannedParallelCoordinator.kt:102`、resolve jo
 
 17 项新增聚合测试覆盖监听身份与并发注册/取消、事件捕获顺序、加载失败清理、破坏/卸载聚合与幂等、跨线程/重入/重叠、结构暂停及旁路组件、工位卸载保存与新实例恢复不重 START、取消不 END/退款、活动预留拒绝、faulted 进程清理及损坏组件图的异常清理。没有常量/哈希/getter 专用测试，没有初始化 Bootstrap/FML 或运行游戏。
 
-结构发布另有 16 项读取证明/宿主接线测试，包含真实 worker 和执行重叠；完整构建与逐文件本机 IDEA MCP 证据以 [实施进度](implementation-status.md) 为准。实际 TileEntity 生命周期及能力发现的游戏验证、真实多线程调度、PN 当前身份/队伍/epoch 和 planned 补偿仍是必须完成的后续项。
+结构发布另有 16 项读取证明/宿主接线测试，普通调度另有真实 worker/join/MAIN 生命周期测试；完整构建与逐文件本机 IDEA MCP 证据以 [实施进度](implementation-status.md) 为准。实际 TileEntity 自退出/恢复及能力发现的游戏验证、PN 当前身份/队伍/epoch、正式 planned 与补偿仍是必须完成的后续项。
