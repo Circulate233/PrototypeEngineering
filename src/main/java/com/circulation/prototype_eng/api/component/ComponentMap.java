@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.component;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
@@ -32,14 +33,25 @@ public final class ComponentMap<E> {
      * declaring a dependency never implicitly creates a component.
      */
     public static <E> void validateTypes(Collection<? extends ComponentType<E, ?>> declarations) {
-        var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
-        var graph = new TopologicalComponentMap<ComponentType<E, ?>, ComponentType<E, ?>>();
+        var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<E, ?>, Set<ComponentType<E, ?>>>();
         for (var type : declarations) {
             Objects.requireNonNull(type);
+            if (dependencies.putIfAbsent(type, type.dependencies()) != null) { throw new IllegalArgumentException("Component declared twice: " + type.id()); }
+        }
+        validateGraph(dependencies);
+    }
+
+    /** Validates saved effective edges before restoration invokes any component factory. */
+    public static <E> void validateGraph(Map<ComponentType<E, ?>, ? extends Set<ComponentType<E, ?>>> dependencies) {
+        var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
+        var graph = new TopologicalComponentMap<ComponentType<E, ?>, ComponentType<E, ?>>();
+        for (var entry : dependencies.entrySet()) {
+            var type = Objects.requireNonNull(entry.getKey());
+            var edges = Objects.requireNonNull(entry.getValue());
             if (graph.contains(type)) { throw new IllegalArgumentException("Component declared twice: " + type.id()); }
             requireTypeIdentity(identities, type);
-            for (var dependency : type.dependencies()) { requireTypeIdentity(identities, dependency); }
-            graph.add(type, type, type.dependencies());
+            for (var dependency : edges) { requireTypeIdentity(identities, Objects.requireNonNull(dependency)); }
+            graph.add(type, type, edges);
         }
         orderWithSystems(graph);
     }
@@ -64,6 +76,14 @@ public final class ComponentMap<E> {
         }
         types.put(type.id(), type);
         components.add(type, new Binding<>(type, component), type.dependencies());
+    }
+
+    /** Used when restoring an immutable component; preserves the existing node and effective graph. */
+    public <C> void replaceValue(ComponentType<E, C> type, C component) {
+        Objects.requireNonNull(type);
+        Objects.requireNonNull(component);
+        if (types.get(type.id()) != type) { throw new IllegalArgumentException("Cannot replace absent or foreign component type: " + type.id()); }
+        components.replaceValue(type, new Binding<>(type, component));
     }
 
     @Nullable

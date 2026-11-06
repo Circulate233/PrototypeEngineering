@@ -50,6 +50,9 @@
 
 ## 验证记录
 
+- 2026-11-07（附宿主装配阶段）：新增MachineAssembly/MachineComponentCodec，复用属性与工位/进程NBT。附host后factory，保存图预检无factory，完整创建后按依赖恢复，根属性先恢复并按ID补缺默认，完整校验后load；不自动登记scheduler。组件codec可返回immutable替代，replaceValue保留实际图。实际顺序、动态边、pending和被删除声明按NBT V1恢复；MachineHatches能力不恢复。ASSEMBLING/PERSISTING门限保护完整回调并在故障后永久停止，保存故障仍允许已加载监听清理。详见[机器持久化](machine-persistence.md)。实际TE与Forge接线、PN身份/权限、planned仍待后续。
+- 2026-11-07（附宿主装配验证）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，359项测试零失败/错误/跳过。新增15项装配顺序、动态图/不可变替换、默认属性与modifier-only、NBT隔离、未知/坏图预拒、回调非法修改/失败不复活、load清理及实际工位续跑和跨线程gate用例。MCP逐文件 `get_file_problems(errorsOnly:false)` 覆盖241个src Java及Tags共242文件，零错误/警告/弱警告、无超时；MCP build_project成功。证据 `build/reports/idea/machine-assembly-final.json`。原23份diff逐字未变，未运行游戏或Bootstrap/FML初始化，未操作桌面。
+
 - 2026-11-07（机器声明阶段）：新增不可变MachineType与MachineTypeRegistry，保留PM声明字段、默认模式和LocalizationEnum显示契约。整批注册/关闭和后置结构绑定均完整校验后发布，规范对象不重建，拒绝重入和同ID仿造。ComponentMap声明验证复用实际系统拓扑；typed实例附宿主/load前不调度，显式工位factory读取类型布局/组，已有模式组件优先。只做库入口，未注册正式机器。默认属性自动补缺、机器级NBT/TE及PN配置仍须后续；详见[机器声明](machine-types.md)。
 - 2026-11-07（机器声明验证）：`gradlew.bat spotlessApply build --console=plain` 成功，344项测试零失败/错误/跳过，新增12项批次/规范身份/重入/元数据图/真实调度/工位准入行为用例。本机IDEA MCP逐文件 `get_file_problems(errorsOnly:false)` 检查238个src Java及Tags共239文件，最终零错误、警告、弱警告且无超时；MCP build_project成功、problems为空。报告 `build/reports/idea/machine-types-final.json`。全程MCP，无桌面/游戏/Bootstrap/FML初始化。原23份修改保留，22份diff逐字相同；MachineInstance重叠功能按原布局单独暂存，剩余差异只涉及原格式。
 

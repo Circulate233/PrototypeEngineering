@@ -47,6 +47,14 @@ public final class TopologicalComponentMap<K, C> {
         add(key, component, ObjectSets.emptySet());
     }
 
+    /** Replace an existing value without moving its node or changing any ordering constraints. */
+    public void replaceValue(K key, C component) {
+        var node = nodes.get(key);
+        if (node == null) { throw new IllegalArgumentException("Cannot replace an absent component: " + key); }
+        nodes.put(key, new Node<>(key, component, node.dependencies()));
+        revision++;
+    }
+
     /**
      * Replaces this node's own dependencies; incoming dependencies remain attached to its key.
      */

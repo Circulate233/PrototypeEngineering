@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -34,6 +35,70 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 // Each fixture-local registry owns subscriptions for the entire scenario; cancellation is under test.
 @SuppressWarnings("resource")
 class MachineLifecycleDispatchTest {
+    @Test
+    void assemblyAndSaveBoundariesAllowNestedOwnerCodecsButRejectPrematureOrRecursiveExecution() {
+        var fixture = new Fixture();
+        var log = new ObjectArrayList<String>();
+        fixture.registry.register(new Recorder("observer", log));
+        try (var worker = Executors.newSingleThreadExecutor()) {
+            fixture.lifecycle.assemble(() -> {
+                fixture.machine.requirePersistenceBoundary();
+                assertFalse(fixture.machine.active());
+                assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
+                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH));
+                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.assemble(() -> {}));
+                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.withPersistence(() -> "nested"));
+            });
+            assertTrue(log.isEmpty());
+            assertThrows(IllegalStateException.class, () -> fixture.lifecycle.assemble(() -> {}));
+            fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
+            assertEquals(List.of("load:observer"), log);
+            var checked = fixture.lifecycle.withPersistence(() -> {
+                fixture.machine.requirePersistenceBoundary();
+                assertFalse(fixture.machine.active());
+                assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
+                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.withPersistence(() -> "nested"));
+                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
+                var other = worker.submit(() -> assertThrows(IllegalStateException.class, fixture.machine::requirePersistenceBoundary));
+                assertDoesNotThrow(() -> other.get(5, TimeUnit.SECONDS));
+                return "saved";
+            });
+            assertEquals("saved", checked);
+            assertTrue(fixture.machine.active());
+        }
+    }
+
+    @Test
+    void failedUnpublishedAssemblyCannotLoadRunSaveOrNotifyNeverLoadedListeners() {
+        var fixture = new Fixture();
+        var log = new ObjectArrayList<String>();
+        fixture.registry.register(new Recorder("observer", log));
+        var failure = new AssertionError("assembly failed");
+        assertSame(failure, assertThrows(AssertionError.class, () -> fixture.lifecycle.assemble(() -> { throw failure; })));
+        assertFalse(fixture.machine.active());
+        assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
+        assertThrows(IllegalStateException.class, fixture.machine::requirePersistenceBoundary);
+        assertThrows(IllegalStateException.class, () -> fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH));
+        assertThrows(IllegalStateException.class, () -> fixture.lifecycle.withPersistence(() -> "invalid"));
+        assertFalse(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED));
+        assertTrue(log.isEmpty());
+    }
+
+    @Test
+    void failedSavePermanentlyStopsExecutionButStillAllowsLoadedListenerCleanup() {
+        var fixture = new Fixture();
+        var log = new ObjectArrayList<String>();
+        fixture.registry.register(new Recorder("observer", log));
+        fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
+        var failure = new AssertionError("codec failed");
+        assertSame(failure, assertThrows(AssertionError.class, () -> fixture.lifecycle.withPersistence(() -> { throw failure; })));
+        assertFalse(fixture.machine.active());
+        assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
+        assertThrows(IllegalStateException.class, () -> fixture.lifecycle.withPersistence(() -> "retry"));
+        fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+        assertEquals(List.of("load:observer", "unload:observer:CHUNK_UNLOAD"), log);
+    }
+
     @Test
     void componentDependencyOrderPrecedesGlobalOrderAndCallbackEditsWaitForTheNextEvent() {
         var fixture = new Fixture();

@@ -4,9 +4,10 @@
 
 ## 当前检查点
 
-- 规范机器声明/整批关闭/后置结构绑定已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前普通调度为 `2c73d9c`，结构发布为 `49bfe01`，匹配为 `9f74f62`，生命周期为 `1505a65`。原23份格式/注解修改单独保留；22份diff逐字相同，MachineInstance的重叠方法按原布局分离暂存，剩余无功能差异。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过344项逻辑测试。本机IDEA MCP已逐个检查238个src Java及Tags共239文件，`errorsOnly:false`，零错误/警告/弱警告且无文件超时；MCP build_project成功。最终证据见 `build/reports/idea/machine-types-final.json`。全部通过MCP，不操作桌面；实际World/TileEntity/Forge交互未运行验证。
-- 当前机器类型：MachineType保留PM声明字段/默认模式/模型/LocalizationEnum；ComponentMap静态验证复用实际系统图而不调用factory。MachineTypeRegistry批次拒绝无部分加入，freeze确定顺序关闭，resolveStructures整批绑定同一个canonical类型；两次发布均不代表PN/planned ready。typed实例附生命周期前无调度/保存权限；模式组件优先，显式创建工位读取类型布局/组。默认属性仅声明，机器级恢复、Forge控制器及PN配置仍未接。入口 `docs/machine-types.md`。
+- 附宿主装配/机器NBT/完整保存门限已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前机器声明为 `c13e81f`，普通调度为 `2c73d9c`，结构发布为 `49bfe01`。本阶段原23份格式/注解diff逐字未变，均未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过359项逻辑测试。本机IDEA MCP已逐个检查241个src Java及Tags共242文件，`errorsOnly:false`，零错误/警告/弱警告且无文件超时；MCP build_project成功。最终证据见 `build/reports/idea/machine-assembly-final.json`。全部通过MCP，不操作桌面；实际World/TileEntity/Forge交互未运行验证。
+- 当前装配/持久化：MachineAssembly附host后factory，完整解析/validateGraph、创建所有保存组件、恢复根属性并补缺默认、依赖序codec、全体验证，然后load并返回未登记scheduler的机器。NBT V1保留实际组件顺序/动态边/pending和完整工位，删除声明不复活；immutable替换用replaceValue保留图。MachineHatches不保存，仅可作软依赖；无formed/config/epoch权限。ASSEMBLING/PERSISTING gate拒重入和外线程子codec、错误永久fault；不是join。入口 `docs/machine-persistence.md`。
+- 当前机器类型：MachineType保留PM声明字段/默认模式/模型/LocalizationEnum；ComponentMap静态验证复用实际系统图而不调用factory。MachineTypeRegistry批次拒绝无部分加入，freeze确定顺序关闭，resolveStructures整批绑定同一个canonical类型；两次发布均不代表PN/planned ready。typed实例附生命周期前无调度/保存权限；模式组件优先，显式创建工位读取类型布局/组。Forge控制器及PN配置仍未接。入口 `docs/machine-types.md`。
 - 当前普通调度：TaskScheduler复用PM固定池/并查集亲和分组/single lanes，全部accepted任务在异常/中断时也真实join后才归还owner，故障不复活。MAIN中新MAIN下tick、新CON本tick；Registration拒旧候选复活，task identity拒同tick二跑，metadata/worker禁登记。MachineInstance直接接模式与公开storageIdentity；FML aboutToStart→END tick→stopped拥有会话。PLANNED明确拒绝，仍须正式迁移；入口 `docs/scheduling.md`。
 - 当前结构：AE 24向、模板/贪心切片与快照基础见 `docs/structures.md`。新增evaluate追踪实际读取，包括失败切片probe；query显式等价比较，变化则fresh capture/match，未访问潜在分支不误拒。StructureRefresh的request/config身份拒迟到与ABA，worker只算快照；发布在生命周期gate内复核事实/provider/能力并一起安装树和新MachineHatches，同方向也重建。真正失配才清绑定，失稳返回false由调度边界重试/显式invalidate，当前异常故障，旧配置异常不故障新配置。ControllerLifecycleHost固定World且分离活TE检查和清理线程检查；真实TE/owner变化调用仍待接。
 - 当前生命周期：四类事件+FRESH/RESTORED；未成型仅停扫描/工位，普通卸载保留并由新实例load/结构确认后续跑；破坏broken/cancelAll/unloaded，加载失败LOAD_FAILED，全部清理聚合，不END/退历史IO。VarHandle gate拒重叠但不替代join，坏图异常清理仍抛错。详见 `docs/machine-lifecycle.md`。
@@ -14,7 +15,7 @@
 
 ## 下一步
 
-1. 使用已接MachineType/Registry完成实际控制器TileEntity：先接收纯NBT，附World后创建/恢复依赖世界的组件，恢复后按整条属性ID补缺默认，成功load才登记。factory/restore不提前发布世界副作用；明确空配方组的全局候选语义后再接自动scanner。自卸载/自破坏须等自身回调退出gate后清理。详见 `docs/machine-types.md`、`docs/machine-controller-migration-audit.md`。定义/方向/owner变化在调度边界invalidate并轮换配置；结构发布失稳要重试或暂停。
+1. 使用MachineType/Registry/MachineAssembly完成实际控制器TileEntity和Forge注册：先只暂存纯NBT，附World后调用已接装配入口，成功load最后登记，登记失败需卸载清理；未装配保存保留暂存数据，二次read不能覆盖活runtime。明确空配方组的全局候选语义后再接自动scanner。自卸载/自破坏须等自身回调退出gate后清理。详见 `docs/machine-persistence.md`、`docs/machine-controller-migration-audit.md`。定义/方向/owner变化在调度边界invalidate并轮换配置；结构发布失稳要重试或暂停。
 2. 在已接普通调度上实现正式 planned：保留 PM prepare/resolve两次join、稳定source lane、PN owner/team/epoch/向量预算、迟到任务隔离及补偿。旧epoch/lease/ready不能从存档恢复为权限；terminal/取消不是物理退出证明。结构规划/匹配回退、目录/index/factory、动态排序/NBT、随机逐次抽样及嵌套生命周期仍需内部预算；性能统计/命令/后端能力也须迁移。
 3. 严格两阶段JSON/注册发布、结构预览/BOM/display override、模型隐藏/渲染、研究/队伍/计算、JEI与最后CraftTweaker继续迁移。全范围仍保留，当前结构匹配与生命周期基础不代表完整机器已完成。
 
@@ -37,6 +38,7 @@
 | 宿主生命周期、事件、卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle、machine/ControllerLifecycleHost |
 | 普通调度、线程退出、MAIN登记边界 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
 | 机器声明、整批关闭、后置结构绑定 | [machine-types.md](machine-types.md)，api/machine/MachineType、MachineTypeRegistry |
+| 附宿主装配、机器NBT、保存门限 | [machine-persistence.md](machine-persistence.md)，api/machine/persistence、MachineLifecycle.assemble/withPersistence |
 | 机器类型/控制器及PN接线审查 | [machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
 | 组件/需求/事务、持久化、工位、扫描 | [recipes.md](recipes.md) 对应章节；源码 api/recipe、api/machine/workslot |
 | PM/PN 实际源码与旧缺陷 | [migration-audit.md](migration-audit.md) 对应映射表 |

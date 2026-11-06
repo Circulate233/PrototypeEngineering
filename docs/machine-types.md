@@ -1,6 +1,6 @@
 # 机器声明与结构绑定
 
-本阶段迁移 PM 的机器定义字段与 PN 有序关闭注册思路，修正逐个发布导致半批可见的问题。入口为 `api.machine.MachineType`、`MachineTypeRegistry`。这些是纯库 API；当前没有向 Forge 注册正式机器，也没有完成控制器 TileEntity、机器级 NBT 或 PN 设备定义。
+本阶段迁移 PM 的机器定义字段与 PN 有序关闭注册思路，修正逐个发布导致半批可见的问题。入口为 `api.machine.MachineType`、`MachineTypeRegistry`。附宿主装配与机器级 NBT 已由 [MachineAssembly](machine-persistence.md) 接入；当前没有向 Forge 注册正式机器，也没有完成控制器 TileEntity 或 PN 设备定义。
 
 ## 声明保持一个规范对象
 
@@ -37,11 +37,11 @@
 
 ## 下一步装配与恢复
 
-下一阶段继续接空 TE、暂存原始 NBT、附 World 后建宿主与组件、完整恢复、load、最后 scheduler 登记。当前声明默认属性仅收集，还未自动应用：恢复后按整条属性 ID 是否存在补缺，已有 modifier-only 项也不能被强行补 base。PM 先补默认再恢复的旧流程在 `MachineAttributeNbt.readMachineMap` 清表后会丢失缺项默认，不能直接照搬。
+MachineAssembly已接附宿主后建组件、恢复属性与组件图、load的顺序；类型默认在属性恢复后、组件codec恢复前按整条属性ID补缺，modifier-only项不补base。PM先补默认再恢复的旧流程在 `MachineAttributeNbt.readMachineMap` 清表后会丢失缺项默认，此处已修正。下一阶段继续接空TE、暂存原始NBT、最后scheduler登记。
 
 组件工厂与 restore 只构造尚未发布的局部状态；世界注册等副作用进入 `onLoaded`。若今后允许装配时分配外部资源，必须先有明确的中止清理契约，不能指望 CREATED 的普通 unload 调用已加载监听器。load 成功但 scheduler 登记失败也必须卸载并撤销确切注册。
 
-仍未完成：通用控制器零类型 TE 注册、机器级组件/属性/NBT 装配、持久身份与放置 token、完整方向变更边界、自卸载延迟清理、客户端显示视图、PN 角色/研究/向量预算配置、planned 绑定和最终运行索引。结构绑定不替代这些步骤；详见 [控制器迁移审查](machine-controller-migration-audit.md)。
+仍未完成：通用控制器零类型 TE 注册、实际TE调用装配/持久化入口、持久身份与放置 token、完整方向变更边界、自卸载延迟清理、客户端显示视图、PN 角色/研究/向量预算配置、planned 绑定和最终运行索引。结构绑定不替代这些步骤；详见 [控制器迁移审查](machine-controller-migration-audit.md)。
 
 ## 验证范围
 

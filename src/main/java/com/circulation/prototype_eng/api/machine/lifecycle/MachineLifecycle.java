@@ -28,6 +28,8 @@ public final class MachineLifecycle {
     private static final int IDLE = 0;
     private static final int RUNNING = 1;
     private static final int TRANSITION = 2;
+    private static final int ASSEMBLING = 3;
+    private static final int PERSISTING = 4;
     private static final VarHandle GATE;
 
     static {
@@ -50,6 +52,7 @@ public final class MachineLifecycle {
     private volatile boolean faulted;
     @Nullable private volatile StructureMatch structureMatch;
     @Nullable private Captured lastCaptured;
+    private boolean assemblyStarted;
 
     @SuppressWarnings("unused") // Public controller entry using the shared lifecycle registry.
     public MachineLifecycle(MachineInstance machine, MachineLifecycleHost host) {
@@ -81,7 +84,53 @@ public final class MachineLifecycle {
     }
 
     /** Ordinary components may run before formation, but never after unload, break or a fault. */
-    public boolean schedulingAllowed() { return state == State.LOADED && !broken && !faulted && gate != TRANSITION; }
+    public boolean schedulingAllowed() { return state == State.LOADED && !broken && !faulted && (gate == IDLE || gate == RUNNING); }
+
+    /**
+     * Creates/restores unpublished local components after host attachment. Factories and codecs may
+     * read the attached host but must defer external registrations and world effects to onLoaded.
+     * Failure retires the unpublished instance without sending cleanup to never-loaded listeners.
+     */
+    public void assemble(Runnable assembly) {
+        Objects.requireNonNull(assembly);
+        host.requireServerThread();
+        enter(ASSEMBLING);
+        try {
+            requireHealthy();
+            if (state != State.CREATED || assemblyStarted) { throw new IllegalStateException("Machine assembly can run only once before load"); }
+            assemblyStarted = true;
+            try {
+                assembly.run();
+                requireQuiescent(capture());
+            } catch (RuntimeException | Error failure) {
+                faulted = true;
+                state = State.UNLOADED;
+                throw failure;
+            }
+        } finally { leave(); }
+    }
+
+    /**
+     * Holds the loaded/unloaded machine's owner boundary for a complete save. Nested component and
+     * work-slot codecs may check this boundary, but cannot recursively save, tick or change lifecycle.
+     * The caller must have joined all workers; this gate rejects overlap rather than joining them.
+     */
+    public <T> T withPersistence(Supplier<T> save) {
+        Objects.requireNonNull(save);
+        host.requireServerThread();
+        enter(PERSISTING);
+        try {
+            requireHealthy();
+            if (state == State.CREATED) { throw new IllegalStateException("Unloaded assembly cannot be saved before load succeeds"); }
+            try {
+                requireQuiescent(capture());
+                return save.get();
+            } catch (RuntimeException | Error failure) {
+                faulted = true;
+                throw failure;
+            }
+        } finally { leave(); }
+    }
 
     public void load(MachineLifecycleEvent.LoadBoundary boundary) {
         Objects.requireNonNull(boundary);
@@ -242,7 +291,10 @@ public final class MachineLifecycle {
     /** A check, not a lock spanning serialization; the caller must already hold exclusive ownership. */
     public void requirePersistenceBoundary() {
         requireHealthy();
-        if ((int) GATE.getAcquire(this) != IDLE) { throw new IllegalStateException("Machine boundary is active"); }
+        int phase = (int) GATE.getAcquire(this);
+        if (phase == ASSEMBLING || phase == PERSISTING) {
+            host.requireServerThread();
+        } else if (phase != IDLE) { throw new IllegalStateException("Machine boundary is active"); }
     }
 
     private void enterTransition() {
