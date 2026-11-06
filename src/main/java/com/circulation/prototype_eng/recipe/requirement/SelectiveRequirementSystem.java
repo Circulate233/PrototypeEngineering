@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
@@ -164,7 +165,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         public void rollback() {
             Throwable failure = null;
             try {
-                selection.cleanupModifiers();
+                selection.cleanupEffects();
             } catch (RuntimeException | Error cleanup) {
                 failure = cleanup;
             }
@@ -237,6 +238,17 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             if (rawId.isBlank()) { throw new IllegalArgumentException("Blank modifier id"); }
             String uniqueId = "selective/" + frame(path.toString()) + "/" + ordinal + "/" + frame(modifierId.toString()) + "/" + frame(rawId);
             selection.putModifier(attribute, new NamespacedModifier(uniqueId, modifier));
+        }
+
+        @Override
+        public <C, D> void putRequirementOverlay(RecipeRequirement<C> target, RequirementPath targetPath, String layerId,
+                                                RecipeOverlayType<C, D> type, D data) {
+            if (!active) { throw new IllegalStateException("Selective modifier context is no longer active"); }
+            Objects.requireNonNull(layerId);
+            if (layerId.isBlank()) { throw new IllegalArgumentException("Blank overlay layer id"); }
+            String uniqueId = "selective_overlay/" + frame(path.toString()) + frame(modifierId.toString())
+                + frame(Integer.toString(ordinal)) + frame(layerId);
+            selection.putOverlay(target, targetPath, uniqueId, type, data);
         }
 
         private static String frame(String value) { return value.length() + ":" + value; }

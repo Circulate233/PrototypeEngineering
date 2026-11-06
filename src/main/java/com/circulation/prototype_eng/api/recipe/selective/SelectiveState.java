@@ -4,8 +4,11 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -17,7 +20,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Process-owned selection decisions and their exact local attribute additions, keyed by nested
+ * Process-owned selection decisions and their exact local attribute/requirement additions, keyed by nested
  * requirement identity. Provisional choices are visible during composite acquisition and are
  * discarded on START rollback. NBT restoration and cancellation recovery are separate migration work.
  */
@@ -47,7 +50,7 @@ public final class SelectiveState {
         if (index < -1) {
             throw new IllegalArgumentException("Invalid selection index");
         }
-        var selection = new Selection(process.attributes(), index);
+        var selection = new Selection(process, index);
         if (selections.putIfAbsent(Objects.requireNonNull(path), selection) != null) {
             throw new IllegalStateException("Selection is already decided: " + path);
         }
@@ -60,14 +63,17 @@ public final class SelectiveState {
     }
 
     public static final class Selection {
+        private final RecipeProcess process;
         private final MachineAttributes attributes;
         private final int index;
         private final Object2ObjectLinkedOpenHashMap<ModifierReference, OwnedModifier> modifiers = new Object2ObjectLinkedOpenHashMap<>();
+        private final ObjectArrayList<RecipeOverlays.Change> overlays = new ObjectArrayList<>();
         private boolean committed;
         private boolean completed;
 
-        private Selection(MachineAttributes attributes, int index) {
-            this.attributes = attributes;
+        private Selection(RecipeProcess process, int index) {
+            this.process = process;
+            attributes = process.attributes();
             this.index = index;
         }
 
@@ -101,6 +107,34 @@ public final class SelectiveState {
             owned.installed = true;
         }
 
+        /** Records every replacement so reverse undo restores only this owner's preceding writes. */
+        public <C, D> void putOverlay(RecipeRequirement<C> target, RequirementPath path, String layerId,
+                                     RecipeOverlayType<C, D> type, D data) {
+            overlays.add(RecipeOverlays.getOrCreate(process).put(target, path, layerId, type, data));
+        }
+
+        /** Tries both effect families even when an extension violates its cleanup contract. */
+        public void cleanupEffects() {
+            Throwable failure = null;
+            for (int index = overlays.size() - 1; index >= 0; index--) {
+                try {
+                    overlays.get(index).rollback();
+                } catch (RuntimeException | Error cleanup) {
+                    if (failure == null) { failure = cleanup; }
+                    else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                }
+            }
+            try {
+                cleanupModifiers();
+            } catch (RuntimeException | Error cleanup) {
+                if (failure == null) { failure = cleanup; }
+                else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+            }
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+            overlays.clear();
+        }
+
         /** Reverse-order local cleanup; never restores a layer snapshot or another selection's effects. */
         public void cleanupModifiers() {
             var owned = new ObjectArrayList<>(modifiers.values());
@@ -123,7 +157,7 @@ public final class SelectiveState {
 
         /** Infallible END terminal cleanup after every enclosing business commit succeeds. */
         public void finish() {
-            cleanupModifiers();
+            cleanupEffects();
             completed = true;
         }
     }

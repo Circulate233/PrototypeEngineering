@@ -1,6 +1,6 @@
 # PM 事件、组件与配方迁移审查
 
-早期 `MachineRecipe` 的固定 input/output/FE 字段及 `RecipeRun` 直接流程遗漏了 PM 的事件、组件、需求系统和进程扩展，不能视为有效迁移。资源概率、加权输出和检查点已完成上一阶段验证；当前模糊/动态输入、解析锁、完整需求路径及选择器已接入并通过本阶段验证，证据见[实施进度](implementation-status.md)。需求 overlay、完整保存恢复、扫描/取消和多线程调度仍未完成。JEI 接入继续等待这些基础收敛。
+早期 `MachineRecipe` 的固定 input/output/FE 字段及 `RecipeRun` 直接流程遗漏了 PM 的事件、组件、需求系统和进程扩展，不能视为有效迁移。资源概率、加权输出、检查点、模糊/动态输入、解析锁、完整需求路径及选择器已完成此前阶段验证。当前需求 overlay 已接入并通过本阶段逻辑构建、逐类 IDEA MCP 全问题检查及 MCP build_project，准确证据见[实施进度](implementation-status.md)。完整保存恢复、扫描/取消和多线程调度仍未完成。JEI 接入继续等待这些基础收敛。
 
 ## 旧代码实际调用链
 
@@ -10,7 +10,7 @@
 | 机器事件适配与扩展 | [MachineSystem](F:/clone/PrototypeMachinery/src/main/kotlin/api/machine/component/system/MachineSystem.kt:80)、[MachineTickEvent](F:/clone/PrototypeMachinery/src/main/kotlin/api/machine/event/MachineTickEvent.kt:13) | 默认 onPreTick/onTick/onPostTick 分别构造 tick 事件并调用 onEvent；系统还可处理自定义 MachineEvent。 | 已迁移 MachineSystem 默认事件适配和开放 MachineEvent；注册事件与其无关。 |
 | 配方扫描与处理装配 | [FactoryRecipeProcessorComponentType](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/type/FactoryRecipeProcessorComponentType.kt:15) | 同一处理器组件挂接扫描系统和执行系统。 | ComponentType 支持多系统；实际扫描器和处理器装配尚未迁移。 |
 | 配方声明 | [MachineRecipe](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/MachineRecipe.kt:42) | 保存按 RecipeRequirementType 分组的 RecipeRequirementComponent；资源需求只是其中一类。 | 已改为按职责分组的 RecipeRequirement，泛型绑定负载与系统；旧固定字段移出 API。 |
-| 需求阶段 | [RecipeRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/component/system/RecipeRequirementSystem.kt:64)、[executeStage](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/system/FactoryRecipeProcessorSystem.kt:236) | start / acquireTickTransaction / onEnd；执行器对整阶段收集事务，成功提交，阻塞/失败反向回滚。 | 已有资源/FE/属性、概率/随机输出/检查点与统一完成边界；本阶段模糊动态/路径/解析锁/选择器已接入并验证。需求 overlay 未迁移。 |
+| 需求阶段 | [RecipeRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/component/system/RecipeRequirementSystem.kt:64)、[executeStage](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/system/FactoryRecipeProcessorSystem.kt:236) | start / acquireTickTransaction / onEnd；执行器对整阶段收集事务，成功提交，阻塞/失败反向回滚。 | 已有资源/FE/属性、概率/随机输出/检查点、模糊动态/路径/解析锁/选择器与统一完成边界。本阶段 overlay 在完整获取路径上解析有效 view，已接入并验证。 |
 | 进程组件回调 | [tickProcessComponents](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/system/FactoryRecipeProcessorSystem.kt:171)、[RecipeProcessSystem](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/process/component/system/RecipeProcessSystem.kt:11) | 每个配方进程拥有独立组件，组件系统执行 pre/tick/post。 | 已接单进程循环的 pre/tick/body/post，列表只捕获一次；进入 body 后执行全部 Post 清理，保持业务原异常。 |
 | 进程状态 | [RecipeProcess](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/process/RecipeProcess.kt:45)、[RecipeProcessImpl](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/RecipeProcessImpl.kt:20) | owner、组件、属性 overlay、状态、随机 seed、组件持久化。 | 已有 owner、配方、独立组件、seed、root/overlay 属性及同步生命周期；进度同阶段提交并可补偿，完整状态保存恢复尚未迁移。 |
 | 生命周期 | [MachineLifecycleListener](F:/clone/PrototypeMachinery/src/main/kotlin/api/machine/lifecycle/MachineLifecycleListener.kt:11)、[MachineLifecycleDispatcher](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/lifecycle/MachineLifecycleDispatcher.kt) | 加载、卸载、成型变化、控制器破坏分别发布；组件监听和全局监听有顺序。 | 缺失。 |
@@ -60,7 +60,7 @@
 
 ## 高级需求能力与源码入口
 
-以下来自 PM 源码的只读审计，是必须保留的完整能力清单，不表示所有能力已验证。新的 `RecipeRequirement<C>` 已统一实例 ID、类型、不可变负载和 START/TICK/END 派发；运行时变化归 `RecipeProcess`。整阶段边界、公开仓室、资源/FE、属性、概率、随机输出、检查点和同步单进程已接入；当前模糊动态、路径 scope、逻辑解析锁和选择器已接入并通过本阶段验证。需求 overlay 及完整持久化仍待接入。
+以下来自 PM 源码的只读审计，是必须保留的完整能力清单，不表示所有能力已验证。新的 `RecipeRequirement<C>` 已统一实例 ID、类型、不可变负载和 START/TICK/END 派发；运行时变化归 `RecipeProcess`。整阶段边界、公开仓室、资源/FE、属性、概率、随机输出、检查点、同步单进程、模糊动态、路径 scope、逻辑解析锁和选择器已完成此前阶段验证。本阶段需求 overlay 已接入并通过验证；完整持久化仍待接入。
 
 | 能力 | 源码入口 | 必须保留的行为 |
 |---|---|---|
@@ -74,9 +74,9 @@
 | 每进程需求 overlay | [RecipeOverlayProcessComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/RecipeOverlayProcessComponent.kt:92)、[OverlayApplier](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/overlay/RecipeRequirementOverlayApplier.kt:20)、[executeStage](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/system/FactoryRecipeProcessorSystem.kt:250)、[RecipeOverlayModifierPipeline](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/modifier/RecipeOverlayModifierPipeline.kt:12) | 按 typeId + componentId 保存覆写，执行时解析有效组件，不修改基础配方。内置 applier 覆盖物品/流体 IO、流体每刻 IO、能源每刻速率及 ignore_output_full；保留外部 applier、modifier 与稳定调用顺序。 |
 | 检查点子生命周期 | [CheckpointRequirementComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/CheckpointRequirementComponent.kt:19)、[CheckpointRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/CheckpointRequirementSystem.kt:45) | 在 scaled/unscaled 时间跨阈值时执行嵌套需求的 START/TICK/END；新实现补 time=0 的 START 触发，子事务与资源令牌由外层统一结算，Blocked/Failure 立即停止后续获取。 |
 
-## 概率、随机输出与检查点上一阶段映射
+## 概率、随机输出与检查点阶段映射
 
-概率、随机输出和检查点在上一阶段已通过逻辑构建验证、逐类 IDEA MCP 全问题检查及 MCP build_project；准确验证数量、范围和报告见[实施进度](implementation-status.md)。下表记录源码事实与 PM 差异，不把上一阶段证据扩展为当前模糊动态/选择器、持久化或真实 planned 完成结论。
+概率、随机输出和检查点在此前阶段已通过逻辑构建验证、逐类 IDEA MCP 全问题检查及 MCP build_project；准确验证数量、范围和报告见[实施进度](implementation-status.md)。下表记录该阶段源码事实与 PM 差异，各阶段证据独立记录，不扩展为持久化或真实 planned 完成结论。
 
 | 职责 | PM 源码入口 | 新实现与变化 |
 |---|---|---|
@@ -90,11 +90,11 @@
 
 新源码阅读入口：[ChanceMath](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/probability/ChanceMath.java)、[BinomialSampler](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/probability/BinomialSampler.java)、[ProbabilityTuning](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/probability/ProbabilityTuning.java)、[ResourceChance](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/probability/ResourceChance.java)、[WeightedSampling](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/probability/WeightedSampling.java)、[RandomOutputPool](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/RandomOutputPool.java)、[ResourceRequirementSystem](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/requirement/ResourceRequirementSystem.java)、[CheckpointRequirementSystem](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/requirement/CheckpointRequirementSystem.java)。
 
-当前确定性由进程 seed、捕获调参、完整需求路径/阶段盐及已提交的成功刻数共同提供；修改声明或属性效果会改变实际需求，不能仅保存一个 seed 就称为完整恢复。逻辑解析锁和选择状态本阶段已接入内存组件并验证；需求 overlay、持久化、取消/扫描与真实 planned 仍待迁移。非平凡随机池的逐次成本、动态候选全扫描/排序/NBT 和嵌套子生命周期都必须纳入 planned 工作预算。
+当前确定性由进程 seed、捕获调参、完整需求路径/阶段盐及已提交的成功刻数共同提供；修改声明或属性效果会改变实际需求，不能仅保存一个 seed 就称为完整恢复。逻辑解析锁和选择状态已接入内存组件并验证，需求 overlay 本阶段已接入；持久化、取消/扫描与真实 planned 仍待迁移。非平凡随机池的逐次成本、动态候选全扫描/排序/NBT、overlay 重组和嵌套子生命周期都必须纳入 planned 工作预算。
 
-## 模糊动态、解析锁与选择器本阶段映射
+## 模糊动态、解析锁与选择器阶段映射
 
-本阶段模糊动态/路径/解析锁/选择器及完成链已通过 `spotlessApply build` 逻辑验证、逐类 IDEA MCP 全问题检查和 MCP build_project；准确范围、数量和报告见[实施进度](implementation-status.md)。所有逻辑选择都归单进程所有者；真实多线程调度和 NBT 整体恢复没有因这些内存组件而完成。
+模糊动态/路径/解析锁/选择器及完成链已通过此前阶段的 `spotlessApply build` 逻辑验证、逐类 IDEA MCP 全问题检查和 MCP build_project；准确范围、数量和报告见[实施进度](implementation-status.md)。所有逻辑选择都归单进程所有者；真实多线程调度和 NBT 整体恢复没有因这些内存组件而完成。
 
 | 职责 | 旧源码或当前阅读入口 | 实际行为与变化 |
 |---|---|---|
@@ -108,19 +108,37 @@
 | 真正可扩展 modifier/context/descriptor | [PM SelectiveContext](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/selective/SelectiveContext.kt:15)、[新 SelectiveContext](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/selective/SelectiveContext.java)、[SelectiveModifier](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/selective/SelectiveModifier.java)、[Descriptor](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/selective/SelectiveModifierDescriptor.java) | Descriptor 将稳定名称绑定真实外部接口实现。START commit 先提交子业务，再有序执行 modifier；Context 暴露路径/候选/名称/序号，通过有效 apply 作用域的 tracked put 记录局部属性所有权。内部长度分帧 ID 包装仍委托外部 AttributeModifier.apply，不把任意直接状态修改当作自动可补偿。 |
 | END 清效果与继续完成链 | [SelectiveState](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/selective/SelectiveState.java)、[RecipeStageExecutor](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java)、[ResourceTransactions](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/storage/ResourceTransactions.java) | END acquisition/commit 保留有效属性，complete 才清本选择 modifier。外部 child complete 失败仍尝试选择清理，外层/检查点继续全部业务完成和每个资源/FE token 完成，聚合异常；终态边界后不回滚、不重放。complete 仍是不能失败的扩展契约，继续清理是违约后的错误处理。 |
 
-本阶段新 API 阅读入口：[FuzzyInputGroup](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/FuzzyInputGroup.java)、[DynamicInputGroup](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/DynamicInputGroup.java)、[ResourceMatcher](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/matching/ResourceMatcher.java)、[SelectiveRequirement](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/SelectiveRequirement.java)。需求 overlay、正式保存恢复、扫描/取消、完整 JEI 和真实 planned 仍是保留范围。
+该阶段新 API 阅读入口：[FuzzyInputGroup](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/FuzzyInputGroup.java)、[DynamicInputGroup](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/DynamicInputGroup.java)、[ResourceMatcher](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/matching/ResourceMatcher.java)、[SelectiveRequirement](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/SelectiveRequirement.java)。需求 overlay 的当前迁移见下一节；正式保存恢复、扫描/取消、完整 JEI 和真实 planned 仍是保留范围。
+
+## 需求 overlay 本阶段映射
+
+需求 overlay 已接入并通过 `spotlessApply build` 逻辑验证、逐类 IDEA MCP 全问题检查及 MCP build_project。准确范围、数量和报告由[实施进度](implementation-status.md)记录。当前实现是进程内不可变定义的局部覆写，NBT/snapshot 与完整保存恢复仍在下一阶段。
+
+| 职责 | 旧源码或当前阅读入口 | 实际行为与变化 |
+|---|---|---|
+| 真实 typed applier 与数据 | [PM OverlayApplier](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/overlay/RecipeRequirementOverlayApplier.kt:20)、[RecipeOverlayApplier](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayApplier.java)、[RecipeOverlayType](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayType.java) | 保留外部扩展接口，用泛型绑定准确 requirement type、不可变 data 和纯 applier；稳定 ID 直接绑定实现，不从可替换全局注册表取得执行期行为。applier 须能从基础 payload 重新组合剩余层。 |
+| 资源/能源参数效果 | [PM RecipeOverlayProcessComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/RecipeOverlayProcessComponent.kt:57)、[ResourceRequirementPatch](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/ResourceRequirementPatch.java)、[EnergyRequirementPatch](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/EnergyRequirementPatch.java) | 资源 patch 覆盖四阶段 IO 列表及 voidExcessOutputs，保留 chance/random/fuzzy/dynamic 字段；能源 patch 覆盖 TICK in/out 和 void，保留 START/END 数量。null 继承此前层字段，empty 清空资源列表，能源 0 和 Boolean false 是有效覆盖。 |
+| 完整路径、自有层与稳定顺序 | [RecipeOverlays](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlays.java) | 完整 RequirementPath 定位 canonical requirement，写入者自有 String layerId 区分层。首次插入顺序稳定，同层替换位置不变；写时重算 effective，读取热路径不执行 applier。remove/undo 仅改变自身层并重组其余层，全部成功才发布，不恢复整 payload 快照。 |
+| canonical 定义与冻结获取 | [PM executeStage](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/system/FactoryRecipeProcessorSystem.kt:250)、[RecipeRequirement](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/requirement/RecipeRequirement.java) | withPayload 产生保留 definition() canonical 引用的 immutable effective view；callback 可用该 view 再写同 target，无需外持原定义，相同 ID 的 counterfeit 定义仍拒绝。每次 acquire 建立原 scope 后按完整路径解析一次，事务参数冻结；全部嵌套获取也走该入口。结构 overlay 须保留 canonical child 引用。 |
+| Change 的局部补偿边界 | [RecipeOverlays.Change](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlays.java) | 成功编辑立即可见，句柄必须 rollback 或 complete；交叠同层按逆序撤销并校验自身安装版本。complete 放弃 undo，clear 要求无 pending 句柄。坏 applier 在撤销重组抛错会保留原状态与 pending，继续其他清理并聚合 fault，不假称补偿完成。 |
+| 显式 modifier pipeline | [PM RecipeOverlayModifierPipeline](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/modifier/RecipeOverlayModifierPipeline.kt:12)、[RecipeOverlayPipeline](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayPipeline.java)、[RecipeOverlayContext](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayContext.java) | 宿主显式 apply/acquire，按 descriptor 顺序调用，重复项也保留独立 ordinal，不在 new process 自动运行。typed context 仅在 apply 有效，跟踪自己的 changes；失败逆序补偿，不补偿其他直接 process/machine 写入。 |
+| 选择器 overlay 生命周期 | [SelectiveContext](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/selective/SelectiveContext.java)、[SelectiveState](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/selective/SelectiveState.java) | tracked overlay 层与属性同属选择所有者，START rollback 清自身层；END acquisition/commit 和拒绝重试保留效果，成功 complete 才清自身 overlay/属性。两类效果都尝试清理，错误聚合；不会覆盖其他写入者的层。 |
+
+旧 [serializeNBT](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/RecipeOverlayProcessComponent.kt:118) 将可变 data compound 直接挂入结果，[deserializeNBT](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/RecipeOverlayProcessComponent.kt:126) 先清原状态，再对缺字段条目跳过并保留输入 compound 引用；物品/流体 key 读取也跳过坏值或非正数量（182–183、203–204）。这些共享引用、部分加载与静默丢项风险留待 strict 保存恢复处理。本阶段没有 NBT codec 或完整 snapshot，不能宣称已修复旧 NBT 恢复。
+
+API 阅读入口：[RecipeOverlayTypes](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayTypes.java)、[RecipeOverlayModifier](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayModifier.java)、[RecipeOverlayModifierDescriptor](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/overlay/RecipeOverlayModifierDescriptor.java)。下一阶段必须明确 canonical 结构、有效层顺序/定义、选择/解析锁、概率调参和进程生命周期的严格保存恢复契约，再接扫描/取消及真实 planned。
 
 ## 高级需求旧实现缺陷与迁移边界
 
-- **选择器 START 重试漏消耗风险。** [SelectiveRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/SelectiveRequirementSystem.kt:49) 在 acquisition 时写 selectedIndex（56），START rollback 只撤销 modifier 和子事务（95–99），不撤销选择索引。后续需求阻塞使输入回滚后，再次 START 因既有索引直接成功，可能跳过已回滚的输入。其 END rollback 还会清除已生效 modifier（150–152），输出阻塞后的重试会丢失效果。新 START 局部撤销 provisional selection，END 仅在 complete 清属性；本阶段已验证阻塞重试与清理行为。
+- **选择器 START 重试漏消耗风险。** [SelectiveRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/SelectiveRequirementSystem.kt:49) 在 acquisition 时写 selectedIndex（56），START rollback 只撤销 modifier 和子事务（95–99），不撤销选择索引。后续需求阻塞使输入回滚后，再次 START 因既有索引直接成功，可能跳过已回滚的输入。其 END rollback 还会清除已生效 modifier（150–152），输出阻塞后的重试会丢失效果。新 START 局部撤销 provisional selection，END 仅在 complete 清属性/自有 overlay；此前选择器阶段已验证阻塞重试，本阶段补 overlay 生命周期验证。
 - **流体 TICK 模拟重复使用余额/容量。** [输入模拟](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/FluidRequirementSystem.kt:198)及输出模拟（214）逐条模拟，未聚合也未为前项预留。同 key 两项各需 100、可用量 150 时，两项都可通过检查而实际执行失败。迁移须按确定 key 聚合或让整批预留覆盖全部需求。
 - **随机输出最大数量检查不能证明容量安全。** [worstCaseKeys](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:499) 只取数量最大的 pickCount 个 key；能容纳这些 key 不代表能容纳另一些随机 key，槽位和 key 限制也不能由总量推导。新实现按实际确定的 AEKey/数量预留，保留加权效果并修正此容量假设；非平凡池的 planned 工作预算仍待实现。
 - **动态候选先截断再排序。** [enumerateDynamicCandidates](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:440) 达到上限便停止枚举（443–452），随后才排序（457）；来源遍历顺序可能影响候选子集。新实现全扫描匹配后按完整规范身份排序，再截断；结果上限不限制总工作成本，后续 planned 仍须预算。
 - **旧补偿忽略实际恢复量。** [rollbackExtracted/rollbackInserted](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:513) 调用 unchecked 插入/提取但忽略返回数量；流体也有同类代码。不能复制“尽力退回”便宣称资源守恒。新需求应使用已有预留/补偿协议，并让无法完成的补偿显式失败；不能先公开输出再依赖撤回仍可被外部取得的资源。
-- **逐需求完成不能替代整阶段完成。** 旧阶段分派先 acquisition 后逐事务 commit；资源、FE 与业务/选择状态须具有共同的完成和失败边界，不能让较早需求独自最终完成后仍遇到后项失败。新同步协调已接入，生命周期/进度在此边界内提交和补偿，本阶段选择状态和子令牌也归外层并通过验证；真实 planned 提交协议未完成。
+- **逐需求完成不能替代整阶段完成。** 旧阶段分派先 acquisition 后逐事务 commit；资源、FE 与业务/选择状态须具有共同的完成和失败边界，不能让较早需求独自最终完成后仍遇到后项失败。新同步协调已接入，生命周期/进度、选择状态和子令牌也归外层并通过此前验证；本阶段 overlay 的局部句柄接入同一补偿/完成边界，真实 planned 提交协议未完成。
 - **旧 planned 投影覆盖不足。** [ItemRequirementComponent.snapshot](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/ItemRequirementComponent.kt:42)及[FluidRequirementComponent.snapshot](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/FluidRequirementComponent.kt:52) 拒绝全部非空 properties，投影仅涉及固定输入及流体每刻输入。概率、模糊、动态、随机、选择与 overlay 仍需要显式快照、有效定义和状态投影契约，不能因固定消耗可投影就宣称完整 planned 迁移完成。
 
-下一步接需求 overlay，继续保存恢复、扫描/取消和 planned 适配。需求定义和系统可跨进程共享，变化必须归各进程；真实调度继续遵守 PM 的两次 join、稳定 affinity lane 与 PN owner/epoch/预算边界。以上是依赖排序，所有高级效果和外部扩展职责仍在保留范围。
+下一步补严格保存恢复、扫描/取消和 planned 适配。需求定义和系统可跨进程共享，变化必须归各进程；真实调度继续遵守 PM 的两次 join、稳定 affinity lane 与 PN owner/epoch/预算边界。以上是依赖排序，所有高级效果和外部扩展职责仍在保留范围。
 
 ## 修正顺序与验证依据
 
