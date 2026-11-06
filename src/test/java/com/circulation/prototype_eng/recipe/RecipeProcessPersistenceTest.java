@@ -356,9 +356,10 @@ class RecipeProcessPersistenceTest {
         var recipe = recipe(0, RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(stacks(MATERIAL, 2), stacks(PRODUCT, 5))),
             energy(3, 0, 7));
         var failure = new IllegalStateException("post completion notification failed");
+        int[] notifications = {0};
         var post = new ComponentType<RecipeProcess, Box>(id("post"), _ -> new Box(), List.of(new ComponentSystem<>() {
             @Override public ResourceLocation id() { return RecipeProcessPersistenceTest.id("post_system"); }
-            @Override public void onPostTick(RecipeProcess process, Box component) { throw failure; }
+            @Override public void onPostTick(RecipeProcess process, Box component) { notifications[0]++; throw failure; }
         }));
         var codec = builder(recipe).component(post, new BoxCodec("post", new ObjectArrayList<>())).build();
         var original = process(env, recipe);
@@ -369,8 +370,15 @@ class RecipeProcessPersistenceTest {
         assertEquals(5, env.output.amount(PRODUCT));
         assertEquals(17, env.energy.storedEnergy());
         assertEquals(7, env.generated.storedEnergy());
+        assertEquals(1, notifications[0]);
         assertThrows(IllegalStateException.class, () -> codec.encode(original));
-        assertSame(ProcessResult.SUCCESS, original.tick());
+        var committedState = original.state();
+        assertThrows(IllegalStateException.class, original::tick);
+        assertEquals(committedState, original.state());
+        assertSame(ProcessResult.SUCCESS, original.state().result());
+        assertEquals(1, notifications[0]);
+        assertEquals(18, env.input.amount(MATERIAL));
+        assertEquals(17, env.energy.storedEnergy());
         assertEquals(5, env.output.amount(PRODUCT));
         assertEquals(7, env.generated.storedEnergy());
     }

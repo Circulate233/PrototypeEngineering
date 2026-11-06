@@ -239,7 +239,7 @@ class OverlayModifierTest {
     }
 
     @Test
-    void laterEndCommitFailureRefundsOutputAndLeavesTheSelectedOverlayForRetry() {
+    void laterEndCommitFailureRefundsOutputKeepsTheSelectedOverlayAndRejectsRetry() {
         var probe = new Probe("zz_overlay", 2, true);
         var primary = new IllegalStateException("later END failed");
         boolean[] fail = {true};
@@ -256,11 +256,16 @@ class OverlayModifierTest {
         assertEquals(18, probe.input.availableAmount(MATERIAL));
         assertEquals(0, probe.output.availableAmount(MATERIAL));
         assertEquals(5, effective(process, probe));
+        var faulted = process.state();
+        int visits = probe.observations.size();
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(5, probe.output.availableAmount(MATERIAL));
-        assertEquals(List.of(2, 5, 5, 5), probe.amounts());
-        assertEquals(2, effective(process, probe));
+        assertThrows(IllegalStateException.class, process::tick);
+        assertSame(faulted, process.state());
+        assertEquals(visits, probe.observations.size());
+        assertEquals(18, probe.input.availableAmount(MATERIAL));
+        assertEquals(0, probe.output.availableAmount(MATERIAL));
+        assertEquals(List.of(2, 5, 5), probe.amounts());
+        assertEquals(5, effective(process, probe));
     }
 
     @Test
@@ -332,8 +337,15 @@ class OverlayModifierTest {
         var state = Objects.requireNonNull(process.components().get(SelectiveState.TYPE));
         assertTrue(Objects.requireNonNull(state.selection(selection.path(null))).completed());
         int visits = probe.observations.size();
-        assertSame(ProcessResult.SUCCESS, process.tick());
+        var faulted = process.state();
+        assertThrows(IllegalStateException.class, process::tick);
+        assertSame(faulted, process.state());
         assertEquals(visits, probe.observations.size());
+        assertEquals(14, probe.input.availableAmount(MATERIAL));
+        assertEquals(9, probe.output.availableAmount(MATERIAL));
+        assertEquals(6, RecipeOverlays.getOrCreate(process).resolve(probe.target, path).payload());
+        assertEquals(1, process.attributes().value(SCORE));
+        assertTrue(Objects.requireNonNull(state.selection(selection.path(null))).completed());
     }
 
     private static int effective(RecipeProcess process, Probe probe) {

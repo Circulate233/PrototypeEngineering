@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.recipe.persistence;
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.RequirementAttributeState;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
@@ -14,6 +15,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -57,10 +59,25 @@ public final class BuiltinProcessValidation {
         Map<ResourceInputLocks.Key, AEKey> locks = lockComponent == null ? Map.of() : lockComponent.snapshot();
         var selectionComponent = process.components().get(SelectiveState.TYPE);
         Map<RequirementPath, SelectiveState.SelectionSnapshot> selections = selectionComponent == null ? Map.of() : selectionComponent.snapshot();
+        var attributeComponent = process.components().get(RequirementAttributeState.TYPE);
+        var attributes = attributeComponent == null ? new RequirementAttributeState.Snapshot(List.of(), List.of()) : attributeComponent.snapshot();
+        var receipts = selectionComponent == null ? List.<SelectiveState.AbortReceipt>of() : selectionComponent.abortReceipts();
+        validateAttributeReferences(index, attributes);
+        validateAbortReceipts(process, index, receipts);
+        boolean aborted = process.state().lifecycle() == RecipeProcess.Lifecycle.FAILED || process.state().lifecycle() == RecipeProcess.Lifecycle.CANCELLED;
+        if (aborted) {
+            if (!locks.isEmpty() || !selections.isEmpty() || !attributes.owned().isEmpty()) {
+                throw invalid("Aborted process retains live built-in ownership");
+            }
+            return;
+        }
+        if (!attributes.aborted().isEmpty() || !receipts.isEmpty()) {
+            throw invalid("Non-aborted process contains abort receipts");
+        }
         validateLocks(process, index, locks, stableResourceGroups);
         validateSelections(process, index, selections, stableStructure);
         if (!process.state().started()) {
-            if (!locks.isEmpty() || !selections.isEmpty()) {
+            if (!locks.isEmpty() || !selections.isEmpty() || !attributes.owned().isEmpty()) {
                 throw invalid("Unstarted process contains committed START decisions");
             }
             return;
@@ -72,6 +89,48 @@ public final class BuiltinProcessValidation {
         var ongoing = new Execution(true, process.state().lifecycle() == RecipeProcess.Lifecycle.COMPLETED, Window.NONE);
         for (var root : process.recipe().orderedRequirements()) {
             walker.require(root, root.path(null), ongoing);
+        }
+    }
+
+    private static void validateAttributeReferences(RecipeDefinitionIndex index, RequirementAttributeState.Snapshot snapshot) {
+        var seen = new ObjectOpenHashSet<RequirementAttributeState.Reference>();
+        for (var references : List.of(snapshot.owned(), snapshot.aborted())) {
+            for (var reference : references) {
+                if (index.require(reference.path()).type() != RecipeRequirements.ATTRIBUTES || !seen.add(reference)) {
+                    throw invalid("Unknown or duplicate requirement attribute ownership: " + reference);
+                }
+            }
+        }
+        // The component binds exact installed identities and checks receipt absence. Historical
+        // attribute overlays may change the attribute ID; external historical validators still apply.
+    }
+
+    private static void validateAbortReceipts(RecipeProcess process, RecipeDefinitionIndex index, List<SelectiveState.AbortReceipt> receipts) {
+        var paths = new ObjectOpenHashSet<RequirementPath>();
+        var modifiers = new ObjectOpenHashSet<SelectiveState.ModifierReference>();
+        var layers = new ObjectOpenHashSet<SelectiveState.OverlayReference>();
+        var attributes = process.attributes().localSnapshot();
+        var overlays = process.components().get(RecipeOverlays.TYPE);
+        for (var receipt : receipts) {
+            var path = receipt.selectionPath();
+            if (index.require(path).type() != RecipeRequirements.SELECTIVE || !paths.add(path)) {
+                throw invalid("Unknown or duplicate selector abort receipt: " + path);
+            }
+            String framed = path.toString().length() + ":" + path;
+            for (var reference : receipt.modifiers()) {
+                var local = attributes.get(reference.attribute());
+                if (!reference.id().startsWith("selective/" + framed + "/") || !modifiers.add(reference)
+                    || local != null && local.modifiers().containsKey(reference.id())) {
+                    throw invalid("Invalid or still installed aborted selector modifier: " + reference.id());
+                }
+            }
+            for (var reference : receipt.overlays()) {
+                if (!reference.layerId().startsWith("selective_overlay/" + framed) || !layers.add(reference)
+                    || index.require(reference.path()) != reference.target()
+                    || overlays != null && overlays.hasLayer(reference.target(), reference.path(), reference.layerId())) {
+                    throw invalid("Invalid or still installed aborted selector overlay: " + reference.layerId());
+                }
+            }
         }
     }
 

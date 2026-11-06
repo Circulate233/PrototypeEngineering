@@ -159,7 +159,7 @@ class ProbabilisticResourceRequirementTest {
     }
 
     @Test
-    void preflightOutputFaultReleasesAlreadyHeldInputBeforeRetry() {
+    void preflightOutputFaultReleasesAlreadyHeldInputAndRejectsFurtherTicks() {
         var input = Objects.requireNonNull(hatch(HatchMode.INPUT, 1, 10).input());
         var output = Objects.requireNonNull(hatch(HatchMode.OUTPUT, 1, 10).output());
         input.insert(MATERIAL, 4, Actionable.MODULATE);
@@ -173,10 +173,11 @@ class ProbabilisticResourceRequirementTest {
         assertEquals(10, output.insert(PRODUCT, 10, Actionable.SIMULATE));
         assertEquals(0, process.state().successfulTicks());
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
+        assertThrows(IllegalStateException.class, process::tick);
         assertEquals(4, input.availableAmount(MATERIAL));
         assertEquals(0, output.amount(PRODUCT));
-        assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+        assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
+        assertEquals(0, process.state().successfulTicks());
     }
 
     @Test

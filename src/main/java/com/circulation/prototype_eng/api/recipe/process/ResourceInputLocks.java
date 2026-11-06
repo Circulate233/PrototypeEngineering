@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /** Per-process chosen resource identities, not inventory mutexes or quantity reservations. */
-public final class ResourceInputLocks {
+public final class ResourceInputLocks implements ProcessAbortListener {
     public static final ComponentType<RecipeProcess, ResourceInputLocks> TYPE = new ComponentType<>(
         new ResourceLocation(Tags.MOD_ID, "resource_input_locks"), _ -> new ResourceInputLocks(), ObjectLists.emptyList());
     private Object2ObjectLinkedOpenHashMap<Key, AEKey> choices = new Object2ObjectLinkedOpenHashMap<>();
@@ -59,6 +59,12 @@ public final class ResourceInputLocks {
             restored.put(Objects.requireNonNull(entry.getKey()), Objects.requireNonNull(entry.getValue()));
         }
         choices = restored;
+    }
+
+    /** Choices carry no inventory ownership; terminal abort only forgets the chosen identities. */
+    @Override
+    public void onAborted(RecipeProcess process) {
+        choices.clear();
     }
 
     public enum Kind { FUZZY, DYNAMIC }

@@ -17,6 +17,7 @@ import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.RequirementAttributeState;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
@@ -72,6 +73,7 @@ public final class RecipeProcessNbt {
         add(components, new Binding<>(RecipeOverlays.TYPE, BuiltinProcessCodecs.overlays(new RecipeOverlayNbt(index, overlays))));
         add(components, new Binding<>(ResourceInputLocks.TYPE, BuiltinProcessCodecs.locks(builder.resources)));
         add(components, new Binding<>(SelectiveState.TYPE, BuiltinProcessCodecs.selections(index)));
+        add(components, new Binding<>(RequirementAttributeState.TYPE, BuiltinProcessCodecs.requirementAttributes()));
         bindings = Object2ObjectMaps.unmodifiable(components);
     }
 
@@ -85,7 +87,7 @@ public final class RecipeProcessNbt {
         if (process.recipe() != recipe) { throw new IllegalArgumentException("Process belongs to a different canonical recipe"); }
         validate(process);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
+        tag.setInteger("Version", 2);
         tag.setString("Recipe", recipe.id().toString());
         tag.setString("Revision", revision);
         tag.setInteger("Duration", recipe.durationTicks());
@@ -126,7 +128,7 @@ public final class RecipeProcessNbt {
         var tag = Objects.requireNonNull(saved).copy();
         StrictNbt.requireKeys(tag, "Version", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
             "Attributes", "Components", "PendingDependencies");
-        if (StrictNbt.requireInt(tag, "Version") != 1 || !StrictNbt.requireId(tag, "Recipe").equals(recipe.id())
+        if (StrictNbt.requireInt(tag, "Version") != 2 || !StrictNbt.requireId(tag, "Recipe").equals(recipe.id())
             || !StrictNbt.requireString(tag, "Revision").equals(revision) || StrictNbt.requireInt(tag, "Duration") != recipe.durationTicks()) {
             throw new IllegalArgumentException("Unsupported process save or incompatible recipe revision");
         }

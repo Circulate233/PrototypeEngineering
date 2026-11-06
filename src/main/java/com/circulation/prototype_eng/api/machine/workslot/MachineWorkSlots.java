@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeExecutor;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.machine.WorkSlotProcessingSystem;
+import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -115,6 +116,72 @@ public final class MachineWorkSlots {
         return false;
     }
 
+    public boolean cancel(RecipeProcess process) { return cancel(process, RecipeText.Cancelled.failure()); }
+
+    /**
+     * Cancels owned work and releases its slot only after cleanup succeeds. This is not detach or END.
+     * A faulted host may still clean its other quiescent processes, but is never reactivated by cleanup.
+     */
+    public boolean cancel(RecipeProcess process, ProcessResult.Failure reason) {
+        requireCancellationBoundary();
+        Objects.requireNonNull(process);
+        Objects.requireNonNull(reason);
+        for (var slot : slots) {
+            if (slot.process() != process) { continue; }
+            process.requirePersistenceBoundary();
+            if (process.host() != this) { throw new IllegalStateException("Work slot lost its cancellation ownership"); }
+            executing = true;
+            try {
+                return cancelSlot(slot, process, reason);
+            } catch (RuntimeException | Error failure) {
+                faulted = true;
+                throw failure;
+            } finally {
+                executing = false;
+            }
+        }
+        return false;
+    }
+
+    public int cancelAll() { return cancelAll(RecipeText.Cancelled.failure()); }
+
+    /** Attempts every occupied slot in reverse order; failures retain their process for diagnostics. */
+    public int cancelAll(ProcessResult.Failure reason) {
+        requireCancellationBoundary();
+        Objects.requireNonNull(reason);
+        executing = true;
+        Throwable failure = null;
+        int cancelled = 0;
+        try {
+            for (int i = slots.size() - 1; i >= 0; i--) {
+                var slot = slots.get(i);
+                var process = slot.process();
+                if (process == null) { continue; }
+                try {
+                    if (cancelSlot(slot, process, reason)) { cancelled++; }
+                } catch (RuntimeException | Error cleanup) {
+                    faulted = true;
+                    if (failure == null) { failure = cleanup; }
+                    else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                }
+            }
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+            return cancelled;
+        } finally {
+            executing = false;
+        }
+    }
+
+    private boolean cancelSlot(WorkSlot slot, RecipeProcess process, ProcessResult.Failure reason) {
+        if (process.host() != this) { throw new IllegalStateException("Work slot lost its cancellation ownership"); }
+        boolean cancelled = process.cancelFrom(this, reason);
+        process.requirePersistenceBoundary();
+        process.detachFrom(this);
+        slot.setState(null, process.state().result());
+        return cancelled;
+    }
+
     /** One synchronous executor invocation per occupied slot; expected failures do not stop other slots. */
     public void tickProcesses() {
         requireBoundary();
@@ -125,11 +192,11 @@ public final class MachineWorkSlots {
                 if (process == null) { continue; }
                 if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
                 var before = process.state().lifecycle();
-                if (before != RecipeProcess.Lifecycle.COMPLETED && before != RecipeProcess.Lifecycle.FAILED) { executor.tick(process); }
+                if (!before.isTerminal()) { executor.tick(process); }
                 process.requirePersistenceBoundary();
                 if (process.host() != this) { throw new IllegalStateException("Executor changed process ownership"); }
                 var state = process.state();
-                if (state.lifecycle() == RecipeProcess.Lifecycle.COMPLETED || state.lifecycle() == RecipeProcess.Lifecycle.FAILED) {
+                if (state.lifecycle().isTerminal()) {
                     process.detachFrom(this);
                     slot.setState(null, state.result());
                 } else {
@@ -205,7 +272,7 @@ public final class MachineWorkSlots {
     private void validateUnattached(RecipeProcess process) {
         validateProcess(process);
         if (process.host() != null) { throw new IllegalArgumentException("Process is already hosted"); }
-        if (process.state().lifecycle() == RecipeProcess.Lifecycle.COMPLETED || process.state().lifecycle() == RecipeProcess.Lifecycle.FAILED) {
+        if (process.state().lifecycle().isTerminal()) {
             throw new IllegalArgumentException("Cannot admit a terminal process as new work");
         }
     }
@@ -223,6 +290,10 @@ public final class MachineWorkSlots {
 
     private void requireBoundary() {
         if (executing || faulted) { throw new IllegalStateException("Work slots are executing or faulted"); }
+    }
+
+    private void requireCancellationBoundary() {
+        if (executing) { throw new IllegalStateException("Work slots are executing"); }
     }
 
     public record SlotSnapshot(WorkSlotDefinition definition, @Nullable RecipeProcess process,

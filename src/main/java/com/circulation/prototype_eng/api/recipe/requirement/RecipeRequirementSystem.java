@@ -19,4 +19,12 @@ public interface RecipeRequirementSystem<C> {
     default RequirementTransaction start(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }
     default RequirementTransaction tick(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }
     default RequirementTransaction end(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }
+
+    /**
+     * Releases this requirement's lifetime effects after business failure or explicit cancellation.
+     * May run before START; consult owned state rather than assuming acquisition occurred. No END or
+     * historical IO refund. Wrappers propagate only to active children, preserving their full path.
+     * This terminal cleanup cannot block or return a transaction; faults are aggregated and fatal.
+     */
+    default void cancel(RecipeProcess process, RecipeRequirement<C> requirement) { }
 }

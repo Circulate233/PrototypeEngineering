@@ -138,7 +138,7 @@ class SelectiveRequirementTest {
     }
 
     @Test
-    void parentCommitFaultDiscardsTheChoiceAndRetryAcquiresItsInputsAgain() {
+    void parentCommitFaultDiscardsTheChoiceAndRejectsRetryWithoutReacquiringInputs() {
         var env = new Environment();
         var candidate = env.candidate("candidate", 2, 0, 0);
         boolean[] fail = {true};
@@ -161,12 +161,18 @@ class SelectiveRequirementTest {
         assertEquals(20, env.input.availableAmount(MATERIAL));
         assertNull(state(process).selection(selection.path(null)));
         assertEquals(0, candidate.businessEffects);
+        var faulted = process.state();
+        int visits = candidate.paths.size();
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(18, env.input.availableAmount(MATERIAL));
-        assertEquals(2, candidate.startAcquisitions);
-        assertEquals(12, process.attributes().value(SCORE));
-        assertEquals(15, process.attributes().value(OTHER));
+        assertThrows(IllegalStateException.class, process::tick);
+        assertSame(faulted, process.state());
+        assertEquals(visits, candidate.paths.size());
+        assertEquals(20, env.input.availableAmount(MATERIAL));
+        assertEquals(1, candidate.startAcquisitions);
+        assertEquals(8, process.attributes().value(SCORE));
+        assertEquals(10, process.attributes().value(OTHER));
+        assertEquals(0, candidate.businessEffects);
+        assertNull(state(process).selection(selection.path(null)));
     }
 
     @Test
@@ -277,7 +283,7 @@ class SelectiveRequirementTest {
     }
 
     @Test
-    void lateEndCommitFaultRefundsOutputsWithoutRemovingTheCommittedSelectionModifier() {
+    void lateEndCommitFaultRefundsOutputsKeepsTheCommittedSelectionModifierAndRejectsRetry() {
         var env = new Environment();
         var candidate = env.candidate("candidate", 2, 0, 4);
         var primary = new IllegalStateException("later END failed");
@@ -291,10 +297,18 @@ class SelectiveRequirementTest {
         assertEquals(18, env.input.availableAmount(MATERIAL));
         assertEquals(0, env.output.availableAmount(MATERIAL));
         assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
+        var faulted = process.state();
+        var decision = Objects.requireNonNull(state(process).selection(selection.path(null)));
+        int visits = candidate.paths.size();
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(4, env.output.availableAmount(MATERIAL));
-        assertEquals(1, process.attributes().value(SCORE));
+        assertThrows(IllegalStateException.class, process::tick);
+        assertSame(faulted, process.state());
+        assertSame(decision, state(process).selection(selection.path(null)));
+        assertFalse(decision.completed());
+        assertEquals(visits, candidate.paths.size());
+        assertEquals(18, env.input.availableAmount(MATERIAL));
+        assertEquals(0, env.output.availableAmount(MATERIAL));
+        assertEquals(5, process.attributes().value(SCORE));
     }
 
     @Test
@@ -313,13 +327,18 @@ class SelectiveRequirementTest {
         assertEquals(10, process.attributes().value(OTHER));
         assertTrue(Objects.requireNonNull(state(process).selection(selection.path(null))).completed());
         int visits = candidate.paths.size();
-        assertSame(ProcessResult.SUCCESS, process.tick());
+        var faulted = process.state();
+        assertThrows(IllegalStateException.class, process::tick);
+        assertSame(faulted, process.state());
         assertEquals(visits, candidate.paths.size());
         assertEquals(18, env.input.availableAmount(MATERIAL));
+        assertEquals(8, process.attributes().value(SCORE));
+        assertEquals(10, process.attributes().value(OTHER));
+        assertTrue(Objects.requireNonNull(state(process).selection(selection.path(null))).completed());
     }
 
     @Test
-    void checkpointCanUseAProvisionalChoiceAndParentFailureForcesFreshInputAcquisition() {
+    void checkpointCanUseAProvisionalChoiceAndParentFailureRejectsRetryWithoutReplay() {
         var env = new Environment();
         var candidate = env.candidate("candidate", 2, 3, 4);
         var selection = selector("inside", List.of(candidate.requirement()), List.of(boost("bonus", 4)));
@@ -336,14 +355,18 @@ class SelectiveRequirementTest {
         assertEquals(20, env.input.availableAmount(MATERIAL));
         assertEquals(0, env.output.availableAmount(MATERIAL));
         assertEquals(1, process.attributes().value(SCORE));
+        var faulted = process.state();
+        int visits = candidate.paths.size();
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(2, candidate.startAcquisitions);
-        assertEquals(15, env.input.availableAmount(MATERIAL));
-        assertEquals(4, env.output.availableAmount(MATERIAL));
+        assertThrows(IllegalStateException.class, process::tick);
+        assertSame(faulted, process.state());
+        assertEquals(visits, candidate.paths.size());
+        assertEquals(1, candidate.startAcquisitions);
+        assertEquals(20, env.input.availableAmount(MATERIAL));
+        assertEquals(0, env.output.availableAmount(MATERIAL));
         assertEquals(0, process.state().successfulTicks());
-        assertEquals(List.of(false, false, false, false), candidate.committedAtAcquisition);
-        assertTrue(Objects.requireNonNull(state(process).selection(path)).completed());
+        assertEquals(List.of(false, false), candidate.committedAtAcquisition);
+        assertNull(state(process).selection(path));
         assertEquals(1, process.attributes().value(SCORE));
     }
 

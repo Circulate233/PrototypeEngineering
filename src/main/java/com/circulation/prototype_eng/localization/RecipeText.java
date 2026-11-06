@@ -15,7 +15,8 @@ public enum RecipeText implements LocalizationEnum {
     NoEnergyInput,
     NoEnergyOutput,
     EnergyMissing,
-    EnergyOutputFull;
+    EnergyOutputFull,
+    Cancelled;
 
     private final String translationKey = "recipe." + Tags.MOD_ID + "." + name();
 
@@ -24,5 +25,9 @@ public enum RecipeText implements LocalizationEnum {
 
     public ProcessResult.Blocked blocked(String... arguments) {
         return new ProcessResult.Blocked(translationKey, ObjectArrayList.of(arguments));
+    }
+
+    public ProcessResult.Failure failure(String... arguments) {
+        return new ProcessResult.Failure(translationKey, ObjectArrayList.of(arguments));
     }
 }

@@ -136,7 +136,7 @@ class RecipeProcessLifecycleTest {
     }
 
     @Test
-    void commitFaultRefundsTickAndDoesNotAdvanceItsDeterministicClock() {
+    void commitFaultRefundsTickAndPermanentlyStopsItsDeterministicClock() {
         var energy = new EnergyBuffer(10, () -> { });
         energy.receiveEnergy(5, Actionable.MODULATE);
         boolean[] fail = {true};
@@ -158,12 +158,17 @@ class RecipeProcessLifecycleTest {
         assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
         assertEquals(0, process.state().successfulTicks());
         assertEquals(4, energy.energySnapshot().availableEnergy());
+        var committedState = process.state();
+        var observedTicks = List.copyOf(ticks);
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(ticks.getFirst(), ticks.getLast());
-        assertEquals(1, process.state().successfulTicks());
-        assertEquals(3, energy.storedEnergy());
-        assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+        assertThrows(IllegalStateException.class, process::tick);
+        assertEquals(new RecipeProcess.Tick(0, 1, 0, 1), ticks.getFirst());
+        assertEquals(observedTicks, ticks);
+        assertEquals(committedState, process.state());
+        assertEquals(0, process.state().successfulTicks());
+        assertEquals(4, energy.storedEnergy());
+        assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
+        assertSame(ProcessResult.SUCCESS, process.state().result());
     }
 
     @Test
@@ -191,10 +196,22 @@ class RecipeProcessLifecycleTest {
                 }));
             assertSame(failure, assertThrows(IllegalStateException.class, process::tick));
             assertEquals(failingStage == RecipeStage.START ? 0 : 1, process.state().successfulTicks());
-            assertSame(ProcessResult.SUCCESS, process.tick());
-            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), visits);
-            assertEquals(6, energy.storedEnergy());
-            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+            var committedState = process.state();
+            var expectedVisits = switch (failingStage) {
+                case START -> List.of(RecipeStage.START);
+                case TICK -> List.of(RecipeStage.START, RecipeStage.TICK);
+                case END -> List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END);
+            };
+            long expectedEnergy = switch (failingStage) { case START -> 8; case TICK -> 5; case END -> 6; };
+            assertEquals(expectedVisits, visits);
+            assertEquals(expectedEnergy, energy.storedEnergy());
+            assertThrows(IllegalStateException.class, process::tick);
+            assertEquals(committedState, process.state());
+            assertEquals(expectedVisits, visits);
+            assertEquals(expectedEnergy, energy.storedEnergy());
+            assertEquals(failingStage == RecipeStage.END ? RecipeProcess.Lifecycle.COMPLETED : RecipeProcess.Lifecycle.RUNNING,
+                process.state().lifecycle());
+            assertSame(ProcessResult.SUCCESS, process.state().result());
         }
     }
 

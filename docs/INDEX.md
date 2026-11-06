@@ -4,15 +4,17 @@
 
 ## 当前检查点
 
-- 固定 IO 预筛与 AEKey 倒排索引已完成本阶段验证，本阶段只本地提交、不推送，具体提交以 Git 日志为准。此前扫描 admission 为 `4bdc2b8`，工位宿主为 `0d234ef`，严格进程持久化为 `25e86eb`。原工作区 23 份格式/注解修改继续保留，不能一起提交。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 240 项逻辑用例；本机 IDEA MCP 对 181 个 src Java 文件及生成 Tags 共 182 文件逐个 `errorsOnly:false`，零错误、警告、弱警告且无超时；MCP build_project 成功无问题。报告 `build/reports/idea/fixed-io-index-final.json`。真实 AE2 注册环境、GUI/游戏没有运行验证。
+- 显式取消、业务失败清理、精确属性归属及进程 NBT Version2 已完成本阶段验证，只本地提交、不推送，具体提交以 Git 日志为准。此前固定 IO/索引为 `033d6a9`，扫描 admission 为 `4bdc2b8`。原工作区 23 份格式/注解修改继续保留，不能一起提交。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 260 项逻辑用例；本机 IDEA MCP 对 187 个 src Java 文件及 Tags 共 188 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告且无文件超时；MCP build_project 成功。报告 `build/reports/idea/process-abort-final.json`。完整检查分批落盘，避免长批工具超时丢证据；真实 AE2 注册/GUI/游戏未运行验证。
+- 当前取消：NEW/RUNNING 显式 cancel→CANCELLED，业务 Failure→FAILED；保存原进度/started，不 END、不退历史 IO。根需求逆序 cancel、组件依赖逆序 onAborted，全部尝试并聚合错误。faulted process 禁止再 tick/save，正常 Blocked 可重试。host协调结果/解除，cancelAll失败仍清其他槽；普通卸载没有自动取消。
+- 当前归属：需求属性按完整path/expected对象跟踪，默认Renamed codec可保存活动属性；END按removeAtEnd，abort只清owned。Selector/锁清理及成功删除回执进入进程NBT V2，恢复不重放；只验证记录到的归属，外部历史仍需validator。overlay直接children的canonical identity/顺序写时验证。
 - 当前扫描：按工位 group、目录优先级和运行 recipe 去重，每刻最多新增一进程；候选/probe 计数可续查，默认降序穷举，完整谓词明确单调才二分。factory/seed/tuning 固定，resolved base 避免重复父倍率；真实 START 获取后全 rollback。局部 preparation 可投影首刻状态并撤销，不能直接模拟不可逆组件回调。
 - 新增预筛：FixedIoScanConstraint 仅检查稳定 flat 内置资源/FE 的当前 TICK/END 条件，读取有效 overlay，复用整阶段预留/回滚；零时长跳 TICK，跨阶段输入可能释放同 context 输出空间时跳过对应阶段。它不保证完整首 tick。默认 scanner 三参构造安装，显式构造由调用方配置。
 - 新增索引：ResourceRecipeIndex 用显式 Footprint 必需 START 下界构建倒排；forFixedInputs 从内置输入提取但仍需稳定性承诺，未知/动态/未声明配方保留。按 context/key 取 alias 最大量，数量饱和作为下界，匹配全部声明键并保持 scope/顺序。内部工作/deadline 预算尚未接入。
 
 ## 下一步
 
-1. 审查并迁移取消与失效清理，再接机器/世界生命周期。普通 PM 清槽仅丢弃 process；planned 有独立取消原因与撤销链，不能机械混为 END。取消不发产物，不默认退历史已提交消耗；必须清自有效果、未提交预留及外部生命周期资源。
+1. 接机器/世界生命周期与结构宿主，把已实现的保存、扫描、取消用于明确策略。普通区块卸载先停止调度并保存，不能自动取消；控制器破坏、结构失效与 owner 变更应按原用途分别审查。faulted进程清理与planned未完成预留的补偿仍需运行时机制，不能宣称已完成全部失效处理。
 2. 接真实多线程与 planned：保留 PM 两次 join、稳定 affinity lane、PN owner/epoch/向量预算、迟到任务隔离。旧 epoch/lease/ready 不能从存档恢复为运行权限。目录、index、factory、动态扫描/排序/NBT、随机逐次抽样及嵌套生命周期都仍需内部预算。
 3. 机器/结构、投影/渲染、研究/队伍/计算、JEI、最后 CraftTweaker 都是保留范围。当前工作槽/进程持久化和扫描不代表整体机器或重开发已完成。
 

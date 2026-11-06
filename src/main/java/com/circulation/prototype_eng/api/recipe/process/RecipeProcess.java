@@ -11,6 +11,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import com.circulation.prototype_eng.recipe.RecipeAbortCleanup;
+import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import org.jetbrains.annotations.Nullable;
 
@@ -116,6 +118,32 @@ public final class RecipeProcess {
     /** Framework failure marker for an exceptional acquisition/cleanup outside tick(). */
     public void invalidatePersistenceBoundary() { persistenceFailure = true; }
 
+    public boolean cancel() { return cancel(RecipeText.Cancelled.failure()); }
+
+    /** Explicit terminal cancellation at an exclusive, transaction-free boundary; no END or refund. */
+    public boolean cancel(ProcessResult.Failure reason) {
+        return host == null ? cancelFrom(null, reason) : host.cancel(this, reason);
+    }
+
+    /** Work-slot assembly boundary. Hosted callers use cancel(), which coordinates the slot result. */
+    public boolean cancelFrom(@Nullable MachineWorkSlots expectedHost, ProcessResult.Failure reason) {
+        Objects.requireNonNull(reason);
+        if (host != expectedHost) { throw new IllegalArgumentException("Process belongs to a different cancellation host"); }
+        requirePersistenceBoundary();
+        if (state.lifecycle().isTerminal()) { return false; }
+        ticking = true;
+        try {
+            state = new State(Lifecycle.CANCELLED, state.progress(), state.successfulTicks(), reason, state.started());
+            RecipeAbortCleanup.run(this);
+            return true;
+        } catch (RuntimeException | Error failure) {
+            persistenceFailure = true;
+            throw failure;
+        } finally {
+            ticking = false;
+        }
+    }
+
     /** Constructs an unpublished restored process. Its components still require restoration and validation. */
     public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
                                           ProbabilityTuning tuning, State state) {
@@ -140,11 +168,20 @@ public final class RecipeProcess {
 
     /** Framework boundary used by RecipeRequirement.acquire; all returned callbacks retain this scope. */
     public RequirementTransaction acquireRequirement(RecipeRequirement<?> requirement, Supplier<RequirementTransaction> acquisition) {
+        if (state.lifecycle().isTerminal()) { throw new IllegalStateException("Cannot acquire requirements on a terminal process"); }
         var path = requirement.path(activeRequirement);
         var transaction = withRequirementPath(path, () -> Objects.requireNonNull(acquisition.get(), "requirement transaction"));
         if (transaction == RequirementTransaction.SUCCESS) { return transaction; }
         acquiredTransactions = Math.incrementExact(acquiredTransactions);
         return new ScopedRequirement(this, path, transaction);
+    }
+
+    /** Requirement cancellation uses the same parent/child scope without acquiring a new transaction. */
+    public void cancelRequirement(RecipeRequirement<?> requirement, Runnable cleanup) {
+        withRequirementPath(requirement.path(activeRequirement), () -> {
+            cleanup.run();
+            return null;
+        });
     }
 
     private <T> T withRequirementPath(RequirementPath path, Supplier<T> action) {
@@ -224,10 +261,8 @@ public final class RecipeProcess {
      * Component callbacks run pre/tick before processing and post afterwards, including blockage.
      */
     public ProcessResult tick() {
-        if (ticking) {
-            throw new IllegalStateException("Recursive recipe process execution");
-        }
-        if (state.lifecycle() == Lifecycle.COMPLETED || state.lifecycle() == Lifecycle.FAILED) {
+        requirePersistenceBoundary();
+        if (state.lifecycle().isTerminal()) {
             return state.result();
         }
         ticking = true;
@@ -296,12 +331,17 @@ public final class RecipeProcess {
         if (result != ProcessResult.SUCCESS) {
             state = new State(result instanceof ProcessResult.Failure ? Lifecycle.FAILED : before.lifecycle(),
                 before.progress(), before.successfulTicks(), result, before.started());
+            if (result instanceof ProcessResult.Failure) { RecipeAbortCleanup.run(this); }
             return false;
         }
         return true;
     }
 
-    public enum Lifecycle { NEW, RUNNING, COMPLETED, FAILED }
+    public enum Lifecycle {
+        NEW, RUNNING, COMPLETED, FAILED, CANCELLED;
+
+        public boolean isTerminal() { return this == COMPLETED || this == FAILED || this == CANCELLED; }
+    }
 
     /** Progress is absolute scaled work ticks; successfulTicks is the unscaled deterministic clock. */
     public record State(Lifecycle lifecycle, double progress, long successfulTicks, ProcessResult result, boolean started) {
@@ -317,7 +357,7 @@ public final class RecipeProcess {
             }
             if (!started && (progress != 0 || successfulTicks != 0) || lifecycle == Lifecycle.NEW && started
                 || (lifecycle == Lifecycle.RUNNING || lifecycle == Lifecycle.COMPLETED) && !started
-                || (lifecycle == Lifecycle.FAILED) != (result instanceof ProcessResult.Failure)
+                || (lifecycle == Lifecycle.FAILED || lifecycle == Lifecycle.CANCELLED) != (result instanceof ProcessResult.Failure)
                 || lifecycle == Lifecycle.COMPLETED && result != ProcessResult.SUCCESS) {
                 throw new IllegalArgumentException("Inconsistent process lifecycle and committed START state");
             }

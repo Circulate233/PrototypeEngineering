@@ -118,7 +118,12 @@ class CompletionFailureTest {
         assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
         assertThrows(NullPointerException.class, process::requirementPath);
         var afterFailure = List.copyOf(events);
-        assertSame(ProcessResult.SUCCESS, process.tick());
+        var committedState = process.state();
+        assertThrows(IllegalStateException.class, process::tick);
+        assertEquals(committedState, process.state());
+        assertSame(ProcessResult.SUCCESS, process.state().result());
+        assertEquals(75, input.availableAmount(MATERIAL));
+        assertEquals(7, output.availableAmount(MATERIAL));
         assertEquals(afterFailure, events);
     }
 
@@ -164,8 +169,11 @@ class CompletionFailureTest {
         assertThrows(NullPointerException.class, process::requirementPath);
         assertThrows(NullPointerException.class, process::tickContext);
         var afterFailure = List.copyOf(events);
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+        var committedState = process.state();
+        assertThrows(IllegalStateException.class, process::tick);
+        assertEquals(committedState, process.state());
+        assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
+        assertSame(ProcessResult.SUCCESS, process.state().result());
         assertEquals(afterFailure, events);
         assertEquals(17, input.availableAmount(MATERIAL));
     }

@@ -2,7 +2,7 @@
 
 `MachineRecipe` 已恢复为按需求职责分组的公开定义。它保存 id、时长、配方组及 `RecipeRequirementType<?> → List<RecipeRequirement<?>>`，不再以固定输入、输出和 FE 字段限定配方。需求类型绑定自己的 `RecipeRequirementSystem<C>`；资源身份继续使用 AE2 的 AEKey/AEKeyType，不再建立 PMKey 的替代类型体系。
 
-本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复，以及基础 group 目录/索引交集、有界 admission、factory/constraint、resolved base、START 探测和首刻局部 preparation 已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。当前固定 TICK/END 预筛、孤立阶段 probe 与显式 Footprint 资源索引已接入，已通过本阶段构建与 MCP 检查；取消、机器/世界集成和真实并行调度仍在迁移中。
+本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。当前显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT Version 2/取消回执已接入，已通过本阶段构建与 MCP 检查；机器/世界生命周期策略和真实并行调度仍在迁移中。
 
 ## 公开注册与需求扩展
 
@@ -48,7 +48,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。当前同步批次不是跨 lane/join 的 distributed 提交实现。
 
-`RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回，避免下一次调用重放已完成阶段。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过此前工作槽阶段验证，基础多工位 admission 已验证，当前固定预筛/资源索引扩展已验证，取消协议仍未接入。
+`RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回；该进程随后拒绝 tick，不重放已完成阶段。阶段 rollback 成功只证明本次补偿，不使发生异常的原进程恢复执行资格。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过此前工作槽阶段验证，基础多工位 admission 已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
 
 ## 已接入的固定需求和来源组件
 
@@ -81,7 +81,7 @@ var energy = RecipeRequirements.ENERGY.requirement(energyRequirementId,
 
 `RecipeRequirements.ATTRIBUTES` 绑定 `AttributeRequirement` / `AttributeRequirementSystem`，保留可配置 applyAtStart 和 removeAtEnd。START acquisition 立即施加 modifier，使同阶段后续需求读取更新后的倍率；内部 ID 由完整需求路径和属性 ID 确定，委托外部 modifier 的 operation/apply。START rollback 只删除自己成功添加的 modifier，不恢复整层快照，以免覆盖其他需求在业务 commit/rollback 中做的属性或 base 变化。END acquisition 和业务 commit 都保留 modifier，到全部业务 commit 成功后的 complete 才执行无失败局部清理；这既避免最终输出检查提前降倍率，也使被阻塞或异常的 END 不需要重排恢复 modifier。
 
-`RecipeProcess.tick()` 是同步单进程入口：NEW 先执行 START，成功后检查完成条件；未达时长才执行 TICK，成功后再检查 END。零时长在 START 后直接 END，不获取 TICK。Blocked 保持当前生命周期和进度，下一次重试同一阶段；业务 Failure 进入终态 FAILED，COMPLETED/FAILED 再次 tick 只返回已有结果。进程执行不允许递归或同进程并发；当前工作槽负责受检挂接、逐槽驱动和终态移除，扫描基础已验证，当前固定预筛/资源索引扩展已验证，取消仍未接入。
+`RecipeProcess.tick()` 是同步单进程入口，先调用 requirePersistenceBoundary，再检查终态：NEW 先执行 START，成功后检查完成条件；未达时长才执行 TICK，成功后再检查 END。零时长在 START 后直接 END，不获取 TICK。正常业务 Blocked 保持当前生命周期和进度，原进程下一次重试同一阶段；业务 Failure 在阶段 rollback 后进入 FAILED 并自动 abort。稳定且没有此前异常的 COMPLETED/FAILED/CANCELLED 再次 tick 只返回已有结果。执行中发生 RuntimeException/Error 后，原进程的后续 tick 在入口拒绝，即使已终态也不会推进或重放；open acquisition、递归和同进程并发同样拒绝。当前工作槽负责受检挂接、逐槽驱动和终态移除，扫描基础已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
 
 进度采用 double 的绝对工作刻数，声明 durationTicks 也是工作刻数；每次成功 TICK 增加 max(0, PROCESS_SPEED)，long successfulTicks 只增加 1，提供不受速度缩放的确定性刻时钟。TICK 开始前只读一次速度并冻结 `Tick(progressBefore, progressAfter, indexBefore, indexAfter)`，需求可通过 tickContext 读取；阻塞时该次进度和成功刻数都不前进。资源每刻随机盐使用尚未推进的 successfulTicks，检查点使用冻结的 scaled/unscaled 前后范围；不把绝对 progress 当作 0..1 的完成比例。
 
@@ -99,7 +99,7 @@ RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最�
 
 `RecipeRequirements.CHECKPOINT` 绑定 `CheckpointRequirement(time, childRequirement, scaleWithProcess)`。time=0 在 START 执行子需求完整 START/TICK/END，覆盖零时长配方；子 TICK 使用零宽的冻结 Tick 范围，不推进外层时钟。其他检查点在外层 TICK 的 scaled 进度或 unscaled 成功刻数跨过阈值时执行子生命周期。
 
-子生命周期依次获取事务和令牌，Blocked/Failure 立即停止获取后续子阶段；全部令牌上交外层同一阶段统一应用、补偿和完成，子需求不自行结算资源。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证；严格进程 codec 恢复该时间线及子选择/解析状态，不保存每个历史触发刻的完整区间，也不提供取消或扫描状态。
+子生命周期依次获取事务和令牌，Blocked/Failure 立即停止获取后续子阶段；全部令牌上交外层同一阶段统一应用、补偿和完成，子需求不自行结算资源。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证；严格进程 codec 恢复该时间线及子选择/解析状态，不保存每个历史触发刻的完整区间，不保存扫描游标；本阶段进程取消终态与回执另见取消章节。
 
 ## 模糊动态输入、解析锁与选择器
 
@@ -117,7 +117,7 @@ START 解析通过 `ResourceInputResolver` 计算保守 checkTimes，先计入�
 
 选择状态按完整路径归进程所有；后续 TICK/END 只派发已选子需求，外层统一结算其令牌。START rollback 撤销本次选择、已获取子业务和该选择自己安装的属性 modifier/需求 overlay 层；START commit 先应用子业务，再按声明顺序调用 SelectiveModifierDescriptor 绑定的真实 SelectiveModifier.apply，并标记提交。SelectiveContext 暴露机器、进程、选择路径、候选索引及 modifier 名称/序号，属性和需求 overlay 效果通过有效 apply 作用域中的 tracked put 记录所有权。内部 modifier/overlay layer ID 长度分帧并包含路径、descriptor 序号和名称，属性包装仍委托外部 AttributeModifier 行为；直接修改其他状态不自动获得该接口的补偿能力。
 
-END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全部业务成功后的 complete 才完成子事务并清理本选择的局部效果；被阻塞或业务异常的 END 不提前清效果。子 complete 抛错时仍尝试选择清理，外层与检查点完成链继续其余 complete 和资源/FE token 完成，再报告聚合错误；已跨终态边界不回滚或重放。选择状态已接入严格 NBT 保存恢复并完成此前验证，扫描基础已验证，当前固定预筛/资源索引扩展已验证，取消仍未实现。
+END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全部业务成功后的 complete 才完成子事务并清理本选择的局部效果；被阻塞或业务异常的 END 不提前清效果。子 complete 抛错时仍尝试选择清理，外层与检查点完成链继续其余 complete 和资源/FE token 完成，再报告聚合错误；已跨终态边界不回滚或重放。选择状态已接入严格 NBT 保存恢复并完成此前验证，扫描基础已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
 
 ## 每进程需求 overlay
 
@@ -130,7 +130,7 @@ END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全�
 
 `RecipeOverlays` 是进程组件，按完整 RequirementPath 定位 canonical requirement，再按写入者自有的非空白 String layerId 保存层。层按首次插入顺序应用；同层替换保持原顺序，删除后重新插入视为新层。put/remove/rollback 在写时从 canonical payload 按剩余层重算 effective view，全部成功才发布新层与新 view；读取和执行热路径不重复运行 applier。撤销只恢复自己那一层的前次内容或移除自己新增的层，不用整 payload 快照覆盖其他写入者。
 
-`RecipeRequirement.definition()` 保留 canonical 不可变定义，`withPayload()` 产生保留身份的不可变 effective view。外部系统 callback 可用收到的有效 view 写同一 target，无需另持原定义；嵌套 target 要传完整路径。仅复制相同 type/ID 另建的 counterfeit 定义仍被拒绝，不能混用同一路径的不同 canonical 定义。每次 acquire 先进入原路径再解析一次，已获取事务的 payload 参数冻结；后续成功写入只影响之后的获取。选择器和检查点的嵌套子需求同样通过该入口。自定义结构 overlay 必须保持 canonical child 引用和结构身份稳定，不能靠重建同 ID child 绕过身份校验。
+`RecipeRequirement.definition()` 保留 canonical 不可变定义，`withPayload()` 产生保留身份的不可变 effective view。外部系统 callback 可用收到的有效 view 写同一 target，无需另持原定义；嵌套 target 要传完整路径。仅复制相同 type/ID 另建的 counterfeit 定义仍被拒绝，不能混用同一路径的不同 canonical 定义。每次 acquire 先进入原路径再解析一次，已获取事务的 payload 参数冻结；后续成功写入只影响之后的获取。选择器和检查点的嵌套子需求同样通过该入口。RecipeOverlays 在每层 apply 后，将系统 children() 返回的直接子需求与原 canonical payload 比较，要求数量及同序 child.definition() 对象身份不变；重建同 ID child 或重排 selector 分支都会在发布前拒绝。保留 canonical definition 身份的 effective child view 允许使用。此检查只覆盖直接 children，不递归证明任意外部 payload 内部变化或副作用；本阶段新增校验已通过本阶段构建与 MCP 检查。
 
 put/remove 返回 `RecipeOverlays.Change`，写入立即可见，调用者必须最终 rollback 或 complete。同一层的交叠句柄按逆序撤销；rollback 校验当前仍是自身安装版本，再局部撤销并重算其他层。Change.complete 只放弃 undo 权，不删除已安装层；clear 仅允许在没有 pending 句柄的排他生命周期边界清除永久层。外部坏 applier 在撤销重算时抛错，原有效状态和 pending 句柄保留，清理链继续其他项并聚合 fault，不能据此假称清理成功。
 
@@ -142,11 +142,11 @@ SelectiveContext 的 `putRequirementOverlay` 支持 root 或完整 nested target
 
 `api.persistence` 提供 StrictNbt、NbtCodec、资源 key、属性 modifier 和局部属性编解码；`api.recipe.persistence` 的主入口是 `RecipeProcessNbt.builder(canonicalRecipe, revision)`。构建后绑定固定 canonical 配方、显式非空白 revision、资源/属性/组件/overlay codecs 和宿主 validators。encode 拒绝其他 canonical recipe 实例；decode 同时核验格式版本、recipe ID、revision、duration 及完整有序 RequirementPath graph。图由各需求系统的 children() 声明遍历，拒绝循环、重复路径和 effective view 充当 canonical child。
 
-ID、graph 和 duration 只能证明结构身份与显式字段，不能证明任意 Java matcher、comparator、applier、modifier、系统或 codec 函数行为一致。宿主变更这些定义的兼容语义时必须更换 revision；也必须保持 canonical child 引用及纯 applier 的剩余层重组能力，不能仅以相同 ID 声称旧状态兼容。
+ID、graph 和 duration 只能证明结构身份与显式字段，不能证明任意 Java matcher、comparator、applier、modifier、系统或 codec 函数行为一致。宿主变更这些定义的兼容语义时必须更换 revision；也必须保持结构定义稳定及纯 applier 的剩余层重组能力，不能仅以相同 ID 声称旧状态兼容。每层 overlay 的直接 children 校验同样用于 put/remove/undo 和恢复重算，但不能代替任意外部行为的兼容性证明。
 
 NBT 读取要求确切类型，不使用数字强转或缺字段默认值。StrictNbt 校验列表声明类型和每个元素类型、规范 ID、有限浮点、Boolean byte 0/1，拒绝未知字段；组件、依赖、属性/modifier、选择/锁、层 ID/order 等唯一位置拒绝重复。所有已保存组件、缺失 dependent 的 pending 依赖类型、overlay data 和外部属性 modifier 都须显式 codec 覆盖，未知、歧义或不匹配时失败，不跳过条目。encode 输出及传给外部 decode/restore 的 mutable tags 在边界复制，避免共享调用者输入。
 
-保存要求进程独占执行边界，并在编码前后检查：没有执行中的 tick/路径上下文、open requirement transaction、pending overlay stage Change 或未完成 selector START。抛异常的 tick、事务终结/清理故障会使进程拒绝保存，即使生命周期已推进也不能把该次调用当作认证保存点。预留令牌和半提交阶段不能跨存档恢复。状态保留 seed、ProbabilityTuning、double 绝对 progress、long successfulTicks、started、生命周期及结构化结果；属性只保存本地 base override/modifier，父机器属性和世界由宿主提供。
+保存要求进程独占执行边界，并在编码前后检查：没有执行中的 tick/路径上下文、open requirement transaction、pending overlay stage Change 或未完成 selector START。抛异常的 tick、事务终结/清理故障会使进程拒绝保存及后续 tick，即使生命周期已推进或已终态也不能把该次调用当作认证保存点。首次异常前后完成的阶段补偿或通知清理，不代表允许原进程重试；正常业务 Blocked 仍可重试。预留令牌和半提交阶段不能跨存档恢复。状态保留 seed、ProbabilityTuning、double 绝对 progress、long successfulTicks、started、生命周期及结构化结果；属性只保存本地 base override/modifier，父机器属性和世界由宿主提供。
 
 未启动进程中由宿主预种的解析锁属于不可保存的准备状态；本 codec 不持久化尚未成功完成 START 的半准备选择。
 
@@ -161,7 +161,7 @@ ResourceKeyNbt 保存显式 AEKeyType ID 与 key data，先解析准确类型再
 
 BuiltinProcessValidation 校验可证明的内置范围：路径、START 锁类别、稳定资源组匹配、选择索引、未执行分支、已执行分支所需状态和效果唯一所有权。自定义 overlay 必须配置宿主 validator；曾改变资源组或 checkpoint/selector 结构的历史，不能靠当前 payload 或已移除的层推测，宿主须提供历史完整性依据。嵌套正阈值 checkpoint 只看到外层那一个触发 tick，完整历史区间没有保存；仅 time=0、可证明重合或互斥的阈值可强制推断，其余激活完整性由宿主验证。外部 wrapper/component 须声明 children、codec、恢复依赖和跨组件 validator，不能借内置 walker 宣称任意扩展已验证。
 
-严格单进程状态 codec 和新实例验收已通过此前阶段验证。当前工作槽整组恢复在该入口之后统一挂接，见下一节，已通过此前工作槽阶段验证；扫描基础已验证，当前固定预筛/资源索引扩展已验证，取消、机器/世界恢复及真实 planned 尚未完成。PN owner/epoch、lease 和 ready authority 不从旧存档恢复，宿主须重新取得运行权限。当前格式也不自动读取或升级 PM 的旧 NBT。
+严格单进程状态 codec 和新实例验收已通过此前阶段验证。当前工作槽整组恢复在该入口之后统一挂接，见下一节，已通过此前工作槽阶段验证；扫描基础已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已通过本阶段构建与 MCP 检查，机器/世界恢复及真实 planned 尚未完成。PN owner/epoch、lease 和 ready authority 不从旧存档恢复，宿主须重新取得运行权限。当前格式也不自动读取或升级 PM 的旧 NBT。
 
 ## 工作槽宿主、驱动与整组恢复
 
@@ -182,7 +182,7 @@ boolean admitted = host.startIn("main", process); // 只挂接，不执行 START
 
 `MachineWorkSlots.TYPE` 安装普通组件系统 WorkSlotProcessingSystem，onTick 先核对 component.owner 与 machine，再调用 `tickProcesses()`。每个已占用非终态槽只调用所选同步 RecipeExecutor 一次，默认执行 `RecipeProcess.tick`；宿主随后读取结果，不再推进生命周期。外部 driver 必须在返回前完成进程回调及资源结算。PM 原可变 executor 列表后再由处理器推进，接口存在但本轮源码检索未发现任何注册实现；新单 driver 消除扩展实现可能触发的双推进风险，额外处理仍通过公开组件系统扩展。成型判断、世界宿主、调度屏障及 PN 运行权限由调用方提供，目前尚未接入。
 
-Blocked 保留同一进程及选择/进度，下次重试；正常 COMPLETED/FAILED 解除双向挂接并腾空槽，保留结构化 ProcessResult，业务 Failure 不阻止其他槽执行。恢复出的终态进程下一 tick 直接解除挂接，不调用 executor。RuntimeException/Error 立即终止本次遍历并使宿主 faulted，后续 tick、挂接/解除和 snapshot/NBT 保存均拒绝；不能在部分槽已完成后重跑整批。当前 `detach(process)` 要求稳定边界，仅解除挂接并交还生命周期所有权，不执行 END、不退款，**不是取消**；取消清效果、资源补偿及宿主失效协议仍待迁移。
+Blocked 保留同一进程及选择/进度，下次重试；正常 COMPLETED/FAILED/CANCELLED 解除双向挂接并腾空槽，保留结构化 ProcessResult，业务 Failure 不阻止其他槽执行。恢复出的终态进程下一 tick 直接解除挂接，不调用 executor。RuntimeException/Error 立即终止本次遍历并使宿主 faulted，后续 tick、挂接/解除和 snapshot/NBT 保存均拒绝；不能在部分槽已完成后重跑整批。当前 `detach(process)` 要求稳定边界，仅解除挂接并交还生命周期所有权，不执行 END、不退款，**不是取消**。本阶段 host.cancel/cancelAll 另行协调显式终态清理；faulted host 仍可清理其他稳定进程，但不会因此恢复 tick/save 权限，见“显式取消与失败清理”。
 
 `MachineWorkSlotsNbt(revision, recipeBindings)` 绑定非空白布局 revision 与唯一 recipe ID → RecipeProcessNbt。Version 1 保存有序槽的 Name、Groups、Core、RestartPolicy、结构化 Result 和可选 Process。codec 使用当前宿主布局与 executor，revision 同时承担其兼容行为；不从存档恢复调度器或执行权限。encode 在前后 snapshot 核对宿主未被外部 codec 改动。
 
@@ -220,7 +220,7 @@ RecipeScanningSystem 由使用方显式安装到组件系统，runBefore WorkSlo
 
 ## 固定 IO 预筛与声明资源索引
 
-当前 [FixedIoScanConstraint](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/FixedIoScanConstraint.java)、[RecipeStageExecutor.probeStage](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java)、[ResourceRecipeIndex](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/ResourceRecipeIndex.java) 与 RecipeCatalog.recipes() 已接入，已通过本阶段构建与 MCP 检查。本阶段 240 项逻辑测试通过、182 文件零诊断，报告 `build/reports/idea/fixed-io-index-final.json`；准确进度见[实施进度](implementation-status.md)。
+当前 [FixedIoScanConstraint](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/FixedIoScanConstraint.java)、[RecipeStageExecutor.probeStage](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java)、[ResourceRecipeIndex](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/ResourceRecipeIndex.java) 与 RecipeCatalog.recipes() 已接入，已通过此前固定预筛/索引阶段构建与 MCP 检查。此前固定预筛/索引阶段 240 项逻辑测试通过、182 文件零诊断，报告 `build/reports/idea/fixed-io-index-final.json`；准确进度见[实施进度](implementation-status.md)。
 
 默认三参数 RecipeScanner 安装 FixedIoScanConstraint；显式七/八参数构造按调用方提供的 constraints/indexes 配置，不自动补该约束或资源索引。预筛只接受 flat 内置 ResourceRequirement/EnergyRequirement；资源 chance 必须精确 ALWAYS（100%、无乘数），且无随机输出、模糊/动态输入，进程已装组件的 type 不带任何 system 回调。包装器、外部需求、高级资源或组件回调可能改变后续行为时，整个固定预筛返回无拒绝意见，仍保留真实 START 和运行期处理。已有 overlay 先解析 effective payload，不按旧 canonical 数量预筛。
 
@@ -235,6 +235,26 @@ ResourceRecipeIndex 构建 AEKey → recipe 的冻结倒排 postings，按调用
 `ResourceRecipeIndex.forFixedInputs(catalog, stableInputs)` 在调用方 Predicate 明确保证完整 Footprint 合同后提取固定 START 输入。仅支持 flat canonical 内置 Resource/Energy，资源 chance 为100%且 attribute=null，无模糊/动态组；selector/checkpoint/属性需求/自定义类型等不受支持定义即使 Predicate=true 也保持通用候选。END 随机输出不影响声明的 START 必需 key，因此允许；TICK/END IO 不进入此索引。Predicate 仍须覆盖 factory、preparation 与 overlay 的所有变化，类型识别本身不构成稳定输入证明。
 
 footprint 绑定目录 canonical 对象，外部/重复 recipe 拒绝；相同完整 AEKey 的正数量汇总饱和到 Long.MAX_VALUE，非正量拒绝，不同 AEKeyType/NBT 身份分别保留。饱和值是必要下界，合法全配方跨需求总量超过 long 不会因启用索引而拒绝注册，也不据饱和结果证明完整数量可行。lookup 在给定 group/scope 内匹配每个必需 key 的全部下界并恢复目录顺序，始终提供非 null 意见。只读有效输入仓室 snapshot；相同 context 每 key 取最大可用量，跨 context 饱和汇总，避免别名重复计数；snapshot context 不一致或负量显式失败。没有输入仓室也保留所有通用候选。索引不获取预留、不扣资源，不证明后续 START 成功、最大并行数或执行工作量。
+
+## 显式取消与失败清理
+
+当前 [RecipeProcess.cancel](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/process/RecipeProcess.java)、[RecipeAbortCleanup](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeAbortCleanup.java)、[ProcessAbortListener](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/process/ProcessAbortListener.java) 和 [MachineWorkSlots.cancel/cancelAll](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/machine/workslot/MachineWorkSlots.java) 已接入；选择器/解析锁、需求属性所有权与取消回执保存校验也已有实现，本阶段已通过本阶段构建与 MCP 检查。此前阶段证据不覆盖这些新增路径，最终证据由[实施进度](implementation-status.md)维护。
+
+`process.cancel()` 使用可翻译的默认 Failure，`cancel(Failure)` 接受调用方原因；未挂接进程直接取消，已挂接进程经 host 协调。取消要求独占、没有执行上下文/open transaction/pending 清理故障的稳定边界；先进入 CANCELLED，保留 started、double progress 和 long successfulTicks，并公开该 Failure 后清理。已稳定终态返回 false，不重放清理。业务 START/TICK/END 返回 Failure 时，原阶段先完整 rollback，再进入 FAILED 并运行同一 abort wave；保留原 Failure 和已提交进度，不转换成默认取消原因。取消不调用 END、不产终产物、不退此前已经提交的 IO，也不把清理当成历史资源补偿。
+
+abort 在任何清理回调前捕获组件依赖顺序；先按执行逆序调用 root requirement.cancel，再按组件依赖逆序调用组件实例实现的 ProcessAbortListener.onAborted。RequirementSystem.cancel 是公开终态清理扩展，使用同一完整 RequirementPath 和当前 effective view，无返回事务，也不能 Blocked；包装器负责只传播给实际活动 child。当前 selector 按已选且未完成 child 传播，组件 listener 随后清选择效果。每个已捕获参与者都尝试，异常聚合；外部实现只释放自有效果，不创建新效果、写世界、退款或等待另一 lane。正常进程 tick 的已捕获 Post 清理仍按原规则执行，不能在终态重新安装已撤销所有权。
+
+host.cancel 成功清理并再次确认稳定边界后解除双向挂接、释放槽位并保留结果；不属于该槽宿主的进程不被取消。cancelAll 按槽逆序尝试全部占用槽，个别失败继续其他槽，返回新进入 CANCELLED 的数量；已经稳定终态的槽也会释放但不计入该数量。清理抛错保留故障进程/槽用于诊断，标记 process 不可保存及 host faulted，不允许重试取消清理或重跑已完成效果。faulted host 可在未执行时继续取消其他稳定进程，poisoned 进程仍拒绝；host 不复活、不恢复保存或调度权限。
+
+本阶段原 14 项异常后重试用例保留首次调用的退款、时钟和计数证据，后续调用改验入口拒绝、不推进及不重放；正常 Blocked 的同进程重试仍单独保留。该调整和每层直接 children 身份/顺序校验均已通过本阶段构建与 MCP 检查，不能沿用此前阶段报告作为完成证据。
+
+ResourceInputLocks 实现 listener，仅清 chosen key 身份，不拥有库存、不退款。SelectiveState 按逆 selection map 清理，每个选择先处理 overlay RemovalClaim 再处理 modifier，各效果族内部逆序；两个效果族和其他选择都继续清理，保留成功移除的 AbortReceipt 并清活动选择。此顺序没有宣称跨效果族的全局安装逆序。其他 writer 替换的对象或层不被强删，所有权不符显式抛错；不把清理失败写成合法存档。
+
+[RequirementAttributeState](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/process/RequirementAttributeState.java) 按完整需求路径/attribute 跟踪准确安装对象，以公开 RenamedAttributeModifier 委托原 modifier 的真实行为；START rollback、END complete 和 abort 只移除自身安装，其他 factory/外部同 ID 效果不被认领或清空。END 捕获原安装对象而不依赖后来 overlay 的属性 ID，abort 逆序释放并记录缺席回执。此前 AttributeRequirementSystem 的 private 包装 modifier 不在默认 codec 支持范围，本阶段改为已有公开 renamed codec 并绑定真实所有权，外部 delegate 仍须准确 codec 覆盖。
+
+RecipeProcessNbt 当前格式 Version 2 保存 CANCELLED/FAILED 和显式取消回执；这与此前 MachineAttributesNbt 的局部属性 Version 2 是不同格式。内置 codec 保存 RequirementAttributeState 的 Owned/Aborted 引用及 selector AbortReceipts；恢复绑定现有准确 modifier/layer 身份并验证已移除效果缺席，不运行 START、modifier、END 或 abort callback。BuiltinProcessValidation 检查已知 canonical 路径、去重、效果所有权与回执缺席；FAILED/CANCELLED 必须无活动内置锁、选择和 owned 属性，其他生命周期不得有 abort receipt。外部历史 overlay/状态仍需宿主 validator，不能靠内置检查证明任意扩展的历史。旧进程 Version 1 不自动升级。
+
+普通卸载与结构失效策略尚未接入。本取消 API 由未来生命周期宿主显式决定调用时机；旧 PM 普通区块卸载保存工作而不取消，结构失效也没有自动清槽，不能擅自把所有失效/卸载变成取消。真实 planned 取消只补偿本次未完成批次，仍须 source 反序补偿、COMPENSATION_PENDING/恢复及 PN 准确 after-image 等独立协议；它与本进程清理共享资源契约边界，但不能合并成同一个取消机制。
 
 ## 资源存储纠正
 
@@ -257,14 +277,14 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
 - 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。planned 迁移还需要这些定义、调参和状态的明确投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
 
-下一步完成固定预筛/资源索引阶段验证，再补取消、机器/世界宿主集成与 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
+下一步完成取消/终态所有权保存验证，再补机器/世界宿主集成与 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
 
 ## 验证与未完成部分
 
-新增行为用例覆盖外部组件的相位顺序、软依赖/替换/重装、异常终止；外部需求经过公开配方池注册后，覆盖同类型/跨类型顺序、部分获取后的整阶段回滚、重试、各阶段分派、进程状态隔离以及获取/回滚/提交错误的传播。旧资源守恒测试保留，不再冒充公开配方链路的验收。
+新增行为用例覆盖外部组件的相位顺序、软依赖/替换/重装、异常终止；外部需求经过公开配方池注册后，覆盖同类型/跨类型顺序、部分获取后的整阶段回滚、正常 Blocked 重试、各阶段分派、进程状态隔离以及获取/回滚/提交错误的传播。异常后的首次补偿证据与后续 tick 拒绝调整见取消章节，已通过本阶段统一验证。旧资源守恒测试保留，不再冒充公开配方链路的验收。
 
 此前公开配方池→MachineHatches→固定资源/FE 三阶段的行为验证覆盖输出阻塞及重试、别名去重、多个需求争用、单来源 FE 操作限额和明确允许的余量丢弃；阶段用例另覆盖业务提交异常补偿和终态通知故障，能源用例覆盖真实并发与跨资源结算。准确数量和 MCP 证据见[实施进度](implementation-status.md)。
 
-属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。此前工作槽宿主、单 driver 与整组 NBT 恢复通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。此前基础扫描、首刻局部 preparation、START 探测与 resolved-base/NBT Version 2 已通过扫描阶段构建与 MCP 检查；此前扫描阶段 230 项测试通过，178 文件零诊断，报告 `build/reports/idea/recipe-scanning-final.json`。当前固定预筛/资源索引扩展已通过本阶段构建与 MCP 检查；本阶段 240 项测试及 182 文件 MCP 零诊断证据见 `build/reports/idea/fixed-io-index-final.json`；不替代游戏或真实调度集成验证。
+属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。此前工作槽宿主、单 driver 与整组 NBT 恢复通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。此前基础扫描、首刻局部 preparation、START 探测与 resolved-base/NBT Version 2 已通过扫描阶段构建与 MCP 检查；此前扫描阶段 230 项测试通过，178 文件零诊断，报告 `build/reports/idea/recipe-scanning-final.json`。当前固定预筛/资源索引扩展已通过此前固定预筛/索引阶段构建与 MCP 检查；此前固定预筛/索引阶段 240 项测试及 182 文件 MCP 零诊断证据见 `build/reports/idea/fixed-io-index-final.json`。当前显式取消、失败所有权清理及进程 NBT Version 2/回执已通过本阶段构建与 MCP 检查；本阶段 260 项测试通过，188 文件 MCP 零诊断，报告 `build/reports/idea/process-abort-final.json`；不替代游戏或真实调度集成验证。
 
-尚未完成：机器/世界宿主恢复、取消、RESCAN 执行策略、机器生命周期、真实并发/亲和性/planned 预留补偿与内部工作预算、结构宿主和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。
+尚未完成：机器/世界宿主恢复、RESCAN 执行策略、机器生命周期/取消策略、真实并发/亲和性/planned 预留补偿与内部工作预算、结构宿主和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。

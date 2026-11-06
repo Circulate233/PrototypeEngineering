@@ -123,6 +123,15 @@ public final class MachineAttributes {
         return true;
     }
 
+    /** Exact local identity for lifetime ownership checks; never reads or claims a parent modifier. */
+    @Nullable
+    public AttributeModifier localModifier(ResourceLocation id, String modifierId) {
+        Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(modifierId, "modifierId");
+        var state = local.get(id);
+        return state == null ? null : state.modifiers.get(modifierId);
+    }
+
     /**
      * Copies both map levels into unmodifiable maps, retaining immutable modifier references. Saves
      * only local bases/modifiers and their inheritance mode, never the parent or layer default.

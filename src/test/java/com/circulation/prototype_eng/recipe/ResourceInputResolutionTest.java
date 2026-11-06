@@ -107,9 +107,11 @@ class ResourceInputResolutionTest {
         assertEquals(1, locks.snapshot().size());
         assertEquals(C, locks.get(original));
         fail[0] = false;
-        assertSame(ProcessResult.SUCCESS, process.tick());
-        assertEquals(5, input.amount(C));
+        assertThrows(IllegalStateException.class, process::tick);
+        assertEquals(8, input.amount(C));
         assertEquals(8, input.amount(A));
+        assertEquals(1, locks.snapshot().size());
+        assertEquals(C, locks.get(original));
     }
 
     @Test

@@ -60,4 +60,13 @@ public final class RecipeRequirement<C> {
             };
         });
     }
+
+    /** Terminal cleanup preserves the same effective definition and nested path as normal callbacks. */
+    public void cancel(RecipeProcess process) {
+        process.cancelRequirement(this, () -> {
+            var overlays = process.components().get(RecipeOverlays.TYPE);
+            var effective = overlays == null ? this : overlays.resolve(this, process.requirementPath());
+            type.system().cancel(process, effective);
+        });
+    }
 }

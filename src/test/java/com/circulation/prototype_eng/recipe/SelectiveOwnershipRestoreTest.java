@@ -258,7 +258,19 @@ class SelectiveOwnershipRestoreTest {
         assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
         assertEquals(1, SelectiveState.getOrCreate(process).snapshot().size());
         assertEquals(1, RecipeOverlays.getOrCreate(process).snapshot().size());
-        assertSame(ProcessResult.SUCCESS, process.tick());
+        var committedState = process.state();
+        var selections = SelectiveState.getOrCreate(process).snapshot();
+        var overlays = RecipeOverlays.getOrCreate(process).snapshot();
+        var attributes = process.attributes().localSnapshot();
+        long available = fixture.input.availableAmount(MATERIAL);
+        assertThrows(IllegalStateException.class, process::tick);
+        assertEquals(committedState, process.state());
+        assertSame(ProcessResult.SUCCESS, process.state().result());
+        assertEquals(selections, SelectiveState.getOrCreate(process).snapshot());
+        assertEquals(overlays, RecipeOverlays.getOrCreate(process).snapshot());
+        assertEquals(attributes, process.attributes().localSnapshot());
+        assertEquals(available, fixture.input.availableAmount(MATERIAL));
+        assertEquals(0, fixture.output.availableAmount(MATERIAL));
         assertEquals(1, fixture.modifierApplications);
         assertEquals(1, fixture.startAcquisitions);
     }

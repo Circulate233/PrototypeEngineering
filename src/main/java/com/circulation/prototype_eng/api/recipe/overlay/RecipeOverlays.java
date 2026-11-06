@@ -284,7 +284,19 @@ public final class RecipeOverlays {
             var ordered = new ObjectArrayList<>(proposed.values());
             ordered.sort(Comparator.comparingLong(Layer::order));
             C payload = base.payload();
-            for (var layer : ordered) { payload = layer.apply(payload); }
+            var children = base.type().system().children(payload);
+            for (var layer : ordered) {
+                payload = layer.apply(payload);
+                var effectiveChildren = base.type().system().children(payload);
+                if (children.size() != effectiveChildren.size()) {
+                    throw new IllegalArgumentException("Overlay changed structural child count");
+                }
+                for (int i = 0; i < children.size(); i++) {
+                    if (children.get(i).definition() != effectiveChildren.get(i).definition()) {
+                        throw new IllegalArgumentException("Overlay changed structural child identity or order");
+                    }
+                }
+            }
             return base.withPayload(payload);
         }
 

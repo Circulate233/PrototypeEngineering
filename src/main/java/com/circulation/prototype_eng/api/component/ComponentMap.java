@@ -67,6 +67,15 @@ public final class ComponentMap<E> {
         return ObjectLists.unmodifiable(result);
     }
 
+    /** Captures component dependency order, independently of assembly order, for lifecycle cleanup. */
+    public List<SavedBinding<E, ?>> orderedBindings() {
+        var result = new ObjectArrayList<SavedBinding<E, ?>>();
+        for (var node : components.orderedComponents()) {
+            result.add(node.component().saved(node.dependencies()));
+        }
+        return ObjectLists.unmodifiable(result);
+    }
+
     /** Constraints for dependents not yet installed also survive a save/reload. */
     public Map<ComponentType<E, ?>, Set<ComponentType<E, ?>>> snapshotPendingDependencies() {
         return components.pendingDependencies();

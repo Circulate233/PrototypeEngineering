@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.RequirementAttributeState;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
@@ -14,6 +15,8 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.common.util.Constants;
+
+import java.util.List;
 
 final class BuiltinProcessCodecs {
     private BuiltinProcessCodecs() { }
@@ -66,6 +69,44 @@ final class BuiltinProcessCodecs {
         };
     }
 
+    static ProcessComponentCodec<RequirementAttributeState> requirementAttributes() {
+        return new ProcessComponentCodec<>() {
+            @Override public NBTTagCompound encode(RecipeProcess process, RequirementAttributeState component) {
+                var snapshot = component.snapshot();
+                var tag = new NBTTagCompound();
+                tag.setTag("Owned", attributeReferences(snapshot.owned()));
+                tag.setTag("Aborted", attributeReferences(snapshot.aborted()));
+                return tag;
+            }
+            @Override public void restore(RecipeProcess process, RequirementAttributeState component, NBTTagCompound data) {
+                StrictNbt.requireKeys(data, "Owned", "Aborted");
+                component.restore(new RequirementAttributeState.Snapshot(attributeReferences(data, "Owned"), attributeReferences(data, "Aborted")));
+            }
+        };
+    }
+
+    private static NBTTagList attributeReferences(List<RequirementAttributeState.Reference> references) {
+        var list = new NBTTagList();
+        for (var reference : references) {
+            var tag = new NBTTagCompound();
+            tag.setTag("Path", RequirementPathNbt.encode(reference.path()));
+            tag.setString("Attribute", reference.attribute().toString());
+            list.appendTag(tag);
+        }
+        return list;
+    }
+
+    private static List<RequirementAttributeState.Reference> attributeReferences(NBTTagCompound data, String name) {
+        var result = new ObjectArrayList<RequirementAttributeState.Reference>();
+        var list = StrictNbt.requireList(data, name, Constants.NBT.TAG_COMPOUND);
+        for (int index = 0; index < list.tagCount(); index++) {
+            var tag = list.getCompoundTagAt(index);
+            StrictNbt.requireKeys(tag, "Path", "Attribute");
+            result.add(new RequirementAttributeState.Reference(RequirementPathNbt.read(tag), StrictNbt.requireId(tag, "Attribute")));
+        }
+        return result;
+    }
+
     static ProcessComponentCodec<SelectiveState> selections(RecipeDefinitionIndex index) {
         return new ProcessComponentCodec<>() {
             @Override public NBTTagCompound encode(RecipeProcess process, SelectiveState component) {
@@ -99,11 +140,37 @@ final class BuiltinProcessCodecs {
                 });
                 var tag = new NBTTagCompound();
                 tag.setTag("Selections", list);
+                var receipts = new NBTTagList();
+                for (var receipt : component.abortReceipts()) {
+                    var entry = new NBTTagCompound();
+                    entry.setTag("Path", RequirementPathNbt.encode(receipt.selectionPath()));
+                    var modifiers = new NBTTagList();
+                    for (var reference : receipt.modifiers()) {
+                        var modifier = new NBTTagCompound();
+                        modifier.setString("Attribute", reference.attribute().toString());
+                        modifier.setString("Id", reference.id());
+                        modifiers.appendTag(modifier);
+                    }
+                    entry.setTag("Modifiers", modifiers);
+                    var overlays = new NBTTagList();
+                    for (var reference : receipt.overlays()) {
+                        if (index.require(reference.path()) != reference.target()) {
+                            throw new IllegalArgumentException("Aborted overlay has a foreign canonical target");
+                        }
+                        var overlay = new NBTTagCompound();
+                        overlay.setTag("Path", RequirementPathNbt.encode(reference.path()));
+                        overlay.setString("Layer", reference.layerId());
+                        overlays.appendTag(overlay);
+                    }
+                    entry.setTag("Overlays", overlays);
+                    receipts.appendTag(entry);
+                }
+                tag.setTag("AbortReceipts", receipts);
                 return tag;
             }
 
             @Override public void restore(RecipeProcess process, SelectiveState component, NBTTagCompound data) {
-                StrictNbt.requireKeys(data, "Selections");
+                StrictNbt.requireKeys(data, "Selections", "AbortReceipts");
                 var list = StrictNbt.requireList(data, "Selections", Constants.NBT.TAG_COMPOUND);
                 var selections = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectiveState.SelectionSnapshot>();
                 for (int i = 0; i < list.tagCount(); i++) {
@@ -131,7 +198,33 @@ final class BuiltinProcessCodecs {
                         throw new IllegalArgumentException("Duplicate saved selection");
                     }
                 }
+                var receipts = new ObjectArrayList<SelectiveState.AbortReceipt>();
+                var savedReceipts = StrictNbt.requireList(data, "AbortReceipts", Constants.NBT.TAG_COMPOUND);
+                for (int i = 0; i < savedReceipts.tagCount(); i++) {
+                    var entry = savedReceipts.getCompoundTagAt(i);
+                    StrictNbt.requireKeys(entry, "Path", "Modifiers", "Overlays");
+                    var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>();
+                    var savedModifiers = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
+                    for (int j = 0; j < savedModifiers.tagCount(); j++) {
+                        var modifier = savedModifiers.getCompoundTagAt(j);
+                        StrictNbt.requireKeys(modifier, "Attribute", "Id");
+                        modifiers.add(new SelectiveState.ModifierReference(StrictNbt.requireId(modifier, "Attribute"), StrictNbt.requireString(modifier, "Id")));
+                    }
+                    var overlays = new ObjectArrayList<SelectiveState.OverlayReference>();
+                    var savedOverlays = StrictNbt.requireList(entry, "Overlays", Constants.NBT.TAG_COMPOUND);
+                    for (int j = 0; j < savedOverlays.tagCount(); j++) {
+                        var overlay = savedOverlays.getCompoundTagAt(j);
+                        StrictNbt.requireKeys(overlay, "Path", "Layer");
+                        var path = RequirementPathNbt.read(overlay);
+                        overlays.add(new SelectiveState.OverlayReference(path, index.require(path), StrictNbt.requireString(overlay, "Layer")));
+                    }
+                    receipts.add(new SelectiveState.AbortReceipt(RequirementPathNbt.read(entry), modifiers, overlays));
+                }
+                if (!selections.isEmpty() && !receipts.isEmpty()) {
+                    throw new IllegalArgumentException("Saved selections mix active ownership with abort receipts");
+                }
                 component.restore(selections);
+                if (!receipts.isEmpty()) { component.restoreAbortReceipts(receipts); }
             }
         };
     }

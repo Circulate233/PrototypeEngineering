@@ -15,7 +15,7 @@
 - 本地化已接入：GuiText 实现 AE2S LocalizationEnum，客户端使用 getLocal，容器标题使用 text 组件；禁止 GUI 拼键和裸翻译键调用。最终本机 IDEA MCP 逐文件检查零错误、警告、弱警告，MCP 构建及 Gradle 完整构建均通过，证据见下。
 - P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段协调结算。RequirementTransaction 上交全部资源/FE 预留，业务 commit 仍可补偿，全部成功才 complete；获取/应用/业务异常完整逆序清理，完成/通知故障不再回滚终态令牌。
 - 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量定义为单次执行量，执行时使用进程有效并行数并按 PM 的 long 饱和规则缩放。资源需求已接概率/随机产物及模糊动态输入，选择器与需求 overlay 已接入，FE 保留原独立数量语义。原因由 RecipeText 本地化枚举提供。
-- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环已接入多工位宿主与扫描 admission，取消及真实 planned 调度仍待迁移。
+- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环已接入多工位宿主、扫描 admission 与取消/失败清理，真实 planned 调度仍待迁移。
 - 属性需求已接入：START 添加自己的 modifier，使后续获取看到效果，失败只撤销本需求成功添加的 modifier；END 在全部业务 commit 成功后的 complete 局部清理，避免输出提前失去倍率，也避免整层快照抹去其他需求的业务修改。有限 base/amount/fallback 与每次运算结果严格校验；父属性在多个进程并行执行期间必须保持稳定，读取不写缓存。PM 的 ENERGY_EFFICIENCY 目前只声明，没有可迁移的内置能耗公式，未自造玩法计算。
 - 概率与加权输出已接入：ResourceChance 的百分比与可选属性乘数决定资源执行次数，保留 PM 的整倍数加二项抽样、正 long 饱和量及固定数量保守检查。进程固定 ProbabilityTuning，成功刻索引用于 TICK 盐；默认仍为 PM 的 Poisson/固定 Gaussian 表近似，可选择小 n 精确 Bernoulli。临时预检占用释放后才保留真实用量，允许多个零概率检查共享；输出按真实选中 AEKey 与固定输出一起预留，拒绝不会留下部分产物。加权整数抽签按 entry 无放回，全部候选必选时批量缩放；普通随机池仍按执行次数循环，其异步预算尚待 planned 集成。
 - 检查点已接入：CheckpointRequirement 可包装任意需求，在 scaled/unscaled 冻结时间线上跨阈值触发完整子 START/TICK/END；time=0 在父 START 执行一次，子 TICK 使用零宽上下文。子事务汇总所有令牌上交外层，拒绝立即停止后续子阶段，业务和资源共同补偿，complete 不能先于其他父需求 commit；临时上下文涵盖子 TICK 获取和全部业务回调，结束或抛错后恢复。进程状态及子选择/锁已接入严格 NBT；工位整组恢复已接入，机器世界生命周期仍待迁移。
@@ -30,11 +30,18 @@
 - 固定 IO 预筛已接入并验证：FixedIoScanConstraint 对 flat 内置资源/能源、无动态包装/随机量/回调的候选读取有效 overlay，复用 probeStage 的整阶段预留和完整回滚。TICK/END 分别检查当前量与容量，不 commit、不推进；零时长跳 TICK，void 使用真实系统语义。跨阶段输入可能释放同 context 输出空间时跳过受影响阶段，资源跨 AEKeyType 共槽也识别，默认混合仓两侧独立时正常检查。默认 scanner 三参构造安装该约束，显式构造由调用方配置；各独立阶段通过不等于联合首 tick 保证。
 - 内置资源索引已接入并验证：ResourceRecipeIndex 使用 AEKey 倒排，Footprint 明确声明完整 factory/preparation/overlay/调参范围内的必需 START 输入下界。forFixedInputs 从受支持的真实内置输入提取，仍需显式 stableInputs 承诺；未知/动态/未声明/纯能源配方保守保留。按 context/key 取 alias 最大量，跨 context 及重复声明键的数量聚合饱和为必要下界；匹配全部声明键，保持 canonical scope 和目录顺序。不 reserve、不重建资源类型系统。
 - 扫描内部工作预算仍待迁移：目录、索引、factory/constraint、动态排序/NBT、随机逐次抽样及嵌套需求成本尚未接完整工作/deadline 预算。独立当前阶段预筛不能证明后续资源可行；动态完整生命周期的等价投影和真实 planned 仍未完成。
+- 显式取消与失败清理已接入并验证：RecipeProcess.cancel 进入 CANCELLED，业务 Failure 进入 FAILED，保留 committed started/progress/ticks 与结构化 Failure 原因，不执行 END、不退历史 IO。按根需求执行逆序调用 cancel，再对预先捕获的组件按依赖逆序调用 ProcessAbortListener；回调故障继续其余参与者并聚合，poison 禁止执行与保存。host.cancel 协调结果与挂接，cancelAll 逆槽尝试全部工作；故障宿主能清其他稳定进程但不能复活，失败进程留槽诊断。普通区块卸载/保存不自动取消，世界和结构策略仍未接。
+- 精确内置归属已补齐：RequirementAttributeState 跟踪完整路径/属性及实际安装的 Renamed modifier 对象；START rollback、END 与 abort 只删除准确自有对象，foreign 同 ID 碰撞不 claim，替换违约保留 foreign 并抛错。END removeAtEnd=true 清本路径历史安装目标，false 保留；abort 清所有 owned。修复私有包装导致默认 codec 无法保存活动内置属性的问题；localModifier 只读本层，避免归属检查复制整份属性图。Selector 只向选中未完成 child 传播取消；组件清理逆 selection、overlay 后 modifier 各族逆序，逻辑锁清空，其他写入方效果保留。
+- 取消持久化与执行边界已验证：进程 NBT Version2 保存归属/清理回执，恢复绑定已有对象并检查已记录效果缺席，不重放 START/modifier/abort；FAILED/CANCELLED 不留活动内置归属，非 abort 状态不能带回执。回执不证明任意外部历史副作用，外部 validator 仍必需。任何抛错 tick 或清理故障后，同一进程拒绝再次 tick，即使资源已补偿或已经终态；正常 Blocked 仍可重试。每层 overlay 写时核验直接子项的 canonical identity/顺序不变，防止 selector 重排后取消错误 child。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
 ## 验证记录
+
+- 2026-11-07（取消/失败清理阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，260 项逻辑测试全部通过，无失败、错误或跳过。新增 20 项聚合行为用例覆盖 NEW/RUNNING/Blocked 取消、历史 IO 不退款、detach 转移、Failure 自动清理、依赖顺序/多回调故障/批量部分失败、归属精确替换、selector/逻辑锁/回执、活动属性默认 codec 及终态恢复无重放。另更新 14 个旧异常后继续 tick 的预期，保留首次补偿/时钟/数量/归属证明并验证故障后拒绝推进；正常 Blocked 重试未改。
+- 2026-11-07（取消/失败清理阶段）：本机 IDEA MCP 对 187 个 src Java 文件及生成 Tags 共 188 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告且无文件超时；MCP `build_project` 成功、`problems:[]`，报告 [process-abort-final.json](../build/reports/idea/process-abort-final.json)。首次整批 Node 调用超时重置后，重新连接既有本地 MCP 并分批落盘完整复查；没有操作桌面、改 IDE 设置或启动游戏。
+- 2026-11-07（取消边界源码复核）：普通 PM stop/clear/业务失败只移除工位，不退款或额外 END；普通区块卸载保存进程，结构失效不自动清槽，新显式取消不擅自接成卸载策略。planned 取消补偿本次未完成 source 操作，仍须保留 COMPENSATION_PENDING、精确 after-image 与运行权限失效后继续补偿；本轮同步取消不替代这些后续多线程机制。
 
 - 2026-11-07（固定预筛/资源索引阶段）：`gradlew.bat spotlessApply build --console=plain` 成功，240 项逻辑测试通过，无失败、错误或跳过。新增 10 项聚合行为用例覆盖多需求/别名容量、FE 单次限额、默认扫描选并行与真实提交、零时长/void、跨类型共享槽位释放、动态回调保守跳过/有效 overlay、TICK 上下文与异常回滚、倒排 scope/通用候选、多类型 alias/hold 及总需求超过 long 的合法边界。
 - 2026-11-07（固定预筛/资源索引阶段）：本机 IDEA MCP 逐个对 181 个 src Java 文件和生成 Tags 共 182 文件执行 `errorsOnly:false`，零错误、警告、弱警告且无超时；MCP `build_project` 成功、`problems:[]`，报告 [fixed-io-index-final.json](../build/reports/idea/fixed-io-index-final.json)。全程 MCP，无桌面操作或游戏初始化。

@@ -27,7 +27,7 @@ import java.util.Objects;
 /**
  * PM's first available alternative, with provisional selection and one enclosing stage settlement.
  * Rejected candidates undo business and tokens immediately; accepted tokens remain owned by the
- * parent stage. Modifier additions are local, tracked, and removed only by START undo or END complete.
+ * parent stage. Modifier additions are local, tracked, and removed by START undo, END or abort.
  */
 public final class SelectiveRequirementSystem implements RecipeRequirementSystem<SelectiveRequirement> {
     private static final CapturedTransaction EMPTY = new CapturedTransaction(ProcessResult.SUCCESS, ObjectLists.emptyList(), RequirementTransaction.SUCCESS);
@@ -73,6 +73,15 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
         var child = selection.index() < 0 ? EMPTY : capture(process, chosen(requirement.payload(), selection), RecipeStage.END);
         return new EndTransaction(child, selection);
+    }
+
+    @Override
+    public void cancel(RecipeProcess process, RecipeRequirement<SelectiveRequirement> requirement) {
+        var state = process.components().get(SelectiveState.TYPE);
+        var selection = state == null ? null : state.selection(process.requirementPath());
+        if (selection != null && selection.index() >= 0 && !selection.completed()) {
+            chosen(requirement.payload(), selection).cancel(process);
+        }
     }
 
     private static RecipeRequirement<?> chosen(SelectiveRequirement requirement, SelectiveState.Selection selection) {
