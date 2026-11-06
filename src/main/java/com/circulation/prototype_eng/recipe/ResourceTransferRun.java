@@ -4,8 +4,6 @@ import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
@@ -13,11 +11,14 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Server-thread work state. Actual receipts and undelivered products stay owned by this run. */
-public final class RecipeRun {
+/**
+ * Internal fixed-resource migration prototype; not the extensible recipe processor. Actual receipts
+ * and undelivered products stay owned by this run. Its old storage dependency still needs replacing.
+ */
+public final class ResourceTransferRun {
     public enum Status { COLLECTING_INPUTS, WAITING_FOR_ENERGY, WORKING, WAITING_FOR_OUTPUT, COMPLETE }
 
-    private final MachineRecipe recipe;
+    private final ResourceTransferPlan recipe;
     private final Runnable onChanged;
     private final long[] acquired;
     private final long[] remainingOutputs;
@@ -25,7 +26,7 @@ public final class RecipeRun {
     private int progress;
     private long energyCredit;
 
-    public RecipeRun(MachineRecipe recipe, Runnable onChanged) {
+    public ResourceTransferRun(ResourceTransferPlan recipe, Runnable onChanged) {
         this.recipe = Objects.requireNonNull(recipe);
         this.onChanged = Objects.requireNonNull(onChanged);
         acquired = new long[recipe.inputs().size()];
@@ -33,7 +34,7 @@ public final class RecipeRun {
         for (int i = 0; i < remainingOutputs.length; i++) { remainingOutputs[i] = recipe.outputs().get(i).amount(); }
     }
 
-    public RecipeRun(Snapshot saved, Runnable onChanged) {
+    public ResourceTransferRun(Snapshot saved, Runnable onChanged) {
         recipe = saved.recipe();
         this.onChanged = Objects.requireNonNull(onChanged);
         acquired = saved.acquired();
@@ -45,9 +46,9 @@ public final class RecipeRun {
 
     /** Simulation chooses a candidate; only actual receipts advance it. Pool order is recipe priority. */
     @Nullable
-    public static MachineRecipe findRecipe(RecipePool pool, List<? extends ResourceHatch> hatches, IActionSource source) {
+    public static ResourceTransferPlan findPlan(List<ResourceTransferPlan> plans, List<? extends ResourceHatch> hatches, IActionSource source) {
         var visited = new ReferenceOpenHashSet<Object>();
-        for (MachineRecipe recipe : pool.recipes()) {
+        for (ResourceTransferPlan recipe : plans) {
             boolean matches = true;
             for (GenericStack required : recipe.inputs()) {
                 long missing = required.amount();
@@ -137,7 +138,7 @@ public final class RecipeRun {
         return true;
     }
 
-    public MachineRecipe recipe() { return recipe; }
+    public ResourceTransferPlan recipe() { return recipe; }
     public int progress() { return progress; }
     public long energyCredit() { return energyCredit; }
 
@@ -165,7 +166,7 @@ public final class RecipeRun {
     }
 
     /** A complete checkpoint including the recipe definition; later registry edits cannot reprice active work. */
-    public record Snapshot(MachineRecipe recipe, long[] acquired, long[] remainingOutputs, int progress, long energyCredit) {
+    public record Snapshot(ResourceTransferPlan recipe, long[] acquired, long[] remainingOutputs, int progress, long energyCredit) {
         public Snapshot {
             Objects.requireNonNull(recipe);
             acquired = acquired.clone();

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.recipe;
 
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -10,10 +9,10 @@ import net.minecraft.util.ResourceLocation;
 import java.util.List;
 
 /** The owning machine stores this tag alongside its structure identity and enabled state. */
-public final class RecipeRunNbt {
-    private RecipeRunNbt() {}
+public final class ResourceTransferNbt {
+    private ResourceTransferNbt() {}
 
-    public static NBTTagCompound write(RecipeRun.Snapshot state) {
+    public static NBTTagCompound write(ResourceTransferRun.Snapshot state) {
         var tag = new NBTTagCompound();
         tag.setInteger("Format", 1);
         tag.setString("Recipe", state.recipe().id().toString());
@@ -36,7 +35,7 @@ public final class RecipeRunNbt {
         return list;
     }
 
-    public static RecipeRun.Snapshot read(NBTTagCompound tag) {
+    public static ResourceTransferRun.Snapshot read(NBTTagCompound tag) {
         if (tag.getInteger("Format") != 1 || !tag.hasKey("Inputs", 9) || !tag.hasKey("Outputs", 9)
                 || !tag.hasKey("Recipe", 8) || !tag.hasKey("Duration", 3) || !tag.hasKey("FEPerTick", 4)
                 || !tag.hasKey("Progress", 3) || !tag.hasKey("EnergyCredit", 4)) {
@@ -54,9 +53,9 @@ public final class RecipeRunNbt {
         var outputDefinitions = new ObjectArrayList<GenericStack>(outputs.tagCount());
         long[] acquired = readResources(inputs, inputDefinitions);
         long[] remaining = readResources(outputs, outputDefinitions);
-        var recipe = new MachineRecipe(new ResourceLocation(tag.getString("Recipe")), inputDefinitions, outputDefinitions,
+        var recipe = new ResourceTransferPlan(new ResourceLocation(tag.getString("Recipe")), inputDefinitions, outputDefinitions,
                 tag.getInteger("Duration"), tag.getLong("FEPerTick"));
-        return new RecipeRun.Snapshot(recipe, acquired, remaining, tag.getInteger("Progress"), tag.getLong("EnergyCredit"));
+        return new ResourceTransferRun.Snapshot(recipe, acquired, remaining, tag.getInteger("Progress"), tag.getLong("EnergyCredit"));
     }
 
     private static long[] readResources(NBTTagList list, List<GenericStack> definitions) {
