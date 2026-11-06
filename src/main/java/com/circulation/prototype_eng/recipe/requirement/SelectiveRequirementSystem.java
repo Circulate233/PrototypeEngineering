@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
+import com.circulation.prototype_eng.api.machine.attribute.RenamedAttributeModifier;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -30,6 +31,9 @@ import java.util.Objects;
  */
 public final class SelectiveRequirementSystem implements RecipeRequirementSystem<SelectiveRequirement> {
     private static final CapturedTransaction EMPTY = new CapturedTransaction(ProcessResult.SUCCESS, ObjectLists.emptyList(), RequirementTransaction.SUCCESS);
+
+    @Override
+    public List<RecipeRequirement<?>> children(SelectiveRequirement payload) { return payload.candidates(); }
 
     @Override
     public RequirementTransaction start(RecipeProcess process, RecipeRequirement<SelectiveRequirement> requirement) {
@@ -159,7 +163,21 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             selection.markCommitted();
         }
 
-        @Override public void complete() { child.complete(); }
+        @Override public void complete() {
+            Throwable failure = null;
+            try {
+                child.complete();
+            } catch (RuntimeException | Error cleanup) {
+                failure = cleanup;
+            }
+            try {
+                selection.completeStart();
+            } catch (RuntimeException | Error cleanup) {
+                failure = failure == null ? cleanup : accumulate(failure, cleanup);
+            }
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+        }
 
         @Override
         public void rollback() {
@@ -237,7 +255,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             String rawId = Objects.requireNonNull(modifier.id(), "modifier id");
             if (rawId.isBlank()) { throw new IllegalArgumentException("Blank modifier id"); }
             String uniqueId = "selective/" + frame(path.toString()) + "/" + ordinal + "/" + frame(modifierId.toString()) + "/" + frame(rawId);
-            selection.putModifier(attribute, new NamespacedModifier(uniqueId, modifier));
+            selection.putModifier(attribute, new RenamedAttributeModifier(uniqueId, modifier));
         }
 
         @Override
@@ -255,8 +273,4 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         private void close() { active = false; }
     }
 
-    private record NamespacedModifier(String id, AttributeModifier delegate) implements AttributeModifier {
-        @Override public Operation operation() { return delegate.operation(); }
-        @Override public double apply(double base, double current) { return delegate.apply(base, current); }
-    }
 }

@@ -2,6 +2,8 @@ package com.circulation.prototype_eng.api.recipe.requirement;
 
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 
+import java.util.List;
+
 /**
  * External start/tick/end extension. Acquisition may reserve/apply reversible changes. It must
  * return a transaction for ALL effects, including partial acquisition and every reservation, or undo
@@ -11,6 +13,9 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
  * between concurrent owners without an explicit reservation/ownership protocol.
  */
 public interface RecipeRequirementSystem<C> {
+    /** Immutable structural children used to bind nested saved state; this does not execute them. */
+    default List<RecipeRequirement<?>> children(C payload) { return List.of(); }
+
     default RequirementTransaction start(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }
     default RequirementTransaction tick(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }
     default RequirementTransaction end(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }

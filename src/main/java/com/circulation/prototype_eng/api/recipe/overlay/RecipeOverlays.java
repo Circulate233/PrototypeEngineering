@@ -8,10 +8,12 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -28,7 +30,7 @@ public final class RecipeOverlays {
     public static final ComponentType<RecipeProcess, RecipeOverlays> TYPE = new ComponentType<>(
         new ResourceLocation(Tags.MOD_ID, "recipe_overlays"), _ -> new RecipeOverlays(), ObjectLists.emptyList());
 
-    private final Object2ObjectOpenHashMap<RequirementPath, Binding<?>> bindings = new Object2ObjectOpenHashMap<>();
+    private Object2ObjectOpenHashMap<RequirementPath, Binding<?>> bindings = new Object2ObjectOpenHashMap<>();
     private boolean editing;
     private int acquiredChanges;
 
@@ -45,6 +47,100 @@ public final class RecipeOverlays {
         validatePath(base, path);
         var binding = binding(base, path);
         return binding == null ? base : binding.effective;
+    }
+
+    /** A stable local layer save, retaining immutable type/data and the canonical target definition. */
+    public record LayerSnapshot<C, D>(RequirementPath path, RecipeRequirement<C> target, String layerId,
+                                      long order, RecipeOverlayType<C, D> type, D data) {
+        public LayerSnapshot {
+            Objects.requireNonNull(path);
+            Objects.requireNonNull(target);
+            Objects.requireNonNull(layerId);
+            Objects.requireNonNull(type);
+            Objects.requireNonNull(data);
+        }
+    }
+
+    /** Lifetime removal claims are not stage undo; only acquired Change handles prevent a snapshot. */
+    public List<LayerSnapshot<?, ?>> snapshot() {
+        requireStable();
+        var result = new ObjectArrayList<LayerSnapshot<?, ?>>();
+        for (var entry : bindings.entrySet()) {
+            appendSnapshots(result, entry.getKey(), entry.getValue());
+        }
+        result.sort(Comparator.comparing((LayerSnapshot<?, ?> layer) -> layer.path().toString())
+            .thenComparingLong(LayerSnapshot::order));
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /** All identities, layers and computations are checked before replacing this component's map. */
+    public void restore(List<LayerSnapshot<?, ?>> snapshot) {
+        requireStable();
+        beginEdit();
+        try {
+            var replacement = new Object2ObjectOpenHashMap<RequirementPath, Binding<?>>();
+            var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>();
+            for (var layer : snapshot) {
+                restoreLayer(replacement, orders, Objects.requireNonNull(layer));
+            }
+            for (var binding : replacement.values()) { binding.recompute(); }
+            bindings = replacement;
+        } finally {
+            editing = false;
+        }
+    }
+
+    public boolean hasLayer(RecipeRequirement<?> target, RequirementPath path, String layerId) {
+        validatePath(target, path);
+        validateLayerId(layerId);
+        var binding = binding(target, path);
+        return binding != null && binding.layers.containsKey(layerId);
+    }
+
+    /** Acquires cleanup ownership of an already installed layer, without reinstalling or invoking it. */
+    public RemovalClaim claim(RecipeRequirement<?> target, RequirementPath path, String layerId) {
+        validatePath(target, path);
+        validateLayerId(layerId);
+        if (editing) { throw new IllegalStateException("Cannot claim a layer during an overlay edit"); }
+        var binding = binding(target, path);
+        var layer = binding == null ? null : binding.layers.get(layerId);
+        if (layer == null) { throw new IllegalStateException("Missing owned overlay layer: " + layerId); }
+        return new RemovalClaim(this, target.definition(), path, layerId, layer);
+    }
+
+    private void requireStable() {
+        if (editing || acquiredChanges != 0) { throw new IllegalStateException("Overlay stage changes are still pending"); }
+    }
+
+    private static <C> void appendSnapshots(List<LayerSnapshot<?, ?>> output, RequirementPath path, Binding<C> binding) {
+        for (var layer : binding.layers.values()) { appendSnapshot(output, path, binding.base, layer); }
+    }
+
+    private static <C, D> void appendSnapshot(List<LayerSnapshot<?, ?>> output, RequirementPath path,
+                                             RecipeRequirement<C> target, Layer<C, D> layer) {
+        output.add(new LayerSnapshot<>(path, target, layer.id(), layer.order(), layer.type(), layer.data()));
+    }
+
+    private static <C, D> void restoreLayer(Object2ObjectOpenHashMap<RequirementPath, Binding<?>> replacement,
+                                            Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet> orders,
+                                            LayerSnapshot<C, D> saved) {
+        validatePath(saved.target(), saved.path());
+        validateLayerId(saved.layerId());
+        if (saved.target() != saved.target().definition()) { throw new IllegalArgumentException("Overlay restore target must be canonical"); }
+        if (saved.target().type() != saved.type().requirementType()) { throw new IllegalArgumentException("Overlay restore type mismatch"); }
+        if (saved.order() < 0) { throw new IllegalArgumentException("Negative overlay layer order"); }
+        if (!orders.computeIfAbsent(saved.path(), _ -> new LongOpenHashSet()).add(saved.order())) {
+            throw new IllegalArgumentException("Duplicate overlay layer order");
+        }
+        var binding = binding(replacement, saved.target(), saved.path());
+        if (binding == null) {
+            binding = new Binding<>(saved.target());
+            replacement.put(saved.path(), binding);
+        }
+        if (binding.layers.putIfAbsent(saved.layerId(), new Layer<>(saved.layerId(), saved.order(), saved.type(), saved.data())) != null) {
+            throw new IllegalArgumentException("Duplicate overlay layer id");
+        }
+        binding.nextOrder = Math.max(binding.nextOrder, Math.incrementExact(saved.order()));
     }
 
     public <C, D> Change put(RecipeRequirement<C> target, String layerId, RecipeOverlayType<C, D> type, D data) {
@@ -145,9 +241,15 @@ public final class RecipeOverlays {
     }
 
     @Nullable
-    @SuppressWarnings("unchecked") // Only put(target<C>, type<C,D>, D) creates a binding; effective views retain canonical identity.
     private <C> Binding<C> binding(RecipeRequirement<C> base, RequirementPath path) {
-        var existing = bindings.get(path);
+        return binding(bindings, base, path);
+    }
+
+    @Nullable
+    @SuppressWarnings("unchecked") // Typed writes/restoration validate exact canonical identity at this map boundary.
+    private static <C> Binding<C> binding(Object2ObjectOpenHashMap<RequirementPath, Binding<?>> source,
+                                          RecipeRequirement<C> base, RequirementPath path) {
+        var existing = source.get(path);
         if (existing != null && existing.base != base.definition()) {
             throw new IllegalArgumentException("Different immutable requirement definitions share overlay path " + path);
         }
@@ -190,10 +292,63 @@ public final class RecipeOverlays {
             layers = next;
             effective = result;
         }
+
+        private void recompute() { effective = compute(layers); }
     }
 
     private record Layer<C, D>(String id, long order, RecipeOverlayType<C, D> type, D data) {
         private C apply(C base) { return Objects.requireNonNull(type.applier().apply(base, data), "effective requirement payload"); }
+    }
+
+    private <C> void removeClaim(RecipeRequirement<C> target, RequirementPath path, String layerId, Layer<?, ?> expected) {
+        beginEdit();
+        try {
+            var binding = binding(target, path);
+            if (binding == null || binding.layers.get(layerId) != expected) {
+                throw new IllegalStateException("Owned overlay layer changed before cleanup: " + layerId);
+            }
+            var next = new Object2ObjectOpenHashMap<>(binding.layers);
+            next.remove(layerId);
+            binding.install(next, binding.compute(next));
+        } finally {
+            editing = false;
+        }
+    }
+
+    /** Structural lifetime cleanup handle; no stage undo closure and no pending Change count. */
+    public static final class RemovalClaim {
+        private final RecipeOverlays owner;
+        private final RecipeRequirement<?> target;
+        private final RequirementPath path;
+        private final String layerId;
+        private final Layer<?, ?> expected;
+        private boolean removed;
+
+        private RemovalClaim(RecipeOverlays owner, RecipeRequirement<?> target, RequirementPath path, String layerId, Layer<?, ?> expected) {
+            this.owner = owner;
+            this.target = target;
+            this.path = path;
+            this.layerId = layerId;
+            this.expected = expected;
+        }
+
+        public RecipeRequirement<?> target() { return target; }
+        public RequirementPath path() { return path; }
+        public String layerId() { return layerId; }
+
+        /** Checks version identity, so an old handle cannot claim or remove a replacement layer. */
+        public void validate() {
+            var binding = owner.binding(target, path);
+            if (removed || binding == null || binding.layers.get(layerId) != expected) {
+                throw new IllegalStateException("Owned overlay layer is no longer installed: " + layerId);
+            }
+        }
+
+        public void remove() {
+            if (removed) { return; }
+            owner.removeClaim(target, path, layerId, expected);
+            removed = true;
+        }
     }
 
     /** A local layer edit. Completion relinquishes undo rights; rollback never restores other layers. */

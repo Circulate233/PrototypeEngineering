@@ -15,19 +15,25 @@
 - 本地化已接入：GuiText 实现 AE2S LocalizationEnum，客户端使用 getLocal，容器标题使用 text 组件；禁止 GUI 拼键和裸翻译键调用。最终本机 IDEA MCP 逐文件检查零错误、警告、弱警告，MCP 构建及 Gradle 完整构建均通过，证据见下。
 - P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段协调结算。RequirementTransaction 上交全部资源/FE 预留，业务 commit 仍可补偿，全部成功才 complete；获取/应用/业务异常完整逆序清理，完成/通知故障不再回滚终态令牌。
 - 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量定义为单次执行量，执行时使用进程有效并行数并按 PM 的 long 饱和规则缩放。资源需求已接概率/随机产物及模糊动态输入，选择器与需求 overlay 已接入，FE 保留原独立数量语义。原因由 RecipeText 本地化枚举提供。
-- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环尚未接入多工位扫描、保存恢复、取消及真实 planned 调度。
+- 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环尚未接入多工位扫描、工位宿主恢复、取消及真实 planned 调度。
 - 属性需求已接入：START 添加自己的 modifier，使后续获取看到效果，失败只撤销本需求成功添加的 modifier；END 在全部业务 commit 成功后的 complete 局部清理，避免输出提前失去倍率，也避免整层快照抹去其他需求的业务修改。有限 base/amount/fallback 与每次运算结果严格校验；父属性在多个进程并行执行期间必须保持稳定，读取不写缓存。PM 的 ENERGY_EFFICIENCY 目前只声明，没有可迁移的内置能耗公式，未自造玩法计算。
 - 概率与加权输出已接入：ResourceChance 的百分比与可选属性乘数决定资源执行次数，保留 PM 的整倍数加二项抽样、正 long 饱和量及固定数量保守检查。进程固定 ProbabilityTuning，成功刻索引用于 TICK 盐；默认仍为 PM 的 Poisson/固定 Gaussian 表近似，可选择小 n 精确 Bernoulli。临时预检占用释放后才保留真实用量，允许多个零概率检查共享；输出按真实选中 AEKey 与固定输出一起预留，拒绝不会留下部分产物。加权整数抽签按 entry 无放回，全部候选必选时批量缩放；普通随机池仍按执行次数循环，其异步预算尚待 planned 集成。
-- 检查点已接入：CheckpointRequirement 可包装任意需求，在 scaled/unscaled 冻结时间线上跨阈值触发完整子 START/TICK/END；time=0 在父 START 执行一次，子 TICK 使用零宽上下文。子事务汇总所有令牌上交外层，拒绝立即停止后续子阶段，业务和资源共同补偿，complete 不能先于其他父需求 commit；临时上下文涵盖子 TICK 获取和全部业务回调，结束或抛错后恢复。检查点与进程的完整保存恢复仍未迁移。
-- 模糊动态输入与逻辑解析锁已接入：公开 ResourceMatcher/NamedResourceMatcher 直接绑定稳定行为，FuzzyInputGroup 按声明顺序选择，DynamicInputGroup 将所有匹配 key 规范排序后截断；类型、资源 ID 与完整 NBT 参与排序，扩展可提供稳定全序。解析先扣固定及前组保守需求，成功获取后才安装 ResourceInputLocks，失败只撤本次新增选择；零概率也预检并保持身份。完整 RequirementPath 捕获所有返回事务回调，复用子定义不会共享包装器状态。内存 snapshot/restore 不代表完整 NBT 恢复；动态全扫描/排序/NBT 成本仍待 planned 预算。
+- 检查点已接入：CheckpointRequirement 可包装任意需求，在 scaled/unscaled 冻结时间线上跨阈值触发完整子 START/TICK/END；time=0 在父 START 执行一次，子 TICK 使用零宽上下文。子事务汇总所有令牌上交外层，拒绝立即停止后续子阶段，业务和资源共同补偿，complete 不能先于其他父需求 commit；临时上下文涵盖子 TICK 获取和全部业务回调，结束或抛错后恢复。进程状态及子选择/锁已接入严格 NBT；完整机器/工位恢复尚未迁移。
+- 模糊动态输入与逻辑解析锁已接入：公开 ResourceMatcher/NamedResourceMatcher 直接绑定稳定行为，FuzzyInputGroup 按声明顺序选择，DynamicInputGroup 将所有匹配 key 规范排序后截断；类型、资源 ID 与完整 NBT 参与排序，扩展可提供稳定全序。解析先扣固定及前组保守需求，成功获取后才安装 ResourceInputLocks，失败只撤本次新增选择；零概率也预检并保持身份。完整 RequirementPath 捕获所有返回事务回调，复用子定义不会共享包装器状态。逻辑锁已通过进程 codec 保存恢复；动态全扫描/排序/NBT 成本仍待 planned 预算。
 - 选择器已接入：按顺序选第一个 START 成功候选，拒绝候选立即补偿业务和令牌；provisional 选择可供检查点后续子阶段读取，外层失败会撤销，包括 disabled 状态。公开 SelectiveModifier/Context/Descriptor 保留外部扩展，追踪自身进程属性修改，部分异常局部补偿；END 失败保留已生效属性，全部业务成功才清理。终态完成链聚合外部 complete 故障并继续其他回调、令牌及通知，不回滚或重放终态。
-- 需求 overlay 已接入：RecipeOverlayApplier/Type 绑定不可变的外部 payload 转换，ResourceRequirementPatch 覆盖四种 IO 和余量策略，EnergyRequirementPatch 覆盖刻输入/输出和余量策略；null 继承、空列表清空、0 为有效值，其余字段保留。RecipeOverlays 按完整路径及 writer 层 ID 保存，写时计算缓存，替换保留原顺序；局部撤层后重算剩余层，清空要求没有未完成句柄。RecipeRequirement 的有效视图保留 canonical definition，获取前统一解析一次，嵌套同样生效，已获取资源事务不重算。显式 pipeline 按声明/重复顺序应用，失败撤自身修改；选择器受追踪 overlay 在 START 失败和 END complete 清理，END 阻塞保留。完整 NBT/保存恢复仍未实现，外部 applier 必须纯且支持剩余层重组。
-- 旧固定资源流程已改为内部 ResourceTransferPlan/Run 迁移材料，不再定义公开 MachineRecipe 或从公开池选择配方。本轮已改用独立 ResourceStorage，保留 4 项守恒/检查点/别名测试；预留、补偿和并发另有专门行为用例，不能用此固定流程代替完整需求处理器。未接入机器且无调用方的固定资源 ResourceTransferNbt 已移除；正式进程/组件持久化仍为必须迁移项。
+- 需求 overlay 已接入：RecipeOverlayApplier/Type 绑定不可变的外部 payload 转换，ResourceRequirementPatch 覆盖四种 IO 和余量策略，EnergyRequirementPatch 覆盖刻输入/输出和余量策略；null 继承、空列表清空、0 为有效值，其余字段保留。RecipeOverlays 按完整路径及 writer 层 ID 保存，写时计算缓存，替换保留原顺序；局部撤层后重算剩余层，清空要求没有未完成句柄。RecipeRequirement 的有效视图保留 canonical definition，获取前统一解析一次，嵌套同样生效，已获取资源事务不重算。显式 pipeline 按声明/重复顺序应用，失败撤自身修改；选择器受追踪 overlay 在 START 失败和 END complete 清理，END 阻塞保留。层及所有权已接入严格进程 codec，外部 applier 必须纯且支持剩余层重组。
+- 旧固定资源流程已改为内部 ResourceTransferPlan/Run 迁移材料，不再定义公开 MachineRecipe 或从公开池选择配方。本轮已改用独立 ResourceStorage，保留 4 项守恒/检查点/别名测试；预留、补偿和并发另有专门行为用例，不能用此固定流程代替完整需求处理器。未接入机器且无调用方的固定资源 ResourceTransferNbt 已移除；正式进程/组件持久化采用 RecipeProcessNbt；宿主发布、工位与世界恢复仍待迁移。
+- 严格进程持久化已接入并验证：RecipeProcessNbt 固定 canonical recipe/revision/graph，保存 seed/tuning、double progress、long successfulTicks、started 与完整结果、本地属性、有序 overlay 层、解析锁、选择器自有效果，以及组件实际装配/依赖和未安装 dependent 的 pending 约束。exact NBT 类型、未知/重复/坏引用全部拒绝；fresh process 先创建所有组件再按依赖恢复，最后跨组件及宿主校验成功才返回。selector 只绑定现有效果，不重跑 START/modifier。open transaction、pending Change 和抛错 tick 拒绝保存。外部 overlay 历史必须提供 validator；嵌套正阈值 checkpoint 仅推断可证明关系，不声称恢复未保存的历史触发区间。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
 ## 验证记录
+
+- 2026-11-07（严格进程持久化阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，189 项逻辑测试全部通过，无失败、错误或跳过。新增 36 项覆盖 exact NBT 与别名隔离、外部 modifier/overlay、真实资源/FE 阻塞续跑、概率延续、选择器不重跑及 END 局部清理、动态组件依赖/未来安装顺序、坏数据整体拒绝、嵌套检查点与保存边界。测试初稿调用已删除的顺序查询方法，已改用真实组件 tick 回调验证；未增加游戏初始化或常量/哈希/getter 专用测试。
+- 2026-11-07（严格进程持久化阶段）：本机 IDEA MCP 对 153 个 src Java 文件及生成 Tags 共 154 文件逐个 `errorsOnly:false` 检查，最终零错误、警告、弱警告且无超时；MCP `build_project` 返回 `isSuccess:true`、`problems:[]`。报告 [process-persistence-final.json](../build/reports/idea/process-persistence-final.json)。仅使用本机 MCP，没有操作桌面或启动 Minecraft。
+- 2026-11-07（源码复核）：保留 PM 的局部属性、进程种子和组件状态目的，修复缺字段默认值、未知组件跳过、选择器引用未验证、mutable NBT 共享及自定义 modifier 丢行为的问题。显式 revision 由宿主保证函数兼容；不恢复 PN epoch/lease/ready authority，factory/workslot 宿主装配、扫描/取消与真实多线程仍待迁移。
+
 
 - 2026-11-07（需求 overlay 阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，153 项逻辑测试全部通过，无失败、错误或跳过。新增 8 项覆盖真实多类型 IO、FE、清空固定 IO 后保留高级需求、多个写入方层顺序/局部补偿、纯函数故障、有效视图和嵌套路径；另有 13 项 pipeline/选择器集成测试覆盖顺序/重复、真实资源参数冻结、外层回滚、END 阻塞/异常和其他写入方效果保留。修复了测试初稿的括号与重复实例 ID，最终无跳过；未引入游戏初始化或 getter/常量/哈希专用测试。
 - 2026-11-07（需求 overlay 阶段）：本机 IDEA MCP 对 133 个 src Java 文件及生成 Tags 共 134 文件逐个 `errorsOnly:false`，全部零错误、警告、弱警告且无超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`；报告 [requirement-overlays-final.json](../build/reports/idea/requirement-overlays-final.json)。修正测试匿名返回及泛型写法提示，检查全程使用本机 MCP，没有操作桌面或启动 Minecraft。
@@ -56,7 +62,7 @@
 - 2026-11-06：早期构建从 4 项逻辑用例扩展至 P1 的 7 项，再至固定资源原型的 11 项，验证双缓存方向、鼠标转移、同源去重、部分收取/付款与检查点守恒；这些证据不代表独立存储、完整需求迁移或 NBT/游戏验收通过。
 - 2026-11-06：组件与需求基础迁移通过 `gradlew.bat spotlessApply build --console=plain`，含生产重混淆及 20 项逻辑测试。新增 9 项覆盖软依赖/替换/重装、外部系统事件顺序和失败终止，以及外部需求的整阶段回滚/重试、状态隔离、三个阶段及异常清理。没有宣称真实调度器、NBT 或游戏运行已经验证。
 - 早期依赖排查曾启动临时服务端并正常关闭，发现普通 implementation 导致 AE2 插件类加载冲突，改用 MDG 的 modImplementation 后完成基础加载。该记录发生在仓室核心接入之前，不是当前业务功能的游戏验证。
-- NBT 往返、当前能力注册、GUI 与游戏交互尚未取得运行证据；当前不继续自行启动客户端或服务端。
+- 进程 NBT 已取得独立逻辑测试证据；真实注册环境中的 AE2 key、能力注册、GUI 与游戏交互尚未取得运行证据；不自行启动客户端或服务端。
 - 直接测试 Forge FluidStack 需要 Bootstrap/FML 注册流程；普通 JUnit 引导还遇到 Gson 运行库冲突。该游戏依赖用例未纳入当前通过集，没有用反射、替身注册表或大批附属依赖绕过它。混合仓流体方向目前依据 AE2 适配器源码和本项目分离视图核对，实际流体交互仍待运行验证。
 
 ## 提交约定

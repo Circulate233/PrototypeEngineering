@@ -21,8 +21,8 @@ import java.util.function.Supplier;
 /**
  * Isolated requirement/extension state for one work slot. A scheduler may run different processes
  * concurrently but must never execute the same process concurrently. Its machine attribute baseline
- * must remain stable during that execution. Component persistence, scanning and planned operation
- * bindings are separate migration work; tick() is the synchronous single-process lifecycle.
+ * must remain stable during that execution. Persistence requires a quiescent, exclusively owned
+ * process; tick() is the synchronous single-process lifecycle, independent of its scheduler.
  */
 public final class RecipeProcess {
     private final MachineInstance owner;
@@ -33,6 +33,8 @@ public final class RecipeProcess {
     private final MachineAttributes attributes;
     private State state = new State(Lifecycle.NEW, 0, 0, ProcessResult.SUCCESS);
     private boolean ticking;
+    private int acquiredTransactions;
+    private boolean persistenceFailure;
     @Nullable
     private Tick activeTick;
     @Nullable
@@ -82,6 +84,25 @@ public final class RecipeProcess {
         return state;
     }
 
+    /** Only complete, quiescent stage boundaries may be serialized; no live transaction is resumable. */
+    public void requirePersistenceBoundary() {
+        if (ticking || activeTick != null || activeRequirement != null || acquiredTransactions != 0 || persistenceFailure) {
+            throw new IllegalStateException("Process is executing, has acquired transactions, or failed terminal cleanup");
+        }
+    }
+
+    /** Constructs an unpublished restored process. Its components still require restoration and validation. */
+    public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
+                                          ProbabilityTuning tuning, State state) {
+        Objects.requireNonNull(state);
+        if (state.lifecycle() == Lifecycle.COMPLETED && state.progress() < recipe.durationTicks()) {
+            throw new IllegalArgumentException("Completed process has insufficient work progress");
+        }
+        var process = new RecipeProcess(owner, recipe, seed, tuning);
+        process.state = state;
+        return process;
+    }
+
     /** Frozen scaled/unscaled timeline for requirements executing the current TICK stage. */
     public Tick tickContext() {
         return Objects.requireNonNull(activeTick, "No TICK stage is executing");
@@ -96,7 +117,9 @@ public final class RecipeProcess {
     public RequirementTransaction acquireRequirement(RecipeRequirement<?> requirement, Supplier<RequirementTransaction> acquisition) {
         var path = requirement.path(activeRequirement);
         var transaction = withRequirementPath(path, () -> Objects.requireNonNull(acquisition.get(), "requirement transaction"));
-        return transaction == RequirementTransaction.SUCCESS ? transaction : new ScopedRequirement(this, path, transaction);
+        if (transaction == RequirementTransaction.SUCCESS) { return transaction; }
+        acquiredTransactions = Math.incrementExact(acquiredTransactions);
+        return new ScopedRequirement(this, path, transaction);
     }
 
     private <T> T withRequirementPath(RequirementPath path, Supplier<T> action) {
@@ -109,15 +132,41 @@ public final class RecipeProcess {
         }
     }
 
-    private record ScopedRequirement(RecipeProcess process, RequirementPath path, RequirementTransaction delegate)
-        implements RequirementTransaction {
+    private static final class ScopedRequirement implements RequirementTransaction {
+        private final RecipeProcess process;
+        private final RequirementPath path;
+        private final RequirementTransaction delegate;
+        private boolean closed;
+
+        private ScopedRequirement(RecipeProcess process, RequirementPath path, RequirementTransaction delegate) {
+            this.process = process;
+            this.path = path;
+            this.delegate = delegate;
+        }
+
         @Override public ProcessResult result() { return process.withRequirementPath(path, delegate::result); }
         @Override public List<? extends ResourceReservation> reservations() {
             return process.withRequirementPath(path, delegate::reservations);
         }
-        @Override public void commit() { scoped(delegate::commit); }
-        @Override public void complete() { scoped(delegate::complete); }
-        @Override public void rollback() { scoped(delegate::rollback); }
+        @Override public void commit() {
+            if (closed) { throw new IllegalStateException("Cannot commit a closed requirement transaction"); }
+            scoped(delegate::commit);
+        }
+        @Override public void complete() { close(delegate::complete); }
+        @Override public void rollback() { close(delegate::rollback); }
+
+        private void close(Runnable action) {
+            if (closed) { return; }
+            try {
+                scoped(action);
+            } catch (RuntimeException | Error failure) {
+                process.persistenceFailure = true;
+                throw failure;
+            } finally {
+                closed = true;
+                process.acquiredTransactions--;
+            }
+        }
 
         private void scoped(Runnable action) {
             process.withRequirementPath(path, () -> {
@@ -160,6 +209,11 @@ public final class RecipeProcess {
         try {
             components.tick(this, this::advance);
             return state.result();
+        } catch (RuntimeException | Error failure) {
+            // Completion and notification failures may occur after the irrevocable resource boundary.
+            // A thrown tick is not a certified save point, even when its lifecycle already advanced.
+            persistenceFailure = true;
+            throw failure;
         } finally {
             ticking = false;
         }
@@ -216,7 +270,7 @@ public final class RecipeProcess {
         }
         if (result != ProcessResult.SUCCESS) {
             state = new State(result instanceof ProcessResult.Failure ? Lifecycle.FAILED : before.lifecycle(),
-                before.progress(), before.successfulTicks(), result);
+                before.progress(), before.successfulTicks(), result, before.started());
             return false;
         }
         return true;
@@ -225,12 +279,22 @@ public final class RecipeProcess {
     public enum Lifecycle { NEW, RUNNING, COMPLETED, FAILED }
 
     /** Progress is absolute scaled work ticks; successfulTicks is the unscaled deterministic clock. */
-    public record State(Lifecycle lifecycle, double progress, long successfulTicks, ProcessResult result) {
+    public record State(Lifecycle lifecycle, double progress, long successfulTicks, ProcessResult result, boolean started) {
+        public State(Lifecycle lifecycle, double progress, long successfulTicks, ProcessResult result) {
+            this(lifecycle, progress, successfulTicks, result, lifecycle == Lifecycle.RUNNING || lifecycle == Lifecycle.COMPLETED);
+        }
+
         public State {
             Objects.requireNonNull(lifecycle);
             Objects.requireNonNull(result);
             if (!Double.isFinite(progress) || progress < 0 || successfulTicks < 0) {
                 throw new IllegalArgumentException("Invalid process progress");
+            }
+            if (!started && (progress != 0 || successfulTicks != 0) || lifecycle == Lifecycle.NEW && started
+                || (lifecycle == Lifecycle.RUNNING || lifecycle == Lifecycle.COMPLETED) && !started
+                || (lifecycle == Lifecycle.FAILED) != (result instanceof ProcessResult.Failure)
+                || lifecycle == Lifecycle.COMPLETED && result != ProcessResult.SUCCESS) {
+                throw new IllegalArgumentException("Inconsistent process lifecycle and committed START state");
             }
         }
     }

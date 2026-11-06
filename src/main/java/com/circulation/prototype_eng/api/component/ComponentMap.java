@@ -8,6 +8,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.Map;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
 
 /**
  * Typed component assembly and ordered phase execution migrated from PM's MachineComponentMap.
@@ -51,6 +55,29 @@ public final class ComponentMap<E> {
         }
         components.remove(type);
         types.remove(type.id());
+    }
+
+    /** Captures assembly order and effective dependency edges at an exclusive save boundary. */
+    public List<SavedBinding<E, ?>> snapshotBindings() {
+        orderedTickEntries();
+        var result = new ObjectArrayList<SavedBinding<E, ?>>();
+        for (var node : components.assemblyComponents()) {
+            result.add(node.component().saved(node.dependencies()));
+        }
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /** Constraints for dependents not yet installed also survive a save/reload. */
+    public Map<ComponentType<E, ?>, Set<ComponentType<E, ?>>> snapshotPendingDependencies() {
+        return components.pendingDependencies();
+    }
+
+    public record SavedBinding<E, C>(ComponentType<E, C> type, C component, Set<ComponentType<E, ?>> dependencies) {
+        public SavedBinding {
+            Objects.requireNonNull(type);
+            Objects.requireNonNull(component);
+            dependencies = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies));
+        }
     }
 
     /** Downstream mods can reset the components owned by their machine or process. */
@@ -193,6 +220,10 @@ public final class ComponentMap<E> {
     }
 
     private record Binding<E, C>(ComponentType<E, C> type, C component) {
+        SavedBinding<E, C> saved(Set<ComponentType<E, ?>> dependencies) {
+            return new SavedBinding<>(type, component, dependencies);
+        }
+
         void appendEntries(ObjectArrayList<TickEntry<E, ?>> entries) {
             // PM preserves the declared order of multiple systems attached to one component.
             for (var system : type.systems()) {

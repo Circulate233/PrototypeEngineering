@@ -25,6 +25,9 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
     private static final RecipeStage[] CHILD_STAGES = RecipeStage.values();
 
     @Override
+    public List<RecipeRequirement<?>> children(CheckpointRequirement payload) { return List.of(payload.requirement()); }
+
+    @Override
     public RequirementTransaction start(RecipeProcess process, RecipeRequirement<CheckpointRequirement> requirement) {
         var checkpoint = requirement.payload();
         if (checkpoint.time() != 0) {

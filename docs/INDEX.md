@@ -4,16 +4,17 @@
 
 ## 当前检查点
 
-- 当前阶段：需求 overlay、外部 applier/modifier、选择器受追踪覆写已完成并验证；本阶段本地提交，不推送，具体提交以 Git 日志为准。此前解析锁/选择器为 `4b3e98b`、概率/检查点为 `d74e0e2`、属性/单进程循环为 `176694a`；原工作区其他格式/注解整理继续保留。
-- 最近验证（2026-11-07）：本机 IDEA MCP 对 133 个 src Java 文件及生成 Tags 共 134 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/requirement-overlays-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 153 项逻辑用例。NBT 编解码、GUI/游戏尚未运行验证。
+- 当前阶段：严格单进程持久化已完成并验证，本阶段本地提交、不推送，具体提交以 Git 日志为准。前阶段需求 overlay 为 `b9229db`；原工作区 23 份格式/注解整理继续保留。
+- 最近验证（2026-11-07）：本机 IDEA MCP 对 153 个 src Java 文件及生成 Tags 共 154 文件逐个 `errorsOnly:false`，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/process-persistence-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 189 项逻辑用例。NBT 独立行为已验证；真实 AE2 注册环境、GUI/游戏尚未运行验证。
 - 当前实现：资源与 FE 独立存储，共用无 AEKey 字段的预留生命周期及真实 context 同步。RequirementTransaction 上交令牌；整阶段先应用资源和业务，全部成功才 complete，拒绝/异常统一补偿。MachineHatches 绑定公开仓室；固定资源/FE payload 已接入 START/TICK/END、来源去重、单次 FE 限额和允许的余量丢弃。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv；未引入 FE key。
 - 当前进程：MachineAttributes 按 ID 叠加父层、本地 modifier 与 base，数值三操作顺序继承 PM，外部 modifier 保留接口。资源/FE 按有效并行数饱和缩放；属性需求 START 局部添加/撤销、END 在 complete 清理。RecipeProcess.tick 保留完成前后双检查，double 绝对进度与 long 成功刻数在资源同一提交边界推进，Tick 上下文预先冻结；阻塞不多扣料、终态通知故障不重放。组件回调一次捕获并包围处理循环。MachineAttributes 不在读路径写缓存；并行进程执行期必须保持父层稳定。
 - 高级需求进展：ResourceChance 支持 >100% 与属性乘数，进程固定抽样策略，TICK 盐使用成功刻数；固定数量保守预检占用在真正预留前释放，零概率检查可共享。随机池按候选 entry 无放回，按实际选中 AEKey 预留；全选时批量缩放，其余仍需逐次抽取，后续 planned 必须预算。检查点 time=0 在 START 执行子完整生命周期，其他按冻结 scaled/unscaled 时间线跨阈值触发；子令牌全部归外层结算，拒绝立即停止，异常完整清理。
 - 新增高级需求：模糊组按声明顺序、动态组按 type/resource ID/完整规范 NBT 排序后截断；matcher 和排序器保留外部实现。固定/前组需求先扣余量，成功获取才装逻辑锁，回滚只撤自身选择。RequirementPath 按完整包装层级寻址，字符串长度分帧；全部事务回调恢复捕获作用域。选择器 provisional 状态支持嵌套获取，拒绝候选完整补偿；START 失败清选择，END 失败保留 modifier，成功 complete 才移除自有属性。完成故障继续尝试其余回调、令牌及通知，不重放。动态 maxCandidates 只限制返回数，完整扫描/排序/NBT 成本仍待预算。
-- 需求 overlay：公开 typed applier/type 与不可变资源四 IO/FE 刻速率补丁，按完整路径和 writer 层 ID 写时重算；同层替换顺序固定，局部撤层保留其他写入方，Change complete 放弃 undo，clear 无 pending 句柄。有效 view 保留 canonical definition，全部 acquire 只解析一次，已获取事务参数冻结；callback 的有效 view 可作写入 target。Pipeline 显式调用、按序含重复 descriptor，selector 追踪 overlay 与属性同生命周期。外部 applier 必须纯、可重组且保持 canonical 子身份；重算故障不发布并聚合错误。当前没有完整 NBT/snapshot 恢复。
+- 需求 overlay：公开 typed applier/type 与不可变资源四 IO/FE 刻速率补丁，按完整路径和 writer 层 ID 写时重算；同层替换顺序固定，局部撤层保留其他写入方，Change complete 放弃 undo，clear 无 pending 句柄。有效 view 保留 canonical definition，全部 acquire 只解析一次，已获取事务参数冻结；callback 的有效 view 可作写入 target。Pipeline 显式调用、按序含重复 descriptor，selector 追踪 overlay 与属性同生命周期。外部 applier 必须纯、可重组且保持 canonical 子身份；重算故障不发布并聚合错误。层及选择所有权已接入下面的严格进程持久化。
+- 严格进程持久化：RecipeProcessNbt 固定 canonical recipe/revision/graph/duration；保留 seed/tuning、double progress、long successfulTicks、started/result、本地属性、overlay 层、解析锁、selector 归属。exact NBT、未知/重复/坏引用拒绝；fresh process 全建组件后按真实依赖恢复，selector 额外先加载 overlay，最后校验成功才返回。原 assembly 顺序和缺失 dependent 的 pending 边保留。open transaction/pending Change/抛错 tick 拒绝保存，不重跑 START/modifier；外部 overlay 必须提供历史 validator，嵌套正阈 checkpoint 只验证可证明关系。源码入口 `api/recipe/persistence`，用法见 recipes 的“严格进程保存恢复”。
 - 既有仓室：资源两侧独立 ScrollBar；能源 GUI 原纵向条与速率/自动设置；能源重载使用当前配置容量并裁剪保存量，资源保留保存容量。原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器 Gecko/Bloom 管线仍待迁移。
-- 下一步：严格进程/组件保存恢复，源码入口和旧缺陷见 migration-audit；覆盖解析锁、选择器自有效果、需求 overlay 层和属性，验证全部后发布，禁止跳过坏数据。再补扫描/取消，并继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。扫描写入已计算并行值时不能再次继承倍乘；当前持锁批结算不能跨 lane 等待，也不替代 planned 协议。
-- 未完成：完整保存恢复/取消、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。内存选择 snapshot/restore 和 typed overlay 不是完整持久化。都是保留范围，不能按“未实现”裁掉。
+- 下一步：审查/迁移 factory/workslot 宿主装配与恢复发布，再补扫描/取消，继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。宿主先完整校验槽位/recipe/revision/容量再替换，不清空后跳过坏条目，不恢复旧 epoch/lease/ready authority；PN 恢复仍须重新发现并取得运行权限。扫描写入有效并行值不能再次继承倍乘；持锁批结算不能跨 lane 等待，也不替代 planned。
+- 未完成：factory/workslot/机器世界恢复、取消、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
 
 ## 必须记住的约束
 

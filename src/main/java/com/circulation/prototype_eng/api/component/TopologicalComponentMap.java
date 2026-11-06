@@ -13,6 +13,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Map;
+import java.util.Collections;
 
 /**
  * PM's soft dependency graph, with a cached Kahn ordering. Missing dependencies become active when
@@ -140,6 +142,16 @@ public final class TopologicalComponentMap<K, C> {
         nodes.clear();
         pending.clear();
         revision++;
+    }
+
+    List<Node<K, C>> assemblyComponents() {
+        return ObjectLists.unmodifiable(new ObjectArrayList<>(nodes.values()));
+    }
+
+    Map<K, Set<K>> pendingDependencies() {
+        var result = new Object2ObjectLinkedOpenHashMap<K, Set<K>>();
+        pending.forEach((key, dependencies) -> result.put(key, ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies))));
+        return Collections.unmodifiableMap(result);
     }
 
     /**
