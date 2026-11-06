@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
@@ -12,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.Random;
+import java.util.function.Supplier;
 
 /**
  * Isolated requirement/extension state for one work slot. A scheduler may run different processes
@@ -23,6 +25,7 @@ public final class RecipeProcess {
     private final MachineInstance owner;
     private final MachineRecipe recipe;
     private final long seed;
+    private final ProbabilityTuning probabilityTuning;
     private final ComponentMap<RecipeProcess> components = new ComponentMap<>();
     private final MachineAttributes attributes;
     private State state = new State(Lifecycle.NEW, 0, 0, ProcessResult.SUCCESS);
@@ -31,9 +34,14 @@ public final class RecipeProcess {
     private Tick activeTick;
 
     public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed) {
+        this(owner, recipe, seed, ProbabilityTuning.defaultTuning());
+    }
+
+    public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning probabilityTuning) {
         this.owner = Objects.requireNonNull(owner);
         this.recipe = Objects.requireNonNull(recipe);
         this.seed = seed;
+        this.probabilityTuning = Objects.requireNonNull(probabilityTuning);
         attributes = new MachineAttributes(owner.attributes(), 1);
     }
 
@@ -60,6 +68,11 @@ public final class RecipeProcess {
         return attributes;
     }
 
+    /** Frozen per process so a global tuning change cannot reroll a blocked phase. */
+    public ProbabilityTuning probabilityTuning() {
+        return probabilityTuning;
+    }
+
     public State state() {
         return state;
     }
@@ -67,6 +80,23 @@ public final class RecipeProcess {
     /** Frozen scaled/unscaled timeline for requirements executing the current TICK stage. */
     public Tick tickContext() {
         return Objects.requireNonNull(activeTick, "No TICK stage is executing");
+    }
+
+    /**
+     * Temporarily supplies a nested requirement's timeline without advancing this process.
+     * Checkpoints use a zero-width context for a full child lifecycle executed at time zero.
+     * This scope has the same exclusive-owner requirement as tick().
+     */
+    public <T> T withTickContext(Tick context, Supplier<T> action) {
+        Objects.requireNonNull(context);
+        Objects.requireNonNull(action);
+        Tick previous = activeTick;
+        activeTick = context;
+        try {
+            return action.get();
+        } finally {
+            activeTick = previous;
+        }
     }
 
     /**
@@ -160,7 +190,14 @@ public final class RecipeProcess {
         }
     }
 
-    public record Tick(double progressBefore, double progressAfter, long indexBefore, long indexAfter) { }
+    public record Tick(double progressBefore, double progressAfter, long indexBefore, long indexAfter) {
+        public Tick {
+            if (!Double.isFinite(progressBefore) || !Double.isFinite(progressAfter) || progressBefore < 0
+                || progressAfter < progressBefore || indexBefore < 0 || indexAfter < indexBefore) {
+                throw new IllegalArgumentException("Invalid frozen tick timeline");
+            }
+        }
+    }
 
     /**
      * Repeatable phase/context selection, matching PM's seed XOR salt convention.

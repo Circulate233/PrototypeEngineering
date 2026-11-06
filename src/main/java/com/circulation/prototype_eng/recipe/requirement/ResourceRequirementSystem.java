@@ -7,14 +7,19 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
+import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
+import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
@@ -29,22 +34,25 @@ import java.util.Objects;
 public final class ResourceRequirementSystem implements RecipeRequirementSystem<ResourceRequirement> {
     @Override
     public RequirementTransaction start(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
-        return acquire(process, requirement, requirement.payload().inputs(), ObjectLists.emptyList());
+        return acquire(process, requirement, RecipeStage.START, requirement.payload().inputs(), ObjectLists.emptyList());
     }
 
     @Override
     public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
-        return acquire(process, requirement, requirement.payload().inputsPerTick(), requirement.payload().outputsPerTick());
+        return acquire(process, requirement, RecipeStage.TICK, requirement.payload().inputsPerTick(), requirement.payload().outputsPerTick());
     }
 
     @Override
     public RequirementTransaction end(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
-        return acquire(process, requirement, ObjectLists.emptyList(), requirement.payload().outputs());
+        return acquire(process, requirement, RecipeStage.END, ObjectLists.emptyList(), requirement.payload().outputs());
     }
 
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
-                                                   List<GenericStack> inputs, List<GenericStack> outputs) {
-        if (inputs.isEmpty() && outputs.isEmpty()) {
+                                                   RecipeStage stage, List<GenericStack> inputs, List<GenericStack> outputs) {
+        var payload = requirement.payload();
+        var pool = stage == RecipeStage.END ? payload.randomOutputs() : null;
+        boolean randomOutputs = pool != null && pool.hasOutputs();
+        if (inputs.isEmpty() && outputs.isEmpty() && !randomOutputs) {
             return RequirementTransaction.SUCCESS;
         }
         var reservations = new ObjectArrayList<ResourceReservation>();
@@ -52,9 +60,33 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             var hatches = MachineHatches.get(process.owner()).resources();
             String id = requirement.id().toString();
             int parallelism = RecipeParallelism.effective(process);
-            ProcessResult result = reserve(hatches, inputs, true, false, id, parallelism, reservations);
+            double chance = payload.chance().effective(process);
+            String salt = "resource:" + id + ":" + stage
+                + (stage == RecipeStage.TICK ? ":" + process.state().successfulTicks() : "");
+            long times = chance == 100 ? parallelism
+                : ChanceMath.sampleTimes(process.random(salt), parallelism, chance, process.probabilityTuning());
+            long checkTimes = Math.max(parallelism, ChanceMath.maxTimes(parallelism, chance));
+            var consumed = scaled(inputs, times);
+            var produced = scaled(outputs, times);
+            Object2LongLinkedOpenHashMap<AEKey> random = null;
+            if (randomOutputs) {
+                random = new Object2LongLinkedOpenHashMap<>();
+                randomOutputs(process, Objects.requireNonNull(pool), salt, times, random);
+                merge(produced, random);
+            }
+            boolean needsOutput = !outputs.isEmpty() || randomOutputs;
+            if (times != checkTimes) {
+                var checkedOutputs = scaled(outputs, checkTimes);
+                if (random != null) { merge(checkedOutputs, random); }
+                ProcessResult checked = preflight(hatches, scaled(inputs, checkTimes), checkedOutputs,
+                    !inputs.isEmpty(), needsOutput, payload.voidExcessOutputs(), id);
+                if (checked != ProcessResult.SUCCESS) {
+                    return new ReservedRequirement(checked, reservations);
+                }
+            }
+            ProcessResult result = reserve(hatches, consumed, true, !inputs.isEmpty(), false, id, reservations);
             if (result == ProcessResult.SUCCESS) {
-                result = reserve(hatches, outputs, false, requirement.payload().voidExcessOutputs(), id, parallelism, reservations);
+                result = reserve(hatches, produced, false, needsOutput, payload.voidExcessOutputs(), id, reservations);
             }
             return new ReservedRequirement(result, reservations);
         } catch (RuntimeException | Error failure) {
@@ -63,9 +95,71 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
     }
 
-    private static ProcessResult reserve(List<ResourceHatch> hatches, List<GenericStack> quantities, boolean input,
-                                          boolean voidExcess, String id, int parallelism, List<ResourceReservation> reservations) {
-        if (quantities.isEmpty()) {
+    /**
+     * PM's conservative fixed-quantity check, with real temporary holds covering shared slots/keys.
+     * Release these before actual reservations: checks do not consume resources and can be shared by
+     * later requirements. Exact execution still reserves afresh, so an intervening change cannot overdraw.
+     */
+    private static ProcessResult preflight(List<ResourceHatch> hatches, Object2LongLinkedOpenHashMap<AEKey> inputs,
+                                           Object2LongLinkedOpenHashMap<AEKey> outputs, boolean needsInput,
+                                           boolean needsOutput, boolean voidExcess, String id) {
+        var checks = new ObjectArrayList<ResourceReservation>();
+        ProcessResult result;
+        try {
+            result = reserve(hatches, inputs, true, needsInput, false, id, checks);
+            if (result == ProcessResult.SUCCESS) {
+                result = reserve(hatches, outputs, false, needsOutput, voidExcess, id, checks);
+            }
+        } catch (RuntimeException | Error failure) {
+            ReservedRequirement.rollbackAfterFailure(checks, failure);
+            throw failure;
+        }
+        ResourceTransactions.rollback(checks);
+        return result;
+    }
+
+    private static Object2LongLinkedOpenHashMap<AEKey> scaled(List<GenericStack> stacks, long times) {
+        var amounts = new Object2LongLinkedOpenHashMap<AEKey>();
+        if (times == 0) { return amounts; }
+        for (var stack : stacks) {
+            amounts.put(stack.what(), Math.addExact(amounts.getLong(stack.what()), stack.amount()));
+        }
+        for (var entry : amounts.object2LongEntrySet()) {
+            entry.setValue(ChanceMath.scaleCount(entry.getLongValue(), times));
+        }
+        return amounts;
+    }
+
+    private static void merge(Object2LongLinkedOpenHashMap<AEKey> into, Object2LongLinkedOpenHashMap<AEKey> from) {
+        for (var entry : from.object2LongEntrySet()) {
+            into.put(entry.getKey(), Math.addExact(into.getLong(entry.getKey()), entry.getLongValue()));
+        }
+    }
+
+    private static void randomOutputs(RecipeProcess process, RandomOutputPool pool, String salt, long times,
+                                      Object2LongLinkedOpenHashMap<AEKey> output) {
+        if (times == 0) { return; }
+        if (pool.pickCount() >= pool.candidates().size()) {
+            // Every positive-weight entry is certain; avoid one sampling/allocation pass per parallel.
+            var stacks = new ObjectArrayList<GenericStack>();
+            for (var candidate : pool.candidates()) { stacks.add(candidate.value()); }
+            merge(output, scaled(stacks, times));
+            return;
+        }
+        // Preserve PM's exact per-execution weighted choice. Planned preparation must budget this work.
+        for (long execution = 0; execution < times; execution++) {
+            var selected = WeightedSampling.sampleWithoutReplacement(process.random(salt + ":random:" + execution),
+                pool.candidates(), pool.pickCount());
+            for (var stack : selected) {
+                output.put(stack.what(), Math.addExact(output.getLong(stack.what()), stack.amount()));
+            }
+        }
+    }
+
+    private static ProcessResult reserve(List<ResourceHatch> hatches, Object2LongLinkedOpenHashMap<AEKey> quantities,
+                                          boolean input, boolean needsStorage, boolean voidExcess, String id,
+                                          List<ResourceReservation> reservations) {
+        if (!needsStorage) {
             return ProcessResult.SUCCESS;
         }
         var storages = new ObjectArrayList<ResourceStorage>();
@@ -80,13 +174,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         if (storages.isEmpty()) {
             return (input ? RecipeText.NoResourceInput : RecipeText.NoResourceOutput).blocked(id);
         }
-        var totals = new Object2LongLinkedOpenHashMap<AEKey>();
-        for (var stack : quantities) {
-            totals.put(stack.what(), Math.addExact(totals.getLong(stack.what()), stack.amount()));
-        }
-        for (var entry : totals.object2LongEntrySet()) {
+        for (var entry : quantities.object2LongEntrySet()) {
             AEKey key = entry.getKey();
-            long remaining = RecipeParallelism.scaleCount(entry.getLongValue(), parallelism);
+            long remaining = entry.getLongValue();
             for (var storage : storages) {
                 var context = storage.context();
                 context.lock();

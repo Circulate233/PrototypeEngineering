@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.process;
 
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
 
 /** PM's effective per-process parallelism and saturating quantity arithmetic. */
 public final class RecipeParallelism {
@@ -17,6 +18,6 @@ public final class RecipeParallelism {
         if (base < 0 || parallelism < 1) {
             throw new IllegalArgumentException("Negative quantity or nonpositive parallelism");
         }
-        return base > Long.MAX_VALUE / parallelism ? Long.MAX_VALUE : base * parallelism;
+        return ChanceMath.scaleCount(base, parallelism);
     }
 }

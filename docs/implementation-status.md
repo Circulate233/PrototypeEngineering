@@ -14,9 +14,11 @@
 - 美术已复制：PM item_hatch 与 energy_hatch 十阶三方向原模型 60 份、方块 PNG 144 张、CTM/Bloom 元数据 30 份（其中 6 份还带动画），另有 gui_energy_hatch 的 22 张 PNG，保留 credit 与 bloom 元素。原仓室走标准 Forge 模型与这些元数据，外部 CTM/BLOOM 层环境的实际效果未验证；机器自定义 Gecko/Bloom 管线仍待迁移。
 - 本地化已接入：GuiText 实现 AE2S LocalizationEnum，客户端使用 getLocal，容器标题使用 text 组件；禁止 GUI 拼键和裸翻译键调用。最终本机 IDEA MCP 逐文件检查零错误、警告、弱警告，MCP 构建及 Gradle 完整构建均通过，证据见下。
 - P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段协调结算。RequirementTransaction 上交全部资源/FE 预留，业务 commit 仍可补偿，全部成功才 complete；获取/应用/业务异常完整逆序清理，完成/通知故障不再回滚终态令牌。
-- 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量定义为单次执行量，执行时使用进程有效并行数并按 PM 的 long 饱和规则缩放。概率/模糊动态/选择器/需求 overlay 仍必须继续迁移；原因由 RecipeText 本地化枚举提供。
+- 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量定义为单次执行量，执行时使用进程有效并行数并按 PM 的 long 饱和规则缩放。资源需求已接概率/随机产物；模糊动态/选择器/需求 overlay 仍必须继续迁移，FE 保留原独立数量语义。原因由 RecipeText 本地化枚举提供。
 - 属性与单进程循环已接入：MachineAttributes 将根层/进程 overlay 合为一个实际类，以属性 ID 寻址；AttributeModifier 保留外部运算接口，NumericAttributeModifier 提供 PM 三种运算，支持本地遮盖、实时继承和局部状态快照。RecipeProcess.tick 保留 START 一次成功、完成前后检查、成功 TICK 才推进和 END 阻塞只重试 END；double 绝对进度及 long 成功刻数随资源同阶段可补偿提交。Tick 上下文在获取前冻结，组件 pre/tick/body/post 使用同一 dispatch。此循环尚未接入多工位扫描、保存恢复、取消及真实 planned 调度。
 - 属性需求已接入：START 添加自己的 modifier，使后续获取看到效果，失败只撤销本需求成功添加的 modifier；END 在全部业务 commit 成功后的 complete 局部清理，避免输出提前失去倍率，也避免整层快照抹去其他需求的业务修改。有限 base/amount/fallback 与每次运算结果严格校验；父属性在多个进程并行执行期间必须保持稳定，读取不写缓存。PM 的 ENERGY_EFFICIENCY 目前只声明，没有可迁移的内置能耗公式，未自造玩法计算。
+- 概率与加权输出已接入：ResourceChance 的百分比与可选属性乘数决定资源执行次数，保留 PM 的整倍数加二项抽样、正 long 饱和量及固定数量保守检查。进程固定 ProbabilityTuning，成功刻索引用于 TICK 盐；默认仍为 PM 的 Poisson/固定 Gaussian 表近似，可选择小 n 精确 Bernoulli。临时预检占用释放后才保留真实用量，允许多个零概率检查共享；输出按真实选中 AEKey 与固定输出一起预留，拒绝不会留下部分产物。加权整数抽签按 entry 无放回，全部候选必选时批量缩放；普通随机池仍按执行次数循环，其异步预算尚待 planned 集成。
+- 检查点已接入：CheckpointRequirement 可包装任意需求，在 scaled/unscaled 冻结时间线上跨阈值触发完整子 START/TICK/END；time=0 在父 START 执行一次，子 TICK 使用零宽上下文。子事务汇总所有令牌上交外层，拒绝立即停止后续子阶段，业务和资源共同补偿，complete 不能先于其他父需求 commit；临时上下文涵盖子 TICK 获取和全部业务回调，结束或抛错后恢复。检查点与进程的完整保存恢复仍未迁移。
 - 旧固定资源流程已改为内部 ResourceTransferPlan/Run 迁移材料，不再定义公开 MachineRecipe 或从公开池选择配方。本轮已改用独立 ResourceStorage，保留 4 项守恒/检查点/别名测试；预留、补偿和并发另有专门行为用例，不能用此固定流程代替完整需求处理器。未接入机器且无调用方的固定资源 ResourceTransferNbt 已移除；正式进程/组件持久化仍为必须迁移项。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
@@ -24,6 +26,9 @@
 
 ## 验证记录
 
+- 2026-11-07（概率与检查点阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，103 项逻辑测试全部通过，无失败、错误或跳过。新增 11 项抽样/分布策略/边界/无放回行为、13 项检查点时间线/嵌套/拒绝及异常补偿、6 项资源概率集成行为；后者覆盖零概率共享预检、>100% 属性倍率、阻塞刻重试、实际随机 key 容量、全选/丢弃和输出预检故障后释放输入占用。未增加哈希、常量或 getter 专用测试。
+- 2026-11-07（概率与检查点阶段）：本机 IDEA MCP 对 102 个 src Java 文件及生成 Tags 共 103 文件逐个 `errorsOnly:false`；修复测试匿名返回提示，对外部 binomial 默认策略入口作精确 unused 标注并说明用途，最终所有错误、警告、弱警告为零且无超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`；报告 [probability-checkpoints-final.json](../build/reports/idea/probability-checkpoints-final.json)。全程使用 MCP，没有操作桌面或启动游戏。
+- 2026-11-07（源码复核）：复用 PM ChanceMath/BinomialSampler/WeightedSampling 和 CheckpointRequirementSystem 的计算目的及触发流程，修正非有限概率静默归零、极大 chance 上界溢出、double 权重抽签精度、真实随机 key 空间检查、旧流体刻索引停滞、time=0 不触发及子生命周期拒绝后继续获取。普通随机池的大次数遍历、解析锁/选择状态和恢复依然需要后续迁移，不将这些剩余项标作完成。
 - 2026-11-07（属性与单进程循环阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，73 项逻辑测试全部通过，无失败、错误或跳过。在原 52 项基础上新增 6 项属性计算/overlay/快照/非法恢复行为、7 项包围业务的组件回调顺序与异常清理、8 项进程集成行为；涵盖三阶段阻塞与重试、属性局部补偿、冻结时间线、三阶段完成后通知故障不重放、有效并行与 long 饱和边界。未新增哈希、常量或 getter 专用测试。
 - 2026-11-07（属性与单进程循环阶段）：本机 IDEA MCP 对 89 个 src Java 文件及生成 Tags 共 90 文件逐个 `errorsOnly:false`；修复泛型写法提示，对尚待扫描器使用的公开并发属性仅作精确 unused 标注并说明用途，复查后全部零错误、警告、弱警告且无超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`；报告 [process-attributes-final.json](../build/reports/idea/process-attributes-final.json)。全程使用 MCP，没有操作桌面或启动游戏。
 - 2026-11-07（源码复核）：复用 PM 属性三运算、overlay 和 FactoryRecipeProcessor 的阶段循环，修正易丢失失效信号的属性缓存及固定父实例引用；实际计数改用 double/long，状态纳入阶段提交。已核对并记录旧扫描器有效并行值写 base 后可能再次倍乘、二分上界溢出、流体随机刻索引停滞和检查点预估速度不一致；完整扫描、随机需求、检查点与持久化仍未迁移，不宣称这些路径已修复。
