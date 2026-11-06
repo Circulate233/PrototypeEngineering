@@ -1,6 +1,6 @@
 # 控制器运行时与延后清理
 
-`api.machine.lifecycle.MachineController` 管理一个控制器实例代的装配、保存、调度登记和退出。它复用 `MachineAssembly`、`MachineLifecycle` 与真实 `TaskScheduler`，保留 PM 的 load 成功后登记、普通卸载保存进度、破坏取消工位，以及 PN 清理旧代注册的目的。旧实现的问题和源码入口见[迁移审查](machine-controller-migration-audit.md)。本阶段提供可供真实 TileEntity 持有的运行时；TileEntity、Forge 注册、方向、放置身份和客户端接线仍须继续实现。
+`api.machine.lifecycle.MachineController` 管理一个控制器实例代的装配、保存、调度登记和退出。它复用 `MachineAssembly`、`MachineLifecycle` 与真实 `TaskScheduler`，保留 PM 的 load 成功后登记、普通卸载保存进度、破坏取消工位，以及 PN 清理旧代注册的目的。旧实现的问题和源码入口见[迁移审查](machine-controller-migration-audit.md)。本阶段提供可供真实 TileEntity 持有的运行时；后续的 TileEntity、Forge 注册、方向、放置者与显示接线见[控制器集成](controller-integration.md)。
 
 ## 装配与保存
 
@@ -24,4 +24,4 @@ MAIN 回调内请求 load 会排队，回调返回后才装配；新增 MAIN 机
 
 逻辑测试覆盖完整恢复后登记、注册失败清理聚合、MAIN 自卸载升级破坏并取消真实工位、两个真实 worker 退出后清理、元数据请求拒绝、排队 load/NBT 隔离、普通保存恢复、同位置新旧代和故障不复活。退休测试检查实际阶段提交/暂停、预留回滚及拒绝迟到结构；scheduler 测试检查 FIFO、故障、中断与 executor 终止证明。完整数量及 MCP 逐文件结果见[实施进度](implementation-status.md)。
 
-仍需接实际空构造 TileEntity、未知类型/二次 NBT、零机器时通用 TE 注册、24 向与定义/owner 配置代、结构捕获/worker/发布失稳重试、精确放置 token、独立客户端显示、GUI/模型/预览。正式 planned 的双 join、PN owner/team/epoch/向量预算也未由普通清理队列实现。按用户约束未启动游戏或 Bootstrap/FML 测试初始化。
+实际空构造 TE、二次 NBT、新代恢复、零声明通用 TE 注册、24 向、结构调度/失稳重试、放置者与独立显示和默认模型已接入，见[控制器集成](controller-integration.md)。仍需完成持久身份/搬运/owner权限、GUI/工具/预览与复杂渲染。正式 planned 的双 join、PN owner/team/epoch/向量预算也未由普通清理队列实现。按用户约束未启动游戏或 Bootstrap/FML 测试初始化。

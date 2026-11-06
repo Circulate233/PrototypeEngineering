@@ -2,8 +2,10 @@ package com.circulation.prototype_eng.api.machine.lifecycle;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * World access supplied by a controller host. External controller implementations may supply this
@@ -12,6 +14,10 @@ import java.util.Objects;
 public interface MachineLifecycleHost {
     MachineIdentity identity();
     World world();
+
+    /** Actual placement actor, including a placed serialized item; absent for non-player loading. */
+    @SuppressWarnings("unused") // Downstream lifecycle listeners consume the bound placement actor.
+    @Nullable default UUID placementPlayer() { return null; }
 
     default MinecraftServer server() {
         return Objects.requireNonNull(world().getMinecraftServer(), "Machine host has no server");

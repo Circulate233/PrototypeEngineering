@@ -1,6 +1,6 @@
 # 附宿主装配与机器持久化
 
-入口是 `api.machine.persistence.MachineAssembly` 和扩展接口 `MachineComponentCodec<C>`。保留 PM 的组件工厂、属性和可序列化组件职责，直接复用现有 `MachineAttributesNbt`、`MachineWorkSlotsNbt`、`RecipeProcessNbt`，没有另做属性/配方类型或存储后端。本阶段是实际控制器需要调用的装配入口，尚未增加控制器 TileEntity 或 Forge 机器注册。
+入口是 `api.machine.persistence.MachineAssembly` 和扩展接口 `MachineComponentCodec<C>`。保留 PM 的组件工厂、属性和可序列化组件职责，直接复用现有 `MachineAttributesNbt`、`MachineWorkSlotsNbt`、`RecipeProcessNbt`，没有另做属性/配方类型或存储后端。装配入口现已被[实际控制器](controller-integration.md)调用；仍没有声明正式机器内容。
 
 ## 调用顺序
 
@@ -36,4 +36,4 @@
 
 逻辑测试覆盖恢复/创建顺序、默认补缺、组件和标签隔离、动态图与不可变替换、失败不发布、保存故障、已提交进程恢复，以及实际线程上的边界拒绝。最终数量与逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)。未创建真实 World 或启动游戏。
 
-`MachineController` 已接 load 后登记、登记失败清理、延后卸载和未装配原 NBT 保存，见[控制器运行时](machine-controller.md)。下一步仍是空 TE 暂存 NBT、实际 Forge 调用、方向/放置身份、客户端显示同步，以及正式 planned/PN 权限预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。
+`MachineController` 已接 load 后登记、登记失败清理、延后卸载和未装配原 NBT 保存，见[控制器运行时](machine-controller.md)。实际 TE 暂存/恢复、Forge 调用、方向、放置者与客户端显示现已接入，见[控制器集成](controller-integration.md)。下一步仍是完整身份/搬运规则、GUI及正式 planned/PN 权限预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。

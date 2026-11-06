@@ -4,19 +4,20 @@
 
 ## 当前检查点
 
-- 控制器运行时/延后退出/退休停止点已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前附宿主装配为 `7d7b2f9`，机器声明为 `c13e81f`，普通调度为 `2c73d9c`。本阶段原23份格式/注解diff逐字未变，均未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过386项逻辑测试。本机IDEA MCP已逐个检查245个src Java及Tags共246文件，`errorsOnly:false`，最终零错误/警告/弱警告且无文件超时；MCP build_project成功。最终证据见 `build/reports/idea/controller-runtime-final.json`。全部通过MCP，不操作桌面；实际World/TileEntity/Forge交互未运行验证。
-- 当前控制器运行时：MachineController复用装配/lifecycle，load后登记自身对象身份，登记失败卸载并注销。停止先合法入队再retire；MAIN回调返回/所有accepted worker真实join后清理，CHUNK_UNLOAD→INVALIDATED→BROKEN升级；普通卸载保进度，破坏取消，不复活。未装配保留原NBT，已装配走检查codec。退休用单向volatile，新配方阶段/工位/探测/admission停止，当前事务及探测回滚完整结束。TaskScheduler独立FIFO保留fault后的清理；close未证物理退出则保留队列/资源，已证退出才清理并关闭接收。实际TE仍待接，入口 `docs/machine-controller.md`。
+- 控制器Block/Item/TileEntity、注册/结构刷新/显示与默认模型已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前运行时为 `44a6486`，附宿主装配为 `7d7b2f9`。原23份格式/注解改动保留未暂存；主类新增接线单独暂存，其余22份diff逐字未变。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过401项逻辑测试。本机IDEA MCP已逐个检查259个src Java及Tags共260文件，`errorsOnly:false`，最终零错误/警告/弱警告且无文件超时；MCP build_project成功。最终证据见 `build/reports/idea/controller-integration-final.json`。全部通过MCP，不操作桌面；实际World/TileEntity/Forge交互未运行验证。
+- 当前世界接线：Block注册事件收集类型并freeze，零声明也注册通用TE；PostInit配方freeze后整批resolveRuntime结构/assembly，拒半发布。空TE/读NBT只存副本，下一update过Forge放置取消窗口后装配；活动NBT回滚先检查稳定边界并退旧代、下一update新装配。完整24向/外部state变化按owner FIFO失效/重配，结构按PM 20/5节奏捕获→worker→join后发布，失稳明确暂停下tick重试。放置者绑定本TE，显示不包含runtime/ForgeCaps；旧显示代/序号拒绝。默认模型复用PM资产，可按类型自定义。入口 `docs/controller-integration.md`；GUI/工具物品/复杂渲染和PN仍待接。正常Cleanroom dormant保存NBT并重建TE，不复用Java TE，不按早先错误判断添加自动复活逻辑。
+- 当前控制器运行时：MachineController复用装配/lifecycle，load后登记自身对象身份，登记失败卸载并注销。停止先合法入队再retire；MAIN回调返回/所有accepted worker真实join后清理，CHUNK_UNLOAD→INVALIDATED→BROKEN升级；普通卸载保进度，破坏取消，不复活。未装配保留原NBT，已装配走检查codec。退休用单向volatile，新配方阶段/工位/探测/admission停止，当前事务及探测回滚完整结束。TaskScheduler独立FIFO保留fault后的清理；close未证物理退出则保留队列/资源，已证退出才清理并关闭接收。实际TE接线见controller-integration，运行时入口 `docs/machine-controller.md`。
 - 当前装配/持久化：MachineAssembly附host后factory，完整解析/validateGraph、创建所有保存组件、恢复根属性并补缺默认、依赖序codec、全体验证，然后load并返回未登记scheduler的机器。NBT V1保留实际组件顺序/动态边/pending和完整工位，删除声明不复活；immutable替换用replaceValue保留图。MachineHatches不保存，仅可作软依赖；无formed/config/epoch权限。ASSEMBLING/PERSISTING gate拒重入和外线程子codec、错误永久fault；不是join。入口 `docs/machine-persistence.md`。
-- 当前机器类型：MachineType保留PM声明字段/默认模式/模型/LocalizationEnum；ComponentMap静态验证复用实际系统图而不调用factory。MachineTypeRegistry批次拒绝无部分加入，freeze确定顺序关闭，resolveStructures整批绑定同一个canonical类型；两次发布均不代表PN/planned ready。typed实例附生命周期前无调度/保存权限；模式组件优先，显式创建工位读取类型布局/组。Forge控制器及PN配置仍未接。入口 `docs/machine-types.md`。
+- 当前机器类型：MachineType保留PM声明字段/默认模式/模型/LocalizationEnum；ComponentMap静态验证复用实际系统图而不调用factory。MachineTypeRegistry批次拒绝无部分加入，freeze确定顺序关闭，resolveStructures整批绑定同一个canonical类型；两次发布均不代表PN/planned ready。typed实例附生命周期前无调度/保存权限；模式组件优先，显式创建工位读取类型布局/组。Forge控制器已接，PN配置仍未接。入口 `docs/machine-types.md`。
 - 当前普通调度：TaskScheduler复用PM固定池/并查集亲和分组/single lanes，全部accepted任务在异常/中断时也真实join后才归还owner，故障不复活。MAIN中新MAIN下tick、新CON本tick；Registration拒旧候选复活，task identity拒同tick二跑，metadata/worker禁登记。MachineInstance直接接模式与公开storageIdentity；FML aboutToStart→END tick→stopped拥有会话。PLANNED明确拒绝，仍须正式迁移；入口 `docs/scheduling.md`。
-- 当前结构：AE 24向、模板/贪心切片与快照基础见 `docs/structures.md`。新增evaluate追踪实际读取，包括失败切片probe；query显式等价比较，变化则fresh capture/match，未访问潜在分支不误拒。StructureRefresh的request/config身份拒迟到与ABA，worker只算快照；发布在生命周期gate内复核事实/provider/能力并一起安装树和新MachineHatches，同方向也重建。真正失配才清绑定，失稳返回false由调度边界重试/显式invalidate，当前异常故障，旧配置异常不故障新配置。ControllerLifecycleHost固定World且分离活TE检查和清理线程检查；真实TE/owner变化调用仍待接。
+- 当前结构：AE 24向、模板/贪心切片与快照基础见 `docs/structures.md`。新增evaluate追踪实际读取，包括失败切片probe；query显式等价比较，变化则fresh capture/match，未访问潜在分支不误拒。StructureRefresh的request/config身份拒迟到与ABA，worker只算快照；发布在生命周期gate内复核事实/provider/能力并一起安装树和新MachineHatches，同方向也重建。真正失配才清绑定，失稳返回false由调度边界重试/显式invalidate，当前异常故障，旧配置异常不故障新配置。ControllerLifecycleHost固定World且分离活TE检查和清理线程检查；真实TE刷新和方向变化已接，PN owner变化仍待接。
 - 当前生命周期：四类事件+FRESH/RESTORED；未成型仅停扫描/工位，普通卸载保留并由新实例load/结构确认后续跑；破坏broken/cancelAll/unloaded，加载失败LOAD_FAILED，全部清理聚合，不END/退历史IO。VarHandle gate拒重叠但不替代join，坏图异常清理仍抛错。详见 `docs/machine-lifecycle.md`。
 - 当前配方：完整需求/组件/局部属性、概率/选择/overlay、工位保存与取消已接；终态自有清理和回执为NBT V2，faulted不可再tick/save，正常Blocked可重试。扫描按group/去重/候选probe预算，每次最多1个NEW，默认非单调下降搜索，START真获取后全rollback；flat IO预筛是独立当前量条件，资源索引需显式稳定下界，内部工作预算仍待接。详见 `docs/recipes.md` 和迁移审计对应章节。
 
 ## 下一步
 
-1. 使用MachineType/Registry/MachineAssembly/MachineController完成实际控制器TileEntity和Forge注册：空TE先暂存纯NBT，附World后持有controller并load；复用已接的登记/失败清理/延后退出，不复制状态机。未装配保留原数据，明确二次read与零机器时通用TE注册。明确空配方组的全局候选语义后再接自动scanner。详见 `docs/machine-controller.md`、`docs/machine-controller-migration-audit.md`。定义/24向/owner变化在调度边界invalidate并轮换配置；结构发布失稳要重试或暂停，放置token绑定准确TE代。
+1. 在已接控制器上继续统一空 recipeGroups 的全局候选语义并接自动扫描/处理系统、默认与自定义机器GUI（直接AEBaseGui/AEBaseContainer）及方向工具物品。继续迁入PN持久身份、搬运/复制冲突、owner/team当前代权限，不把placementPlayer或显示代当授权。真实World/Forge仍缺实机证据；异常loader复用同TE并让旧onChunkUnload晚于新onLoad的边缘需准确Chunk卸载代证明，不能宽泛补登记复活。
 2. 在已接普通调度上实现正式 planned：保留 PM prepare/resolve两次join、稳定source lane、PN owner/team/epoch/向量预算、迟到任务隔离及补偿。旧epoch/lease/ready不能从存档恢复为权限；terminal/取消不是物理退出证明。结构规划/匹配回退、目录/index/factory、动态排序/NBT、随机逐次抽样及嵌套生命周期仍需内部预算；性能统计/命令/后端能力也须迁移。
 3. 严格两阶段JSON/注册发布、结构预览/BOM/display override、模型隐藏/渲染、研究/队伍/计算、JEI与最后CraftTweaker继续迁移。全范围仍保留，当前结构匹配与生命周期基础不代表完整机器已完成。
 
@@ -41,6 +42,7 @@
 | 机器声明、整批关闭、后置结构绑定 | [machine-types.md](machine-types.md)，api/machine/MachineType、MachineTypeRegistry |
 | 附宿主装配、机器NBT、保存门限 | [machine-persistence.md](machine-persistence.md)，api/machine/persistence、MachineLifecycle.assemble/withPersistence |
 | 控制器运行时、延后退出与退休 | [machine-controller.md](machine-controller.md)，MachineController、TaskScheduler.runAtBoundary |
+| 真实控制器注册、NBT/朝向/显示、结构刷新 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity、ControllerStructureUpdates；资产见 [controller-assets.md](controller-assets.md) |
 | 机器类型/控制器及PN接线审查 | [machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
 | 组件/需求/事务、持久化、工位、扫描 | [recipes.md](recipes.md) 对应章节；源码 api/recipe、api/machine/workslot |
 | PM/PN 实际源码与旧缺陷 | [migration-audit.md](migration-audit.md) 对应映射表 |

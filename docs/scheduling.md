@@ -30,7 +30,7 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 机器 affinity 从 MachineHatches 的公开资源 input/output storageIdentity 和能源 input/output storageIdentity 收集。混合仓的独立侧缓存保持独立身份；同一真实存储的别名汇为同一个共享 key。发现与元数据采集在 owner 上完成，不在 worker 查 TileEntity 或 World。缺省行为不能替代 PN 后续计算资源/来源 lane 的精确权限模型。
 
-`ServerTaskSchedulers` 在 FMLServerAboutToStart 创建一个确切 MinecraftServer 身份的 session，在 ServerTick.END 调用真实普通调度，并在 FMLServerStopped（世界卸载之后）关闭。没有静态全局线程池，也不允许旧 server 引用取得新 session。外部控制器通过 forServer 取得本会话实例；实际控制器 TileEntity 的登记调用仍待实现。
+`ServerTaskSchedulers` 在 FMLServerAboutToStart 创建一个确切 MinecraftServer 身份的 session，在 ServerTick.END 调用真实普通调度，并在 FMLServerStopped（世界卸载之后）关闭。没有静态全局线程池，也不允许旧 server 引用取得新 session。外部控制器通过 forServer 取得本会话实例；实际 MachineControllerBlockEntity 现已经 MachineController 登记，世界接线见[控制器集成](controller-integration.md)。
 
 `SchedulerConfig` 单独保存到 `prototype_eng/scheduler.cfg`，普通 worker 默认 `max(2, availableProcessors)`，lane 默认 `clamp(availableProcessors, 2, 8)`，来自 PM 原配置，服务器启动时生效。planned 超时、后端切换、性能统计窗口/命令和 Modern Backend 能力仍需后续迁移，当前没有用配置占位冒充已实现功能。
 
@@ -38,4 +38,4 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。当前仍需实现实际 TileEntity/Forge 调用、正式 planned 调度及 PN 权限/预算、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用已接入，当前仍需实现正式 planned 调度及 PN 权限/预算、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。

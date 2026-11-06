@@ -1,6 +1,6 @@
 # 机器声明与结构绑定
 
-本阶段迁移 PM 的机器定义字段与 PN 有序关闭注册思路，修正逐个发布导致半批可见的问题。入口为 `api.machine.MachineType`、`MachineTypeRegistry`。附宿主装配与机器级 NBT 已由 [MachineAssembly](machine-persistence.md) 接入；当前没有向 Forge 注册正式机器，也没有完成控制器 TileEntity 或 PN 设备定义。
+本阶段迁移 PM 的机器定义字段与 PN 有序关闭注册思路，修正逐个发布导致半批可见的问题。入口为 `api.machine.MachineType`、`MachineTypeRegistry`。附宿主装配与机器级 NBT 已由 [MachineAssembly](machine-persistence.md) 接入；当前已按下游声明生成 Forge 控制器并接 TileEntity，没有正式机器内容；PN 设备定义仍未完成，见[控制器集成](controller-integration.md)。
 
 ## 声明保持一个规范对象
 
@@ -41,7 +41,7 @@ MachineAssembly已接附宿主后建组件、恢复属性与组件图、load的�
 
 组件工厂与 restore 只构造尚未发布的局部状态；世界注册等副作用进入 `onLoaded`。若今后允许装配时分配外部资源，必须先有明确的中止清理契约，不能指望 CREATED 的普通 unload 调用已加载监听器。load 成功但 scheduler 登记失败也必须卸载并撤销确切注册。
 
-仍未完成：通用控制器零类型 TE 注册、实际TE调用装配/持久化入口、持久身份与放置 token、完整方向变更边界、自卸载延迟清理、客户端显示视图、PN 角色/研究/向量预算配置、planned 绑定和最终运行索引。结构绑定不替代这些步骤；详见 [控制器迁移审查](machine-controller-migration-audit.md)。
+通用TE注册、实际装配/保存、完整方向、延后清理、放置者、显示/默认模型已接入。新增 resolveRuntime 整批校验并原子发布结构和assembly；游戏注册经两个同步事件完成，见[控制器集成](controller-integration.md)。仍未完成持久身份/搬运权限、PN角色/研究/向量预算、planned绑定和完整运行索引。结构绑定不替代这些步骤；详见 [控制器迁移审查](machine-controller-migration-audit.md)。
 
 ## 验证范围
 

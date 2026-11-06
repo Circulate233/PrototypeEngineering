@@ -1,6 +1,6 @@
 # 机器类型、控制器与 PN 接线迁移审查
 
-本文件是 2026-11-07 对 PM/PN 本地源码的审查，给出合并库的实现入口与必须保留的行为。当前项目已有机器组件执行、宿主生命周期和结构快照发布；普通真实调度及服务器接线进展见[调度说明](scheduling.md)。已接规范[机器声明](machine-types.md)及附宿主后的[装配/恢复入口](machine-persistence.md)；实际控制器 TileEntity调用、Forge 注册、客户端和正式 planned 仍未完成。以下“已确认”指源码证据，不代表游戏行为验证。
+本文件是 2026-11-07 对 PM/PN 本地源码的审查，给出合并库的实现入口与必须保留的行为。当前项目已有机器组件执行、宿主生命周期和结构快照发布；普通真实调度及服务器接线进展见[调度说明](scheduling.md)。已接规范[机器声明](machine-types.md)及附宿主后的[装配/恢复入口](machine-persistence.md)；实际控制器 TileEntity/Forge、完整方向、结构刷新与独立显示/默认模型现已接入，见[控制器集成](controller-integration.md)；完整GUI/复杂渲染和正式planned仍未完成。以下“已确认”指源码证据，不代表游戏行为验证。
 
 约束依据为 [development-spec.md](F:/new/PrototypeEngineering/docs/development-spec.md:36) 的 R02、R08–R12、R16、R20–R22、R25：纯库；公开扩展不依赖内置具体类；完整保留 GUI、预览、复杂渲染、组件/系统、多工位、并行与 planned 能力；GUI 改用 AEBaseGui 和 LocalizationEnum；不迁入旧 GUI 编辑器/DSL/Runtime JSON；不要求旧格式兼容。PN 的四台开发机器、铁块结构、固定仓室与数值仅用于理解原接线，不能进入库的正式内容。
 
@@ -92,7 +92,7 @@ PM [MachineInstanceImpl.onLoaded](F:/clone/PrototypeMachinery/src/main/kotlin/im
 
 ## 7. 下一阶段最小实现入口与验收
 
-后续实现进展：`MachineType/Registry`、`MachineAssembly` 和[控制器运行时](machine-controller.md)已接规范定义、附宿主装配/恢复、load 后登记、登记失败清理、延后自卸载及原 NBT 保留。MachineInstance 已可持有规范类型，MachineController 持有 scheduler 登记身份。下表与前述旧源码仍用于定位真实 TileEntity/Forge、方向、owner 和显示接线；这些内容尚未由运行时逻辑测试完成。
+后续实现进展：`MachineType/Registry`、`MachineAssembly` 和[控制器运行时](machine-controller.md)已接规范定义、附宿主装配/恢复、load 后登记、登记失败清理、延后自卸载及原 NBT 保留。MachineInstance 已可持有规范类型，MachineController 持有 scheduler 登记身份。下表与前述旧源码仍用于定位原职责；真实TE/Forge、方向与显示的当前接线见[控制器集成](controller-integration.md)。逻辑测试没有运行World/Forge，不能作为实机证据。
 
 已有入口可直接装配，避免新建第二套结构匹配或生命周期：
 

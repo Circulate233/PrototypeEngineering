@@ -3,6 +3,8 @@ package com.circulation.prototype_eng;
 import com.circulation.prototype_eng.proxy.CommonProxy;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
+import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
+import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
@@ -41,6 +43,9 @@ public class PrototypeEngineering {
     public void postInit(FMLPostInitializationEvent event) {
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE));
         RecipeRegistry.INSTANCE.freeze();
+        var machines = new MachineRuntimeRegistrationEvent(MachineTypeRegistry.INSTANCE);
+        MinecraftForge.EVENT_BUS.post(machines);
+        MachineTypeRegistry.INSTANCE.resolveRuntime(machines.structures(), machines.assemblies());
     }
 
     @Mod.EventHandler

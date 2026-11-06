@@ -18,6 +18,7 @@ import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.UUID;
 
 /** Binds an already attached server-side controller without registering a block or a scheduler. */
 @SuppressWarnings("unused") // Public adapter for downstream controller tile entities.
@@ -26,10 +27,16 @@ public final class ControllerLifecycleHost implements MachineStructureHost {
     private final World world;
     private final MachineIdentity identity;
     private final WorldStructureSource structureSource;
+    @Nullable private final UUID placementPlayer;
     @Nullable private StructureConfiguration configuration;
 
     public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller) {
+        this(machineType, controller, null);
+    }
+
+    public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer) {
         this.controller = Objects.requireNonNull(controller);
+        this.placementPlayer = placementPlayer;
         world = Objects.requireNonNull(controller.getWorld(), "Machine controller has no world");
         identity = new MachineIdentity(machineType, world.provider.getDimension(), controller.getPos());
         structureSource = new WorldStructureSource(this);
@@ -39,6 +46,7 @@ public final class ControllerLifecycleHost implements MachineStructureHost {
     @Override public MachineIdentity identity() { return identity; }
 
     @Override public World world() { return world; }
+    @Override @Nullable public UUID placementPlayer() { return placementPlayer; }
 
     /** The bound server thread remains available for cleanup after controller invalidation/removal. */
     @Override public void requireServerThread() {

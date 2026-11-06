@@ -33,7 +33,7 @@
 - 显式取消与失败清理已接入并验证：RecipeProcess.cancel 进入 CANCELLED，业务 Failure 进入 FAILED，保留 committed started/progress/ticks 与结构化 Failure 原因，不执行 END、不退历史 IO。按根需求执行逆序调用 cancel，再对预先捕获的组件按依赖逆序调用 ProcessAbortListener；回调故障继续其余参与者并聚合，poison 禁止执行与保存。host.cancel 协调结果与挂接，cancelAll 逆槽尝试全部工作；故障宿主能清其他稳定进程但不能复活，失败进程留槽诊断。普通区块卸载/保存不自动取消；现已接结构失效暂停与控制器破坏取消的宿主边界。
 - 精确内置归属已补齐：RequirementAttributeState 跟踪完整路径/属性及实际安装的 Renamed modifier 对象；START rollback、END 与 abort 只删除准确自有对象，foreign 同 ID 碰撞不 claim，替换违约保留 foreign 并抛错。END removeAtEnd=true 清本路径历史安装目标，false 保留；abort 清所有 owned。修复私有包装导致默认 codec 无法保存活动内置属性的问题；localModifier 只读本层，避免归属检查复制整份属性图。Selector 只向选中未完成 child 传播取消；组件清理逆 selection、overlay 后 modifier 各族逆序，逻辑锁清空，其他写入方效果保留。
 - 取消持久化与执行边界已验证：进程 NBT Version2 保存归属/清理回执，恢复绑定已有对象并检查已记录效果缺席，不重放 START/modifier/abort；FAILED/CANCELLED 不留活动内置归属，非 abort 状态不能带回执。回执不证明任意外部历史副作用，外部 validator 仍必需。任何抛错 tick 或清理故障后，同一进程拒绝再次 tick，即使资源已补偿或已经终态；正常 Blocked 仍可重试。每层 overlay 写时核验直接子项的 canonical identity/顺序不变，防止 selector 重排后取消错误 child。
-- 机器类型、附宿主装配/恢复与控制器运行时已接入；尚未实现实际控制器TileEntity/Forge调用、正式planned、严格结构JSON与注册、预览/渲染、JEI 页面、研究与计算库能力、CraftTweaker。
+- 机器类型、附宿主装配/恢复、控制器运行时及实际Block/Item/TileEntity/Forge调用已接入；完整24向、结构并发刷新、放置者和独立显示/默认模型已有实现，见[控制器集成](controller-integration.md)。尚未完成自动scanner全局组语义、机器GUI/方向工具物品、正式planned、严格结构JSON与注册、完整预览/渲染、JEI、研究与计算、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
@@ -49,6 +49,10 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（控制器世界接线）：新增类型/运行时注册事件，全局MachineTypeRegistry整批校验并同时发布结构/assembly，零声明也注册通用TE。Block factory/空构造/read只存类型、朝向和NBT，server update过Forge取消窗口后load；已装配BlockSnapshot恢复先检查保存边界、退旧代再由新controller恢复，不直接覆盖组件。setup失败也清理已登记runtime。完整方向在owner FIFO操作，修正外部A→原方向漏队列及相对变换提前求值；结构按PM 20/5节奏真实CONCURRENT评估、join后发布、失稳暂停下tick重试。客户端仅类型/朝向/formed/显示代与序号，旧包拒绝；放置者限本TE实际玩家，不授PN权限。默认模型沿用PM 48状态和inventory，复制7PNG与6份JSON/metadata并保留credit。见[世界接线](controller-integration.md)、[资产来源](controller-assets.md)。
+- 2026-11-07（控制器世界接线验证）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，401项测试零失败/错误/跳过，新增15项（5 runtime发布、7结构调度、3数据/24向/显示）。本机MCP逐文件 `get_file_problems(errorsOnly:false)` 覆盖259个src Java和Tags共260文件，最终零错误/警告/弱警告且无超时；MCP build_project成功、problems为空。证据 `build/reports/idea/controller-integration-final.json`。主类功能接线单独暂存，原有格式/注解增删保持；其他22份原diff逐字未变，全部原改动保留未暂存。未运行Minecraft、Bootstrap/FML或桌面；普通TileEntity构造会触发AttachCapabilitiesEvent，因此没有用new TE冒充纯逻辑测试。
+- 2026-11-07（真实调用顺序复核）：对当前Cleanroom sources核验ItemBlock先onLoad后NBT及pending反向顺序、Forge取消/BlockSnapshot二次read、Template read→mirror→rotate、Chunk保存早于TE卸载。补查ForgeChunkManager确认正常dormant会清TE map并从NBT重建，撤回“正常休眠复用Java TE”的早先判断。异常保存失败/自定义loader同TE重加且旧卸载晚到仍需精确Chunk卸载代证明，不添加宽泛自动复活。真实世界时序、模型/CTM/GUI仍无实机证据，余下范围保持。
 
 - 2026-11-07（控制器运行时阶段）：MachineController持有一次装配和独立对象身份登记，load后注册，注册失败卸载/注销并聚合，旧代退出不注销新代。停止先经合法边界admission再retire，同一MAIN回调的卸载/破坏按最强原因合并，回调返回或所有accepted worker物理退出后清理。独立fastutil FIFO保留fault后的清理；close只有证明executor终止才排空并关闭边界接收，否则保留资源/队列供重试。未装配/失败未返回机器时保留复制的原NBT，已装配始终检查codec；退休volatile不保存、不复活，阻止新阶段/工位/probe/admission，当前事务/回滚完整结束。见[控制器运行时](machine-controller.md)。实际TE、24向/配置、结构刷新调度、放置身份与客户端仍须继续。
 - 2026-11-07（控制器运行时验证）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，386项逻辑测试零失败/错误/跳过，较装配阶段新增27项（11调度边界、6退休、10控制器）。覆盖真实两个worker退出、异常/中断后清理、FIFO/关闭终止证明、阶段提交与探测预留回滚、MAIN自卸载升级破坏取消工位、恢复时序/原NBT隔离、注册失败聚合、同位置新旧代及故障不复活。本机MCP逐文件 `get_file_problems(errorsOnly:false)` 检查245个src Java及Tags共246文件，最终零错误/警告/弱警告且无超时；MCP build_project成功，problems为空。证据 `build/reports/idea/controller-runtime-final.json`。原23份diff逐字保持且未暂存；未启动游戏、Bootstrap/FML初始化或操作桌面。构建仍报告既有Gradle未来版本弃用提示，不是Java检查诊断。

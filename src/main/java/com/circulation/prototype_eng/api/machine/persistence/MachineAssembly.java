@@ -80,6 +80,9 @@ public final class MachineAssembly {
 
     public static Builder builder(MachineType type, String revision) { return new Builder(type, revision); }
 
+    /** The exact declaration this assembly creates and restores. */
+    public MachineType type() { return type; }
+
     public MachineInstance create(MachineLifecycleHost host) { return create(host, MachineLifecycleRegistry.GLOBAL); }
 
     public MachineInstance create(MachineLifecycleHost host, MachineLifecycleRegistry registry) {
