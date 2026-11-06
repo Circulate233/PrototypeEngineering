@@ -62,6 +62,10 @@ public final class MachineLifecycle {
         this.registry = Objects.requireNonNull(registry);
         host.requireServerThread();
         identity = Objects.requireNonNull(host.identity());
+        var type = machine.type();
+        if (type != null && !type.id().equals(identity.machineType())) {
+            throw new IllegalArgumentException("Machine declaration does not match its attached host identity");
+        }
         machine.attachLifecycle(this);
     }
 

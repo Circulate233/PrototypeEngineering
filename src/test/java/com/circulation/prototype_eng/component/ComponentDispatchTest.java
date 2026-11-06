@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.component;
 
 import com.circulation.prototype_eng.api.component.ComponentType;
+import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineSystem;
@@ -20,6 +21,39 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ComponentDispatchTest {
+    @Test
+    void declarationValidationFindsTheLiveSystemCycleWithoutCreatingComponents() {
+        var log = new ObjectArrayList<String>();
+        var first = new RecordingSystem("first", log) {
+            @Override public Set<ResourceLocation> runAfter() { return Set.of(ComponentDispatchTest.id("second")); }
+        };
+        var second = new RecordingSystem("second", log) {
+            @Override public Set<ResourceLocation> runAfter() { return Set.of(ComponentDispatchTest.id("first")); }
+        };
+        var a = new ComponentType<>(id("a"), _ -> {
+            throw new AssertionError("Declaration validation must not create components");
+        }, List.of(first));
+        var b = new ComponentType<>(id("b"), _ -> {
+            throw new AssertionError("Declaration validation must not create components");
+        }, List.of(second));
+        assertThrows(IllegalStateException.class, () -> ComponentMap.validateTypes(List.of(a, b)));
+        var machine = new MachineInstance();
+        machine.components().put(a, "a");
+        machine.components().put(b, "b");
+        assertThrows(IllegalStateException.class, machine::onSchedule);
+        assertEquals(List.of(), log);
+    }
+
+    @Test
+    void absentDependenciesStaySoftButTheirIdsCannotNameDifferentDescriptors() {
+        var dependency = new ComponentType<MachineInstance, String>(id("optional"), _ -> "unused", List.of());
+        var dependent = new ComponentType<>(id("dependent"), _ -> "unused", List.of(), Set.of(dependency));
+        ComponentMap.validateTypes(List.of(dependent));
+        ComponentMap.validateTypes(List.of(dependent, dependency));
+        var counterfeit = new ComponentType<MachineInstance, String>(dependency.id(), _ -> "wrong", List.of());
+        assertThrows(IllegalArgumentException.class, () -> ComponentMap.validateTypes(List.of(dependent, counterfeit)));
+    }
+
     private static ResourceLocation id(String name) {
         return new ResourceLocation("migration_test", name);
     }

@@ -27,8 +27,14 @@ import java.util.Set;
  */
 public final class MachineWorkSlots {
     public static final ComponentType<MachineInstance, MachineWorkSlots> TYPE = new ComponentType<>(
-        new ResourceLocation(Tags.MOD_ID, "work_slots"), owner -> new MachineWorkSlots(owner, List.of()),
+        new ResourceLocation(Tags.MOD_ID, "work_slots"), MachineWorkSlots::fromDeclaration,
         List.of(new WorkSlotProcessingSystem()));
+
+    private static MachineWorkSlots fromDeclaration(MachineInstance owner) {
+        var type = owner.type();
+        return type == null ? new MachineWorkSlots(owner, List.of())
+            : new MachineWorkSlots(owner, type.workSlots(), type.recipeGroups(), RecipeProcess::tick);
+    }
 
     private final MachineInstance owner;
     private final List<WorkSlot> slots;

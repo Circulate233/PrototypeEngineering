@@ -1,6 +1,6 @@
 # 机器类型、控制器与 PN 接线迁移审查
 
-本文件是 2026-11-07 对 PM/PN 本地源码的审查，给出合并库的实现入口与必须保留的行为。当前项目已有机器组件执行、宿主生命周期和结构快照发布；普通真实调度及服务器接线进展见[调度说明](scheduling.md)。机器类型、控制器 TileEntity、控制器 Forge 注册、客户端和正式 planned 仍未完成。以下“已确认”指源码证据，不代表游戏行为验证。
+本文件是 2026-11-07 对 PM/PN 本地源码的审查，给出合并库的实现入口与必须保留的行为。当前项目已有机器组件执行、宿主生命周期和结构快照发布；普通真实调度及服务器接线进展见[调度说明](scheduling.md)。本轮已接规范机器声明、整批关闭和后置结构绑定，见[机器声明](machine-types.md)；完整装配/恢复、控制器 TileEntity、控制器 Forge 注册、客户端和正式 planned 仍未完成。以下“已确认”指源码证据，不代表游戏行为验证。
 
 约束依据为 [development-spec.md](F:/new/PrototypeEngineering/docs/development-spec.md:36) 的 R02、R08–R12、R16、R20–R22、R25：纯库；公开扩展不依赖内置具体类；完整保留 GUI、预览、复杂渲染、组件/系统、多工位、并行与 planned 能力；GUI 改用 AEBaseGui 和 LocalizationEnum；不迁入旧 GUI 编辑器/DSL/Runtime JSON；不要求旧格式兼容。PN 的四台开发机器、铁块结构、固定仓室与数值仅用于理解原接线，不能进入库的正式内容。
 

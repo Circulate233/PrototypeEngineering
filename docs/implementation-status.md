@@ -50,6 +50,9 @@
 
 ## 验证记录
 
+- 2026-11-07（机器声明阶段）：新增不可变MachineType与MachineTypeRegistry，保留PM声明字段、默认模式和LocalizationEnum显示契约。整批注册/关闭和后置结构绑定均完整校验后发布，规范对象不重建，拒绝重入和同ID仿造。ComponentMap声明验证复用实际系统拓扑；typed实例附宿主/load前不调度，显式工位factory读取类型布局/组，已有模式组件优先。只做库入口，未注册正式机器。默认属性自动补缺、机器级NBT/TE及PN配置仍须后续；详见[机器声明](machine-types.md)。
+- 2026-11-07（机器声明验证）：`gradlew.bat spotlessApply build --console=plain` 成功，344项测试零失败/错误/跳过，新增12项批次/规范身份/重入/元数据图/真实调度/工位准入行为用例。本机IDEA MCP逐文件 `get_file_problems(errorsOnly:false)` 检查238个src Java及Tags共239文件，最终零错误、警告、弱警告且无超时；MCP build_project成功、problems为空。报告 `build/reports/idea/machine-types-final.json`。全程MCP，无桌面/游戏/Bootstrap/FML初始化。原23份修改保留，22份diff逐字相同；MachineInstance重叠功能按原布局单独暂存，剩余差异只涉及原格式。
+
 - 2026-11-07（普通调度阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，332项测试零失败/错误/跳过。新增17项真实并发/机器集成行为用例，覆盖重叠worker与join、共享key传递串行及稳定lane、MAIN登记/卸载/破坏/新增、同对象二跑拒绝、owner元数据、下一tick提交、独立失败聚合、被拒派发仍drain、中断恢复、faulted及close不复活；不写hash/getter/常量专用测试。未运行Minecraft或Bootstrap/FML初始化。
 - 2026-11-07（普通调度IDEA证据）：本机MCP逐文件 `get_file_problems(errorsOnly:false)` 覆盖234个src Java及Tags共235文件，最终零错误、警告、弱警告且无文件超时；MCP build_project成功、problems为空。报告 `build/reports/idea/ordinary-scheduler-final.json`。全程MCP无桌面操作；原23份改动保留，其中两文件功能改动单独暂存，原有格式/导入顺序增删行完全相同，其余21份diff逐字相同。FML真实会话与游戏交互仅有接线/编译证据。
 

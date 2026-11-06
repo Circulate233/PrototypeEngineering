@@ -12,7 +12,7 @@ import java.util.Objects;
 /** Replace this immutable selection only at the scheduler's exclusive machine boundary. */
 public record MachineScheduling(ExecutionMode mode) {
     public static final ComponentType<MachineInstance, MachineScheduling> TYPE = new ComponentType<>(
-        new ResourceLocation(Tags.MOD_ID, "scheduling"), _ -> new MachineScheduling(ExecutionMode.CONCURRENT), List.of());
+        new ResourceLocation(Tags.MOD_ID, "scheduling"), owner -> new MachineScheduling(owner.executionMode()), List.of());
 
     public MachineScheduling { Objects.requireNonNull(mode); }
 }

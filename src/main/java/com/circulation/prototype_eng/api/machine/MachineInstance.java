@@ -23,8 +23,20 @@ import java.util.Set;
 public final class MachineInstance implements ScheduledTask {
     private final ComponentMap<MachineInstance> components = new ComponentMap<>();
     private final MachineAttributes attributes = new MachineAttributes();
+    @Nullable private final MachineType type;
     @Nullable
     private MachineLifecycle lifecycle;
+
+    /** Standalone execution has no declared machine type or world authority. */
+    public MachineInstance() { type = null; }
+
+    /**
+     * Retains the canonical declaration only. The controller must attach its host before creating
+     * declared components; construction never invokes factories or reads an unattached world.
+     */
+    public MachineInstance(MachineType type) { this.type = Objects.requireNonNull(type); }
+
+    @Nullable public MachineType type() { return type; }
 
     /** Host assembly boundary; an attached lifecycle cannot be replaced or shared across machines. */
     public void attachLifecycle(MachineLifecycle lifecycle) {
@@ -38,14 +50,14 @@ public final class MachineInstance implements ScheduledTask {
     @Nullable
     public MachineLifecycle lifecycle() { return lifecycle; }
 
-    public boolean canProcessRecipes() { return lifecycle == null || lifecycle.processingAllowed(); }
+    public boolean canProcessRecipes() { return lifecycle == null ? type == null : lifecycle.processingAllowed(); }
 
     /** Unformed machines still run their ordinary non-recipe components. */
-    @Override public boolean active() { return lifecycle == null || lifecycle.schedulingAllowed(); }
+    @Override public boolean active() { return lifecycle == null ? type == null : lifecycle.schedulingAllowed(); }
 
     @Override public ExecutionMode executionMode() {
         var scheduling = components.get(MachineScheduling.TYPE);
-        return scheduling == null ? ExecutionMode.CONCURRENT : scheduling.mode();
+        return scheduling != null ? scheduling.mode() : type != null ? type.executionMode() : ExecutionMode.CONCURRENT;
     }
 
     /** Captured by the scheduler on the owner thread; actual balance aliases share affinity keys. */
@@ -64,6 +76,7 @@ public final class MachineInstance implements ScheduledTask {
     }
 
     public void requirePersistenceBoundary() {
+        if (type != null && lifecycle == null) { throw new IllegalStateException("Declared machine has no attached lifecycle"); }
         if (lifecycle != null) { lifecycle.requirePersistenceBoundary(); }
     }
 
@@ -76,5 +89,5 @@ public final class MachineInstance implements ScheduledTask {
 
     /** Runs all pre callbacks, all normal callbacks, then all post callbacks. Never swallows errors. */
     @Override
-    public void onSchedule() { if (lifecycle == null) { components.tick(this); } else { lifecycle.runScheduled(() -> components.tick(this)); } }
+    public void onSchedule() { if (lifecycle == null) { if (type != null) { throw new IllegalStateException("Declared machine has no attached lifecycle"); } components.tick(this); } else { lifecycle.runScheduled(() -> components.tick(this)); } }
 }

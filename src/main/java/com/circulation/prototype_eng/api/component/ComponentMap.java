@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -24,6 +25,29 @@ public final class ComponentMap<E> {
     private final Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>> types = new Object2ObjectOpenHashMap<>();
     private long dispatchRevision = -1;
     private List<TickEntry<E, ?>> dispatch = ObjectLists.emptyList();
+
+    /**
+     * Checks declaration identities and the same dependency/system graph used by live dispatch,
+     * without invoking a component factory. Absent dependencies remain ordering constraints;
+     * declaring a dependency never implicitly creates a component.
+     */
+    public static <E> void validateTypes(Collection<? extends ComponentType<E, ?>> declarations) {
+        var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
+        var graph = new TopologicalComponentMap<ComponentType<E, ?>, ComponentType<E, ?>>();
+        for (var type : declarations) {
+            Objects.requireNonNull(type);
+            if (graph.contains(type)) { throw new IllegalArgumentException("Component declared twice: " + type.id()); }
+            requireTypeIdentity(identities, type);
+            for (var dependency : type.dependencies()) { requireTypeIdentity(identities, dependency); }
+            graph.add(type, type, type.dependencies());
+        }
+        orderWithSystems(graph);
+    }
+
+    private static <E> void requireTypeIdentity(Map<ResourceLocation, ComponentType<E, ?>> identities, ComponentType<E, ?> type) {
+        var previous = identities.putIfAbsent(type.id(), type);
+        if (previous != null && previous != type) { throw new IllegalArgumentException("Different component types share id " + type.id()); }
+    }
 
     public <C> C create(ComponentType<E, C> type, E owner) {
         C component = type.create(owner);
@@ -185,7 +209,16 @@ public final class ComponentMap<E> {
         if (dispatchRevision == components.revision()) {
             return dispatch;
         }
-        var graph = new TopologicalComponentMap<ComponentType<E, ?>, Binding<E, ?>>();
+        var entries = new ObjectArrayList<TickEntry<E, ?>>();
+        for (var node : orderWithSystems(components)) { node.component().appendEntries(entries); }
+        dispatch = ObjectLists.unmodifiable(entries);
+        dispatchRevision = components.revision();
+        return dispatch;
+    }
+
+    private static <E, C> List<TopologicalComponentMap.Node<ComponentType<E, ?>, C>> orderWithSystems(
+            TopologicalComponentMap<ComponentType<E, ?>, C> components) {
+        var graph = new TopologicalComponentMap<ComponentType<E, ?>, C>();
         var bySystem = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ComponentType<E, ?>>>();
         var systemDefinitions = new Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>>();
         for (var node : components.orderedComponents()) {
@@ -227,13 +260,7 @@ public final class ComponentMap<E> {
                 }
             }
         }
-        var entries = new ObjectArrayList<TickEntry<E, ?>>();
-        for (var node : graph.orderedComponents()) {
-            node.component().appendEntries(entries);
-        }
-        dispatch = ObjectLists.unmodifiable(entries);
-        dispatchRevision = components.revision();
-        return dispatch;
+        return graph.orderedComponents();
     }
 
     private record Binding<E, C>(ComponentType<E, C> type, C component) {
