@@ -4,7 +4,9 @@ import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
+import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
@@ -13,9 +15,7 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 class BufferedResourceHatchTest {
     private static final KeyType FIRST = new KeyType("first");
@@ -23,8 +23,11 @@ class BufferedResourceHatchTest {
     private static final IActionSource SOURCE = IActionSource.empty();
 
     private BufferedResourceHatch mixed() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST, 10_000L);
+        capacities.put(SECOND, 20_000L);
         return new BufferedResourceHatch(HatchMode.MIXED, 2,
-                Map.of(FIRST, 10_000L, SECOND, 20_000L), () -> {});
+                capacities, () -> {});
     }
 
     @Test
@@ -67,6 +70,65 @@ class BufferedResourceHatchTest {
         assertEquals(0, machineOutput.insert(key, 10, Actionable.MODULATE, SOURCE));
         assertEquals(50, machineInput.getAmount(0));
         assertEquals(30, machineOutput.getAmount(0));
+    }
+
+    @Test
+    void slotAutomationCannotReverseEitherSideOrReplaceItsKey() {
+        var hatch = mixed();
+        var port = new HatchInventoryPort(hatch, true, true);
+        var key = new Key(FIRST, "material");
+        var other = new Key(SECOND, "other");
+        assertEquals(70, port.insert(0, key, 70, Actionable.MODULATE));
+        hatch.output().insert(0, key, 30, Actionable.MODULATE);
+        assertEquals(0, port.extract(0, key, 10, Actionable.MODULATE));
+        assertEquals(0, port.insert(2, other, 10, Actionable.MODULATE));
+        assertThrows(UnsupportedOperationException.class, () -> port.setStack(0, new GenericStack(other, 10)));
+        assertThrows(UnsupportedOperationException.class, () -> port.setStack(2, new GenericStack(other, 10)));
+        assertEquals(70, hatch.input().getAmount(0));
+        assertEquals(30, port.extract(2, key, 100, Actionable.SIMULATE));
+        assertEquals(30, port.extract(2, key, 100, Actionable.MODULATE));
+        hatch.invalidate();
+        assertEquals(0, port.insert(1, other, 10, Actionable.MODULATE));
+        assertEquals(0, port.extract(2, key, 10, Actionable.MODULATE));
+    }
+
+    @Test
+    void cursorTransfersConserveLargeStacksAcrossDepositSplitAndOutputCollection() {
+        var hatch = mixed();
+        var key = new Key(FIRST, "material");
+        hatch.input().insert(0, key, 9980, Actionable.MODULATE);
+        var cursor = HatchSlotActions.click(hatch.input(), 0, new GenericStack(key, 64), 64, true, false);
+        assertEquals(44, cursor.amount());
+        assertEquals(10000, hatch.input().getAmount(0));
+        assertNull(HatchSlotActions.click(hatch.input(), 1, cursor, 64, true, false));
+        cursor = HatchSlotActions.click(hatch.input(), 0, null, 64, true, true);
+        assertEquals(64, cursor.amount());
+        assertEquals(9936, hatch.input().getAmount(0));
+        hatch.output().insert(0, key, 50, Actionable.MODULATE);
+        var held = new GenericStack(key, 40);
+        held = HatchSlotActions.click(hatch.output(), 0, held, 64, false, false);
+        assertEquals(64, held.amount());
+        assertEquals(26, hatch.output().getAmount(0));
+        assertEquals(40 + 50, held.amount() + hatch.output().getAmount(0));
+        assertEquals(9980 + 64, cursor.amount() + hatch.input().getAmount(0) + hatch.input().getAmount(1));
+    }
+
+    @Test
+    void keySwapRequiresBothSidesToFitAndLeavesRejectedTransactionsUntouched() {
+        var hatch = mixed();
+        var first = new Key(FIRST, "first");
+        var second = new Key(SECOND, "second");
+        hatch.input().insert(0, first, 100, Actionable.MODULATE);
+        var cursor = new GenericStack(second, 16);
+        assertEquals(cursor, HatchSlotActions.click(hatch.input(), 0, cursor, 64, true, false));
+        assertEquals(100, hatch.input().getAmount(0));
+        hatch.input().extract(0, first, 80, Actionable.MODULATE);
+        var swapped = HatchSlotActions.click(hatch.input(), 0, cursor, 64, true, false);
+        assertEquals(new GenericStack(first, 20), swapped);
+        assertEquals(cursor, hatch.input().getStack(0));
+        hatch.output().insert(0, first, 20, Actionable.MODULATE);
+        assertEquals(cursor, HatchSlotActions.click(hatch.output(), 0, cursor, 64, false, false));
+        assertEquals(new GenericStack(first, 20), hatch.output().getStack(0));
     }
 
     // Real AEKey implementations exercise multi-type routing without a game world.

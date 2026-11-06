@@ -46,6 +46,8 @@ repositories {
 dependencies {
     implementation "com.cleanroommc:cleanmix:0.7.4"
     modImplementation 'mezz:jei:4.35.1'
+    // AEBaseGui implements this optional API; javac needs it when compiling our concrete GUIs.
+    modCompileOnly 'curse.maven:mouse-tweaks-unofficial-461660:5876158'
 
     // MDG must load mod jars through the game classloader, including dev jars.
     modImplementation("com.github.FormlessDragon:Applied-Energistics-2-Supergiant:${ae2_version}:dev") {

@@ -1,0 +1,9 @@
+tile.prototype_eng.input_hatch.name=通用输入仓
+tile.prototype_eng.output_hatch.name=通用输出仓
+tile.prototype_eng.mixed_hatch.name=通用混合仓
+tile.prototype_eng.energy_hatch.name=能源输入仓
+prototype_eng.storage.resource_hatch=资源仓室
+prototype_eng.gui.input=输入
+prototype_eng.gui.output=输出
+prototype_eng.gui.energy=已储存能量
+prototype_eng.gui.capacity=容量

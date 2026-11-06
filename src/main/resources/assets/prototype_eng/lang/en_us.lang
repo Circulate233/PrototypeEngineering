@@ -1,0 +1,9 @@
+tile.prototype_eng.input_hatch.name=Resource Input Hatch
+tile.prototype_eng.output_hatch.name=Resource Output Hatch
+tile.prototype_eng.mixed_hatch.name=Mixed Resource Hatch
+tile.prototype_eng.energy_hatch.name=Energy Input Hatch
+prototype_eng.storage.resource_hatch=Resource Hatch
+prototype_eng.gui.input=Input
+prototype_eng.gui.output=Output
+prototype_eng.gui.energy=Stored energy
+prototype_eng.gui.capacity=Capacity

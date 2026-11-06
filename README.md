@@ -19,6 +19,7 @@ A Minecraft 1.12.2 mod for Cleanroom, based on the MDG branch of
 具体 GUI 直接基于 `AEBaseGui` 重实现，不增加本项目的通用 GUI 基类。每个配方池关联一个 JEI 页面接口实例：默认参考 MMCE 自动生成，也可由开发者提供独立的自定义实现。
 
 使用 Java 25 执行 `gradlew.bat build` 构建并运行逻辑测试。当前仓室核心接口及调用约束见[仓室开发说明](docs/hatches.md)。
+P1 仓室方块、能力、容器及界面已完成源码接入，游戏交互与重启恢复尚待运行验证；当前不自行启动客户端或服务端。集合优先使用 fastutil，禁止非必要反射和异常控制流。
 
 # Differences from kappa Unimined branch
 

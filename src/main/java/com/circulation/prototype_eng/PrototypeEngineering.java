@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.network.NetworkRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,11 +15,16 @@ public class PrototypeEngineering {
 
     public static final Logger LOGGER = LogManager.getLogger(Tags.MOD_NAME);
 
+    @Mod.Instance(Tags.MOD_ID)
+    public static PrototypeEngineering instance;
+
     @SidedProxy(modId = Tags.MOD_ID, clientSide = "com.circulation.prototype_eng.proxy.ClientProxy", serverSide = "com.circulation.prototype_eng.proxy.CommonProxy")
     public static CommonProxy proxy;
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
+        HatchConfig.load(event.getModConfigurationDirectory());
         HatchCapabilityRegistration.register();
+        NetworkRegistry.INSTANCE.registerGuiHandler(this, proxy);
         LOGGER.info("Loading {} {}", Tags.MOD_NAME, Tags.VERSION);
     }
 

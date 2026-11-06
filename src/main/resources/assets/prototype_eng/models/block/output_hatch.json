@@ -1,0 +1,9 @@
+{
+  "parent": "block/cube_bottom_top",
+  "textures": {
+    "side": "prototype_eng:blocks/hatches/output_hatch_side",
+    "bottom": "prototype_eng:blocks/hatches/output_hatch_down",
+    "top": "prototype_eng:blocks/hatches/output_hatch_top"
+  },
+  "credit": "PM artwork by WI_8614_ice (X: @wi8614ice @wi8614art); composited for Prototype Engineering"
+}

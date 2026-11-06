@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "normal": {
+      "model": "prototype_eng:output_hatch"
+    }
+  }
+}

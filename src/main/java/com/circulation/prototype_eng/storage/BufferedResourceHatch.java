@@ -9,6 +9,7 @@ import ae2.api.storage.MEStorage;
 import ae2.helpers.externalstorage.GenericStackInv;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentTranslation;
@@ -32,8 +33,8 @@ public final class BufferedResourceHatch implements ResourceHatch {
         if (slotsPerSide < 1 || capacities.isEmpty()) {
             throw new IllegalArgumentException("A buffer needs slots and supported resource types");
         }
-        var limits = Map.copyOf(capacities);
-        if (limits.values().stream().anyMatch(capacity -> capacity <= 0)) {
+        var limits = new Reference2LongArrayMap<>(capacities);
+        if (limits.values().longStream().anyMatch(capacity -> capacity <= 0)) {
             throw new IllegalArgumentException("Capacities must be positive");
         }
         input = mode.hasInput() ? new Buffer(slotsPerSide, limits, onChanged) : null;

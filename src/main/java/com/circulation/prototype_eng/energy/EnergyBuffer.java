@@ -67,6 +67,11 @@ public final class EnergyBuffer implements EnergyHatch {
         stored = amount;
     }
 
+    /** Persistence still retains the balance after the host has invalidated its transfer views. */
+    public long savedEnergy() {
+        return stored;
+    }
+
     @Override
     public boolean isValid() {
         return valid;
