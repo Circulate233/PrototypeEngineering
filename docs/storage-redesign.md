@@ -35,3 +35,11 @@
 8. 持久化定义已提交余额和待恢复状态；禁止丢弃已扣材料或未完成补偿。跨 TileEntity 保存不自动具备磁盘事务保证。
 
 这些是实现与验收约束，不表示接口和算法已完成。下一步依据完整存储/预留/补偿调用链确定具体 API，再替换后端及适配器。必要测试围绕预留竞争、回滚守恒、失效与迟到任务、方向隔离和真实并发，不增加字段或类名测试。
+
+## 待修正的源码风险
+
+本次只确认控制流风险，未运行旧工程复现，也未声称实际世界中已经触发。
+
+- PM [ItemResourceStoragePlannedConsumableSourceImpl.kt:147](F:/clone/PrototypeMachinery/src/main/kotlin/impl/scheduler/planned/ItemResourceStoragePlannedConsumableSourceImpl.kt:147) 先执行 `storage.extract`，不足时立即 fail，直到第 151 行才加入 consumed。若实际只提取部分数量，catch 的 `restore(consumed)` 不包含本次已提取量。新实现必须在任何失败检查前记录实际增减，或让核心预留保证原子操作不发生部分写入。
+- 同一方法逐个执行 ledger.commit；后续令牌失败时，catch 只恢复物理 consumed 并将 source 状态改回 RESERVED。前面已提交的账本令牌是否全部得到补偿没有在此路径落实。新实现不得将物理余额恢复视为所有参与者状态都已恢复。
+- source 的 stateLock 只包住 planned 适配器；独立存储的自动化、GUI、直接 API 是否遵循同一所有权/预留边界仍需继续核对。不能仅凭适配器有 synchronized 就推断真实后端安全。
