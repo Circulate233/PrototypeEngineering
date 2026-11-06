@@ -1,7 +1,7 @@
 {
-    "package": "com.example.modid.mixin",
-    "plugin": "com.example.modid.ModMixinConfigPlugin",
-    "refmap": "modid.refmap.json",
+    "package": "com.circulation.prototype_eng.mixin",
+    "plugin": "com.circulation.prototype_eng.ModMixinConfigPlugin",
+    "refmap": "prototype_eng.refmap.json",
     "required": true,
     "target": "@env(DEFAULT)",
     "minVersion": "0.8.7",

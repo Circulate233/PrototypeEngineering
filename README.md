@@ -1,7 +1,18 @@
-# MDG branch of CleanroomModTemplate
+# Prototype Engineering
 
-A modified version of [CleanroomMC/CleanroomModTemplate](https://github.com/CleanroomMC/CleanroomModTemplate) with some
-QoL improvements.
+A Minecraft 1.12.2 mod for Cleanroom, based on the MDG branch of
+[CleanroomMC/CleanroomModTemplate](https://github.com/CleanroomMC/CleanroomModTemplate).
+
+- Mod ID: `prototype_eng`
+- Mod name: `Prototype Engineering`
+- Base package: `com.circulation.prototype_eng`
+- Entry point: `PrototypeEngineering`
+
+## 开发需求
+
+本项目是 PrototypeMachinery 与 PrototypeNetwork 合并后的重新开发版本，以 AE2 Supergiant 为基础依赖。
+当前处于需求确认与模板初始化阶段，已确认决定、旧项目调查和待定范围见[开发文档 v0.2](docs/development-spec.md)。
+对外 Java API 独立放在 `com.circulation.prototype_eng.api`，按契约职责组织；实现类按实际用途命名，CraftTweaker 在最后阶段接入该 API。
 
 # Differences from kappa Unimined branch
 

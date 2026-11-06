@@ -1,4 +1,4 @@
-package com.example.modid;
+package com.circulation.prototype_eng;
 
 import net.minecraftforge.fml.common.Loader;
 import org.objectweb.asm.tree.ClassNode;

@@ -1,6 +1,6 @@
-package com.example.modid;
+package com.circulation.prototype_eng;
 
-import com.example.modid.proxy.CommonProxy;
+import com.circulation.prototype_eng.proxy.CommonProxy;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
@@ -8,11 +8,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 @Mod(modid = Tags.MOD_ID, name = Tags.MOD_NAME, version = Tags.VERSION)
-public class ExampleMod {
+public class PrototypeEngineering {
 
     public static final Logger LOGGER = LogManager.getLogger(Tags.MOD_NAME);
 
-    @SidedProxy(modId = Tags.MOD_ID, clientSide = "com.example.modid.proxy.ClientProxy", serverSide = "com.example.modid.proxy.CommonProxy")
+    @SidedProxy(modId = Tags.MOD_ID, clientSide = "com.circulation.prototype_eng.proxy.ClientProxy", serverSide = "com.circulation.prototype_eng.proxy.CommonProxy")
     public static CommonProxy proxy;
     /**
      * <a href="https://cleanroommc.com/wiki/forge-mod-development/event#overview">
