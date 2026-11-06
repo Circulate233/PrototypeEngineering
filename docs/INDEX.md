@@ -4,12 +4,12 @@
 
 ## 当前检查点
 
-- 当前阶段：独立资源存储重构完成并通过验证；本阶段代码与文档本地提交，不推送，具体提交以 Git 日志为准。此前 `c8fa7f5` 的十阶三方向仓室、原模型/纹理、本地化枚举及 GUI 行为保留；原工作区其他格式/注解整理继续保留。
-- 最近验证（2026-11-07）：本机 IDEA MCP 对 67 个 src Java 文件及生成 Tags 共 68 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/storage-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 37 项逻辑用例。双侧恢复测试从解码后数据开始，NBT 编解码、GUI/游戏尚未运行验证。
-- 当前实现：ResourceHatch 返回 ResourceStorage；SlottedResourceBuffer 独立持有余额、输入数量/输出容量预留及补偿状态，所有适配共享 context。按实际 context 顺序锁定整批提交/补偿，混合仓两侧先校验再恢复。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv。FE 仍独立且尚未并发集成。
+- 当前阶段：固定资源/FE 需求与整阶段协调结算已完成并验证；本阶段本地提交，不推送，具体提交以 Git 日志为准。此前独立资源存储为 `920b6ba`，仓室/GUI 阶段为 `c8fa7f5`；原工作区其他格式/注解整理继续保留。
+- 最近验证（2026-11-07）：本机 IDEA MCP 对 79 个 src Java 文件及生成 Tags 共 80 文件逐个 `errorsOnly:false` 检查，错误、警告、弱警告均为零且无超时；报告 `build/reports/idea/recipe-energy-final.json`。MCP `build_project` 成功且无问题，`gradlew.bat spotlessApply build` 通过 52 项逻辑用例。NBT 编解码、GUI/游戏尚未运行验证。
+- 当前实现：资源与 FE 独立存储，共用无 AEKey 字段的预留生命周期及真实 context 同步。RequirementTransaction 上交令牌；整阶段先应用资源和业务，全部成功才 complete，拒绝/异常统一补偿。MachineHatches 绑定公开仓室；固定资源/FE payload 已接入 START/TICK/END、来源去重、单次 FE 限额和允许的余量丢弃。MEStorage/GenericInternalInventory/GUI 只作适配，核心/API 无 GenericStackInv；未引入 FE key。
 - 既有仓室：资源两侧独立 ScrollBar；能源 GUI 原纵向条与速率/自动设置；能源重载使用当前配置容量并裁剪保存量，资源保留保存容量。原 CTM/Bloom 元数据已保留，外部渲染组合未验证；机器 Gecko/Bloom 管线仍待迁移。
-- 下一步：将资源预留接入真正需求阶段并加入独立 FE 结算，再继续进程/扫描和 planned 调度迁移。遵守 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算边界；当前存储批结算不替代这些调度能力。旧 ledger 成功 finalize 缺口、PN 提交后生命周期误判等风险见 storage-redesign。
-- 未完成：完整配方进程/属性/overlay、内置需求、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
+- 下一步：迁移进程属性、有效并行数和刻状态，再接确定性概率/解析锁/模糊动态/随机输出/选择器与 overlay；源码入口与选择器回滚等风险见 migration-audit 的高级需求表。同步补进程恢复/扫描，并继续 PM 两次 join、稳定 affinity lane 与 PN owner/epoch/预算。当前持锁批结算不能跨 lane 等待，也不替代 planned 协议。
+- 未完成：完整配方进程/属性/overlay、高级内置需求、多工位扫描、机器生命周期、结构、真实多线程调度、研究/计算、JEI。都是保留范围，不能按“未实现”裁掉。
 
 ## 必须记住的约束
 

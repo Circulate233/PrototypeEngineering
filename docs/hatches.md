@@ -1,8 +1,8 @@
 # 仓室核心与扩展接入
 
-资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 契约和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。完整调度、FE 并发接入及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。
+资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 契约和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。独立 FE 已接入同批预留/补偿；完整调度及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。
 
-当前已接入独立资源存储、公开发现契约、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现。本轮完整构建通过 37 项逻辑用例，IDEA MCP 对全部 68 个 Java 文件检查零诊断；详细证据及测试边界见[实施进度](implementation-status.md)，游戏内验收仍待补齐。
+当前已接入独立资源/FE 存储、公开发现契约、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现。完整构建、逻辑用例与 IDEA MCP 零诊断证据见[实施进度](implementation-status.md)，游戏内验收仍待补齐。
 
 ## 资源仓室
 
@@ -20,13 +20,13 @@
 
 ## 独立 FE
 
-`api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量契约。外部实现可以只提供需要的职责。`EnergyBuffer` 用普通 long 字段保存服务端线程持有的余额；模拟操作不修改余额或发出内容变化通知。FE 尚未接入资源存储的并发预留及跨资源提交边界，真实多线程调度中的物料与 FE 一致性仍须后续集成。
+`api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量契约。外部实现可以只提供需要的职责。`EnergyBuffer` 用 long 余额与输入/输出 holds 保存数量，在共享 StorageContext 锁下访问；模拟不修改余额或通知。EnergySnapshot 包含 context、revision、未预留余额/空间及 maxReceive/maxExtract；reserveExtractEnergy/reserveReceiveEnergy 取得精确令牌，与资源和业务需求共同应用、完成或补偿。真实 planned lane 和生命周期集成仍须后续完成。
 
-当前三方向适配使用 `ForgeEnergyPort`：输入仓允许外部充入，输出仓允许外部抽取，混合仓允许两者；机器使用对应的 EnergyInput/EnergyOutput 职责访问同一余额。Forge 的 int 查询值饱和到 Integer.MAX_VALUE，内部余额仍为 long，传输返回值表示本次实际数量。
+当前三方向适配使用 `ForgeEnergyPort(storage, mode)`：输入仓允许外部充入，输出仓允许外部抽取，混合仓允许两者；机器使用对应的 EnergyInput/EnergyOutput 职责访问同一余额。适配器不再额外持有读取 TileEntity 普通字段的速率 supplier，速率和预留限制由同一核心约束；普通转移不分配能量快照。Forge 的 int 查询值饱和到 Integer.MAX_VALUE，内部余额仍为 long，传输返回值表示本次实际数量。
 
 能源实体已接入模式、等级、输入/输出限额及自动标志，并写入 NBT 的 `Mode`、`Tier`、`MaxInRate`、`MaxOutRate`、`AutoInput`、`AutoOutput`。每次操作限额同时约束机器与 Forge，修改后会动态更新机器访问视图；设置为零恢复配置默认限额。PM 的 EnergyStorageImpl 也按每次操作限制 maxReceive/maxExtract，旧配置的 FE/t 标签不构成累计 tick 预算。PM 自动标志尚未找到邻居 tick 传输调用链；本项目保留标志的设置/保存，不据此宣称已实现邻居自动传输。
 
-`storageIdentity()` 返回真实余额的稳定对象身份，后续的适配视图必须沿用同一身份，供机器避免重复预算。Applied-Flux 接入当前暂缓。
+`storageIdentity()` 默认返回真实余额的 StorageContext，所有适配视图必须沿用同一 context，供机器避免重复预算。降低限额会重新验证待应用令牌，精确补偿不受新限额裁剪。活动令牌或失效 context 不允许 restore，保存仍能读取失效余额；恢复/限额/失效会推进版本并置脏。能源 TileEntity 也通过共享 VarHandle 接收工作线程脏信号，在服务端 tick、卸载或失效回调冲刷。Applied-Flux 接入当前暂缓。
 
 ## 外部实现
 

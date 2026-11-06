@@ -33,7 +33,7 @@ class EnergyHatchBlockEntityTest {
     void reloadClampsToCurrentConfigAndOldViewsCannotTransferAfterReloadOrUnload() {
         var tile = new EnergyHatchBlockEntity(HatchMode.MIXED, HatchTier.LV1);
         var oldBalance = tile.storage();
-        var oldPort = new ForgeEnergyPort(oldBalance, HatchMode.MIXED, tile::effectiveInputRate, tile::effectiveOutputRate);
+        var oldPort = new ForgeEnergyPort(oldBalance, HatchMode.MIXED);
         oldBalance.receiveEnergy(15, Actionable.MODULATE);
         var tag = new NBTTagCompound();
         tag.setLong("Energy", Long.MAX_VALUE);

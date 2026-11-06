@@ -5,6 +5,7 @@ import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
+import com.circulation.prototype_eng.api.energy.EnergySnapshot;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
@@ -242,23 +243,36 @@ class ResourceTransferRunTest {
     private record LimitedEnergy(EnergyBuffer bank) implements EnergyInput {
 
         @Override
-            public long storedEnergy() {
-                return bank.storedEnergy();
-            }
-
-            @Override
-            public boolean isValid() {
-                return bank.isValid();
-            }
-
-            @Override
-            public Object storageIdentity() {
-                return bank;
-            }
-
-            @Override
-            public long extractEnergy(long amount, Actionable mode) {
-                return bank.extractEnergy(Math.min(6, amount), mode);
-            }
+        public StorageContext context() {
+            return bank.context();
         }
+
+        @Override
+        public EnergySnapshot energySnapshot() {
+            var snapshot = bank.energySnapshot();
+            return new EnergySnapshot(context(), snapshot.revision(), snapshot.availableEnergy(),
+                snapshot.availableCapacity(), snapshot.maxReceive(), Math.min(6, snapshot.maxExtract()));
+        }
+
+        @Override
+        public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
+            return amount > 6 ? new ReservationResult(ReservationResult.Status.INSUFFICIENT, null)
+                : bank.reserveExtractEnergy(snapshot, amount);
+        }
+
+        @Override
+        public long storedEnergy() {
+            return bank.storedEnergy();
+        }
+
+        @Override
+        public boolean isValid() {
+            return bank.isValid();
+        }
+
+        @Override
+        public long extractEnergy(long amount, Actionable mode) {
+            return bank.extractEnergy(Math.min(6, amount), mode);
+        }
+    }
 }

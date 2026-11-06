@@ -4,8 +4,10 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 
 /**
  * External start/tick/end extension. Acquisition may reserve/apply reversible changes. It must
- * return a transaction for ALL effects, including partial acquisition, or undo its own changes
- * before throwing. Immutable definitions/systems can be shared; process state cannot be shared
+ * return a transaction for ALL effects, including partial acquisition and every reservation, or undo
+ * its own changes and release its own tokens before throwing. Business commit remains reversible
+ * until the stage coordinator completes ALL requirements; a requirement must not complete its own
+ * resource/FE tokens. Immutable definitions/systems can be shared; process state cannot be shared
  * between concurrent owners without an explicit reservation/ownership protocol.
  */
 public interface RecipeRequirementSystem<C> {

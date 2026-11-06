@@ -10,7 +10,7 @@
 - MEStorage、GenericInternalInventory、Forge 能力和 AE2 GUI 库存均只能作为适配视图，不能成为真实状态的另一份所有者。适配器必须受核心预留和失效规则约束。
 - GUI 继续直接继承 AEBaseGui；这不要求核心存储继承 GenericStackInv。
 
-当前已替换资源核心与适配层；这只是存储阶段，不代表完整配方、FE 预留或 planned 调度器已迁移。验证证据以 [implementation-status.md](implementation-status.md) 为准，原 P1 测试不能替代本轮预留、补偿和并发验证。
+当前已替换资源核心与适配层，并接入独立 FE 预留和固定需求的同步整阶段协调；完整配方进程与 planned 调度器仍待迁移。验证证据以 [implementation-status.md](implementation-status.md) 为准，原 P1 测试不能替代预留、补偿和并发验证。
 
 ## 已确认的旧源码依据
 
@@ -35,7 +35,7 @@
 7. 跨线程发布和锁/VarHandle 操作须有具体依据。保留并行执行能力，不能把所有访问迁回服务端单线程以规避设计。
 8. 持久化定义已提交余额和待恢复状态；禁止丢弃已扣材料或未完成补偿。跨 TileEntity 保存不自动具备磁盘事务保证。
 
-这些约束中，资源余额和同批存储结算已实现；owner/epoch、执行 lane、FE、机器卸载屏障及持久化恢复仍须在调度器与需求集成中落实。不能把局部核心测试当作迟到任务或完整机器生命周期的验证。
+这些约束中，资源/FE 余额、预留和同步整阶段结算已实现；owner/epoch、执行 lane、机器卸载屏障及持久化恢复仍须在调度器与需求集成中落实。不能把局部核心测试当作迟到任务或完整机器生命周期的验证。
 
 ## 当前 API 与结算规则
 
@@ -46,6 +46,10 @@
 - `ResourceTransactions` 复制参与者列表，去重并按真实 context 的稳定顺序加锁，完成全部校验、应用及完成后统一解锁，再发布变更通知。应用异常反向补偿全部参与者；通知/补偿异常保留为原异常的 suppressed，继续处理剩余参与者。外部实现必须保证 apply 在失败时没有部分写入，complete 不拒绝已验证、已应用的令牌。
 - 调用方不能在持有任意存储锁时再进入跨库结算。整个 apply/complete 或补偿过程必须持续持有全部参与者锁，不允许解锁后将中间态当作已提交余额读取或保存。当前批结算不是磁盘事务，也不是未来跨执行 lane 的分布式提交协议。
 - 普通按槽和按 key 转移不创建预留分配列表/数组；按 key 查询使用汇总，可用量通过 key 级 extractHolds 在 O(1) 时间得到。按槽的写入与预检在同一把锁内，长期预留才保留槽位分配。
+
+`ResourceReservation` 的生命周期契约没有 AEKey 字段，独立 EnergyBuffer 也通过它参加同批协调；共用的是补偿协议，而非资源类型。FE 使用自己的 EnergySnapshot，包含未预留余额/空间与单次接收/提取限额。限额下降可能让尚未 apply 的令牌被拒绝；退款使用保留的数量/容量，不能再次被新速率裁成部分退款。restore/限额变更/失效也推进 revision 并发出合并脏信号。
+
+ResourceTransactions 的业务回调重载在全部存储 apply 后执行业务 commit，全部成功才调用 complete。拒绝/异常先撤销业务再撤销存储；complete 与通知阶段的异常不会再次回滚终态令牌。RecipeStageExecutor 汇总各需求上交的令牌，统一调用这个边界；详细扩展契约见 [recipes.md](recipes.md)。
 
 ## 适配、保存与失效
 
@@ -66,6 +70,7 @@ MEStorage 仅存在于 `BufferedResourceHatch.automation()` 适配视图，Gener
 - 旧输出路径的模拟、插入及失败后抽回没有真正占用容量，自动化可能在这些步骤间改变存储。仅修输入 consumed 记录不能修复输出发布与补偿竞争。
 - 旧来源身份包含机器/成型/端口信息时，同一物理余额可能生成不同账本。新核心以实际 StorageContext 为身份，外部别名必须返回同一 context，不能用适配器对象或机器 ID 分裂真实余额。
 - PN `NetworkMachineRecipePlannedOperationFactory.Behavior.commit` 将数值预留改为 COMMITTED，但 RuntimeLifecycleProbe 仍调用 `validateCurrentRuntime("lifecycle", true)` 要求 RESERVED。PM coordinator 在业务 commit 之后再次验证生命周期，存在误判成功操作为失效的控制流风险；新迁移必须按阶段验证，不能原样复制。
+- PM `StructureEnergyContainerComponents.kt` 在大额 unchecked 操作中反复调用 Forge int 模拟，余额不变却累计减少 remaining，可能将同一余额/空间重复计入并绕开一次请求的限额。当前 long FE 核心与单来源分配不复刻该循环；回滚也直接使用精确预留补偿权，不再经过 Forge 方向和速率裁剪。
 
 ## 下一阶段的线程边界
 

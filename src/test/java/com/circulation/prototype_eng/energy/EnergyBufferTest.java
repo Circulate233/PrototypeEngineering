@@ -11,7 +11,7 @@ class EnergyBufferTest {
     void forgeTransfersAndMachineConsumptionShareOneLongBalance() {
         int[] notifications = {0};
         var buffer = new EnergyBuffer(Long.MAX_VALUE, () -> notifications[0]++);
-        var forge = new ForgeEnergyPort(buffer, HatchMode.INPUT, () -> Long.MAX_VALUE, () -> Long.MAX_VALUE);
+        var forge = new ForgeEnergyPort(buffer, HatchMode.INPUT);
 
         forge.receiveEnergy(Integer.MAX_VALUE, false);
         forge.receiveEnergy(Integer.MAX_VALUE, false);
@@ -60,6 +60,7 @@ class EnergyBufferTest {
         assertEquals(0, buffer.extractEnergy(100, Actionable.MODULATE));
         assertEquals(0, buffer.storedEnergy());
         assertEquals(16, buffer.savedEnergy());
-        assertEquals(5, notifications[0]);
+        // Changed availability (limits and invalidation) also publishes the save/sync signal.
+        assertEquals(7, notifications[0]);
     }
 }

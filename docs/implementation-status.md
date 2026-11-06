@@ -8,12 +8,13 @@
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
 - 已完成：工程标识、Java 25 模板、需求基线；固定 AE2S `v1.1.0:dev` 与 HEI `4.35.1`；移除模板示例 Mixin；开发包和生产重混淆构建。
-- 独立资源后端已完成：ResourceHatch 返回 ResourceStorage，槽位扩展由 SlottedResourceStorage 表达；SlottedResourceBuffer 独立持有 AEKey/long 余额、可用量、输入数量预留及输出容量预留。MEStorage、GenericInternalInventory 与 GUI 均为共享同一 context 的适配层，不再依赖 GenericStackInv 持有核心状态。外部仓室仍通过公开接口扩展，不依赖内置 TileEntity。FE 独立 long 存储保留，尚未接入并发批结算。
+- 独立资源后端已完成：ResourceHatch 返回 ResourceStorage，槽位扩展由 SlottedResourceStorage 表达；SlottedResourceBuffer 独立持有 AEKey/long 余额、可用量、输入数量预留及输出容量预留。MEStorage、GenericInternalInventory 与 GUI 均为共享同一 context 的适配层，不再依赖 GenericStackInv 持有核心状态。外部仓室仍通过公开接口扩展，不依赖内置 TileEntity。FE 独立 long 存储已用同一无 AEKey 字段的预留生命周期参与并发批结算。
 - P1 已接入：资源/能源各输入、输出、混合三方向十阶，共 60 个方块及物品注册；方块实体保存和能力暴露、挖掘保留内容、Java 容器和直接继承 AEBaseGui 的资源/能源界面。十阶默认值来自 PM ItemHatchConfig/ItemIOHatchConfig、FluidHatchConfig 与 EnergyHatchConfig，均可配置。资源输入/输出独立滚动，最多 5 行并随分辨率压缩，隐藏槽禁用且索引保持；能源 GUI 为 176×214，使用原 16×66 纵向条，支持速率/自动标志、Enter 提交和完整 long tooltip。实际 GUI/游戏交互未运行验证。
 - 能源职责已接入：EnergyOutput 及公开发现能力、EnergyHatch 双职责、ForgeEnergyPort 三方向，每次操作限额同时约束机器与 Forge，并随设置动态更新；模式/等级/限额/自动标志写入 NBT。能源重载以当前配置容量为准并裁剪保存量，资源仓仍保留保存容量。PM 限额并非累计 tick 预算，自动标志也尚未发现邻居 tick 传输调用链；本项目保留设置/保存，不宣称邻居自动传输已实现。
 - 美术已复制：PM item_hatch 与 energy_hatch 十阶三方向原模型 60 份、方块 PNG 144 张、CTM/Bloom 元数据 30 份（其中 6 份还带动画），另有 gui_energy_hatch 的 22 张 PNG，保留 credit 与 bloom 元素。原仓室走标准 Forge 模型与这些元数据，外部 CTM/BLOOM 层环境的实际效果未验证；机器自定义 Gecko/Bloom 管线仍待迁移。
 - 本地化已接入：GuiText 实现 AE2S LocalizationEnum，客户端使用 getLocal，容器标题使用 text 组件；禁止 GUI 拼键和裸翻译键调用。最终本机 IDEA MCP 逐文件检查零错误、警告、弱警告，MCP 构建及 Gradle 完整构建均通过，证据见下。
-- P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段事务分派。完整配方库仍未迁完，进程状态/属性、内置需求、扫描、多工位和并发集成等继续开发。
+- P2 已迁移组件/需求基础：软依赖拓扑、组件多系统、Pre/Normal/Post 调度与 tick 事件适配；配方按需求职责分组、外部类型绑定及 start/tick/end 整阶段协调结算。RequirementTransaction 上交全部资源/FE 预留，业务 commit 仍可补偿，全部成功才 complete；获取/应用/业务异常完整逆序清理，完成/通知故障不再回滚终态令牌。
+- 固定需求已接入：MachineHatches 保存独占执行边界安装的公开仓室绑定；RecipeRequirements 的 ResourceRequirement/EnergyRequirement 经公开配方池执行 start/tick/end，支持多 AEKey 类型、各阶段固定 IO、来源别名去重、单次 FE 限额及显式 voidExcessOutputs。数量当前是声明的单次执行量；进程属性/并行缩放、概率/模糊动态/选择器/overlay 仍必须继续迁移，不能称为完整配方循环。原因由 RecipeText 本地化枚举提供。
 - 旧固定资源流程已改为内部 ResourceTransferPlan/Run 迁移材料，不再定义公开 MachineRecipe 或从公开池选择配方。本轮已改用独立 ResourceStorage，保留 4 项守恒/检查点/别名测试；预留、补偿和并发另有专门行为用例，不能用此固定流程代替完整需求处理器。未接入机器且无调用方的固定资源 ResourceTransferNbt 已移除；正式进程/组件持久化仍为必须迁移项。
 - 尚未实现：机器/结构定义和运行接入、JEI 页面、研究与计算库能力、CraftTweaker。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
@@ -21,6 +22,9 @@
 
 ## 验证记录
 
+- 2026-11-07（需求与 FE 协调阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，52 项逻辑测试通过、无失败或跳过。在原 37 项基础上增加 7 项跨需求阶段补偿/终态故障用例、4 项能源预留与并发用例、4 项公开配方池到固定内置需求的集成用例；能源方向/限额/重载等原用例继续通过。未增加哈希、常量或 getter 测试。
+- 2026-11-07（需求与 FE 协调阶段）：本机 IDEA MCP 对 79 个 src Java 文件与生成 Tags 共 80 个文件逐个使用 `errorsOnly:false`；修复能源边界冗余条件后复查全部改动文件，最终无错误、警告、弱警告及超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`；报告 [recipe-energy-final.json](../build/reports/idea/recipe-energy-final.json)。只使用 MCP，没有操作桌面或启动游戏。
+- 2026-11-07（源码复核）：核对 PM 固定物品/流体/FE 及高级需求，确认选择器回滚后遗留索引可能跳过 START 扣料、END 失败可能误删 modifier、重复流体/FE 模拟、随机输出容量界和动态候选截断顺序等风险。审计和后续依赖已补到 [migration-audit.md](migration-audit.md) 与 [recipes.md](recipes.md)。当前固定需求修正了逐次模拟与跨类型完成边界；高级选择/概率缺陷仍在未来迁移项中，没有声称已修完。
 - 2026-11-07（独立资源存储阶段）：`gradlew.bat spotlessApply build --console=plain` 成功，37 项逻辑用例全部通过、无跳过；包含原 25 项和新增 12 项。新增用例覆盖共享数量/容量占用、跨 key 空槽竞争、成功完成后再次预留、应用失败反向补偿、外部修改参与者列表与通知异常、失效令牌、快照、long 边界、8 线程预留竞争及 32 轮反序双存储并发结算，以及双侧恢复的溢出/预留拒绝。没有哈希、常量或 getter 专用测试。
 - 2026-11-07（独立资源存储阶段）：最终本机 IDEA MCP 检查 67 个 src Java 文件与生成 Tags，共 68 个文件；逐文件 `errorsOnly:false`，全部 `errors:[]`，无超时。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`。报告 [storage-final.json](../build/reports/idea/storage-final.json)。只对 VarHandle 间接写字段、外部同步入口使用精确 unused 抑制；并发测试的 ExecutorService 手动 shutdownNow 并有界 awaitTermination，局部 resource 抑制防止 TWR close 在真实死锁时无限等待。没有关闭任何 IDE 检查。
 - 2026-11-07（独立资源存储阶段）：混合仓恢复用例验证的是 NBT 解码后的 `restoreContents` 双侧原子边界，未引导 AE2/FML 注册环境，未验证 GenericStack NBT 编解码、GUI 或游戏内流体交互。生产代码已将工作线程变更通知改为 VarHandle 脏标记，服务端 tick 与失效/卸载回调冲刷 markDirty；真实调度、owner/epoch/lane、FE 事务及世界生命周期仍待集成。

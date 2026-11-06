@@ -31,6 +31,33 @@
 
 本轮组件实现沿用软依赖与 Kahn 排序，改用 fastutil 和独立不可变依赖快照；系统顺序使用显式 ID。重建派生系统索引避免组件替换后残留旧系统关系。图仍由单一执行所有者维护，未来通过调度屏障转移所有权；不以增加 volatile 标志冒充并发容器。
 
+## 高级需求能力与源码入口
+
+以下来自 PM 源码的只读审计，是必须保留的能力清单，不表示新项目已实现。新的 `RecipeRequirement<C>` 已统一实例 ID、类型、不可变负载和 START/TICK/END 派发；运行时变化归 `RecipeProcess` 的组件。当前正在实现跨资源/FE/业务的整阶段完成边界、`MachineHatches` 组件及固定内置需求，高级能力仍待接入。
+
+| 能力 | 源码入口 | 必须保留的行为 |
+|---|---|---|
+| 物品阶段 IO | [ItemRequirementComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/ItemRequirementComponent.kt:29)、[ItemRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:30) | START 消耗固定、模糊和动态输入；END 产出固定和随机输出；物品 TICK 本身无操作。可跨多个来源/目标满足数量，固定与已解析同 key 需求聚合。 |
+| 流体阶段 IO | [FluidRequirementComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/FluidRequirementComponent.kt:35)、[FluidRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/FluidRequirementSystem.kt:155) | START 固定/模糊输入，TICK 固定输入和输出，END 固定/随机输出；每刻随机盐包含进程刻索引。旧消耗源用 PortMode.OUTPUT、产出目标用 PortMode.INPUT，迁移须按端口与机器的视角正确映射。 |
+| 概率、属性和并行数 | [RequirementPropertyKeys](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/advanced/RequirementPropertyKeys.kt:9)、[ChanceMath](F:/clone/PrototypeMachinery/src/main/kotlin/api/util/probability/ChanceMath.kt:20)、[effectiveChancePercent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:477) | chance 默认 100%，乘可选 chanceAttribute 的进程属性值，缺失属性乘数为 1；执行次数为 floor(chance/100)×并行数 + Binomial(并行数, 小数部分)，支持超过 100%。系统容量检查取并行数与 ceil(chance/100)×并行数中的较大值，低概率/零概率仍保留保守检查；保留确定性阶段随机。 |
+| 模糊和动态匹配 | [FuzzyInputGroup](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/advanced/FuzzyInputGroup.kt:8)、[DynamicItemInputGroup](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/advanced/DynamicItemInputGroup.kt:16)、[ItemRequirementMatcherRegistry](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/advanced/ItemRequirementMatcherRegistry.kt:13) | 模糊候选按声明顺序选首个足量候选，使用组数量；动态输入从可枚举来源取得候选，按外部 matcher 过滤，保留候选上限与可选 JEI 展示候选。内置 item_only 比较物品和 meta，exact 还比较 NBT；未知 matcher 不能视为成功。 |
+| 解析锁与恢复 | [RequirementResolutionProcessComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/RequirementResolutionProcessComponent.kt:22)、[物品锁 ID](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:404) | 按需求、阶段、组及模糊/动态类别记录所选 key；容量检查成功后写锁，事务回滚恢复旧锁。即使概率采样执行次数为零，也可能需要记录并回滚解析效果。保存恢复包含锁定 key，迁移为 AEKey 编码并明确校验，不静默丢失已保留状态。 |
+| 随机输出与满输出策略 | [RandomOutputPool](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/advanced/RandomOutputPool.kt:14)、[物品 END](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:204)、[流体 TICK](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/FluidRequirementSystem.kt:281) | 每个输出循环按权重无放回选择 pickCount 个候选，忽略非正权重；按所选候选数量产出。ignore_output_full 允许部分插入或零插入并丢弃余量后成功，但没有任何目标仍阻塞。 |
+| 选择性需求和 modifier | [SelectiveRequirementComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/SelectiveRequirementComponent.kt:29)、[SelectiveRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/SelectiveRequirementSystem.kt:30)、[SelectiveContext](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/selective/SelectiveContext.kt:15)、[SelectiveStateProcessComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/SelectiveStateProcessComponent.kt:22) | 包装任意候选需求，选首个 START 成功者并全程沿用；没有可用候选则本次进程禁用该选择而不阻塞。提交时通过外部注册的 modifier 施加进程属性效果；保存选择索引及 modifier 引用，结束时清理效果。 |
+| 每进程需求 overlay | [RecipeOverlayProcessComponent](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/RecipeOverlayProcessComponent.kt:92)、[OverlayApplier](F:/clone/PrototypeMachinery/src/main/kotlin/api/recipe/requirement/overlay/RecipeRequirementOverlayApplier.kt:20)、[executeStage](F:/clone/PrototypeMachinery/src/main/kotlin/impl/machine/component/system/FactoryRecipeProcessorSystem.kt:250)、[RecipeOverlayModifierPipeline](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/modifier/RecipeOverlayModifierPipeline.kt:12) | 按 typeId + componentId 保存覆写，执行时解析有效组件，不修改基础配方。内置 applier 覆盖物品/流体 IO、流体每刻 IO、能源每刻速率及 ignore_output_full；保留外部 applier、modifier 与稳定调用顺序。 |
+
+## 高级需求旧实现缺陷与迁移边界
+
+- **选择器 START 重试漏消耗风险。** [SelectiveRequirementSystem](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/SelectiveRequirementSystem.kt:49) 在 acquisition 时写 selectedIndex（56），START rollback 只撤销 modifier 和子事务（95–99），不撤销选择索引。后续需求阻塞使输入回滚后，再次 START 因既有索引直接成功，可能跳过已回滚的输入。选择及获取状态必须一致回滚。其 END rollback 还会清除已生效 modifier（150–152），输出阻塞后的重试会丢失仍应生效的属性效果；清理时机应绑定真正的进程结束。
+- **流体 TICK 模拟重复使用余额/容量。** [输入模拟](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/FluidRequirementSystem.kt:198)及输出模拟（214）逐条模拟，未聚合也未为前项预留。同 key 两项各需 100、可用量 150 时，两项都可通过检查而实际执行失败。迁移须按确定 key 聚合或让整批预留覆盖全部需求。
+- **随机输出最大数量检查不能证明容量安全。** [worstCaseKeys](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:499) 只取数量最大的 pickCount 个 key；能容纳这些 key 不代表能容纳另一些随机 key，槽位和 key 限制也不能由总量推导。保留加权效果，容量预留覆盖实际确定输出或采用明确有效的所有候选容量界。
+- **动态候选先截断再排序。** [enumerateDynamicCandidates](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:440) 达到上限便停止枚举（443–452），随后才排序（457）；来源遍历顺序可能影响候选子集。确定性承诺须包含截断前的来源/候选顺序与稳定 key 比较。
+- **旧补偿忽略实际恢复量。** [rollbackExtracted/rollbackInserted](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/system/ItemRequirementSystem.kt:513) 调用 unchecked 插入/提取但忽略返回数量；流体也有同类代码。不能复制“尽力退回”便宣称资源守恒。新需求应使用已有预留/补偿协议，并让无法完成的补偿显式失败；不能先公开输出再依赖撤回仍可被外部取得的资源。
+- **逐需求完成不能替代整阶段完成。** 既有阶段分派先 acquisition 后逐事务 commit；资源、FE 与业务/选择状态须具有共同的完成和失败边界，不能让较早需求独自最终完成后仍遇到后项失败。当前正在实施这一边界，不在本审计中写作已完成或已验证。
+- **旧 planned 投影覆盖不足。** [ItemRequirementComponent.snapshot](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/ItemRequirementComponent.kt:42)及[FluidRequirementComponent.snapshot](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/FluidRequirementComponent.kt:52) 拒绝全部非空 properties，投影仅涉及固定输入及流体每刻输入。概率、模糊、动态、随机、选择与 overlay 仍需要显式快照、有效定义和状态投影契约，不能因固定消耗可投影就宣称完整 planned 迁移完成。
+
+先建立整阶段完成边界和公开来源访问，再接固定内置需求；之后补属性、有效并行数、刻状态与确定性解析，接入概率/模糊动态/随机输出/选择器/overlay，最后完成保存恢复、扫描和 planned 适配。需求定义和系统可跨进程共享，变化必须归各进程；真实调度继续遵守 PM 的两次 join、稳定 affinity lane 与 PN owner/epoch/预算边界。以上是依赖排序，所有高级效果和外部扩展职责仍在保留范围。
+
 ## 修正顺序与验证依据
 
 1. 从旧组件装配、调度、事件和生命周期调用链建立新 Java API；明确哪些是扩展接口、哪些是普通实现类，避免机械的接口/Impl 配对。

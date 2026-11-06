@@ -2,19 +2,23 @@ package com.circulation.prototype_eng.energy;
 
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.energy.EnergyHatch;
+import com.circulation.prototype_eng.api.energy.EnergySnapshot;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
+import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 
 import java.util.Objects;
 
-/**
- * Server-thread-owned FE balance. A field needs no atomic wrapper here.
- */
+/** One long FE balance with exact quantity/capacity holds and a shared concurrency boundary. */
 public final class EnergyBuffer implements EnergyHatch {
     private final long capacity;
+    private final StorageContext context;
     private long maxReceive;
     private long maxExtract;
-    private final Runnable onChanged;
     private long stored;
-    private boolean valid = true;
+    private long reservedExtract;
+    private long reservedReceive;
+    private int activeReservations;
 
     public EnergyBuffer(long capacity, Runnable onChanged) {
         this(capacity, capacity, capacity, onChanged);
@@ -24,22 +28,34 @@ public final class EnergyBuffer implements EnergyHatch {
         if (capacity <= 0) {
             throw new IllegalArgumentException("Capacity must be positive");
         }
+        checkLimits(maxReceive, maxExtract);
         this.capacity = capacity;
-        setTransferLimits(maxReceive, maxExtract);
-        this.onChanged = Objects.requireNonNull(onChanged, "onChanged");
-    }
-
-    /** Updates per-operation limits without replacing the balance or its capability views. */
-    public void setTransferLimits(long maxReceive, long maxExtract) {
-        if (maxReceive < 0 || maxExtract < 0) { throw new IllegalArgumentException("Negative energy transfer limit"); }
         this.maxReceive = maxReceive;
         this.maxExtract = maxExtract;
+        context = new StorageContext(onChanged);
     }
 
-    private static void checkRequest(long amount, Actionable mode) {
-        Objects.requireNonNull(mode, "mode");
-        if (amount < 0) {
-            throw new IllegalArgumentException("Amount must not be negative");
+    @Override
+    public StorageContext context() {
+        return context;
+    }
+
+    /** Updates limits in place. Existing tokens are rechecked against lower limits before applying. */
+    public void setTransferLimits(long maxReceive, long maxExtract) {
+        checkLimits(maxReceive, maxExtract);
+        context.lock();
+        try {
+            if (!context.isValid()) {
+                throw new IllegalStateException("Cannot update invalid energy storage");
+            }
+            if (this.maxReceive != maxReceive || this.maxExtract != maxExtract) {
+                requireChange();
+                this.maxReceive = maxReceive;
+                this.maxExtract = maxExtract;
+                context.changed();
+            }
+        } finally {
+            context.unlock();
         }
     }
 
@@ -50,54 +66,264 @@ public final class EnergyBuffer implements EnergyHatch {
 
     @Override
     public long storedEnergy() {
-        return valid ? stored : 0;
+        context.lock();
+        try {
+            return context.isValid() ? stored : 0;
+        } finally {
+            context.unlock();
+        }
+    }
+
+    @Override
+    public EnergySnapshot energySnapshot() {
+        context.lock();
+        try {
+            boolean valid = context.isValid();
+            return new EnergySnapshot(context, context.revision(), valid ? stored - reservedExtract : 0,
+                valid ? capacity - stored - reservedReceive : 0, maxReceive, maxExtract);
+        } finally {
+            context.unlock();
+        }
     }
 
     @Override
     public long receiveEnergy(long amount, Actionable mode) {
         checkRequest(amount, mode);
-        long accepted = valid ? Math.min(Math.min(amount, maxReceive), capacity - stored) : 0;
-        if (accepted > 0 && mode == Actionable.MODULATE) {
-            stored += accepted;
-            onChanged.run();
+        context.lock();
+        try {
+            long accepted = context.isValid() ? Math.min(Math.min(amount, maxReceive), capacity - stored - reservedReceive) : 0;
+            if (accepted > 0 && mode == Actionable.MODULATE) {
+                requireChange();
+                stored = Math.addExact(stored, accepted);
+                context.changed();
+            }
+            return accepted;
+        } finally {
+            context.unlock();
         }
-        return accepted;
     }
 
     @Override
     public long extractEnergy(long amount, Actionable mode) {
         checkRequest(amount, mode);
-        long extracted = valid ? Math.min(Math.min(amount, maxExtract), stored) : 0;
-        if (extracted > 0 && mode == Actionable.MODULATE) {
-            stored -= extracted;
-            onChanged.run();
+        context.lock();
+        try {
+            long extracted = context.isValid() ? Math.min(Math.min(amount, maxExtract), stored - reservedExtract) : 0;
+            if (extracted > 0 && mode == Actionable.MODULATE) {
+                requireChange();
+                stored = Math.subtractExact(stored, extracted);
+                context.changed();
+            }
+            return extracted;
+        } finally {
+            context.unlock();
         }
-        return extracted;
     }
 
-    /**
-     * Loads the owner's saved balance without generating a new mutation event.
-     */
+    @Override
+    public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
+        return reserve(snapshot, amount, false);
+    }
+
+    @Override
+    public ReservationResult reserveReceiveEnergy(EnergySnapshot snapshot, long amount) {
+        return reserve(snapshot, amount, true);
+    }
+
+    private ReservationResult reserve(EnergySnapshot snapshot, long amount, boolean receive) {
+        Objects.requireNonNull(snapshot);
+        if (amount <= 0) {
+            throw new IllegalArgumentException("An energy reservation needs a positive amount");
+        }
+        context.lock();
+        try {
+            if (!context.isValid()) {
+                return rejected(ReservationResult.Status.INVALID_STORAGE);
+            }
+            if (snapshot.context() != context || snapshot.revision() != context.revision()) {
+                return rejected(ReservationResult.Status.STALE_SNAPSHOT);
+            }
+            long available = receive ? capacity - stored - reservedReceive : stored - reservedExtract;
+            long limit = receive ? maxReceive : maxExtract;
+            if (amount > available || amount > limit) {
+                return rejected(ReservationResult.Status.INSUFFICIENT);
+            }
+            if (activeReservations == Integer.MAX_VALUE) {
+                throw new IllegalStateException("Too many active energy reservations");
+            }
+            requireChange();
+            if (receive) {
+                reservedReceive = Math.addExact(reservedReceive, amount);
+            } else {
+                reservedExtract = Math.addExact(reservedExtract, amount);
+            }
+            activeReservations++;
+            context.changed();
+            return new ReservationResult(ReservationResult.Status.ACCEPTED, new Reservation(amount, receive));
+        } finally {
+            context.unlock();
+        }
+    }
+
+    /** Restores committed energy only when no token owns quantity or refund capacity. */
     public void restore(long amount) {
         if (amount < 0 || amount > capacity) {
             throw new IllegalArgumentException("Saved energy is outside capacity");
         }
-        stored = amount;
+        context.lock();
+        try {
+            if (!context.isValid() || activeReservations != 0) {
+                throw new IllegalStateException("Cannot restore invalid or reserved energy storage");
+            }
+            if (stored != amount) {
+                requireChange();
+                stored = amount;
+                context.changed();
+            }
+        } finally {
+            context.unlock();
+        }
     }
 
-    /**
-     * Persistence still retains the balance after the host has invalidated its transfer views.
-     */
+    /** Persistence retains the committed balance after transfer views have been invalidated. */
     public long savedEnergy() {
-        return stored;
+        context.lock();
+        try {
+            return stored;
+        } finally {
+            context.unlock();
+        }
     }
 
     @Override
     public boolean isValid() {
-        return valid;
+        return context.isValid();
     }
 
     public void invalidate() {
-        valid = false;
+        context.invalidate();
+    }
+
+    private void requireChange() {
+        context.requireLock();
+        if (context.revision() == Long.MAX_VALUE) {
+            throw new IllegalStateException("Energy storage revision exhausted");
+        }
+    }
+
+    private static void checkLimits(long maxReceive, long maxExtract) {
+        if (maxReceive < 0 || maxExtract < 0) {
+            throw new IllegalArgumentException("Negative energy transfer limit");
+        }
+    }
+
+    private static void checkRequest(long amount, Actionable mode) {
+        Objects.requireNonNull(mode, "mode");
+        if (amount < 0) {
+            throw new IllegalArgumentException("Amount must not be negative");
+        }
+    }
+
+    private static ReservationResult rejected(ReservationResult.Status status) {
+        return new ReservationResult(status, null);
+    }
+
+    private enum State { PENDING, APPLIED, COMMITTED, ROLLED_BACK }
+
+    private final class Reservation implements ResourceReservation {
+        private final long amount;
+        private final boolean receive;
+        private State state = State.PENDING;
+
+        private Reservation(long amount, boolean receive) {
+            this.amount = amount;
+            this.receive = receive;
+        }
+
+        @Override
+        public StorageContext context() {
+            return context;
+        }
+
+        @Override
+        public boolean canApply() {
+            context.requireLock();
+            requireState(State.PENDING);
+            return context.isValid() && amount <= (receive ? maxReceive : maxExtract);
+        }
+
+        @Override
+        public void apply() {
+            context.requireLock();
+            requireState(State.PENDING);
+            if (!canApply()) {
+                throw new IllegalStateException("Energy reservation cannot apply under current limits or lifetime");
+            }
+            requireChange();
+            long nextStored = receive ? Math.addExact(stored, amount) : Math.subtractExact(stored, amount);
+            long nextExtract = receive ? Math.addExact(reservedExtract, amount) : Math.subtractExact(reservedExtract, amount);
+            long nextReceive = receive ? Math.subtractExact(reservedReceive, amount) : Math.addExact(reservedReceive, amount);
+            validateBalance(nextStored, nextExtract, nextReceive);
+            stored = nextStored;
+            reservedExtract = nextExtract;
+            reservedReceive = nextReceive;
+            state = State.APPLIED;
+            context.changed();
+        }
+
+        @Override
+        public void complete() {
+            context.requireLock();
+            requireState(State.APPLIED);
+            release(false);
+            state = State.COMMITTED;
+        }
+
+        @Override
+        public void rollback() {
+            context.requireLock();
+            if (state != State.PENDING && state != State.APPLIED) {
+                throw new IllegalStateException("Cannot roll back terminal energy reservation");
+            }
+            release(state == State.APPLIED);
+            state = State.ROLLED_BACK;
+        }
+
+        private void release(boolean restore) {
+            requireChange();
+            if (activeReservations <= 0) {
+                throw new IllegalStateException("Energy reservation count is inconsistent");
+            }
+            // Applied input holds refund space; applied output holds the produced quantity.
+            boolean holdsReceive = (state == State.PENDING) == receive;
+            long nextExtract = holdsReceive ? reservedExtract : Math.subtractExact(reservedExtract, amount);
+            long nextReceive = holdsReceive ? Math.subtractExact(reservedReceive, amount) : reservedReceive;
+            long nextStored = stored;
+            if (restore) {
+                nextStored = receive ? Math.subtractExact(stored, amount) : Math.addExact(stored, amount);
+            }
+            validateBalance(nextStored, nextExtract, nextReceive);
+            stored = nextStored;
+            reservedExtract = nextExtract;
+            reservedReceive = nextReceive;
+            activeReservations--;
+            context.changed();
+        }
+
+        private void requireState(State expected) {
+            if (state != expected) {
+                throw new IllegalStateException("Energy reservation is " + state + ", expected " + expected);
+            }
+        }
+    }
+
+    private void validateBalance(long amount, long extract, long receive) {
+        if (amount < 0 || amount > capacity) {
+            throw new IllegalStateException("Energy reservation lost its balance bounds");
+        }
+        if (extract < 0 || extract > amount
+            || receive < 0 || receive > capacity - amount) {
+            throw new IllegalStateException("Energy reservation lost its quantity or capacity rights");
+        }
     }
 }

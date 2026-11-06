@@ -9,15 +9,30 @@ import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.ITickable;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.energy.CapabilityEnergy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.Objects;
 
 /** PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions. */
-public final class EnergyHatchBlockEntity extends TileEntity {
+public final class EnergyHatchBlockEntity extends TileEntity implements ITickable {
+    private static final VarHandle STORAGE_DIRTY;
+
+    static {
+        try {
+            STORAGE_DIRTY = MethodHandles.lookup().findVarHandle(EnergyHatchBlockEntity.class, "storageDirty", boolean.class);
+        } catch (ReflectiveOperationException failure) {
+            throw new ExceptionInInitializerError(failure);
+        }
+    }
+
+    @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
+    private boolean storageDirty;
     private HatchTier tier;
     private HatchMode mode;
     private EnergyBuffer buffer;
@@ -40,8 +55,23 @@ public final class EnergyHatchBlockEntity extends TileEntity {
     private void createStorage() {
         // Physical directions are enforced by capability routing, not by disabling the
         // reverse machine operation on the shared balance as PM's backend did.
-        buffer = new EnergyBuffer(HatchConfig.energyCapacity(tier), effectiveInputRate(), effectiveOutputRate(), this::markDirty);
-        port = new ForgeEnergyPort(buffer, mode, this::effectiveInputRate, this::effectiveOutputRate);
+        buffer = new EnergyBuffer(HatchConfig.energyCapacity(tier), effectiveInputRate(), effectiveOutputRate(), this::requestStorageSave);
+        port = new ForgeEnergyPort(buffer, mode);
+    }
+
+    private void requestStorageSave() {
+        STORAGE_DIRTY.setRelease(this, true);
+    }
+
+    @Override
+    public void update() {
+        flushStorageChanges();
+    }
+
+    private void flushStorageChanges() {
+        if (world != null && !world.isRemote && (boolean) STORAGE_DIRTY.getAndSet(this, false)) {
+            markDirty();
+        }
     }
 
     public EnergyBuffer storage() { return buffer; }
@@ -125,8 +155,8 @@ public final class EnergyHatchBlockEntity extends TileEntity {
         if (isInvalid()) { buffer.invalidate(); }
     }
 
-    @Override public void invalidate() { buffer.invalidate(); super.invalidate(); }
-    @Override public void onChunkUnload() { buffer.invalidate(); super.onChunkUnload(); }
+    @Override public void invalidate() { buffer.invalidate(); flushStorageChanges(); super.invalidate(); }
+    @Override public void onChunkUnload() { buffer.invalidate(); flushStorageChanges(); super.onChunkUnload(); }
     @Override public void validate() {
         super.validate();
         if (!buffer.isValid()) { readFromNBT(writeToNBT(new NBTTagCompound())); }

@@ -69,7 +69,8 @@ class RecipeStageExecutorTest {
         assertSame(ProcessResult.SUCCESS, RecipeStageExecutor.execute(process, RecipeStage.START));
         assertEquals(6, ledger.balance);
         assertEquals(List.of("acquire:START:first", "acquire:START:second", "acquire:START:later",
-            "commit:first", "commit:second", "commit:later"), ledger.events);
+            "commit:first", "commit:second", "commit:later",
+            "complete:first", "complete:second", "complete:later"), ledger.events);
         ledger.events.clear();
         assertSame(ProcessResult.SUCCESS, RecipeStageExecutor.execute(process, RecipeStage.TICK));
         assertEquals(0, ledger.balance);
@@ -124,7 +125,7 @@ class RecipeStageExecutorTest {
     }
 
     @Test
-    void commitFaultStopsLaterCommitsWithoutPretendingCommittedWorkWasRolledBack() {
+    void commitFaultReversesEarlierBusinessCommitsAndAllAcquisitions() {
         var process = process(new ExternalSystem());
         var ledger = process.components().create(LEDGER, process);
         ledger.balance = 10;
@@ -132,8 +133,10 @@ class RecipeStageExecutorTest {
         ledger.commitFault = new IllegalStateException("commit failure");
         assertSame(ledger.commitFault, assertThrows(IllegalStateException.class,
             () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
+        assertEquals(10, ledger.balance);
+        assertEquals(0, ledger.businessBalance);
         assertEquals(List.of("acquire:START:first", "acquire:START:second", "acquire:START:third",
-            "commit:first", "commit:second"), ledger.events);
+            "commit:first", "commit:second", "rollback:third", "rollback:second", "rollback:first"), ledger.events);
     }
 
     @Test
@@ -157,6 +160,7 @@ class RecipeStageExecutorTest {
     private static final class Ledger {
         final List<String> events = new ObjectArrayList<>();
         int balance;
+        int businessBalance;
         String faultAt;
         RuntimeException rollbackFault;
         RuntimeException commitFault;
@@ -193,6 +197,8 @@ class RecipeStageExecutorTest {
             ledger.balance -= received;
             ProcessResult result = received == requirement.payload().amount() ? ProcessResult.SUCCESS : rejection();
             return new RequirementTransaction() {
+                private boolean applied;
+
                 @Override
                 public ProcessResult result() {
                     return result;
@@ -201,14 +207,24 @@ class RecipeStageExecutorTest {
                 @Override
                 public void commit() {
                     ledger.events.add("commit:" + name);
+                    ledger.businessBalance += received;
+                    applied = true;
                     if (name.equals(ledger.faultAt) && ledger.commitFault != null) {
                         throw ledger.commitFault;
                     }
                 }
 
                 @Override
+                public void complete() {
+                    ledger.events.add("complete:" + name);
+                }
+
+                @Override
                 public void rollback() {
                     ledger.events.add("rollback:" + name);
+                    if (applied) {
+                        ledger.businessBalance -= received;
+                    }
                     ledger.balance += received;
                     if (name.equals(ledger.faultAt) && ledger.rollbackFault != null) {
                         throw ledger.rollbackFault;
