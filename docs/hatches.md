@@ -22,11 +22,11 @@
 
 外部 TileEntity 可以在 `getCapability` 中暴露 `api.HatchCapabilities.RESOURCE` 或 `ENERGY_INPUT`，不需要继承内置 TileEntity。机器通过 `findResource` / `findEnergyInput` 获取仍有效的契约；接口实例与存档均由宿主管理，能力注册不提供脱离宿主的默认实例或通用 NBT 格式。
 
-资源后端可自行实现 MEStorage；模拟和执行须遵循其返回数量契约。失效后的旧引用不得继续改变真实存储。单次字段原子性不能代替跨仓室提交，配方执行阶段还需处理多来源一致性。
+资源后端可自行实现 MEStorage；模拟和执行须遵循其返回数量契约。失效后的旧引用不得继续改变真实存储。`inputStorageIdentity()` / `outputStorageIdentity()` 分别标识两侧真实存储；默认使用对应的 MEStorage 对象，临时适配视图必须覆盖为稳定的底层身份。机器据此避免把同一份库存的多个视图重复预算；输入与输出独立时身份也必须独立。
 
 ## 内置方块与适配
 
-四种方块 ID 为 `prototype_eng:input_hatch`、`output_hatch`、`mixed_hatch`、`energy_hatch`，目前放在红石创造物品栏，未添加未确认的合成和等级数值。
+四种通用组件方块 ID 为 `prototype_eng:input_hatch`、`output_hatch`、`mixed_hatch`、`energy_hatch`，目前放在红石创造物品栏。合成配方、等级体系与参数由使用方定义。
 
 `ResourceHatchBlockEntity` 暴露公开资源仓契约、AE2 MEStorage 和 GenericInternalInventory；物品及其他已注册资源能力通过 AE2 的 GenericInternalInventoryAdapters 接入。`HatchInventoryPort` 保留每个槽位的方向，外部不得从输入取出或向输出写入。它的直接 setStack 是有方向约束的契约调用；方向反转、越容量和非法替换立即失败，正常传输使用 insert/extract 的实际数量返回值。
 
@@ -48,7 +48,7 @@ ResourceHatchGui 和 EnergyHatchGui 直接继承 AEBaseGui，复用 AE2 背景�
 
 ## 开发默认值与资源来源
 
-`config/prototype_eng/hatches.cfg` 在初始化时读取；槽数为每侧 9 格（允许 1–18），物品每格 4096，流体每格 16000 mB，独立能源 1000000 FE。其他已注册 AEKeyType 优先采用 AE2 GenericSlotCapacities 值，否则取 64 个该类型单位。这些是开发默认值，不代表最终平衡或等级设计。
+`config/prototype_eng/hatches.cfg` 在初始化时读取；槽数为每侧 9 格（允许 1–18），物品每格 4096，流体每格 16000 mB，独立能源 1000000 FE。其他已注册 AEKeyType 优先采用 AE2 GenericSlotCapacities 值，否则取 64 个该类型单位。这些是通用组件默认参数，可由使用方配置；库不规划最终平衡或等级设计。
 
 配置只影响新放置的仓室，已有仓室保存自己的槽位和容量。数量使用 long；非法配置/已保存容量立即失败，不捕获后换成默认值。容量表使用 fastutil Reference2LongMap；它按已注册 AEKeyType 的对象身份查找。
 

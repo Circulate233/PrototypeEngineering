@@ -17,6 +17,14 @@ public interface ResourceHatch {
     @Nullable
     MEStorage output();
 
+    /** Stable identity of the underlying input balance. Override when returning temporary adapter views. */
+    @Nullable
+    default Object inputStorageIdentity() { return input(); }
+
+    /** Stable identity of the output balance, distinct from input for a mixed hatch. */
+    @Nullable
+    default Object outputStorageIdentity() { return output(); }
+
     /** Whether this particular host instance can still participate in work. */
     boolean isValid();
 }

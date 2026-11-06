@@ -10,8 +10,8 @@ A Minecraft 1.12.2 mod for Cleanroom, based on the MDG branch of
 
 ## 开发需求
 
-本项目是 PrototypeMachinery 与 PrototypeNetwork 合并后的重新开发版本，以 AE2 Supergiant 为基础依赖。
-已开始分阶段实施，需求、旧项目调查和待定范围见[开发文档 v0.6](docs/development-spec.md)，实际完成情况见[实施进度](docs/implementation-status.md)。
+本项目是 PrototypeMachinery 与 PrototypeNetwork 合并重开发的库模组，以 AE2 Supergiant 为基础依赖。提供可扩展 API 与通用组件，具体机器、配方、研究内容及数值由使用方定义；独立示例不自动注册进主产物。
+已开始分阶段实施，需求、旧项目调查和待定范围见[开发文档 v0.7](docs/development-spec.md)，实际完成情况见[实施进度](docs/implementation-status.md)。
 对外 Java API 独立放在 `com.circulation.prototype_eng.api`，按契约职责组织；实现类按实际用途命名，CraftTweaker 在最后阶段接入该 API。
 旧实现按功能审查后决定复用、重构或重写，重新处理合并后的职责与 Java 25 线程模型；确需字段级原子更新时优先采用 VarHandle。
 混合仓保留独立输入、输出缓存，每侧支持 AE2 多类型资源；仓室通过公开接口接入机器，允许外部实现特殊仓室。
