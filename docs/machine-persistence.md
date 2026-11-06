@@ -36,4 +36,4 @@
 
 逻辑测试覆盖恢复/创建顺序、默认补缺、组件和标签隔离、动态图与不可变替换、失败不发布、保存故障、已提交进程恢复，以及实际线程上的边界拒绝。最终数量与逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)。未创建真实 World 或启动游戏。
 
-下一步仍是空 TE 暂存 NBT、实际 Forge 注册、scheduler 登记失败清理、方向/放置身份、客户端显示同步，以及正式 planned/PN 权限预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。
+`MachineController` 已接 load 后登记、登记失败清理、延后卸载和未装配原 NBT 保存，见[控制器运行时](machine-controller.md)。下一步仍是空 TE 暂存 NBT、实际 Forge 调用、方向/放置身份、客户端显示同步，以及正式 planned/PN 权限预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。

@@ -254,7 +254,7 @@ ResourceInputLocks 实现 listener，仅清 chosen key 身份，不拥有库存�
 
 RecipeProcessNbt 当前格式 Version 2 保存 CANCELLED/FAILED 和显式取消回执；这与此前 MachineAttributesNbt 的局部属性 Version 2 是不同格式。内置 codec 保存 RequirementAttributeState 的 Owned/Aborted 引用及 selector AbortReceipts；恢复绑定现有准确 modifier/layer 身份并验证已移除效果缺席，不运行 START、modifier、END 或 abort callback。BuiltinProcessValidation 检查已知 canonical 路径、去重、效果所有权与回执缺席；FAILED/CANCELLED 必须无活动内置锁、选择和 owned 属性，其他生命周期不得有 abort receipt。外部历史 overlay/状态仍需宿主 validator，不能靠内置检查证明任意扩展的历史。旧进程 Version 1 不自动升级。
 
-普通卸载与结构失效策略尚未接入。本取消 API 由未来生命周期宿主显式决定调用时机；旧 PM 普通区块卸载保存工作而不取消，结构失效也没有自动清槽，不能擅自把所有失效/卸载变成取消。真实 planned 取消只补偿本次未完成批次，仍须 source 反序补偿、COMPENSATION_PENDING/恢复及 PN 准确 after-image 等独立协议；它与本进程清理共享资源契约边界，但不能合并成同一个取消机制。
+普通卸载、结构失效和破坏策略已接生命周期：普通卸载保存工作而不取消，结构失效暂停而不清槽，控制器破坏才取消。控制器运行时退出先退休，当前事务完整结束，在新的 START/TICK/END 和后续工位边界停止；扫描中已获取预留和 preparation 完整回滚后返回 PAUSED，不 admission。健康退休实例仍可保存并交给新实例恢复。实际清理等待 MAIN 回调返回或全部 worker join，详见[控制器运行时](machine-controller.md)。真实 planned 取消只补偿本次未完成批次，仍须 source 反序补偿、COMPENSATION_PENDING/恢复及 PN 准确 after-image 等独立协议；它与本进程清理共享资源契约边界，但不能合并成同一个取消机制。
 
 ## 资源存储纠正
 

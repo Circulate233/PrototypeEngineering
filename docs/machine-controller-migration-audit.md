@@ -92,6 +92,8 @@ PM [MachineInstanceImpl.onLoaded](F:/clone/PrototypeMachinery/src/main/kotlin/im
 
 ## 7. 下一阶段最小实现入口与验收
 
+后续实现进展：`MachineType/Registry`、`MachineAssembly` 和[控制器运行时](machine-controller.md)已接规范定义、附宿主装配/恢复、load 后登记、登记失败清理、延后自卸载及原 NBT 保留。MachineInstance 已可持有规范类型，MachineController 持有 scheduler 登记身份。下表与前述旧源码仍用于定位真实 TileEntity/Forge、方向、owner 和显示接线；这些内容尚未由运行时逻辑测试完成。
+
 已有入口可直接装配，避免新建第二套结构匹配或生命周期：
 
 | 当前入口 | 控制器需要做的具体接线 |

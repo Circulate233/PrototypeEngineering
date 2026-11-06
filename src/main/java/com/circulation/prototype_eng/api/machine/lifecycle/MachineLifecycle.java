@@ -50,6 +50,7 @@ public final class MachineLifecycle {
     private volatile boolean formed;
     private volatile boolean broken;
     private volatile boolean faulted;
+    private volatile boolean retired;
     @Nullable private volatile StructureMatch structureMatch;
     @Nullable private Captured lastCaptured;
     private boolean assemblyStarted;
@@ -76,6 +77,9 @@ public final class MachineLifecycle {
     public MachineLifecycleHost host() { return host; }
     public State state() { return state; }
     public boolean formed() { return formed; }
+    /** Revokes new execution immediately; owner cleanup still waits for the scheduler's real join. */
+    public void retire() { retired = true; }
+    public boolean retired() { return retired; }
     @Nullable public StructureMatch structureMatch() { return structureMatch; }
 
     /** Readiness for ordinary recipe systems, not a transferable worker permission. */
@@ -84,7 +88,7 @@ public final class MachineLifecycle {
     }
 
     /** Ordinary components may run before formation, but never after unload, break or a fault. */
-    public boolean schedulingAllowed() { return state == State.LOADED && !broken && !faulted && (gate == IDLE || gate == RUNNING); }
+    public boolean schedulingAllowed() { return state == State.LOADED && !broken && !faulted && !retired && (gate == IDLE || gate == RUNNING); }
 
     /**
      * Creates/restores unpublished local components after host attachment. Factories and codecs may
@@ -164,6 +168,7 @@ public final class MachineLifecycle {
         enterTransition();
         try {
             requireLoaded();
+            if (retired && hatches != null) { throw new IllegalStateException("A retired machine cannot form"); }
             var captured = capture();
             requireQuiescent(captured);
             installStructure(hatches, null, captured);
@@ -184,14 +189,14 @@ public final class MachineLifecycle {
         Objects.requireNonNull(prepare);
         enterTransition();
         try {
-            if (state != State.LOADED || broken) { return false; }
+            if (state != State.LOADED || broken || retired) { return false; }
             requireHealthy();
-            if (!applicable.getAsBoolean()) { return false; }
+            if (!applicable.getAsBoolean() || retired) { return false; }
             var captured = capture();
             requireQuiescent(captured);
             try {
                 var assembly = prepare.get();
-                if (assembly == null || !applicable.getAsBoolean()) { return false; }
+                if (assembly == null || !applicable.getAsBoolean() || retired) { return false; }
                 installStructure(assembly.hatches(), assembly.match(), captured);
                 return true;
             } catch (RuntimeException | Error failure) {
@@ -280,7 +285,7 @@ public final class MachineLifecycle {
         enter(RUNNING);
         try {
             requireHealthy();
-            if (state != State.LOADED || broken) { return; }
+            if (state != State.LOADED || broken || retired) { return; }
             try { execution.run(); }
             catch (RuntimeException | Error failure) { faulted = true; throw failure; }
         } finally {

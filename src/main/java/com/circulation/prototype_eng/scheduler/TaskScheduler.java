@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
@@ -34,7 +35,11 @@ public final class TaskScheduler implements AutoCloseable {
     private final Reference2ObjectLinkedOpenHashMap<ScheduledTask, Registration> registered = new Reference2ObjectLinkedOpenHashMap<>();
     private final Object submissionLock = new Object();
     private ObjectArrayList<Submission> pending = new ObjectArrayList<>();
+    private final ObjectArrayFIFOQueue<Runnable> boundaryActions = new ObjectArrayFIFOQueue<>();
     private boolean accepting = true;
+    private boolean acceptingBoundary = true;
+    // A failed close may leave owned executors alive even though ordinary admission is revoked.
+    private boolean boundaryReady = true;
     private boolean faulted;
     private State state = State.IDLE;
     private ExecutorService workers;
@@ -89,13 +94,47 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
+    /**
+     * Accepts an owner action for the next boundary after accepted work has physically exited.
+     * Foreign threads only enqueue and never wait or execute the action. An idle owner drains
+     * immediately; a main callback drains after it returns, and worker requests drain after all
+     * accepted workers are joined. Nested boundary requests enqueue without recursive execution.
+     * Accepted actions are attempted once, including after ordinary execution has faulted. Close
+     * drains all accepted actions after executor termination and atomically closes admission;
+     * requests after that point throw. A failed close without proof of termination retains the
+     * actions until close can be retried. Owner metadata callbacks cannot request a boundary.
+     */
+    public void runAtBoundary(Runnable action) {
+        Objects.requireNonNull(action);
+        boolean ownerRequest = Thread.currentThread() == owner;
+        if (ownerRequest && state != State.IDLE && state != State.MAIN && state != State.BOUNDARY) {
+            throw new IllegalStateException("Scheduler boundary cannot be requested from this owner phase");
+        }
+        synchronized (submissionLock) {
+            if (!acceptingBoundary) { throw new IllegalStateException("Scheduler owner boundary is closed"); }
+            boundaryActions.enqueue(action);
+        }
+        if (ownerRequest && state == State.IDLE && boundaryReady) {
+            var failures = new Failures();
+            try {
+                failures.observeInterrupt();
+                if (failures.present()) { fault(); }
+                drainBoundary(failures, false);
+            } finally { failures.restoreInterrupt(); }
+            failures.throwIfPresent();
+        }
+    }
+
     public void tick() {
         enterTick();
         var failures = new Failures();
         var futures = new ObjectArrayList<FutureTask<Void>>();
         try {
             failures.observeInterrupt();
+            if (failures.present()) { fault(); }
+            drainBoundary(failures, false);
             failures.throwIfPresent();
+            requireHealthy();
             ObjectArrayList<Submission> batch;
             synchronized (submissionLock) {
                 batch = pending;
@@ -108,7 +147,7 @@ public final class TaskScheduler implements AutoCloseable {
             var executed = new ReferenceOpenHashSet<ScheduledTask>();
             state = State.MAIN;
             for (Submission submission : batch) {
-                if (submission.mode == ExecutionMode.MAIN_THREAD) { submission.task.run(); }
+                if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, failures); }
             }
             for (Registration registration : main) {
                 ScheduledTask task = registration.task;
@@ -122,7 +161,7 @@ public final class TaskScheduler implements AutoCloseable {
                 } finally { state = State.MAIN; }
                 if (mode == ExecutionMode.MAIN_THREAD && active) {
                     executed.add(task);
-                    task.onSchedule();
+                    runMain(task::onSchedule, failures);
                 }
             }
             state = State.CAPTURING_CONCURRENT;
@@ -175,10 +214,40 @@ public final class TaskScheduler implements AutoCloseable {
             }
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
+            drainBoundary(failures, false);
             state = State.IDLE;
             failures.restoreInterrupt();
         }
         failures.throwIfPresent();
+    }
+
+    private void runMain(Runnable action, Failures failures) {
+        try { action.run(); }
+        catch (Throwable failure) { failures.add(failure); fault(); }
+        finally { drainBoundary(failures, false); }
+        failures.throwIfPresent();
+    }
+
+    private void drainBoundary(Failures failures, boolean closeAdmission) {
+        if (!boundaryReady) { return; }
+        State previous = state;
+        state = State.BOUNDARY;
+        try {
+            while (true) {
+                Runnable action;
+                synchronized (submissionLock) {
+                    if (boundaryActions.isEmpty()) {
+                        if (closeAdmission) { acceptingBoundary = false; }
+                        return;
+                    }
+                    action = boundaryActions.dequeue();
+                }
+                try { action.run(); }
+                catch (Throwable failure) { failures.add(failure); fault(); }
+                failures.observeInterrupt();
+                if (failures.present()) { fault(); }
+            }
+        } finally { state = previous; }
     }
 
     private static void dispatch(ExecutorService executor, Runnable action, ObjectArrayList<FutureTask<Void>> futures) {
@@ -245,13 +314,13 @@ public final class TaskScheduler implements AutoCloseable {
             synchronized (submissionLock) { accepting = false; }
             var failures = new Failures();
             failures.add(failure);
-            stopExecutors(failures);
+            boundaryReady = stopExecutors(failures);
             failures.restoreInterrupt();
             failures.throwIfPresent();
         }
     }
 
-    /** A failed close keeps resources attached and admission revoked; cleanup may be retried. */
+    /** Closes ordinary admission, proves executor termination, then drains and closes owner actions. */
     @Override
     public void close() {
         requireOwner();
@@ -263,19 +332,22 @@ public final class TaskScheduler implements AutoCloseable {
             pending.clear();
         }
         var failures = new Failures();
+        boundaryReady = false;
         try {
             failures.observeInterrupt();
-            stopExecutors(failures);
+            boundaryReady = stopExecutors(failures);
         } catch (Throwable failure) { failures.add(failure); }
         finally {
-            state = failures.present() ? State.IDLE : State.CLOSED;
-            if (!failures.present()) { registered.clear(); }
+            if (failures.present()) { fault(); }
+            drainBoundary(failures, true);
+            state = boundaryReady ? State.CLOSED : State.IDLE;
+            if (boundaryReady) { registered.clear(); }
             failures.restoreInterrupt();
         }
         failures.throwIfPresent();
     }
 
-    private void stopExecutors(Failures failures) {
+    private boolean stopExecutors(Failures failures) {
         var executors = new ObjectArrayList<ExecutorService>();
         if (workers != null) { executors.add(workers); }
         if (lanes != null) {
@@ -285,16 +357,19 @@ public final class TaskScheduler implements AutoCloseable {
             try { executor.shutdown(); }
             catch (Throwable failure) { failures.add(failure); }
         }
+        boolean quiescent = true;
         for (ExecutorService executor : executors) {
             try {
+                if (executor.isTerminated()) { continue; }
                 if (!executor.isShutdown()) { throw new IllegalStateException("Owned executor did not shut down"); }
                 boolean terminated = false;
                 while (!terminated) {
                     try { terminated = executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS); }
                     catch (InterruptedException failure) { failures.interrupted(failure); }
                 }
-            } catch (Throwable failure) { failures.add(failure); }
+            } catch (Throwable failure) { failures.add(failure); quiescent = false; }
         }
+        return quiescent;
     }
 
     private void fault() {
@@ -303,15 +378,18 @@ public final class TaskScheduler implements AutoCloseable {
 
     private void enterTick() {
         requireOwnerIdle();
+        state = State.CAPTURING_MAIN;
+    }
+
+    private void requireHealthy() {
         synchronized (submissionLock) {
             if (!accepting || faulted) { throw new IllegalStateException("Scheduler is closed, closing or faulted"); }
         }
-        state = State.CAPTURING_MAIN;
     }
 
     private State enterMutation(boolean requireHealthy) {
         requireOwner();
-        if (state != State.IDLE && state != State.MAIN) { throw new IllegalStateException("Scheduler boundary is already active"); }
+        if (state != State.IDLE && state != State.MAIN && state != State.BOUNDARY) { throw new IllegalStateException("Scheduler boundary is already active"); }
         synchronized (submissionLock) {
             if (requireHealthy && (!accepting || faulted)) { throw new IllegalStateException("Scheduler is closed, closing or faulted"); }
         }
@@ -335,7 +413,7 @@ public final class TaskScheduler implements AutoCloseable {
         return mode;
     }
 
-    private enum State { IDLE, REGISTERING, CAPTURING_MAIN, MAIN, CAPTURING_CONCURRENT, DISPATCHING, JOINING, CLOSING, CLOSED }
+    private enum State { IDLE, REGISTERING, CAPTURING_MAIN, MAIN, CAPTURING_CONCURRENT, DISPATCHING, JOINING, BOUNDARY, CLOSING, CLOSED }
     private record Registration(ScheduledTask task) {}
     private record Submission(Runnable task, ExecutionMode mode) {}
     private record Snapshot(ScheduledTask task, Set<Object> keys) {}

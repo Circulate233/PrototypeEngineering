@@ -29,6 +29,8 @@
 
 ## 失败、并发与保存
 
+`retire()` 以单向 volatile 标志撤销新执行，允许 worker 请求而不在 worker 清理；它不等待线程、不持久化、也不能复活。`MachineController` 在合法调度边界请求被接受后立即退休实例，当前 MAIN 回调返回或全部 accepted worker join 后再 unload/broken。新配方阶段、后续工位、扫描探测和 admission 停止，已进入事务及回滚完整结束；健康实例仍可保存，结构清空仍允许，迟到形成拒绝。完整时序见[控制器运行时](machine-controller.md)。
+
 `MachineInstance.onSchedule` 对已绑定宿主经过 `MachineLifecycle`；未绑定实例用于独立库逻辑，不携带世界许可。已卸载实例不再执行组件。实际 tick/callback 异常使绑定实例不可继续执行或保存；普通配方 Blocked 仍可在合法状态重试。
 
 共享 VarHandle 对实例内的执行/生命周期阶段做 CAS 和 release/acquire 发布，拒绝重入及重叠。生命周期还检查宿主服务端线程、工作槽和进程没有未完成 acquisition。普通 TaskScheduler 已实现真实 worker/lane join，错误和中断都在接受的动作退出后才归还 owner；MAIN 尚未派发 worker 时允许登记/注销其他控制器。CAS 门本身仍不等待 worker，planned 超时、owner/epoch 和跨机器共享世界安全尚需专门协议，详见[调度说明](scheduling.md)。

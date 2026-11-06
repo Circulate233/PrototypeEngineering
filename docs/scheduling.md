@@ -10,7 +10,7 @@ PM [JavaTaskSchedulerBackend.kt](F:/clone/PrototypeMachinery/src/main/kotlin/imp
 
 普通任务使用不对外暴露的 FutureTask，不调用 cancel。正常完成/ExecutionException 表示业务动作已经退出；InterruptedException 则清除并记住中断，继续等待同一任务以及后续任务，最后恢复 owner 的中断标志并抛错。不能使用 Future.cancel 的返回值作为退出证明，也不能拿 planned 的提前 terminal outcome 代替物理退出。普通路径没有用超时放弃运行任务；非合作的卡死任务仍会阻止所有权交还，不能宣称已经安全卸载。
 
-一旦 tick 发生执行、元数据、派发或 join 故障，调度器保持 faulted，后续 tick/登记/提交均拒绝，避免重放任意业务副作用；注销和关闭仍可用于清理。线程池由实例懒创建并持有，部分创建失败会清理已创建资源。关闭等待所有 owned executor 真正结束，失败保留资源引用并关闭 admission，只允许重试清理，不自动重建旧调度器。
+一旦 tick 发生执行、元数据、派发或 join 故障，调度器保持 faulted，后续普通执行/登记/提交均拒绝，避免重放任意业务副作用；注销、边界动作和关闭仍可用于清理。线程池由实例懒创建并持有，部分创建失败会清理已创建资源。关闭等待所有 owned executor 真正结束；无法证明终止时保留资源和边界队列，只允许重试清理，不自动重建旧调度器。若已经证明全部终止，即使关闭或清理报告错误也可完成 CLOSED，错误本身不表示仍有活 worker。
 
 ## 主阶段中的世界副作用
 
@@ -20,7 +20,9 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 元数据回调、并发捕获/派发/join 期间和外部线程不能修改登记；tick/close 始终不能递归进入。`submit` 可以从任意线程加入受锁保护的下一批队列，但本 tick 回调中新提交的 Runnable 只在下 tick 执行。注销只撤销周期性登记，不会取消另行提交的任意 Runnable；异步结构结果仍由 StructureRefresh 的 request/configuration 证明拒绝。
 
-主任务可以同步清理另一台尚未开始执行的机器。自卸载/自破坏仍需未来控制器在当前机器回调结束、MachineLifecycle gate 释放后完成清理，不能递归取消正在执行事务的自身工位。真实控制器必须按这个边界设计，不能以禁止主线程放置/破坏方块的方式规避原功能。
+主任务可以同步清理另一台尚未开始执行的机器。`runAtBoundary` 供控制器请求自卸载/自破坏：MAIN 回调返回、MachineLifecycle gate 释放后才清理，在后续 CONCURRENT 捕获前生效；worker 请求等全部已接受 Future 物理退出后才执行。它使用受 submissionLock 保护的独立 fastutil FIFO，外线程仅入队，IDLE owner 立即排空，边界内新增请求继续排队而不递归。元数据回调拒绝请求；边界内允许健康登记和清理注销，仍禁止递归 tick/close。
+
+普通 fault 不清空边界队列；已接受动作尝试一次，错误聚合并继续其余动作。faulted tick 入口也先处理边界清理再拒绝普通执行。close 在证明 executor 全部终止后排空队列，并在队列锁内关闭边界 admission，拒绝关闭后请求；终止未证实时暂存动作，IDLE 也不能提前执行。`MachineController` 先接受停止请求再退休实例，使被拒元数据请求不改变机器生命期，详见[控制器运行时](machine-controller.md)。
 
 ## 机器与服务器
 
@@ -36,4 +38,4 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-当前仍需实现机器类型/附 World 后的完整恢复、控制器注册/自退出清理、正式 planned 调度及 PN 权限/预算、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。当前仍需实现实际 TileEntity/Forge 调用、正式 planned 调度及 PN 权限/预算、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。

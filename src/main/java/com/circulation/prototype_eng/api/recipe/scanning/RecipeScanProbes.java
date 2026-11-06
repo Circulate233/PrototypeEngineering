@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
+import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
@@ -26,6 +27,7 @@ public final class RecipeScanProbes {
         ProcessResult result = ProcessResult.SUCCESS;
         try {
             for (var preparation : ordered) {
+                if (retired(process)) { result = RecipeText.Cancelled.blocked(); break; }
                 var transaction = Objects.requireNonNull(Objects.requireNonNull(preparation, "preparation").prepare(process),
                     "preparation transaction");
                 transactions.add(transaction);
@@ -38,6 +40,7 @@ public final class RecipeScanProbes {
                     break;
                 }
             }
+            if (result == ProcessResult.SUCCESS && retired(process)) { result = RecipeText.Cancelled.blocked(); }
             if (result == ProcessResult.SUCCESS) {
                 result = Objects.requireNonNull(check.apply(process), "candidate check result");
             }
@@ -54,6 +57,11 @@ public final class RecipeScanProbes {
             throw failure;
         }
         return result;
+    }
+
+    private static boolean retired(RecipeProcess process) {
+        var lifecycle = process.owner().lifecycle();
+        return lifecycle != null && lifecycle.retired();
     }
 
     private static void requireBoundary(RecipeProcess process) {
