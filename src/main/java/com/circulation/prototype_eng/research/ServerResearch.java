@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.research;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
@@ -10,6 +11,8 @@ import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
+import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
+import com.circulation.prototype_eng.api.research.reward.RewardFragment;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
@@ -22,17 +25,20 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
 import com.circulation.prototype_eng.research.manual.MinecraftManualResearchInventory;
+import com.circulation.prototype_eng.research.reward.MinecraftRewardItemDeliveryAdapter;
 import com.feed_the_beast.ftblib.lib.data.Universe;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
@@ -42,6 +48,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -128,6 +135,29 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
+    /**
+     * Claims the actual player's saved reward eligibility at the existing MAIN boundary. Selection
+     * starts delivery, as in PN. Pending source work settles first; queued requests recheck the exact
+     * server/player session and never accept a client-supplied recipient or item plan.
+     */
+    @SuppressWarnings({"unused", "resource"}) // Public Java operation; the server owns the borrowed scheduler.
+    public static void requestReward(EntityPlayerMP actor, ResourceLocation id, int level, ResourceLocation group,
+                                      Consumer<ResearchRewardClaimer.Result> result) {
+        var current = actorSession(actor);
+        ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(level);
+        Objects.requireNonNull(group);
+        Objects.requireNonNull(result);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor)) {
+                result.accept(new ResearchRewardClaimer.Result(ResearchRewardClaimer.Status.STALE_CONTEXT,
+                    "Reward actor is no longer current", Optional.empty()));
+                return;
+            }
+            result.accept(current.world.claimReward(actor.getUniqueID(), id, level, group, operationTime(current),
+                new MinecraftRewardItemDeliveryAdapter(actor), () -> currentActor(current, actor)));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
     @SuppressWarnings("resource") // This read-only publication is owned by the server lifecycle.
     private static TeamResearchStart.Result startCurrent(Session current, EntityPlayerMP actor, ResourceLocation id, int target) {
         var online = onlinePlayers(current);
@@ -210,8 +240,31 @@ public final class ServerResearch {
             if (session == current && !current.closing && belongsTo(current, player)
                 && current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player) {
                 current.world.playerLogin(player.getUniqueID(), operationTime(current));
+                releaseConfirmedRewards(current, player);
             }
         });
+    }
+
+    /** A confirmed drop may load after its owner logged in; clean it after the join finishes. */
+    @SubscribeEvent
+    @SuppressWarnings("resource") // Cleanup uses the existing server-owned MAIN queue.
+    public static void onRewardEntityJoin(EntityJoinWorldEvent event) {
+        var current = session;
+        if (current == null || current.closing || event.getWorld().isRemote
+            || event.getWorld().getMinecraftServer() != current.server || !(event.getEntity() instanceof EntityItem item)) { return; }
+        var stack = item.getItem();
+        if (!stack.hasTagCompound() || !Objects.requireNonNull(stack.getTagCompound()).hasKey(MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG)) { return; }
+        requireThread(current.server);
+        var identity = StrictNbt.requireCompound(Objects.requireNonNull(stack.getTagCompound()), MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG);
+        var id = UUID.fromString(StrictNbt.requireString(identity, "Player"));
+        var player = current.server.getPlayerList().getPlayerByUUID(id);
+        if (player == null || !currentActor(current, player) || !current.rewardCleanup.add(id)) { return; }
+        try {
+            ServerTaskSchedulers.forServer(current.server).submit(() -> {
+                current.rewardCleanup.remove(id);
+                if (currentActor(current, player)) { releaseConfirmedRewards(current, player); }
+            }, ExecutionMode.MAIN_THREAD);
+        } catch (RuntimeException | Error failure) { current.rewardCleanup.remove(id); throw failure; }
     }
 
     @SubscribeEvent
@@ -253,6 +306,29 @@ public final class ServerResearch {
     private static boolean belongsTo(Session current, EntityPlayerMP player) {
         return !(player instanceof FakePlayer) && !player.world.isRemote
             && player.getServerWorld().getMinecraftServer() == current.server;
+    }
+
+    private static boolean currentActor(Session current, EntityPlayerMP actor) {
+        requireThread(current.server);
+        return session == current && !current.closing && current.server.getWorld(0) == current.overworld
+            && belongsTo(current, actor) && current.server.getPlayerList().getPlayerByUUID(actor.getUniqueID()) == actor;
+    }
+
+    /** A crash after the research checkpoint may restore old delivery tags; remove only proven leaves. */
+    private static void releaseConfirmedRewards(Session current, EntityPlayerMP player) {
+        var delivery = new MinecraftRewardItemDeliveryAdapter(player);
+        for (var saved : current.world.snapshot().players()) {
+            if (!saved.playerUuid().equals(player.getUniqueID())) { continue; }
+            for (var claim : saved.rewardClaims()) {
+                for (var child : claim.children()) {
+                    for (var fragment : child.fragments().values()) {
+                        if (!currentActor(current, player)) { return; }
+                        if (fragment.status() == RewardFragment.Status.CONFIRMED) { delivery.release(fragment); }
+                    }
+                }
+            }
+            return;
+        }
     }
 
     private static Object2ObjectOpenHashMap<UUID, EntityPlayerMP> onlinePlayers(Session current) {
@@ -368,6 +444,7 @@ public final class ServerResearch {
         private final ResearchWorld world;
         private final FtbOwnerTeamResolver resolver;
         private final ResearchStations stations;
+        private final ObjectOpenHashSet<UUID> rewardCleanup = new ObjectOpenHashSet<>();
         private boolean closing;
 
         private Session(MinecraftServer server, WorldServer overworld, ResearchWorld world) {

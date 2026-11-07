@@ -1,0 +1,47 @@
+# 服务器研究奖励领取
+
+奖励沿用 PN 的永久玩家资格、有序组选择、事件幂等键和物品片段状态机。研究完成只创建 UNCLAIMED 资格；选择奖励组即开始实际领取，旧 PN 的 REWARD_CHOICE 与 REWARD_CLAIM 也进入同一个执行方法。当前服务器 Java 领取已接入，packet 和研究界面仍待继续。
+
+## 世界所有者与玩家请求
+
+`ServerResearch.requestReward(player, researchId, level, groupId, resultConsumer)` 使用现有 MAIN 提交队列。旧研究/source 工作先结清，执行时重新验证准确 server、主世界和在线玩家对象；客户端不能指定另一个领取人、物品数量或交付计划。奖励资格永久属于玩家，不要求仍在原队伍，也不要求研究来源尚未被遗忘或下载消耗。
+
+`ResearchWorld.claimReward` 在原世界操作边界获取准确的 PlayerResearchState.RewardSession，再借给 ResearchRewardClaimer。逐次领取检查点只允许这一个会话拥有的 busy 玩家快照，其他玩家/队伍/队列的未结算写入仍禁止保存。外部事件不能重入其他世界操作；领取中产生的普通 World Save 请求延后，由准确领取检查点覆盖。
+
+全部玩家、队伍、队列和材料会话继续保存在同一 ResearchWorldSnapshot / ResearchWorldNbt 中，不增加另一份奖励 writer。写入失败保留完整 pendingSave，下一次操作先重写同一快照，不能先换组、推进其他研究或修改成员。会话在异常后释放，已选组、已完成 child 和片段状态保留。
+
+`ResearchRewardClaimer.Request.current` 是原玩家会话的只读证明。在新效果之前及计划完成后重新核对；失效返回 STALE_CONTEXT，停止后续发放。已发生的效果仍完成其准确物品存档和领取检查点，不因玩家状态变化丢掉恢复义务。事件仍须持久去重 RewardEventKey；外部异常原样传播，只有明确 RETRY_LATER 是普通业务暂停。
+
+## 物品确认与证据清理
+
+每个片段保持固定资源、数量、目标槽或掉落位置。先保存完整选择和计划，再保存 DELIVERING，实际交付、保存目标物品，最后保存 CONFIRMED。恢复先观察真实片段；只有明确缺失证明才能重新交付，加载范围内没有看见不等于全局不存在。
+
+`RewardItemDeliveryAdapter.release` 在 CONFIRMED 世界检查点成功之后调用，只清理交付标签或临时保护，绝不补发缺失物品。默认实现无需标签清理，Minecraft 适配器清理真实栈。清理失败不会把确认状态退回 DELIVERING；再次领取以及 ALREADY_CLAIMED 会重做幂等清理。登录时补清玩家已确认片段，带标签掉落实体后续加载时通过同一 MAIN 队列合并清理请求。
+
+清理后的奖励恢复原业务 NBT，可正常堆叠并参与 AEKey 精确匹配。不能在仅内存确认或保存失败时提前去掉标签，否则恢复将失去准确交付证据。
+
+## 实际物品存档凭据
+
+背包片段使用原 SaveHandler 写入玩家数据，再 force 并读取准确 UUID.dat，校验玩家 UUID、有效且不重复的槽位、唯一片段及完整 tagged payload。单人宿主先经现有 PlayerList 保存以刷新 hostPlayerData，再调用原 saveWorldInfoWithPlayer 写 level.dat，force 并校验 Data.Player；只验证 UUID.dat 不足以覆盖单人恢复。
+
+掉落使用原 AnvilChunkLoader.saveChunk 保存实际加载的目标 chunk，等待既有文件 IO 退出，再 force 原 region 文件并用新的 RegionFile 读取落盘记录。必须匹配 chunk 坐标、minecraft:item、实体 UUID、完整物品及未确认保护。不存在、损坏、重复或不同内容都不能转为 CONFIRMED。这个路径无需保存整个世界；其他代码在领取中触发 World Save 时，仍由世界会话负责延后普通检查点。
+
+未确认的新掉落保存原 Age、PickupDelay 和 Invulnerable，临时暂停老化、拾取及普通伤害；确认后恢复原值并清标记。保存的临时保护也参与磁盘核对，防止重载后在确认前自然消失。非标准玩家存档处理器或非 Anvil 掉落目标在发放之前明确拒绝，外部平台可实现 RewardItemDeliveryAdapter 提供自己的准确凭据。
+
+IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有文件协议，不提供研究文件与 vanilla 文件的原子提交。没有可靠缺失证明时，崩溃发生在 DELIVERING 保存与实际插入之间也会保留未知状态；后续恢复保护不能以“原槽空了”直接补发。
+
+## 旧平台实现的实际问题
+
+旧 PN 的领取平台入口位于 `impl/sync/PrototypeNetworkServerPacketExecutionImpl.java:751`，两类请求在同文件 148–149 行进入同一发奖方法；客户端回应仍是等待 UI 的 sink。现有奖励核心、世界 codec 和单一 writer 可直接复用，无需再造组/claim/fragment 类型。
+
+旧 Minecraft adapter 的 reservedInventorySlots 仅协调一次计划，不是跨 tick 交互锁。旧 Mod 的 container、pickup、toss、use 保护针对研究下载，不能算成奖励冻结已经实现。旧“原槽为空／原加载区块无实体就重发”不足以证明全局缺失，新适配器继续默认不接受这种证明。
+
+普通 `saveAllPlayerData` 和 chunk writer 可能吞掉 IO 错误，仅方法返回不能证明物品已经可恢复；单人宿主还可能从 level.dat 的 Data.Player 恢复而非 UUID.dat。平台确认必须核对实际保存入口中的准确玩家/实体身份和唯一 tagged leaf，不能宣称研究文件与 vanilla 存档跨文件原子。
+
+## 剩余接线与验证范围
+
+领取 packet、研究视图与 GUI、跨 tick 未确认库存片段的完整交互保护和可靠缺失证明仍需继续实现。未知交付保持恢复状态，不能为了让领取返回成功而重新生成物品。下载及其物品回执沿自己的操作链迁移，不与奖励证据混用。
+
+世界集成测试使用真实 ResearchWorld、ResearchRewardClaimer 和 ResearchWorldNbt，覆盖有序事件/物品、选择与各交付阶段保存失败、准确 pending 重写、重载观察、确认后清理失败不补发、会话隔离、重入、延迟保存、原玩家证明失效和永久资格保留。Minecraft 物品调用按实际依赖源码和 IDEA MCP 检查；没有启动游戏、Bootstrap 或 FML。阶段完整构建、平台文件验证和逐文件诊断由[实施进度](implementation-status.md)记录。
+
+服务器奖励阶段新增 24 项行为测试；完整构建 975 tests / 132 suites，零失败/错误/跳过。9 个阶段 src Java 加 Tags 共 10 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-rewards-server-final.json。原 23 份修改保留，未启动游戏或服务端。

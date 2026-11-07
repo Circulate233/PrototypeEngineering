@@ -5,6 +5,9 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
+import com.circulation.prototype_eng.api.research.reward.RewardClaim;
+import com.circulation.prototype_eng.api.research.reward.RewardItemDeliveryAdapter;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
@@ -29,6 +32,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -62,6 +66,7 @@ public final class ResearchWorld {
     private boolean checkpointRequested;
     @Nullable private StationTick activeTick;
     @Nullable private Throwable fatalFailure;
+    @Nullable private PlayerResearchState.RewardSession activeReward;
 
     public ResearchWorld(ResearchRegistry registry, NetworkResourceRegistry resources,
                          ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
@@ -142,6 +147,56 @@ public final class ResearchWorld {
 
     public void playerLogin(UUID player, long time) {
         operate(time, false, () -> { ensurePlayer(player); if (dirty) { persist(); } return null; });
+    }
+
+    /**
+     * Claims this player's permanent eligibility through the world's single durable writer. No team
+     * membership or current research level is required: forgetting and changing teams retain rewards.
+     * The exact reward session is the only busy source admitted to its own intermediate checkpoints.
+     */
+    public ResearchRewardClaimer.Result claimReward(UUID actor, ResourceLocation id, int level,
+            ResourceLocation group, long time, RewardItemDeliveryAdapter delivery, BooleanSupplier current) {
+        requireOwner();
+        requireHealthy();
+        Objects.requireNonNull(actor);
+        Objects.requireNonNull(group);
+        Objects.requireNonNull(delivery);
+        Objects.requireNonNull(current);
+        if (activeTick != null && !executing) { return rewardResult(ResearchRewardClaimer.Status.BUSY); }
+        return operate(time, false, () -> {
+            if (!current.getAsBoolean()) { return rewardResult(ResearchRewardClaimer.Status.STALE_CONTEXT); }
+            var definition = registry.require(id);
+            definition.stageForLevel(level);
+            var player = players.get(actor);
+            if (player == null) { return rewardResult(ResearchRewardClaimer.Status.MISSING_CLAIM); }
+            for (var source : players.values()) {
+                if (source.busy()) { return rewardResult(ResearchRewardClaimer.Status.BUSY); }
+            }
+            for (var team : teams.values()) {
+                if (team.research.busy() || team.queue.busy()) { return rewardResult(ResearchRewardClaimer.Status.BUSY); }
+            }
+            var key = new RewardClaim.Key(actor, id, level);
+            var reward = player.tryRewardSession(key);
+            if (reward == null) { return rewardResult(ResearchRewardClaimer.Status.BUSY); }
+            try (reward) {
+                activeReward = reward;
+                return new ResearchRewardClaimer().claim(new ResearchRewardClaimer.Request(player, definition, level,
+                    group, time, claim -> rewardCheckpoint(player, reward, claim), delivery, current), reward);
+            } finally { activeReward = null; }
+        });
+    }
+
+    private void rewardCheckpoint(PlayerResearchState player, PlayerResearchState.RewardSession reward, RewardClaim claim) {
+        if (!executing || activeReward != reward || players.get(player.playerUuid()) != player
+            || !reward.owns(player, claim.key()) || reward.requireCurrent() != claim) {
+            throw new IllegalStateException("Reward checkpoint does not own its exact player/claim session");
+        }
+        dirty = true;
+        persist(reward);
+    }
+
+    private static ResearchRewardClaimer.Result rewardResult(ResearchRewardClaimer.Status status) {
+        return new ResearchRewardClaimer.Result(status, status.name(), Optional.empty());
     }
 
     /** Logout pauses every matching active session, including work waiting behind another queue head. */
@@ -414,7 +469,7 @@ public final class ResearchWorld {
         requireOwner();
         requireHealthy();
         if (time < serverTime) { throw new IllegalArgumentException("Research checkpoint time moved backwards"); }
-        if (activeTick != null) { checkpointRequested = true; return; }
+        if (activeTick != null || activeReward != null) { checkpointRequested = true; return; }
         operate(time, true, () -> { persist(); return null; });
     }
 
@@ -442,8 +497,16 @@ public final class ResearchWorld {
     }
 
     private ResearchWorldSnapshot snapshotState() {
+        return snapshotState(null);
+    }
+
+    private ResearchWorldSnapshot snapshotState(@Nullable PlayerResearchState.RewardSession reward) {
         var playerSnapshots = new ObjectArrayList<PlayerResearchState.Snapshot>();
         for (var player : players.values()) {
+            if (reward != null && reward == activeReward && reward.owns(player, reward.requireCurrent().key())) {
+                playerSnapshots.add(reward.snapshot());
+                continue;
+            }
             if (player.busy()) { throw new IllegalStateException("Cannot snapshot a research source owned by another transaction"); }
             playerSnapshots.add(player.snapshot());
         }
@@ -457,18 +520,27 @@ public final class ResearchWorld {
     }
 
     private void persist() {
+        persist(null);
+    }
+
+    private void persist(@Nullable PlayerResearchState.RewardSession reward) {
         if (pendingSave != null) { throw new IllegalStateException("Previous world checkpoint still owns its snapshot"); }
-        pendingSave = snapshotState();
-        flushPending();
+        pendingSave = snapshotState(reward);
+        flushPending(reward);
     }
 
     private void flushPending() {
+        flushPending(null);
+    }
+
+    private void flushPending(@Nullable PlayerResearchState.RewardSession reward) {
         if (pendingSave == null) { return; }
-        if (!pendingSave.equals(snapshotState())) { throw new IllegalStateException("Pending research save lost its exact world state"); }
+        if (!pendingSave.equals(snapshotState(reward))) { throw new IllegalStateException("Pending research save lost its exact world state"); }
         writer.accept(pendingSave);
-        if (!pendingSave.equals(snapshotState())) { throw new IllegalStateException("Research writer changed the world it was saving"); }
+        if (!pendingSave.equals(snapshotState(reward))) { throw new IllegalStateException("Research writer changed the world it was saving"); }
         pendingSave = null;
         dirty = false;
+        checkpointRequested = false;
     }
 
     private <T> T operate(long time, boolean allowClosing, Supplier<T> action) {

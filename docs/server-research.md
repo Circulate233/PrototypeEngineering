@@ -16,7 +16,7 @@
 
 正 tier 从 `ResearchStations.admission(teamId)` 读取当前活动网络中心、选中数据中心和同队各维度活动研究站的最高等级，及当前可用 numeric 向量。它不申请 THREAD、不轮换实际工作站、不消耗算力或材料。开始条件执行前后重验原 publication、设备许可与捕获的可用余额，不能把客户端自报等级/资源作为事实，也不能用条件回调后另捕获的新许可替换原证明。
 
-成功入队沿用 `ResearchWorld.start` 的真实请求者条件和单一世界保存；resultConsumer 只在正常结果返回后执行。正 tier 材料会在后续研究 tick 推进。tier 0 沿原手动协议，直接开始/接管仍保留。此处已提供实际服务器 Java 入口，packet/GUI 适配仍待实现。
+成功入队沿用 `ResearchWorld.start` 的真实请求者条件和单一世界保存；resultConsumer 只在正常结果返回后执行。正 tier 材料会在后续研究 tick 推进。tier 0 沿原手动协议，直接开始/接管仍保留。此处已提供实际服务器 Java 入口，packet/GUI 适配仍待实现。奖励使用 ServerResearch.requestReward 经相同 MAIN 边界领取，复核实际玩家会话，详细持有者与物品证据见[服务器奖励](research-rewards.md)。
 
 ## 同步存档与失败恢复
 
@@ -42,7 +42,7 @@
 
 研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。
 
-已接服务器 Java 入口包括所有等级的排队开始、tier 0 直接开始/接管，以及正 tier 队头的设备选择、材料/计算提交和自动推进；普通配方研究/计算消费者见[配方消费者](network-recipes.md)。研究界面/packet、领取与存档事务绑定、下载仍未完成。`ResearchWorld` 可供外部服务器宿主使用，但其可调用 API 不等于上述玩法流程已接通。
+已接服务器 Java 入口包括所有等级的排队开始、tier 0 直接开始/接管，以及正 tier 队头的设备选择、材料/计算提交和自动推进；普通配方研究/计算消费者见[配方消费者](network-recipes.md)。服务器奖励领取与世界检查点已接，见[服务器奖励](research-rewards.md)；研究界面/packet、未确认奖励库存的完整恢复保护和下载仍未完成。`ResearchWorld` 可供外部服务器宿主使用，但其可调用 API 不等于上述玩法流程已接通。
 
 最初手动服务器阶段新增 50 项逻辑测试：世界 owner/成员/失败重试/恢复，结构资格，手动无效取消，以及严格世界 codec 与临时目录真实文件 IO。完整构建通过 741 项测试、104 suites，无失败/错误/跳过。本机 IDEA MCP 对 16 个本阶段 Java 与生成 Tags 共 17 文件逐个 `errorsOnly:false`，零错误/警告/弱警告；MCP 项目构建成功。证据：`build/reports/idea/server-research-final.json`。
 

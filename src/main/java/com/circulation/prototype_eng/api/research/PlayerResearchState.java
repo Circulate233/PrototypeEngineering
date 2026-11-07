@@ -172,6 +172,16 @@ public final class PlayerResearchState {
         private final RewardClaim.Key key;
         private RewardSession(PlayerResearchState owner, RewardClaim.Key key) { this.owner = owner; this.key = key; }
 
+        /** Exact borrowed-session proof; another source or claim never inherits this writer. */
+        public boolean owns(PlayerResearchState source, RewardClaim.Key expected) {
+            synchronized (owner) { return owner == source && owner.writer == this && key.equals(expected); }
+        }
+
+        /** The world checkpoint may snapshot its own reward writer while unrelated writes stay excluded. */
+        public Snapshot snapshot() {
+            synchronized (owner) { requireOwner(); return owner.state; }
+        }
+
         public RewardClaim current() {
             synchronized (owner) {
                 requireOwner();

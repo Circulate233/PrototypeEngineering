@@ -24,6 +24,17 @@ public interface RewardItemDeliveryAdapter {
     /** Synchronously save and flush the exact successful side effect before fragment confirmation. */
     void commit(RewardFragment fragment, Delivery delivery);
 
+    /**
+     * Releases delivery-only tags/protection after this exact CONFIRMED fragment is durably saved.
+     * Idempotent cleanup only: a missing leaf never permits issuing a replacement. Recovery calls
+     * this again for confirmed leaves, including already claimed rewards.
+     */
+    default void release(RewardFragment fragment) {
+        if (Objects.requireNonNull(fragment).status() != RewardFragment.Status.CONFIRMED) {
+            throw new IllegalArgumentException("Only confirmed reward fragments may release their delivery evidence");
+        }
+    }
+
     record Delivery(int acceptedCount, Optional<UUID> entityUuid) {
         public Delivery {
             Objects.requireNonNull(entityUuid, "entityUuid");

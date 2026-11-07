@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.ResourceLocation;
@@ -23,49 +24,67 @@ public final class ResearchRewardClaimer {
         var key = new RewardClaim.Key(request.playerState().playerUuid(), request.definition().id(), request.level());
         var session = request.playerState().tryRewardSession(key);
         if (session == null) return result(Status.BUSY, "Player research state has an active writer");
-        try (session) {
-            var existing = session.current();
-            if (existing == null) return result(Status.MISSING_CLAIM, "No reward eligibility for this level");
-            RewardGroup selected = null;
-            for (var group : request.definition().rewardGroupsForLevel(request.level())) {
-                if (group.id().equals(request.selectedGroupId())) selected = group;
-            }
-            if (selected == null) return result(Status.UNKNOWN_GROUP, "Unknown reward group");
-            if (existing.status() != RewardClaim.Status.UNCLAIMED
-                    && !existing.selectedGroupId().orElseThrow().equals(selected.id())) {
-                return result(Status.CHOICE_FIXED, "Reward selection is already fixed");
-            }
-            if (existing.status() == RewardClaim.Status.UNCLAIMED) {
-                var plan = createChildren(request, selected);
-                if (plan == null) return result(Status.RECOVERY_ERROR, "Invalid complete reward fragment plan");
-                existing = existing.select(selected.id(), request.currentWorldTime(), plan);
-                session.replace(existing);
-            }
-            if (!validRecovery(existing, selected)) return result(Status.RECOVERY_ERROR, "Saved reward plan differs from its definition");
-            // Also retries a failed final checkpoint before treating the in-memory terminal state as durable.
-            request.checkpoint().persist(existing);
-            if (existing.status() == RewardClaim.Status.CLAIMED) return result(Status.ALREADY_CLAIMED, "Reward already claimed");
-            for (int index = 0; index < selected.children().size(); index++) {
-                var child = session.requireCurrent().children().get(index);
-                if (child.status() == RewardClaim.ChildStatus.ERROR) return result(Status.RECOVERY_ERROR, "Reward child is in ERROR state");
-                if (child.status() == RewardClaim.ChildStatus.COMPLETED) continue;
-                var definition = selected.children().get(index);
-                var pause = switch (definition) {
-                    case RewardChild.Event event -> deliverEvent(request, session, index, event);
-                    case RewardChild.Item ignored -> deliverItems(request, session, index);
-                };
-                if (pause != null) return pause;
-            }
-            var completed = session.requireCurrent().completed(request.currentWorldTime());
-            save(request, session, completed);
-            return new Result(Status.CLAIMED, "Reward claimed", Optional.of(completed));
+        try (session) { return claim(request, session); }
+    }
+
+    /** Executes under the caller's exact session; the caller retains ownership through its final checkpoint. */
+    public Result claim(Request request, PlayerResearchState.RewardSession session) {
+        Objects.requireNonNull(request, "request");
+        var key = new RewardClaim.Key(request.playerState().playerUuid(), request.definition().id(), request.level());
+        if (!Objects.requireNonNull(session).owns(request.playerState(), key)) {
+            throw new IllegalArgumentException("Reward request does not own this player/claim session");
         }
+        if (!request.current().getAsBoolean()) return stale();
+        var existing = session.current();
+        if (existing == null) return result(Status.MISSING_CLAIM, "No reward eligibility for this level");
+        RewardGroup selected = null;
+        for (var group : request.definition().rewardGroupsForLevel(request.level())) {
+            if (group.id().equals(request.selectedGroupId())) selected = group;
+        }
+        if (selected == null) return result(Status.UNKNOWN_GROUP, "Unknown reward group");
+        if (existing.status() != RewardClaim.Status.UNCLAIMED
+                && !existing.selectedGroupId().orElseThrow().equals(selected.id())) {
+            return result(Status.CHOICE_FIXED, "Reward selection is already fixed");
+        }
+        if (existing.status() == RewardClaim.Status.UNCLAIMED) {
+            var plan = createChildren(request, selected);
+            if (!request.current().getAsBoolean()) return stale();
+            if (plan == null) return result(Status.RECOVERY_ERROR, "Invalid complete reward fragment plan");
+            existing = existing.select(selected.id(), request.currentWorldTime(), plan);
+            session.replace(existing);
+        }
+        if (!validRecovery(existing, selected)) return result(Status.RECOVERY_ERROR, "Saved reward plan differs from its definition");
+        // Also retries a failed final checkpoint before treating the in-memory terminal state as durable.
+        request.checkpoint().persist(existing);
+        for (var child : existing.children()) {
+            for (var fragment : child.fragments().values()) {
+                if (!request.current().getAsBoolean()) return stale();
+                if (fragment.status() == RewardFragment.Status.CONFIRMED) request.itemDelivery().release(fragment);
+            }
+        }
+        if (existing.status() == RewardClaim.Status.CLAIMED) return result(Status.ALREADY_CLAIMED, "Reward already claimed");
+        for (int index = 0; index < selected.children().size(); index++) {
+            if (!request.current().getAsBoolean()) return stale();
+            var child = session.requireCurrent().children().get(index);
+            if (child.status() == RewardClaim.ChildStatus.ERROR) return result(Status.RECOVERY_ERROR, "Reward child is in ERROR state");
+            if (child.status() == RewardClaim.ChildStatus.COMPLETED) continue;
+            var definition = selected.children().get(index);
+            var pause = switch (definition) {
+                case RewardChild.Event event -> deliverEvent(request, session, index, event);
+                case RewardChild.Item ignored -> deliverItems(request, session, index);
+            };
+            if (pause != null) return pause;
+        }
+        var completed = session.requireCurrent().completed(request.currentWorldTime());
+        save(request, session, completed);
+        return new Result(Status.CLAIMED, "Reward claimed", Optional.of(completed));
     }
 
     private static ObjectList<RewardClaim.Child> createChildren(Request request, RewardGroup group) {
         var children = new ObjectArrayList<RewardClaim.Child>();
         var fragmentIds = new ObjectOpenHashSet<UUID>();
         for (var definition : group.children()) {
+            if (!request.current().getAsBoolean()) return null;
             var key = new RewardEventKey(request.playerState().playerUuid(), request.definition().id(), request.level(), group.id(), definition.id());
             var fragments = new Object2ObjectLinkedOpenHashMap<UUID, RewardFragment>();
             var kind = RewardClaim.Kind.EVENT;
@@ -138,6 +157,7 @@ public final class ResearchRewardClaimer {
             if (!validScan(scan, delivering)) return result(Status.RECOVERY_ERROR, "Invalid reward recovery observation");
             for (var fragment : delivering) {
                 if (scan.observed().contains(fragment.id())) {
+                    if (!request.current().getAsBoolean()) return stale();
                     var entity = scan.worldEntities().get(fragment.id());
                     if (!validEntity(fragment, entity)) return result(Status.RECOVERY_ERROR, "Observed reward target identity conflicts");
                     var delivery = new RewardItemDeliveryAdapter.Delivery(fragment.count(), Optional.ofNullable(entity));
@@ -147,6 +167,7 @@ public final class ResearchRewardClaimer {
             }
             for (var fragment : delivering) {
                 if (!scan.provenAbsent().contains(fragment.id())) continue;
+                if (!request.current().getAsBoolean()) return stale();
                 if (!request.itemDelivery().canDeliver(fragment)) return result(Status.RETRY_LATER, "Proven absent fragment target is unavailable");
                 var pause = deliverStarted(request, session, index, fragment);
                 if (pause != null) return pause;
@@ -159,7 +180,9 @@ public final class ResearchRewardClaimer {
         var planned = new ObjectArrayList<>(session.requireCurrent().children().get(index).fragments().values());
         for (var fragment : planned) {
             if (fragment.status() != RewardFragment.Status.PLANNED) continue;
+            if (!request.current().getAsBoolean()) return stale();
             if (!request.itemDelivery().canDeliver(fragment)) return result(Status.RETRY_LATER, "Reward target is unavailable");
+            if (!request.current().getAsBoolean()) return stale();
             var started = fragment.started();
             var current = session.requireCurrent();
             save(request, session, current.replaceChild(index, current.children().get(index).replaceFragment(started)));
@@ -183,6 +206,7 @@ public final class ResearchRewardClaimer {
     }
 
     private static Result deliverStarted(Request request, PlayerResearchState.RewardSession session, int index, RewardFragment fragment) {
+        if (!request.current().getAsBoolean()) return stale();
         var delivery = request.itemDelivery().deliver(fragment);
         if (delivery == null || delivery.acceptedCount() != fragment.count() || !validEntity(fragment, delivery.entityUuid().orElse(null))) {
             return result(Status.RETRY_LATER, "Reward delivery is not an exact confirmed success");
@@ -199,7 +223,9 @@ public final class ResearchRewardClaimer {
 
     private static void confirm(Request request, PlayerResearchState.RewardSession session, int index, RewardFragment fragment, @Nullable UUID entity) {
         var current = session.requireCurrent();
-        save(request, session, current.replaceChild(index, current.children().get(index).replaceFragment(fragment.confirmed(entity))));
+        var confirmed = fragment.confirmed(entity);
+        save(request, session, current.replaceChild(index, current.children().get(index).replaceFragment(confirmed)));
+        request.itemDelivery().release(confirmed);
     }
 
     private static void save(Request request, PlayerResearchState.RewardSession session, RewardClaim updated) {
@@ -208,19 +234,32 @@ public final class ResearchRewardClaimer {
     }
 
     private static Result result(Status status, String message) { return new Result(status, message, Optional.empty()); }
+    private static Result stale() { return result(Status.STALE_CONTEXT, "Reward actor is no longer current"); }
 
+    /**
+     * Current is a read-only proof of the original actor/session, checked between forward effects.
+     * Losing it stops new delivery; an effect already performed still owes its exact commit and
+     * checkpoint before control returns. The adapter retains responsibility for that original target.
+     */
     public record Request(PlayerResearchState playerState, ResearchDefinition definition, int level,
-            ResourceLocation selectedGroupId, long currentWorldTime, RewardClaimCheckpoint checkpoint, RewardItemDeliveryAdapter itemDelivery) {
+            ResourceLocation selectedGroupId, long currentWorldTime, RewardClaimCheckpoint checkpoint,
+            RewardItemDeliveryAdapter itemDelivery, BooleanSupplier current) {
+        public Request(PlayerResearchState playerState, ResearchDefinition definition, int level,
+                       ResourceLocation selectedGroupId, long currentWorldTime, RewardClaimCheckpoint checkpoint,
+                       RewardItemDeliveryAdapter itemDelivery) {
+            this(playerState, definition, level, selectedGroupId, currentWorldTime, checkpoint, itemDelivery, () -> true);
+        }
         public Request {
             Objects.requireNonNull(playerState, "playerState");
             Objects.requireNonNull(definition, "definition");
             Objects.requireNonNull(selectedGroupId, "selectedGroupId");
             Objects.requireNonNull(checkpoint, "checkpoint");
             Objects.requireNonNull(itemDelivery, "itemDelivery");
+            Objects.requireNonNull(current, "current");
             if (level < 1 || level > definition.maxLevel() || currentWorldTime < 0) throw new IllegalArgumentException("Invalid reward claim request");
         }
     }
 
     public record Result(Status status, String message, Optional<RewardClaim> claimed) { }
-    public enum Status { CLAIMED, MISSING_CLAIM, ALREADY_CLAIMED, UNKNOWN_GROUP, CHOICE_FIXED, BUSY, RETRY_LATER, RECOVERY_ERROR }
+    public enum Status { CLAIMED, MISSING_CLAIM, ALREADY_CLAIMED, UNKNOWN_GROUP, CHOICE_FIXED, BUSY, RETRY_LATER, RECOVERY_ERROR, STALE_CONTEXT }
 }
