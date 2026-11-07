@@ -30,7 +30,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 `ComponentMap` 把系统顺序作用于组件依赖，同组件的多个系统保留声明顺序。系统元数据须保持不变；动态重组通过组件表进行。每个 tick 只取一次完整执行列表，依次执行全部 Pre、全部 Normal、全部 Post。回调中发生替换时，本 tick 的全部阶段仍使用同一旧列表，下个 tick 才采用新列表。普通 `tick(owner)` 的回调抛错立即终止后续阶段。
 
-单进程循环使用 `tick(owner, body)`：仍只捕获一次回调列表，Pre/Normal 全部成功后才进入业务 body；这两阶段的异常立即终止，尚未进入 body 时不执行 Post。进入 body 后，无论阻塞、业务异常或某个 Post 异常，都会依次执行全部已捕获的 Post 清理。业务原异常保持主异常，清理异常附加为 suppressed；没有业务异常时暴露首个 Post 异常并附加其余错误。
+单进程循环和 `tick(owner, body)` 共用 `beginTick/finish` 会话：仍只捕获一次回调列表，Pre/Normal 全部成功后才进入业务 body；这两阶段的异常立即终止，尚未进入 body 时不执行 Post。进入 body 后，无论阻塞、业务异常或某个 Post 异常，都会依次执行全部已捕获的 Post 清理。业务原异常保持主异常，清理异常附加为 suppressed；没有业务异常时暴露首个 Post 异常并附加其余错误。
 
 `MachineInstance.onSchedule()` 调用这一分派；`MachineSystem` 默认把阶段适配为 `MachineTickEvent.Pre/Normal/Post`，具体系统也可覆盖阶段方法。此入口已接入普通调度与控制器宿主，结构成型/退休门限统一限制配方扫描和工位处理；PN 权限、正式 planned 和游戏运行验证仍须继续迁移。
 
@@ -46,7 +46,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 这里统一了旧接口注释与执行器对 Blocked 的矛盾，以实际整阶段回滚行为为准。资源不足使用 Blocked，契约错误使用异常；捕获只用于异常清理，不作为常规流程。
 
-统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。当前同步批次不是跨 lane/join 的 distributed 提交实现。
+统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。同步路径仍整段持锁；真实阶段现可经TickSession/Stage交给跨lane ResourceBatch，获取顺序、延迟post及准确恢复见[阶段会话](recipe-tick-sessions.md)，正式planned coordinator尚未接入。
 
 `RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回；该进程随后拒绝 tick，不重放已完成阶段。阶段 rollback 成功只证明本次补偿，不使发生异常的原进程恢复执行资格。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过此前工作槽阶段验证，基础多工位 admission 已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
 

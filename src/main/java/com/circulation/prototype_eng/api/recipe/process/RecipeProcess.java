@@ -14,6 +14,10 @@ import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import com.circulation.prototype_eng.recipe.RecipeAbortCleanup;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.ResourceBatch;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -38,6 +42,9 @@ public final class RecipeProcess {
     private boolean ticking;
     private int acquiredTransactions;
     private boolean persistenceFailure;
+    private long stageVersion;
+    @Nullable
+    private TickSession activeSession;
     @Nullable
     private MachineWorkSlots host;
     @Nullable
@@ -118,7 +125,7 @@ public final class RecipeProcess {
 
     /** Rejects live work; unlike persistence this permits observing a faulted but inactive process. */
     public void requireQuiescent() {
-        if (ticking || activeTick != null || activeRequirement != null || acquiredTransactions != 0) {
+        if (ticking || activeSession != null || activeTick != null || activeRequirement != null || acquiredTransactions != 0) {
             throw new IllegalStateException("Process is executing or has acquired transactions");
         }
     }
@@ -325,82 +332,348 @@ public final class RecipeProcess {
      * Component callbacks run pre/tick before processing and post afterwards, including blockage.
      */
     public ProcessResult tick() {
-        requirePersistenceBoundary();
-        if (state.lifecycle().isTerminal() || workPaused()) {
-            return state.result();
-        }
-        ticking = true;
+        var session = beginTick();
+        if (session == null) { return state.result(); }
         try {
-            components.tick(this, this::advance);
+            Stage stage;
+            while ((stage = session.nextStage()) != null) {
+                try { stage.acquire(); }
+                catch (RuntimeException | Error failure) {
+                    try { stage.rollbackSynchronously(); }
+                    catch (RuntimeException | Error cleanup) { suppress(failure, cleanup); }
+                    throw failure;
+                }
+                stage.settleSynchronously();
+            }
             return state.result();
         } catch (RuntimeException | Error failure) {
-            // Completion and notification failures may occur after the irrevocable resource boundary.
-            // A thrown tick is not a certified save point, even when its lifecycle already advanced.
-            persistenceFailure = true;
+            session.recordFailure(failure);
             throw failure;
         } finally {
-            ticking = false;
+            // PM's ordinary body always exits through post, even with uncertain cleanup.
+            // The live session still pins persistence until its remaining stage is confirmed.
+            session.finishSynchronousBody();
         }
     }
 
-    private void advance() {
-        if (state.lifecycle() == Lifecycle.NEW && !execute(RecipeStage.START)) {
-            return;
-        }
-        if (state.progress() >= recipe.durationTicks()) {
-            execute(RecipeStage.END);
-            return;
-        }
-        if (execute(RecipeStage.TICK) && state.progress() >= recipe.durationTicks()) {
-            execute(RecipeStage.END);
-        }
-    }
-
-    private boolean execute(RecipeStage stage) {
-        // Retirement pauses at complete stage boundaries, never inside acquisition/commit/rollback.
-        if (workPaused()) { return false; }
-        State before = state;
-        State next = switch (stage) {
-            case START -> new State(Lifecycle.RUNNING, before.progress(), before.successfulTicks(), ProcessResult.SUCCESS);
-            case TICK -> {
-                double speed = attributes.value(StandardMachineAttributes.PROCESS_SPEED, 1);
-                double progress = before.progress() + Math.max(0, speed);
-                long ticks = Math.incrementExact(before.successfulTicks());
-                // Freeze once so checkpoint acquisition and committed progress use the same advance.
-                var advancing = new State(Lifecycle.RUNNING, progress, ticks, ProcessResult.SUCCESS);
-                activeTick = new Tick(before.progress(), progress, before.successfulTicks(), ticks);
-                yield advancing;
-            }
-            case END -> new State(Lifecycle.COMPLETED, before.progress(), before.successfulTicks(), ProcessResult.SUCCESS);
-        };
-        ProcessResult result;
+    /**
+     * Begins one scheduled tick. Null means terminal or paused; no component callback ran.
+     * The owner must retain the session through all stage rounds and finish it after settlement.
+     * This is deliberately not AutoCloseable: unresolved resources must defer planned post callbacks.
+     */
+    @Nullable
+    public TickSession beginTick() {
+        requirePersistenceBoundary();
+        if (state.lifecycle().isTerminal() || workPaused()) { return null; }
+        var session = new TickSession(this);
+        activeSession = session;
+        session.executing = true;
         try {
-            result = RecipeStageExecutor.execute(this, stage, new RequirementTransaction() {
-                @Override
-                public ProcessResult result() {
-                    return ProcessResult.SUCCESS;
-                }
+            session.callbacks = components.beginTick(this);
+            return session;
+        } catch (RuntimeException | Error failure) {
+            persistenceFailure = true;
+            activeSession = null;
+            throw failure;
+        } finally { session.executing = false; }
+    }
 
-                @Override
-                public void commit() {
-                    state = next;
-                }
+    /** Recovery owner access after an ordinary tick threw with unconfirmed cleanup. */
+    @Nullable
+    public TickSession pendingTick() { return activeSession; }
 
-                @Override
-                public void rollback() {
-                    state = before;
+    /** One owner-thread component dispatch and a cursor that permits at most one TICK attempt. */
+    public static final class TickSession {
+        private final RecipeProcess process;
+        private final Thread ownerThread = Thread.currentThread();
+        @Nullable private final MachineWorkSlots host;
+        @Nullable private ComponentMap.TickSession<RecipeProcess> callbacks;
+        @Nullable private Stage current;
+        @Nullable private Throwable failure;
+        private boolean executing;
+        private boolean tickAttempted;
+        private boolean stopped;
+        private boolean postDone;
+
+        private TickSession(RecipeProcess process) {
+            this.process = process;
+            host = process.host;
+        }
+
+        /** Creates the lease before acquisition, so even an empty stage prevents reentry/save. */
+        @Nullable
+        public Stage nextStage() {
+            requireOwner();
+            if (current != null) { throw new IllegalStateException("Current recipe stage is still leased"); }
+            if (stopped || process.workPaused() || process.state.lifecycle().isTerminal()) { return null; }
+            RecipeStage phase;
+            if (process.state.lifecycle() == Lifecycle.NEW) { phase = RecipeStage.START; }
+            else if (process.state.progress() >= process.recipe.durationTicks()) { phase = RecipeStage.END; }
+            else if (!tickAttempted) { phase = RecipeStage.TICK; }
+            else { return null; }
+            process.stageVersion = Math.incrementExact(process.stageVersion);
+            current = new Stage(this, phase, process.stageVersion);
+            if (phase == RecipeStage.TICK) { tickAttempted = true; }
+            return current;
+        }
+
+        /** The retained stage remains available for exact cleanup after acquisition/body failure. */
+        @Nullable
+        public Stage currentStage() { requireOwner(); return current; }
+
+        /** Stops later rounds and retains the original fault, including faults from source lanes. */
+        public void recordFailure(Throwable cause) {
+            requireThread();
+            Objects.requireNonNull(cause);
+            if (failure == null) { failure = cause; }
+            else { suppress(failure, cause); }
+            stopped = true;
+            process.persistenceFailure = true;
+        }
+
+        /** Finishes planned post only after the current lease was accurately settled. */
+        public void finish() {
+            requireOwner();
+            if (current != null) { throw new IllegalStateException("Cannot finish an unsettled recipe tick"); }
+            finishSynchronousBody();
+        }
+
+        private void finishSynchronousBody() {
+            requireOwner();
+            stopped = true;
+            executing = true;
+            try {
+                if (!postDone) {
+                    postDone = true;
+                    Objects.requireNonNull(callbacks).finish(failure);
                 }
+            } catch (RuntimeException | Error post) {
+                recordFailure(post);
+                throw post;
+            } finally {
+                executing = false;
+                if (current == null) { process.activeSession = null; }
+            }
+        }
+
+        private void requireThread() {
+            if (Thread.currentThread() != ownerThread || process.activeSession != this || process.host != host) {
+                throw new IllegalStateException("Stale recipe tick session or incorrect owner");
+            }
+        }
+
+        private void requireOwner() {
+            requireThread();
+            if (executing) { throw new IllegalStateException("Recipe tick callback is executing"); }
+        }
+    }
+
+    /**
+     * Exact current-stage acquisition. Use synchronous settlement or transfer a whole round to one
+     * ResourceBatch; never both. The handle cannot advance its process until that boundary is proven.
+     */
+    public static final class Stage {
+        private final TickSession session;
+        private final RecipeStage phase;
+        private final long version;
+        private final State before;
+        private final State next;
+        @Nullable private final Tick tick;
+        private final RecipeStageExecutor.Acquisition acquisition;
+        @Nullable private ResourceBatch batch;
+        private boolean acquired;
+        private boolean synchronous;
+        private ReversibleTransaction.Resolution transition = ReversibleTransaction.Resolution.REVERSIBLE;
+
+        private Stage(TickSession session, RecipeStage phase, long version) {
+            this.session = session;
+            this.phase = phase;
+            this.version = version;
+            var process = session.process;
+            before = process.state;
+            next = switch (phase) {
+                case START -> new State(Lifecycle.RUNNING, before.progress(), before.successfulTicks(), ProcessResult.SUCCESS);
+                case TICK -> new State(Lifecycle.RUNNING,
+                    before.progress() + Math.max(0, process.attributes.value(StandardMachineAttributes.PROCESS_SPEED, 1)),
+                    Math.incrementExact(before.successfulTicks()), ProcessResult.SUCCESS);
+                case END -> new State(Lifecycle.COMPLETED, before.progress(), before.successfulTicks(), ProcessResult.SUCCESS);
+            };
+            tick = phase == RecipeStage.TICK ? new Tick(before.progress(), next.progress(),
+                before.successfulTicks(), next.successfulTicks()) : null;
+            acquisition = RecipeStageExecutor.prepare(process, phase, new RequirementTransaction() {
+                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+                @Override public void commit() {
+                    requireLive();
+                    if (session.failure != null || acquisition.failure() != null || acquisition.result() != ProcessResult.SUCCESS
+                        || transition != Resolution.REVERSIBLE || process.state != before) {
+                        throw new IllegalStateException("Cannot commit a rejected or stale recipe stage");
+                    }
+                    process.state = next;
+                }
+                @Override public void complete() {
+                    requireLive();
+                    if (process.state != next || transition != Resolution.REVERSIBLE) {
+                        throw new IllegalStateException("Recipe transition did not commit");
+                    }
+                    transition = Resolution.COMPLETED;
+                }
+                @Override public void rollback() {
+                    requireLive();
+                    if (transition != Resolution.REVERSIBLE) { throw new IllegalStateException("Recipe transition is terminal"); }
+                    process.state = before;
+                    transition = Resolution.ROLLED_BACK;
+                }
+                @Override public Resolution resolution() { requireLive(); return transition; }
             });
-        } finally {
-            activeTick = null;
         }
-        if (result != ProcessResult.SUCCESS) {
-            state = new State(result instanceof ProcessResult.Failure ? Lifecycle.FAILED : before.lifecycle(),
-                before.progress(), before.successfulTicks(), result, before.started());
-            if (result instanceof ProcessResult.Failure) { RecipeAbortCleanup.run(this); }
-            return false;
+
+        public RecipeStage phase() { return phase; }
+
+        /** Stops before acquisition without invoking requirements, for cancellation/retirement. */
+        public void discard() {
+            requireOwner();
+            if (acquired) { throw new IllegalStateException("Acquired recipe stage must settle its participants"); }
+            session.stopped = true;
+            session.current = null;
         }
-        return true;
+
+        /** A throwing acquire still leaves this handle owning its partial acquisition. */
+        public void acquire() {
+            requireOwner();
+            if (acquired) { throw new IllegalStateException("Recipe stage was already acquired"); }
+            acquired = true;
+            session.executing = true;
+            var process = session.process;
+            Tick previous = process.activeTick;
+            process.activeTick = tick;
+            try { acquisition.acquire(); }
+            catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
+            finally { process.activeTick = previous; session.executing = false; }
+        }
+
+        public ProcessResult result() { requireAcquired(); return acquisition.result(); }
+
+        /** Preserves ResourceTransactions' all-domain lock and terminal notification semantics. */
+        public ProcessResult settleSynchronously() {
+            requireSynchronousStart();
+            session.executing = true;
+            try { return acquisition.settleSynchronously(); }
+            catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
+            finally { finishSynchronousAttempt(); }
+        }
+
+        /** Rolls back a rejected/abandoned or partially acquired stage without replaying commit. */
+        public void rollbackSynchronously() {
+            requireSynchronousStart();
+            session.stopped = true;
+            session.executing = true;
+            try { acquisition.rollbackSynchronously(); }
+            catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
+            finally { finishSynchronousAttempt(); }
+        }
+
+        /** Retries only terminal cleanup proven safe by the exact synchronous participants. */
+        public boolean resolveSynchronously() {
+            requireAcquired();
+            if (!synchronous || batch != null) { throw new IllegalStateException("No synchronous settlement to recover"); }
+            session.executing = true;
+            try { acquisition.resolveSynchronously(); return acquisition.resolved(); }
+            catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
+            finally { finishSynchronousAttempt(); }
+        }
+
+        private void finishSynchronousAttempt() {
+            try {
+                if (acquisition.resolved()) { settled(transition == ReversibleTransaction.Resolution.COMPLETED); }
+            } catch (RuntimeException | Error cleanup) {
+                session.recordFailure(cleanup);
+                throw cleanup;
+            } finally { session.executing = false; }
+        }
+
+        /**
+         * Transfers a round's exact participants together. Busy domains return null and leave every
+         * handle unbound. Rejected stages may only roll back; transition guards reject illegal commit.
+         * Source actions still run on their assigned lanes; the owner performs business and finish.
+         */
+        @Nullable
+        public static ResourceBatch tryAcquireBatch(List<Stage> stages) {
+            var round = new ObjectArrayList<>(stages);
+            if (round.isEmpty()) { throw new IllegalArgumentException("Recipe round is empty"); }
+            var unique = new ReferenceOpenHashSet<Stage>();
+            var reservations = new ObjectArrayList<ResourceReservation>();
+            var transactions = new ObjectArrayList<RequirementTransaction>();
+            for (var stage : round) {
+                stage.requireAcquired();
+                if (!unique.add(stage) || stage.synchronous || stage.batch != null || !stage.acquisition.inventoryComplete()) {
+                    throw new IllegalStateException("Recipe stage cannot transfer its acquisition");
+                }
+                reservations.addAll(stage.acquisition.reservations());
+                transactions.addAll(stage.acquisition.transactions());
+            }
+            for (var stage : round) { stage.session.executing = true; }
+            try {
+                var bound = ResourceBatch.tryAcquire(reservations, transactions);
+                if (bound != null) { for (var stage : round) { stage.batch = bound; } }
+                return bound;
+            } finally { for (var stage : round) { stage.session.executing = false; } }
+        }
+
+        /**
+         * Acknowledges only this handle's bound batch, after all actions exited and isolation was
+         * released. False leaves the stage/post obligation pinned. Pass any source/owner/finish fault
+         * so a terminal notification failure cannot silently permit later stages or persistence.
+         */
+        public boolean settleBatch(@Nullable Throwable failure) {
+            requireAcquired();
+            var bound = Objects.requireNonNull(batch, "Recipe stage has no bound batch");
+            if (failure != null) { session.recordFailure(failure); }
+            if (!bound.finished()) { return false; }
+            session.executing = true;
+            try { settled(bound.decision() == ResourceBatch.Decision.COMPLETE); return true; }
+            catch (RuntimeException | Error cleanup) { session.recordFailure(cleanup); throw cleanup; }
+            finally { session.executing = false; }
+        }
+
+        private void settled(boolean committed) {
+            var process = session.process;
+            session.current = null;
+            if (!committed) { session.stopped = true; }
+            if (session.failure != null) { return; }
+            ProcessResult result = acquisition.result();
+            if (!committed && result == ProcessResult.SUCCESS) { result = RecipeText.StorageChanged.blocked(); }
+            if (result != ProcessResult.SUCCESS) {
+                session.stopped = true;
+                process.state = new State(result instanceof ProcessResult.Failure ? Lifecycle.FAILED : before.lifecycle(),
+                    before.progress(), before.successfulTicks(), result, before.started());
+                if (result instanceof ProcessResult.Failure) { RecipeAbortCleanup.run(process); }
+            }
+        }
+
+        private void requireSynchronousStart() {
+            requireAcquired();
+            if (synchronous || batch != null) { throw new IllegalStateException("Recipe stage settlement already started"); }
+            synchronous = true;
+        }
+
+        private void requireAcquired() {
+            requireOwner();
+            if (!acquired) { throw new IllegalStateException("Recipe stage has not acquired requirements"); }
+        }
+
+        private void requireOwner() { session.requireOwner(); requireLive(); }
+
+        private void requireLive() {
+            session.requireThread();
+            var process = session.process;
+            if (session.current != this || process.stageVersion != version || process.state != before && process.state != next) {
+                throw new IllegalStateException("Stale recipe stage handle or state");
+            }
+        }
+    }
+
+    private static void suppress(Throwable primary, Throwable secondary) {
+        if (primary != secondary) { primary.addSuppressed(secondary); }
     }
 
     private boolean workPaused() {

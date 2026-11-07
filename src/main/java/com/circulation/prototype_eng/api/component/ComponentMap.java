@@ -184,13 +184,7 @@ public final class ComponentMap<E> {
      */
     public void tick(E owner, Runnable body) {
         Objects.requireNonNull(body);
-        var entries = orderedTickEntries();
-        for (var entry : entries) {
-            entry.pre(owner);
-        }
-        for (var entry : entries) {
-            entry.tick(owner);
-        }
+        var session = beginTick(owner);
         Throwable primary = null;
         try {
             body.run();
@@ -198,6 +192,55 @@ public final class ComponentMap<E> {
             primary = failure;
             throw failure;
         } finally {
+            session.finish(primary);
+        }
+    }
+
+    /**
+     * Starts one captured dispatch and runs all pre callbacks, then all tick callbacks. A callback
+     * failure produces no session and never enters post. The caller retains the successful session
+     * across its business stages and finishes only after their complete or compensated boundary.
+     */
+    public TickSession<E> beginTick(E owner) {
+        var entries = orderedTickEntries();
+        var session = new TickSession<>(owner, entries);
+        for (var entry : entries) {
+            entry.pre(owner);
+        }
+        for (var entry : entries) {
+            entry.tick(owner);
+        }
+        return session;
+    }
+
+    /** One owner-thread post boundary for exactly the entries captured before pre/tick execution. */
+    public static final class TickSession<E> {
+        private final Thread creator = Thread.currentThread();
+        private final E owner;
+        private final List<TickEntry<E, ?>> entries;
+        private boolean finished;
+
+        private TickSession(E owner, List<TickEntry<E, ?>> entries) {
+            this.owner = owner;
+            this.entries = entries;
+        }
+
+        /** Attempts every captured post once, aggregating faults after later posts have run. */
+        public void finish() { finish(null); }
+
+        /**
+         * Attach every post fault to an existing primary without throwing it; its caller owns that
+         * fault. Without a primary, throw the aggregated post fault. Reject replay and callback
+         * reentry even when the original post dispatch failed.
+         */
+        public void finish(@Nullable Throwable primary) {
+            if (Thread.currentThread() != creator) {
+                throw new IllegalStateException("Component tick session must finish on its creating thread");
+            }
+            if (finished) {
+                throw new IllegalStateException("Component tick session already entered its post boundary");
+            }
+            finished = true;
             postAll(owner, entries, primary);
         }
     }

@@ -85,6 +85,9 @@ public final class ResourceBatch {
 
     public Decision decision() { synchronized (lock) { return decision; } }
 
+    /** Exact release proof, including when finish threw only while publishing notifications. */
+    public boolean finished() { synchronized (lock) { return closed; } }
+
     /**
      * All source actions must have exited successfully. Authorization and domain validity are checked
      * before and after reversible business commit, under the full fence scope. False decides rollback;
