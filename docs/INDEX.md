@@ -5,7 +5,7 @@
 ## 当前检查点
 
 - 配方事件已按用户要求由独立子代理重查：PM并非只有机器tick；选择提交回调、动态匹配脚本、检查点/属性效果、进程组件都有实际入口，PE对应Java调用已有，CT桥仍最后。此前宽泛的“没有配方runtime回调/DSL”已纠正，见[配方事件复审](pm-recipe-events-audit.md)。功能优先，不继续脱离业务细化调度。
-- 配方专项复核边界：PM进程Pre/Normal/Post确有派发，但内置回调为空，只算扩展入口；PM没有独立配方取消/失败事件，PE的cancel属于新增清理能力。机器tick和机器生命周期不纳入配方事件清单。本轮只核对源码并修正文档，没有推进研究实现或重新构建。
+- 配方专项复核边界：清单已移除机器tick和机器生命周期，只列需求阶段、选择提交回调、检查点/属性效果、动态匹配条件和进程钩子。PM进程Pre/Normal/Post确有派发，但内置回调为空；PE外部组件通过公开RecipeProcessFactory按配方显式装配，scanner真调用工厂，process真派发。PM没有独立配方取消/失败事件，PE的cancel属于新增清理能力。本轮只核对源码并修正文档，没有推进研究实现或重新构建。
 - 手动研究已有真实Java执行：ManualResearch绑定准确队列、逐未完成材料项各投1个、暂停接管、玩家扣料回执与九状态恢复、冻结成员完成传播及移除准确队头。正常缺料不建PREPARED，checkpoint异常先重存旧快照，COMMITTED不重扣；源码迁移与服务器剩余接线见[手动研究](manual-research.md)。
 - 研究已具备定义/冻结注册、双来源资格、完成传播和奖励执行；权限→设备等级→请求者startCondition→入队，以及容量5的队列/多站numeric规划/grant/prune/NBT均有执行。已有目标保留只检查结构资格，不重跑开始条件；owner线程与回滚后epoch防旧计划重新有效。站点实际材料/计算/完成共同提交、服务器存档/领取入口仍待接，见[研究功能](research-features.md)。
 - PN工作单元与研究执行已独立审计：旧planned每tick每槽按候选operation收费，未接真实配方进度，不能硬迁为重复START投料；研究门槛必须读选中DC真实存储。计费阶段/并行缩放已向用户核对，研究流程独立继续。见[pn-research-execution-audit.md](pn-research-execution-audit.md)。

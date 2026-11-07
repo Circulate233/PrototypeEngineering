@@ -8,6 +8,10 @@ PM 的配方扩展绝不只有机器 tick。它目前没有独立于 `requiremen
 
 此前“PM 没有每配方 condition/runtime event 字段/DSL”的表述过于宽泛，遗漏了顶层字段之外的回调和脚本注册，现予以纠正。不能从 `MachineRecipe` 或 `ZenRecipeBuilder` 的字段列表推断整个项目没有运行时配方回调。
 
+再次按“配方事件”专项核对时，必须区分以下职责：START/TICK/END 是每个需求参与的执行阶段；选择成功后的 `SelectiveModifier.apply` 是实际业务回调；checkpoint 与属性修改是内置效果；matcher 是输入条件；进程 Pre/Normal/Post 是外部扩展钩子。机器 tick、机器加载/卸载等不列入此清单。
+
+新项目的外部进程钩子由 Java 显式装配：公开 `RecipeProcessFactory.create` 按当前配方创建进程并安装 `ComponentType<RecipeProcess, …>`，`RecipeScanner` 实际调用该工厂，`RecipeProcess` 在执行时派发组件系统。它没有在 `MachineRecipe` 顶层增加 `events` 表；只检查配方定义字段会漏掉这条执行链。
+
 ## 实际清单与新项目对应
 
 | 能力 | PM 的定义与实际触发 | PE 当前对应 |
@@ -35,6 +39,8 @@ PM 活跃内置需求系统共六类：item、fluid、energy、attribute_modifie
 机器 `MachineTickEvent` 和 Loaded/Unloaded/FormedStateChanged/ControllerBroken 属于另一层生命周期，不应拿来代替本表的配方事件。
 
 PM 当前也没有独立的配方取消/失败回调：`FactoryRecipeProcessorSystem.kt:57,81,118,141` 的 Failure 分支直接清空工位进程，`:149–150` 仍进入进程组件 POST。阶段事务 rollback 是补偿，不是 `onRecipeCancel/onRecipeFailure` 事件。PE 的 `RecipeRequirementSystem.cancel` 是新增的终止清理边界，不计作旧事件迁移。进程空回调可见 [SelectiveStateProcessComponentType.kt](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/SelectiveStateProcessComponentType.kt:14)。
+
+旧接口注释与真实派发还有一处冲突：`RecipeRequirementSystem.kt:28–30` 写 Success/Blocked 都 commit，但执行器 `FactoryRecipeProcessorSystem.kt:294–308` 仅 Success 提交，Blocked 和 Failure 都 rollback。配方事件迁移应以实际调用链核对成功时机，不能按这段过期注释让受阻阶段触发成功提交效果。
 
 ## 范围与限度
 
