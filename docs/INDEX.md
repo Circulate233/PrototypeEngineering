@@ -4,9 +4,10 @@
 
 ## 当前检查点
 
-- 已完成本阶段：真实 server tick 的预算生命周期、同 tick 固定容量/余额、每机器 lease、向量预留和原代补偿，以及准确 Publication/身份/全部宿主证明约束的 owner WorkPermit。计算资源注册上一阶段为 `be0852d`。普通配方、研究与正式 planned 的自动消费仍未接入，不能把共同网络 gate 当作已经消费预算。阶段本地提交、不推送；最新提交号以 Git 日志为准，原 23 份格式/注解修改保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 467 项测试；IDEA MCP 对 310 个 src Java 和 Tags 共 311 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/network-budgets-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 本阶段完成 planned 执行屏障基础：取消注册、共享单调 deadline、有序结果、稳定 source lane、超时迟到隔离和实际退出证明。依据 PM/PN 源码审计迁移，正式 coordinator、source 事务和真实配方接线仍未完成，PLANNED_PARALLEL 继续明确拒绝。上一阶段真实 tick 预算与 owner WorkPermit 已提交为 `0ecb033`。阶段本地提交、不推送；最新提交号以 Git 日志为准，原 23 份格式/注解修改保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 477 项测试（76 suites，无失败/错误/跳过）；IDEA MCP 对 315 个 src Java 和 Tags 共 316 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/planned-execution-final.json`。实际 Forge/GUI/模型交互未运行验证。
 - 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
+- planned：借用 worker/serial source lanes；接受、实际开始及发布结果均检查共同 deadline。NEW/QUEUED 停止后不执行，RUNNING 为不确定结果；保留已发布结果，迟到返回不覆盖。Batch 退出证明独立于结果屏障，中断等待也必须等实际退出。旧 PM planned 工位 process 始终为空，PN commit 仅计算 receipt；下一步必须接既有 RecipeProcess 当前阶段，不能按整张配方重复投料。审计与边界见 planned-execution.md、planned-migration-audit.md。
 - 计算声明：NetworkResourceRegistrationEvent 早于配方/机器runtime解析，冻结表含标准 thread/compute/qubit；同名完整metadata须一致，相等record无需对象身份相同。捕获检查设备/flat/ppm/参与者全部键，失败撤旧许可。maxPerTickValue限制组件单物品供给和研究segment grant，不限制设备/全队。旧预算与lease审计见network-resources.md。
 - 网络运行时：MachineNetworkDevice 显式声明且 recreated，ownership 先load；capture owner-only，精确identity/loadOrder/formed及宿主证明校验后整批发布。每次MAIN action前与CON捕获前refresh，tick退出revoke；失败无旧许可回退。registry revision拒副本来去后的旧批次；旧卸载不撤新代。只暂停配方，普通组件仍运行，恢复不重START。
 - 网络规划：OwnerTeamResolver 是扩展接口，FTB 使用真实 server/Universe 持久玩家，离线允许。capture 每 owner 一次查询、拒重复/过期/成员矛盾与同 ID 不同资源元数据；worker plan 只读。中心按等级/加载顺序，数据中心再比已有研究；满库可选。中心+合格电脑+同队参与者合计后一次 exact flat/ppm，不把 maxPerTickValue 当全队上限。
@@ -20,8 +21,8 @@
 
 ## 下一步
 
-1. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。
-2. 正式 planned：复用 PM prepare/resolve 两次 join、稳定 source lane，接入 PN owner/team/epoch/向量预算、迟到隔离和补偿。旧 epoch/lease/ready 不从存档恢复为权限。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
+1. 正式 planned：先为既有 RecipeProcess/RequirementTransaction 补可延迟 complete 的真实阶段/批次结算边界；现有 ResourceTransactions 同线程持锁到 complete/rollback，不能 owner 持锁等 source lane，也不能 source 提前 complete 后假装可整批补偿。再接 PM discover/plan/reserve、prepare/resolve 两次结果屏障、有序 owner commit、pending query/补偿及真实退休 join，结合 PN owner/team/epoch/向量预算。输入须在 owner 冻结，generic Job 不证明深度不可变；旧 epoch/lease/ready 不从存档恢复为权限。
+2. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
 3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
 ## 必须遵守
@@ -53,7 +54,8 @@
 | 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle |
 | 控制器运行时/退休 | [machine-controller.md](machine-controller.md)，MachineController |
 | 真实 TE/朝向/结构接线 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity/ControllerStructureUpdates |
-| 普通调度/planned 待迁移 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
+| 普通调度/服务器边界 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
+| planned 屏障/取消/实际退出与后续接线 | [planned-execution.md](planned-execution.md)、[planned-migration-audit.md](planned-migration-audit.md)，api/scheduler/planned、scheduler/planned |
 | 结构匹配/快照/发布 | [structures.md](structures.md)、[structure-migration-audit.md](structure-migration-audit.md) |
 | 存储/预留/FE | [storage-redesign.md](storage-redesign.md)，api/storage、api/energy |
 | 仓室/美术来源 | [hatches.md](hatches.md)、[assets.md](assets.md)、[controller-assets.md](controller-assets.md) |

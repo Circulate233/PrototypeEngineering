@@ -1,6 +1,6 @@
 # 普通调度、所有权与服务器接线
 
-本阶段迁移 PM JavaTaskSchedulerBackend 的普通 MAIN_THREAD / CONCURRENT 路径，保留真实线程池、共享资源亲和分组和 join。正式 planned 的 discover/plan/reserve/prepare/resolve/commit、两次 join、PN owner/team/epoch 与预算仍须继续迁移；`PLANNED_PARALLEL` 当前明确拒绝，不降级为普通并发。源码入口为 `api/scheduler`、`scheduler/TaskScheduler` 和 `scheduler/ServerTaskSchedulers`。
+PM JavaTaskSchedulerBackend 的普通 MAIN_THREAD / CONCURRENT 路径已迁移，保留真实线程池、共享资源亲和分组和 join。planned runner、取消与 deadline 的执行基础现已完成，见[执行屏障](planned-execution.md)和[原实现审计](planned-migration-audit.md)；正式 discover/plan/reserve/prepare/resolve/commit、两次结果屏障与 PN 预算消费仍须接线。`PLANNED_PARALLEL` 当前明确拒绝，不降级为普通并发。源码入口为 `api/scheduler`、`scheduler/TaskScheduler` 和 `scheduler/ServerTaskSchedulers`。
 
 ## 可复用行为与已修正问题
 
@@ -40,4 +40,4 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用及共同网络条件已接入，当前仍需实现正式 planned 调度、研究/预算/lease 许可、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。仍需正式 coordinator/source 结算、真实配方与研究的预算消费、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
