@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * PM's ordered work-slot host. One execution owner controls admission, tick, transfer and persistence;
@@ -33,7 +34,7 @@ public final class MachineWorkSlots {
     private static MachineWorkSlots fromDeclaration(MachineInstance owner) {
         var type = owner.type();
         return type == null ? new MachineWorkSlots(owner, List.of())
-            : new MachineWorkSlots(owner, type.workSlots(), type.recipeGroups(), RecipeProcess::tick);
+            : new MachineWorkSlots(owner, type.workSlots(), type.recipeGroups());
     }
 
     private final MachineInstance owner;
@@ -42,9 +43,14 @@ public final class MachineWorkSlots {
     private final RecipeExecutor executor;
     private boolean executing;
     private boolean faulted;
+    @Nullable private TickBatch activeBatch;
 
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions) {
-        this(owner, definitions, Set.of(), RecipeProcess::tick);
+        this(owner, definitions, Set.of());
+    }
+
+    public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups) {
+        this(owner, definitions, defaultGroups, RecipeExecutor.DEFAULT);
     }
 
     /** An empty layout uses PM's implicit main slot; empty machine-level groups accept every recipe. */
@@ -201,21 +207,254 @@ public final class MachineWorkSlots {
                 if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
                 var before = process.state().lifecycle();
                 if (!before.isTerminal()) { executor.tick(process); }
-                process.requirePersistenceBoundary();
-                if (process.host() != this) { throw new IllegalStateException("Executor changed process ownership"); }
-                var state = process.state();
-                if (state.lifecycle().isTerminal()) {
-                    process.detachFrom(this);
-                    slot.setState(null, state.result());
-                } else {
-                    slot.setState(process, state.result());
-                }
+                publishSlot(slot, process);
             }
         } catch (RuntimeException | Error failure) {
             faulted = true;
             throw failure;
         } finally {
             executing = false;
+        }
+    }
+
+    private void publishSlot(WorkSlot slot, RecipeProcess process) {
+        process.requirePersistenceBoundary();
+        if (slot.process() != process || process.host() != this) {
+            throw new IllegalStateException("Work slot lost its process ownership");
+        }
+        var state = process.state();
+        if (state.lifecycle().isTerminal()) {
+            process.detachFrom(this);
+            slot.setState(null, state.result());
+        } else { slot.setState(process, state.result()); }
+    }
+
+    /**
+     * Captures the real occupied slots without running callbacks. The host is leased immediately;
+     * call begin, settle each current round, then tryFinish. Custom synchronous executors retain their
+     * own contract and cannot be silently replaced by the built-in staged process lifecycle.
+     */
+    public TickBatch prepareTickBatch() {
+        requireBoundary();
+        if (executor != RecipeExecutor.DEFAULT) {
+            throw new IllegalStateException("Custom synchronous recipe executor does not provide staged execution");
+        }
+        var entries = new ObjectArrayList<TickBatch.Entry>();
+        for (var slot : slots) {
+            var process = slot.process();
+            if (process == null) { continue; }
+            process.requirePersistenceBoundary();
+            if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
+            entries.add(new TickBatch.Entry(slot, process));
+        }
+        var batch = new TickBatch(this, entries);
+        activeBatch = batch;
+        return batch;
+    }
+
+    /** Recovery access when a batch callback threw; the same batch retains every cleanup obligation. */
+    @Nullable public TickBatch pendingTickBatch() { return activeBatch; }
+
+    /** Process boundary hook: only this batch's exact owner operation can enter a captured process. */
+    public void requireProcessBoundary(RecipeProcess process) {
+        if (activeBatch != null && (activeBatch.permitted != process || activeBatch.ownerThread != Thread.currentThread())) {
+            throw new IllegalStateException("Process is owned by a work-slot tick batch");
+        }
+    }
+
+    /** Session/stage hook: a callback may not enter another process in the same captured batch. */
+    public void requireProcessOperation(RecipeProcess process) {
+        if (activeBatch != null && (activeBatch.ownerThread != Thread.currentThread()
+            || executing && activeBatch.permitted != process)) {
+            throw new IllegalStateException("Recipe operation overlaps a different work-slot callback");
+        }
+    }
+
+    /** Holds the batch callback scope across requirements, source notifications and nested cleanup. */
+    public <T> T withProcessCallback(RecipeProcess process, Supplier<T> action) {
+        Objects.requireNonNull(action);
+        requireProcessOperation(process);
+        var batch = activeBatch;
+        if (batch == null) { return action.get(); }
+        boolean previousExecution = executing;
+        var previousProcess = batch.permitted;
+        executing = true;
+        batch.permitted = process;
+        try { return action.get(); }
+        finally { batch.permitted = previousProcess; executing = previousExecution; }
+    }
+
+    /** Owner-thread round driver; source execution and network authority remain with its coordinator. */
+    public static final class TickBatch {
+        private final MachineWorkSlots host;
+        private final Thread ownerThread = Thread.currentThread();
+        private final List<Entry> entries;
+        @Nullable private RecipeProcess permitted;
+        private boolean begun;
+        private boolean stopped;
+        private boolean finished;
+
+        private TickBatch(MachineWorkSlots host, List<Entry> entries) {
+            this.host = host;
+            this.entries = entries;
+        }
+
+        /** Runs each actual process's pre/tick once in slot order; faults retain earlier sessions. */
+        public void begin() {
+            requireOwner();
+            if (begun || stopped) { throw new IllegalStateException("Work-slot batch cannot begin again"); }
+            begun = true;
+            host.executing = true;
+            try {
+                for (var entry : entries) {
+                    if (host.workPaused()) { stopped = true; break; }
+                    entry.requireIdentity(host);
+                    if (entry.process.state() != entry.initialState) { throw new IllegalStateException("Captured process changed before batch begin"); }
+                    permitted = entry.process;
+                    entry.session = entry.process.beginTick();
+                    permitted = null;
+                }
+            } catch (RuntimeException | Error failure) {
+                recordFailure(failure);
+                throw failure;
+            } finally { permitted = null; host.executing = false; }
+        }
+
+        /**
+         * Creates at most one current stage per live process. A previous round must be fully settled;
+         * a caller must never call process.tick after applying the returned stages' resources.
+         */
+        public List<RecipeProcess.Stage> nextRound() {
+            requireOwner();
+            if (!begun) { throw new IllegalStateException("Work-slot batch has not begun"); }
+            if (!currentStages().isEmpty()) { throw new IllegalStateException("Previous recipe round is unsettled"); }
+            if (stopped) { return List.of(); }
+            host.executing = true;
+            var stages = new ObjectArrayList<RecipeProcess.Stage>();
+            try {
+                for (var entry : entries) {
+                    entry.requireIdentity(host);
+                    if (entry.session == null || entry.postAttempted) { continue; }
+                    permitted = entry.process;
+                    var stage = entry.session.nextStage();
+                    permitted = null;
+                    if (stage != null) { stages.add(stage); }
+                }
+                return ObjectLists.unmodifiable(stages);
+            } catch (RuntimeException | Error failure) {
+                recordFailure(failure);
+                throw failure;
+            } finally { permitted = null; host.executing = false; }
+        }
+
+        /** Partial nextRound acquisition is retained here, including after a later slot threw. */
+        public List<RecipeProcess.Stage> currentStages() {
+            requireOwner();
+            var stages = new ObjectArrayList<RecipeProcess.Stage>();
+            for (var entry : entries) {
+                entry.requireIdentity(host);
+                if (entry.session == null || entry.postAttempted) { continue; }
+                var stage = entry.session.currentStage();
+                if (stage != null) { stages.add(stage); }
+            }
+            return ObjectLists.unmodifiable(stages);
+        }
+
+        /** Normal cancellation/retirement stops later rounds; current stages still need settlement. */
+        public void stop() { requireOwner(); stopped = true; }
+
+        /** Marks actual active sessions faulted without treating untouched later slots as executed. */
+        public void recordFailure(Throwable failure) {
+            requireIdentity();
+            Objects.requireNonNull(failure);
+            stopped = true;
+            host.faulted = true;
+            var previousProcess = permitted;
+            try {
+                for (var entry : entries) {
+                    if (entry.session == null || entry.postAttempted) { continue; }
+                    permitted = entry.process;
+                    try { entry.session.recordFailure(failure); }
+                    catch (RuntimeException | Error recording) { if (failure != recording) { failure.addSuppressed(recording); } }
+                }
+            } finally { permitted = previousProcess; }
+        }
+
+        /**
+         * False means an exact process/stage is still live; no post runs before the current round
+         * settles. Every eligible post is attempted once, then healthy terminal slots are detached.
+         * Faulted processes remain attached for diagnostics, while accurately quiescent batches close.
+         */
+        public boolean tryFinish() {
+            requireOwner();
+            if (!currentStages().isEmpty()) { return false; }
+            stopped = true;
+            host.executing = true;
+            Throwable failure = null;
+            boolean pending = false;
+            try {
+                for (var entry : entries) {
+                    if (entry.published) { continue; }
+                    try {
+                        entry.requireIdentity(host);
+                        permitted = entry.process;
+                        if (entry.session != null && !entry.postAttempted) {
+                            try { entry.session.finish(); }
+                            finally { entry.postAttempted = entry.session.postStarted(); }
+                        }
+                        if (!entry.process.quiescent()) { pending = true; continue; }
+                        if (entry.process.persistenceReady()) { host.publishSlot(entry.slot, entry.process); }
+                        else { host.faulted = true; }
+                        entry.published = true;
+                    } catch (RuntimeException | Error cleanup) {
+                        host.faulted = true;
+                        if (failure == null) { failure = cleanup; }
+                        else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                        // A failed post may have completed its local boundary. Never replay it.
+                        if (entry.process.quiescent()) { entry.published = true; }
+                        else { pending = true; }
+                    } finally { permitted = null; }
+                }
+                if (!pending) { finished = true; host.activeBatch = null; }
+                if (failure instanceof RuntimeException runtime) { throw runtime; }
+                if (failure instanceof Error error) { throw error; }
+                return finished;
+            } finally { host.executing = false; }
+        }
+
+        /** Actual closure, including when post reported a fault after every process became inactive. */
+        public boolean finished() { return finished; }
+
+        private void requireIdentity() {
+            if (Thread.currentThread() != ownerThread || host.activeBatch != this || finished) {
+                throw new IllegalStateException("Stale work-slot batch or incorrect owner");
+            }
+        }
+
+        private void requireOwner() {
+            requireIdentity();
+            if (host.executing) { throw new IllegalStateException("Work-slot batch callback is executing"); }
+        }
+
+        private static final class Entry {
+            private final WorkSlot slot;
+            private final RecipeProcess process;
+            private final RecipeProcess.State initialState;
+            @Nullable private RecipeProcess.TickSession session;
+            private boolean postAttempted;
+            private boolean published;
+
+            private Entry(WorkSlot slot, RecipeProcess process) {
+                this.slot = slot;
+                this.process = process;
+                initialState = process.state();
+            }
+
+            private void requireIdentity(MachineWorkSlots host) {
+                if (!published && (slot.process() != process || process.host() != host)) {
+                    throw new IllegalStateException("Captured work slot lost its exact process");
+                }
+            }
         }
     }
 
@@ -240,7 +479,7 @@ public final class MachineWorkSlots {
 
     /** World cleanup can observe faulted slots, but cannot detach a live transaction or execution. */
     public void requireQuiescent() {
-        if (executing) { throw new IllegalStateException("Work slots are executing"); }
+        if (executing || activeBatch != null) { throw new IllegalStateException("Work slots are executing"); }
         for (var slot : slots) {
             var process = slot.process();
             if (process == null) { continue; }
@@ -311,11 +550,11 @@ public final class MachineWorkSlots {
     }
 
     private void requireBoundary() {
-        if (executing || faulted) { throw new IllegalStateException("Work slots are executing or faulted"); }
+        if (executing || activeBatch != null || faulted) { throw new IllegalStateException("Work slots are executing or faulted"); }
     }
 
     private void requireCancellationBoundary() {
-        if (executing) { throw new IllegalStateException("Work slots are executing"); }
+        if (executing || activeBatch != null) { throw new IllegalStateException("Work slots are executing"); }
     }
 
     public record SlotSnapshot(WorkSlotDefinition definition, @Nullable RecipeProcess process,

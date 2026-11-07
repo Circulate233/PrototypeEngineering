@@ -1,6 +1,6 @@
 # PM/PN planned 执行迁移审计
 
-来源为 `F:/clone/PrototypeMachinery/src/main/kotlin` 与 `F:/new/PrototypeNetwork/src/main/java/com/circulation/prototype_network`。以下是实际源码行为；旧 planned 配方适配器不等于完整配方生命周期。当前只完成执行屏障基础，正式 coordinator、source 结算及真实配方接线仍待迁移。
+来源为 `F:/clone/PrototypeMachinery/src/main/kotlin` 与 `F:/new/PrototypeNetwork/src/main/java/com/circulation/prototype_network`。以下是实际源码行为；旧 planned 配方适配器不等于完整配方生命周期。当前已有执行屏障、source 批次、真实配方阶段和工位会话基础，正式 coordinator 与预算消费仍待接线。
 
 ## 原执行协议
 
@@ -28,6 +28,7 @@ planned source lane 沿用 `StableLaneIndex.kt` 的 UTF-16 FNV-1a；同来源提
 | ItemResourceStoragePlannedConsumableSourceImpl:148 | 短提取失败发生在实际提取量计入 consumed 之前，补偿会漏掉这部分；authorizeRollback 位于恢复 try 外也可能滞留 IN_FLIGHT。必须按实际 mutation 记录补偿。 |
 | PlannedExecution deadline | 错误要求 System.nanoTime 非负并用绝对加法；新 deadline 用开始值与 elapsed 差，支持负值/绕回。 |
 | Coordinator reservation 校验 | sourceRevision 在后续 ExclusiveReservationLedger.reserve:145 已被校验；不能把 coordinator 未就地校验误报成整条生产链漏洞。 |
+| PN NetworkMachineRecipePlannedOperationFactory:364、404–416 | commit 将 numeric receipt 从 RESERVED 变为 COMMITTED（NetworkWorkUnitResourceBookImpl:100–105）；PM Coordinator:169 在 commit 后重验 lifecycle，而 PN probe 仍要求 RESERVED，非空 numeric 操作会在成功提交后自我失活。生命周期/owner 校验与 receipt 的阶段状态必须分开，不能把提交后正确状态误判为失权。 |
 
 ## 配方适配的真实完成度
 
@@ -41,4 +42,4 @@ PM `RegistryBackedMachinePlannedExecution.kt:243` 的 PlannedWorkSlot.process �
 
 同样，单 operation 调完整 RecipeStageExecutor.execute 会提前 complete，后续 operation 失败时无法整批补偿。必须补可延迟 complete 的阶段/批次边界。NetworkRuntime.WorkPermit 的预算 receipt 可参与现有业务事务，但 commit=false 必须拒绝并补偿；machine/process/stage/version、team/tick/epoch/source 和工作序号也必须一起验证。仅 worker current() 不够。
 
-上述存储锁归属、跨lane隔离及延迟complete已由[资源批次基础](deferred-resource-batches.md)实现；业务准确query、ScopedRequirement确认后关闭、checkpoint/selector逐子终态及revision清理额度已由[事务恢复](transaction-recovery.md)补齐。自身清理缺乏准确query的扩展失败仍保留UNKNOWN，不伪造恢复。正式coordinator与阶段session仍是后续要求，不能由基础通过测试来替代；组件pre/tick/post无undo契约，START与后继阶段存在selection/overlay依赖，须按当前阶段round结算。整体范围继续包括正式planned、实际配方与研究消费、完整参与者及source补偿协议。
+上述存储锁归属、跨lane隔离及延迟complete已由[资源批次基础](deferred-resource-batches.md)实现；业务准确query、ScopedRequirement确认后关闭、checkpoint/selector逐子终态及revision清理额度已由[事务恢复](transaction-recovery.md)补齐。自身清理缺乏准确query的扩展失败仍保留UNKNOWN，不伪造恢复。真实阶段已有[进程会话](recipe-tick-sessions.md)与[工位批次](work-slot-batches.md)；正式coordinator不能由基础通过测试来替代。组件pre/tick/post无undo契约，START与后继阶段存在selection/overlay依赖，须按当前阶段round结算。整体范围继续包括正式planned、实际配方与研究消费、完整参与者及source补偿协议。

@@ -32,6 +32,6 @@ planned 调用方在当前 stage 未确认时不能 finish，会话保留 post o
 
 ## 仍待接入
 
-此处提供真实阶段与会话，不等于正式 planned 调度已经完成。`PLANNED_PARALLEL` 继续明确拒绝。工位批次入口、discover/plan/reserve、prepare/resolve 屏障、owner/team/epoch 许可与真实预算消费、取消及退休实际 join 仍需接入。普通 `RecipeExecutor` 继续遵守返回前完成的同步契约。
+此处提供真实阶段与会话，不等于正式 planned 调度已经完成。`PLANNED_PARALLEL` 继续明确拒绝。[工位批次入口](work-slot-batches.md)已接。discover/plan/reserve、prepare/resolve 屏障、owner/team/epoch 许可与真实预算消费、取消及退休实际 join 仍需接入。普通 `RecipeExecutor` 继续遵守返回前完成的同步契约。
 
 验证数量与逐 Java 文件 IDEA MCP 证据记录在 [实施进度](implementation-status.md)。不运行 Minecraft、服务端或 Bootstrap/FML 测试初始化。

@@ -125,10 +125,19 @@ public final class RecipeProcess {
 
     /** Rejects live work; unlike persistence this permits observing a faulted but inactive process. */
     public void requireQuiescent() {
-        if (ticking || activeSession != null || activeTick != null || activeRequirement != null || acquiredTransactions != 0) {
+        if (host != null) { host.requireProcessBoundary(this); }
+        if (!quiescent()) {
             throw new IllegalStateException("Process is executing or has acquired transactions");
         }
     }
+
+    /** Local inactivity proof; the host/scheduler may still own an enclosing batch lease. */
+    public boolean quiescent() {
+        return !ticking && activeSession == null && activeTick == null && activeRequirement == null && acquiredTransactions == 0;
+    }
+
+    /** Local save eligibility, not authority to bypass an enclosing work-slot or machine lease. */
+    public boolean persistenceReady() { return quiescent() && !persistenceFailure; }
 
     /** Framework failure marker for an exceptional acquisition/cleanup outside tick(). */
     public void invalidatePersistenceBoundary() { persistenceFailure = true; }
@@ -183,12 +192,26 @@ public final class RecipeProcess {
 
     /** Framework boundary used by RecipeRequirement.acquire; all returned callbacks retain this scope. */
     public RequirementTransaction acquireRequirement(RecipeRequirement<?> requirement, Supplier<RequirementTransaction> acquisition) {
+        requireAcquisitionBoundary();
         if (state.lifecycle().isTerminal()) { throw new IllegalStateException("Cannot acquire requirements on a terminal process"); }
         var path = requirement.path(activeRequirement);
         var transaction = withRequirementPath(path, () -> Objects.requireNonNull(acquisition.get(), "requirement transaction"));
         if (transaction == RequirementTransaction.SUCCESS) { return transaction; }
         acquiredTransactions = Math.incrementExact(acquiredTransactions);
         return new ScopedRequirement(this, path, transaction);
+    }
+
+    /** Raw framework acquisitions must not bypass the current stage of a captured work-slot batch. */
+    public void requireAcquisitionBoundary() {
+        if (host == null || host.pendingTickBatch() == null) { return; }
+        host.requireProcessOperation(this);
+        if (activeSession == null || activeSession.current == null || !activeSession.current.acquiring) {
+            throw new IllegalStateException("Work-slot batch requires acquisition through its current stage");
+        }
+    }
+
+    private <T> T withCallbackScope(Supplier<T> action) {
+        return host == null ? action.get() : host.withProcessCallback(this, action);
     }
 
     /** Requirement cancellation uses the same parent/child scope without acquiring a new transaction. */
@@ -302,10 +325,12 @@ public final class RecipeProcess {
         }
 
         private <T> T scoped(Supplier<T> action) {
-            Tick previous = process.activeTick;
-            process.activeTick = tick;
-            try { return process.withRequirementPath(path, action); }
-            finally { process.activeTick = previous; }
+            return process.withCallbackScope(() -> {
+                Tick previous = process.activeTick;
+                process.activeTick = tick;
+                try { return process.withRequirementPath(path, action); }
+                finally { process.activeTick = previous; }
+            });
         }
     }
 
@@ -434,9 +459,13 @@ public final class RecipeProcess {
         /** Finishes planned post only after the current lease was accurately settled. */
         public void finish() {
             requireOwner();
+            if (process.host != null) { process.host.requireProcessBoundary(process); }
             if (current != null) { throw new IllegalStateException("Cannot finish an unsettled recipe tick"); }
             finishSynchronousBody();
         }
+
+        /** Actual post entry proof, including a throwing post; rejection before entry remains false. */
+        public boolean postStarted() { return postDone; }
 
         private void finishSynchronousBody() {
             requireOwner();
@@ -460,6 +489,7 @@ public final class RecipeProcess {
             if (Thread.currentThread() != ownerThread || process.activeSession != this || process.host != host) {
                 throw new IllegalStateException("Stale recipe tick session or incorrect owner");
             }
+            if (host != null) { host.requireProcessOperation(process); }
         }
 
         private void requireOwner() {
@@ -482,6 +512,7 @@ public final class RecipeProcess {
         private final RecipeStageExecutor.Acquisition acquisition;
         @Nullable private ResourceBatch batch;
         private boolean acquired;
+        private boolean acquiring;
         private boolean synchronous;
         private ReversibleTransaction.Resolution transition = ReversibleTransaction.Resolution.REVERSIBLE;
 
@@ -542,13 +573,14 @@ public final class RecipeProcess {
             requireOwner();
             if (acquired) { throw new IllegalStateException("Recipe stage was already acquired"); }
             acquired = true;
+            acquiring = true;
             session.executing = true;
             var process = session.process;
             Tick previous = process.activeTick;
             process.activeTick = tick;
-            try { acquisition.acquire(); }
+            try { process.withCallbackScope(() -> { acquisition.acquire(); return null; }); }
             catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
-            finally { process.activeTick = previous; session.executing = false; }
+            finally { process.activeTick = previous; acquiring = false; session.executing = false; }
         }
 
         public ProcessResult result() { requireAcquired(); return acquisition.result(); }
@@ -557,7 +589,7 @@ public final class RecipeProcess {
         public ProcessResult settleSynchronously() {
             requireSynchronousStart();
             session.executing = true;
-            try { return acquisition.settleSynchronously(); }
+            try { return session.process.withCallbackScope(acquisition::settleSynchronously); }
             catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
             finally { finishSynchronousAttempt(); }
         }
@@ -567,7 +599,7 @@ public final class RecipeProcess {
             requireSynchronousStart();
             session.stopped = true;
             session.executing = true;
-            try { acquisition.rollbackSynchronously(); }
+            try { session.process.withCallbackScope(() -> { acquisition.rollbackSynchronously(); return null; }); }
             catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
             finally { finishSynchronousAttempt(); }
         }
@@ -577,14 +609,16 @@ public final class RecipeProcess {
             requireAcquired();
             if (!synchronous || batch != null) { throw new IllegalStateException("No synchronous settlement to recover"); }
             session.executing = true;
-            try { acquisition.resolveSynchronously(); return acquisition.resolved(); }
+            try { session.process.withCallbackScope(acquisition::resolveSynchronously); return acquisition.resolved(); }
             catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
             finally { finishSynchronousAttempt(); }
         }
 
         private void finishSynchronousAttempt() {
             try {
-                if (acquisition.resolved()) { settled(transition == ReversibleTransaction.Resolution.COMPLETED); }
+                if (acquisition.resolved()) {
+                    session.process.withCallbackScope(() -> { settled(transition == ReversibleTransaction.Resolution.COMPLETED); return null; });
+                }
             } catch (RuntimeException | Error cleanup) {
                 session.recordFailure(cleanup);
                 throw cleanup;
@@ -630,7 +664,10 @@ public final class RecipeProcess {
             if (failure != null) { session.recordFailure(failure); }
             if (!bound.finished()) { return false; }
             session.executing = true;
-            try { settled(bound.decision() == ResourceBatch.Decision.COMPLETE); return true; }
+            try {
+                session.process.withCallbackScope(() -> { settled(bound.decision() == ResourceBatch.Decision.COMPLETE); return null; });
+                return true;
+            }
             catch (RuntimeException | Error cleanup) { session.recordFailure(cleanup); throw cleanup; }
             finally { session.executing = false; }
         }

@@ -155,6 +155,7 @@ public final class RecipeStageExecutor {
 
         public void acquire() {
             requireOwner();
+            process.requireAcquisitionBoundary();
             if (state != AcquisitionState.NEW || executing) { throw new IllegalStateException("Stage acquisition already entered"); }
             state = AcquisitionState.ACQUIRING;
             var acquired = new ObjectArrayList<RequirementTransaction>();

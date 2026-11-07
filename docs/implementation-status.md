@@ -6,7 +6,9 @@
 
 ## 当前状态
 
-- 真实阶段会话已接入：RecipeStageExecutor.Acquisition保留成功/拒绝/异常库存、过滤SUCCESS重复业务、末尾生命周期transition，同步观察准确source/business终态；旧execute/probe共用该入口。RecipeProcess.TickSession/Stage在pre前登记、获取前持lease，校验准确session/host/thread/state/version，零事务同样防重入；prepared取消可discard，0速度每轮仅一次TICK。整round绑定准确ResourceBatch与原token，finished后才ack；普通异常立即post但pending保留，planned确认前不post，恢复不清故障标记。工位批次/coordinator/预算消费仍待接，详见[阶段会话](recipe-tick-sessions.md)。
+- 工位批次入口已接入：MachineWorkSlots.TickBatch捕获真实slot/process并在pre前持宿主lease，begin顺序运行实际回调、nextRound每进程一个当前Stage、currentStages保留partial。tryFinish等当前轮完全结算，post逐个尝试且不重放，健康终态detach；未知局部事务保留pending，故障进程留槽。宿主与process边界共同拒绝批次期间save/admission/普通tick/转移/取消/提前post；默认RecipeExecutor显式批次，自定义同步executor执行前拒绝批次替换。PN receipt提交后错误要求RESERVED的旧probe缺陷已记入审计。正式coordinator/预算与退休join仍待接，详见[工位批次](work-slot-batches.md)。
+
+- 真实阶段会话已接入：RecipeStageExecutor.Acquisition保留成功/拒绝/异常库存、过滤SUCCESS重复业务、末尾生命周期transition，同步观察准确source/business终态；旧execute/probe共用该入口。RecipeProcess.TickSession/Stage在pre前登记、获取前持lease，校验准确session/host/thread/state/version，零事务同样防重入；prepared取消可discard，0速度每轮仅一次TICK。整round绑定准确ResourceBatch与原token，finished后才ack；普通异常立即post但pending保留，planned确认前不post，恢复不清故障标记。工位批次已接，coordinator/预算消费仍待接，详见[阶段会话](recipe-tick-sessions.md)。
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
 - 业务确认/revision额度已补齐：公开ReversibleTransaction由RequirementTransaction直接扩展；ResourceBatch逐实例commit/terminal/query，成功项不重放、准确REVERSIBLE才重试，UNKNOWN保留pending。ScopedRequirement保存原RequirementPath和冻结Tick，准确终态才关闭一次，拒绝commit重放与terminal/query重入，原故障标记不被确认恢复擦除。checkpoint/selector通过TransactionGroup确认全部子与自有效果，无自身query的失败仍UNKNOWN。StorageContext为apply/终态和独立invalidate保留额度，普通mutation不侵占，pending归还未用apply；token仅增加byte余量。详见[事务恢复](transaction-recovery.md)，阶段handle/session已接，正式coordinator仍待接。
@@ -59,6 +61,9 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（工位阶段批次）：`gradlew.bat spotlessApply build --console=plain` 通过550项测试（85 suites，零失败/错误/跳过）。新增10项真实工位批次行为测试：共享FE的START/TICK/END轮次、Blocked/Failure不停止其他槽、prepared取消、容量下降、捕获身份/线程边界、后续pre故障、post聚合、UNKNOWN source/business确认、部分round创建、自定义executor保留，以及raw acquisition/pre/post/需求回调跨进程重入拒绝。修复post拒绝入口后误标已执行的问题。IDEA MCP对328个src Java与Tags共329文件逐个errorsOnly:false检查，零错误/警告/弱警告，无超时；MCP build_project成功。证据`build/reports/idea/work-slot-batches-final.json`。全部检查仅用本机MCP，未运行游戏/服务端；原23份未暂存修改分离保留。
+- 本阶段边界：仅完成真实工位批次入口与宿主作用域；多宿主整体捕获/回调作用域、正式planned coordinator、网络预算消费及退休实际join仍须接入。
 
 - 2026-11-07（真实阶段会话）：`gradlew.bat spotlessApply build --console=plain` 通过 540 项测试（84 suites，零失败/错误/跳过）。新增组件会话、acquisition和真实进程会话行为测试，覆盖同round共享源补偿、原冻结Tick/START效果、0速度/0时长、零事务重入、旧句柄与跨线程拒绝、prepared丢弃、同步/延迟post、source/business未知确认和终态通知故障。IDEA MCP 对 327 个 src Java + Tags 共 328 文件逐个 `errorsOnly:false`，零错误/警告/弱警告且无超时，MCP build_project成功。报告 `build/reports/idea/recipe-sessions-final.json`；未运行游戏/服务端。原23份未暂存修改分离保留；重构Executor中原清理代码的展开格式随职责迁移到accumulate/rethrow，提交版本与保留工作副本仅在这些原格式部分有空白差异。
 - 本阶段不宣称正式planned已完成：工位批次入口、coordinator、网络许可/预算消费、取消/退休join仍是下一阶段工作。

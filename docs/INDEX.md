@@ -4,8 +4,8 @@
 
 ## 当前检查点
 
-- 本阶段接入真实配方阶段会话：RecipeStageExecutor.Acquisition保留partial及准确终态，RecipeProcess.TickSession/Stage共用普通与deferred路径，START→一次TICK→END按round推进；零事务也持lease，prepared可discard。批次绑定原token并以finished证明释放；普通异常立即post但保留pending，planned未确认不post。正式coordinator、工位批次与预算消费仍未接入，PLANNED_PARALLEL继续明确拒绝。阶段本地提交、不推送，原23份格式/注解修改保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 540 项测试（84 suites，无失败/错误/跳过）；IDEA MCP 对 327 个 src Java 和 Tags 共 328 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/recipe-sessions-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 本阶段接入MachineWorkSlots.TickBatch：首回调前捕获真实slot/process并持宿主lease，begin/nextRound/tryFinish共用真实阶段session；拒绝跨工位tick/save/detach/cancel和提前post，partial保留、未知返回pending，准确关闭后健康终态detach。默认RecipeExecutor显式批次，自定义同步executor不被替换。正式coordinator/预算消费仍未接入，PLANNED_PARALLEL继续拒绝。阶段本地提交、不推送，原23份格式/注解修改保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 550 项测试（85 suites，无失败/错误/跳过）；IDEA MCP 对 328 个 src Java 和 Tags 共 329 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/work-slot-batches-final.json`。实际 Forge/GUI/模型交互未运行验证。
 - 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
 - planned：借用 worker/serial source lanes；接受、实际开始及发布结果均检查共同 deadline。NEW/QUEUED 停止后不执行，RUNNING 为不确定结果；保留已发布结果，迟到返回不覆盖。Batch 退出证明独立于结果屏障，中断等待也必须等实际退出。旧 PM planned 工位 process 始终为空，PN commit 仅计算 receipt；下一步必须接既有 RecipeProcess 当前阶段，不能按整张配方重复投料。审计与边界见 planned-execution.md、planned-migration-audit.md。
 - 资源批次：全部context一次try-claim，source单域/owner全域scope自动短锁，跨屏障保留逻辑独占；ordinary多域先退锁再等。source实际退出后owner业务commit前后重验授权，成功先决定COMPLETE再完成；rollback先业务后原lane tokens。业务与token均按准确实例query，UNKNOWN不重试，成功项不重放。全部确认后owner释放fence并发布捕获通知；owner invalidate需scope。普通修改不侵占token apply/终态及独立失效额度，见deferred-resource-batches.md、transaction-recovery.md。
@@ -23,7 +23,7 @@
 
 ## 下一步
 
-1. 正式 planned：存储独占/批次、revision额度、业务query和真实RecipeProcess阶段session已就绪（recipe-tick-sessions.md）。下一步接工位批次入口以及PM discover/plan/reserve、prepare/resolve两次结果屏障、owner提交、原lane补偿/确认和真实退休join，结合PN owner/team/epoch/向量预算。每round仅获取各进程当前一个阶段，全部确认后再进后继阶段；输入在owner冻结，旧epoch/lease/ready不从存档恢复为权限。普通RecipeExecutor仍须返回前完成，不能把pending装成同步成功。
+1. 正式 planned：存储独占/批次、revision额度、业务query和真实RecipeProcess阶段session已就绪（recipe-tick-sessions.md）。工位批次入口也已就绪（work-slot-batches.md）；下一步接PM discover/plan/reserve、prepare/resolve两次结果屏障、owner提交、原lane补偿/确认和真实退休join，结合PN owner/team/epoch/向量预算。每round仅获取各进程当前一个阶段，全部确认后再进后继阶段；输入在owner冻结，旧epoch/lease/ready不从存档恢复为权限。普通RecipeExecutor仍须返回前完成，不能把pending装成同步成功。
 2. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
 3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
@@ -58,6 +58,7 @@
 | 真实 TE/朝向/结构接线 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity/ControllerStructureUpdates |
 | 普通调度/服务器边界 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
 | planned 屏障/取消/实际退出与后续接线 | [planned-execution.md](planned-execution.md)、[planned-migration-audit.md](planned-migration-audit.md)，api/scheduler/planned、scheduler/planned |
+| 工位批次/宿主lease/多进程round/结果发布 | [work-slot-batches.md](work-slot-batches.md)，MachineWorkSlots.TickBatch |
 | 真实阶段/一次tick会话/延迟post/准确恢复 | [recipe-tick-sessions.md](recipe-tick-sessions.md)，RecipeProcess.TickSession/Stage、RecipeStageExecutor.Acquisition |
 | 跨lane资源独占/批次结算/准确token恢复 | [deferred-resource-batches.md](deferred-resource-batches.md)，StorageFence、ResourceBatch、ResourceReservation |
 | 业务query/需求作用域/复合事务/revision额度 | [transaction-recovery.md](transaction-recovery.md)，ReversibleTransaction、ScopedRequirement、TransactionGroup、StorageContext |
