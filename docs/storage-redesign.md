@@ -5,12 +5,16 @@
 ## 已落地的边界
 
 - `api.storage.ResourceHatch` 的两侧返回独立 `ResourceStorage`；内置实现返回支持槽位操作的 `SlottedResourceStorage`。
-- `SlottedResourceBuffer` 用 AEKey 数组、long 数组、fastutil 汇总和 BitSet 管理真实余额、预留量及变更槽位，已移除 `Buffer extends GenericStackInv`。
+- `SlottedResourceBuffer` 用 AEKey 数组、long 数组、AEKey2LongMap 汇总和 BitSet 管理真实余额、预留量及变更槽位，已移除 `Buffer extends GenericStackInv`。
 - 资源操作、存储身份、版本、预留、提交、回滚/补偿和失效由本库契约负责。外部自定义仓室实现同一契约，不能绕过一致性要求。
 - MEStorage、GenericInternalInventory、Forge 能力和 AE2 GUI 库存均只能作为适配视图，不能成为真实状态的另一份所有者。适配器必须受核心预留和失效规则约束。
 - GUI 继续直接继承 AEBaseGui；这不要求核心存储继承 GenericStackInv。
 
-当前已替换资源核心与适配层，并接入独立 FE 预留和固定需求的同步整阶段协调；完整配方进程与 planned 调度器仍待迁移。验证证据以 [implementation-status.md](implementation-status.md) 为准，原 P1 测试不能替代预留、补偿和并发验证。
+当前已替换资源核心与适配层，并接入独立 FE 预留、完整配方进程与普通多线程调度；正式 planned 调度器仍待迁移。验证证据以 [implementation-status.md](implementation-status.md) 为准，原 P1 测试不能替代预留、补偿和并发验证。
+
+数量表复用 AE2 `AEKey2LongMap`：有序 totals、快照和配方合并使用其 `LinkdOpenHashMap`，无序预留使用 `OpenHashMap`；增减调用 `addTo`。快照先复制 totals，再遍历实际 extractHolds 用负增量扣除，并删除恰好归零的条目，不为每个总量 key 查询预留表。快照对外使用 AE2 的 `UnmodifiableMap`，包括 `addTo` 在内的写入口均拒绝。
+
+普通 `addTo` 不检查溢出，也不自动删除零项：真实存储先完整预检余额和槽位，再更新各表并清零，保持原预留 apply/rollback/退款容量转换。配方数量合并溢出仍失败；索引的跨来源可用量使用 `SaturatingOpenHashMap.addTo` 保留饱和语义，别名视图仍按 context 取最大量而不相加。预检、精确最大值选择与稳定顺序确实需要的读取不能省略；不以饱和数值代替真实余额。
 
 ## 已确认的旧源码依据
 

@@ -49,18 +49,51 @@ class RecipeCatalogTest {
     }
 
     @Test
-    void unknownGroupsAndNoOpinionDifferFromAnExplicitEmptyIndexWithoutGlobalFallback() {
+    void unknownGroupsAndNoOpinionDifferFromAnExplicitEmptyIndexInBothGlobalAndGroupedScopes() {
         var first = recipe("first", FIRST_GROUP);
         var outside = recipe("outside", SECOND_GROUP);
         var catalog = new RecipeCatalog(List.of(pool("pool", first, outside)));
         var machine = new MachineInstance();
         RecipeCandidateIndex shouldNotRun = (_, _, _) -> { throw new AssertionError("Empty scope must not invoke indices"); };
-        assertTrue(catalog.candidates(machine, Set.of(), List.of(shouldNotRun)).isEmpty());
+        assertTrue(new RecipeCatalog(List.of()).candidates(machine, Set.of(), List.of(shouldNotRun)).isEmpty());
         assertTrue(catalog.candidates(machine, Set.of(id("unknown")), List.of(shouldNotRun)).isEmpty());
         RecipeCandidateIndex noOpinion = (_, _, _) -> null;
         RecipeCandidateIndex reject = (_, _, _) -> List.of();
+        assertEquals(List.of(first, outside), catalog.candidates(machine, Set.of(), List.of(noOpinion)));
+        assertTrue(catalog.candidates(machine, Set.of(), List.of(reject, noOpinion)).isEmpty());
         assertEquals(List.of(first), catalog.candidates(machine, Set.of(FIRST_GROUP), List.of(noOpinion)));
         assertTrue(catalog.candidates(machine, Set.of(FIRST_GROUP), List.of(reject, noOpinion)).isEmpty());
+    }
+
+    @Test
+    void globalIndexesSeeTheSameCompleteImmutableCanonicalScopeIncludingUngroupedRecipes() {
+        var first = recipe("global_first", FIRST_GROUP);
+        var ungrouped = recipe("global_ungrouped");
+        var last = recipe("global_last", SECOND_GROUP);
+        var catalog = new RecipeCatalog(List.of(pool("first_pool", first, ungrouped), pool("second_pool", first, last)));
+        var expected = List.of(first, ungrouped, last);
+        var observed = new ObjectArrayList<List<MachineRecipe>>();
+        RecipeCandidateIndex firstIndex = (_, groups, scope) -> {
+            assertTrue(groups.isEmpty());
+            assertEquals(expected, scope);
+            assertThrows(UnsupportedOperationException.class, () -> groups.add(FIRST_GROUP));
+            assertThrows(UnsupportedOperationException.class, scope::clear);
+            observed.add(scope);
+            return List.of(last, ungrouped);
+        };
+        RecipeCandidateIndex secondIndex = (_, groups, scope) -> {
+            assertTrue(groups.isEmpty());
+            assertSame(observed.getFirst(), scope);
+            assertEquals(expected, scope);
+            return List.of(first, ungrouped, ungrouped);
+        };
+        var machine = new MachineInstance();
+        assertEquals(List.of(ungrouped), catalog.candidates(machine, Set.of(), List.of(firstIndex, secondIndex)));
+        assertEquals(expected, catalog.candidates(machine, Set.of(), List.of()));
+        for (var foreign : List.of(recipe("global_first", FIRST_GROUP), recipe("foreign"))) {
+            RecipeCandidateIndex index = (_, _, _) -> List.of(foreign);
+            assertThrows(IllegalArgumentException.class, () -> catalog.candidates(machine, Set.of(), List.of(index)));
+        }
     }
 
     @Test

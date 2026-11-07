@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Frozen canonical recipes in pool/declaration order, queried only through explicit group scopes. */
+/** Frozen canonical recipes in pool/declaration order; empty query groups select the complete catalog. */
 public final class RecipeCatalog {
     private final Map<ResourceLocation, MachineRecipe> recipes;
     private final List<MachineRecipe> orderedRecipes;
@@ -59,7 +59,10 @@ public final class RecipeCatalog {
         return orderedRecipes;
     }
 
-    /** Each index sees the same full scope; its nonnull result intersects the other index results. */
+    /**
+     * Empty groups select every canonical recipe, including recipes with no groups. Nonempty groups
+     * select their union. Each index sees the same full immutable scope; nonnull results intersect.
+     */
     public List<MachineRecipe> candidates(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
         Objects.requireNonNull(machine, "machine");
         Objects.requireNonNull(groups, "groups");
@@ -75,21 +78,26 @@ public final class RecipeCatalog {
         }
         var scoped = new ReferenceOpenHashSet<MachineRecipe>();
         var orderedScope = new ObjectArrayList<MachineRecipe>();
-        for (var group : frozenGroups) {
-            var members = byGroup.get(group);
-            if (members == null) {
-                continue;
-            }
-            for (var recipe : members) {
-                if (scoped.add(recipe)) {
-                    orderedScope.add(recipe);
+        if (frozenGroups.isEmpty()) {
+            scoped.addAll(orderedRecipes);
+            orderedScope.addAll(orderedRecipes);
+        } else {
+            for (var group : frozenGroups) {
+                var members = byGroup.get(group);
+                if (members == null) {
+                    continue;
+                }
+                for (var recipe : members) {
+                    if (scoped.add(recipe)) {
+                        orderedScope.add(recipe);
+                    }
                 }
             }
+            orderedScope.sort(Comparator.comparingInt(order::getInt));
         }
         if (orderedScope.isEmpty()) {
             return ObjectLists.emptyList();
         }
-        orderedScope.sort(Comparator.comparingInt(order::getInt));
         var scope = ObjectLists.unmodifiable(orderedScope);
         var remaining = new ReferenceOpenHashSet<>(scoped);
         for (var index : indexCopy) {

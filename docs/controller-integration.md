@@ -1,6 +1,6 @@
 # 控制器注册与世界接线
 
-本阶段把规范机器定义、装配和运行时接到真实 `Block`、`ItemBlock`、`TileEntity`、服务器调度及客户端模型。没有声明正式机器、配方或研究数值；所有控制器方块来自下游的机器声明。现有纯逻辑测试及编译不能代替游戏验证，本阶段按要求不启动 Minecraft 或 Bootstrap/FML。
+当前规范机器定义、装配和运行时已接到真实 `Block`、`ItemBlock`、`TileEntity`、服务器调度、客户端模型、默认/自定义 Java GUI 与方向工具。自动扫描须由下游显式声明组件。没有声明正式机器、配方或研究数值；所有控制器方块来自下游的机器声明。现有纯逻辑测试及编译不能代替游戏验证，本阶段按要求不启动 Minecraft 或 Bootstrap/FML。
 
 ## 两阶段注册
 
@@ -40,10 +40,18 @@ Cleanroom 的正常 dormant 缓存会在 `ForgeChunkManager.storeChunkNBT` 保�
 
 客户端只收 `ControllerDisplayData`：类型、朝向、formed、单调显示代和序号；不发完整机器 NBT、工位或 Forge capability 内容。两个更新通道都显式走此格式，先过滤位置和类型，再拒绝旧代/重放。新 TE 的空视图接受当前服务器快照，客户端 world 自身限定连接上下文；显示代不持久化，不是 machine/owner 标识。符合当前类型却格式损坏的数据仍严格报错，不使用异常控制流掩盖协议错误。
 
-世界模型和 inventory 均按 `MachineType.controllerModel()` 自定义，缺省使用 PM 默认资产，名字使用声明的 LocalizationEnum。资源、credit、原旋转效果及尚未注册的 CTM 外壳连接目标见[控制器资产](controller-assets.md)。本阶段未接机器 GUI、方向工具物品、复杂模型/动画/投影/隐藏缓存等完整客户端功能。
+世界模型和 inventory 均按 `MachineType.controllerModel()` 自定义，缺省使用 PM 默认资产，名字使用声明的 LocalizationEnum。资源、credit、原旋转效果及尚未注册的 CTM 外壳连接目标见[控制器资产](controller-assets.md)。GUI 独立使用有界容器显示协议，不扩展世界显示包为完整 runtime 同步；复杂模型/动画/投影/隐藏缓存仍待接。
+
+## 自动配方、GUI 与方向工具入口
+
+自动配方使用 `RecipeScanning.component`，机器组件声明先 `MachineWorkSlots.TYPE` 后 scanner，装配以工位 codec 保存进程、以 recreated 重建 scanner；只声明工位不扫描。catalog 在装配时解析完整 freeze 的共享目录。空 recipeGroups/槽位白名单统一为全局候选，包含无组配方，显式组仍按交集限制具体工位。扫描系统排在工位处理前，二者都检查成型/退休门限。详细合同与示例见[配方扫描](recipes.md#自动扫描组件声明与恢复)。
+
+控制器非潜行普通激活打开 GUI 0，手持方向工具时交还物品处理。默认 `MachineGui` / `MachineContainer` 直接继承 AE2 基类，保留 PM 可滚动工位进度与真实玩家背包。容器在 owner FIFO、worker join 后重新检查 openContainer/准确 TE，再同步最多七行不可变显示值；屏幕不读取服务器 runtime。默认或自定义容器绑定由 common `MachineGuiRegistry` 提供，client `MachineScreenRegistry` 用明确容器类绑定有类型 factory。自定义界面直接继承 AEBaseGui，不需要默认类或 GUI DSL。完整入口与同步限额见[机器 GUI](machine-gui.md)。
+
+`prototype_eng:orientation_tool` 保留 PM 的两模式、武器/铁镐斧锹、耐久、附魔、成就和原模型。开启后普通点击 front 扭转、其他面重置 canonical，潜行遍历 24 向；相对操作使用上文 owner FIFO。PM 的 DOWN canonical top=SOUTH 单独保留，配置十项默认值/范围沿用原实现。详细交互、权限与资源见[方向工具](orientation-tool.md)。
 
 ## 验证与继续范围
 
 新增逻辑测试覆盖注册原子性/坏引用/重入/快照，真实刷新 worker join、失稳重试和旧请求隔离，保存标签隔离、24 向组合与显示重放拒绝。没有直接 new TileEntity：其父构造会触发 AttachCapabilitiesEvent 和 Forge 初始化，违反当前测试约束。真实 ItemBlock/BlockSnapshot/Template/World 调用由依赖源码审查、编译与 IDEA MCP 检查覆盖，未宣称实机通过。完整计数和逐文件记录见[实施进度](implementation-status.md)。
 
-仍须完成 PN 身份/搬运冲突/owner/研究/队伍/计算与正式 planned，统一空 recipeGroups 的全局扫描语义并接自动 scanner，严格 JSON 阶段与注册、完整 GUI/预览/BOM/渲染、JEI 和最后 CraftTweaker。缺少这些能力的声明仍不会被当成正式完整机器；Applied-Flux 继续暂缓。
+仍须完成 PN 身份/搬运冲突/owner/研究/队伍/计算与正式 planned，严格 JSON 阶段与注册、结构预览/投影/切片/BOM、复杂渲染与隐藏缓存、JEI 和最后 CraftTweaker。默认及自定义 Java GUI、自动 scanner 和方向工具已接，真实交互与渲染尚无实机证据；最新构建及逐文件 MCP 记录见[实施进度](implementation-status.md)。缺少剩余能力的声明仍不会被当成正式完整机器；Applied-Flux 继续暂缓。

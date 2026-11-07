@@ -10,7 +10,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Pure optional candidate filtering inside an immutable group scope. A nonnull result must include
+ * Pure optional candidate filtering inside an immutable scope. Empty groups denote the complete
+ * global catalog, including ungrouped recipes; nonempty groups denote their union. A nonnull result must include
  * every recipe that could succeed under this index's responsibility; other indices may narrow it
  * further. It must retain scope recipes with no requirement for its own resource type, so an item
  * index cannot discard energy-only or resource-free recipes. Null expresses no opinion; an empty

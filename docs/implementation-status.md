@@ -33,7 +33,7 @@
 - 显式取消与失败清理已接入并验证：RecipeProcess.cancel 进入 CANCELLED，业务 Failure 进入 FAILED，保留 committed started/progress/ticks 与结构化 Failure 原因，不执行 END、不退历史 IO。按根需求执行逆序调用 cancel，再对预先捕获的组件按依赖逆序调用 ProcessAbortListener；回调故障继续其余参与者并聚合，poison 禁止执行与保存。host.cancel 协调结果与挂接，cancelAll 逆槽尝试全部工作；故障宿主能清其他稳定进程但不能复活，失败进程留槽诊断。普通区块卸载/保存不自动取消；现已接结构失效暂停与控制器破坏取消的宿主边界。
 - 精确内置归属已补齐：RequirementAttributeState 跟踪完整路径/属性及实际安装的 Renamed modifier 对象；START rollback、END 与 abort 只删除准确自有对象，foreign 同 ID 碰撞不 claim，替换违约保留 foreign 并抛错。END removeAtEnd=true 清本路径历史安装目标，false 保留；abort 清所有 owned。修复私有包装导致默认 codec 无法保存活动内置属性的问题；localModifier 只读本层，避免归属检查复制整份属性图。Selector 只向选中未完成 child 传播取消；组件清理逆 selection、overlay 后 modifier 各族逆序，逻辑锁清空，其他写入方效果保留。
 - 取消持久化与执行边界已验证：进程 NBT Version2 保存归属/清理回执，恢复绑定已有对象并检查已记录效果缺席，不重放 START/modifier/abort；FAILED/CANCELLED 不留活动内置归属，非 abort 状态不能带回执。回执不证明任意外部历史副作用，外部 validator 仍必需。任何抛错 tick 或清理故障后，同一进程拒绝再次 tick，即使资源已补偿或已经终态；正常 Blocked 仍可重试。每层 overlay 写时核验直接子项的 canonical identity/顺序不变，防止 selector 重排后取消错误 child。
-- 机器类型、附宿主装配/恢复、控制器运行时及实际Block/Item/TileEntity/Forge调用已接入；完整24向、结构并发刷新、放置者和独立显示/默认模型已有实现，见[控制器集成](controller-integration.md)。尚未完成自动scanner全局组语义、机器GUI/方向工具物品、正式planned、严格结构JSON与注册、完整预览/渲染、JEI、研究与计算、CraftTweaker。
+- 机器类型、附宿主装配/恢复、控制器运行时及实际Block/Item/TileEntity/Forge调用已接入；完整24向、结构并发刷新、放置者和独立显示/默认模型已有实现，见[控制器集成](controller-integration.md)。自动扫描及全局空组语义、默认/自定义 Java GUI 和方向工具已接入；正式 planned、严格结构 JSON 与注册、完整预览/渲染、JEI、研究与计算、CraftTweaker 仍待迁移。
 - 暂缓：Applied-Flux 兼容；后续仍使用带 v 前缀的 `v1.0.0:dev` 坐标，当前不拉取该依赖。
 - 必须继续迁移：研究/队伍、并行调度、结构/投影/渲染及其他未被明确取消的 PM/PN 功能效果。实现策略仍需按源码审查；正式机器与玩法数值不属于待开发内容。
 
@@ -49,6 +49,12 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（自动配方/机器界面/工具）：RecipeScanning 显式组件声明复用旧工位与事件驱动处理；工位先创建、scanner 恢复时重建，runBefore 保证同 tick 扫描后处理，恢复不重跑 START。RecipeRegistry 完整构造池和共享 catalog 后单次 volatile 发布。空 groups 在 catalog/index/扫描/直接 admission/restore 一致表示全局，包含无组配方，混合显式/wildcard 工位按各自规则接收。详见[配方](recipes.md)。
+- 2026-11-07（GUI/方向工具）：默认 MachineGui/MachineContainer 直接继承 AE2 基类，公开两侧 Java factory 注册；自定义容器必须绑定实际 TE，客户端匹配类型。owner FIFO join 后重验窗口和 TE，只同步可见最多七行不可变快照，保留进度、阻塞/失败原因和真实背包；修复 AE2 Scrollbar 直接调用缺命中检查吞掉背包左键的问题。PM 临时库存/固定 Idle/空扩展页不作为真实机器功能。方向工具保留原两模式、24 向及 DOWN top=SOUTH、采掘/武器/附魔/耐久、十项配置、模型和成就，手持时控制器让出右键。详见[机器 GUI](machine-gui.md)、[方向工具](orientation-tool.md)。
+- 2026-11-07（AEKey 数量表）：存储三表、快照、配方合并/输入解析与索引改用 AEKey2LongMap，增减 addTo；快照总量复制后仅遍历实际预留量扣减，避免逐总量 key 查预留表。保留 Linked 顺序、溢出前置预检、零条目删除、跨来源饱和和 alias 最大值语义；快照 UnmodifiableMap 拒绝 addTo。复用已有资源/事务测试，仅补已有不可变快照用例的新增写入口验证；未增加 hash 性能断言。详见[存储](storage-redesign.md)。
+- 2026-11-07（本阶段验证）：最终 gradlew.bat spotlessApply build --console=plain 成功，419 项测试零失败/错误/跳过。较上一阶段新增 18 项逻辑用例：自动控制器处理/恢复 7 项、全局组/索引 4 项、GUI 快照 3 项、方向数学 4 项。IDEA MCP get_file_problems(errorsOnly:false) 覆盖 276 个 src Java 和生成 Tags 共 277 文件，修改后复查 59 份，最终零错误/警告/弱警告且无超时；MCP build_project 返回 isSuccess:true、problems:[]。报告 build/reports/idea/machine-gui-final.json。全部检查使用现有本机 MCP，无桌面操作，也未启动 Minecraft、Bootstrap/FML。原 23 份工作区修改保留不提交；三个重叠文件只提交本阶段功能修改。实际 Forge/GUI/模型交互仍无游戏内证据。
+
 
 - 2026-11-07（控制器世界接线）：新增类型/运行时注册事件，全局MachineTypeRegistry整批校验并同时发布结构/assembly，零声明也注册通用TE。Block factory/空构造/read只存类型、朝向和NBT，server update过Forge取消窗口后load；已装配BlockSnapshot恢复先检查保存边界、退旧代再由新controller恢复，不直接覆盖组件。setup失败也清理已登记runtime。完整方向在owner FIFO操作，修正外部A→原方向漏队列及相对变换提前求值；结构按PM 20/5节奏真实CONCURRENT评估、join后发布、失稳暂停下tick重试。客户端仅类型/朝向/formed/显示代与序号，旧包拒绝；放置者限本TE实际玩家，不授PN权限。默认模型沿用PM 48状态和inventory，复制7PNG与6份JSON/metadata并保留credit。见[世界接线](controller-integration.md)、[资产来源](controller-assets.md)。
 - 2026-11-07（控制器世界接线验证）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，401项测试零失败/错误/跳过，新增15项（5 runtime发布、7结构调度、3数据/24向/显示）。本机MCP逐文件 `get_file_problems(errorsOnly:false)` 覆盖259个src Java和Tags共260文件，最终零错误/警告/弱警告且无超时；MCP build_project成功、problems为空。证据 `build/reports/idea/controller-integration-final.json`。主类功能接线单独暂存，原有格式/注解增删保持；其他22份原diff逐字未变，全部原改动保留未暂存。未运行Minecraft、Bootstrap/FML或桌面；普通TileEntity构造会触发AttachCapabilitiesEvent，因此没有用new TE冒充纯逻辑测试。

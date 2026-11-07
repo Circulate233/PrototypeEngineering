@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -22,7 +23,6 @@ import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.RecipeText;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -77,9 +77,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             }
             var consumed = scaled(inputs, times);
             var produced = scaled(outputs, times);
-            Object2LongLinkedOpenHashMap<AEKey> random = null;
+            AEKey2LongMap random = null;
             if (randomOutputs) {
-                random = new Object2LongLinkedOpenHashMap<>();
+                random = new AEKey2LongMap.LinkdOpenHashMap();
                 randomOutputs(process, Objects.requireNonNull(pool), salt, times, random);
                 merge(produced, random);
             }
@@ -130,8 +130,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
      * Release these before actual reservations: checks do not consume resources and can be shared by
      * later requirements. Exact execution still reserves afresh, so an intervening change cannot overdraw.
      */
-    private static ProcessResult preflight(List<ResourceHatch> hatches, Object2LongLinkedOpenHashMap<AEKey> inputs,
-                                           Object2LongLinkedOpenHashMap<AEKey> outputs, boolean needsInput,
+    private static ProcessResult preflight(List<ResourceHatch> hatches, AEKey2LongMap inputs,
+                                           AEKey2LongMap outputs, boolean needsInput,
                                            boolean needsOutput, boolean voidExcess, String id) {
         var checks = new ObjectArrayList<ResourceReservation>();
         ProcessResult result;
@@ -148,11 +148,11 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         return result;
     }
 
-    private static Object2LongLinkedOpenHashMap<AEKey> scaled(List<GenericStack> stacks, long times) {
-        var amounts = new Object2LongLinkedOpenHashMap<AEKey>();
+    private static AEKey2LongMap scaled(List<GenericStack> stacks, long times) {
+        var amounts = new AEKey2LongMap.LinkdOpenHashMap();
         if (times == 0) { return amounts; }
         for (var stack : stacks) {
-            amounts.put(stack.what(), Math.addExact(amounts.getLong(stack.what()), stack.amount()));
+            addChecked(amounts, stack.what(), stack.amount());
         }
         for (var entry : amounts.object2LongEntrySet()) {
             entry.setValue(ChanceMath.scaleCount(entry.getLongValue(), times));
@@ -160,14 +160,14 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         return amounts;
     }
 
-    private static void merge(Object2LongLinkedOpenHashMap<AEKey> into, Object2LongLinkedOpenHashMap<AEKey> from) {
+    private static void merge(AEKey2LongMap into, AEKey2LongMap from) {
         for (var entry : from.object2LongEntrySet()) {
-            into.put(entry.getKey(), Math.addExact(into.getLong(entry.getKey()), entry.getLongValue()));
+            addChecked(into, entry.getKey(), entry.getLongValue());
         }
     }
 
     private static void randomOutputs(RecipeProcess process, RandomOutputPool pool, String salt, long times,
-                                      Object2LongLinkedOpenHashMap<AEKey> output) {
+                                      AEKey2LongMap output) {
         if (times == 0) { return; }
         if (pool.pickCount() >= pool.candidates().size()) {
             // Every positive-weight entry is certain; avoid one sampling/allocation pass per parallel.
@@ -181,12 +181,20 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             var selected = WeightedSampling.sampleWithoutReplacement(process.random(salt + ":random:" + execution),
                 pool.candidates(), pool.pickCount());
             for (var stack : selected) {
-                output.put(stack.what(), Math.addExact(output.getLong(stack.what()), stack.amount()));
+                addChecked(output, stack.what(), stack.amount());
             }
         }
     }
 
-    private static ProcessResult reserve(List<ResourceHatch> hatches, Object2LongLinkedOpenHashMap<AEKey> quantities,
+    /** Requirement quantities are nonnegative; overflow must fail before changing the accumulated map. */
+    private static void addChecked(AEKey2LongMap amounts, AEKey key, long amount) {
+        if (amount > Long.MAX_VALUE - amounts.getLong(key)) {
+            throw new ArithmeticException("long overflow");
+        }
+        amounts.addTo(key, amount);
+    }
+
+    private static ProcessResult reserve(List<ResourceHatch> hatches, AEKey2LongMap quantities,
                                           boolean input, boolean needsStorage, boolean voidExcess, String id,
                                           List<ResourceReservation> reservations) {
         if (!needsStorage) {

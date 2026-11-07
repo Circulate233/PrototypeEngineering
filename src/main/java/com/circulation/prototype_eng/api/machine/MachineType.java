@@ -59,6 +59,7 @@ public final class MachineType {
     public LocalizationEnum displayName() { return displayName; }
     public ResourceLocation structureId() { return structureId; }
     public List<ComponentType<MachineInstance, ?>> componentTypes() { return componentTypes; }
+    /** Groups for the implicit main slot when workSlots is empty; empty groups accept every recipe. */
     public Set<ResourceLocation> recipeGroups() { return recipeGroups; }
     public List<WorkSlotDefinition> workSlots() { return workSlots; }
     @SuppressWarnings("unused") // Assembly applies these public defaults after restoring persisted attributes.

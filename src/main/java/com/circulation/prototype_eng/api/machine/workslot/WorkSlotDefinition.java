@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.machine.workslot;
 
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
@@ -7,7 +8,7 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Objects;
 import java.util.Set;
 
-/** Static work slot metadata supplied by a machine definition. */
+/** Static work slot metadata; empty allowedRecipeGroups accepts every recipe, including ungrouped recipes. */
 public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecipeGroups, boolean isCore,
                                  WorkSlotRestartPolicy restartPolicy) {
     public WorkSlotDefinition {
@@ -29,5 +30,15 @@ public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecip
 
     public WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecipeGroups) {
         this(name, allowedRecipeGroups, true, WorkSlotRestartPolicy.LOCKED_RETRY);
+    }
+
+    /** Shared compatibility rule for scanning, direct admission and restoration. */
+    public boolean accepts(MachineRecipe recipe) {
+        Objects.requireNonNull(recipe, "recipe");
+        if (allowedRecipeGroups.isEmpty()) { return true; }
+        for (var group : recipe.recipeGroups()) {
+            if (allowedRecipeGroups.contains(group)) { return true; }
+        }
+        return false;
     }
 }

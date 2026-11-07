@@ -24,7 +24,8 @@ import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
 /**
- * Ordered, group-scoped PM recipe admission with bounded cooperative search. The scanner belongs to
+ * Ordered PM recipe admission with bounded cooperative search. Empty slot groups accept the global
+ * catalog; explicit groups restrict that slot. The scanner belongs to
  * one machine's exclusive execution owner. It retains only a search cursor, never a reservation or
  * scheduler authority between calls. A pass observes changing live storage at each probe, so it is
  * not an atomic global maximum. The actual process START remains authoritative after admission.
@@ -74,7 +75,13 @@ public final class RecipeScanner {
         this.monotonicStart = Objects.requireNonNull(monotonicStart);
         this.seeds = Objects.requireNonNull(seeds);
         var scope = new ObjectLinkedOpenHashSet<ResourceLocation>();
-        for (var slot : host.slots()) { scope.addAll(slot.allowedRecipeGroups()); }
+        for (var slot : host.slots()) {
+            if (slot.allowedRecipeGroups().isEmpty()) {
+                scope.clear();
+                break;
+            }
+            scope.addAll(slot.allowedRecipeGroups());
+        }
         groups = ObjectSets.unmodifiable(scope);
     }
 
@@ -104,7 +111,6 @@ public final class RecipeScanner {
         int capacity = host.capacity();
         if (retired()) { return result(Status.PAUSED, 0, 0); }
         if (active.size() >= capacity) { return result(Status.FULL, 0, 0); }
-        if (groups.isEmpty()) { return result(Status.NO_GROUPS, 0, 0); }
         if (candidates.isEmpty()) { candidates = catalog.candidates(host.owner(), groups, indexes); }
         int examined = 0;
         int probes = 0;
@@ -208,7 +214,7 @@ public final class RecipeScanner {
     @Nullable
     private WorkSlot eligibleSlot(MachineRecipe recipe) {
         for (var slot : host.slots()) {
-            if (slot.process() == null && recipe.recipeGroups().stream().anyMatch(slot.allowedRecipeGroups()::contains)) { return slot; }
+            if (slot.process() == null && slot.definition().accepts(recipe)) { return slot; }
         }
         return null;
     }
@@ -227,7 +233,7 @@ public final class RecipeScanner {
         return ObjectLists.unmodifiable(result);
     }
 
-    public enum Status { ADMITTED, YIELDED, EXHAUSTED, FULL, NO_GROUPS, PAUSED }
+    public enum Status { ADMITTED, YIELDED, EXHAUSTED, FULL, PAUSED }
 
     public record Result(Status status, @Nullable RecipeProcess process, int candidates, int probes) { }
 

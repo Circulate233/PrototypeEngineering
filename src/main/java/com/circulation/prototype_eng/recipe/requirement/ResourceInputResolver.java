@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -12,7 +13,6 @@ import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.RecipeText;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
@@ -24,13 +24,13 @@ final class ResourceInputResolver {
     private ResourceInputResolver() { }
 
     static Selection resolve(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
-                              List<ResourceHatch> hatches, long checkTimes, Object2LongLinkedOpenHashMap<AEKey> planned) {
+                              List<ResourceHatch> hatches, long checkTimes, AEKey2LongMap planned) {
         var locks = ResourceInputLocks.getOrCreate(process);
         var pending = new ObjectArrayList<Choice>();
         var inputs = new ObjectArrayList<>(requirement.payload().inputs());
         var selected = new Selection(inputs, locks, pending);
         var seen = new ReferenceOpenHashSet<StorageContext>();
-        var available = new Object2LongLinkedOpenHashMap<AEKey>();
+        var available = new AEKey2LongMap.LinkdOpenHashMap();
         for (var hatch : hatches) {
             if (!hatch.isValid()) { continue; }
             var storage = hatch.input();
@@ -40,7 +40,7 @@ final class ResourceInputResolver {
                 if (amount < 0) { throw new IllegalStateException("Negative available resource balance"); }
                 if (amount == 0) { continue; }
                 long previous = available.getLong(entry.getKey());
-                available.put(entry.getKey(), previous > Long.MAX_VALUE - amount ? Long.MAX_VALUE : previous + amount);
+                available.addTo(entry.getKey(), Math.min(amount, Long.MAX_VALUE - previous));
             }
         }
         String id = requirement.id().toString();
@@ -72,23 +72,24 @@ final class ResourceInputResolver {
     }
 
     private static boolean choose(Selection selected, ResourceInputLocks.Key lock, List<AEKey> candidates, long amount,
-                                   long times, Object2LongLinkedOpenHashMap<AEKey> available,
-                                   Object2LongLinkedOpenHashMap<AEKey> planned) {
+                                   long times, AEKey2LongMap available,
+                                   AEKey2LongMap planned) {
         long needed = ChanceMath.scaleCount(amount, times);
         AEKey existing = selected.locks.get(lock);
         AEKey chosen = existing == null ? first(candidates, needed, available, planned) : existing;
         if (chosen == null || available.getLong(chosen) - planned.getLong(chosen) < needed) {
             return false;
         }
-        planned.put(chosen, Math.addExact(planned.getLong(chosen), needed));
+        // The availability check bounds planned + needed by a nonnegative saturated long balance.
+        planned.addTo(chosen, needed);
         selected.inputs.add(new GenericStack(chosen, amount));
         if (existing == null) { selected.pending.add(new Choice(lock, chosen)); }
         return true;
     }
 
     @Nullable
-    private static AEKey first(List<AEKey> candidates, long needed, Object2LongLinkedOpenHashMap<AEKey> available,
-                                Object2LongLinkedOpenHashMap<AEKey> planned) {
+    private static AEKey first(List<AEKey> candidates, long needed, AEKey2LongMap available,
+                                AEKey2LongMap planned) {
         for (var candidate : candidates) {
             if (available.getLong(candidate) - planned.getLong(candidate) >= needed) { return candidate; }
         }

@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -35,7 +36,6 @@ import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
@@ -156,11 +156,30 @@ class ResourceRecipeIndexTest {
         assertEquals(List.of(universal), catalog.candidates(machine, Set.of(GROUP), List.of(index)));
         machine.components().remove(MachineHatches.TYPE);
         assertEquals(List.of(universal), catalog.candidates(machine, Set.of(GROUP), List.of(index)));
-        assertTrue(catalog.candidates(machine, Set.of(), List.of(index)).isEmpty());
+        assertEquals(List.of(universal), catalog.candidates(machine, Set.of(), List.of(index)));
         assertTrue(catalog.candidates(machine, Set.of(OTHER_GROUP), List.of(index)).isEmpty());
         var onlyIndexed = catalog(exact);
         var hardEmpty = new ResourceRecipeIndex(onlyIndexed, List.of(new Footprint(exact, List.of(new GenericStack(A, 5)))));
         assertEquals(List.of(), onlyIndexed.candidates(machine, Set.of(GROUP), List.of(hardEmpty)));
+    }
+
+    @Test
+    void globalScopeIndexesUngroupedInputsAndRetainsUngroupedAndOtherGroupFallbacks() {
+        var storage = buffer(100);
+        storage.insert(A, 2, Actionable.MODULATE);
+        var machine = new MachineInstance();
+        install(machine, new Ports(storage, null, true));
+        var matching = new MachineRecipe(id("ungrouped_matching"), 2, List.of(inputs(new GenericStack(A, 2))));
+        var missing = new MachineRecipe(id("ungrouped_missing"), 2, List.of(inputs(new GenericStack(MISSING, 1))));
+        var ungrouped = new MachineRecipe(id("ungrouped_fallback"), 2, List.of());
+        var other = new MachineRecipe(id("other_fallback"), 2, List.of(), Set.of(OTHER_GROUP));
+        var catalog = catalog(matching, missing, ungrouped, other);
+        var index = ResourceRecipeIndex.forFixedInputs(catalog, _ -> true);
+        assertEquals(List.of(matching, ungrouped, other), catalog.candidates(machine, Set.of(), List.of(index)));
+        assertEquals(List.of(other), catalog.candidates(machine, Set.of(OTHER_GROUP), List.of(index)));
+        assertTrue(catalog.candidates(machine, Set.of(GROUP), List.of(index)).isEmpty());
+        machine.components().remove(MachineHatches.TYPE);
+        assertEquals(List.of(ungrouped, other), catalog.candidates(machine, Set.of(), List.of(index)));
     }
 
     @Test
@@ -226,7 +245,7 @@ class ResourceRecipeIndexTest {
         @Override public StorageContext context() { return delegate.context(); }
         @Override public StorageSnapshot snapshot() {
             var snapshot = delegate.snapshot();
-            var entries = new Object2LongLinkedOpenHashMap<AEKey>();
+            var entries = new AEKey2LongMap.LinkdOpenHashMap();
             snapshot.available().object2LongEntrySet().forEach(entry -> {
                 if (visible.contains(entry.getKey())) { entries.put(entry.getKey(), entry.getLongValue()); }
             });

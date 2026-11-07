@@ -54,6 +54,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -69,6 +70,79 @@ class RecipeScannerTest {
     private static final ResourceLocation GROUP = id("group");
     private static final ScanLimits ONE_PROBE = new ScanLimits(1, 1);
     private static final Runnable NO_OP = () -> { };
+
+    @Test
+    void implicitEmptyGroupsScanTheGlobalCatalogAcrossCandidateBudgetYields() {
+        var machine = new MachineInstance();
+        var host = new MachineWorkSlots(machine, List.of());
+        var blocked = new MachineRecipe(id("global_blocked"), 2,
+            List.of(guard("global_guard", _ -> new ProcessResult.Blocked("unavailable"))), Set.of(id("other_group")));
+        var ungrouped = new MachineRecipe(id("global_ungrouped"), 2, List.of());
+        RecipeCandidateIndex index = (_, groups, scope) -> {
+            assertTrue(groups.isEmpty());
+            assertEquals(List.of(blocked, ungrouped), scope);
+            return null;
+        };
+        var scanner = new RecipeScanner(host, catalog(blocked, ungrouped), RecipeProcess::new,
+            List.of(), List.of(index), _ -> false, () -> 17);
+        var yielded = scanner.scan(ONE_PROBE);
+        assertEquals(RecipeScanner.Status.YIELDED, yielded.status());
+        assertEquals(1, yielded.candidates());
+        assertEquals(1, yielded.probes());
+        assertTrue(host.activeProcesses().isEmpty());
+        var admitted = scanner.scan(ONE_PROBE);
+        assertEquals(RecipeScanner.Status.ADMITTED, admitted.status());
+        assertEquals(1, admitted.candidates());
+        assertEquals(1, admitted.probes());
+        assertSame(ungrouped, Objects.requireNonNull(admitted.process()).recipe());
+        assertSame(admitted.process(), host.requireSlot("main").process());
+    }
+
+    @Test
+    void wildcardSlotExpandsScanScopeWhileExplicitSlotsStillFilterAdmissionAndRestore() {
+        var machine = new MachineInstance();
+        machine.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2);
+        var explicit = new WorkSlotDefinition("explicit", Set.of(GROUP));
+        var wildcard = new WorkSlotDefinition("wildcard");
+        var host = new MachineWorkSlots(machine, List.of(explicit, wildcard), Set.of(id("ignored_machine_group")), RecipeProcess::tick);
+        var ungrouped = new MachineRecipe(id("mixed_ungrouped"), 2, List.of());
+        var other = new MachineRecipe(id("mixed_other"), 2, List.of(), Set.of(id("other_group")));
+        var matching = recipe("mixed_matching", 2);
+        assertFalse(host.startIn("explicit", new RecipeProcess(machine, ungrouped, 17)));
+        assertFalse(host.startIn("explicit", new RecipeProcess(machine, other, 17)));
+        RecipeCandidateIndex index = (_, groups, scope) -> {
+            assertTrue(groups.isEmpty());
+            assertEquals(List.of(ungrouped, other, matching), scope);
+            return scope;
+        };
+        var scanner = new RecipeScanner(host, catalog(ungrouped, other, matching), RecipeProcess::new,
+            List.of(), List.of(index), _ -> false, () -> 17);
+        var first = scanner.scan(new ScanLimits(3, 3));
+        assertEquals(RecipeScanner.Status.ADMITTED, first.status());
+        var firstProcess = Objects.requireNonNull(first.process());
+        assertSame(firstProcess, host.requireSlot("wildcard").process());
+        assertSame(ungrouped, firstProcess.recipe());
+        var second = scanner.scan(new ScanLimits(3, 3));
+        assertEquals(RecipeScanner.Status.ADMITTED, second.status());
+        var secondProcess = Objects.requireNonNull(second.process());
+        assertSame(matching, secondProcess.recipe());
+        assertSame(secondProcess, host.requireSlot("explicit").process());
+        assertEquals(3, second.candidates());
+        assertEquals(1, second.probes());
+        var previous = host.snapshot();
+        var restoredUngrouped = new RecipeProcess(machine, ungrouped, 17);
+        var restoredMatching = new RecipeProcess(machine, matching, 17);
+        host.restore(List.of(new MachineWorkSlots.SlotSnapshot(explicit, restoredMatching, ProcessResult.SUCCESS),
+            new MachineWorkSlots.SlotSnapshot(wildcard, restoredUngrouped, ProcessResult.SUCCESS)));
+        assertSame(host, restoredUngrouped.host());
+        assertSame(host, restoredMatching.host());
+        assertNull(firstProcess.host());
+        assertNull(secondProcess.host());
+        assertThrows(IllegalArgumentException.class, () -> host.restore(List.of(
+            new MachineWorkSlots.SlotSnapshot(explicit, new RecipeProcess(machine, other, 17), ProcessResult.SUCCESS), previous.getLast())));
+        assertSame(restoredMatching, host.requireSlot("explicit").process());
+        assertSame(restoredUngrouped, host.requireSlot("wildcard").process());
+    }
 
     @Test
     void scheduleReadinessAndOrderingAdmitAtMostOneUniqueRecipeAndTickEachProcessOnce() {

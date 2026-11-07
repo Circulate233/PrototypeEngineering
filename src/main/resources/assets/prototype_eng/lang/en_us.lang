@@ -91,3 +91,26 @@ recipe.prototype_eng.EnergyMissing=Requirement %s is missing %s FE
 recipe.prototype_eng.EnergyOutputFull=Requirement %s needs room for %s more FE
 recipe.prototype_eng.Cancelled=Recipe cancelled
 recipe.prototype_eng.ControllerBroken=Machine controller was broken
+
+gui.prototype_eng.machine.Formed=Structure formed
+gui.prototype_eng.machine.Unformed=Structure incomplete
+gui.prototype_eng.machine.Unavailable=Machine unavailable
+gui.prototype_eng.machine.Idle=Idle
+gui.prototype_eng.machine.Running=Running
+gui.prototype_eng.machine.Blocked=Blocked
+gui.prototype_eng.machine.Failed=Failed
+gui.prototype_eng.machine.WorkSlots=Work slots
+gui.prototype_eng.machine.Slot=#%s
+gui.prototype_eng.machine.Progress=%s%%
+gui.prototype_eng.machine.Recipe=Recipe: %s
+gui.prototype_eng.machine.NoWorkSlots=No work slots
+
+orientation_tool.prototype_eng.Name=Controller Orientation Tool
+orientation_tool.prototype_eng.Enabled=Controller Orientation Tool: Enabled
+orientation_tool.prototype_eng.Disabled=Controller Orientation Tool: Disabled
+orientation_tool.prototype_eng.State=Mode: %s
+orientation_tool.prototype_eng.StateOn=Enabled (can rotate controllers, higher damage, higher durability cost)
+orientation_tool.prototype_eng.StateOff=Disabled (iron-tier multi-tool: pickaxe/axe/shovel)
+orientation_tool.prototype_eng.ToggleHint=Sneak + right-click air to toggle (sneak + click controller: cycle 24 orientations)
+orientation_tool.prototype_eng.CherishTitle=Cherish Your Tools
+orientation_tool.prototype_eng.CherishDescription=Hit an entity with the Controller Orientation Tool while it is disabled.

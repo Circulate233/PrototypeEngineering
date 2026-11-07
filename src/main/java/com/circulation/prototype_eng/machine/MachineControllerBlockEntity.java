@@ -60,6 +60,11 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
     }
 
     @Nullable public MachineInstance machine() { return controller == null ? null : controller.machine(); }
+    public MachineType type() { return requireBlock().type(); }
+
+    /** The callback runs on the server after accepted workers join; recheck the open container there. */
+    public void readGuiAtBoundary(Runnable read) { scheduler().runAtBoundary(Objects.requireNonNull(read)); }
+
     public BlockOrientation orientation() { return data == null ? BlockOrientation.NORTH_UP : data.orientation(); }
     public boolean formed() {
         if (world != null && world.isRemote) { return display != null && display.formed(); }
@@ -163,7 +168,9 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
         transformOrientation(_ -> orientation);
     }
 
-    private void transformOrientation(UnaryOperator<BlockOrientation> transformation) {
+    /** Applies a pure relative transform at the owner boundary, using this attachment's latest direction. */
+    public void transformOrientation(UnaryOperator<BlockOrientation> transformation) {
+        Objects.requireNonNull(transformation);
         requireServer();
         var epoch = attachmentEpoch;
         scheduler().runAtBoundary(() -> {

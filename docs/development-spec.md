@@ -59,6 +59,7 @@ PN 原先作为 PM 附属模组产生的访问限制、注册桥接、重复上�
 | R24 | 保留十阶仓室及 PM 美术 | 资源与能源各保留输入、输出、混合三方向和十阶。资源槽数/物品容量沿用 PM ItemHatchConfig，流体每槽容量沿用 FluidHatchConfig，能源容量/操作限额沿用 EnergyHatchConfig；资源美术使用 PM item_hatch 原模型纹理，能源使用 energy_hatch，保留署名与 Bloom 元素。默认值可配置，不新增正式玩法内容。 |
 | R25 | 翻译使用 AE2S 枚举契约 | 本项目本地化枚举实现 LocalizationEnum；客户端字符串使用 getLocal，服务器可用标题/文本使用 text 组件。GUI 不拼接翻译键，也不直接以裸翻译键调用翻译函数。 |
 | R26 | 逐类真实 IDEA MCP 检查 | 使用本机 MCP 的 get_file_problems（errorsOnly:false），每个类消除错误、警告及弱警告并记录范围/结果。不得操作桌面 IDE；工具未挂载时连接已经启用的本地 MCP、通过 tools/list 查找工具，不修改 IDE 设置。编译、格式检查和人工审查不能代替该证据。 |
+| R27 | 数量映射复用 AE2 专用集合 | AEKey 数量使用 AEKey2LongMap；累加/扣减优先 addTo，避免 get 后 put 的重复寻址。非 AEKey 累加也优先 fastutil addTo；保留真实余额的溢出预检、预留/退款约束、顺序和零值清理。 |
 
 R11 允许重新设计格式，也允许保留经审查确认适用的算法和数据表达。R12–R14 是实现选择原则，不表示本轮已完成旧代码的全面质量审计或性能测试。
 

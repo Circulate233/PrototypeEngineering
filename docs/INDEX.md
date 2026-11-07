@@ -1,58 +1,55 @@
 # 开发索引
 
-恢复上下文先读本文件和 `git status --short`，再按表定位章节或源码。完整状态及历史证据在实施进度，需求在开发文档，不整批重读。
+恢复上下文先读本文件和 `git status --short`，再按入口定位源码/章节。需求见开发文档，完整状态和历史证据见实施进度；不整批加载文档。
 
 ## 当前检查点
 
-- 控制器Block/Item/TileEntity、注册/结构刷新/显示与默认模型已完成本阶段验证，只本地提交、不推送，提交号以Git日志为准。此前运行时为 `44a6486`，附宿主装配为 `7d7b2f9`。原23份格式/注解改动保留未暂存；主类新增接线单独暂存，其余22份diff逐字未变。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过401项逻辑测试。本机IDEA MCP已逐个检查259个src Java及Tags共260文件，`errorsOnly:false`，最终零错误/警告/弱警告且无文件超时；MCP build_project成功。最终证据见 `build/reports/idea/controller-integration-final.json`。全部通过MCP，不操作桌面；实际World/TileEntity/Forge交互未运行验证。
-- 当前世界接线：Block注册事件收集类型并freeze，零声明也注册通用TE；PostInit配方freeze后整批resolveRuntime结构/assembly，拒半发布。空TE/读NBT只存副本，下一update过Forge放置取消窗口后装配；活动NBT回滚先检查稳定边界并退旧代、下一update新装配。完整24向/外部state变化按owner FIFO失效/重配，结构按PM 20/5节奏捕获→worker→join后发布，失稳明确暂停下tick重试。放置者绑定本TE，显示不包含runtime/ForgeCaps；旧显示代/序号拒绝。默认模型复用PM资产，可按类型自定义。入口 `docs/controller-integration.md`；GUI/工具物品/复杂渲染和PN仍待接。正常Cleanroom dormant保存NBT并重建TE，不复用Java TE，不按早先错误判断添加自动复活逻辑。
-- 当前控制器运行时：MachineController复用装配/lifecycle，load后登记自身对象身份，登记失败卸载并注销。停止先合法入队再retire；MAIN回调返回/所有accepted worker真实join后清理，CHUNK_UNLOAD→INVALIDATED→BROKEN升级；普通卸载保进度，破坏取消，不复活。未装配保留原NBT，已装配走检查codec。退休用单向volatile，新配方阶段/工位/探测/admission停止，当前事务及探测回滚完整结束。TaskScheduler独立FIFO保留fault后的清理；close未证物理退出则保留队列/资源，已证退出才清理并关闭接收。实际TE接线见controller-integration，运行时入口 `docs/machine-controller.md`。
-- 当前装配/持久化：MachineAssembly附host后factory，完整解析/validateGraph、创建所有保存组件、恢复根属性并补缺默认、依赖序codec、全体验证，然后load并返回未登记scheduler的机器。NBT V1保留实际组件顺序/动态边/pending和完整工位，删除声明不复活；immutable替换用replaceValue保留图。MachineHatches不保存，仅可作软依赖；无formed/config/epoch权限。ASSEMBLING/PERSISTING gate拒重入和外线程子codec、错误永久fault；不是join。入口 `docs/machine-persistence.md`。
-- 当前机器类型：MachineType保留PM声明字段/默认模式/模型/LocalizationEnum；ComponentMap静态验证复用实际系统图而不调用factory。MachineTypeRegistry批次拒绝无部分加入，freeze确定顺序关闭，resolveStructures整批绑定同一个canonical类型；两次发布均不代表PN/planned ready。typed实例附生命周期前无调度/保存权限；模式组件优先，显式创建工位读取类型布局/组。Forge控制器已接，PN配置仍未接。入口 `docs/machine-types.md`。
-- 当前普通调度：TaskScheduler复用PM固定池/并查集亲和分组/single lanes，全部accepted任务在异常/中断时也真实join后才归还owner，故障不复活。MAIN中新MAIN下tick、新CON本tick；Registration拒旧候选复活，task identity拒同tick二跑，metadata/worker禁登记。MachineInstance直接接模式与公开storageIdentity；FML aboutToStart→END tick→stopped拥有会话。PLANNED明确拒绝，仍须正式迁移；入口 `docs/scheduling.md`。
-- 当前结构：AE 24向、模板/贪心切片与快照基础见 `docs/structures.md`。新增evaluate追踪实际读取，包括失败切片probe；query显式等价比较，变化则fresh capture/match，未访问潜在分支不误拒。StructureRefresh的request/config身份拒迟到与ABA，worker只算快照；发布在生命周期gate内复核事实/provider/能力并一起安装树和新MachineHatches，同方向也重建。真正失配才清绑定，失稳返回false由调度边界重试/显式invalidate，当前异常故障，旧配置异常不故障新配置。ControllerLifecycleHost固定World且分离活TE检查和清理线程检查；真实TE刷新和方向变化已接，PN owner变化仍待接。
-- 当前生命周期：四类事件+FRESH/RESTORED；未成型仅停扫描/工位，普通卸载保留并由新实例load/结构确认后续跑；破坏broken/cancelAll/unloaded，加载失败LOAD_FAILED，全部清理聚合，不END/退历史IO。VarHandle gate拒重叠但不替代join，坏图异常清理仍抛错。详见 `docs/machine-lifecycle.md`。
-- 当前配方：完整需求/组件/局部属性、概率/选择/overlay、工位保存与取消已接；终态自有清理和回执为NBT V2，faulted不可再tick/save，正常Blocked可重试。扫描按group/去重/候选probe预算，每次最多1个NEW，默认非单调下降搜索，START真获取后全rollback；flat IO预筛是独立当前量条件，资源索引需显式稳定下界，内部工作预算仍待接。详见 `docs/recipes.md` 和迁移审计对应章节。
+- 已完成本阶段：自动扫描/处理接线、空配方组全局语义、默认与自定义机器 GUI、原方向工具，以及 AEKey2LongMap 数量表改造。阶段本地提交，不推送；提交号以 Git 日志为准。原 23 份格式/注解修改仍保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 419 项测试；IDEA MCP 对 276 个 src Java 和 Tags 共 277 文件逐个 `errorsOnly:false`，修改后复查 59 份，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/machine-gui-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 自动配方：显式声明 MachineWorkSlots 后再声明 RecipeScanning，工位走既有 codec、scanner recreated；系统 runBefore 保证同 tick 先扫描后处理。注册表整批发布共享 catalog。空 groups 在 catalog/index/scanner/admission/restore 一致表示全局，包含无组配方；显式组仍过滤。候选/probe 有限额，内部工作预算仍待接。
+- GUI：具体类直接继承 AEBaseGui/AEBaseContainer，公开两侧 Java factory。join 后重查窗口/TE 身份，仅同步最多七行不可变快照，保留进度和真实背包；PM 临时 4×4 库存、固定 Idle 和空扩展页是占位。方向工具保留两模式、PM 24 向数学、武器/采掘/耐久/附魔、配置/模型/成就。
+- 存储：独立 ResourceStorage/FE 契约和事务不变；AEKey 数量用 AEKey2LongMap 和 addTo，保留必要的溢出预检/零清理/顺序/别名去重，快照通过专用不可变包装器保护。
+- 控制器：类型/结构/assembly 整批发布；TE 构造/read 仅留副本，下一 update 过 Forge 放置取消窗口后装配；结构 PM 20/5 节奏 capture→worker→join 后发布。完整朝向与配置变更走 owner FIFO，旧代请求失效。显示不含 runtime/ForgeCaps，不授 PN 权限。
+- 运行时与持久化：附 host 后 factory，完整恢复/validate 后 load；retire 先停止新工作，accepted worker 全部实际 join 后清理，卸载保进度、破坏取消。普通调度的 MAIN/CONCURRENT/亲和 lanes 已接；故障不复活。正常 Cleanroom dormant 从 NBT 重建 TE。
+- 已有配方能力：组件多系统/Pre-Normal-Post、需求事务、概率/检查点/模糊动态输入/选择器/overlay、完整进程/工位 NBT、取消/失败清理。结构已有 AE 24 向、模板/贪心切片、事实快照与失稳重试；这些不代表剩余整合全部完成。
 
 ## 下一步
 
-1. 在已接控制器上继续统一空 recipeGroups 的全局候选语义并接自动扫描/处理系统、默认与自定义机器GUI（直接AEBaseGui/AEBaseContainer）及方向工具物品。继续迁入PN持久身份、搬运/复制冲突、owner/team当前代权限，不把placementPlayer或显示代当授权。真实World/Forge仍缺实机证据；异常loader复用同TE并让旧onChunkUnload晚于新onLoad的边缘需准确Chunk卸载代证明，不能宽泛补登记复活。
-2. 在已接普通调度上实现正式 planned：保留 PM prepare/resolve两次join、稳定source lane、PN owner/team/epoch/向量预算、迟到任务隔离及补偿。旧epoch/lease/ready不能从存档恢复为权限；terminal/取消不是物理退出证明。结构规划/匹配回退、目录/index/factory、动态排序/NBT、随机逐次抽样及嵌套生命周期仍需内部预算；性能统计/命令/后端能力也须迁移。
-3. 严格两阶段JSON/注册发布、结构预览/BOM/display override、模型隐藏/渲染、研究/队伍/计算、JEI与最后CraftTweaker继续迁移。全范围仍保留，当前结构匹配与生命周期基础不代表完整机器已完成。
+1. 迁入 PN 持久身份、搬运/复制冲突、owner/team 当前代权限；placementPlayer 和显示代不能作为权限。异常 loader 复用同一 TE 且旧卸载晚到的问题需准确卸载代证明，不添加宽泛复活。
+2. 正式 planned：复用 PM prepare/resolve 两次 join、稳定 source lane，接入 PN owner/team/epoch/向量预算、迟到隔离和补偿。旧 epoch/lease/ready 不从存档恢复为权限。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
+3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
 ## 必须遵守
 
-- 纯库：`prototype_eng` / `com.circulation.prototype_eng`。不添加正式机器、配方或玩法数值。接口按真实扩展职责放 api 包，不制造 XxxImpl 镜像。先审查 PM/PN 原行为，再复用和修正。
-- Java 25，Kotlin 逻辑改写；集合优先 fastutil；必要字段原子操作优先共享 VarHandle；无非必要反射，无异常控制流。仅为无法静态确认的行为写测试，不测常量/哈希/getter。
-- AEKey/AEKeyType 负责资源身份；核心存储独立，不用 MEStorage 承载核心。资源与 FE 仓室保留原等级/方向/资产及公开扩展；混合资源仓输入输出独立，各侧多类型。FE 保持独立接口与存储。
-- GUI 直接基于 AEBaseGui，无编辑器/第二套基类。本地化枚举实现 AE2S LocalizationEnum，客户端 getLocal、容器标题 text，禁止裸翻译键/GUI 拼键。JEI 每配方池一个默认或自定义接口实例。Applied-Flux 暂缓，未来保留 `v1.0.0:dev` 的 v。
-- 每个 Java 文件必须通过本机 IDEA MCP `get_file_problems(errorsOnly:false)`，零错误、警告及弱警告。工具未挂载时连接已启用的 `http://127.0.0.1:64343/sse`，通过 tools/list 查找；不操作桌面、不改 IDE 设置。构建不能替代检查。
-- 不启动 Minecraft 客户端/服务端，不加入 Bootstrap/FML 测试初始化。阶段本地提交，不推送；保留原有工作区修改。
+- 纯库：`prototype_eng` / `com.circulation.prototype_eng`。不添加正式机器、配方和玩法数值。先确认 PM/PN 实现及目的，再复用和修正；保留未明确取消的效果及多线程性能能力。
+- API 独立包，接口按真实外部扩展职责划分，不制造 XxxImpl 镜像。Java 25，Kotlin 逻辑改写；集合优先 fastutil，AEKey 数量使用 AEKey2LongMap，累加/扣减优先 addTo；必要原子字段优先共享 VarHandle。无非必要反射或异常控制流，仅为静态审查不足的逻辑行为写测试。
+- AEKey/AEKeyType 负责身份，核心不用 MEStorage。资源/FE 仓室保留十阶/三方向/资产/公开接口，混合资源仓两侧独立且每侧多类型；FE 独立。
+- GUI 直接 AEBaseGui，无编辑器/第二套基类。本地化枚举实现 LocalizationEnum：客户端 getLocal、服务器 text，禁止 GUI 拼键/裸翻译调用。JEI 每池一个默认或自定义接口实例。
+- IDEA 检查必须用本机 MCP：未挂载时连接已启用的 `http://127.0.0.1:64343/sse`，先 tools/list，再逐类 get_file_problems(errorsOnly:false)，消除错误/警告/弱警告。不得操作桌面或改 IDE 设置；构建不替代检查。
+- 不启动 Minecraft 客户端/服务端，不加入 Bootstrap/FML 测试初始化。阶段本地提交，不推送，保留已有工作区改动。
 
 ## 按需阅读
 
-| 当前任务 | 入口 |
+| 内容 | 入口 |
 |---|---|
-| 需求、功能保留范围 | [development-spec.md](development-spec.md) 的 R 编号/对应章节 |
-| 实际完成度和历史验证 | [implementation-status.md](implementation-status.md) |
-| 结构定义、快照、模板/切片匹配 | [structures.md](structures.md)；原实现审计 [structure-migration-audit.md](structure-migration-audit.md) |
-| 宿主生命周期、事件、卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle、machine/ControllerLifecycleHost |
-| 普通调度、线程退出、MAIN登记边界 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
-| 机器声明、整批关闭、后置结构绑定 | [machine-types.md](machine-types.md)，api/machine/MachineType、MachineTypeRegistry |
-| 附宿主装配、机器NBT、保存门限 | [machine-persistence.md](machine-persistence.md)，api/machine/persistence、MachineLifecycle.assemble/withPersistence |
-| 控制器运行时、延后退出与退休 | [machine-controller.md](machine-controller.md)，MachineController、TaskScheduler.runAtBoundary |
-| 真实控制器注册、NBT/朝向/显示、结构刷新 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity、ControllerStructureUpdates；资产见 [controller-assets.md](controller-assets.md) |
-| 机器类型/控制器及PN接线审查 | [machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
-| 组件/需求/事务、持久化、工位、扫描 | [recipes.md](recipes.md) 对应章节；源码 api/recipe、api/machine/workslot |
-| PM/PN 实际源码与旧缺陷 | [migration-audit.md](migration-audit.md) 对应映射表 |
-| 存储/预留/同步 | [storage-redesign.md](storage-redesign.md)，api/storage、api/energy |
-| 仓室、GUI及保留效果 | [hatches.md](hatches.md)；资源来源见 [assets.md](assets.md) |
+| 已确认需求/功能范围 | [development-spec.md](development-spec.md)，R 编号 |
+| 实际完成度/验证证据 | [implementation-status.md](implementation-status.md) |
+| 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
+| 配方/组件/事务/扫描 | [recipes.md](recipes.md)，api/recipe、api/machine/workslot |
+| 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md)，api/gui、api/client/gui、container/MachineContainer |
+| 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md)，item、OrientationToolConfig |
+| 机器声明/整批绑定 | [machine-types.md](machine-types.md)，MachineType/Registry |
+| 装配/NBT/稳定边界 | [machine-persistence.md](machine-persistence.md)，MachineAssembly |
+| 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle |
+| 控制器运行时/退休 | [machine-controller.md](machine-controller.md)，MachineController |
+| 真实 TE/朝向/结构接线 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity/ControllerStructureUpdates |
+| 普通调度/planned 待迁移 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
+| 结构匹配/快照/发布 | [structures.md](structures.md)、[structure-migration-audit.md](structure-migration-audit.md) |
+| 存储/预留/FE | [storage-redesign.md](storage-redesign.md)，api/storage、api/energy |
+| 仓室/美术来源 | [hatches.md](hatches.md)、[assets.md](assets.md)、[controller-assets.md](controller-assets.md) |
 
 ## 本地源码
 
-- 新项目：`F:/new/PrototypeEngineering`。
-- PM：`F:/clone/PrototypeMachinery`；存储在 `src/main/kotlin/{api,impl}/storage`，planned 在 `impl/scheduler/planned`。
-- PN：`F:/new/PrototypeNetwork`。AE2S：`F:/clone/Applied-Energistics-2`。MMCE：`F:/clone/ModularMachinery-Community-Edition`。
+新项目 `F:/new/PrototypeEngineering`；PM `F:/clone/PrototypeMachinery`；PN `F:/new/PrototypeNetwork`；AE2S `F:/clone/Applied-Energistics-2`；MMCE `F:/clone/ModularMachinery-Community-Edition`。PM 存储在 `src/main/kotlin/{api,impl}/storage`，planned 在 `impl/scheduler/planned`。
 
-索引不替代源码审查；阶段提交时同步本文件与实施进度，只记录实际证据。
+索引不替代源码审查；阶段提交时同步实施进度，只记录实际证据。

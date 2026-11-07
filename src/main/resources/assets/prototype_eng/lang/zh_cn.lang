@@ -91,3 +91,26 @@ recipe.prototype_eng.EnergyMissing=需求 %s 还缺少 %s FE
 recipe.prototype_eng.EnergyOutputFull=需求 %s 还需要容纳 %s FE 的空间
 recipe.prototype_eng.Cancelled=配方已取消
 recipe.prototype_eng.ControllerBroken=机器控制器已被破坏
+
+gui.prototype_eng.machine.Formed=结构已成型
+gui.prototype_eng.machine.Unformed=结构未成型
+gui.prototype_eng.machine.Unavailable=机器不可用
+gui.prototype_eng.machine.Idle=空闲
+gui.prototype_eng.machine.Running=运行中
+gui.prototype_eng.machine.Blocked=等待条件
+gui.prototype_eng.machine.Failed=失败
+gui.prototype_eng.machine.WorkSlots=工位
+gui.prototype_eng.machine.Slot=#%s
+gui.prototype_eng.machine.Progress=%s%%
+gui.prototype_eng.machine.Recipe=配方：%s
+gui.prototype_eng.machine.NoWorkSlots=无工位
+
+orientation_tool.prototype_eng.Name=控制器转向工具
+orientation_tool.prototype_eng.Enabled=控制器转向工具：已开启
+orientation_tool.prototype_eng.Disabled=控制器转向工具：已关闭
+orientation_tool.prototype_eng.State=模式：%s
+orientation_tool.prototype_eng.StateOn=开启（可旋转控制器，攻击更强，耐久消耗更高）
+orientation_tool.prototype_eng.StateOff=关闭（铁制多用工具：镐/斧/铲）
+orientation_tool.prototype_eng.ToggleHint=潜行右键空气切换模式（潜行点击控制器：循环 24 向）
+orientation_tool.prototype_eng.CherishTitle=爱惜工具
+orientation_tool.prototype_eng.CherishDescription=使用“关闭”的控制器转向工具攻击一次生物。

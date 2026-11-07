@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.storage;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
@@ -11,9 +12,6 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,10 +28,10 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final long[] amounts;
     private final long[] reservedExtract;
     private final long[] reservedInsert;
-    private final Object2LongLinkedOpenHashMap<AEKey> totals = new Object2LongLinkedOpenHashMap<>();
-    private final Object2LongOpenHashMap<AEKey> extractHolds = new Object2LongOpenHashMap<>();
+    private final AEKey2LongMap totals = new AEKey2LongMap.LinkdOpenHashMap();
+    private final AEKey2LongMap extractHolds = new AEKey2LongMap.OpenHashMap();
     // Includes pending output and the capacity retained to refund applied input.
-    private final Object2LongOpenHashMap<AEKey> insertHolds = new Object2LongOpenHashMap<>();
+    private final AEKey2LongMap insertHolds = new AEKey2LongMap.OpenHashMap();
     private final BitSet freeSlots;
     private final BitSet changedSlots = new BitSet();
     private int activeReservations;
@@ -73,15 +71,14 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     public StorageSnapshot snapshot() {
         context.lock();
         try {
-            var available = new Object2LongLinkedOpenHashMap<AEKey>();
+            var available = new AEKey2LongMap.LinkdOpenHashMap();
             if (context.isValid()) {
-                for (var entry : totals.object2LongEntrySet()) {
-                    AEKey key = entry.getKey();
-                    long amount = entry.getLongValue() - extractHolds.getLong(key);
-                    if (amount > 0) {
-                        available.put(key, amount);
-                    }
-                }
+                totals.forEachEntry(available::addTo);
+                extractHolds.forEachEntry((key, held) -> {
+                    long previous = available.addTo(key, -held);
+                    if (previous < held) { throw new IllegalStateException("Extraction holds exceed stored resources"); }
+                    if (previous == held) { available.removeLong(key); }
+                });
             }
             return new StorageSnapshot(context, context.revision(), available);
         } finally {
@@ -219,7 +216,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             } else {
                 transferSlots(key, transferred, insert, true);
             }
-            putAmount(totals, key, total);
+            addAmount(totals, key, insert ? transferred : -transferred, total);
             context.changed();
             return transferred;
         } finally {
@@ -279,9 +276,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 changedSlots.set(slot);
             }
             if (insert) {
-                putAmount(insertHolds, key, nextInsertHold);
+                addAmount(insertHolds, key, amount, nextInsertHold);
             } else {
-                putAmount(extractHolds, key, nextExtractHold);
+                addAmount(extractHolds, key, amount, nextExtractHold);
             }
             activeReservations++;
             context.changed();
@@ -324,10 +321,11 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             }
             requireChange();
             if (previousKey != null) {
-                putAmount(totals, previousKey, totals.getLong(previousKey) - amounts[slot]);
+                long previousTotal = totals.getLong(previousKey) - amounts[slot];
+                addAmount(totals, previousKey, -amounts[slot], previousTotal);
             }
             if (nextKey != null) {
-                putAmount(totals, nextKey, nextTotal);
+                addAmount(totals, nextKey, nextAmount, nextTotal);
             }
             keys[slot] = nextKey;
             amounts[slot] = nextAmount;
@@ -375,7 +373,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         if (stacks.size() != keys.length) {
             throw new IllegalArgumentException("Saved slot count differs from storage");
         }
-        var nextTotals = new Object2LongLinkedOpenHashMap<AEKey>();
+        var nextTotals = new AEKey2LongMap.LinkdOpenHashMap();
         AEKey[] nextKeys = new AEKey[keys.length];
         long[] nextAmounts = new long[keys.length];
         for (int slot = 0; slot < keys.length; slot++) {
@@ -388,7 +386,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 if (stack.amount() > Long.MAX_VALUE - total) {
                     throw new IllegalArgumentException("Saved resource total exceeds long capacity");
                 }
-                nextTotals.put(stack.what(), total + stack.amount());
+                nextTotals.addTo(stack.what(), stack.amount());
             }
         }
         return new PreparedRestore(context, context.revision(), nextKeys, nextAmounts, nextTotals);
@@ -427,10 +425,10 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         private final long revision;
         private final AEKey[] keys;
         private final long[] amounts;
-        private final Object2LongLinkedOpenHashMap<AEKey> totals;
+        private final AEKey2LongMap totals;
 
         private PreparedRestore(StorageContext context, long revision, AEKey[] keys, long[] amounts,
-                                Object2LongLinkedOpenHashMap<AEKey> totals) {
+                                AEKey2LongMap totals) {
             this.context = context;
             this.revision = revision;
             this.keys = keys;
@@ -565,11 +563,13 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         return new ReservationResult(status, null);
     }
 
-    private static void putAmount(Object2LongMap<AEKey> map, AEKey key, long amount) {
-        if (amount == 0) {
+    /** Applies a delta only after its full balance/slot preflight. AE2 maps retain zero entries. */
+    private static void addAmount(AEKey2LongMap map, AEKey key, long delta, long nextAmount) {
+        if (delta != 0) {
+            map.addTo(key, delta);
+        }
+        if (nextAmount == 0) {
             map.removeLong(key);
-        } else {
-            map.put(key, amount);
         }
     }
 
@@ -610,12 +610,10 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 throw new IllegalStateException("Cannot apply an invalid storage reservation");
             }
             requireChange();
-            long nextTotal = insert ? Math.addExact(totals.getLong(key), allocation.total)
-                : Math.subtractExact(totals.getLong(key), allocation.total);
-            long nextInsertHold = insert ? Math.subtractExact(insertHolds.getLong(key), allocation.total)
-                : Math.addExact(insertHolds.getLong(key), allocation.total);
-            long nextExtractHold = insert ? Math.addExact(extractHolds.getLong(key), allocation.total)
-                : Math.subtractExact(extractHolds.getLong(key), allocation.total);
+            long totalDelta = insert ? allocation.total : -allocation.total;
+            long nextTotal = Math.addExact(totals.getLong(key), totalDelta);
+            long nextInsertHold = Math.subtractExact(insertHolds.getLong(key), totalDelta);
+            long nextExtractHold = Math.addExact(extractHolds.getLong(key), totalDelta);
             long[] previousHolds = insert ? reservedInsert : reservedExtract;
             long[] nextHolds = insert ? reservedExtract : reservedInsert;
             long[] nextAmounts = new long[allocation.slots.length];
@@ -638,9 +636,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 amounts[slot] = nextAmounts[part];
                 changedSlots.set(slot);
             }
-            putAmount(totals, key, nextTotal);
-            putAmount(insertHolds, key, nextInsertHold);
-            putAmount(extractHolds, key, nextExtractHold);
+            addAmount(totals, key, totalDelta, nextTotal);
+            addAmount(insertHolds, key, -totalDelta, nextInsertHold);
+            addAmount(extractHolds, key, totalDelta, nextExtractHold);
             state = State.APPLIED;
             context.changed();
         }
@@ -695,9 +693,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 cleanSlot(slot);
                 changedSlots.set(slot);
             }
-            putAmount(totals, key, nextTotal);
-            putAmount(insertHolds, key, nextInsertHold);
-            putAmount(extractHolds, key, nextExtractHold);
+            addAmount(totals, key, restore ? (insert ? -allocation.total : allocation.total) : 0, nextTotal);
+            addAmount(insertHolds, key, holdsInsert ? -allocation.total : 0, nextInsertHold);
+            addAmount(extractHolds, key, holdsInsert ? 0 : -allocation.total, nextExtractHold);
             activeReservations--;
             context.changed();
         }

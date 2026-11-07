@@ -2,7 +2,7 @@
 
 `MachineRecipe` 已恢复为按需求职责分组的公开定义。它保存 id、时长、配方组及 `RecipeRequirementType<?> → List<RecipeRequirement<?>>`，不再以固定输入、输出和 FE 字段限定配方。需求类型绑定自己的 `RecipeRequirementSystem<C>`；资源身份继续使用 AE2 的 AEKey/AEKeyType，不再建立 PMKey 的替代类型体系。
 
-本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。当前显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT Version 2/取消回执已接入，已通过本阶段构建与 MCP 检查；机器/世界生命周期策略和真实并行调度仍在迁移中。
+本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT Version 2/取消回执已接入并完成此前验证；机器/世界生命周期、普通并发调度与控制器结构接线也已接入，自动扫描组件见本文。PN 权限、正式 planned 与游戏运行证据仍待后续完成。
 
 ## 公开注册与需求扩展
 
@@ -32,7 +32,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 单进程循环使用 `tick(owner, body)`：仍只捕获一次回调列表，Pre/Normal 全部成功后才进入业务 body；这两阶段的异常立即终止，尚未进入 body 时不执行 Post。进入 body 后，无论阻塞、业务异常或某个 Post 异常，都会依次执行全部已捕获的 Post 清理。业务原异常保持主异常，清理异常附加为 suppressed；没有业务异常时暴露首个 Post 异常并附加其余错误。
 
-`MachineInstance.onSchedule()` 调用这一分派；`MachineSystem` 默认把阶段适配为 `MachineTickEvent.Pre/Normal/Post`，具体系统也可覆盖阶段方法。此入口尚未接入世界控制器、结构和真实调度器，不能将逻辑调用成功称为机器运行已完成。
+`MachineInstance.onSchedule()` 调用这一分派；`MachineSystem` 默认把阶段适配为 `MachineTickEvent.Pre/Normal/Post`，具体系统也可覆盖阶段方法。此入口已接入普通调度与控制器宿主，结构成型/退休门限统一限制配方扫描和工位处理；PN 权限、正式 planned 和游戏运行验证仍须继续迁移。
 
 ## 需求阶段契约与整阶段完成依赖
 
@@ -52,7 +52,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 ## 已接入的固定需求和来源组件
 
-`MachineHatches` 是不可变的已发现仓室绑定，使用方在机器的独占执行边界把它放入 `machine.components()`；包含公开 ResourceHatch、EnergyInput 和 EnergyOutput 列表。内置需求只查询这些公开接口，不强转内置方块实体。实际结构扫描与自动更新绑定仍未接入；发现必须在服务端完成，不能把该组件当作任意线程的世界查询器。
+`MachineHatches` 是不可变的已发现仓室绑定，使用方在机器的独占执行边界把它放入 `machine.components()`；包含公开 ResourceHatch、EnergyInput 和 EnergyOutput 列表。内置需求只查询这些公开接口，不强转内置方块实体。控制器结构刷新已在 owner 捕获、worker 计算、完整 join 后发布新绑定；发现必须在服务端完成，不能把该组件当作任意线程的世界查询器。入口见[世界接线](controller-integration.md)。
 
 ```java
 machine.components().put(MachineHatches.TYPE,
@@ -161,7 +161,7 @@ ResourceKeyNbt 保存显式 AEKeyType ID 与 key data，先解析准确类型再
 
 BuiltinProcessValidation 校验可证明的内置范围：路径、START 锁类别、稳定资源组匹配、选择索引、未执行分支、已执行分支所需状态和效果唯一所有权。自定义 overlay 必须配置宿主 validator；曾改变资源组或 checkpoint/selector 结构的历史，不能靠当前 payload 或已移除的层推测，宿主须提供历史完整性依据。嵌套正阈值 checkpoint 只看到外层那一个触发 tick，完整历史区间没有保存；仅 time=0、可证明重合或互斥的阈值可强制推断，其余激活完整性由宿主验证。外部 wrapper/component 须声明 children、codec、恢复依赖和跨组件 validator，不能借内置 walker 宣称任意扩展已验证。
 
-严格单进程状态 codec 和新实例验收已通过此前阶段验证。当前工作槽整组恢复在该入口之后统一挂接，见下一节，已通过此前工作槽阶段验证；扫描基础已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已通过本阶段构建与 MCP 检查，机器/世界恢复及真实 planned 尚未完成。PN owner/epoch、lease 和 ready authority 不从旧存档恢复，宿主须重新取得运行权限。当前格式也不自动读取或升级 PM 的旧 NBT。
+严格单进程状态 codec 和新实例验收已通过此前阶段验证。当前工作槽整组恢复在该入口之后统一挂接，见下一节，已通过此前工作槽阶段验证；扫描基础、固定预筛/资源索引扩展、显式取消与失败清理已完成此前验证。机器装配与控制器 NBT 恢复已接，实机恢复验证和正式 planned 尚未完成。PN owner/epoch、lease 和 ready authority 不从旧存档恢复，宿主须重新取得运行权限。当前格式也不自动读取或升级 PM 的旧 NBT。
 
 ## 工作槽宿主、驱动与整组恢复
 
@@ -176,11 +176,11 @@ var process = new RecipeProcess(machine, recipe, seed);
 boolean admitted = host.startIn("main", process); // 只挂接，不执行 START
 ```
 
-`slots()` 提供有序只读列表，WorkSlot 只公开读取，修改统一经过宿主；`activeProcesses()` 返回独立只读快照。`start` 按顺序选择首个兼容空槽，`startIn` 指定槽位。两者要求进程处于稳定边界、owner 是同一机器、尚未挂接且非终态；未知槽名抛错，已占用、当前容量满或配方组不兼容返回 false。非空槽位组与配方组须有交集，空白名单允许显式进入，但扫描仍须提供明确、有限的配方组范围。挂接同时设置 `RecipeProcess.host()`，同一进程不能被另一宿主或第二槽重复拥有。
+`slots()` 提供有序只读列表，WorkSlot 只公开读取，修改统一经过宿主；`activeProcesses()` 返回独立只读快照。`start` 按顺序选择首个兼容空槽，`startIn` 指定槽位。两者要求进程处于稳定边界、owner 是同一机器、尚未挂接且非终态；未知槽名抛错，已占用、当前容量满或配方组不兼容返回 false。`WorkSlotDefinition.accepts` 统一直接 admission、扫描和恢复的兼容规则：非空槽位组与配方组须有交集，空白名单接受全部配方（包括无组配方）。空布局的隐式 `main` 若机器默认组也为空，使用同一全局语义。挂接同时设置 `RecipeProcess.host()`，同一进程不能被另一宿主或第二槽重复拥有。
 
 `capacity()` 从机器当前 `MAX_CONCURRENT_PROCESSES` 读取非负整数并裁剪到槽位总数，只影响新工作进入。属性降低不会驱逐已提交工作，所有旧槽继续 tick，恢复也允许超过当前进入限额；结构容量仍要求保存的槽数、有序名称及完整定义与当前布局精确相等。这个数量与进程 IO 倍率、加工速度分别处理。
 
-`MachineWorkSlots.TYPE` 安装普通组件系统 WorkSlotProcessingSystem，onTick 先核对 component.owner 与 machine，再调用 `tickProcesses()`。每个已占用非终态槽只调用所选同步 RecipeExecutor 一次，默认执行 `RecipeProcess.tick`；宿主随后读取结果，不再推进生命周期。外部 driver 必须在返回前完成进程回调及资源结算。PM 原可变 executor 列表后再由处理器推进，接口存在但本轮源码检索未发现任何注册实现；新单 driver 消除扩展实现可能触发的双推进风险，额外处理仍通过公开组件系统扩展。成型判断、世界宿主、调度屏障及 PN 运行权限由调用方提供，目前尚未接入。
+`MachineWorkSlots.TYPE` 安装普通组件系统 WorkSlotProcessingSystem，onTick 先核对 component.owner 与 machine，并以 `machine.canProcessRecipes()` 检查成型/退休门限，再调用 `tickProcesses()`。每个已占用非终态槽只调用所选同步 RecipeExecutor 一次，默认执行 `RecipeProcess.tick`；宿主随后读取结果，不再推进生命周期。外部 driver 必须在返回前完成进程回调及资源结算。PM 原可变 executor 列表后再由处理器推进，接口存在但本轮源码检索未发现任何注册实现；新单 driver 消除扩展实现可能触发的双推进风险，额外处理仍通过公开组件系统扩展。普通调度、世界宿主和结构门限已接；PN 运行权限与正式 planned 仍须继续迁移。
 
 Blocked 保留同一进程及选择/进度，下次重试；正常 COMPLETED/FAILED/CANCELLED 解除双向挂接并腾空槽，保留结构化 ProcessResult，业务 Failure 不阻止其他槽执行。恢复出的终态进程下一 tick 直接解除挂接，不调用 executor。RuntimeException/Error 立即终止本次遍历并使宿主 faulted，后续 tick、挂接/解除和 snapshot/NBT 保存均拒绝；不能在部分槽已完成后重跑整批。当前 `detach(process)` 要求稳定边界，仅解除挂接并交还生命周期所有权，不执行 END、不退款，**不是取消**。本阶段 host.cancel/cancelAll 另行协调显式终态清理；faulted host 仍可清理其他稳定进程，但不会因此恢复 tick/save 权限，见“显式取消与失败清理”。
 
@@ -194,9 +194,11 @@ Blocked 保留同一进程及选择/进度，下次重试；正常 COMPLETED/FAI
 
 当前 [RecipeCatalog](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeCatalog.java)、[RecipeScanner](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanner.java)、[RecipeCandidateIndex](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeCandidateIndex.java)、[RecipeProcessFactory](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeProcessFactory.java)、[RecipeParallelismConstraint](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeParallelismConstraint.java)、[ScanLimits](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/ScanLimits.java) 与 [RecipeScanningSystem](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/machine/RecipeScanningSystem.java) 已接入，已通过此前扫描阶段构建与 MCP 检查。旧 PM 的组、索引与非单调风险及当前修正见[扫描与索引审计](migration-audit.md#扫描索引与并行探测审计)。
 
-RecipeCatalog 冻结配方池/声明顺序和 canonical 配方实例，相同 ID 的不同对象拒绝；重复使用同一实例只收录一次。查询先取槽位 recipeGroups 的 union 范围，再按原目录顺序返回；每个外部 index 都获得同一不可变完整 scope，null 不作筛选、empty 是硬空集，其余结果按 canonical 实例交集，不改变目录顺序。伪造、外部或越组候选拒绝。index 必须纯，且保留没有自身需求类型的通用候选，不能把 energy-only 配方从 item index 丢掉。当前显式 Footprint 的 ResourceRecipeIndex 已接入，已验证；声明及外部索引完整性仍由调用方负责，见下一节。
+RecipeCatalog 冻结配方池/声明顺序和 canonical 配方实例，相同 ID 的不同对象拒绝；重复使用同一实例只收录一次。`RecipeRegistry.freeze()` 先完整建立池快照及共享 catalog，再通过一个 volatile Frozen 值一起发布；catalog 构造失败时池和目录均不可见、注册仍开放。registry 的池按 ID 排序，池内保留配方声明优先级；独立构造 catalog 则按传入池顺序。
 
-RecipeScanner 绑定一个 MachineWorkSlots，在独占执行边界按目录顺序扫描，选择首个空且组兼容槽；空组返回 NO_GROUPS，不回退全局目录。当前容量满返回 FULL，同 recipe ID 已在任一槽运行则跳过。每次 scan 最多一次成功 admission，调用方每个机器 tick 最多调用一次。结果包含 ADMITTED/YIELDED/EXHAUSTED/FULL/NO_GROUPS 和本次 candidate/probe 数，达到限制让出；扫描异常标记 scanner faulted，后续 scan 拒绝。
+查询组为空时取整个 canonical 目录，包括无组配方；非空时取组 union，再按目录顺序返回。每个外部 index 都获得同一不可变完整 scope 和同一组集合；空 groups 同样表示全局，不得自行解释为空候选。index 返回 null 不作筛选、empty 是硬空集，其余结果按 canonical 实例交集，不改变目录顺序。伪造、外部或越组候选拒绝。index 必须纯，且保留没有自身需求类型的通用候选，不能把 energy-only 配方从 item index 丢掉。ResourceRecipeIndex 使用同一空组语义；显式 Footprint 与外部索引完整性仍由调用方负责，见下一节。
+
+RecipeScanner 绑定一个 MachineWorkSlots，在独占执行边界按目录顺序扫描，选择首个空且组兼容槽。若任一槽为空白名单，扫描 scope 为全局；否则 scope 为全部槽组的 union，具体 admission 仍按所选槽的兼容规则。当前容量满返回 FULL，同 recipe ID 已在任一槽运行则跳过。每次 scan 最多一次成功 admission，调用方每个机器 tick 最多调用一次。结果包含 ADMITTED/YIELDED/EXHAUSTED/FULL/PAUSED 和本次 candidate/probe 数，达到限制让出，退休后完整回滚返回 PAUSED；扫描异常标记 scanner faulted，后续 scan 拒绝。
 
 ScanLimits 只限制每次检查的候选数和并行 probe 次数。游标和候选列表/搜索边界可跨调用保留，搜索固定 seed 与 ProbabilityTuning，每个 amount 都经外部 factory 构造 fresh 未公开 NEW 进程，核对 machine、canonical recipe、seed/tuning、未挂接和稳定边界；不跨 tick 保留资源 reservation、候选进程或运行权限。机器父并行上限改变会重建当前搜索。一次 pass 逐 probe 观察活动存储，候选/index 快照与上界不代表跨 tick 原子视图，也不保证动态存储下的全局最大值。
 
@@ -214,9 +216,32 @@ preparation 只允许可逆进程局部状态，无世界/旧 owner 副作用，
 
 probe 不直接调用进程组件 Pre/Normal/Post；真实 RecipeProcess.tick 在 START 前会执行 Pre/Normal。空 preparation 的默认探测仍要求 factory 初始化后即可确定首次 START 行为；组件回调会改变属性、overlay 或需求状态时，外部须提供与首次回调等价的确定性、可逆局部 preparation，否则探测可能假阳性/假阴性。该接口提供显式支持入口，不能自动验证任意自定义 factory 的等价性；普通回调没有自动补偿，不能直接拿组件 tick 模拟。actual START 始终具有最终决定权，世界副作用或不可逆首刻行为仍不属于这种局部投影契约，相关扩展与真实 planned 职责继续保留。
 
-RecipeScanningSystem 由使用方显式安装到组件系统，runBefore WorkSlotProcessingSystem，onTick 核对 scanner owner，ready Predicate 只决定本次 admission 是否扫描。它没有为既有进程提供世界/结构/PN 权限，也没有实现 RESCAN 或取消。当前 FixedIoScanConstraint 补充受限固定 IO 的独立 TICK/END 预筛，已验证；START 或各预筛阶段成功均不能证明完整首 tick 或后续生命周期可行。
+RecipeScanningSystem 显式 `runBefore` WorkSlotProcessingSystem，onTick 核对 scanner owner，并检查 `machine.canProcessRecipes()` 与 ready Predicate。ready 只决定本次 admission 是否扫描，不暂停既有工位，也不提供 PN 权限或实现 RESCAN。当前 FixedIoScanConstraint 补充受限固定 IO 的独立 TICK/END 预筛，已验证；START 或各预筛阶段成功均不能证明完整首 tick 或后续生命周期可行。组件声明及恢复见下一节。
 
 当前 candidate/probe 计数不限制目录 union/sort、index lookup、factory、constraint、动态全扫描/排序/key NBT、随机逐次抽样和嵌套生命周期内部工作，也不是 wall-clock/deadline 预算。数量倍率缩放资源，速度改变绝对进度，成功刻数仍每次成功 TICK 加 1；真实 planned 仍须两次 join、稳定 affinity lane 与 PN owner/epoch/向量预算，不能持锁跨 lane 等待。
+
+## 自动扫描组件声明与恢复
+
+[RecipeScanning](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanning.java) 提供显式组件 factory。只声明 `MachineWorkSlots.TYPE` 仍是手动挂接模式，不会自动扫描。需要自动 admission 时，下游先声明工位，再声明 scanner：
+
+```java
+var scanner = RecipeScanning.component(scannerId, RecipeRegistry.INSTANCE::catalog,
+        new ScanLimits(candidateBudget, probeBudget));
+var type = MachineType.builder(typeId, displayName, structureId)
+        .component(MachineWorkSlots.TYPE)
+        .component(scanner)
+        .build();
+var assembly = MachineAssembly.builder(type, revision)
+        .workSlots(workSlotCodec)
+        .recreated(scanner)
+        .build();
+```
+
+catalog supplier 到机器装配时才解析，必须处于完整配方 freeze 之后。组件 factory 按实际声明/保存顺序创建，因此工位必须先安装；系统依赖只约束执行顺序，不是 factory 依赖。缺失或后置工位、外部 factory 返回 null 或绑定另一宿主都会拒绝装配。系统排序确保本 tick admission 后再驱动工位，首次真实 START/TICK 可在同一 scheduled tick 执行。
+
+另一重载接受 `Function<MachineWorkSlots, RecipeScanner>`、ScanLimits 和 ready Predicate，可提供自定义 process factory、constraints、indexes、单调断言、seed 和 preparations；所有既有 scanner 扩展合同继续适用。readiness 关闭只停止新 admission，已运行工位仍受自身 lifecycle/结构门限驱动，不能将该 predicate 当作 PN 对全部工作授权的实现。
+
+工位使用既有 `MachineWorkSlotsNbt` codec 保存进程，scanner 用 `recreated`，不保存游标、候选、搜索状态或临时预留。恢复先创建新的工位宿主和 scanner，再恢复完整进程；新 scanner 指向新宿主，搜索从目录开头重新开始，已保存的 START 不重放。`AutomaticRecipeProcessingTest` 覆盖显式/仅工位声明、同 tick admission/处理、readiness、factory 宿主与顺序拒绝、晚解析 catalog、freeze 失败不半发布以及恢复进度/新扫描游标；本阶段最终构建/MCP 证据由[实施进度](implementation-status.md)记录。
 
 ## 固定 IO 预筛与声明资源索引
 
@@ -277,7 +302,7 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
 - 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。planned 迁移还需要这些定义、调参和状态的明确投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
 
-显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。下一步接真实世界结构宿主与 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
+显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。真实世界结构宿主与普通调度已接，下一步继续 PN 权限与正式 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
 
 ## 验证与未完成部分
 
@@ -287,4 +312,4 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 
 属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。此前工作槽宿主、单 driver 与整组 NBT 恢复通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。此前基础扫描、首刻局部 preparation、START 探测与 resolved-base/NBT Version 2 已通过扫描阶段构建与 MCP 检查；此前扫描阶段 230 项测试通过，178 文件零诊断，报告 `build/reports/idea/recipe-scanning-final.json`。当前固定预筛/资源索引扩展已通过此前固定预筛/索引阶段构建与 MCP 检查；此前固定预筛/索引阶段 240 项测试及 182 文件 MCP 零诊断证据见 `build/reports/idea/fixed-io-index-final.json`。当前显式取消、失败所有权清理及进程 NBT Version 2/回执已通过本阶段构建与 MCP 检查；本阶段 260 项测试通过，188 文件 MCP 零诊断，报告 `build/reports/idea/process-abort-final.json`；不替代游戏或真实调度集成验证。
 
-机器宿主生命周期已接入扫描/工位/保存：普通卸载保留、恢复等待新load及结构、失效暂停、破坏取消；277项测试和本轮MCP证据见[实施进度](implementation-status.md)。尚未完成：真实TileEntity世界恢复、RESCAN 执行策略、PN权限与运行补偿、真实并发/亲和性/planned 预留补偿与内部工作预算、完整结构宿主和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或多线程调度完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。
+机器宿主生命周期已接入扫描/工位/保存：普通卸载保留、恢复等待新 load 及结构、失效暂停、破坏取消；普通并发/亲和性调度、控制器 NBT 与结构宿主、显式自动扫描均已接，准确阶段证据见[实施进度](implementation-status.md)。尚未完成：真实 TileEntity/World 交互验证、RESCAN 执行策略、PN 权限与运行补偿、正式 planned 预留补偿与内部工作预算、完整投影/预览/复杂渲染和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或 planned 完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。

@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
-import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
@@ -26,12 +25,15 @@ public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> input
     }
 
     private static List<GenericStack> normalize(List<GenericStack> stacks) {
-        var amounts = new Object2LongLinkedOpenHashMap<AEKey>();
+        var amounts = new AEKey2LongMap.LinkdOpenHashMap();
         for (GenericStack stack : stacks) {
             Objects.requireNonNull(stack, "resource stack");
             Objects.requireNonNull(stack.what(), "resource key");
             if (stack.amount() <= 0) { throw new IllegalArgumentException("Recipe amounts must be positive"); }
-            amounts.put(stack.what(), Math.addExact(amounts.getLong(stack.what()), stack.amount()));
+            if (stack.amount() > Long.MAX_VALUE - amounts.getLong(stack.what())) {
+                throw new ArithmeticException("long overflow");
+            }
+            amounts.addTo(stack.what(), stack.amount());
         }
         var result = new ObjectArrayList<GenericStack>(amounts.size());
         for (var entry : amounts.object2LongEntrySet()) {

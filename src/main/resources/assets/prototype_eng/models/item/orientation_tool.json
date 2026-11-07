@@ -1,0 +1,11 @@
+{
+  "parent": "prototype_eng:item/wrench_off",
+  "overrides": [
+    {
+      "predicate": {
+        "enabled": 1
+      },
+      "model": "prototype_eng:item/wrench_on"
+    }
+  ]
+}

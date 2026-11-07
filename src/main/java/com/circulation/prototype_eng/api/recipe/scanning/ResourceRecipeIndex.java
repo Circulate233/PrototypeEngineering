@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -8,8 +9,6 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.StorageContext;
-import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -140,9 +139,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         return ObjectLists.unmodifiable(result);
     }
 
-    private Object2LongOpenHashMap<AEKey> availableInputs(MachineInstance machine) {
-        var byContext = new Reference2ObjectOpenHashMap<StorageContext, Object2LongOpenHashMap<AEKey>>();
-        var available = new Object2LongOpenHashMap<AEKey>();
+    private AEKey2LongMap availableInputs(MachineInstance machine) {
+        var byContext = new Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap>();
+        var available = new AEKey2LongMap.SaturatingOpenHashMap();
         for (var hatch : MachineHatches.get(machine).resources()) {
             if (!hatch.isValid()) { continue; }
             var storage = hatch.input();
@@ -152,7 +151,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             if (snapshot.context() != context) {
                 throw new IllegalStateException("Input snapshot changed its physical context");
             }
-            var maxima = byContext.computeIfAbsent(context, _ -> new Object2LongOpenHashMap<>());
+            var maxima = byContext.computeIfAbsent(context, _ -> new AEKey2LongMap.OpenHashMap());
             for (var entry : snapshot.available().object2LongEntrySet()) {
                 var key = Objects.requireNonNull(entry.getKey(), "input key");
                 long amount = entry.getLongValue();
@@ -160,10 +159,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                 if (!postings.containsKey(key)) { continue; }
                 long previous = maxima.getLong(key);
                 if (amount > previous) {
-                    maxima.put(key, amount);
                     long delta = amount - previous;
-                    long total = available.getLong(key);
-                    available.put(key, delta > Long.MAX_VALUE - total ? Long.MAX_VALUE : total + delta);
+                    maxima.addTo(key, delta);
+                    available.addTo(key, delta);
                 }
             }
         }
@@ -171,6 +169,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     }
 
     private static boolean inGroups(MachineRecipe recipe, Set<ResourceLocation> groups) {
+        if (groups.isEmpty()) { return true; }
         for (var group : recipe.recipeGroups()) {
             if (groups.contains(group)) { return true; }
         }
@@ -193,7 +192,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     public record Footprint(MachineRecipe recipe, List<GenericStack> inputs) {
         public Footprint {
             Objects.requireNonNull(recipe, "recipe");
-            var amounts = new Object2LongLinkedOpenHashMap<AEKey>();
+            var amounts = new AEKey2LongMap.LinkdOpenHashMap();
             for (var input : Objects.requireNonNull(inputs, "inputs")) {
                 Objects.requireNonNull(input, "input");
                 var key = Objects.requireNonNull(input.what(), "input key");
@@ -202,7 +201,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                 if (amount <= 0) {
                     throw new IllegalArgumentException("Nonpositive mandatory input amount");
                 }
-                amounts.put(key, amount > Long.MAX_VALUE - previous ? Long.MAX_VALUE : previous + amount);
+                amounts.addTo(key, Math.min(amount, Long.MAX_VALUE - previous));
             }
             var normalized = new ObjectArrayList<GenericStack>(amounts.size());
             amounts.object2LongEntrySet().forEach(entry -> normalized.add(new GenericStack(entry.getKey(), entry.getLongValue())));

@@ -34,6 +34,7 @@ public class PrototypeEngineering {
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
+        OrientationToolConfig.load(event.getModConfigurationDirectory());
         HatchCapabilityRegistration.register();
         NetworkRegistry.INSTANCE.registerGuiHandler(this, proxy);
         LOGGER.info("Loading {} {}", Tags.MOD_NAME, Tags.VERSION);

@@ -47,7 +47,7 @@ public final class MachineWorkSlots {
         this(owner, definitions, Set.of(), RecipeProcess::tick);
     }
 
-    /** An empty layout uses PM's implicit main slot and the supplied machine-level groups. */
+    /** An empty layout uses PM's implicit main slot; empty machine-level groups accept every recipe. */
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups,
                             RecipeExecutor executor) {
         this.owner = Objects.requireNonNull(owner);
@@ -307,9 +307,7 @@ public final class MachineWorkSlots {
     }
 
     private static boolean accepts(WorkSlot slot, RecipeProcess process) {
-        // Empty whitelist accepts explicit admission, as PM's implicit slot intended. Scanning still
-        // requires an explicit bounded group scope and must not search a global unbounded catalogue.
-        return slot.allowedRecipeGroups().isEmpty() || process.recipe().recipeGroups().stream().anyMatch(slot.allowedRecipeGroups()::contains);
+        return slot.definition().accepts(process.recipe());
     }
 
     private void requireBoundary() {

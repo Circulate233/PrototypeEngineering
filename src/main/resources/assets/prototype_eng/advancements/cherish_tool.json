@@ -1,0 +1,28 @@
+{
+  "parent": "minecraft:adventure/root",
+  "display": {
+    "icon": {
+      "item": "prototype_eng:orientation_tool"
+    },
+    "title": {
+      "translate": "orientation_tool.prototype_eng.CherishTitle"
+    },
+    "description": {
+      "translate": "orientation_tool.prototype_eng.CherishDescription"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "trigger": {
+      "trigger": "minecraft:impossible"
+    }
+  },
+  "requirements": [
+    [
+      "trigger"
+    ]
+  ]
+}

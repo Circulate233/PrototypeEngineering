@@ -6,6 +6,8 @@ import ae2.api.orientation.IOrientationStrategy;
 import ae2.api.orientation.OrientationStrategies;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.item.ControllerOrientationTool;
 import com.circulation.prototype_eng.machine.ControllerOrientation;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import net.minecraft.block.Block;
@@ -17,6 +19,7 @@ import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
@@ -91,6 +94,13 @@ public final class MachineControllerBlock extends Block implements IOrientableBl
     @Override public boolean rotateBlock(World world, @NotNull BlockPos pos, @NotNull EnumFacing axis) {
         if (world.isRemote || !(world.getTileEntity(pos) instanceof MachineControllerBlockEntity tile)) { return false; }
         tile.rotateAround(axis);
+        return true;
+    }
+    @Override public boolean onBlockActivated(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState state,
+            @NotNull EntityPlayer player, @NotNull EnumHand hand, @NotNull EnumFacing face, float hitX, float hitY, float hitZ) {
+        if (player.isSneaking() || player.getHeldItem(hand).getItem() instanceof ControllerOrientationTool
+                || !(world.getTileEntity(pos) instanceof MachineControllerBlockEntity)) { return false; }
+        if (!world.isRemote) { player.openGui(PrototypeEngineering.instance, 0, world, pos.getX(), pos.getY(), pos.getZ()); }
         return true;
     }
     @Override public void breakBlock(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState state) {
