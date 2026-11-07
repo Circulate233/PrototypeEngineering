@@ -105,6 +105,9 @@ if (propertyBool('enable_shadow')) {
     }
 }
 
+// Route mod coordinates before MDG resolves and locks its repositories.
+apply from: 'gradle/scripts/repositories.gradle'
+
 //noinspection GroovyAssignabilityCheck
 mcpForge {
     if (propertyBool('use_access_transformer')) {

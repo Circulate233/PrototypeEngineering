@@ -1,0 +1,43 @@
+repositories {
+    flatDir {
+        dirs('libs') // /libs
+    }
+    maven {
+        name = 'CleanroomMC'
+        url = 'https://maven.cleanroommc.com'
+        content {
+            includeGroup 'mezz'
+        }
+    }
+    exclusiveContent {
+        forRepositories(
+            maven {
+                name = 'CurseMaven'
+                url = 'https://cursemaven.com'
+            },
+            maven {
+                name = 'CleanroomCurseMaven'
+                url = 'https://curse.cleanroommc.com'
+            }
+        )
+        filter {
+            includeGroup 'curse.maven'
+        }
+    }
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
+    maven {
+        name = 'JitPack'
+        url = 'https://jitpack.io'
+        content {
+            includeGroup 'com.github.FormlessDragon'
+        }
+    }
+    mavenCentral()
+    mavenLocal() // Must be last for caching to work
+}

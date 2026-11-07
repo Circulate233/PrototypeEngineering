@@ -1,53 +1,14 @@
 apply from: 'gradle/scripts/helpers.gradle'
 
-repositories {
-    flatDir {
-        dirs('libs') // /libs
-    }
-    maven {
-        name = 'CleanroomMC'
-        url = 'https://maven.cleanroommc.com'
-        content {
-            includeGroup 'mezz'
-        }
-    }
-    maven {
-        name = 'CurseMaven'
-        url = 'https://cursemaven.com'
-        content {
-            includeGroup 'curse.maven'
-        }
-    }
-    maven {
-        name = 'CleanroomCurseMaven'
-        url = 'https://curse.cleanroommc.com'
-        content {
-            includeGroup 'curse.maven'
-        }
-    }
-    maven {
-        name = 'Modrinth'
-        url = 'https://api.modrinth.com/maven'
-        content {
-            includeGroup 'maven.modrinth'
-        }
-    }
-    maven {
-        name = 'JitPack'
-        url = 'https://jitpack.io'
-        content {
-            includeGroup 'com.github.FormlessDragon'
-        }
-    }
-    mavenCentral()
-    mavenLocal() // Must be last for caching to work
-}
-
 dependencies {
     implementation "com.cleanroommc:cleanmix:0.7.4"
     modImplementation 'mezz:jei:4.35.1'
     // AEBaseGui implements this optional API; javac needs it when compiling our concrete GUIs.
     modCompileOnly 'curse.maven:mouse-tweaks-unofficial-461660:5876158'
+
+    // Persistent owner teams use the original FTBLib / FTB Utilities 1.12.2 APIs directly.
+    modImplementation 'curse.maven:ftb-library-237167:2985811'
+    modImplementation 'curse.maven:ftb-utilities-237102:3157548'
 
     // MDG must load mod jars through the game classloader, including dev jars.
     modImplementation("com.github.FormlessDragon:Applied-Energistics-2-Supergiant:${ae2_version}:dev") {

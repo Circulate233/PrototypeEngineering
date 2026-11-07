@@ -7,6 +7,7 @@
 ## 当前状态
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
+- 队伍/网络规划核心已接入：OwnerTeamResolver 与直接 FtbOwnerTeamResolver，具体不可变结果保留离线 owner、有效 PLAYER/SERVER 和成员语义。NetworkPlanner.capture 每 owner 一次查询，检查重复设备/参与者、参与者 epoch、全局资源 metadata 与成员互相一致；plan 可在 worker 只读执行。保留中心/数据中心优先级和满库选择、等级状态、通用 DEVICE，中心+合格电脑+同队参与者合计后一次 exact flat/ppm，数量使用 fastutil addTo；所有公开 map/entries 冻结。仅迁入规划核心，真实角色组件、服务器整批发布、统一 recipe gate、canonical 资源注册/单来源上限、预算/lease/研究及完整参与者仍待接。详见[网络规划](network-planning.md)。
 - PN 持久身份已接入：MachineOwnership 为显式组件，复用 MachineAssembly 内置 codec 和生命周期；FRESH 由真实放置者创建 machine/owner UUID，RESTORED 保留旧身份，FakePlayer 不授 owner。MachineIdentityRegistry 绑定服务器会话与准确 MachineInstance，World 引用 + pos 定位，不含类型；同位置替换撤旧句柄，旧卸载不删新代，重复 UUID 全部失去唯一性且剩一个可恢复。所有变更/枚举限定 owner 线程，关闭会话永久撤销；身份不保存 team/epoch/lease/ready，也不授权工作。当前队伍、中心、预算、研究与统一配方许可仍待接，详见[身份说明](machine-identity.md)及[PN 审计](pn-identity-migration-audit.md)。
 - 已完成：工程标识、Java 25 模板、需求基线；固定 AE2S `v1.1.0:dev` 与 HEI `4.35.1`；移除模板示例 Mixin；开发包和生产重混淆构建。
 - 独立资源后端已完成：ResourceHatch 返回 ResourceStorage，槽位扩展由 SlottedResourceStorage 表达；SlottedResourceBuffer 独立持有 AEKey/long 余额、可用量、输入数量预留及输出容量预留。MEStorage、GenericInternalInventory 与 GUI 均为共享同一 context 的适配层，不再依赖 GenericStackInv 持有核心状态。外部仓室仍通过公开接口扩展，不依赖内置 TileEntity。FE 独立 long 存储已用同一无 AEKey 字段的预留生命周期参与并发批结算。
@@ -50,6 +51,10 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（队伍/网络规划）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，446 项逻辑测试全部通过，无失败、错误或跳过。新增 13 项覆盖成员换队快照、选择/满库/等级/角色、汇总与修饰顺序、每 owner 一次查询/真实 worker、重复/迟到输入、矛盾成员、故障传播、exact 边界和 map entry 不可变。删除两项仅测参数/getter 的初稿，不增加游戏初始化或反射。
+- 2026-11-07（队伍/网络规划）：本机 IDEA MCP 对 299 个 src Java 和 Tags 共 300 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告及超时；MCP `build_project` 成功且 `problems:[]`。报告 [network-planning-final.json](../build/reports/idea/network-planning-final.json)。全程不操作桌面、不启动游戏；FTB 的真实 Universe 生命周期尚未运行验证。
+- 2026-11-07（队伍/网络规划审计）：FTB 使用旧 Curse 文件坐标；将 repositories 提前到 MDG 首次解析前，并对 Curse group 限定两 Curse 仓库，解决插件仓库抢先查询及已使用仓库不能改过滤器的问题。保留 PN 数据中心已存研究优先和被动电脑贡献；修复 accepted owner 分支延迟去重、重复贡献二次构建及只读 entry 穿透。DATA_CENTER 等级 0 的旧声明/运行实现矛盾统一按声明允许，仍需要活动中心；不新增无中心工作语义。
 
 - 2026-11-07（PN 持久身份）：`gradlew.bat spotlessApply build --console=plain` 成功，433 项逻辑测试全部通过，无失败、错误或跳过。新增 14 项覆盖多副本冲突及恢复、同位置不同类型替换、迟到卸载不删新代、引用身份/线程/会话边界、严格 NBT，以及真实 assembly/lifecycle 搬运与部分加载失败清理。没有游戏初始化、反射、哈希或 getter 专用测试。
 - 2026-11-07（PN 持久身份）：本机 IDEA MCP 对 283 个 src Java 和生成 Tags 共 284 文件逐个 `errorsOnly:false`，清理诊断并复查后最终零错误、警告、弱警告及超时；MCP `build_project` 返回 `isSuccess:true`、`problems:[]`。报告 [machine-identity-final.json](../build/reports/idea/machine-identity-final.json)。registry 借用句柄更新使用局部 resource 标注并说明不能关闭的原因，测试夹具明确关闭。只使用 MCP，未操作桌面或启动游戏。
