@@ -350,7 +350,7 @@ class SelectiveRequirementTest {
             : RequirementTransaction.SUCCESS));
         var path = selection.path(checkpoint.path(null));
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
-        assertEquals(List.of(false, false), candidate.committedAtAcquisition);
+        assertEquals(List.of(true, true), candidate.committedAtAcquisition);
         assertNull(state(process).selection(path));
         assertEquals(20, env.input.availableAmount(MATERIAL));
         assertEquals(0, env.output.availableAmount(MATERIAL));
@@ -365,7 +365,7 @@ class SelectiveRequirementTest {
         assertEquals(20, env.input.availableAmount(MATERIAL));
         assertEquals(0, env.output.availableAmount(MATERIAL));
         assertEquals(0, process.state().successfulTicks());
-        assertEquals(List.of(false, false), candidate.committedAtAcquisition);
+        assertEquals(List.of(true, true), candidate.committedAtAcquisition);
         assertNull(state(process).selection(path));
         assertEquals(1, process.attributes().value(SCORE));
     }
@@ -435,8 +435,12 @@ class SelectiveRequirementTest {
     }
 
     private static RecipeRequirement<String> binding(ResourceLocation location,
-                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire,
+                                                      StorageContext... contexts) {
         var system = new RecipeRequirementSystem<String>() {
+            @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return List.of(contexts);
+            }
             @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return acquire.apply(process, RecipeStage.START);
             }
@@ -507,7 +511,7 @@ class SelectiveRequirementTest {
             endAmount = end;
         }
 
-        private RecipeRequirement<String> requirement() { return binding(id(name), this::acquire); }
+        private RecipeRequirement<String> requirement() { return binding(id(name), this::acquire, env.input.context(), env.output.context()); }
 
         private RequirementTransaction acquire(RecipeProcess process, RecipeStage stage) {
             env.events.add(name + ":acquire:" + stage);
@@ -573,6 +577,9 @@ class SelectiveRequirementTest {
                                @Nullable RuntimeException rollbackFault) implements ResourceReservation {
         @Override public StorageContext context() { return delegate.context(); }
         @Override public boolean canApply() { return delegate.canApply(); }
+        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
+        @Override public void exposeApplied() { delegate.exposeApplied(); }
+        @Override public Resolution resolution() { return delegate.resolution(); }
         @Override public void apply() { events.add(name + ":token:apply"); delegate.apply(); }
         @Override public void complete() { events.add(name + ":token:complete"); delegate.complete(); }
         @Override public void rollback() {

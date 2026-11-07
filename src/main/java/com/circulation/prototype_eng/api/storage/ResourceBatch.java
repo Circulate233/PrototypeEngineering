@@ -8,6 +8,8 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
@@ -22,10 +24,19 @@ public final class ResourceBatch {
     private final Thread owner = Thread.currentThread();
     private final Object lock = new Object();
     private final StorageFence fence;
+    private final boolean sequential;
+    private final ReferenceOpenHashSet<StorageContext> contexts;
+    private final ReferenceOpenHashSet<ResourceReservation> tokenIdentities = new ReferenceOpenHashSet<>();
+    private final ReferenceOpenHashSet<ReversibleTransaction> businessIdentities = new ReferenceOpenHashSet<>();
+    private final Reference2ObjectLinkedOpenHashMap<StorageContext, Source> sourceDomains = new Reference2ObjectLinkedOpenHashMap<>();
+    private final ObjectArrayList<Source> sourceList = new ObjectArrayList<>();
     private final ObjectList<Source> sources;
-    private final ObjectList<ReversibleTransaction> transactions;
-    private final boolean[] businessTerminal;
-    private final boolean[] businessUncertain;
+    private final ObjectArrayList<ReversibleTransaction> transactions;
+    private boolean[] businessTerminal;
+    private boolean[] businessUncertain;
+    private int stagedTransactions;
+    private boolean stagedBoundary;
+    private boolean nextAcquired;
     private Decision decision = Decision.OPEN;
     private Business business = Business.ACQUIRED;
     private int runningSources;
@@ -34,14 +45,22 @@ public final class ResourceBatch {
 
     private ResourceBatch(StorageFence fence,
                           Reference2ObjectLinkedOpenHashMap<StorageContext, ObjectArrayList<ResourceReservation>> grouped,
-                          ObjectList<ReversibleTransaction> transactions) {
+                          ObjectList<ReversibleTransaction> transactions,
+                          ReferenceOpenHashSet<StorageContext> contexts, boolean sequential) {
         this.fence = fence;
-        this.transactions = transactions;
+        this.sequential = sequential;
+        this.contexts = contexts;
+        this.transactions = new ObjectArrayList<>(transactions);
+        businessIdentities.addAll(transactions);
         businessTerminal = new boolean[transactions.size()];
         businessUncertain = new boolean[transactions.size()];
-        var ordered = new ObjectArrayList<Source>(grouped.size());
-        for (var entry : grouped.reference2ObjectEntrySet()) { ordered.add(new Source(entry.getKey(), entry.getValue())); }
-        sources = ObjectLists.unmodifiable(ordered);
+        for (var entry : grouped.reference2ObjectEntrySet()) {
+            var source = new Source(entry.getKey(), entry.getValue());
+            sourceList.add(source);
+            sourceDomains.put(entry.getKey(), source);
+            tokenIdentities.addAll(entry.getValue());
+        }
+        sources = ObjectLists.unmodifiable(sourceList);
     }
 
     /**
@@ -62,6 +81,26 @@ public final class ResourceBatch {
     @Nullable
     public static ResourceBatch tryAcquire(List<? extends ResourceReservation> reservations,
                                            List<? extends ReversibleTransaction> transactions) {
+        return acquire(List.of(), reservations, transactions, false);
+    }
+
+    /**
+     * Claims every declared domain together with the initial tokens' domains. Later acquisition may
+     * only use this frozen set. Unsupported tokens are rejected before any claim or cleanup transfer.
+     */
+    @Nullable
+    public static ResourceBatch tryAcquireSequential(Collection<StorageContext> declaredContexts,
+                                                     List<? extends ResourceReservation> reservations,
+                                                     List<? extends ReversibleTransaction> transactions) {
+        return acquire(declaredContexts, reservations, transactions, true);
+    }
+
+    private static @Nullable ResourceBatch acquire(Collection<StorageContext> declaredContexts,
+                                                   List<? extends ResourceReservation> reservations,
+                                                   List<? extends ReversibleTransaction> transactions,
+                                                   boolean sequential) {
+        var contexts = new ReferenceOpenHashSet<StorageContext>();
+        for (var context : declaredContexts) { contexts.add(Objects.requireNonNull(context)); }
         var businessTransactions = new ObjectArrayList<ReversibleTransaction>(transactions);
         var businessIdentities = new ReferenceOpenHashSet<ReversibleTransaction>();
         for (var transaction : businessTransactions) {
@@ -74,11 +113,126 @@ public final class ResourceBatch {
         for (var reservation : new ObjectArrayList<>(reservations)) {
             Objects.requireNonNull(reservation);
             if (!unique.add(reservation)) { throw new IllegalArgumentException("Repeated reservation token"); }
+            if (sequential && !reservation.supportsSequentialUse()) {
+                throw new IllegalArgumentException("Reservation does not support sequential use");
+            }
             var context = Objects.requireNonNull(reservation.context());
+            contexts.add(context);
             grouped.computeIfAbsent(context, _ -> new ObjectArrayList<>()).add(reservation);
         }
-        var fence = StorageFence.tryAcquire(grouped.keySet());
-        return fence == null ? null : new ResourceBatch(fence, grouped, businessTransactions);
+        var fence = StorageFence.tryAcquire(contexts);
+        return fence == null ? null : new ResourceBatch(fence, grouped, businessTransactions, contexts, sequential);
+    }
+
+    /**
+     * Commits only this segment's acquired business effects while retaining every undo obligation.
+     * Success stays OPEN and retains provisional effects; final validateCommit runs exactly once in
+     * commit. All source actions must have actually exited before entering this boundary. Preparation
+     * and commit are never replayed, including when authorization rejects.
+     */
+    public boolean stage(BooleanSupplier authorization) {
+        return commitBusiness(authorization, true);
+    }
+
+    /**
+     * Runs one next-segment acquisition under the full original fence after successful staging.
+     * A throwing callback retains the original participants; append any exact acquisitions it made
+     * before deciding rollback. This callback is never automatically retried.
+     */
+    public void acquireNext(Runnable acquisition) {
+        requireOwnerBoundary();
+        Objects.requireNonNull(acquisition);
+        synchronized (lock) {
+            requireAppendBoundary();
+            if (nextAcquired) { throw new IllegalStateException("Next segment acquisition already attempted"); }
+            nextAcquired = true;
+            ownerAction = true;
+        }
+        try { fence.access(acquisition); }
+        finally { synchronized (lock) { ownerAction = false; } }
+    }
+
+    /** Owner reads and exact acquisition cleanup use the original domains, with no source in flight. */
+    public void access(Runnable action) {
+        requireOwnerBoundary();
+        Objects.requireNonNull(action);
+        synchronized (lock) { requireIdleOwner(); ownerAction = true; }
+        try { fence.access(action); }
+        finally { synchronized (lock) { ownerAction = false; } }
+    }
+
+    /**
+     * Transfers newly acquired participants after acquireNext exits. The complete append is checked
+     * before modifying this batch; rejection leaves the original participants and their lanes intact.
+     * The caller still owns rejected acquisitions and must clean them in the original fence scope.
+     */
+    public void append(List<? extends ResourceReservation> reservations,
+                       List<? extends ReversibleTransaction> businessTransactions) {
+        appendParticipants(reservations, businessTransactions, false);
+    }
+
+    /**
+     * Registers an acquired rejected segment for exact source-lane cleanup, then decides rollback.
+     * Sequential capability is unnecessary because none of these new tokens will be applied. Domain
+     * and identity checks still precede every mutation; this method invokes no participant callback.
+     */
+    public void appendForRollback(List<? extends ResourceReservation> reservations,
+                                  List<? extends ReversibleTransaction> businessTransactions) {
+        appendParticipants(reservations, businessTransactions, true);
+    }
+
+    private void appendParticipants(List<? extends ResourceReservation> reservations,
+                                    List<? extends ReversibleTransaction> businessTransactions,
+                                    boolean rollbackOnly) {
+        requireOwnerBoundary();
+        synchronized (lock) {
+            requireAppendBoundary();
+            if (!nextAcquired) { throw new IllegalStateException("Next segment has not been acquired"); }
+            var addedTokens = new ObjectArrayList<ResourceReservation>(reservations);
+            var addedBusiness = new ObjectArrayList<ReversibleTransaction>(businessTransactions);
+            var uniqueTokens = new ReferenceOpenHashSet<ResourceReservation>();
+            var uniqueBusiness = new ReferenceOpenHashSet<ReversibleTransaction>();
+            var grouped = new Reference2ObjectLinkedOpenHashMap<StorageContext, ObjectArrayList<ResourceReservation>>();
+            for (var token : addedTokens) {
+                Objects.requireNonNull(token);
+                if (tokenIdentities.contains(token) || !uniqueTokens.add(token)) {
+                    throw new IllegalArgumentException("Repeated reservation token");
+                }
+                if (!rollbackOnly && !token.supportsSequentialUse()) { throw new IllegalArgumentException("Reservation does not support sequential use"); }
+                var context = Objects.requireNonNull(token.context());
+                if (!contexts.contains(context)) { throw new IllegalArgumentException("Reservation domain was not declared"); }
+                grouped.computeIfAbsent(context, _ -> new ObjectArrayList<>()).add(token);
+            }
+            for (var transaction : addedBusiness) {
+                Objects.requireNonNull(transaction);
+                if (businessIdentities.contains(transaction) || !uniqueBusiness.add(transaction)) {
+                    throw new IllegalArgumentException("Repeated business transaction");
+                }
+            }
+            businessTerminal = Arrays.copyOf(businessTerminal, transactions.size() + addedBusiness.size());
+            businessUncertain = Arrays.copyOf(businessUncertain, transactions.size() + addedBusiness.size());
+            for (var entry : grouped.reference2ObjectEntrySet()) {
+                var source = sourceDomains.get(entry.getKey());
+                if (source == null) {
+                    source = new Source(entry.getKey(), entry.getValue());
+                    sourceDomains.put(entry.getKey(), source);
+                    sourceList.add(source);
+                } else { source.appendTokens(entry.getValue()); }
+            }
+            tokenIdentities.addAll(addedTokens);
+            transactions.addAll(addedBusiness);
+            businessIdentities.addAll(addedBusiness);
+            stagedBoundary = false;
+            nextAcquired = false;
+            if (rollbackOnly) { decision = Decision.ROLLBACK; }
+        }
+    }
+
+    private void requireAppendBoundary() {
+        requireIdleOwner();
+        if (!sequential || !stagedBoundary || decision != Decision.OPEN || business != Business.ACQUIRED) {
+            throw new IllegalStateException("Sequential segment is not ready for acquisition or append");
+        }
     }
 
     public ObjectList<Source> sources() { return sources; }
@@ -94,6 +248,7 @@ public final class ResourceBatch {
     }
 
     private boolean terminalParticipants() {
+        if (nextAcquired) { return false; }
         boolean committed = decision == Decision.COMPLETE && business == Business.COMPLETED;
         boolean rolledBack = decision == Decision.ROLLBACK && business == Business.ROLLED_BACK;
         SourceState terminal = committed ? SourceState.COMPLETED : SourceState.ROLLED_BACK;
@@ -107,11 +262,16 @@ public final class ResourceBatch {
      * business completion. A completion failure may never be converted into rollback.
      */
     public boolean commit(BooleanSupplier authorization) {
+        return commitBusiness(authorization, false);
+    }
+
+    private boolean commitBusiness(BooleanSupplier authorization, boolean staging) {
         requireOwnerBoundary();
         Objects.requireNonNull(authorization);
         synchronized (lock) {
             requireIdleOwner();
-            if (decision != Decision.OPEN || business != Business.ACQUIRED
+            if (staging && (!sequential || stagedBoundary) || nextAcquired
+                || decision != Decision.OPEN || business != Business.ACQUIRED
                 || sources.stream().anyMatch(source -> source.state != SourceState.APPLIED)) {
                 throw new IllegalStateException("Source application is not ready for business commit");
             }
@@ -120,14 +280,21 @@ public final class ResourceBatch {
         try {
             return fence.access(() -> {
                 if (!authorized(authorization)) { decide(Decision.ROLLBACK); return false; }
-                for (var transaction : transactions) {
+                for (int index = stagedTransactions; index < transactions.size(); index++) {
+                    var transaction = transactions.get(index);
                     if (!transaction.prepareCommit()) { decide(Decision.ROLLBACK); return false; }
                 }
-                for (var transaction : transactions) { transaction.commit(); }
-                for (var transaction : transactions) {
-                    if (!transaction.validateCommit()) { decide(Decision.ROLLBACK); return false; }
+                for (int index = stagedTransactions; index < transactions.size(); index++) { transactions.get(index).commit(); }
+                if (!staging) {
+                    for (var transaction : transactions) {
+                        if (!transaction.validateCommit()) { decide(Decision.ROLLBACK); return false; }
+                    }
                 }
                 if (!authorized(authorization)) { decide(Decision.ROLLBACK); return false; }
+                if (staging) {
+                    synchronized (lock) { stagedTransactions = transactions.size(); stagedBoundary = true; }
+                    return true;
+                }
                 decide(Decision.COMPLETE);
                 return settleBusiness(Decision.COMPLETE);
             });
@@ -149,7 +316,7 @@ public final class ResourceBatch {
     public boolean rollback() {
         requireOwnerBoundary();
         synchronized (lock) {
-            if (closed || ownerAction || decision == Decision.COMPLETE) {
+            if (closed || ownerAction || decision == Decision.COMPLETE || nextAcquired) {
                 throw new IllegalStateException("Batch cannot decide rollback at this boundary");
             }
             decision = Decision.ROLLBACK;
@@ -188,7 +355,10 @@ public final class ResourceBatch {
             if (businessTerminal[index]) { continue; }
             var transaction = transactions.get(index);
             try {
-                if (businessUncertain[index] && !confirmBusinessOrRetry(index, transaction, settling)) { continue; }
+                if (businessUncertain[index] && !confirmBusinessOrRetry(index, transaction, settling)) {
+                    if (sequential && settling == Decision.ROLLBACK && !businessTerminal[index]) { break; }
+                    continue;
+                }
                 if (businessTerminal[index]) { continue; }
                 if (settling == Decision.COMPLETE) { transaction.complete(); }
                 else { transaction.rollback(); }
@@ -199,6 +369,7 @@ public final class ResourceBatch {
                 failure = accumulate(failure, cleanup);
                 try { confirmBusinessOrRetry(index, transaction, settling); }
                 catch (RuntimeException | Error query) { failure = accumulate(failure, query); }
+                if (sequential && settling == Decision.ROLLBACK && !businessTerminal[index]) { break; }
             }
         }
         boolean done = true;
@@ -239,7 +410,7 @@ public final class ResourceBatch {
     }
 
     private boolean authorized(BooleanSupplier authorization) {
-        for (var source : sources) { if (!source.context.isValid()) { return false; } }
+        for (var context : contexts) { if (!context.isValid()) { return false; } }
         return authorization.getAsBoolean();
     }
 
@@ -271,18 +442,26 @@ public final class ResourceBatch {
     /** One physical domain, shared by all aliases and stable across batches on that domain. */
     public final class Source {
         private final StorageContext context;
-        private final ObjectList<ResourceReservation> tokens;
-        private final boolean[] terminal;
-        private final boolean[] uncertain;
+        private final ObjectArrayList<ResourceReservation> tokens;
+        private boolean[] terminal;
+        private boolean[] uncertain;
+        private int appliedTokens;
         private final String affinity;
         private SourceState state = SourceState.RESERVED;
 
         private Source(StorageContext context, ObjectList<ResourceReservation> tokens) {
             this.context = context;
-            this.tokens = tokens;
+            this.tokens = new ObjectArrayList<>(tokens);
             terminal = new boolean[tokens.size()];
             uncertain = new boolean[tokens.size()];
             affinity = "storage:" + context.order();
+        }
+
+        private void appendTokens(ObjectList<ResourceReservation> added) {
+            terminal = Arrays.copyOf(terminal, tokens.size() + added.size());
+            uncertain = Arrays.copyOf(uncertain, tokens.size() + added.size());
+            tokens.addAll(added);
+            state = SourceState.RESERVED;
         }
 
         public String affinity() { return affinity; }
@@ -305,8 +484,13 @@ public final class ResourceBatch {
             SourceState outcome = SourceState.APPLY_FAILED;
             try {
                 fence.access(context, () -> {
-                    for (var token : tokens) { if (!token.canApply()) { return; } }
-                    for (var token : tokens) { token.apply(); }
+                    for (int index = appliedTokens; index < tokens.size(); index++) { if (!tokens.get(index).canApply()) { return; } }
+                    for (int index = appliedTokens; index < tokens.size(); index++) {
+                        var token = tokens.get(index);
+                        token.apply();
+                        if (sequential) { token.exposeApplied(); }
+                    }
+                    appliedTokens = tokens.size();
                     accepted[0] = true;
                 });
                 outcome = accepted[0] ? SourceState.APPLIED : SourceState.REJECTED;
@@ -317,8 +501,9 @@ public final class ResourceBatch {
         }
 
         /**
-         * Resolves only the decided direction, on this source's original lane. All tokens are attempted
-         * even if one throws. Later calls skip confirmed terminal tokens; a failed token is retried only
+         * Resolves only the decided direction, on this source's original lane. Ordinary batches attempt
+         * all tokens even if one throws; sequential rollback stops before any unconfirmed dependency.
+         * Later calls skip confirmed terminal tokens; a failed token is retried only
          * after its exact resolution proves a safe transition. UNKNOWN stays confirmation-pending.
          */
         public boolean resolve() {
@@ -331,6 +516,7 @@ public final class ResourceBatch {
                     || business == Business.ACQUIRED) {
                     throw new IllegalStateException("Source cannot resolve at this boundary");
                 }
+                if (sequential && decision == Decision.ROLLBACK && business != Business.ROLLED_BACK) { return false; }
                 settling = decision;
                 if (state == SourceState.COMPLETED || state == SourceState.ROLLED_BACK) { return true; }
                 state = SourceState.RESOLVING;
@@ -357,7 +543,10 @@ public final class ResourceBatch {
                 if (terminal[index]) { continue; }
                 var token = tokens.get(index);
                 try {
-                    if (uncertain[index] && !confirmOrRetry(index, token, settling)) { continue; }
+                    if (uncertain[index] && !confirmOrRetry(index, token, settling)) {
+                        if (sequential && settling == Decision.ROLLBACK && !terminal[index]) { break; }
+                        continue;
+                    }
                     if (terminal[index]) { continue; }
                     if (settling == Decision.COMPLETE) { token.complete(); }
                     else { token.rollback(); }
@@ -369,6 +558,7 @@ public final class ResourceBatch {
                     // A callback can throw after mutation. Query exact state without replaying it.
                     try { confirmOrRetry(index, token, settling); }
                     catch (RuntimeException | Error query) { failure = accumulate(failure, query); }
+                    if (sequential && settling == Decision.ROLLBACK && !terminal[index]) { break; }
                 }
             }
             rethrow(failure);

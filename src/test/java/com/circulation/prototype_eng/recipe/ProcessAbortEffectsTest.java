@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.api.recipe.selective.SelectiveModifierDescr
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
@@ -159,7 +160,7 @@ class ProcessAbortEffectsTest {
         assertTrue(fixture.probe.cancellations.isEmpty());
         assertEquals(1, fixture.probe.ends);
         assertEquals(18, fixture.input.availableAmount(MATERIAL));
-        assertEquals(2, fixture.output.availableAmount(MATERIAL));
+        assertEquals(7, fixture.output.availableAmount(MATERIAL), "END uses the START-installed amount overlay");
         assertTrue(SelectiveState.getOrCreate(process).snapshot().isEmpty());
         assertTrue(SelectiveState.getOrCreate(process).abortReceipts().isEmpty());
     }
@@ -334,6 +335,10 @@ class ProcessAbortEffectsTest {
             type = new RecipeRequirementType<>(id(name + "_type"), this);
             this.input = input;
             this.output = output;
+        }
+
+        @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+            return List.of(input.context(), output.context());
         }
 
         @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {

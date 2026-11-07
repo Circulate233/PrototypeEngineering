@@ -5,6 +5,8 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
+import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.StorageContext;
@@ -32,8 +34,9 @@ public final class RecipeStageExecutor {
 
     /**
      * Acquires the real START requirements of an unattached NEW candidate, then compensates every
-     * acquisition. No business or storage commit, completion, TICK or END is performed.
-     * External START callbacks still run and must satisfy the normal reversible acquisition contract.
+     * acquisition. A continued START stages its nested effects under one retained fence so later
+     * child phases see them, then rolls the entire probe back without completion. Ordinary flat
+     * requirements retain the acquisition-only probe. All callbacks must preserve complete undo.
      */
     public static ProcessResult probeStart(RecipeProcess process) {
         return probeStage(process, RecipeStage.START);
@@ -43,7 +46,8 @@ public final class RecipeStageExecutor {
      * Probes one isolated stage of an unattached NEW candidate. Earlier stages and component callbacks
      * are not executed; the caller must establish any state that this stage requires. This is not a
      * projection of a complete lifecycle. TICK uses the candidate's first frozen tick context for both
-     * acquisition and cleanup. Every acquired transaction is rolled back without commit/complete.
+     * acquisition and cleanup. Every acquired transaction is rolled back without completion;
+     * nested continuations may stage reversible effects to preserve their ordered input semantics.
      */
     public static ProcessResult probeStage(RecipeProcess process, RecipeStage stage) {
         requireProbeBoundary(process);
@@ -75,6 +79,7 @@ public final class RecipeStageExecutor {
             rollbackAfterFailure(acquisition, failure);
             throw failure;
         }
+        if (acquisition.sequential()) { return acquisition.settleSequentially(true); }
         acquisition.rollbackSynchronously();
         return acquisition.result();
     }
@@ -133,8 +138,17 @@ public final class RecipeStageExecutor {
         private final RecipeProcess process;
         private final RecipeStage stage;
         private final RequirementTransaction transition;
-        private List<RequirementTransaction> transactions = List.of();
-        private List<ResourceReservation> reservations = List.of();
+        private final ObjectArrayList<RequirementTransaction> transactions = new ObjectArrayList<>();
+        private final ObjectArrayList<ResourceReservation> reservations = new ObjectArrayList<>();
+        private final ObjectArrayList<RequirementContinuation> continuations = new ObjectArrayList<>();
+        private final Reference2ObjectOpenHashMap<ResourceReservation, SourceObservation> sourceIdentities = new Reference2ObjectOpenHashMap<>();
+        private int requirementCursor;
+        private int stepBusinessStart;
+        private int stepSourceStart;
+        private boolean sequential;
+        @Nullable private RecipeProcess.Tick acquiredTick;
+        private boolean transitionAdded;
+        @Nullable private ResourceBatch synchronousBatch;
         private final ObjectArrayList<BusinessObservation> business = new ObjectArrayList<>();
         private final ObjectArrayList<SourceObservation> sources = new ObjectArrayList<>();
         private final ObjectArrayList<ResourceReservation> synchronousSources = new ObjectArrayList<>();
@@ -157,58 +171,110 @@ public final class RecipeStageExecutor {
             requireOwner();
             process.requireAcquisitionBoundary();
             if (state != AcquisitionState.NEW || executing) { throw new IllegalStateException("Stage acquisition already entered"); }
+            acquiredTick = process.captureTickContext();
+            acquireStep();
+        }
+
+        /** Resumes only after the preceding segment's resource and business effects are staged. */
+        public void acquireNext() {
+            requireOwner();
+            process.requireAcquisitionBoundary();
+            if (state != AcquisitionState.SEALED || !hasContinuation()) {
+                throw new IllegalStateException("No staged requirement continuation remains");
+            }
+            if (acquiredTick == null) { acquireStep(); }
+            else { process.withTickContext(acquiredTick, () -> { acquireStep(); return null; }); }
+        }
+
+        private void acquireStep() {
             state = AcquisitionState.ACQUIRING;
-            var acquired = new ObjectArrayList<RequirementTransaction>();
-            var tokens = new ObjectArrayList<ResourceReservation>();
+            stepBusinessStart = transactions.size();
+            stepSourceStart = reservations.size();
             try {
-                for (var requirement : process.orderedRequirements()) {
-                    var transaction = Objects.requireNonNull(requirement.acquire(process, stage), "requirement transaction");
-                    if (transaction != RequirementTransaction.SUCCESS) { acquired.add(transaction); }
-                    try {
-                        for (var token : Objects.requireNonNull(transaction.reservations(), "transaction reservations")) {
-                            tokens.add(Objects.requireNonNull(token));
-                        }
-                    } catch (RuntimeException | Error listingFailure) {
-                        inventoryComplete = false;
-                        throw listingFailure;
+                while (result == ProcessResult.SUCCESS) {
+                    if (!continuations.isEmpty()) {
+                        var tail = continuations.getLast();
+                        var transaction = tail.acquireNext();
+                        if (transaction == null) { continuations.removeLast(); continue; }
+                        capture(transaction);
+                        break;
                     }
-                    result = Objects.requireNonNull(transaction.result(), "transaction result");
-                    if (result != ProcessResult.SUCCESS) { break; }
+                    var requirements = process.orderedRequirements();
+                    if (requirementCursor == requirements.size()) { break; }
+                    var transaction = requirements.get(requirementCursor++).acquire(process, stage);
+                    capture(Objects.requireNonNull(transaction, "requirement transaction"));
+                    if (!continuations.isEmpty()) { break; }
                 }
             } catch (RuntimeException | Error acquisitionFailure) {
                 acquisitionFailed = true;
                 failure = acquisitionFailure;
                 throw acquisitionFailure;
             } finally {
-                acquired.add(transition);
-                transactions = ObjectLists.unmodifiable(acquired);
-                reservations = ObjectLists.unmodifiable(tokens);
-                for (var transaction : acquired) { business.add(new BusinessObservation(transaction)); }
-                var identities = new Reference2ObjectOpenHashMap<ResourceReservation, SourceObservation>();
-                for (var token : tokens) {
-                    var observation = identities.get(token);
-                    if (observation == null) {
-                        observation = new SourceObservation(token);
-                        identities.put(token, observation);
-                        sources.add(observation);
-                    }
-                    // Repeated originals retain one wrapper identity, so validation cannot hide aliases.
-                    synchronousSources.add(observation);
+                if (acquisitionFailed || result != ProcessResult.SUCCESS
+                    || continuations.isEmpty() && requirementCursor == process.orderedRequirements().size()) {
+                    addTransition();
                 }
                 state = AcquisitionState.SEALED;
             }
         }
 
+        private void capture(RequirementTransaction transaction) {
+            if (transaction != RequirementTransaction.SUCCESS) {
+                transactions.add(transaction);
+                business.add(new BusinessObservation(transaction));
+            }
+            try {
+                for (var token : Objects.requireNonNull(transaction.reservations(), "transaction reservations")) {
+                    reservations.add(Objects.requireNonNull(token));
+                    var observation = sourceIdentities.get(token);
+                    if (observation == null) {
+                        observation = new SourceObservation(token);
+                        sourceIdentities.put(token, observation);
+                        sources.add(observation);
+                    }
+                    synchronousSources.add(observation);
+                }
+            } catch (RuntimeException | Error listingFailure) {
+                inventoryComplete = false;
+                throw listingFailure;
+            }
+            result = Objects.requireNonNull(transaction.result(), "transaction result");
+            if (result == ProcessResult.SUCCESS) {
+                var tail = transaction.continuation();
+                if (tail != null) { continuations.add(tail); sequential = true; }
+            }
+        }
+
+        private void addTransition() {
+            if (!transitionAdded) {
+                transitionAdded = true;
+                transactions.add(transition);
+                business.add(new BusinessObservation(transition));
+            }
+        }
+
+        public boolean sequential() { return sequential; }
+        public boolean hasContinuation() { return !transitionAdded && !acquisitionFailed && result == ProcessResult.SUCCESS; }
+        public List<RequirementTransaction> stepTransactions() {
+            requireSealed();
+            return ObjectLists.unmodifiable(new ObjectArrayList<>(transactions.subList(stepBusinessStart, transactions.size())));
+        }
+        public List<ResourceReservation> stepReservations() {
+            requireSealed();
+            return ObjectLists.unmodifiable(new ObjectArrayList<>(reservations.subList(stepSourceStart, reservations.size())));
+        }
+
         public ProcessResult result() { requireSealed(); return result; }
         @Nullable public Throwable failure() { requireSealed(); return failure; }
-        public List<RequirementTransaction> transactions() { requireSealed(); return transactions; }
-        public List<ResourceReservation> reservations() { requireSealed(); return reservations; }
+        public List<RequirementTransaction> transactions() { requireSealed(); return ObjectLists.unmodifiable(transactions); }
+        public List<ResourceReservation> reservations() { requireSealed(); return ObjectLists.unmodifiable(reservations); }
         public boolean inventoryComplete() { return state == AcquisitionState.SEALED && inventoryComplete; }
 
         public ProcessResult settleSynchronously() {
             requireReady();
             if (synchronousStarted || decision != Settlement.NONE) { throw new IllegalStateException("Cannot replay stage settlement"); }
             if (acquisitionFailed || !inventoryComplete) { throw new IllegalStateException("Cannot commit a failed acquisition"); }
+            if (sequential) { return settleSequentially(false); }
             if (result != ProcessResult.SUCCESS) { rollbackSynchronously(); return result; }
             executing = true;
             try {
@@ -221,11 +287,99 @@ public final class RecipeStageExecutor {
             } finally { executing = false; }
         }
 
+        private ProcessResult settleSequentially(boolean probe) {
+            requireReady();
+            if (synchronousStarted || decision != Settlement.NONE) { throw new IllegalStateException("Cannot replay sequential settlement"); }
+            synchronousBatch = ResourceBatch.tryAcquireSequential(process.declaredStorageContexts(), reservations, transactions);
+            if (synchronousBatch == null) {
+                rollbackSynchronously();
+                return RecipeText.StorageChanged.blocked();
+            }
+            var batch = synchronousBatch;
+            synchronousStarted = true;
+            executing = true;
+            boolean accepted = false;
+            Throwable primary = null;
+            try {
+                while (result == ProcessResult.SUCCESS && !acquisitionFailed) {
+                    boolean applied = true;
+                    for (var entry : batch.sources()) {
+                        if (entry.state() == ResourceBatch.SourceState.RESERVED && !entry.apply()) { applied = false; break; }
+                    }
+                    if (!applied) { break; }
+                    if (hasContinuation()) {
+                        if (!batch.stage(() -> true)) { break; }
+                        acquireSequentialStep(batch);
+                        continue;
+                    }
+                    accepted = probe ? batch.stage(() -> true) : batch.commit(() -> true);
+                    break;
+                }
+            } catch (RuntimeException | Error fault) { primary = fault; remember(fault); }
+            try { resolveSequentialBatch(); }
+            catch (RuntimeException | Error cleanup) { primary = accumulate(primary, cleanup); remember(cleanup); }
+            finally { executing = false; }
+            rethrow(primary);
+            if (result != ProcessResult.SUCCESS) { return result; }
+            return accepted ? ProcessResult.SUCCESS : RecipeText.StorageChanged.blocked();
+        }
+
+        private void acquireSequentialStep(ResourceBatch batch) {
+            Throwable primary = null;
+            try { batch.acquireNext(() -> process.acquireContinuation(this)); }
+            catch (RuntimeException | Error acquisitionFailure) { primary = acquisitionFailure; }
+            try { appendSequentialStep(batch); }
+            catch (RuntimeException | Error adoptionFailure) { primary = accumulate(primary, adoptionFailure); }
+            rethrow(primary);
+        }
+
+        private void appendSequentialStep(ResourceBatch batch) {
+            if (!inventoryComplete) { return; }
+            var tokens = stepReservations();
+            var steps = stepTransactions();
+            if (tokens.stream().allMatch(ResourceReservation::supportsSequentialUse)) { batch.append(tokens, steps); }
+            else {
+                batch.appendForRollback(tokens, steps);
+                throw new IllegalArgumentException("Continued storage reservations must support reversible sequential use");
+            }
+        }
+
+        /** UNKNOWN or an unenumerated acquisition retains the exact batch and its original fence. */
+        private boolean resolveSequentialBatch() {
+            var batch = Objects.requireNonNull(synchronousBatch);
+            if (!inventoryComplete) { return false; }
+            Throwable primary = null;
+            try {
+                if (batch.decision() == ResourceBatch.Decision.OPEN) { batch.rollback(); }
+                else { batch.resolveBusiness(); }
+            } catch (RuntimeException | Error cleanup) { primary = cleanup; }
+            if (batch.decision() != ResourceBatch.Decision.OPEN) {
+                decision = batch.decision() == ResourceBatch.Decision.COMPLETE ? Settlement.COMPLETE : Settlement.ROLLBACK;
+                for (var entry : batch.sources()) {
+                    if (entry.state() == ResourceBatch.SourceState.COMPLETED || entry.state() == ResourceBatch.SourceState.ROLLED_BACK) { continue; }
+                    try { entry.resolve(); }
+                    catch (RuntimeException | Error cleanup) { primary = accumulate(primary, cleanup); }
+                }
+                if (batch.readyToFinish()) {
+                    try { batch.finish(); }
+                    catch (RuntimeException | Error cleanup) { primary = accumulate(primary, cleanup); }
+                }
+            }
+            rethrow(primary);
+            return batch.finished();
+        }
+
         public void rollbackSynchronously() { rollbackSynchronously(null); }
 
         private void rollbackSynchronously(@Nullable Throwable primary) {
             requireReady();
             if (decision == Settlement.COMPLETE) { throw new IllegalStateException("Completed stage cannot roll back"); }
+            if (synchronousBatch != null) {
+                executing = true;
+                try { resolveSequentialBatch(); }
+                finally { executing = false; }
+                return;
+            }
             executing = true;
             try { ResourceTransactions.rollback(synchronousSources, () -> settleBusiness(Settlement.ROLLBACK, primary)); }
             catch (RuntimeException | Error cleanup) { remember(cleanup); throw cleanup; }
@@ -235,6 +389,11 @@ public final class RecipeStageExecutor {
         /** Refreshes exact proofs and retries only safe terminal cleanup; UNKNOWN returns pending. */
         public boolean resolveSynchronously() {
             requireReady();
+            if (synchronousBatch != null) {
+                executing = true;
+                try { return resolveSequentialBatch(); }
+                finally { executing = false; }
+            }
             if (decision == Settlement.NONE) { throw new IllegalStateException("Stage settlement has not been decided"); }
             executing = true;
             var contexts = new ObjectArrayList<StorageContext>();
@@ -281,6 +440,7 @@ public final class RecipeStageExecutor {
 
         /** Queries never guess: resolveSynchronously refreshes proofs for a previously failed callback. */
         public boolean resolved() {
+            if (synchronousBatch != null) { return !executing && inventoryComplete && synchronousBatch.finished(); }
             return state == AcquisitionState.SEALED && !executing && inventoryComplete
                 && decision != Settlement.NONE && allTerminal();
         }
@@ -416,6 +576,8 @@ public final class RecipeStageExecutor {
             @Override public StorageContext context() { return token.context(); }
             @Override public boolean canApply() { synchronousStarted = true; return token.canApply(); }
             @Override public void apply() { token.apply(); }
+            @Override public boolean supportsSequentialUse() { return token.supportsSequentialUse(); }
+            @Override public void exposeApplied() { token.exposeApplied(); }
             @Override public void complete() { finish(Settlement.COMPLETE); }
             @Override public void rollback() { finish(Settlement.ROLLBACK); }
 

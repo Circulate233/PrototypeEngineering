@@ -2,6 +2,8 @@ package com.circulation.prototype_eng.api.recipe.requirement;
 
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 
+import com.circulation.prototype_eng.api.storage.StorageContext;
+
 import java.util.List;
 
 /**
@@ -15,6 +17,14 @@ import java.util.List;
 public interface RecipeRequirementSystem<C> {
     /** Immutable structural children used to bind nested saved state; this does not execute them. */
     default List<RecipeRequirement<?>> children(C payload) { return List.of(); }
+
+    /**
+     * Additional physical domains this definition or its callbacks may read/write in a staged
+     * sequence. Declare a stable superset before acquisition; the process's captured resource/FE
+     * hatches and structural children are included automatically. Declaration must have no effects
+     * and must not acquire storage locks. Undeclared domains fail before access, without replay.
+     */
+    default List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<C> requirement) { return List.of(); }
 
     default RequirementTransaction start(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }
     default RequirementTransaction tick(RecipeProcess process, RecipeRequirement<C> requirement) { return RequirementTransaction.SUCCESS; }

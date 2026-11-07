@@ -343,8 +343,18 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 dispatch(active, false, forwardDeadline);
                 return true;
             } else {
-                try { resources.commit(this::forwardAllowed); }
-                catch (RuntimeException | Error commit) { record(commit); }
+                try {
+                    boolean more = active.entries.stream().anyMatch(entry -> entry.stage.hasContinuation());
+                    if (more) {
+                        if (resources.stage(this::forwardAllowed)) {
+                            var stages = new ObjectArrayList<RecipeProcess.Stage>(active.entries.size());
+                            for (var entry : active.entries) { stages.add(entry.stage); }
+                            active.rollback = !RecipeProcess.Stage.acquireNextBatch(stages, resources);
+                            active.applied = false;
+                            return true;
+                        }
+                    } else { resources.commit(this::forwardAllowed); }
+                } catch (RuntimeException | Error commit) { record(commit); }
                 if (resources.decision() == ResourceBatch.Decision.ROLLBACK) {
                     if (cleanupDeadline.expired(nanoTime.getAsLong())) { return false; }
                     try { resources.rollback(); }
@@ -370,6 +380,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         active.resolving = resolving;
         var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>();
         for (var source : active.resources.sources()) {
+            if (!resolving && source.state() != ResourceBatch.SourceState.RESERVED) { continue; }
             if (resolving && (source.state() == ResourceBatch.SourceState.COMPLETED
                 || source.state() == ResourceBatch.SourceState.ROLLED_BACK)) { continue; }
             jobs.add(new PlannedTaskExecutor.SourceJob<>(source.affinity(), new PlannedTaskExecutor.Job<>(

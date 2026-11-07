@@ -40,10 +40,9 @@ class CompositeTransactionRecoveryTest {
         var effects = new Effects(TICK);
         var checkpoint = RecipeRequirements.CHECKPOINT.requirement(id("checkpoint"), new CheckpointRequirement(5, effects.requirement()));
         var process = process(checkpoint);
-        var transaction = process.withTickContext(TICK, () -> checkpoint.acquire(process, RecipeStage.TICK));
+        var batch = checkpointBatch(process);
         var tick = effects.at(RecipeStage.TICK);
         tick.failBefore = true;
-        var batch = batch(transaction);
         assertSame(tick.failure, assertThrows(IllegalStateException.class, () -> batch.commit(() -> true)));
         assertThrows(IllegalStateException.class, process::requireQuiescent);
         assertFalse(batch.resolveBusiness());
@@ -64,11 +63,10 @@ class CompositeTransactionRecoveryTest {
             var effects = new Effects(TICK);
             var checkpoint = RecipeRequirements.CHECKPOINT.requirement(id("checkpoint"), new CheckpointRequirement(5, effects.requirement()));
             var process = process(checkpoint);
-            var transaction = process.withTickContext(TICK, () -> checkpoint.acquire(process, RecipeStage.TICK));
+            var batch = checkpointBatch(process);
             var tick = effects.at(RecipeStage.TICK);
             tick.proof = true;
             tick.failAfter = true;
-            var batch = batch(transaction);
             assertSame(tick.failure, assertThrows(IllegalStateException.class, () -> {
                 if (complete) { batch.commit(() -> true); }
                 else { batch.rollback(); }
@@ -79,8 +77,8 @@ class CompositeTransactionRecoveryTest {
                 assertEquals(complete ? 1 : 0, effects.at(stage).completions);
                 assertEquals(complete ? 0 : 1, effects.at(stage).rollbacks);
             }
-            if (complete) { assertThrows(IllegalStateException.class, transaction::rollback); }
-            else { assertThrows(IllegalStateException.class, transaction::complete); }
+            if (complete) { assertThrows(IllegalStateException.class, batch::rollback); }
+            else { assertThrows(IllegalStateException.class, () -> batch.commit(() -> true)); }
             batch.finish();
         }
     }
@@ -177,6 +175,22 @@ class CompositeTransactionRecoveryTest {
         assertEquals(13, selection.overlays.resolve(selection.target).payload());
         assertThrows(IllegalStateException.class, selection.process::requireQuiescent);
         assertThrows(IllegalStateException.class, batch::finish);
+    }
+
+    private static ResourceBatch checkpointBatch(RecipeProcess process) {
+        var acquisition = RecipeStageExecutor.prepare(process, RecipeStage.TICK, RequirementTransaction.SUCCESS);
+        process.withTickContext(TICK, () -> { acquisition.acquire(); return null; });
+        var batch = Objects.requireNonNull(ResourceBatch.tryAcquireSequential(process.declaredStorageContexts(),
+            acquisition.reservations(), acquisition.transactions()));
+        while (acquisition.hasContinuation()) {
+            for (var source : batch.sources()) {
+                if (source.state() == ResourceBatch.SourceState.RESERVED) { assertTrue(source.apply()); }
+            }
+            assertTrue(batch.stage(() -> true));
+            batch.acquireNext(acquisition::acquireNext);
+            batch.append(acquisition.stepReservations(), acquisition.stepTransactions());
+        }
+        return batch;
     }
 
     private static ResourceBatch batch(RequirementTransaction transaction) {

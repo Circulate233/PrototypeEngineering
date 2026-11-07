@@ -93,12 +93,14 @@ class RecipePrecommitTest {
             });
             var selection = RecipeRequirements.SELECTIVE.requirement(id("selection"),
                 new SelectiveRequirement(List.of(leaf), List.of(new SelectiveModifierDescriptor(id("modifier"),
-                    _ -> fail("No selector modifier may commit after preparation rejection")))));
+                    context -> context.putProcessAttributeModifier(id("staged_modifier"),
+                        new NumericAttributeModifier("bonus", 3, AttributeModifier.Operation.ADDITION))))));
             var checkpoint = RecipeRequirements.CHECKPOINT.requirement(id("checkpoint"), new CheckpointRequirement(0, selection));
             var process = process(checkpoint);
             assertFalse(settleStart(process, deferred));
-            assertEquals(List.of("prepare:START", "prepare:TICK", "rollback:END", "rollback:TICK", "rollback:START"), events);
-            assertEquals(3, effects.size());
+            assertEquals(List.of("prepare:START", "commit:START", "prepare:TICK", "rollback:TICK", "rollback:START"), events);
+            assertEquals(2, effects.size());
+            assertEquals(1, process.attributes().value(id("staged_modifier")));
             assertEquals(0, effects.stream().mapToInt(effect -> effect.cost).sum());
             assertNull(SelectiveState.getOrCreate(process).selection(selection.path(checkpoint.path(null))));
             assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
@@ -213,7 +215,7 @@ class RecipePrecommitTest {
             var checkpoint = RecipeRequirements.CHECKPOINT.requirement(id("checkpoint"), new CheckpointRequirement(0, selection));
             var process = process(checkpoint);
             assertFalse(settleStart(process, deferred));
-            assertEquals(List.of("prepare:START", "prepare:TICK", "prepare:END", "commit:START", "commit:TICK", "commit:END",
+            assertEquals(List.of("prepare:START", "commit:START", "prepare:TICK", "commit:TICK", "prepare:END", "commit:END",
                 "validate:START", "validate:TICK", "rollback:END", "rollback:TICK", "rollback:START"), events);
             assertEquals(1, process.attributes().value(score));
             assertNull(SelectiveState.getOrCreate(process).selection(selection.path(checkpoint.path(null))));
@@ -229,8 +231,15 @@ class RecipePrecommitTest {
         boolean accepted;
         if (deferred) {
             var batch = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(List.of(stage)));
-            for (var source : batch.sources()) { assertTrue(source.apply()); }
-            accepted = batch.commit(() -> true);
+            accepted = false;
+            while (batch.decision() == ResourceBatch.Decision.OPEN) {
+                for (var source : batch.sources()) {
+                    if (source.state() == ResourceBatch.SourceState.RESERVED) { assertTrue(source.apply()); }
+                }
+                if (!stage.hasContinuation()) { accepted = batch.commit(() -> true); break; }
+                if (!batch.stage(() -> true)) { break; }
+                if (!RecipeProcess.Stage.acquireNextBatch(List.of(stage), batch)) { break; }
+            }
             if (!accepted) { assertTrue(batch.rollback()); }
             for (var source : batch.sources()) { assertTrue(source.resolve()); }
             batch.finish();

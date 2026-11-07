@@ -37,3 +37,7 @@ ResourceReservation.resolution 是可选的准确恢复证明；默认 UNKNOWN�
 ## 验证范围
 
 测试使用真实线程、资源/FE buffer 和共享 context，覆盖并行 source、阻塞读写、物理退出、部分应用/业务失败的整批补偿、权限撤销、unknown 确认及准确重试、不可逆完成、跨域锁与嵌套 scope 拒绝后的恢复、通知抢跑和异常聚合。没有游戏、Bootstrap/FML 初始化或 getter/hash 专项测试。最终构建和全文件 MCP 证据见 [实施进度](implementation-status.md)。
+
+## 检查点分段扩展
+
+ResourceBatch.tryAcquireSequential 先捕获声明域；stage 只 prepare/commit 新业务并保持 OPEN，最终 commit 对全部业务 validate 一次。acquireNext 在原 fence 内获取下一段，append 新准确参与者并复用原 Source/affinity；source.apply 只运行新增 token 的 apply/expose。未登记的获取窗口禁止释放，缺顺序能力的新 token 通过 appendForRollback 先登记责任再清理。顺序回滚遇后继 UNKNOWN 不越过其依赖，旧平铺批次行为保留。实际接线和未完候选回退见[检查点审计](checkpoint-execution-audit.md)。

@@ -1,6 +1,6 @@
 # 检查点子阶段执行审计
 
-2026-11-07。对照 PM 实际源码，检查点与研究站材料周期的提交边界不同。嵌套消费者尚未修复；已补齐存储顺序原语，不以原语或顶层材料周期测试证明嵌套行为正确。
+2026-11-07。对照 PM 实际源码，检查点与研究站材料周期的提交边界不同。普通检查点、嵌套检查点以及检查点内的 selector 已接分段执行；selector 的候选自身包含检查点时仍需补候选局部回退，不能声称任意组合全部完成。
 
 ## 必须保留的行为
 
@@ -12,11 +12,11 @@ PM CheckpointRequirementSystem.kt:93、109、128 依次获取子 START/TICK/END�
 
 | 情况 | PM / 当前实现的证据 | 必须达到的结果 |
 |---|---|---|
-| 前序输入释放后序输出空间 | PM EnergyRequirementSystem.kt:43、FluidRequirementSystem.kt:273 在获取时实际修改库存；PE 先获取全部子阶段，内置资源/FE 此时仅 reserve | 如满 FE 仓子 START 抽取 5、子 END 回填 5，应能利用同次触发释放的容量 |
-| 前序输出供后序输入使用 | PE SlottedResourceBuffer 的已 apply 输出仍保留补偿 hold，简单先 apply 也不能让后续普通读取消费它 | 后序可使用本次触发产生的资源，外层失败仍能完整补偿 |
-| 选择器 modifier/overlay | PM 与 PE 都在选择器 START commit 才执行 modifier；provisional choice 仅保存派发对象 | 子 TICK/END 获取必须使用 START 成功安装的效果，拒绝或异常仍局部撤销 |
+| 前序输入释放后序输出空间 | PM EnergyRequirementSystem.kt:43、FluidRequirementSystem.kt:273 在获取时实际修改库存；PE 现由外层按子阶段获取、source apply/expose，再可逆提交业务 | 如满 FE 仓子 START 抽取 5、子 END 回填 5，应能利用同次触发释放的容量 |
+| 前序输出供后序输入使用 | PE 已通过准确 fence 内的 exposeApplied 释放本 token 补偿 hold | 后序可使用本次触发产生的资源，外层失败仍能完整补偿 |
+| 选择器 modifier/overlay | PM 与 PE 都在选择器 START commit 才执行 modifier；provisional choice 仅保存派发对象 | 已按 START staged modifier/overlay 获取子 TICK/END；外层失败统一撤销 |
 | 外层后继失败 | 当前 TransactionGroup、ResourceBatch 和阶段 owner 已持有准确回滚/完成义务 | 子 END 成功也不能提前放弃外层补偿权 |
-| 扩展读写其他来源 | RequirementTransaction 返回的 tokens 和 StorageFence 当前都是一次冻结；第三方可使用独立 StorageContext | 不能在持有旧域时盲取陌生域、阻塞另一 lane 或用异常探测并重放回调 |
+| 扩展读写其他来源 | ResourceBatch 已可在原 fence 中追加准确 tokens；第三方额外域通过 RecipeRequirementSystem.storageContexts 预声明 | 不能在持有旧域时盲取陌生域、阻塞另一 lane 或用异常探测并重放回调 |
 
 PM 的 time=0 不触发、拒绝候选被 commit、选择回滚未删状态、END 回滚清历史 modifier、局部 ID 冲突、绕过 overlay 及吞清理异常均是旧缺口，已修部分不应退回旧行为。
 
@@ -28,12 +28,27 @@ ResourceReservation 增加可选 supportsSequentialUse/exposeApplied。内置 Sl
 
 新增 17 项行为测试（8 资源、8 FE、1 版本上界），完整构建 903 tests / 126 suites 全通过；8 个阶段 src Java 加 Tags 共 9 文件 IDEA 全级零诊断，MCP build_project 成功。证据 build/reports/idea/sequential-storage-final.json。
 
-这只是存储前提。CheckpointRequirementSystem、ResourceBatch 与协调器尚未调用 exposeApplied，selector 的子阶段顺序也未改；不能据此声称检查点闭环已通过。外部存储需主动实现新能力，协调器必须提前检查，禁止用异常探测/replay。
+CheckpointRequirementSystem 现返回 RequirementContinuation，由 RecipeStageExecutor 持有嵌套游标与准确获取清单；RecipeProcess.Stage 与 PlannedRecipeCoordinator 已使用同一 ResourceBatch 分段 source apply/expose、业务 stage，最后统一决定终态。独立域需预声明，外部 token 必须主动支持顺序使用，不能以异常探测/replay。
 
-## 后续实现边界
+## 已接执行路径
 
-需要由现有外层阶段/协调器持有可暂停的子阶段游标；同批分段执行 source apply 与可逆业务修改，最后统一决定 COMPLETE 或逆补偿。存储原语已能释放补偿 holds 供同 fence 后续使用；消费者必须持有全部准确 token，按依赖逆序补偿。新增来源必须在安全边界明确登记，不能以提前 complete、同步嵌套事务或重复 callback 换取表面通过。
+- 每段仅获取一次。START 可逆提交后才获取子 TICK，随后 END；嵌套游标按祖先路径恢复，子 Tick 与原外层 Tick 各自冻结。外层后继 Blocked 统一逆补偿，父时钟不动；历史已成功阶段保留。
+- ResourceBatch.stage 只 prepare/commit 新业务，仍为 OPEN；validateCommit 在最后统一执行一次。append 复用原 Source/affinity，不重放旧 token；source 仍在原 lanes 上 apply/expose/complete/rollback。
+- 同步执行也持有持续 fence。探测 continued START 时，为正确观察后续材料，需要可逆 stage 后整批 rollback，不调用 complete；普通平铺需求仍保留仅获取的探测。完整 pure prepare 仍是后续工作。
+- 未登记的 acquireNext 窗口禁止 finish/release；获取故障可登记完整 partial 清单后原路清理。缺失 inventory 保留现场。新 token 缺顺序能力时先 appendForRollback 登记准确清理责任，再报告契约错误。
+- 顺序回滚遇到后继 UNKNOWN 时保留前序补偿，不能越过依赖继续退款；查询证明终态后才继续。完成方向保持原逐项确认规则。一次获取/应用故障与清理异常均保留。
+- 扩展定义须在 storageContexts 声明额外物理域；机器当前资源/FE 仓与结构 children 自动纳入。声明不获取锁、不修改状态，声明外域访问直接失败，不捕获后重跑回调。
 
-复用 RecipeProcess.Stage、PlannedRecipeCoordinator、原来源 lanes 与 UNKNOWN 证明。正式实现时同时验证嵌套 selector/overlay、FE/资源闭环、父阶段后继失败、同 source 别名、取消/超时和真实退出。
+## 当前验证
+
+本阶段新增 24 项行为测试；完整构建 927 tests / 128 suites，零失败/错误/跳过。18 个阶段 src Java 加 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/checkpoint-continuation-final.json。原 23 份修改保留，未启动游戏或服务端。
+
+8 项新集成测试覆盖内置资源/FE 闭环、同来源前后检查点、历史消费/父时钟、真实 source lanes、别名去重和扫描后完整退款；另 16 项为 ResourceBatch 分段责任、UNKNOWN 和实际退出测试。旧异常/选择器测试随真实顺序更新，数量变化来自 START overlay 提前对后继获取生效。
+
+## 尚未完成的组合
+
+selector 的候选若自身返回 continuation（例如候选是 time=0 checkpoint），当前 CapturedTransaction.result 只能得到初始 SUCCESS，选择会早于候选完整子生命周期结果。候选后续 Blocked 会撤销整个外层阶段，尚不能局部补偿该候选再试下一个。这是待修复的语义缺口，不能当成正确的候选禁用或可接受的永久阻塞。
+
+下一步需要在同一批次保留候选保存点，由原 source lanes 撤销候选后缀，确认后才继续下个候选；未知补偿仍保留原 fence，禁止重放已运行回调。多工位同时推进时必须避免把其它工位的依赖混入候选回退。继续补嵌套候选、取消/超时和真实退出的集成验证。
 
 源码入口：PM F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/CheckpointRequirementSystem.kt、SelectiveRequirementSystem.kt、AttributeModifierRequirementSystem.kt；PE recipe/requirement/CheckpointRequirementSystem.java、RecipeStageExecutor、ResourceBatch、StorageFence、SlottedResourceBuffer。

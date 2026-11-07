@@ -99,7 +99,7 @@ RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最�
 
 `RecipeRequirements.CHECKPOINT` 绑定 `CheckpointRequirement(time, childRequirement, scaleWithProcess)`。time=0 在 START 执行子需求完整 START/TICK/END，覆盖零时长配方；子 TICK 使用零宽的冻结 Tick 范围，不推进外层时钟。其他检查点在外层 TICK 的 scaled 进度或 unscaled 成功刻数跨过阈值时执行子生命周期。
 
-子生命周期依次获取事务和令牌，Blocked/Failure 立即停止获取后续子阶段；全部令牌上交外层同一阶段统一应用、补偿和完成，子需求不自行结算资源。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证；严格进程 codec 恢复该时间线及子选择/解析状态，不保存每个历史触发刻的完整区间，不保存扫描游标；本阶段进程取消终态与回执另见取消章节。
+子生命周期通过 RequirementContinuation 逐段获取；前段在持续 fence 内由原来源线程 apply/expose，业务可逆 stage 后才获取后段。Blocked/Failure 停止后续获取；全部令牌仍上交外层同一阶段统一补偿或完成，子需求不自行结算资源。额外 StorageContext 由系统 storageContexts 预声明。selector 候选自身包含 continuation 的局部回退尚待修，准确边界见[检查点审计](checkpoint-execution-audit.md)。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证；严格进程 codec 恢复该时间线及子选择/解析状态，不保存每个历史触发刻的完整区间，不保存扫描游标；本阶段进程取消终态与回执另见取消章节。
 
 ## 模糊动态输入、解析锁与选择器
 
@@ -208,7 +208,7 @@ ScanLimits 只限制每次检查的候选数和并行 probe 次数。游标和�
 
 候选的 PROCESS_PARALLELISM 使用 `MachineAttributes.setResolvedBase(amount)`：amount 包含机器父层已经计算的基线，屏蔽祖先 modifier 的二次应用，仍保留 factory 安装的本地 modifier。amount 不包含本地 modifier，不能反解任意外部函数；实际有效资源数量继续由 RecipeParallelism 读取本地运算结果。普通 setBase 恢复继承 modifier，clearBase 重新显露父层；snapshot/NBT 保存 InheritModifiers，局部属性格式 Version 2 精确读取该 Boolean，拒绝缺 base 却屏蔽继承的状态，旧 Version 1 不自动升级。该语义已通过此前扫描阶段验证。
 
-whole-recipe 约束为纯检查/安全上界，逐个检查整个配方，不按 requirement type 跳过未知实现；上界不得排除任何可行 base amount，必须汇总共享余额/容量。约束通过也必须调用 [RecipeStageExecutor.probeStart](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java) 获取真实 START 需求事务与资源/FE token，再将全部获取逆序 rollback，包括拒绝项；不调用 commit/complete、不推进生命周期，也不执行 TICK/END。异常继续清理并使候选不能保存，scanner 故障停止后续运行。START 回调仍需遵守正常可逆 acquisition 契约。
+whole-recipe 约束为纯检查/安全上界，逐个检查整个配方，不按 requirement type 跳过未知实现；上界不得排除任何可行 base amount，必须汇总共享余额/容量。约束通过也必须调用 [RecipeStageExecutor.probeStart](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java) 获取真实 START 需求事务与资源/FE token，再将全部获取逆序 rollback，包括拒绝项；平铺需求不调用 commit/complete，也不执行 TICK/END；continued START 的内部子阶段会可逆 stage，以准确观察前序材料/空间，最后全部 rollback，永不 complete 或保留生命周期推进。异常继续清理并使候选不能保存，scanner 故障停止后续运行。所有回调须保留完整 undo；pure prepare 仍待后续接入。
 
 **自定义组件投影：** 当前 [RecipeScanPreparation](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanPreparation.java) 与 [RecipeScanProbes](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/recipe/scanning/RecipeScanProbes.java) 已接入并补充行为用例，已通过此前扫描阶段构建与 MCP 检查。scanner 的八参数构造最后接受有序 preparations，原七参数构造默认空列表。每次完整 probe 先按顺序 prepare，再运行全部约束和真实 START acquisition/rollback；所有结果均逆序 rollback preparation，包括拒绝项。通过后 admission 保留投影前状态，即 factory 初始化与 scanner resolved base，真实首 tick 的组件回调只正常执行一次，不重复安装投影效果。
 

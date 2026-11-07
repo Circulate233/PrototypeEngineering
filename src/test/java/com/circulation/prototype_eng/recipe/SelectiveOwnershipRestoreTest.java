@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.api.recipe.selective.SelectiveModifierDescr
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
@@ -286,7 +287,7 @@ class SelectiveOwnershipRestoreTest {
         overlays.put(fixture.target, childPath, "foreign", fixture.addition, 4).complete();
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(14, fixture.input.availableAmount(MATERIAL));
-        assertEquals(6, fixture.output.availableAmount(MATERIAL));
+        assertEquals(11, fixture.output.availableAmount(MATERIAL), "END sees both the foreign and START-installed layers");
         assertEquals(6, overlays.resolve(fixture.target, childPath).payload());
         assertEquals(1, overlays.snapshot().size());
         var snapshot = SelectiveState.getOrCreate(process).snapshot().get(selection.path(checkpoint.path(null)));
@@ -296,7 +297,7 @@ class SelectiveOwnershipRestoreTest {
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(1, fixture.startAcquisitions);
         assertEquals(1, fixture.modifierApplications);
-        assertEquals(6, fixture.output.availableAmount(MATERIAL));
+        assertEquals(11, fixture.output.availableAmount(MATERIAL));
     }
 
     private static NumericAttributeModifier addition(String name, double amount) {
@@ -334,6 +335,9 @@ class SelectiveOwnershipRestoreTest {
         private Fixture() {
             input.insert(MATERIAL, 20, Actionable.MODULATE);
             type = new RecipeRequirementType<>(new ResourceLocation("zz_restore", "resource"), new RecipeRequirementSystem<>() {
+                @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+                    return List.of(input.context(), output.context());
+                }
                 @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     startAcquisitions++;
                     return acquire(process, requirement, RecipeStage.START);

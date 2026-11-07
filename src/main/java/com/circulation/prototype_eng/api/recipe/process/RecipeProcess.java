@@ -13,6 +13,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.MachineRecipeRequire
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import com.circulation.prototype_eng.recipe.RecipeAbortCleanup;
 import com.circulation.prototype_eng.localization.RecipeText;
@@ -299,6 +301,9 @@ public final class RecipeProcess {
         return materialHatches == null ? state.progress() >= recipe.durationTicks() : state.successfulTicks() >= 1;
     }
 
+    /** Framework capture of the caller's optional timeline, without inventing a raw stage tick. */
+    public @Nullable Tick captureTickContext() { return activeTick; }
+
     /** Frozen scaled/unscaled timeline for requirements executing the current TICK stage. */
     public Tick tickContext() {
         return Objects.requireNonNull(activeTick, "No TICK stage is executing");
@@ -318,6 +323,45 @@ public final class RecipeProcess {
         if (transaction == RequirementTransaction.SUCCESS) { return transaction; }
         acquiredTransactions = Math.incrementExact(acquiredTransactions);
         return new ScopedRequirement(this, path, transaction);
+    }
+
+    /** Exact framework continuation while a synchronous current stage owns the process callback. */
+    public void acquireContinuation(RecipeStageExecutor.Acquisition expected) {
+        var session = activeSession;
+        if (session == null) { expected.acquireNext(); return; }
+        var current = Objects.requireNonNull(session.current, "No current stage owns this continuation");
+        current.requireLive();
+        if (current.acquisition != expected || !session.executing) {
+            throw new IllegalStateException("Continuation does not belong to the executing stage");
+        }
+        boolean previous = current.acquiring;
+        current.acquiring = true;
+        try { expected.acquireNext(); }
+        finally { current.acquiring = previous; }
+    }
+
+    /** Captured hatches plus explicit external domains, collected before a sequence claims its fence. */
+    public List<StorageContext> declaredStorageContexts() {
+        var contexts = new ObjectArrayList<StorageContext>();
+        var bindings = hatches();
+        for (var hatch : bindings.resources()) {
+            var input = hatch.input();
+            var output = hatch.output();
+            if (input != null) { contexts.add(input.context()); }
+            if (output != null) { contexts.add(output.context()); }
+        }
+        for (var input : bindings.energyInputs()) { contexts.add(input.context()); }
+        for (var output : bindings.energyOutputs()) { contexts.add(output.context()); }
+        for (var requirement : orderedRequirements()) { collectStorageContexts(requirement, contexts); }
+        return contexts;
+    }
+
+    private <C> void collectStorageContexts(RecipeRequirement<C> requirement, List<StorageContext> contexts) {
+        withRequirementPath(requirement.path(activeRequirement), () -> {
+            contexts.addAll(Objects.requireNonNull(requirement.type().system().storageContexts(this, requirement)));
+            for (var child : requirement.type().system().children(requirement.payload())) { collectStorageContexts(child, contexts); }
+            return null;
+        });
     }
 
     /** Raw framework acquisitions must not bypass the current stage of a captured work-slot batch. */
@@ -359,6 +403,9 @@ public final class RecipeProcess {
         private final boolean probe;
         @Nullable private Resolution intendedTerminal;
         private Resolution terminal = Resolution.UNKNOWN;
+        @Nullable private RequirementContinuation continuation;
+        private boolean continuationRead;
+        private boolean continuing;
         private boolean preparationAttempted;
         private boolean preparationAccepted;
         private boolean preparing;
@@ -381,6 +428,23 @@ public final class RecipeProcess {
         @Override public ProcessResult result() { return scoped(delegate::result); }
         @Override public List<? extends ResourceReservation> reservations() {
             return scoped(delegate::reservations);
+        }
+        @Override public @Nullable RequirementContinuation continuation() {
+            if (!continuationRead) {
+                var tail = scoped(delegate::continuation);
+                continuationRead = true;
+                if (tail != null) {
+                    continuation = () -> {
+                        if (!commitAttempted || closed || intendedTerminal != null || continuing) {
+                            throw new IllegalStateException("Requirement continuation is not at a staged acquisition boundary");
+                        }
+                        continuing = true;
+                        try { return scoped(tail::acquireNext); }
+                        finally { continuing = false; }
+                    };
+                }
+            }
+            return continuation;
         }
         @Override public boolean prepareCommit() {
             if (closed || intendedTerminal != null || preparationAttempted || commitAttempted || queryExecuting || validating) {
@@ -749,6 +813,63 @@ public final class RecipeProcess {
         }
 
         public ProcessResult result() { requireAcquired(); return acquisition.result(); }
+        public boolean hasContinuation() { requireAcquired(); return acquisition.hasContinuation(); }
+
+        private void acquireNext() {
+            requireAcquired();
+            acquiring = true;
+            session.executing = true;
+            Tick previous = session.process.activeTick;
+            session.process.activeTick = tick;
+            try { session.process.withCallbackScope(() -> { acquisition.acquireNext(); return null; }); }
+            catch (RuntimeException | Error failure) { session.recordFailure(failure); throw failure; }
+            finally { session.process.activeTick = previous; acquiring = false; session.executing = false; }
+        }
+
+        /**
+         * Continues a bound round under the same fence after the preceding business effects were
+         * staged. Every entered acquisition is adopted even after a fault, if its inventory is known.
+         * An unknown inventory leaves the batch's acquisition window open and prevents release.
+         */
+        public static boolean acquireNextBatch(List<Stage> stages, ResourceBatch batch) {
+            var advanced = new ObjectArrayList<Stage>();
+            Throwable failure = null;
+            try {
+                batch.acquireNext(() -> {
+                    for (var stage : stages) {
+                        stage.requireAcquired();
+                        if (stage.batch != batch) { throw new IllegalStateException("Recipe stage belongs to another batch"); }
+                        if (!stage.hasContinuation()) { continue; }
+                        advanced.add(stage);
+                        stage.acquireNext();
+                        if (stage.result() != ProcessResult.SUCCESS) { break; }
+                    }
+                });
+            } catch (RuntimeException | Error acquisitionFailure) { failure = acquisitionFailure; }
+            var tokens = new ObjectArrayList<ResourceReservation>();
+            var business = new ObjectArrayList<ReversibleTransaction>();
+            boolean known = true;
+            for (var stage : advanced) {
+                known &= stage.acquisition.inventoryComplete();
+                tokens.addAll(stage.acquisition.stepReservations());
+                business.addAll(stage.acquisition.stepTransactions());
+            }
+            if (known) {
+                try {
+                    if (tokens.stream().allMatch(ResourceReservation::supportsSequentialUse)) { batch.append(tokens, business); }
+                    else {
+                        batch.appendForRollback(tokens, business);
+                        throw new IllegalArgumentException("Continued storage reservations must support reversible sequential use");
+                    }
+                } catch (RuntimeException | Error adoptionFailure) {
+                    if (failure == null) { failure = adoptionFailure; }
+                    else { suppress(failure, adoptionFailure); }
+                }
+            }
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+            return advanced.stream().allMatch(stage -> stage.result() == ProcessResult.SUCCESS);
+        }
 
         /** Preserves ResourceTransactions' all-domain lock and terminal notification semantics. */
         public ProcessResult settleSynchronously() {
@@ -822,9 +943,15 @@ public final class RecipeProcess {
                 transactions.addAll(stage.acquisition.transactions());
             }
             transactions.addAll(Objects.requireNonNull(participants));
+            boolean sequential = round.stream().anyMatch(stage -> stage.acquisition.sequential());
+            var contexts = new ObjectArrayList<StorageContext>();
+            if (sequential) {
+                for (var stage : round) { contexts.addAll(stage.session.process.declaredStorageContexts()); }
+            }
             for (var stage : round) { stage.session.executing = true; }
             try {
-                var bound = ResourceBatch.tryAcquire(reservations, transactions);
+                var bound = sequential ? ResourceBatch.tryAcquireSequential(contexts, reservations, transactions)
+                    : ResourceBatch.tryAcquire(reservations, transactions);
                 if (bound != null) { for (var stage : round) { stage.batch = bound; } }
                 return bound;
             } finally { for (var stage : round) { stage.session.executing = false; } }

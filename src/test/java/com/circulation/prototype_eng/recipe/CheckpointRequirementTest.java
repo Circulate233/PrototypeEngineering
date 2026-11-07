@@ -179,7 +179,8 @@ class CheckpointRequirementTest {
         var process = process(0, checkpoint("exception", 0, child.requirement(), true));
 
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
-        assertArrayEquals(new Throwable[]{tickCleanup, startCleanup, tokenCleanup}, primary.getSuppressed());
+        assertArrayEquals(new Throwable[]{tickCleanup}, primary.getSuppressed());
+        assertArrayEquals(new Throwable[]{startCleanup, tokenCleanup}, tickCleanup.getSuppressed());
         assertEquals(20, child.input.availableAmount(MATERIAL));
         assertEquals(0, child.acquisitionEffects);
         assertEquals(0, child.businessEffects);
@@ -200,7 +201,8 @@ class CheckpointRequirementTest {
         assertEquals(0, child.acquisitionEffects);
         assertEquals(0, child.businessEffects);
         assertTrue(child.events.stream().noneMatch(event -> event.startsWith("complete:") || event.startsWith("token:complete:")));
-        assertTrue(child.events.indexOf("rollback:START") < child.events.indexOf("token:rollback:END"));
+        assertTrue(child.events.indexOf("rollback:START") < child.events.indexOf("token:rollback:TICK"));
+        assertEquals(List.of("acquire:START", "acquire:TICK"), child.acquisitions());
         assertNoTick(process);
     }
 
@@ -266,8 +268,14 @@ class CheckpointRequirementTest {
 
     private static RecipeRequirement<String> external(String namespace,
                                                        BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        return external(namespace, List.of(), acquire);
+    }
+
+    private static RecipeRequirement<String> external(String namespace, List<StorageContext> contexts,
+                                                       BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
         var location = new ResourceLocation(namespace, "requirement");
         var system = new RecipeRequirementSystem<String>() {
+            @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) { return contexts; }
             @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return acquire.apply(process, RecipeStage.START);
             }
@@ -333,7 +341,7 @@ class CheckpointRequirementTest {
         }
 
         private RecipeRequirement<String> requirement() {
-            return external("child_checkpoint", this::acquire);
+            return external("child_checkpoint", List.of(input.context(), output.context()), this::acquire);
         }
 
         private RequirementTransaction acquire(RecipeProcess process, RecipeStage stage) {
@@ -351,6 +359,8 @@ class CheckpointRequirementTest {
             acquisitionEffects++;
             return new RequirementTransaction() {
                 private boolean committed;
+                private Resolution terminal = Resolution.REVERSIBLE;
+                @Override public Resolution resolution() { return terminal; }
                 @Override public ProcessResult result() { return reject && stage == rejectionStage ? rejection : ProcessResult.SUCCESS; }
                 @Override public List<? extends ResourceReservation> reservations() { return List.of(token); }
                 @Override public void commit() {
@@ -366,6 +376,7 @@ class CheckpointRequirementTest {
                     checkContext();
                     verifyCompletion.run();
                     events.add("complete:" + stage);
+                    terminal = Resolution.COMPLETED;
                 }
                 @Override public void rollback() {
                     checkContext();
@@ -373,6 +384,7 @@ class CheckpointRequirementTest {
                     events.add("rollback:" + stage);
                     acquisitionEffects--;
                     if (committed) { businessEffects--; }
+                    terminal = Resolution.ROLLED_BACK;
                     var failure = rollbackFailures.get(stage);
                     if (failure != null) { throw failure; }
                 }
@@ -387,6 +399,9 @@ class CheckpointRequirementTest {
                                Runnable verifyCompletion, @Nullable RuntimeException rollbackFailure) implements ResourceReservation {
         @Override public StorageContext context() { return delegate.context(); }
         @Override public boolean canApply() { return delegate.canApply(); }
+        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
+        @Override public void exposeApplied() { delegate.exposeApplied(); }
+        @Override public Resolution resolution() { return delegate.resolution(); }
         @Override public void apply() {
             events.add("token:apply:" + stage);
             delegate.apply();

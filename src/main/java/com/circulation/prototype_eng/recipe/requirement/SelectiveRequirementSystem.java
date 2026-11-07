@@ -11,6 +11,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveContext;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveModifierDescriptor;
@@ -142,6 +144,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         private CapturedTransaction {
             reservations = ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
         }
+        @Override public @Nullable RequirementContinuation continuation() { return child.continuation(); }
         @Override public boolean prepareCommit() { return child.prepareCommit(); }
         @Override public boolean validateCommit() { return child.validateCommit(); }
         @Override public void commit() { child.commit(); }
@@ -168,6 +171,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
 
         @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
         @Override public List<ResourceReservation> reservations() { return child.reservations(); }
+        @Override public @Nullable RequirementContinuation continuation() { return child.continuation(); }
         @Override public boolean prepareCommit() { return group.prepareCommit(); }
         @Override public boolean validateCommit() { return group.validateCommit(); }
         @Override public void commit() { group.commit(); }
@@ -197,6 +201,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
 
         @Override public ProcessResult result() { return child.result(); }
         @Override public List<ResourceReservation> reservations() { return child.reservations(); }
+        @Override public @Nullable RequirementContinuation continuation() { return child.continuation(); }
         @Override public boolean prepareCommit() { return group.prepareCommit(); }
         @Override public boolean validateCommit() { return group.validateCommit(); }
         @Override public void commit() { group.commit(); }
