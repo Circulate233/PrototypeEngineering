@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
 
 /**
  * Startup declarations close before controller generation; structures bind in a separate complete
@@ -25,8 +26,8 @@ public final class MachineTypeRegistry {
 
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType> declarations = new Object2ObjectLinkedOpenHashMap<>();
     private List<MachineType> types = ObjectLists.emptyList();
-    @Nullable private Map<ResourceLocation, MachineStructure> structures;
-    @Nullable private Map<ResourceLocation, MachineAssembly> assemblies;
+    @Nullable
+    private ResolvedRuntime runtime;
     private boolean frozen;
     private boolean mutating;
 
@@ -67,8 +68,9 @@ public final class MachineTypeRegistry {
         beginMutation();
         try {
             requireFrozen();
-            if (structures != null) { throw new IllegalStateException("Machine structures are already resolved"); }
-            structures = resolveStructureReferences(validateStructures(definitions));
+            if (runtime != null) { throw new IllegalStateException("Machine structures are already resolved"); }
+            var catalog = StructureCatalog.fromShapes(validateStructures(definitions));
+            runtime = new ResolvedRuntime(catalog, resolveStructureReferences(catalog), null);
         } finally { mutating = false; }
     }
 
@@ -78,36 +80,60 @@ public final class MachineTypeRegistry {
         beginMutation();
         try {
             requireFrozen();
-            if (structures != null) { throw new IllegalStateException("Machine structures are already resolved"); }
-            var resolvedStructures = resolveStructureReferences(validateStructures(definitions));
-            Objects.requireNonNull(assemblyDefinitions, "machine assemblies");
-            var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>();
-            for (var assembly : assemblyDefinitions) {
-                Objects.requireNonNull(assembly, "machine assembly");
-                var type = assembly.type();
-                requireCanonical(type);
-                if (checked.putIfAbsent(type.id(), assembly) != null) {
-                    throw new IllegalArgumentException("Duplicate machine assembly ID: " + type.id());
-                }
-            }
-            var resolvedAssemblies = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>();
-            for (var type : types) {
-                var assembly = checked.get(type.id());
-                if (assembly == null) { throw new IllegalArgumentException("Missing assembly for machine " + type.id()); }
-                resolvedAssemblies.put(type.id(), assembly);
-            }
-            var publishedAssemblies = Object2ObjectMaps.unmodifiable(resolvedAssemblies);
-            structures = resolvedStructures;
-            assemblies = publishedAssemblies;
+            if (runtime != null) throw new IllegalStateException("Machine structures are already resolved");
+            resolveRuntimeCandidate(StructureCatalog.fromShapes(validateStructures(definitions)), assemblyDefinitions);
         } finally { mutating = false; }
     }
 
-    private Map<ResourceLocation, MachineStructure> resolveStructureReferences(Map<ResourceLocation, MachineStructure> checked) {
+    /** The full JSON/Java catalog and all runtime bindings become visible through one snapshot. */
+    public synchronized void resolveRuntime(StructureCatalog catalog,
+                                            Collection<? extends MachineAssembly> assemblyDefinitions) {
+        beginMutation();
+        try {
+            resolveRuntimeCandidate(Objects.requireNonNull(catalog), assemblyDefinitions);
+        } finally {
+            mutating = false;
+        }
+    }
+
+    private void resolveRuntimeCandidate(StructureCatalog catalog, Collection<? extends MachineAssembly> assemblyDefinitions) {
+        requireFrozen();
+        if (runtime != null) throw new IllegalStateException("Machine structures are already resolved");
+        var resolvedStructures = resolveStructureReferences(catalog);
+        Objects.requireNonNull(assemblyDefinitions, "machine assemblies");
+        var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>();
+        for (var assembly : assemblyDefinitions) {
+            Objects.requireNonNull(assembly, "machine assembly");
+            var type = assembly.type();
+            requireCanonical(type);
+            if (checked.putIfAbsent(type.id(), assembly) != null) {
+                throw new IllegalArgumentException("Duplicate machine assembly ID: " + type.id());
+            }
+        }
+        var resolvedAssemblies = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>();
+        for (var type : types) {
+            var assembly = checked.get(type.id());
+            if (assembly == null) {
+                throw new IllegalArgumentException("Missing assembly for machine " + type.id());
+            }
+            resolvedAssemblies.put(type.id(), assembly);
+        }
+        var publishedAssemblies = Object2ObjectMaps.unmodifiable(resolvedAssemblies);
+        runtime = new ResolvedRuntime(catalog, resolvedStructures, publishedAssemblies);
+    }
+
+    private Map<ResourceLocation, MachineStructure> resolveStructureReferences(StructureCatalog catalog) {
+        for (var entry : catalog.definitions().entrySet()) {
+            if (!entry.getKey().equals(Objects.requireNonNull(entry.getValue().id())))
+                throw new IllegalArgumentException("Structure key does not match its ID: " + entry.getKey());
+        }
         var resolved = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>();
         for (var type : types) {
-            var definition = checked.get(type.structureId());
-            if (definition == null) { throw new IllegalArgumentException("Unknown structure " + type.structureId() + " for machine " + type.id()); }
-            resolved.put(type.id(), definition);
+            var definition = catalog.get(type.structureId());
+            if (definition == null) {
+                throw new IllegalArgumentException("Unknown structure " + type.structureId() + " for machine " + type.id());
+            }
+            resolved.put(type.id(), definition.shape());
         }
         return Object2ObjectMaps.unmodifiable(resolved);
     }
@@ -129,16 +155,26 @@ public final class MachineTypeRegistry {
     public synchronized MachineStructure structure(MachineType type) {
         requireFrozen();
         requireCanonical(type);
-        if (structures == null) { throw new IllegalStateException("Machine structures have not been resolved"); }
-        return Objects.requireNonNull(structures.get(type.id()));
+        if (runtime == null) { throw new IllegalStateException("Machine structures have not been resolved"); }
+        return Objects.requireNonNull(runtime.structures.get(type.id()));
     }
 
     public synchronized MachineAssembly assembly(MachineType type) {
         requireFrozen();
         requireCanonical(type);
-        if (assemblies == null) { throw new IllegalStateException("Machine runtime has not been resolved"); }
-        return Objects.requireNonNull(assemblies.get(type.id()));
+        if (runtime == null || runtime.assemblies == null) { throw new IllegalStateException("Machine runtime has not been resolved"); }
+        return Objects.requireNonNull(runtime.assemblies.get(type.id()));
     }
+
+    /** A held catalog is a stable generation identity; future runtime reload must replace the whole snapshot. */
+    public synchronized StructureCatalog structureCatalog() {
+        requireFrozen();
+        if (runtime == null) throw new IllegalStateException("Machine structures have not been resolved");
+        return runtime.catalog;
+    }
+
+    private record ResolvedRuntime(StructureCatalog catalog, Map<ResourceLocation, MachineStructure> structures,
+                                   @Nullable Map<ResourceLocation, MachineAssembly> assemblies) {}
 
     private void requireCanonical(MachineType type) {
         Objects.requireNonNull(type, "machine type");

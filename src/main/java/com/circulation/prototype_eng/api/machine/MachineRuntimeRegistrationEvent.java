@@ -12,6 +12,8 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureDefinition;
 
 /**
  * Collects post-init structure and assembly definitions without publishing them. The caller resolves
@@ -19,7 +21,7 @@ import java.util.Objects;
  */
 public final class MachineRuntimeRegistrationEvent extends Event {
     private final MachineTypeRegistry registry;
-    private final Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure> structures = new Object2ObjectLinkedOpenHashMap<>();
+    private final Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureDefinition> structures = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly> assemblies = new Object2ObjectLinkedOpenHashMap<>();
     private boolean mutating;
 
@@ -33,10 +35,24 @@ public final class MachineRuntimeRegistrationEvent extends Event {
     public synchronized void structure(MachineStructure definition) {
         beginMutation();
         try {
-            Objects.requireNonNull(definition, "structure definition");
-            var id = Objects.requireNonNull(definition.id(), "structure ID");
-            if (structures.putIfAbsent(id, definition) != null) { throw new IllegalArgumentException("Duplicate structure ID: " + id); }
+            addDefinition(new StructureDefinition(Objects.requireNonNull(definition, "structure definition")));
         } finally { mutating = false; }
+    }
+
+    /** Java definitions may supply the same independent presentation data as JSON definitions. */
+    public synchronized void definition(StructureDefinition definition) {
+        beginMutation();
+        try {
+            addDefinition(Objects.requireNonNull(definition));
+        } finally {
+            mutating = false;
+        }
+    }
+
+    private void addDefinition(StructureDefinition definition) {
+        var id = Objects.requireNonNull(definition.id(), "structure ID");
+        if (structures.putIfAbsent(id, definition) != null)
+            throw new IllegalArgumentException("Duplicate structure ID: " + id);
     }
 
     public synchronized void assembly(MachineAssembly definition) {
@@ -51,7 +67,18 @@ public final class MachineRuntimeRegistrationEvent extends Event {
 
     /** Stable, immutable snapshot; later registrations cannot change an already returned map. */
     public synchronized Map<ResourceLocation, MachineStructure> structures() {
-        return Object2ObjectMaps.unmodifiable(new Object2ObjectLinkedOpenHashMap<>(structures));
+        var shapes = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>();
+        structures.forEach((id, definition) -> shapes.put(id, definition.shape()));
+        return Object2ObjectMaps.unmodifiable(shapes);
+    }
+
+    public synchronized StructureCatalog structureDefinitions() {
+        beginMutation();
+        try {
+            return new StructureCatalog(structures.values());
+        } finally {
+            mutating = false;
+        }
     }
 
     /** Stable, immutable snapshot in registration order. */

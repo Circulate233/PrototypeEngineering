@@ -1,6 +1,6 @@
 # 结构定义、快照与匹配
 
-已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核及公开仓室发现。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)。没有注册正式机器、配方或控制器；实际控制器 TileEntity 和真实调度器仍待接线。
+已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核、公开仓室发现、实际控制器和调度器。2026-11-08 已补齐 A：启动期严格两阶段 JSON 与共享目录/机器装配原子发布。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)；库不内置正式机器或配方。
 
 ## 朝向与定义
 
@@ -8,9 +8,31 @@
 
 PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAround(UP)` 实际把 NORTH 变为 WEST，因此没有拿这个方法直接替代 PM 旋转；目标朝向通过 AE2 的前/上方向表示。
 
-`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；名字/JSON/预览注册仍待专门接入。
+`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端预览运行入口仍待接入。
 
 `StructurePlan` 将定义从它的基础朝向转换到请求朝向，保留一个固定控制器坐标并收集读取。每次 `match` 返回独立 `StructureMatch` 树或 null，前一次成功不会污染下一次失败。结果保存每个 occurrence 的重复数、实际本层方块位置及子树；位置收集按公开结果进行，不按具体模板/切片类判断，也不按 ID 扁平覆盖计数。
+
+## A：启动期两阶段 JSON 与共享发布
+
+`CommonProxy.preInit` 从 `config/prototype_eng/structures/` 递归、按相对路径稳定排序读取 JSON，只严格解析并冻结 DTO，不解析 Block、不访问方块注册表。不存在的目录或可访问的空目录是合法纯库；存在但不可访问/非目录的根、枚举或文件读取失败直接报告。`postInit` 注册内置谓词，发布 `StructurePredicateRegistrationEvent` 后 freeze，再收集 `MachineRuntimeRegistrationEvent` 的 Java 结构/装配，解析全部 JSON/Java 子结构依赖并检查全部机器引用与装配。通过后只替换 `MachineTypeRegistry` 私有不可变 `ResolvedRuntime` 一次；任一步失败不发布半套目录或机器绑定。目录保留所有定义，包括未被机器直接引用的定义，持有的目录对象是稳定代身份。
+
+每个文件为一个结构对象，新格式不兼容旧 JSON。常用字段如下：
+
+| 位置 | 字段与规则 |
+|---|---|
+| 根 | 必填 `id`、`type`、`pattern`；type 为 `template` 或 `slice`。可选 `translationKey`、`offset`、`hideWorldBlocks`、`validators`、`children`。ID 必须含 namespace。 |
+| 切片 | 必填 `minCount/maxCount`，非负且 min ≤ max；`sliceOffset` 默认 `(0,1,0)`。模板拒绝这些切片字段。 |
+| 坐标 | `pos/offset/sliceOffset` 使用 `{ "x": 0, "y": 0, "z": 0 }`；pattern 格必填 pos，禁止重复坐标。 |
+| pattern 格 | `blockId/meta/nbt` 与 `alternatives` 中各候选组成独立 OR 分支，各分支保留自己的 NBT；结果再与 `predicates` 按 AND 合并。meta 默认 0，必须在 0..15 且真实方块可表示。 |
+| 谓词/验证器 | `{ "id": "prototype_eng:day_only", "params": {} }`；params 可省略为空对象。外部工厂通过注册事件声明允许参数并读取冻结参数视图。 |
+| 子结构 | `children` 为结构 ID 数组；JSON 可引用 Java 或 JSON 定义，共用 canonical 子对象，拒绝未知引用、重复 ID、JSON/Java ID 冲突和环。 |
+| display | 格内独立 `display` 可含 `key`、`blocks`、`blockIdRegex`、`tileNbt`，至少提供 blocks 或 regex；不参与 matcher。根的 hideWorldBlocks 同样是展示数据。 |
+
+严格解析保留 Gson 2.2.4，不增加第二套解析器或依赖；拒绝重复成员、未知字段、null、缺必填项、类型错误、非法 JSON 字面量/转义及尾随内容，错误携带源文件和准确字段路径。整数按精确数值与 signed int 范围判断，`1`、`1.0`、`1e0` 等价，`1E-3` 可作为外部数值参数但不能作为整数。内置工厂包括 any/not_air/has_tile_entity、维度、昼夜、晴天、block_id_regex 和 tile_nbt；相对 NBT 验证器保留参数、额外读取及旋转。正则在 PostInit 展开冻结集合，匹配不再访问注册表；display 正则最多保留 32 个代表块。名字使用 `translationKey` 与实现 `LocalizationEnum` 的 `StructureTitle`，沿 AE2S 客户端 getLocal/服务器 text 契约。
+
+A 新增 21 项行为测试，受影响正常 Gradle 测试 112 tests / 14 suites，完整 `gradlew.bat build --console=plain` 1285 tests / 161 suites，均零失败/错误/跳过。18 Java 的 IDEA MCP `get_file_problems(errorsOnly:false)` 零错误/警告/弱警告，完整 `read_file` 项目文件文本与磁盘一致，MCP build_project 成功；18 Java 构建前后与 MCP 检查 SHA 一致。精确写前/最终清单、快照和原始证据见 `build/staging/structure-json/`，不将文件读回称为未保存 Document 证明。
+
+B 仍必须继续：运行中重载、既有控制器及外部宿主的配置代撤销/刷新、客户端目录和预览同步。A 没有运行中替换入口或客户端同步协议；不可变目录只是后续整代替换的基础。结构预览/投影/切片/BOM、display override 消费、模型隐藏与复杂渲染也继续保留。
 
 ## 模板、切片与修正
 
@@ -45,9 +67,9 @@ PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAro
 - AND/OR 保留声明顺序与短路；alternatives 可以分别组合 state/NBT，不再把含 NBT 的候选退化成首项。
 - 精确 state 仍按 canonical IBlockState 身份比较；方向/Axis 变换复用同一个实现，state+NBT 与普通 state 一致。仍保留旧代码对 property 不接受目标值时维持该 property 的行为，完整块状态旋转策略以后续实机核对为准。
 - NBT 保留 PM root 浅层规则：String 比实际字符串值，其他 tag 比 SNBT；缺字段/无 TE 不匹配。`stateWithNbt` 的空约束不额外要求 TE，独立 NBT 谓词要求存在 TE。
-- 正则由未来加载器在定义阶段展开，匹配阶段使用冻结方块集合；当前未接 JSON 正则加载。
+- JSON 正则在 PostInit 定义解析阶段展开，匹配阶段使用冻结方块集合；display 单独保存有界代表块，不改变完整 matcher 集合。
 
-`StructureQueries` 提供 block state、PM 双条件非空气、block-state 声明 TE、TE NBT、dimension、day-cycle worldTime、rain/thunder、biome ID，以及显式 Forge capability 的存在性查询。通用 capability 查询只检查 hasCapability；资源/能源输入/能源输出的专用查询使用 HatchCapabilities.find，与实际仓室发现共用 getCapability/isValid 规则。全部只捕获 Boolean，不把 handler 交给 worker。静态初始化只建立描述符，注册表/世界访问留在实际 reader 内。
+`StructureQueries` 提供 block state、PM 双条件非空气、block-state 声明 TE、TE NBT、dimension、day-cycle WORLD_TIME、实际 `world.isDaytime()` 的 DAYTIME、rain/thunder、biome ID，以及显式 Forge capability 的存在性查询。DAYTIME 与 WORLD_TIME 独立，昼夜工厂使用前者。通用 capability 查询只检查 hasCapability；资源/能源输入/能源输出的专用查询使用 HatchCapabilities.find，与实际仓室发现共用 getCapability/isValid 规则。全部只捕获 Boolean，不把 handler 交给 worker。静态初始化只建立描述符，注册表/世界访问留在实际 reader 内。
 
 ## 结果复核与仓室发布
 
@@ -75,4 +97,4 @@ PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAro
 
 新增测试覆盖真实 worker 消费快照、读取证明/时间刷新、切片增长、同方向换仓、过期成功/失败/失配、配置 ABA、卸载、发现失稳重试、故障隔离、跨线程/执行重叠及重入。逻辑 fixture 实现公开宿主接口，没有伪造 Forge 注册环境。
 
-下一步仍须接机器类型/控制器 TileEntity 的实际生命周期调用，再接严格两阶段 JSON 加载/注册发布、预览与 BOM/display override、模型隐藏/渲染、实际并发调度及工作预算。当前宿主发布契约不代表这些能力已完成，也没有缩减其迁移范围。
+实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布本阶段实现与验证已完成。下一步必须继续 B 运行中重载、既有及外部宿主刷新和客户端预览同步，再接预览/投影/切片/BOM/display override、模型隐藏/复杂渲染及结构准备工作预算；当前启动目录与宿主发布契约不代表这些能力已完成，也没有缩减其迁移范围。

@@ -41,13 +41,20 @@ import net.minecraftforge.fml.common.network.IGuiHandler;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistrationEvent;
+import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
+import com.circulation.prototype_eng.structure.json.BuiltinStructurePredicates;
+import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
+import com.circulation.prototype_eng.structure.json.StructureJsonLoader;
 
 /** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
 public class CommonProxy implements IGuiHandler {
+    private StructureJsonLoader structureData = StructureJsonLoader.empty();
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
         OrientationToolConfig.load(event.getModConfigurationDirectory());
+        structureData = StructureJsonLoader.readDirectory(event.getModConfigurationDirectory().toPath().resolve(Tags.MOD_ID).resolve("structures"));
         HatchCapabilityRegistration.register();
         NetworkRegistry.INSTANCE.registerGuiHandler(PrototypeEngineering.instance, this);
         PrototypeEngineering.LOGGER.info("Loading {} {}", Tags.MOD_NAME, Tags.VERSION);
@@ -65,9 +72,14 @@ public class CommonProxy implements IGuiHandler {
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE));
         RecipeRegistry.INSTANCE.freeze();
         NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.catalog(), ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
+        var structurePredicates = new StructurePredicateRegistry();
+        BuiltinStructurePredicates.register(structurePredicates);
+        MinecraftForge.EVENT_BUS.post(new StructurePredicateRegistrationEvent(structurePredicates));
+        structurePredicates.freeze();
         var machines = new MachineRuntimeRegistrationEvent(MachineTypeRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(machines);
-        MachineTypeRegistry.INSTANCE.resolveRuntime(machines.structures(), machines.assemblies());
+        var structures = structureData.resolve(machines.structureDefinitions(), structurePredicates, new ForgeStructureBlocks());
+        MachineTypeRegistry.INSTANCE.resolveRuntime(structures, machines.assemblies());
     }
 
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {

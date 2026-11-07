@@ -57,6 +57,9 @@ public final class StructureQueries {
     /** World time used for the day cycle, rather than the world's total elapsed ticks. */
     public static final StructureQuery<Long> WORLD_TIME = immutable("world_time", (world, _) -> world.getWorldTime());
 
+    /** Preserve PM day/night gates using the actual world daytime rule, separately from day-cycle time. */
+    public static final StructureQuery<Boolean> DAYTIME = immutable("daytime", (world, _) -> world.isDaytime());
+
     public static final StructureQuery<Boolean> RAINING = immutable("raining", (world, _) -> world.isRaining());
     public static final StructureQuery<Boolean> THUNDERING = immutable("thundering", (world, _) -> world.isThundering());
 
