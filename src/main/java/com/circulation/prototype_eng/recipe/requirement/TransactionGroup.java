@@ -14,7 +14,10 @@ final class TransactionGroup implements ReversibleTransaction {
     private final boolean[] terminal;
     private final boolean[] uncertain;
     @Nullable private Resolution decision;
+    private boolean preparationAttempted;
+    private boolean preparationAccepted;
     private boolean commitAttempted;
+    private boolean validationAttempted;
     private boolean executing;
 
     TransactionGroup(List<? extends ReversibleTransaction> transactions) {
@@ -42,9 +45,25 @@ final class TransactionGroup implements ReversibleTransaction {
         };
     }
 
+    @Override public boolean prepareCommit() {
+        requireIdle();
+        if (preparationAttempted || commitAttempted || decision != null) {
+            throw new IllegalStateException("Cannot replay composite preparation");
+        }
+        preparationAttempted = true;
+        executing = true;
+        try {
+            for (var transaction : transactions) { if (!transaction.prepareCommit()) { return false; } }
+            preparationAccepted = true;
+            return true;
+        } finally { executing = false; }
+    }
+
     @Override public void commit() {
         requireIdle();
-        if (commitAttempted || decision != null) { throw new IllegalStateException("Cannot replay composite commit"); }
+        if (commitAttempted || decision != null || preparationAttempted && !preparationAccepted) {
+            throw new IllegalStateException("Cannot replay or commit rejected composite work");
+        }
         commitAttempted = true;
         executing = true;
         try { for (var transaction : transactions) { transaction.commit(); } }
@@ -53,6 +72,17 @@ final class TransactionGroup implements ReversibleTransaction {
 
     @Override public void complete() { settle(Resolution.COMPLETED); }
     @Override public void rollback() { settle(Resolution.ROLLED_BACK); }
+
+    @Override public boolean validateCommit() {
+        requireIdle();
+        if (!commitAttempted || validationAttempted || decision != null) { throw new IllegalStateException("Cannot validate uncommitted or resolving composite work"); }
+        validationAttempted = true;
+        executing = true;
+        try {
+            for (var transaction : transactions) { if (!transaction.validateCommit()) { return false; } }
+            return true;
+        } finally { executing = false; }
+    }
 
     private void settle(Resolution expected) {
         requireIdle();

@@ -30,7 +30,7 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
         var resources = Io.EMPTY;
         var energy = Io.EMPTY;
         var overlays = process.components().get(RecipeOverlays.TYPE);
-        for (var requirement : process.recipe().orderedRequirements()) {
+        for (var requirement : process.orderedRequirements()) {
             var effective = overlays == null ? requirement : overlays.resolve(requirement);
             if (requirement.type() == RecipeRequirements.RESOURCES && effective.payload() instanceof ResourceRequirement payload) {
                 if (!payload.chance().equals(ResourceChance.ALWAYS) || payload.randomOutputs() != null

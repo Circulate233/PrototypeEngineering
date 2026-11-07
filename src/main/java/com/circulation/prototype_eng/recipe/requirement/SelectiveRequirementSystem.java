@@ -142,6 +142,8 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         private CapturedTransaction {
             reservations = ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
         }
+        @Override public boolean prepareCommit() { return child.prepareCommit(); }
+        @Override public boolean validateCommit() { return child.validateCommit(); }
         @Override public void commit() { child.commit(); }
         @Override public void complete() { child.complete(); }
         @Override public void rollback() { child.rollback(); }
@@ -166,6 +168,8 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
 
         @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
         @Override public List<ResourceReservation> reservations() { return child.reservations(); }
+        @Override public boolean prepareCommit() { return group.prepareCommit(); }
+        @Override public boolean validateCommit() { return group.validateCommit(); }
         @Override public void commit() { group.commit(); }
         @Override public void complete() { group.complete(); }
         @Override public void rollback() { group.rollback(); }
@@ -193,6 +197,8 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
 
         @Override public ProcessResult result() { return child.result(); }
         @Override public List<ResourceReservation> reservations() { return child.reservations(); }
+        @Override public boolean prepareCommit() { return group.prepareCommit(); }
+        @Override public boolean validateCommit() { return group.validateCommit(); }
         @Override public void commit() { group.commit(); }
         @Override public void complete() { group.complete(); }
         @Override public void rollback() { group.rollback(); }

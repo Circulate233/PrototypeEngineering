@@ -8,6 +8,8 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.MachineRecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
@@ -17,11 +19,16 @@ import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.List;
+import java.util.Comparator;
 import java.util.Random;
 import java.util.function.Supplier;
 
@@ -34,6 +41,7 @@ import java.util.function.Supplier;
 public final class RecipeProcess {
     private final MachineInstance owner;
     private final MachineRecipe recipe;
+    private final List<RecipeRequirement<?>> orderedRequirements;
     private final long seed;
     private final ProbabilityTuning probabilityTuning;
     private final ComponentMap<RecipeProcess> components = new ComponentMap<>();
@@ -42,6 +50,7 @@ public final class RecipeProcess {
     private boolean ticking;
     private int acquiredTransactions;
     private boolean persistenceFailure;
+    private boolean probing;
     private long stageVersion;
     @Nullable
     private TickSession activeSession;
@@ -62,6 +71,31 @@ public final class RecipeProcess {
         this.seed = seed;
         this.probabilityTuning = Objects.requireNonNull(probabilityTuning);
         attributes = new MachineAttributes(owner.attributes(), 1);
+        orderedRequirements = captureRequirements(owner, recipe);
+    }
+
+    private static List<RecipeRequirement<?>> captureRequirements(MachineInstance owner, MachineRecipe recipe) {
+        var declared = recipe.orderedRequirements();
+        ObjectArrayList<RecipeRequirement<?>> supplied = null;
+        for (var binding : owner.components().assemblyBindings()) {
+            if (binding.component() instanceof MachineRecipeRequirements provider) {
+                if (supplied == null) { supplied = new ObjectArrayList<>(declared); }
+                supplied.addAll(Objects.requireNonNull(provider.requirementsFor(recipe), "Machine recipe requirements"));
+            }
+        }
+        var roots = supplied == null ? declared : supplied;
+        var types = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        for (var root : roots) {
+            Objects.requireNonNull(root, "Machine recipe requirement root");
+            if (root != root.definition()) { throw new IllegalArgumentException("Machine recipe requirements contain an effective view"); }
+            var previous = types.putIfAbsent(root.type().id(), root.type());
+            if (previous != null && previous != root.type()) { throw new IllegalArgumentException("Different requirement types share id " + root.type().id()); }
+            if (!ids.add(root.id())) { throw new IllegalArgumentException("Duplicate machine recipe requirement " + root.id()); }
+        }
+        if (supplied == null) { return declared; }
+        supplied.sort(Comparator.comparing(root -> root.type().id().toString()));
+        return ObjectLists.unmodifiable(supplied);
     }
 
     public MachineInstance owner() {
@@ -90,6 +124,9 @@ public final class RecipeProcess {
     public MachineRecipe recipe() {
         return recipe;
     }
+
+    /** Frozen canonical roots from the recipe and its actual machine component providers. */
+    public List<RecipeRequirement<?>> orderedRequirements() { return orderedRequirements; }
 
     /** Downstream mods can retain the seed when restoring deterministic process state. */
     @SuppressWarnings("unused")
@@ -133,7 +170,20 @@ public final class RecipeProcess {
 
     /** Local inactivity proof; the host/scheduler may still own an enclosing batch lease. */
     public boolean quiescent() {
-        return !ticking && activeSession == null && activeTick == null && activeRequirement == null && acquiredTransactions == 0;
+        return !ticking && !probing && activeSession == null && activeTick == null && activeRequirement == null && acquiredTransactions == 0;
+    }
+
+    /** True only for an explicit admission probe and its captured acquisition/cleanup callbacks. */
+    public boolean probing() { return probing; }
+
+    /** Independent START/TICK/END probes never grant authority to perform ordinary network work. */
+    public <T> T withProbeContext(Supplier<T> action) {
+        Objects.requireNonNull(action);
+        requirePersistenceBoundary();
+        if (host != null || state.lifecycle() != Lifecycle.NEW) { throw new IllegalArgumentException("Probe context requires an unattached NEW process"); }
+        probing = true;
+        try { return action.get(); }
+        finally { probing = false; }
     }
 
     /** Local save eligibility, not authority to bypass an enclosing work-slot or machine lease. */
@@ -237,9 +287,15 @@ public final class RecipeProcess {
         private final RequirementPath path;
         private final RequirementTransaction delegate;
         @Nullable private final Tick tick;
+        private final boolean probe;
         @Nullable private Resolution intendedTerminal;
         private Resolution terminal = Resolution.UNKNOWN;
+        private boolean preparationAttempted;
+        private boolean preparationAccepted;
+        private boolean preparing;
         private boolean commitAttempted;
+        private boolean validationAttempted;
+        private boolean validating;
         private boolean terminalExecuting;
         private boolean queryExecuting;
         private boolean uncertain;
@@ -250,14 +306,30 @@ public final class RecipeProcess {
             this.path = path;
             this.delegate = delegate;
             tick = process.activeTick;
+            probe = process.probing;
         }
 
         @Override public ProcessResult result() { return scoped(delegate::result); }
         @Override public List<? extends ResourceReservation> reservations() {
             return scoped(delegate::reservations);
         }
+        @Override public boolean prepareCommit() {
+            if (closed || intendedTerminal != null || preparationAttempted || commitAttempted || queryExecuting || validating) {
+                throw new IllegalStateException("Cannot replay or prepare a resolving requirement transaction");
+            }
+            preparationAttempted = true;
+            preparing = true;
+            try {
+                preparationAccepted = scoped(delegate::prepareCommit);
+                return preparationAccepted;
+            } catch (RuntimeException | Error failure) {
+                process.persistenceFailure = true;
+                throw failure;
+            } finally { preparing = false; }
+        }
         @Override public void commit() {
-            if (closed || intendedTerminal != null || commitAttempted || queryExecuting) {
+            if (closed || intendedTerminal != null || commitAttempted || queryExecuting || preparing || validating
+                || preparationAttempted && !preparationAccepted) {
                 throw new IllegalStateException("Cannot replay or commit a resolving requirement transaction");
             }
             commitAttempted = true;
@@ -267,8 +339,19 @@ public final class RecipeProcess {
         @Override public void complete() { close(Resolution.COMPLETED, delegate::complete); }
         @Override public void rollback() { close(Resolution.ROLLED_BACK, delegate::rollback); }
 
+        @Override public boolean validateCommit() {
+            if (closed || intendedTerminal != null || !commitAttempted || validationAttempted || queryExecuting || preparing) {
+                throw new IllegalStateException("Cannot validate uncommitted or resolving requirement work");
+            }
+            validationAttempted = true;
+            validating = true;
+            try { return scoped(delegate::validateCommit); }
+            catch (RuntimeException | Error failure) { process.persistenceFailure = true; throw failure; }
+            finally { validating = false; }
+        }
+
         @Override public Resolution resolution() {
-            if (terminalExecuting || queryExecuting) { throw new IllegalStateException("Cannot reenter a requirement recovery callback"); }
+            if (terminalExecuting || queryExecuting || preparing || validating) { throw new IllegalStateException("Cannot reenter a requirement recovery callback"); }
             if (closed) { return terminal; }
             queryExecuting = true;
             try {
@@ -279,7 +362,7 @@ public final class RecipeProcess {
         }
 
         private void close(Resolution expected, Runnable action) {
-            if (terminalExecuting || queryExecuting) { throw new IllegalStateException("Cannot reenter a requirement terminal callback"); }
+            if (terminalExecuting || queryExecuting || preparing || validating) { throw new IllegalStateException("Cannot reenter a requirement terminal callback"); }
             if (closed) {
                 if (terminal != expected) { throw new IllegalStateException("Requirement already resolved in the opposite direction"); }
                 return;
@@ -327,9 +410,11 @@ public final class RecipeProcess {
         private <T> T scoped(Supplier<T> action) {
             return process.withCallbackScope(() -> {
                 Tick previous = process.activeTick;
+                boolean previousProbe = process.probing;
                 process.activeTick = tick;
+                process.probing = probe;
                 try { return process.withRequirementPath(path, action); }
-                finally { process.activeTick = previous; }
+                finally { process.activeTick = previous; process.probing = previousProbe; }
             });
         }
     }

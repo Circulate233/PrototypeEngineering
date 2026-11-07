@@ -13,7 +13,7 @@ public final class RecipeAbortCleanup {
         }
         // Capture before any cleanup callback mutates component assembly.
         var bindings = process.components().orderedBindings();
-        var requirements = process.recipe().orderedRequirements();
+        var requirements = process.orderedRequirements();
         Throwable failure = null;
         for (int i = requirements.size() - 1; i >= 0; i--) {
             try {

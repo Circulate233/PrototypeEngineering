@@ -91,6 +91,9 @@ recipe.prototype_eng.EnergyMissing=Requirement %s is missing %s FE
 recipe.prototype_eng.EnergyOutputFull=Requirement %s needs room for %s more FE
 recipe.prototype_eng.Cancelled=Recipe cancelled
 recipe.prototype_eng.ControllerBroken=Machine controller was broken
+recipe.prototype_eng.NetworkUnavailable=Machine network is unavailable
+recipe.prototype_eng.NetworkResearchMissing=The active data center needs research %s at level %s
+recipe.prototype_eng.NetworkCapacityMissing=Insufficient network computing or concurrency capacity
 
 gui.prototype_eng.machine.Formed=Structure formed
 gui.prototype_eng.machine.Unformed=Structure incomplete

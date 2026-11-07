@@ -14,10 +14,10 @@ import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 
 /** BasicEntry snapshots also reject entry.setValue, unlike an unmodifiable set of live hash entries. */
-final class ResearchSnapshots {
+public final class ResearchSnapshots {
     private ResearchSnapshots() { }
 
-    static Object2IntMap<ResourceLocation> levels(Object2IntMap<ResourceLocation> source) {
+    public static Object2IntMap<ResourceLocation> levels(Object2IntMap<ResourceLocation> source) {
         return Object2IntMaps.unmodifiable(new FrozenLevels(source));
     }
 

@@ -87,7 +87,7 @@ public final class BuiltinProcessValidation {
         }
         var walker = new Walker(process, index, locks, selections, stableResourceGroups);
         var ongoing = new Execution(true, process.state().lifecycle() == RecipeProcess.Lifecycle.COMPLETED, Window.NONE);
-        for (var root : process.recipe().orderedRequirements()) {
+        for (var root : process.orderedRequirements()) {
             walker.require(root, root.path(null), ongoing);
         }
     }

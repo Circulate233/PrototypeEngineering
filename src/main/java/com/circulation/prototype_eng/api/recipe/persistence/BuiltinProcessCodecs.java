@@ -12,8 +12,11 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveState;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 
 import java.util.List;
@@ -21,13 +24,18 @@ import java.util.List;
 final class BuiltinProcessCodecs {
     private BuiltinProcessCodecs() { }
 
-    static ProcessComponentCodec<RecipeOverlays> overlays(RecipeOverlayNbt codec) {
+    static ProcessComponentCodec<RecipeOverlays> overlays(List<RecipeOverlayNbt.Binding<?, ?>> bindings) {
+        var frozen = ObjectLists.unmodifiable(new ObjectArrayList<>(bindings));
+        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        for (var binding : frozen) {
+            if (!ids.add(binding.type().id())) { throw new IllegalArgumentException("Duplicate overlay codec: " + binding.type().id()); }
+        }
         return new ProcessComponentCodec<>() {
             @Override public NBTTagCompound encode(RecipeProcess process, RecipeOverlays component) {
-                return codec.encode(component.snapshot());
+                return new RecipeOverlayNbt(new RecipeDefinitionIndex(process), frozen).encode(component.snapshot());
             }
             @Override public void restore(RecipeProcess process, RecipeOverlays component, NBTTagCompound data) {
-                component.restore(codec.decode(data));
+                component.restore(new RecipeOverlayNbt(new RecipeDefinitionIndex(process), frozen).decode(data));
             }
         };
     }
@@ -107,9 +115,10 @@ final class BuiltinProcessCodecs {
         return result;
     }
 
-    static ProcessComponentCodec<SelectiveState> selections(RecipeDefinitionIndex index) {
+    static ProcessComponentCodec<SelectiveState> selections() {
         return new ProcessComponentCodec<>() {
             @Override public NBTTagCompound encode(RecipeProcess process, SelectiveState component) {
+                var index = new RecipeDefinitionIndex(process);
                 var list = new NBTTagList();
                 component.snapshot().forEach((path, selection) -> {
                     var entry = new NBTTagCompound();
@@ -170,6 +179,7 @@ final class BuiltinProcessCodecs {
             }
 
             @Override public void restore(RecipeProcess process, SelectiveState component, NBTTagCompound data) {
+                var index = new RecipeDefinitionIndex(process);
                 StrictNbt.requireKeys(data, "Selections", "AbortReceipts");
                 var list = StrictNbt.requireList(data, "Selections", Constants.NBT.TAG_COMPOUND);
                 var selections = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectiveState.SelectionSnapshot>();

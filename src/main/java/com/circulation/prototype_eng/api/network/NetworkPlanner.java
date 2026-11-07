@@ -142,7 +142,8 @@ public final class NetworkPlanner {
                 for (var contribution : participantResources) { accumulate(totals, contribution.resourcesPerTick()); }
             }
             selections.put(entry.getKey(), new NetworkPlan.Team(center.identity().machineId(), center.level(),
-                dataCenter == null ? null : dataCenter.identity().machineId(), center.resourceModifier().apply(totals)));
+                dataCenter == null ? null : dataCenter.identity().machineId(), center.resourceModifier().apply(totals),
+                dataCenter == null ? null : dataCenter.dataCenterResearch()));
         }
         return new NetworkPlan(inputs.epoch, states, teamIds, selections);
     }

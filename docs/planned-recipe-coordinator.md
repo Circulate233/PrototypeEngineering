@@ -34,8 +34,8 @@ source 结果屏障的 Stopped、Future 完成/取消、线程 interrupt 都不�
 
 ## 尚未宣称接通的部分
 
-本阶段协调器运行真实多机器阶段、source 应用/确认屏障和 pending 恢复，但尚未安装到真实 TaskScheduler/服务器生命周期，`PLANNED_PARALLEL` 继续拒绝。旧 PM 的独立纯 prepare kernel、冻结输入/结果扩展、discover/plan 内部工作预算仍需迁移；当前 source 应用和终态确认屏障不等同于旧纯 prepare 阶段。
+协调器已通过 NetworkRecipeExecution 安装到真实 TaskScheduler/服务器生命周期，带 NetworkRecipeWork 的 CONCURRENT 控制器自动使用；机器前后组件游标、卸载和阶段原代恢复由外层执行持有，见[配方消费者](network-recipes.md)。`PLANNED_PARALLEL` 继续拒绝。旧 PM 的独立纯 prepare kernel、冻结输入/结果扩展、discover/plan 内部工作预算仍需迁移；当前 source 应用和终态确认屏障不等同于旧纯 prepare 阶段。
 
-传入的 authorization 在 owner 检查，不自动扣减 PN numeric/lease 预算；正式 WorkPermit、队伍/tick/epoch、来源与工作序号及预算 receipt 仍须接入。尤其不能继承旧 PN 在提交后仍要求 receipt 为 RESERVED 的错误生命周期探针。实际机器取消/卸载/关闭必须先撤新工作、join 实际退出、完成 pending 与 post，再释放宿主。
+传入的 authorization 在 owner 检查，本身不扣减 PN numeric/lease；真实 NetworkRecipeWork 需求已将 WorkPermit、具体研究、队伍/tick/epoch、工作序号和 receipt 加入阶段，并在 prepareCommit/validateCommit 前后校验。尤其不能继承旧 PN 在提交后仍要求 receipt 为 RESERVED 的错误生命周期探针。实际机器取消/卸载/关闭必须先撤新工作、join 实际退出、完成 pending 与 post，再释放宿主。
 
 来源和缺陷见 [planned 审计](planned-migration-audit.md)，基础协议见 [工位批次](work-slot-batches.md)、[资源批次](deferred-resource-batches.md)与[阶段会话](recipe-tick-sessions.md)。测试及 MCP 证据记录在 [实施进度](implementation-status.md)。

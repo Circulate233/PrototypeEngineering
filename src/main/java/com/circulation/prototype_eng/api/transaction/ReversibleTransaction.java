@@ -7,6 +7,23 @@ package com.circulation.prototype_eng.api.transaction;
  * resolution before it can be retried. The owning coordinator supplies the required execution scope.
  */
 public interface ReversibleTransaction {
+    /**
+     * One owner-side admission attempt before any ordinary business commit in the enclosing batch.
+     * May apply reversible effects, including committing a budget receipt; false rejects the whole
+     * batch normally. Every acquired participant is then rolled back, including this rejecting one
+     * and participants not yet prepared. A throwing attempt must also retain its full undo state.
+     * Coordinators and composite wrappers must never replay this attempt, even after rejection or
+     * failure. The default preserves existing transactions without additional preparation effects.
+     */
+    default boolean prepareCommit() { return true; }
+
+    /**
+     * One read-only owner check after all business commits and before the batch decides completion.
+     * False still chooses ordinary whole-batch compensation. Check the original captured authority
+     * and content; do not mutate or reacquire work. Wrappers preserve the original callback scope.
+     */
+    default boolean validateCommit() { return true; }
+
     void commit();
     default void complete() { }
     void rollback();

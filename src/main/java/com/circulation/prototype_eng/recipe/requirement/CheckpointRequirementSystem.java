@@ -112,6 +112,9 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
             this(result, ObjectLists.unmodifiable(new ObjectArrayList<>(reservations)), new TransactionGroup(transactions));
         }
 
+        @Override public boolean prepareCommit() { return group.prepareCommit(); }
+        @Override public boolean validateCommit() { return group.validateCommit(); }
+
         @Override
         public void commit() {
             group.commit();
@@ -142,6 +145,9 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
         public List<? extends ResourceReservation> reservations() {
             return scoped(delegate::reservations);
         }
+
+        @Override public boolean prepareCommit() { return scoped(delegate::prepareCommit); }
+        @Override public boolean validateCommit() { return scoped(delegate::validateCommit); }
 
         @Override
         public void commit() {

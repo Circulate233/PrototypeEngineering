@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.persistence;
 
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -8,6 +9,7 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 
 /** Canonical definition graph for one immutable recipe, including external structural wrappers. */
@@ -16,9 +18,17 @@ public final class RecipeDefinitionIndex {
     private final Map<RequirementPath, RecipeRequirement<?>> requirements;
 
     public RecipeDefinitionIndex(MachineRecipe recipe) {
+        this(recipe.orderedRequirements());
+    }
+
+    public RecipeDefinitionIndex(RecipeProcess process) {
+        this(process.orderedRequirements());
+    }
+
+    private RecipeDefinitionIndex(List<RecipeRequirement<?>> roots) {
         var entries = new Object2ObjectLinkedOpenHashMap<RequirementPath, RecipeRequirement<?>>();
         var visiting = new ReferenceOpenHashSet<RecipeRequirement<?>>();
-        for (var root : recipe.orderedRequirements()) { add(root, root.path(null), visiting, entries); }
+        for (var root : roots) { add(root, root.path(null), visiting, entries); }
         requirements = Collections.unmodifiableMap(entries);
     }
 

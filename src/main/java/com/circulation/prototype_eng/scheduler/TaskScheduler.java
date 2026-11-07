@@ -18,8 +18,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,12 +60,13 @@ public final class TaskScheduler implements AutoCloseable {
     private boolean pendingExitProven = true;
     @Nullable private Reason pendingStopReason;
     private boolean pendingStopConfirmed;
+    private final ObjectArrayList<Registration> plannedCandidates = new ObjectArrayList<>();
 
     public TaskScheduler(Thread owner, int workerThreads, int laneCount) {
         this(owner, workerThreads, laneCount, null, Duration.ofSeconds(5));
     }
 
-    /** Internal owner capture; formal machine discovery and its authority remain a separate phase. */
+    /** Optional internal owner cycle factory; arbitrary PLANNED_PARALLEL tasks remain unsupported. */
     TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
                   Duration plannedTimeout) {
         this.owner = Objects.requireNonNull(owner);
@@ -211,7 +214,7 @@ public final class TaskScheduler implements AutoCloseable {
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
             if (capturePlanned && !failures.present() && plannedFactory != null) {
-                try { capturePlanned(); }
+                try { capturePlanned(prepare); }
                 catch (Throwable failure) { failures.add(failure); fault(); }
                 if (pendingExecution != null) { drivePending(failures, true); }
             }
@@ -225,6 +228,7 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     private void executeOrdinary(Runnable prepare, ObjectArrayList<FutureTask<Void>> futures, Failures failures) {
+        plannedCandidates.clear();
         ObjectArrayList<Submission> batch;
         synchronized (submissionLock) {
             batch = pending;
@@ -261,6 +265,10 @@ public final class TaskScheduler implements AutoCloseable {
             ScheduledTask task = registration.task;
             ExecutionMode mode = requireOrdinary(task.executionMode());
             if (mode != ExecutionMode.CONCURRENT || executed.contains(task) || !task.active()) { continue; }
+            if (plannedFactory != null && plannedFactory.owns(task)) {
+                plannedCandidates.add(registration);
+                continue;
+            }
             var keys = new ObjectOpenHashSet<>();
             for (Object key : Objects.requireNonNull(task.affinityKeys())) { keys.add(Objects.requireNonNull(key)); }
             concurrent.add(new Snapshot(task, keys));
@@ -296,8 +304,9 @@ public final class TaskScheduler implements AutoCloseable {
         failures.throwIfPresent();
     }
 
-    private void capturePlanned() {
+    private void capturePlanned(Runnable prepare) {
         state = State.CAPTURING_PLANNED;
+        prepare.run();
         initializeExecutors();
         if (plannedTasks == null) { plannedTasks = new PlannedTaskExecutor(workers, lanes); }
         var captured = Objects.requireNonNull(plannedFactory).capture(plannedTasks, cleanupDeadline());
@@ -309,6 +318,20 @@ public final class TaskScheduler implements AutoCloseable {
             pendingStopReason = null;
             pendingStopConfirmed = false;
         }
+    }
+
+    /** Exact registrations captured before ordinary dispatch, rechecked after every worker joined. */
+    List<PlannedCandidate> plannedCandidates() {
+        requireOwner();
+        if (state != State.CAPTURING_PLANNED) { throw new IllegalStateException("Planned candidates require owner capture"); }
+        var result = new ObjectArrayList<PlannedCandidate>();
+        for (var registration : plannedCandidates) {
+            var task = registration.task;
+            if (registered.get(task) == registration && task.active()) {
+                result.add(new PlannedCandidate(task, () -> registered.get(task) == registration && task.active()));
+            }
+        }
+        return List.copyOf(result);
     }
 
     /** One recovery pass; an initial forward attempt additionally settles its cancelled remainder. */
@@ -600,8 +623,12 @@ public final class TaskScheduler implements AutoCloseable {
      */
     @FunctionalInterface
     interface PlannedFactory {
+        /** Only recognized ordinary concurrent registrations transfer to this owner execution. */
+        default boolean owns(ScheduledTask task) { return false; }
         @Nullable PlannedExecution capture(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline);
     }
+
+    record PlannedCandidate(ScheduledTask task, BooleanSupplier current) {}
 
     private enum State { IDLE, REGISTERING, CAPTURING_MAIN, MAIN, CAPTURING_CONCURRENT, DISPATCHING, JOINING, CAPTURING_PLANNED, PLANNED, BOUNDARY, CLOSING, CLOSED }
     private record Registration(ScheduledTask task) {}

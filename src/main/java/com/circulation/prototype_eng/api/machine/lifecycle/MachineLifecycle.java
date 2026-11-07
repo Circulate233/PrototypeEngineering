@@ -319,6 +319,12 @@ public final class MachineLifecycle {
         } finally { if (!retained) { leave(); } }
     }
 
+    /** Only the dedicated owner normal-callback scope may replace ordinary recipe ticking. */
+    public boolean deferRecipeWork(MachineWorkSlots slots) {
+        var execution = scheduledExecution;
+        return execution != null && execution.defer(Objects.requireNonNull(slots));
+    }
+
     /**
      * One deferred lifecycle ownership transfer, controlled only by its creating server thread.
      * This handle does not dispatch or join workers. Callers retain it through source exit and exact
@@ -331,6 +337,9 @@ public final class MachineLifecycle {
         private final ReferenceOpenHashSet<MachineWorkSlots> observedSlotIdentities = new ReferenceOpenHashSet<>();
         private boolean executing;
         private boolean finished;
+        private boolean componentScope;
+        private final ReferenceOpenHashSet<MachineWorkSlots> completedDeferred = new ReferenceOpenHashSet<>();
+        @Nullable private MachineWorkSlots deferred;
         @Nullable private Throwable failure;
 
         private ScheduledExecution(MachineLifecycle lifecycle, List<MachineWorkSlots> capturedSlots) {
@@ -351,6 +360,42 @@ public final class MachineLifecycle {
             if (!lifecycle.schedulingAllowed()) { return false; }
             invoke(execution);
             return true;
+        }
+
+        /** Runs one consumed normal callback with the precise work-slot deferral hook enabled. */
+        public boolean runComponent(Runnable execution) {
+            Objects.requireNonNull(execution);
+            requireOwner();
+            if (deferred != null) { throw new IllegalStateException("Previous component work is still deferred"); }
+            if (!lifecycle.schedulingAllowed()) { return false; }
+            componentScope = true;
+            try { invoke(execution); }
+            finally { componentScope = false; }
+            return true;
+        }
+
+        private boolean defer(MachineWorkSlots slots) {
+            if (Thread.currentThread() != owner || !executing || !componentScope || finished) { return false; }
+            if (slots.owner() != lifecycle.machine) { throw new IllegalArgumentException("Deferred slots belong to another machine"); }
+            if (completedDeferred.contains(slots)) { return true; }
+            if (deferred != null && deferred != slots) { throw new IllegalStateException("One normal callback deferred multiple work-slot hosts"); }
+            deferred = slots;
+            observe(List.of(slots));
+            return true;
+        }
+
+        @Nullable public MachineWorkSlots deferredRecipeWork() {
+            requireOwner();
+            return deferred;
+        }
+
+        /** Acknowledges exact finished work before any successor normal callback can run. */
+        public void finishDeferredRecipeWork(MachineWorkSlots slots) {
+            requireOwner();
+            if (deferred != Objects.requireNonNull(slots)) { throw new IllegalArgumentException("Different deferred work-slot host"); }
+            slots.requireQuiescent();
+            completedDeferred.add(slots);
+            deferred = null;
         }
 
         /** Mandatory confirmation/compensation remains callable after retirement or a runtime fault. */
@@ -387,6 +432,7 @@ public final class MachineLifecycle {
             executing = true;
             try {
                 observe(lifecycle.capture().workSlots());
+                if (deferred != null) { return false; }
                 boolean quiescent = true;
                 for (var slots : observedSlots) { quiescent &= slots.quiescent(); }
                 if (!quiescent) { return false; }

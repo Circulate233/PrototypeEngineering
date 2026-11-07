@@ -1,6 +1,6 @@
 # 每 tick 计算预算与工作凭据
 
-本阶段将 PN 数值预留和机器 lease 接入真实 server tick 与 NetworkRuntime，机器组件可取得 owner 工作凭据。普通配方、研究和正式 planned 的自动消费链仍待接入；`allowsNetworkWork()` 继续只表达网络资格，不能作为已有数值额度的证据。
+本阶段将 PN 数值预留和机器 lease 接入真实 server tick 与 NetworkRuntime，机器组件可取得 owner 工作凭据。普通配方已由 NetworkRecipeWork 接入真实需求阶段；研究站与完整正式 planned 仍待接入；`allowsNetworkWork()` 继续只表达网络资格，不能作为已有数值额度的证据。
 
 ## tick 与发布
 
@@ -12,7 +12,7 @@
 
 ## lease、数值与操作身份
 
-- 用户确认的消费规则：算力等数值资源随配方并行量缩放；并发资源（标准 THREAD）按机器只占 1，不随并行量、工位数或 Java 工作线程数重复占用。数值缩放必须在真实配方消费者中应用；当前账本接受已计算的向量，不代表消费接线完成。
+- 用户确认的消费规则：算力等数值资源随配方并行量缩放；并发资源（标准 THREAD）按机器只占 1，不随并行量、工位数或 Java 工作线程数重复占用。NetworkRecipeWorkSystem 已按实际进程并行量缩放；START/扫描只检查，工作 TICK 占用，零时长 START 占用一次，见[配方消费者](network-recipes.md)。
 - `requestLease(machineId)` 使用 THREAD；同一机器本 tick 只消耗一份，其他工位为 ALREADY_GRANTED。没有工位结束即释放的操作，数值不足/取消也不退 lease，保持 PN 请求顺序。
 - `requestLease(machineId, logicalType)` 支持已注册自定义 logical 维度，各维独立机器集合和 long 容量，不再只支持 THREAD 或强制 int。一次申请一维，不代表多维 lease 原子申请。
 - WorkPermit 对活动中心免标准 THREAD lease，返回 NOT_REQUIRED；自定义 logical 仍实际申请。其他角色在普通数值预留前真实申请 THREAD，不给所有已加载设备预分配额度。
@@ -37,4 +37,4 @@ commit 只接受 RESERVED：授权或账本过期返回 false 并保留 RESERVED
 
 当前每次 owner 许可操作会重验本发布的全部宿主证明，多次 MAIN 捕获和许可申请都有 owner 成本，尚无性能压测。正式 planned 必须在 prepare/resolve 两次 join 与批次决策边界整合校验，并按真实变更版本减少重复工作，不能凭未提供的变更通知省略证明。
 
-继续接研究分配/数据中心存储、普通配方数值需求、完整参与者当前代校验，以及 planned 来源/工位/序号和材料 FE 提交补偿。预算凭据不能替代这些未接条件，也不从存档恢复运行许可。旧实现审计见[计算资源](network-resources.md)，证据见[实施进度](implementation-status.md)。
+普通配方数值与实际数据中心研究需求已接入，receipt 与本阶段材料/FE 一同提交补偿，并检查提交前后的许可。继续接研究分配、数据中心下载/同步的服务器入口、完整参与者当前代校验和完整 planned prepare。运行许可不从存档恢复。旧实现审计见[计算资源](network-resources.md)，证据见[实施进度](implementation-status.md)。

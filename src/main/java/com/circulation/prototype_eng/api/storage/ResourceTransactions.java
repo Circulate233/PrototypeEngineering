@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 /**
  * Ordered per-storage locks make staged application/compensation invisible to other threads.
@@ -14,6 +15,7 @@ import java.util.Objects;
 public final class ResourceTransactions {
     private static final Runnable NO_OP = () -> {
     };
+    private static final BooleanSupplier ACCEPT = () -> true;
 
     private ResourceTransactions() {
     }
@@ -31,7 +33,23 @@ public final class ResourceTransactions {
      */
     public static boolean commit(List<? extends ResourceReservation> reservations, Runnable apply,
                                  Runnable complete, Runnable rollback) {
-        return settle(reservations, true, apply, complete, rollback);
+        return commit(reservations, ACCEPT, apply, complete, rollback);
+    }
+
+    /**
+     * Prepares reversible business effects after source application, while holding all domain locks.
+     * False rolls back business and sources normally without entering any ordinary business commit.
+     * The preparation is attempted once; a failure also takes the existing compensation path.
+     */
+    public static boolean commit(List<? extends ResourceReservation> reservations, BooleanSupplier prepareCommit,
+                                 Runnable apply, Runnable complete, Runnable rollback) {
+        return commit(reservations, prepareCommit, ACCEPT, apply, complete, rollback);
+    }
+
+    /** A read-only validation after all business commits retains the same full compensation boundary. */
+    public static boolean commit(List<? extends ResourceReservation> reservations, BooleanSupplier prepareCommit,
+                                 BooleanSupplier validateCommit, Runnable apply, Runnable complete, Runnable rollback) {
+        return settle(reservations, true, prepareCommit, validateCommit, apply, complete, rollback);
     }
 
     public static void rollback(List<? extends ResourceReservation> reservations) {
@@ -39,11 +57,14 @@ public final class ResourceTransactions {
     }
 
     public static void rollback(List<? extends ResourceReservation> reservations, Runnable rollback) {
-        settle(reservations, false, NO_OP, NO_OP, rollback);
+        settle(reservations, false, ACCEPT, ACCEPT, NO_OP, NO_OP, rollback);
     }
 
     private static boolean settle(List<? extends ResourceReservation> reservations, boolean commit,
+                                  BooleanSupplier prepareCommit, BooleanSupplier validateCommit,
                                   Runnable apply, Runnable complete, Runnable rollback) {
+        Objects.requireNonNull(prepareCommit);
+        Objects.requireNonNull(validateCommit);
         Objects.requireNonNull(apply);
         Objects.requireNonNull(complete);
         Objects.requireNonNull(rollback);
@@ -79,7 +100,8 @@ public final class ResourceTransactions {
                     for (var reservation : participants) {
                         reservation.apply();
                     }
-                    apply.run();
+                    accepted = prepareCommit.getAsBoolean();
+                    if (accepted) { apply.run(); accepted = validateCommit.getAsBoolean(); }
                 }
             } catch (RuntimeException | Error failure) {
                 rollbackAll(participants, rollback, failure);

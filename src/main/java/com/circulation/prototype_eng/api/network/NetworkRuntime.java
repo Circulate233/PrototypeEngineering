@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
+import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -107,6 +108,9 @@ public final class NetworkRuntime implements AutoCloseable {
                 if (!snapshot.identity().equals(registration.identity.identity()) || snapshot.loadOrder() != registration.identity.loadOrder()) {
                     throw new IllegalArgumentException("Network source changed its registered identity or load order");
                 }
+                if (snapshot.role() == NetworkDeviceRole.DATA_CENTER && snapshot.dataCenterResearch() == null) {
+                    throw new IllegalArgumentException("Runtime data centers require captured research contents, not only a count");
+                }
                 captures.put(registration, capture);
                 devices.add(snapshot);
             }
@@ -169,6 +173,7 @@ public final class NetworkRuntime implements AutoCloseable {
 
     /** One exact device attachment. Unloading an old handle never removes a replacement. */
     public static final class Registration implements AutoCloseable {
+        private long nextWorkSequence;
         private final NetworkRuntime runtime;
         private final MachineIdentityRegistry.Registration identity;
         private final Supplier<@Nullable Capture> source;
@@ -198,7 +203,8 @@ public final class NetworkRuntime implements AutoCloseable {
             var current = runtime.published;
             if (current == null || !allowsNetworkWork()) { return null; }
             var teamId = Objects.requireNonNull(current.plan.teamIds().get(identity.identity().machineId()));
-            return new WorkPermit(this, current, teamId, Objects.requireNonNull(runtime.budgets.get(teamId)));
+            var permit = new WorkPermit(this, current, teamId, Objects.requireNonNull(runtime.budgets.get(teamId)));
+            return permit.authorized() ? permit : null;
         }
 
         @Override public void close() {
@@ -240,11 +246,31 @@ public final class NetworkRuntime implements AutoCloseable {
         @SuppressWarnings("unused") // External research/participant hosts retain the captured team alongside work identity.
         public String teamId() { return teamId; }
 
+        /** Exact contents of the selected data center in this publication, never a team/cloud substitute. */
+        @Nullable public DataCenterResearchSnapshot dataCenterResearch() {
+            return Objects.requireNonNull(publication.plan.teams().get(teamId)).dataCenterResearch();
+        }
+
         /** Immutable research supply; it is independent of ordinary work reservations, as in PN. */
         public Object2LongMap<NetworkResourceType> numericResources() { return budget.numericResources(); }
 
         /** Diagnostic snapshot of this issuing tick, including after its permit expires. */
         public Object2LongMap<NetworkResourceType> availableResources() { return budget.availableResources(); }
+
+        /** Side-effect-free candidate admission; real acquisition must reserve again. */
+        public boolean canReserve(Object2LongMap<NetworkResourceType> required) {
+            if (!authorized()) { return false; }
+            boolean center = publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER;
+            return (center || budget.canRequestLease(registration.identity.identity().machineId())) && budget.canReserve(required);
+        }
+
+        /** Allocates a fresh owner sequence for one real requirement attempt, including multiple work slots. */
+        @Nullable public NetworkTeamBudget.Reservation reserve(ResourceLocation sourceId, Object2LongMap<NetworkResourceType> required) {
+            registration.runtime.ownerCheck.run();
+            long sequence = registration.nextWorkSequence;
+            registration.nextWorkSequence = Math.incrementExact(sequence);
+            return reserve(sourceId, sequence, required);
+        }
 
         public NetworkTeamBudget.LeaseStatus requestLease() { return requestLease(NetworkResources.THREAD); }
 
@@ -270,7 +296,8 @@ public final class NetworkRuntime implements AutoCloseable {
             return budget.reserve(operation, required, this::authorized);
         }
 
-        private boolean authorized() {
+        /** Owner-side revalidation of every captured supplier and its contents; workers use current(). */
+        public boolean authorized() {
             var runtime = registration.runtime;
             runtime.ownerCheck.run();
             if (!current()) { return false; }

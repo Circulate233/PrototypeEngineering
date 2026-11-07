@@ -9,6 +9,8 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -27,7 +29,7 @@ public final class ServerTaskSchedulers {
         if (!server.isCallingFromMinecraftThread()) { throw new IllegalStateException("Scheduler startup requires the server thread"); }
         if (session != null) { throw new IllegalStateException("A server scheduler is already running"); }
         var settings = SchedulerConfig.settings();
-        session = new Session(server, new TaskScheduler(Thread.currentThread(), settings.workerThreads(), settings.laneCount()));
+        session = new Session(server, settings.workerThreads(), settings.laneCount());
     }
 
     /** Exact server identity prevents an old world's callbacks from accessing a new session. */
@@ -57,6 +59,8 @@ public final class ServerTaskSchedulers {
             long tick = current.nextTick;
             current.nextTick = Math.addExact(tick, 1);
             network.beginTick(tick);
+            current.currentTick = tick;
+            current.tickOpen = true;
             try {
                 // Retained workers must exit before research mutates shared sources. Coalesce waits
                 // rather than accumulating one material advancement for every blocked server tick.
@@ -69,7 +73,7 @@ public final class ServerTaskSchedulers {
                 }
                 current.scheduler.tick(network::refresh);
             }
-            finally { network.endTick(); }
+            finally { current.tickOpen = false; network.endTick(); }
         }
     }
 
@@ -78,11 +82,18 @@ public final class ServerTaskSchedulers {
         private final TaskScheduler scheduler;
         // Advances once per server END event, never once per task or network capture.
         private long nextTick;
+        private long currentTick;
+        private boolean tickOpen;
         private boolean researchQueued;
 
-        private Session(MinecraftServer server, TaskScheduler scheduler) {
+        @SuppressWarnings("resource") // The FML network service owns this borrowed session runtime.
+        private Session(MinecraftServer server, int workers, int lanes) {
             this.server = server;
-            this.scheduler = scheduler;
+            var factory = new NetworkRecipeExecutionFactory(this::candidates,
+                () -> ServerNetworkRuntime.forServer(server).refresh(), () -> currentTick, () -> tickOpen);
+            scheduler = new TaskScheduler(Thread.currentThread(), workers, lanes, factory, Duration.ofSeconds(5));
         }
+
+        private List<TaskScheduler.PlannedCandidate> candidates() { return scheduler.plannedCandidates(); }
     }
 }

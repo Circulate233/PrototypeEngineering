@@ -120,7 +120,13 @@ public final class ResourceBatch {
         try {
             return fence.access(() -> {
                 if (!authorized(authorization)) { decide(Decision.ROLLBACK); return false; }
+                for (var transaction : transactions) {
+                    if (!transaction.prepareCommit()) { decide(Decision.ROLLBACK); return false; }
+                }
                 for (var transaction : transactions) { transaction.commit(); }
+                for (var transaction : transactions) {
+                    if (!transaction.validateCommit()) { decide(Decision.ROLLBACK); return false; }
+                }
                 if (!authorized(authorization)) { decide(Decision.ROLLBACK); return false; }
                 decide(Decision.COMPLETE);
                 return settleBusiness(Decision.COMPLETE);

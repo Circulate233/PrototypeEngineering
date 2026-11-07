@@ -6,13 +6,18 @@
 
 ## 当前状态
 
-- 服务器研究阶段已完成：ResearchWorld 管理共享玩家来源、队伍研究/黑名单/队列/手动会话；ServerResearch 在真实 FML 生命周期、既有 tick boundary、主世界保存/卸载、玩家登录退出中执行，并提供 Java 手动开始/接管。独占压缩原子存档；旧 pending 先重试，关闭失败不丢会话；FTB 不可用暂停，研究失效先处理扣料与完成义务再 prune。来源、接口、修复和边界见[服务器研究](server-research.md)。
-- 本阶段新增 50 项行为测试，完整构建通过 741 项测试、104 suites，零失败/错误/跳过。本机 IDEA MCP 对 16 个本阶段 Java 与 Tags 共 17 文件逐个 errorsOnly:false，零错误/警告/弱警告；build_project 成功。证据 build/reports/idea/server-research-final.json。真实文件 IO 有测试，未启动游戏；原 23 份用户修改保留。
-- 仍待完成：PN 普通配方研究/计算消费者、研究站完整材料和计算提交、领取 packet/UI 与存档事务绑定、下载，以及正式 planned 接线、结构投影/复杂渲染/每池 JEI 和最终 CT。用户确认算力等占用随配方并行缩放，并发按整机只占 1，不能与 Java 工作线程混淆。
+- PN 普通配方消费者已接通：NetworkRecipeExtensions 在真实注册事件中有序发布；NetworkRecipeWork 合并机器默认与逐配方研究/数值需求，真实 START/TICK/END 检查选中物理数据中心、按并行量占用 numeric，并按整机 UUID 共享一份 THREAD。扫描不占额度；授权失效与物料/FE/业务同阶段补偿，历史完成 tick 不重扣或退款。
+- 物理数据中心已有外部 DataCenterStorage 接口、MachineDataCenterStorage 组件及严格 NBT；保留下载/磁盘写入/循环升级规则，修复旧同步能产生互斥内容而无法恢复的问题。服务器下载授权、物品消费及自动云同步仍待接入，不能把存储 API 当完整下载链。
+- 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
+- 本阶段新增 56 项行为测试，完整 Gradle 构建通过 797 项测试、112 suites，零失败/错误/跳过。本机 IDEA MCP 对 50 个本阶段 src Java 与 Tags 共 51 文件逐个 errorsOnly:false，零错误/警告/弱警告，检查后内容一致；build_project 成功。证据 build/reports/idea/network-recipes-final.json。未启动游戏；原 23 份用户修改完整保留。
+- 服务器手动研究链已接通；仍待研究站完整材料和计算提交、真实计算物品供给、领取 packet/UI 与存档事务绑定、下载，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
+
+- 服务器研究阶段已完成：ResearchWorld 管理共享玩家来源、队伍研究/黑名单/队列/手动会话；ServerResearch 在真实 FML 生命周期、既有 tick boundary、主世界保存/卸载、玩家登录退出中执行，并提供 Java 手动开始/接管。独占压缩原子存档；旧 pending 先重试，关闭失败不丢会话；FTB 不可用暂停，研究失效先处理扣料与完成义务再 prune。来源、接口、修复和边界见[服务器研究](server-research.md)。
+- 本阶段新增 50 项行为测试，完整构建通过 741 项测试、104 suites，零失败/错误/跳过。本机 IDEA MCP 对 16 个本阶段 Java 与 Tags 共 17 文件逐个 errorsOnly:false，零错误/警告/弱警告；build_project 成功。证据 build/reports/idea/server-research-final.json。真实文件 IO 有测试，未启动游戏；原 23 份用户修改保留。
 
 - 手动研究执行阶段已完成：ManualResearch绑定准确队列项，ManualMaterials按requirementId/inputIndex保留独立进度、每个未完成项各投1个；公开ManualResearchInventory与真实Minecraft背包实现保存完整before/after及PREPARED/COMMITTED/SETTLEMENT_CONFIRMED。九状态会话/NBT、暂停接管、冻结成员/等级/时间的完成传播和准确队头删除已接到执行链。正常缺料不固定PREPARED库存；世界checkpoint异常先重存准确状态，同进程未消费证明允许补准备，重载缺证据仍不重扣。旧source的41槽范围与同步执行保留，移除PM planned桥接。服务器存档owner、tick/登录退出/成员协调及操作入口仍待接，见[手动研究](manual-research.md)。
 

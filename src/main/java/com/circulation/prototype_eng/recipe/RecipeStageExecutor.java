@@ -49,16 +49,16 @@ public final class RecipeStageExecutor {
         requireProbeBoundary(process);
         Objects.requireNonNull(stage);
         try {
-            ProcessResult result;
-            if (stage == RecipeStage.TICK) {
-                var state = process.state();
-                double speed = process.attributes().value(StandardMachineAttributes.PROCESS_SPEED, 1);
-                var tick = new RecipeProcess.Tick(state.progress(), state.progress() + Math.max(0, speed),
-                    state.successfulTicks(), Math.incrementExact(state.successfulTicks()));
-                result = process.withTickContext(tick, () -> probeAcquisition(process, stage));
-            } else {
-                result = probeAcquisition(process, stage);
-            }
+            var result = process.withProbeContext(() -> {
+                if (stage == RecipeStage.TICK) {
+                    var state = process.state();
+                    double speed = process.attributes().value(StandardMachineAttributes.PROCESS_SPEED, 1);
+                    var tick = new RecipeProcess.Tick(state.progress(), state.progress() + Math.max(0, speed),
+                        state.successfulTicks(), Math.incrementExact(state.successfulTicks()));
+                    return process.withTickContext(tick, () -> probeAcquisition(process, stage));
+                }
+                return probeAcquisition(process, stage);
+            });
             requireProbeBoundary(process);
             return result;
         } catch (RuntimeException | Error failure) {
@@ -161,7 +161,7 @@ public final class RecipeStageExecutor {
             var acquired = new ObjectArrayList<RequirementTransaction>();
             var tokens = new ObjectArrayList<ResourceReservation>();
             try {
-                for (var requirement : process.recipe().orderedRequirements()) {
+                for (var requirement : process.orderedRequirements()) {
                     var transaction = Objects.requireNonNull(requirement.acquire(process, stage), "requirement transaction");
                     if (transaction != RequirementTransaction.SUCCESS) { acquired.add(transaction); }
                     try {
@@ -212,7 +212,7 @@ public final class RecipeStageExecutor {
             if (result != ProcessResult.SUCCESS) { rollbackSynchronously(); return result; }
             executing = true;
             try {
-                boolean accepted = ResourceTransactions.commit(synchronousSources, this::commitBusiness,
+                boolean accepted = ResourceTransactions.commit(synchronousSources, this::prepareBusiness, this::validateBusiness, this::commitBusiness,
                     () -> settleBusiness(Settlement.COMPLETE, null), () -> settleBusiness(Settlement.ROLLBACK, null));
                 return accepted ? result : RecipeText.StorageChanged.blocked();
             } catch (RuntimeException | Error settlementFailure) {
@@ -285,6 +285,17 @@ public final class RecipeStageExecutor {
                 && decision != Settlement.NONE && allTerminal();
         }
 
+        private boolean prepareBusiness() {
+            synchronousStarted = true;
+            for (var observation : business) { if (!observation.prepareCommit()) { return false; } }
+            return true;
+        }
+
+        private boolean validateBusiness() {
+            for (var observation : business) { if (!observation.validateCommit()) { return false; } }
+            return true;
+        }
+
         private void commitBusiness() {
             synchronousStarted = true;
             for (var observation : business) { observation.commit(); }
@@ -340,16 +351,32 @@ public final class RecipeStageExecutor {
 
         private final class BusinessObservation {
             private final RequirementTransaction transaction;
+            private boolean preparationAttempted;
+            private boolean preparationAccepted;
             private boolean committed;
+            private boolean validationAttempted;
             private boolean uncertain;
             private boolean terminal;
 
             private BusinessObservation(RequirementTransaction transaction) { this.transaction = transaction; }
 
+            private boolean prepareCommit() {
+                if (preparationAttempted || committed || terminal) { throw new IllegalStateException("Cannot replay business preparation"); }
+                preparationAttempted = true;
+                preparationAccepted = transaction.prepareCommit();
+                return preparationAccepted;
+            }
+
             private void commit() {
-                if (committed || terminal) { throw new IllegalStateException("Cannot replay business commit"); }
+                if (committed || terminal || !preparationAccepted) { throw new IllegalStateException("Cannot replay or commit unprepared business work"); }
                 committed = true;
                 transaction.commit();
+            }
+
+            private boolean validateCommit() {
+                if (!committed || validationAttempted || terminal) { throw new IllegalStateException("Cannot validate uncommitted or resolving business work"); }
+                validationAttempted = true;
+                return transaction.validateCommit();
             }
 
             private boolean confirmOrRetry() {

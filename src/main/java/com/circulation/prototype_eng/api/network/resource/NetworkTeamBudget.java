@@ -68,6 +68,28 @@ public final class NetworkTeamBudget implements AutoCloseable {
 
     public LeaseStatus requestLease(UUID machineId) { return requestLease(machineId, NetworkResources.THREAD); }
 
+    /** Non-mutating admission check; a probe must not consume the machine's lease. */
+    public boolean canRequestLease(UUID machineId) {
+        ownerCheck.run();
+        Objects.requireNonNull(machineId);
+        if (!active) { return false; }
+        var machines = leasedMachines.get(NetworkResources.THREAD);
+        return machines != null && machines.contains(machineId) || logicalAvailable.getLong(NetworkResources.THREAD) > 0;
+    }
+
+    /** Checks the entire numeric demand without reserving balances or an operation identity. */
+    public boolean canReserve(Object2LongMap<NetworkResourceType> required) {
+        ownerCheck.run();
+        boolean fits = active;
+        for (var entry : Objects.requireNonNull(required).object2LongEntrySet()) {
+            var type = registry.canonical(entry.getKey());
+            long amount = entry.getLongValue();
+            if (type.logicalConcurrency() || amount <= 0) { throw new IllegalArgumentException("Work demand must contain positive numeric resources"); }
+            fits &= available.getLong(type) >= amount;
+        }
+        return fits;
+    }
+
     /** Grants one non-releasable lease per machine and logical dimension, in owner call order. */
     public LeaseStatus requestLease(UUID machineId, NetworkResourceType logicalType) {
         ownerCheck.run();

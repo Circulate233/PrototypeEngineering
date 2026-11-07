@@ -1,12 +1,12 @@
 # 调度器持有的 planned 执行与清理
 
-本阶段让 `TaskScheduler` 实际持有并驱动完整的 `PlannedExecution`，复用原 ordinary workers 和固定 source lanes。内部 factory 路径已通过真实 FE、source token 和 `PlannedRecipeCoordinator` 测试；服务器默认构造尚未安装真实机器 factory，`PLANNED_PARALLEL` 仍拒绝。机器/控制器身份、组件暂停与 PN 预算不会由这一调度契约自动获得。
+本阶段让 `TaskScheduler` 实际持有并驱动完整的 `PlannedExecution`，复用原 ordinary workers 和固定 source lanes。内部 factory 路径已通过真实 FE、source token 和 `PlannedRecipeCoordinator` 测试；服务器已安装 NetworkRecipeExecutionFactory，将带 NetworkRecipeWork 的 CONCURRENT 机器自动接入真实身份、组件游标、PN 预算及来源结算，见[配方消费者](network-recipes.md)。`PLANNED_PARALLEL` 与独立 pure prepare 仍未开放，独立三参 scheduler 不自动安装此工厂。
 
 ## 契约与捕获
 
 `api.scheduler.planned.PlannedExecution` 按职责公开四个 owner 方法：`advance(cleanupDeadline)`、`awaitExit()`、`finished()` 和 `cancel(reason)`。scheduler 从首次调用前一直保留同一实例，false 或异常均不能清掉它。`finished` 是纯事实查询，覆盖该执行实际取得的全部回调、资源和所有权；`awaitExit` 只证明所有已接受异步动作实际退出，不能替代事务确认。
 
-内部 `TaskScheduler.PlannedFactory` 接收借用的 `PlannedTaskExecutor` 与一次 forward deadline。factory 只创建尚未执行的 cycle，不获取部分所有权、不运行组件回调或异步动作；返回后 scheduler 先发布 pending 引用，随后首次 advance 才逐一获取并保留具体句柄。factory 保持包内，不公开任意 hosts 提交入口，也不让 API 依赖具体线程池实现。构造器使用 PM 原 5000 ms 默认预算；目前真实配置接线仍待机器 factory 安装。
+内部 `TaskScheduler.PlannedFactory` 接收借用的 `PlannedTaskExecutor` 与一次 forward deadline。factory 只创建尚未执行的 cycle，不获取部分所有权、不运行组件回调或异步动作；返回后 scheduler 先发布 pending 引用，随后首次 advance 才逐一获取并保留具体句柄。factory 保持包内，不公开任意 hosts 提交入口，也不让 API 依赖具体线程池实现。构造器使用 PM 原 5000 ms 默认预算；服务器网络机器工厂已使用这一默认预算，尚无额外配置入口。
 
 `PlannedRecipeCoordinator` 直接实现这一执行契约，`awaitSourceExit` 统一命名为 `awaitExit`。它只拥有一次真实配方工位组，不代表整台机器。正式机器 cycle 必须另外持有准确 `MachineController`/scheduler Registration/`MachineInstance`、所有生命周期句柄、组件 cursor 及各次配方处理波次；一次 recipe coordinator 完成后仍可能有后置 normal、另一波处理器或机器 post。只有这些全部完成或失败终止、清理确认并释放后，机器 cycle 才能 finished。
 

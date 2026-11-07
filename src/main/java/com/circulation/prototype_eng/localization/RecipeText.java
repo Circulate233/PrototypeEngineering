@@ -16,6 +16,9 @@ public enum RecipeText implements LocalizationEnum {
     NoEnergyOutput,
     EnergyMissing,
     EnergyOutputFull,
+    NetworkUnavailable,
+    NetworkResearchMissing,
+    NetworkCapacityMissing,
     Cancelled,
     ControllerBroken;
 

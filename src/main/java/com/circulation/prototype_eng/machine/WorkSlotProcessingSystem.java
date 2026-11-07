@@ -15,6 +15,8 @@ public final class WorkSlotProcessingSystem implements MachineSystem<MachineWork
     @Override public void onTick(MachineInstance machine, MachineWorkSlots component) {
         if (component.owner() != machine) { throw new IllegalArgumentException("Work slots installed on a foreign machine"); }
         if (!machine.canProcessRecipes()) { return; }
+        var lifecycle = machine.lifecycle();
+        if (lifecycle != null && lifecycle.deferRecipeWork(component)) { return; }
         component.tickProcesses();
     }
 }

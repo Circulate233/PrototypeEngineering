@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
@@ -34,11 +35,18 @@ public final class NetworkPlan {
     public Map<String, Team> teams() { return teams; }
 
     public record Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId,
-            Object2LongMap<NetworkResourceType> resourcesPerTick) {
+            Object2LongMap<NetworkResourceType> resourcesPerTick, @Nullable DataCenterResearchSnapshot dataCenterResearch) {
         public Team {
             Objects.requireNonNull(centerId);
             if (centerLevel < 1) { throw new IllegalArgumentException("Invalid selected center level"); }
+            if (dataCenterResearch != null && !dataCenterResearch.dataCenterId().equals(dataCenterId)) {
+                throw new IllegalArgumentException("Selected data-center contents have another identity");
+            }
             resourcesPerTick = NetworkResourceModifier.copyResources(resourcesPerTick);
+        }
+
+        public Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId, Object2LongMap<NetworkResourceType> resourcesPerTick) {
+            this(centerId, centerLevel, dataCenterId, resourcesPerTick, null);
         }
     }
 }

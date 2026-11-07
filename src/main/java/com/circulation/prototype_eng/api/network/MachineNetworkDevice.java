@@ -21,7 +21,7 @@ import java.util.function.Function;
 public final class MachineNetworkDevice implements MachineLifecycleListener {
     private final MachineInstance owner;
     private final ComponentType<MachineInstance, MachineOwnership> ownershipType;
-    private final BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkDeviceSnapshot> source;
+    private final BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source;
     private final Function<MachineLifecycleHost, NetworkRuntime> runtime;
     @Nullable private ComponentType<MachineInstance, ?> boundType;
     @Nullable private NetworkRuntime attachedRuntime;
@@ -43,11 +43,32 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
         Objects.requireNonNull(ownership);
         Objects.requireNonNull(source);
         Objects.requireNonNull(runtime);
+        return capturedComponent(id, ownership, (owner, identity) -> {
+            var snapshot = Objects.requireNonNull(source.apply(owner, identity), "Network role snapshot");
+            // Convenience sources are observational: re-sampling checks resources and contents as well as formation.
+            return new NetworkRuntime.Capture(snapshot, () -> snapshot.equals(source.apply(owner, identity)));
+        }, runtime);
+    }
+
+    /** Versioned external backends can provide their own exact content/configuration proof. */
+    @SuppressWarnings("unused") // Public default-server entry for data-center and custom versioned hosts.
+    public static ComponentType<MachineInstance, MachineNetworkDevice> capturedComponent(ResourceLocation id,
+            BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source) {
+        return capturedComponent(id, MachineOwnership.TYPE, source, host -> ServerNetworkRuntime.forServer(host.server()));
+    }
+
+    public static ComponentType<MachineInstance, MachineNetworkDevice> capturedComponent(ResourceLocation id,
+            ComponentType<MachineInstance, MachineOwnership> ownership,
+            BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source,
+            Function<MachineLifecycleHost, NetworkRuntime> runtime) {
+        Objects.requireNonNull(ownership);
+        Objects.requireNonNull(source);
+        Objects.requireNonNull(runtime);
         return new ComponentType<>(id, owner -> new MachineNetworkDevice(owner, ownership, source, runtime), List.of(), List.of(ownership));
     }
 
     private MachineNetworkDevice(MachineInstance owner, ComponentType<MachineInstance, MachineOwnership> ownership,
-            BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkDeviceSnapshot> source,
+            BiFunction<MachineInstance, MachineIdentityRegistry.Registration, NetworkRuntime.Capture> source,
             Function<MachineLifecycleHost, NetworkRuntime> runtime) {
         this.owner = owner;
         this.ownershipType = ownership;
@@ -96,10 +117,12 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
         var configuration = structureHost == null ? null : structureHost.structureConfiguration();
         if (structureHost != null && configuration == null) { return null; }
         boolean formed = lifecycle.formed();
-        var snapshot = Objects.requireNonNull(source.apply(owner, Objects.requireNonNull(identity)), "Network role snapshot");
+        var captured = Objects.requireNonNull(source.apply(owner, Objects.requireNonNull(identity)), "Network role capture");
+        var snapshot = captured.snapshot();
         if (snapshot.formed() != formed) { throw new IllegalArgumentException("Network source changed physical formation state"); }
         return new NetworkRuntime.Capture(snapshot, () -> lifecycle.schedulingAllowed() && lifecycle.formed() == formed
-            && owner.components().get(boundType) == this && (structureHost == null || structureHost.structureConfiguration() == configuration));
+            && owner.components().get(boundType) == this && (structureHost == null || structureHost.structureConfiguration() == configuration)
+            && captured.current().getAsBoolean());
     }
 
     @Override public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {

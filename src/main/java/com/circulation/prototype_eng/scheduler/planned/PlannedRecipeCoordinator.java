@@ -125,6 +125,12 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
 
     @Override public boolean finished() { return group.finished(); }
 
+    /** Accepted source actions require physical exit before another owner settlement attempt. */
+    public boolean hasActiveSources() {
+        requireOwner();
+        return settlement != null && settlement.barrier != null;
+    }
+
     @Override public void cancel(Reason reason) {
         requireOwner();
         cancellation.cancel(Objects.requireNonNull(reason));
