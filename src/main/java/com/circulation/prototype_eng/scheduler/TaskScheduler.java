@@ -2,6 +2,10 @@ package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -10,7 +14,9 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import org.jetbrains.annotations.Nullable;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
@@ -32,6 +38,8 @@ public final class TaskScheduler implements AutoCloseable {
     private final Thread owner;
     private final int workerThreads;
     private final int laneCount;
+    @Nullable private final PlannedFactory plannedFactory;
+    private final long plannedTimeoutNanos;
     private final Reference2ObjectLinkedOpenHashMap<ScheduledTask, Registration> registered = new Reference2ObjectLinkedOpenHashMap<>();
     private final Object submissionLock = new Object();
     private ObjectArrayList<Submission> pending = new ObjectArrayList<>();
@@ -40,21 +48,44 @@ public final class TaskScheduler implements AutoCloseable {
     private boolean acceptingBoundary = true;
     // A failed close may leave owned executors alive even though ordinary admission is revoked.
     private boolean boundaryReady = true;
+    private boolean closingRequested;
     private boolean faulted;
     private State state = State.IDLE;
     private ExecutorService workers;
     private ExecutorService[] lanes;
+    @Nullable private PlannedTaskExecutor plannedTasks;
+    @Nullable private PlannedExecution pendingExecution;
+    private boolean pendingExitProven = true;
+    @Nullable private Reason pendingStopReason;
+    private boolean pendingStopConfirmed;
 
     public TaskScheduler(Thread owner, int workerThreads, int laneCount) {
+        this(owner, workerThreads, laneCount, null, Duration.ofSeconds(5));
+    }
+
+    /** Internal owner capture; formal machine discovery and its authority remain a separate phase. */
+    TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
+                  Duration plannedTimeout) {
         this.owner = Objects.requireNonNull(owner);
         if (workerThreads < 1 || laneCount < 1) { throw new IllegalArgumentException("Worker and lane counts must be positive"); }
         this.workerThreads = workerThreads;
         this.laneCount = laneCount;
+        this.plannedFactory = plannedFactory;
+        Objects.requireNonNull(plannedTimeout);
+        if (plannedTimeout.isNegative() || plannedTimeout.isZero()) {
+            throw new IllegalArgumentException("Planned cleanup budget must be positive");
+        }
+        plannedTimeoutNanos = plannedTimeout.toNanos();
     }
 
     /** Injected executors transfer ownership to this scheduler and must not cancel accepted work. */
     TaskScheduler(Thread owner, int workerThreads, int laneCount, ExecutorService workers, ExecutorService[] lanes) {
-        this(owner, workerThreads, laneCount);
+        this(owner, workerThreads, laneCount, workers, lanes, null, Duration.ofSeconds(5));
+    }
+
+    TaskScheduler(Thread owner, int workerThreads, int laneCount, ExecutorService workers, ExecutorService[] lanes,
+                  @Nullable PlannedFactory plannedFactory, Duration plannedTimeout) {
+        this(owner, workerThreads, laneCount, plannedFactory, plannedTimeout);
         Objects.requireNonNull(workers);
         ExecutorService[] copied = Objects.requireNonNull(lanes).clone();
         if (copied.length != laneCount) { throw new IllegalArgumentException("Injected lane count differs from configuration"); }
@@ -107,7 +138,7 @@ public final class TaskScheduler implements AutoCloseable {
     public void runAtBoundary(Runnable action) {
         Objects.requireNonNull(action);
         boolean ownerRequest = Thread.currentThread() == owner;
-        if (ownerRequest && state != State.IDLE && state != State.MAIN && state != State.BOUNDARY) {
+        if (ownerRequest && state != State.IDLE && state != State.MAIN && state != State.PLANNED && state != State.BOUNDARY) {
             throw new IllegalStateException("Scheduler boundary cannot be requested from this owner phase");
         }
         synchronized (submissionLock) {
@@ -141,68 +172,20 @@ public final class TaskScheduler implements AutoCloseable {
         enterTick();
         var failures = new Failures();
         var futures = new ObjectArrayList<FutureTask<Void>>();
+        boolean capturePlanned = false;
+        boolean resumingClose = closingRequested && pendingExecution != null;
         try {
+            failures.observeInterrupt();
+            if (failures.present()) { fault(); }
+            if (pendingExecution != null) { drivePending(failures, false); }
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
             drainBoundary(failures, false);
             failures.throwIfPresent();
-            requireHealthy();
-            ObjectArrayList<Submission> batch;
-            synchronized (submissionLock) {
-                batch = pending;
-                pending = new ObjectArrayList<>();
-            }
-            var main = new ObjectArrayList<Registration>();
-            for (Registration registration : registered.values()) {
-                if (requireOrdinary(registration.task.executionMode()) == ExecutionMode.MAIN_THREAD) { main.add(registration); }
-            }
-            var executed = new ReferenceOpenHashSet<ScheduledTask>();
-            state = State.MAIN;
-            for (Submission submission : batch) {
-                if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, prepare, failures); }
-            }
-            for (Registration registration : main) {
-                ScheduledTask task = registration.task;
-                if (registered.get(task) != registration) { continue; }
-                boolean active;
-                ExecutionMode mode;
-                state = State.CAPTURING_MAIN;
-                try {
-                    mode = requireOrdinary(task.executionMode());
-                    active = task.active();
-                } finally { state = State.MAIN; }
-                if (mode == ExecutionMode.MAIN_THREAD && active) {
-                    executed.add(task);
-                    runMain(task::onSchedule, prepare, failures);
-                }
-            }
-            state = State.CAPTURING_CONCURRENT;
-            prepare.run();
-            var concurrent = new ObjectArrayList<Snapshot>();
-            for (Registration registration : registered.values()) {
-                ScheduledTask task = registration.task;
-                ExecutionMode mode = requireOrdinary(task.executionMode());
-                if (mode != ExecutionMode.CONCURRENT || executed.contains(task) || !task.active()) { continue; }
-                var keys = new ObjectOpenHashSet<>();
-                for (Object key : Objects.requireNonNull(task.affinityKeys())) { keys.add(Objects.requireNonNull(key)); }
-                concurrent.add(new Snapshot(task, keys));
-            }
-            ObjectArrayList<Group> groups = group(concurrent);
-            int customConcurrent = 0;
-            for (Submission submission : batch) {
-                if (submission.mode == ExecutionMode.CONCURRENT) { customConcurrent++; }
-            }
-            futures.ensureCapacity(Math.addExact(customConcurrent, groups.size()));
-            state = State.DISPATCHING;
-            if (customConcurrent != 0 || !groups.isEmpty()) {
-                initializeExecutors();
-                for (Submission submission : batch) {
-                    if (submission.mode == ExecutionMode.CONCURRENT) { dispatch(workers, submission.task, futures); }
-                }
-                for (Group group : groups) {
-                    ExecutorService executor = group.lane < 0 ? workers : lanes[group.lane];
-                    dispatch(executor, () -> runGroup(group), futures);
-                }
+            if (pendingExecution == null && !resumingClose) {
+                requireHealthy();
+                executeOrdinary(prepare, futures, failures);
+                capturePlanned = true;
             }
         } catch (Throwable failure) {
             failures.add(failure);
@@ -227,11 +210,78 @@ public final class TaskScheduler implements AutoCloseable {
             }
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
+            if (capturePlanned && !failures.present() && plannedFactory != null) {
+                try { capturePlanned(); }
+                catch (Throwable failure) { failures.add(failure); fault(); }
+                if (pendingExecution != null) { drivePending(failures, true); }
+            }
+            failures.observeInterrupt();
+            if (failures.present()) { fault(); }
             drainBoundary(failures, false);
             state = State.IDLE;
             failures.restoreInterrupt();
         }
         failures.throwIfPresent();
+    }
+
+    private void executeOrdinary(Runnable prepare, ObjectArrayList<FutureTask<Void>> futures, Failures failures) {
+        ObjectArrayList<Submission> batch;
+        synchronized (submissionLock) {
+            batch = pending;
+            pending = new ObjectArrayList<>();
+        }
+        var main = new ObjectArrayList<Registration>();
+        for (Registration registration : registered.values()) {
+            if (requireOrdinary(registration.task.executionMode()) == ExecutionMode.MAIN_THREAD) { main.add(registration); }
+        }
+        var executed = new ReferenceOpenHashSet<ScheduledTask>();
+        state = State.MAIN;
+        for (Submission submission : batch) {
+            if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, prepare, failures); }
+        }
+        for (Registration registration : main) {
+            ScheduledTask task = registration.task;
+            if (registered.get(task) != registration) { continue; }
+            boolean active;
+            ExecutionMode mode;
+            state = State.CAPTURING_MAIN;
+            try {
+                mode = requireOrdinary(task.executionMode());
+                active = task.active();
+            } finally { state = State.MAIN; }
+            if (mode == ExecutionMode.MAIN_THREAD && active) {
+                executed.add(task);
+                runMain(task::onSchedule, prepare, failures);
+            }
+        }
+        state = State.CAPTURING_CONCURRENT;
+        prepare.run();
+        var concurrent = new ObjectArrayList<Snapshot>();
+        for (Registration registration : registered.values()) {
+            ScheduledTask task = registration.task;
+            ExecutionMode mode = requireOrdinary(task.executionMode());
+            if (mode != ExecutionMode.CONCURRENT || executed.contains(task) || !task.active()) { continue; }
+            var keys = new ObjectOpenHashSet<>();
+            for (Object key : Objects.requireNonNull(task.affinityKeys())) { keys.add(Objects.requireNonNull(key)); }
+            concurrent.add(new Snapshot(task, keys));
+        }
+        ObjectArrayList<Group> groups = group(concurrent);
+        int customConcurrent = 0;
+        for (Submission submission : batch) {
+            if (submission.mode == ExecutionMode.CONCURRENT) { customConcurrent++; }
+        }
+        futures.ensureCapacity(Math.addExact(customConcurrent, groups.size()));
+        state = State.DISPATCHING;
+        if (customConcurrent != 0 || !groups.isEmpty()) {
+            initializeExecutors();
+            for (Submission submission : batch) {
+                if (submission.mode == ExecutionMode.CONCURRENT) { dispatch(workers, submission.task, futures); }
+            }
+            for (Group group : groups) {
+                ExecutorService executor = group.lane < 0 ? workers : lanes[group.lane];
+                dispatch(executor, () -> runGroup(group), futures);
+            }
+        }
     }
 
     private void runMain(Runnable action, Runnable prepare, Failures failures) {
@@ -245,6 +295,100 @@ public final class TaskScheduler implements AutoCloseable {
         finally { drainBoundary(failures, false); }
         failures.throwIfPresent();
     }
+
+    private void capturePlanned() {
+        state = State.CAPTURING_PLANNED;
+        initializeExecutors();
+        if (plannedTasks == null) { plannedTasks = new PlannedTaskExecutor(workers, lanes); }
+        var captured = Objects.requireNonNull(plannedFactory).capture(plannedTasks, cleanupDeadline());
+        if (captured != null) {
+            // Publication precedes the first callback or asynchronous action in this execution.
+            pendingExecution = captured;
+            boundaryReady = false;
+            pendingExitProven = true;
+            pendingStopReason = null;
+            pendingStopConfirmed = false;
+        }
+    }
+
+    /** One recovery pass; an initial forward attempt additionally settles its cancelled remainder. */
+    private void drivePending(Failures failures, boolean initial) {
+        State previous = state;
+        state = State.PLANNED;
+        try {
+            if (!initial && !pendingStopConfirmed) {
+                cancelPending(failures, Reason.EPOCH_CHANGED);
+                if (!pendingStopConfirmed) { awaitPending(failures); return; }
+            }
+            if (!pendingExitProven) {
+                awaitPending(failures);
+                if (!pendingExitProven) { return; }
+            }
+            advancePending(failures);
+            boolean finished = pendingFinished(failures);
+            if (!finished) { cancelPending(failures, failures.present() ? Reason.WORKER_FAILURE : Reason.EPOCH_CHANGED); }
+            awaitPending(failures);
+            if (initial && pendingExitProven && pendingStopConfirmed && !finished) {
+                // The forward budget never renews. This pass only confirms or compensates after exit.
+                advancePending(failures);
+                finished = pendingFinished(failures);
+                awaitPending(failures);
+            }
+            if (pendingExitProven && finished) {
+                pendingExecution = null;
+                boundaryReady = !closingRequested;
+            }
+        } finally { state = previous; }
+    }
+
+    private void advancePending(Failures failures) {
+        pendingExitProven = false;
+        try { Objects.requireNonNull(pendingExecution).advance(cleanupDeadline()); }
+        catch (Throwable failure) { failures.add(failure); fault(); }
+        failures.observeInterrupt();
+        if (failures.present()) { fault(); }
+    }
+
+    private boolean pendingFinished(Failures failures) {
+        State previous = state;
+        state = State.CAPTURING_PLANNED;
+        try { return Objects.requireNonNull(pendingExecution).finished(); }
+        catch (Throwable failure) { failures.add(failure); fault(); return false; }
+        finally { state = previous; }
+    }
+
+    private void cancelPending(Failures failures, Reason reason) {
+        if (pendingStopConfirmed) { return; }
+        if (pendingStopReason == null) { pendingStopReason = reason; }
+        State previous = state;
+        state = State.PLANNED;
+        try {
+            Objects.requireNonNull(pendingExecution).cancel(pendingStopReason);
+            pendingStopConfirmed = true;
+        }
+        catch (Throwable failure) { failures.add(failure); fault(); }
+        finally { state = previous; }
+    }
+
+    private void awaitPending(Failures failures) {
+        try {
+            Objects.requireNonNull(pendingExecution).awaitExit();
+            pendingExitProven = true;
+        } catch (Throwable failure) {
+            failures.add(failure);
+            fault();
+            // Interrupted implementations report only after exit; retry after clearing the flag
+            // to obtain a normal return as the explicit proof, retaining the original failure.
+            boolean interrupted = Thread.currentThread().isInterrupted();
+            failures.observeInterrupt();
+            if (interrupted) {
+                try { Objects.requireNonNull(pendingExecution).awaitExit(); pendingExitProven = true; }
+                catch (Throwable retryFailure) { failures.add(retryFailure); failures.observeInterrupt(); }
+            }
+        }
+    }
+
+    private PlannedDeadline cleanupDeadline() { return new PlannedDeadline(System.nanoTime(), plannedTimeoutNanos); }
 
     private void drainBoundary(Failures failures, boolean closeAdmission) {
         if (!boundaryReady) { return; }
@@ -338,13 +482,23 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
-    /** Closes ordinary admission, proves executor termination, then drains and closes owner actions. */
+    /** Requires completed cleanup; use tryClose when a retained execution may still be pending. */
     @Override
     public void close() {
+        if (!tryClose()) { throw new IllegalStateException("Scheduler retains pending planned cleanup; retry tryClose after confirmation"); }
+    }
+
+    /**
+     * Closes admission and attempts retained cleanup before shutting down its original lanes. False
+     * retains the execution, executors and owner actions for a later attempt, without a runtime fault.
+     * Actual failures still throw after the available cleanup and never discard pending ownership.
+     */
+    public boolean tryClose() {
         requireOwner();
-        if (state == State.CLOSED) { return; }
+        if (state == State.CLOSED) { return true; }
         if (state != State.IDLE) { throw new IllegalStateException("Scheduler boundary is already active"); }
         state = State.CLOSING;
+        closingRequested = true;
         synchronized (submissionLock) {
             accepting = false;
             pending.clear();
@@ -353,9 +507,17 @@ public final class TaskScheduler implements AutoCloseable {
         boundaryReady = false;
         try {
             failures.observeInterrupt();
-            boundaryReady = stopExecutors(failures);
+            if (pendingExecution != null) {
+                cancelPending(failures, Reason.SERVER_STOP);
+                drivePending(failures, false);
+            }
+            if (pendingExecution == null) {
+                boundaryReady = false;
+                boundaryReady = stopExecutors(failures);
+            }
         } catch (Throwable failure) { failures.add(failure); }
         finally {
+            failures.observeInterrupt();
             if (failures.present()) { fault(); }
             drainBoundary(failures, true);
             state = boundaryReady ? State.CLOSED : State.IDLE;
@@ -363,6 +525,7 @@ public final class TaskScheduler implements AutoCloseable {
             failures.restoreInterrupt();
         }
         failures.throwIfPresent();
+        return state == State.CLOSED;
     }
 
     private boolean stopExecutors(Failures failures) {
@@ -431,7 +594,16 @@ public final class TaskScheduler implements AutoCloseable {
         return mode;
     }
 
-    private enum State { IDLE, REGISTERING, CAPTURING_MAIN, MAIN, CAPTURING_CONCURRENT, DISPATCHING, JOINING, BOUNDARY, CLOSING, CLOSED }
+    /**
+     * Internal machine-cycle construction. Return without callbacks, worker dispatch or partial
+     * ownership acquisition; all such work belongs in advance after scheduler publication.
+     */
+    @FunctionalInterface
+    interface PlannedFactory {
+        @Nullable PlannedExecution capture(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline);
+    }
+
+    private enum State { IDLE, REGISTERING, CAPTURING_MAIN, MAIN, CAPTURING_CONCURRENT, DISPATCHING, JOINING, CAPTURING_PLANNED, PLANNED, BOUNDARY, CLOSING, CLOSED }
     private record Registration(ScheduledTask task) {}
     private record Submission(Runnable task, ExecutionMode mode) {}
     private record Snapshot(ScheduledTask task, Set<Object> keys) {}

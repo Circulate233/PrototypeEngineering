@@ -343,7 +343,7 @@ class PlannedRecipeCoordinatorTest {
                 assertThrows(IllegalStateException.class, current::snapshot);
                 assertEquals(List.of("pre:work", "tick:work"), log);
                 release.countDown();
-                coordinator.awaitSourceExit();
+                coordinator.awaitExit();
                 assertTrue(coordinator.advance(deadline()));
                 assertEquals(Reason.MACHINE_UNLOAD, coordinator.stopReason());
                 assertEquals(1, applies.get());

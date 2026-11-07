@@ -26,7 +26,7 @@ TickGroup 使用共享 callbackProcess 作用域。同组任一机器的 pre、a
 
 正常取消、授权失效、预留冲突和 deadline 到期使用明确 reason。原 forward deadline 不随恢复调用刷新；新的 cleanupDeadline 只允许查询/补偿/终态确认，不恢复前进资格。UNKNOWN 不重放 commit，不猜测完成；`advance` 返回 false 时调用方必须保留同一个 coordinator、宿主、源及句柄。实际故障抛出后也必须保留这个清理对象，恢复确认不会恢复进程健康。
 
-执行器在任何任务可进入前调用 beforeDispatch，使协调器先保存准确 Batch。派发/时钟等直接异常仍冻结完整结果，未开始项永久惰性，RUNNING 保留实际退出义务。`awaitSourceExit()` 只证明用户动作不再可能执行；它不代替 ResourceBatch query/complete/rollback 或 post。退休必须随后通过 cleanup advance 完成这些义务。
+执行器在任何任务可进入前调用 beforeDispatch，使协调器先保存准确 Batch。派发/时钟等直接异常仍冻结完整结果，未开始项永久惰性，RUNNING 保留实际退出义务。`awaitExit()` 只证明用户动作不再可能执行；它不代替 ResourceBatch query/complete/rollback 或 post。退休必须随后通过 cleanup advance 完成这些义务。
 
 source 结果屏障的 Stopped、Future 完成/取消、线程 interrupt 都不是提交或退出证明。仍运行时不补偿它正在操作的资源。owner 被中断后的必要 source 清理会临时清除并最终恢复中断标记，不借此继续配方前进。
 

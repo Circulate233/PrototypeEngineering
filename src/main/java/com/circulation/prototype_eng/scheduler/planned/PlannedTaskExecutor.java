@@ -41,9 +41,19 @@ public final class PlannedTaskExecutor {
     }
 
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline) {
+        return runPrepare(jobs, deadline, _ -> {});
+    }
+
+    /**
+     * Delivers the exact prepare batch before accepting or executing any action, as for source lanes.
+     * Retain it even after a direct dispatch fault so actual exit can be joined before owner cleanup.
+     * The callback must not await its undispatched batch.
+     */
+    public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline,
+                                 Consumer<Batch<T>> beforeDispatch) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
         for (var job : jobs) { dispatches.add(new Dispatch<>(workers, job)); }
-        return run(dispatches, deadline, _ -> {});
+        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch));
     }
 
     /** Commit, query and compensation for the same source must all use the same affinity. */

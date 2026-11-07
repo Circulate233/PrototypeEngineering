@@ -29,6 +29,86 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlannedTaskExecutorFailureTest {
     @Test
+    void prepareCoordinatorReceivesItsBatchBeforeAnInlineWorkerExecutes() {
+        var retained = new ObjectArrayList<Batch<String>>();
+        var events = new ObjectArrayList<String>();
+        try (var workers = inlineLane(); var lane = Executors.newSingleThreadExecutor()) {
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> 0);
+            var batch = executor.runPrepare(List.of(new Job<>(null, () -> {
+                assertEquals(1, retained.size());
+                events.add("prepared");
+                return "ready";
+            })), deadline(), exact -> {
+                retained.add(exact);
+                events.add("captured");
+            });
+            assertSame(retained.getFirst(), batch);
+            assertEquals(List.of("captured", "prepared"), events);
+            assertEquals(List.of(new Success<>("ready")), batch.results());
+            batch.awaitQuiescence();
+        }
+    }
+
+    @Test
+    void secondPrepareDispatchFaultRetainsExactExitHandleAndEarlierPublishedOutcomes() throws Exception {
+        for (boolean firstFinished : new boolean[]{false, true}) {
+            var owner = Thread.currentThread();
+            var entered = new CountDownLatch(1);
+            var exited = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            var interrupted = new CountDownLatch(1);
+            var retained = new ObjectArrayList<Batch<String>>();
+            var primary = new IllegalStateException("second prepare acceptance clock failed");
+            int[] ownerReads = {0};
+            int[] actions = {0, 0};
+            var workers = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
+                Thread.ofPlatform().daemon().factory()) {
+                @Override public void execute(@NotNull Runnable action) {
+                    super.execute(action);
+                    await(firstFinished ? exited : entered);
+                }
+                @Override protected void afterExecute(Runnable action, Throwable failure) { exited.countDown(); }
+            };
+            try (var lane = Executors.newSingleThreadExecutor()) {
+                var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> {
+                    if (Thread.currentThread() == owner && ++ownerReads[0] == 2) { throw primary; }
+                    return 0;
+                });
+                var jobs = List.of(new Job<>(null, () -> {
+                    assertEquals(1, retained.size(), "Prepare batch delivery must precede dispatch");
+                    actions[0]++;
+                    entered.countDown();
+                    if (!firstFinished) { awaitIgnoringInterrupt(release, interrupted); }
+                    return "prepared";
+                }), new Job<>(null, () -> { actions[1]++; return "forbidden"; }));
+                try {
+                    assertSame(primary, assertThrows(IllegalStateException.class,
+                        () -> executor.runPrepare(jobs, deadline(), retained::add)));
+                    var batch = retained.getFirst();
+                    var snapshots = batch.results();
+                    assertEquals(firstFinished ? List.of(new Success<>("prepared"), new Stopped<>(Reason.WORKER_FAILURE, false))
+                        : List.of(new Stopped<>(Reason.WORKER_FAILURE, true), new Stopped<>(Reason.WORKER_FAILURE, false)), snapshots);
+                    if (!firstFinished) {
+                        await(interrupted);
+                        assertFalse(batch.quiescent(), "A stopped prepare result must not certify actual action exit");
+                        assertEquals(1, exited.getCount());
+                    }
+                    release.countDown();
+                    batch.awaitQuiescence();
+                    assertTrue(batch.quiescent());
+                    assertEquals(snapshots, batch.results(), "A late prepare return must not replace the frozen stop outcome");
+                    assertArrayEquals(new int[]{1, 0}, actions);
+                    assertFalse(workers.isShutdown(), "The prepare runner borrows its executor");
+                } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+                workers.shutdownNow();
+                assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+            }
+        }
+    }
+
+    @Test
     void coordinatorReceivesTheExactBatchBeforeEvenAnInlineSourceCanExecute() {
         var events = new ObjectArrayList<String>();
         var retained = new ObjectArrayList<Batch<String>>();

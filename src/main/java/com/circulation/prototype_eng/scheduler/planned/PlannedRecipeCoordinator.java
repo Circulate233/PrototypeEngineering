@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
@@ -21,7 +22,7 @@ import java.util.function.LongSupplier;
  * requirement callbacks and business settlement run on the owner; only physical source actions are
  * dispatched. This does not manufacture a pure prepare kernel from mutable legacy callbacks.
  */
-public final class PlannedRecipeCoordinator {
+public final class PlannedRecipeCoordinator implements PlannedExecution {
     private final Thread owner = Thread.currentThread();
     private final PlannedTaskExecutor tasks;
     private final MachineWorkSlots.TickGroup group;
@@ -60,7 +61,7 @@ public final class PlannedRecipeCoordinator {
      * never additional forward work after the original deadline/cancellation. New faults are thrown
      * after the available cleanup work; false is an ordinary pending state, not an exception signal.
      */
-    public boolean advance(PlannedDeadline cleanupDeadline) {
+    @Override public boolean advance(PlannedDeadline cleanupDeadline) {
         requireOwner();
         Objects.requireNonNull(cleanupDeadline);
         if (group.finished()) { return true; }
@@ -122,7 +123,12 @@ public final class PlannedRecipeCoordinator {
         return group.finished();
     }
 
-    public boolean finished() { return group.finished(); }
+    @Override public boolean finished() { return group.finished(); }
+
+    @Override public void cancel(Reason reason) {
+        requireOwner();
+        cancellation.cancel(Objects.requireNonNull(reason));
+    }
     @Nullable public Reason stopReason() { return stopReason; }
     @Nullable public Throwable failure() { return failure; }
 
@@ -130,7 +136,7 @@ public final class PlannedRecipeCoordinator {
      * Retirement waits for actual source action exit, not just timeout results. Ownership remains
      * captured afterwards; call advance with a cleanup budget to confirm resources and run post.
      */
-    public void awaitSourceExit() {
+    @Override public void awaitExit() {
         requireOwner();
         var current = settlement;
         if (current == null || current.barrier == null) { return; }
