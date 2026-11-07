@@ -246,6 +246,17 @@ public final class EnergyBuffer implements EnergyHatch {
         }
 
         @Override
+        public Resolution resolution() {
+            context.requireLock();
+            return switch (state) {
+                case PENDING -> Resolution.RESERVED;
+                case APPLIED -> Resolution.APPLIED;
+                case COMMITTED -> Resolution.COMPLETED;
+                case ROLLED_BACK -> Resolution.ROLLED_BACK;
+            };
+        }
+
+        @Override
         public boolean canApply() {
             context.requireLock();
             requireState(State.PENDING);

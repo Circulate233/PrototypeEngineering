@@ -7,6 +7,7 @@
 ## 当前状态
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
+- 跨lane资源批次基础已完成：StorageFence全域try-claim、source单域/owner全域短锁scope和ordinary访问隔离；ResourceBatch沿准确context稳定source分组，全部apply实际退出后owner提交，授权前后重验，整批决定后才complete，失败先业务再逆序source补偿。ResourceReservation.resolution为可选准确证明，内置资源/FE提供真实状态；UNKNOWN不盲重试，成功token不重放，终态全部确认才release。通知在全域锁下冻结并由owner发布，修正reader抢先drain和非法scope污染pending的问题。正式coordinator/真实阶段/业务query仍未接入；invalidate与revision清理额度限制见[资源批次](deferred-resource-batches.md)。
 - planned 执行屏障基础已完成：PlannedCancellationToken 保留首 reason、准确独立注册与锁外全部通知；PlannedDeadline 支持 nanoTime 负值/绕回。内部 PlannedTaskExecutor 借用 worker/source lanes，保留 PM 稳定 source 映射和有序结果；接受、实际入口、结果发布都重查共享 deadline，停止后 queued 永久惰性、running 结果不确定且迟到返回不能覆盖。Batch 提供独立实际退出证明，中断等待不提前返还所有权。正式 coordinator/source 结算/真实配方尚未接线，PLANNED_PARALLEL 仍拒绝；旧 planned 配方适配缺少真实进程，后续须复用既有阶段并解决跨 operation 延迟 complete，详见[执行屏障](planned-execution.md)与[PM/PN 审计](planned-migration-audit.md)。
 - 每 tick 计算账本已接入：NetworkRuntime.begin/end 包住真实 server END 调度，capture epoch 不触发补充；队伍首份成功容量、余额、lease和操作键保留至tick结束。同机器每logical维度一份lease，中心免标准THREAD，保持实际请求顺序。numeric研究供给与普通余额独立；完整向量预检后addTo，过期receipt拒提交但可原代幂等补偿。WorkPermit绑定准确Publication/identity revision/Registration，owner操作重验本批全部Capture；组件入口校验绑定，worker仅读取发布状态。账本仅保存去重键，避免持有旧receipt的发布引用。普通配方/研究/planned自动消费仍待接，不等于共同gate已消费额度；重验性能边界见[预算说明](network-budgets.md)。
 - 计算资源注册已接入：NetworkResourceRegistry 保留标准 thread/compute/qubit，NetworkResourceRegistrationEvent 在 post-init 的配方/机器 runtime 解析前注册并冻结。完整 metadata 对照权威表，相等 record 不要求对象身份一致；NetworkRuntime/NetworkPlanner 明确接受冻结表，设备、flat/ppm 及参与者的资源声明均检查，元数据漂移或未注册键使捕获失败并撤销旧许可。单物品供给和研究阶段限额仍随对应执行链迁移，不误套设备/全队总量；旧 lease、双份 numeric 预算、同 tick 重捕获及过期补偿审计见[计算资源](network-resources.md)。
@@ -55,6 +56,10 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（跨lane资源批次阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，495 项测试（78 suites）零失败/错误/跳过。新增18项行为测试：10项fence和8项批次结算，涵盖真实并行source、资源/FE的读写和保存隔离、取消后实际退出、部分apply及业务失败的准确补偿、授权撤销、UNKNOWN与已确认终态、拒绝持锁/嵌套调用后恢复、全部通知异常和确定性reader抢跑。未增加游戏/Bootstrap/FML初始化或getter/hash专项测试，测试计数器也未使用Atomic包装。
+- 2026-11-07（跨lane资源批次 IDEA 证据）：最终通过已启用的本机MCP逐个 `get_file_problems(errorsOnly:false)` 检查319个src Java和Tags共320文件，零错误、警告、弱警告且无超时；MCP `build_project` 成功、`problems:[]`。报告 `build/reports/idea/deferred-resource-batches-final.json`。原23份改动保留，HatchInventoryPort只暂存本阶段lockAll调用，原Javadoc格式修改继续未暂存。
+- 2026-11-07（跨lane结算审计边界）：ResourceBatch先决定不可逆完成再调用complete；terminal抛错后沿准确token的resolution确认，UNKNOWN不重试。业务Runnable尚无query，失败保留pending而不假关闭；真实RecipeProcess的阶段handle/tick session/工位批次驱动和ScopedRequirement确认式关闭仍待接。原revision算术未保证终态清理额度的问题已记录，须在正式planned接线前解决；owner失效须进入准确fence scope，不能在scope外等待自己。
 
 - 2026-11-07（planned 执行屏障阶段）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，477 项测试（76 suites）零失败/错误/跳过。新增 10 项行为测试覆盖取消注册/注销竞态、锁外通知与异常汇总、真实 prepare 并行及有序结果、超时迟到/时钟绕回、排队惰性、同 source 跨批查询补偿串行、提交拒绝、中断后实际退出，以及实际入口和结果发布重查 deadline。没有 getter/常量/hash 专项测试或 Minecraft/Bootstrap/FML 初始化。
 - 2026-11-07（planned 执行屏障 IDEA 证据）：最终复查直接通过已启用的本机 MCP，逐文件 `get_file_problems(errorsOnly:false)` 覆盖 315 个 src Java 与 Tags 共 316 文件，零错误、警告、弱警告且无超时；MCP `build_project` 返回 `isSuccess:true`、`problems:[]`。报告 `build/reports/idea/planned-execution-final.json`。原 23 份格式/注解 diff 逐字保持不变。

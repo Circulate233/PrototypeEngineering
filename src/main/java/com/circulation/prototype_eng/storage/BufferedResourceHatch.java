@@ -10,6 +10,7 @@ import ae2.api.storage.MEStorage;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.GuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
@@ -28,6 +29,7 @@ public final class BufferedResourceHatch implements ResourceHatch {
     private final SlottedResourceBuffer input;
     private final SlottedResourceBuffer output;
     private final MEStorage automation = new AutomationPort();
+    private final List<StorageContext> contexts;
 
     /**
      * Capacities are per slot and per key type, in that type's native units.
@@ -41,6 +43,8 @@ public final class BufferedResourceHatch implements ResourceHatch {
         }
         input = mode.hasInput() ? new SlottedResourceBuffer(slotsPerSide, capacities, onChanged) : null;
         output = mode.hasOutput() ? new SlottedResourceBuffer(slotsPerSide, capacities, onChanged) : null;
+        contexts = input != null && output != null ? List.of(input.context(), output.context())
+            : input != null ? List.of(input.context()) : output != null ? List.of(output.context()) : List.of();
     }
 
     @Override
@@ -102,8 +106,7 @@ public final class BufferedResourceHatch implements ResourceHatch {
 
     private void locked(Runnable action) {
         // These independent contexts are constructed in this order and never replaced.
-        if (input != null) { input.context().lock(); }
-        if (output != null) { output.context().lock(); }
+        StorageContext.lockAll(contexts);
         try { action.run(); }
         finally {
             if (output != null) { output.context().unlockDeferred(); }

@@ -167,7 +167,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
         if (Boolean.TRUE.equals(batching.get())) {
             throw new IllegalStateException("Inventory batch is already open");
         }
-        contexts.forEach(StorageContext::lock);
+        StorageContext.lockAll(contexts);
         batching.set(true);
     }
 

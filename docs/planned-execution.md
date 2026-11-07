@@ -28,4 +28,4 @@ executor 的提交拒绝变成对应 Failure，其他已接受动作仍收束到
 
 本工具仅管理执行机制，generic Job 不证明任意对象深度不可变。正式 coordinator 必须在 owner 冻结独立输入，prepare 只读冻结数据；source mutation 使用专门 reservation/resolve 协议。不能把含 World/TileEntity 的现有 callback 直接投进 prepare。
 
-后续按审计接 discover/snapshot/plan/reserve、prepare 屏障、owner decide、source resolve 屏障、有序 owner commit、全批 complete 和 pending compensation。保留现有普通调度与实际退休/join 规则；源事务还须解决新 ResourceTransactions 的锁归属与跨 operation 延迟 complete。完整验证数量及 MCP 证据记在实施进度。
+后续按审计接 discover/snapshot/plan/reserve、prepare 屏障、owner decide、source resolve 屏障、有序 owner commit、全批 complete 和 pending compensation。跨lane的StorageFence/ResourceBatch已提供短物理锁、跨屏障独占、延迟complete和准确token恢复，见[资源批次](deferred-resource-batches.md)；正式真实阶段、业务query与退休接线仍待完成。完整验证数量及 MCP 证据记在实施进度。

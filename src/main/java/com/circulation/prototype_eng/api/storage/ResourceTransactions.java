@@ -60,7 +60,7 @@ public final class ResourceTransactions {
         }
         var ordered = new ObjectArrayList<>(domains);
         ordered.sort(Comparator.comparingLong(StorageContext::order));
-        ordered.forEach(StorageContext::lock);
+        StorageContext.lockAll(ordered);
         Throwable primary = null;
         try {
             if (!commit) {
