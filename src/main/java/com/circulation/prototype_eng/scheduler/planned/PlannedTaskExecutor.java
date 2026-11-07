@@ -15,6 +15,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -42,22 +43,35 @@ public final class PlannedTaskExecutor {
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
         for (var job : jobs) { dispatches.add(new Dispatch<>(workers, job)); }
-        return run(dispatches, deadline);
+        return run(dispatches, deadline, _ -> {});
     }
 
     /** Commit, query and compensation for the same source must all use the same affinity. */
     public <T> Batch<T> runOnSourceLanes(List<SourceJob<T>> jobs, PlannedDeadline deadline) {
-        var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
-        for (var job : jobs) { dispatches.add(new Dispatch<>(sourceLanes[laneIndex(job.affinity())], job.job())); }
-        return run(dispatches, deadline);
+        return runOnSourceLanes(jobs, deadline, _ -> {});
     }
 
-    private <T> Batch<T> run(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline) {
+    /**
+     * Publishes the exact batch to its coordinator synchronously, before any action can be accepted
+     * or executed. Retain the handle even if this call throws; its results and actual exit proof still
+     * describe every submitted or stopped action. The callback must not await its undispatched batch.
+     */
+    public <T> Batch<T> runOnSourceLanes(List<SourceJob<T>> jobs, PlannedDeadline deadline,
+                                      Consumer<Batch<T>> beforeDispatch) {
+        var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
+        for (var job : jobs) { dispatches.add(new Dispatch<>(sourceLanes[laneIndex(job.affinity())], job.job())); }
+        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch));
+    }
+
+    private <T> Batch<T> run(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline,
+                            Consumer<Batch<T>> beforeDispatch) {
         var batch = new Batch<>(dispatches, Objects.requireNonNull(deadline), nanoTime);
         var registrations = new ObjectArrayList<PlannedCancellationToken.Registration>();
         var tokens = new ReferenceOpenHashSet<PlannedCancellationToken>();
         boolean interrupted = Thread.interrupted();
+        Throwable primary = null;
         try {
+            beforeDispatch.accept(batch);
             if (interrupted) { batch.stop(Reason.INTERRUPTED); }
             for (var dispatch : dispatches) {
                 var token = dispatch.job.cancellation();
@@ -74,11 +88,36 @@ public final class PlannedTaskExecutor {
                 batch.stop(Reason.INTERRUPTED);
             }
             batch.freezeResults();
-            return batch;
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            batch.abort(failure);
         } finally {
-            for (var registration : registrations) { registration.close(); }
-            if (interrupted) { Thread.currentThread().interrupt(); }
+            Throwable cleanup = null;
+            for (var registration : registrations) {
+                try { registration.close(); }
+                catch (RuntimeException | Error failure) {
+                    if (cleanup == null) { cleanup = failure; }
+                    else { Batch.suppress(cleanup, failure); }
+                }
+            }
+            if (interrupted) {
+                try { Thread.currentThread().interrupt(); }
+                catch (RuntimeException | Error failure) {
+                    if (cleanup == null) { cleanup = failure; }
+                    else { Batch.suppress(cleanup, failure); }
+                }
+            }
+            if (cleanup != null) {
+                if (primary != null) { Batch.suppress(primary, cleanup); }
+                else {
+                    batch.abort(cleanup);
+                    primary = cleanup;
+                }
+            }
         }
+        if (primary instanceof RuntimeException runtime) { throw runtime; }
+        if (primary instanceof Error error) { throw error; }
+        return batch;
     }
 
     /** Original PM UTF-16 FNV-1a mapping; stable across batches and backend instances. */
@@ -174,7 +213,14 @@ public final class PlannedTaskExecutor {
         private void execute(Entry<T> entry) {
             synchronized (lock) {
                 if (entry.stage != Stage.QUEUED) { return; }
-                if (deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); return; }
+                try {
+                    if (deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); return; }
+                } catch (Throwable failure) {
+                    try {
+                        if (entry.result == null) { publish(entry, new Failure<>(failure)); }
+                    } finally { finish(entry); }
+                    return;
+                }
                 entry.stage = Stage.RUNNING;
                 entry.thread = Thread.currentThread();
             }
@@ -182,10 +228,20 @@ public final class PlannedTaskExecutor {
             try { result = new Success<>(entry.action.get()); }
             catch (Throwable failure) { result = new Failure<>(failure); }
             synchronized (lock) {
-                if (entry.result == null && deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); }
-                entry.thread = null;
-                if (entry.result == null) { publish(entry, result); }
-                finish(entry);
+                try {
+                    if (entry.result == null && deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); }
+                    if (entry.result == null) { publish(entry, result); }
+                } catch (Throwable failure) {
+                    if (entry.result == null) {
+                        if (result instanceof Failure<T>(var businessFailure)) {
+                            suppress(businessFailure, failure);
+                            publish(entry, result);
+                        } else { publish(entry, new Failure<>(failure)); }
+                    }
+                } finally {
+                    entry.thread = null;
+                    if (entry.stage != Stage.DONE) { finish(entry); }
+                }
             }
         }
 
@@ -211,15 +267,29 @@ public final class PlannedTaskExecutor {
         private void stopLocked(Reason reason) {
             if (stopReason != null || unfinished == 0) { return; }
             stopReason = reason;
+            Throwable failure = null;
             for (var entry : entries) {
                 if (entry.result != null) { continue; }
                 boolean running = entry.stage == Stage.RUNNING;
                 publish(entry, new Stopped<>(reason, running));
                 if (running) {
                     // Keep the entry pinned until interrupt is delivered, avoiding a later task on a reused thread.
-                    Objects.requireNonNull(entry.thread).interrupt();
+                    try { Objects.requireNonNull(entry.thread).interrupt(); }
+                    catch (RuntimeException | Error interrupt) {
+                        if (failure == null) { failure = interrupt; }
+                        else { suppress(failure, interrupt); }
+                    }
                 } else { finish(entry); }
             }
+            if (failure instanceof RuntimeException runtime) { throw runtime; }
+            if (failure instanceof Error error) { throw error; }
+        }
+
+        private void abort(Throwable primary) {
+            try { stop(Reason.WORKER_FAILURE); }
+            catch (RuntimeException | Error cleanup) { suppress(primary, cleanup); }
+            try { freezeResults(); }
+            catch (RuntimeException | Error cleanup) { suppress(primary, cleanup); }
         }
 
         private void publish(Entry<T> entry, Result<T> result) {
@@ -228,6 +298,7 @@ public final class PlannedTaskExecutor {
         }
 
         private void finish(Entry<T> entry) {
+            if (entry.stage == Stage.DONE) { return; }
             entry.stage = Stage.DONE;
             if (--runningOrEligible == 0) { exited.countDown(); }
         }
@@ -238,6 +309,10 @@ public final class PlannedTaskExecutor {
                 for (var entry : entries) { copy.add(Objects.requireNonNull(entry.result)); }
                 results = ObjectLists.unmodifiable(copy);
             }
+        }
+
+        private static void suppress(Throwable primary, Throwable secondary) {
+            if (primary != secondary) { primary.addSuppressed(secondary); }
         }
     }
 

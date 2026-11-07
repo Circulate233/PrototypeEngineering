@@ -1,6 +1,6 @@
 # PM/PN planned 执行迁移审计
 
-来源为 `F:/clone/PrototypeMachinery/src/main/kotlin` 与 `F:/new/PrototypeNetwork/src/main/java/com/circulation/prototype_network`。以下是实际源码行为；旧 planned 配方适配器不等于完整配方生命周期。当前已有执行屏障、source 批次、真实配方阶段和工位会话基础，正式 coordinator 与预算消费仍待接线。
+来源为 `F:/clone/PrototypeMachinery/src/main/kotlin` 与 `F:/new/PrototypeNetwork/src/main/java/com/circulation/prototype_network`。以下是实际源码行为；旧 planned 配方适配器不等于完整配方生命周期。当前已有执行屏障、source 批次、真实配方阶段/工位会话与显式跨宿主协调器；服务器实际调度、独立纯prepare和预算消费仍待接线。
 
 ## 原执行协议
 
@@ -42,4 +42,4 @@ PM `RegistryBackedMachinePlannedExecution.kt:243` 的 PlannedWorkSlot.process �
 
 同样，单 operation 调完整 RecipeStageExecutor.execute 会提前 complete，后续 operation 失败时无法整批补偿。必须补可延迟 complete 的阶段/批次边界。NetworkRuntime.WorkPermit 的预算 receipt 可参与现有业务事务，但 commit=false 必须拒绝并补偿；machine/process/stage/version、team/tick/epoch/source 和工作序号也必须一起验证。仅 worker current() 不够。
 
-上述存储锁归属、跨lane隔离及延迟complete已由[资源批次基础](deferred-resource-batches.md)实现；业务准确query、ScopedRequirement确认后关闭、checkpoint/selector逐子终态及revision清理额度已由[事务恢复](transaction-recovery.md)补齐。自身清理缺乏准确query的扩展失败仍保留UNKNOWN，不伪造恢复。真实阶段已有[进程会话](recipe-tick-sessions.md)与[工位批次](work-slot-batches.md)；正式coordinator不能由基础通过测试来替代。组件pre/tick/post无undo契约，START与后继阶段存在selection/overlay依赖，须按当前阶段round结算。整体范围继续包括正式planned、实际配方与研究消费、完整参与者及source补偿协议。
+上述存储锁归属、跨lane隔离及延迟complete已由[资源批次基础](deferred-resource-batches.md)实现；业务准确query、ScopedRequirement确认后关闭、checkpoint/selector逐子终态及revision清理额度已由[事务恢复](transaction-recovery.md)补齐。自身清理缺乏准确query的扩展失败仍保留UNKNOWN，不伪造恢复。真实阶段已有[进程会话](recipe-tick-sessions.md)与[工位批次](work-slot-batches.md)；显式[真实阶段协调器](planned-recipe-coordinator.md)已接，真实服务器/纯prepare/预算接线不能由基础测试来替代。组件pre/tick/post无undo契约，START与后继阶段存在selection/overlay依赖，须按当前阶段round结算。整体范围继续包括正式planned、实际配方与研究消费、完整参与者及source补偿协议。

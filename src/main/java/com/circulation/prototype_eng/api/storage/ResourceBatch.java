@@ -88,6 +88,18 @@ public final class ResourceBatch {
     /** Exact release proof, including when finish threw only while publishing notifications. */
     public boolean finished() { synchronized (lock) { return closed; } }
 
+    /** Current readiness only; finish rechecks this under the same lock before releasing isolation. */
+    public boolean readyToFinish() {
+        synchronized (lock) { return !closed && !ownerAction && runningSources == 0 && terminalParticipants(); }
+    }
+
+    private boolean terminalParticipants() {
+        boolean committed = decision == Decision.COMPLETE && business == Business.COMPLETED;
+        boolean rolledBack = decision == Decision.ROLLBACK && business == Business.ROLLED_BACK;
+        SourceState terminal = committed ? SourceState.COMPLETED : SourceState.ROLLED_BACK;
+        return (committed || rolledBack) && sources.stream().allMatch(source -> source.state == terminal);
+    }
+
     /**
      * All source actions must have exited successfully. Authorization and domain validity are checked
      * before and after reversible business commit, under the full fence scope. False decides rollback;
@@ -208,10 +220,7 @@ public final class ResourceBatch {
         requireOwnerBoundary();
         synchronized (lock) {
             requireIdleOwner();
-            boolean committed = decision == Decision.COMPLETE && business == Business.COMPLETED;
-            boolean rolledBack = decision == Decision.ROLLBACK && business == Business.ROLLED_BACK;
-            SourceState terminal = committed ? SourceState.COMPLETED : SourceState.ROLLED_BACK;
-            if ((!committed && !rolledBack) || sources.stream().anyMatch(source -> source.state != terminal)) {
+            if (!terminalParticipants()) {
                 throw new IllegalStateException("Batch still has unconfirmed settlement");
             }
             ownerAction = true;

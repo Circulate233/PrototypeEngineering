@@ -6,7 +6,7 @@
 
 prepare 不运行组件或需求，立即限制宿主的 admission、普通 tick、snapshot/restore、detach、cancel 和 quiescent 检查。被捕获的 process 也不能通过直接 tick、保存或更换宿主绕过批次。`begin()` 按工位顺序运行实际进程的 pre/tick，失败保留此前已创建会话；后续未开始的工位不补跑回调。
 
-宿主回调作用域覆盖 session/stage、需求事务和同步源结算：一个工位的 pre、post、acquire、业务及恢复回调不能进入同宿主其他进程。raw RecipeStageExecutor/requirement 获取入口同样检查当前 Stage 的真实 acquiring 作用域，prepared/pre 阶段不能绕过 round 提交 IO。多宿主整体作用域仍由后续 coordinator 负责。
+宿主回调作用域覆盖 session/stage、需求事务和同步源结算：一个工位的 pre、post、acquire、业务及恢复回调不能进入同宿主其他进程。raw RecipeStageExecutor/requirement 获取入口同样检查当前 Stage 的真实 acquiring 作用域，prepared/pre 阶段不能绕过 round 提交 IO。多宿主整体作用域现由prepareTickGroup/TickGroup持有：所有host验证后一起安装lease，子batch完成前后都不能被其他host回调重入，全部子batch结束才统一释放。
 
 `nextRound()` 为每个仍可运行的进程创建至多一个当前 Stage，前一轮任何 handle 未结算都拒绝推进。由调用方 acquire 真实需求，再结算当轮；`currentStages()` 保留部分创建的阶段，供异常与取消路径收束。START→一次 TICK→END 沿既有 TickSession，0 速度不会重复 TICK。
 
@@ -28,6 +28,6 @@ postAttempted 使用 TickSession.postStarted 的实际入口证明；未进入 p
 
 ## 剩余接线
 
-此入口提供真实多工位阶段轮次和宿主所有权，尚未开启 `PLANNED_PARALLEL`。正式 coordinator 仍须捕获全部宿主后开始回调、对部分 begin/acquire 失败收束前序批次，接 prepare/resolve 结果屏障与实际退出、owner/team/epoch/预算校验及取消/退休 join。不能把单项阶段/工位接口的测试通过等同于正式调度完成。
+此入口和TickGroup已由[真实阶段协调器](planned-recipe-coordinator.md)显式驱动，尚未开启 `PLANNED_PARALLEL`。真实TaskScheduler/服务器、纯prepare扩展、owner/team/epoch/预算消费及取消/退休join仍待接入。不能把阶段/工位协调测试通过等同于正式服务器调度完成。
 
 来源、已确认旧实现缺陷见 [planned 审计](planned-migration-audit.md)，进程会话见 [阶段会话](recipe-tick-sessions.md)，验证记录见 [实施进度](implementation-status.md)。

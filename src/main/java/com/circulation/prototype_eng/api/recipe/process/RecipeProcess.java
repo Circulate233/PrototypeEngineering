@@ -513,6 +513,7 @@ public final class RecipeProcess {
         @Nullable private ResourceBatch batch;
         private boolean acquired;
         private boolean acquiring;
+        private boolean closed;
         private boolean synchronous;
         private ReversibleTransaction.Resolution transition = ReversibleTransaction.Resolution.REVERSIBLE;
 
@@ -560,12 +561,22 @@ public final class RecipeProcess {
 
         public RecipeStage phase() { return phase; }
 
+        /** Exact local lease closure; the enclosing tick still owns its post obligation. */
+        public boolean settled() { return closed; }
+
+        /** Known complete inventory that can transfer to a source batch without guessing on failure. */
+        public boolean transferable() {
+            requireOwner();
+            return acquired && !synchronous && batch == null && acquisition.inventoryComplete();
+        }
+
         /** Stops before acquisition without invoking requirements, for cancellation/retirement. */
         public void discard() {
             requireOwner();
             if (acquired) { throw new IllegalStateException("Acquired recipe stage must settle its participants"); }
             session.stopped = true;
             session.current = null;
+            closed = true;
         }
 
         /** A throwing acquire still leaves this handle owning its partial acquisition. */
@@ -675,6 +686,7 @@ public final class RecipeProcess {
         private void settled(boolean committed) {
             var process = session.process;
             session.current = null;
+            closed = true;
             if (!committed) { session.stopped = true; }
             if (session.failure != null) { return; }
             ProcessResult result = acquisition.result();

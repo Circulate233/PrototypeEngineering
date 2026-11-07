@@ -235,6 +235,30 @@ public final class MachineWorkSlots {
      * own contract and cannot be silently replaced by the built-in staged process lifecycle.
      */
     public TickBatch prepareTickBatch() {
+        var batch = captureTickBatch();
+        activeBatch = batch;
+        return batch;
+    }
+
+    /** Captures every host before installing any lease or running any process callback. */
+    public static TickGroup prepareTickGroup(List<MachineWorkSlots> hosts) {
+        var ordered = new ObjectArrayList<>(Objects.requireNonNull(hosts));
+        var unique = new ReferenceOpenHashSet<MachineWorkSlots>();
+        var batches = new ObjectArrayList<TickBatch>();
+        for (var host : ordered) {
+            Objects.requireNonNull(host);
+            if (!unique.add(host)) { throw new IllegalArgumentException("Duplicate work-slot host in tick group"); }
+            batches.add(host.captureTickBatch());
+        }
+        var group = new TickGroup(batches);
+        for (var batch : batches) {
+            batch.group = group;
+            batch.host.activeBatch = batch;
+        }
+        return group;
+    }
+
+    private TickBatch captureTickBatch() {
         requireBoundary();
         if (executor != RecipeExecutor.DEFAULT) {
             throw new IllegalStateException("Custom synchronous recipe executor does not provide staged execution");
@@ -247,9 +271,7 @@ public final class MachineWorkSlots {
             if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
             entries.add(new TickBatch.Entry(slot, process));
         }
-        var batch = new TickBatch(this, entries);
-        activeBatch = batch;
-        return batch;
+        return new TickBatch(this, entries);
     }
 
     /** Recovery access when a batch callback threw; the same batch retains every cleanup obligation. */
@@ -264,6 +286,7 @@ public final class MachineWorkSlots {
 
     /** Session/stage hook: a callback may not enter another process in the same captured batch. */
     public void requireProcessOperation(RecipeProcess process) {
+        if (activeBatch != null && activeBatch.group != null) { activeBatch.group.requireProcessOperation(process); }
         if (activeBatch != null && (activeBatch.ownerThread != Thread.currentThread()
             || executing && activeBatch.permitted != process)) {
             throw new IllegalStateException("Recipe operation overlaps a different work-slot callback");
@@ -278,10 +301,183 @@ public final class MachineWorkSlots {
         if (batch == null) { return action.get(); }
         boolean previousExecution = executing;
         var previousProcess = batch.permitted;
+        var group = batch.group;
+        var previousGroupProcess = group == null ? null : group.callbackProcess;
         executing = true;
         batch.permitted = process;
+        if (group != null) { group.callbackProcess = process; }
         try { return action.get(); }
-        finally { batch.permitted = previousProcess; executing = previousExecution; }
+        finally {
+            if (group != null) { group.callbackProcess = previousGroupProcess; }
+            batch.permitted = previousProcess;
+            executing = previousExecution;
+        }
+    }
+
+    /** One owner-thread set of host leases and rounds, retained until every host really finishes. */
+    public static final class TickGroup {
+        private final Thread ownerThread = Thread.currentThread();
+        private final List<TickBatch> batches;
+        private final ReferenceOpenHashSet<RecipeProcess> processes = new ReferenceOpenHashSet<>();
+        @Nullable private RecipeProcess callbackProcess;
+        @Nullable private TickBatch controlledBatch;
+        private boolean executing;
+        private boolean begun;
+        private boolean stopped;
+        private boolean finished;
+
+        private TickGroup(List<TickBatch> batches) {
+            this.batches = ObjectLists.unmodifiable(new ObjectArrayList<>(batches));
+            for (var batch : batches) {
+                for (var entry : batch.entries) { processes.add(entry.process); }
+            }
+        }
+
+        public void begin() {
+            requireOwner();
+            if (begun || stopped) { throw new IllegalStateException("Work-slot group cannot begin again"); }
+            begun = true;
+            executing = true;
+            try {
+                for (var batch : batches) {
+                    controlledBatch = batch;
+                    batch.begin();
+                }
+            } catch (RuntimeException | Error failure) {
+                recordFailureInternal(failure);
+                throw failure;
+            } finally { controlledBatch = null; executing = false; }
+        }
+
+        public List<RecipeProcess.Stage> nextRound() {
+            requireOwner();
+            if (!begun) { throw new IllegalStateException("Work-slot group has not begun"); }
+            if (!collectCurrentStages().isEmpty()) { throw new IllegalStateException("Previous recipe group round is unsettled"); }
+            if (stopped) { return List.of(); }
+            executing = true;
+            var stages = new ObjectArrayList<RecipeProcess.Stage>();
+            try {
+                for (var batch : batches) {
+                    controlledBatch = batch;
+                    stages.addAll(batch.nextRound());
+                }
+                return ObjectLists.unmodifiable(stages);
+            } catch (RuntimeException | Error failure) {
+                recordFailureInternal(failure);
+                throw failure;
+            } finally { controlledBatch = null; executing = false; }
+        }
+
+        public List<RecipeProcess.Stage> currentStages() {
+            requireOwner();
+            return collectCurrentStages();
+        }
+
+        private List<RecipeProcess.Stage> collectCurrentStages() {
+            var stages = new ObjectArrayList<RecipeProcess.Stage>();
+            var previous = controlledBatch;
+            try {
+                for (var batch : batches) {
+                    if (batch.finished) { continue; }
+                    controlledBatch = batch;
+                    stages.addAll(batch.currentStages());
+                }
+                return ObjectLists.unmodifiable(stages);
+            } finally { controlledBatch = previous; }
+        }
+
+        public void stop() {
+            requireOwner();
+            stopped = true;
+            var previous = controlledBatch;
+            try {
+                for (var batch : batches) {
+                    if (batch.finished) { continue; }
+                    controlledBatch = batch;
+                    batch.stop();
+                }
+            } finally { controlledBatch = previous; }
+        }
+
+        public void recordFailure(Throwable failure) {
+            requireOwner();
+            recordFailureInternal(Objects.requireNonNull(failure));
+        }
+
+        private void recordFailureInternal(Throwable failure) {
+            stopped = true;
+            var previous = controlledBatch;
+            try {
+                for (var batch : batches) {
+                    if (batch.finished) { continue; }
+                    controlledBatch = batch;
+                    if (batch.begun) { batch.recordFailure(failure); }
+                    else { batch.stop(); }
+                }
+            } finally { controlledBatch = previous; }
+        }
+
+        /** No host runs post while any group stage remains live; child leases release together. */
+        public boolean tryFinish() {
+            requireOwner();
+            if (!collectCurrentStages().isEmpty()) { return false; }
+            stopped = true;
+            executing = true;
+            Throwable failure = null;
+            boolean pending = false;
+            try {
+                for (var batch : batches) {
+                    if (batch.finished) { continue; }
+                    controlledBatch = batch;
+                    try { if (!batch.tryFinish()) { pending = true; } }
+                    catch (RuntimeException | Error cleanup) {
+                        if (failure == null) { failure = cleanup; }
+                        else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                        if (!batch.finished) { pending = true; }
+                    }
+                }
+                if (!pending) {
+                    for (var batch : batches) { batch.host.activeBatch = null; }
+                    finished = true;
+                }
+                if (failure instanceof RuntimeException runtime) { throw runtime; }
+                if (failure instanceof Error error) { throw error; }
+                return finished;
+            } finally { controlledBatch = null; executing = false; }
+        }
+
+        public boolean finished() { return finished; }
+
+        private void requireProcessOperation(RecipeProcess process) {
+            requireLive();
+            var host = process.host();
+            if (!processes.contains(process) || host == null || host.activeBatch == null || host.activeBatch.group != this) {
+                throw new IllegalStateException("Work-slot group lost its exact process lease");
+            }
+            if (callbackProcess != null && callbackProcess != process) {
+                throw new IllegalStateException("Recipe operation overlaps a different host callback");
+            }
+        }
+
+        private void requireIdentity() {
+            requireLive();
+            for (var batch : batches) {
+                if (batch.group != this || batch.host.activeBatch != batch) {
+                    throw new IllegalStateException("Work-slot group lost its exact host lease");
+                }
+            }
+        }
+
+        private void requireLive() {
+            if (Thread.currentThread() != ownerThread || finished) {
+                throw new IllegalStateException("Stale work-slot group or incorrect owner");
+            }
+        }
+
+        private void requireOwner() {
+            requireIdentity();
+            if (executing || callbackProcess != null) { throw new IllegalStateException("Work-slot group callback is executing"); }
+        }
     }
 
     /** Owner-thread round driver; source execution and network authority remain with its coordinator. */
@@ -289,6 +485,7 @@ public final class MachineWorkSlots {
         private final MachineWorkSlots host;
         private final Thread ownerThread = Thread.currentThread();
         private final List<Entry> entries;
+        @Nullable private TickGroup group;
         @Nullable private RecipeProcess permitted;
         private boolean begun;
         private boolean stopped;
@@ -311,7 +508,7 @@ public final class MachineWorkSlots {
                     entry.requireIdentity(host);
                     if (entry.process.state() != entry.initialState) { throw new IllegalStateException("Captured process changed before batch begin"); }
                     permitted = entry.process;
-                    entry.session = entry.process.beginTick();
+                    entry.session = host.withProcessCallback(entry.process, entry.process::beginTick);
                     permitted = null;
                 }
             } catch (RuntimeException | Error failure) {
@@ -336,7 +533,7 @@ public final class MachineWorkSlots {
                     entry.requireIdentity(host);
                     if (entry.session == null || entry.postAttempted) { continue; }
                     permitted = entry.process;
-                    var stage = entry.session.nextStage();
+                    var stage = host.withProcessCallback(entry.process, entry.session::nextStage);
                     permitted = null;
                     if (stage != null) { stages.add(stage); }
                 }
@@ -398,9 +595,10 @@ public final class MachineWorkSlots {
                     try {
                         entry.requireIdentity(host);
                         permitted = entry.process;
-                        if (entry.session != null && !entry.postAttempted) {
-                            try { entry.session.finish(); }
-                            finally { entry.postAttempted = entry.session.postStarted(); }
+                        var session = entry.session;
+                        if (session != null && !entry.postAttempted) {
+                            try { host.withProcessCallback(entry.process, () -> { session.finish(); return null; }); }
+                            finally { entry.postAttempted = session.postStarted(); }
                         }
                         if (!entry.process.quiescent()) { pending = true; continue; }
                         if (entry.process.persistenceReady()) { host.publishSlot(entry.slot, entry.process); }
@@ -415,7 +613,7 @@ public final class MachineWorkSlots {
                         else { pending = true; }
                     } finally { permitted = null; }
                 }
-                if (!pending) { finished = true; host.activeBatch = null; }
+                if (!pending) { finished = true; if (group == null) { host.activeBatch = null; } }
                 if (failure instanceof RuntimeException runtime) { throw runtime; }
                 if (failure instanceof Error error) { throw error; }
                 return finished;
@@ -428,6 +626,12 @@ public final class MachineWorkSlots {
         private void requireIdentity() {
             if (Thread.currentThread() != ownerThread || host.activeBatch != this || finished) {
                 throw new IllegalStateException("Stale work-slot batch or incorrect owner");
+            }
+            if (group != null) {
+                group.requireLive();
+                if (group.controlledBatch != this || group.callbackProcess != null) {
+                    throw new IllegalStateException("Grouped work-slot batch is controlled by its group");
+                }
             }
         }
 
