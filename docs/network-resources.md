@@ -1,6 +1,6 @@
 # 计算资源声明与预算迁移边界
 
-计算资源是 PN 的计算预算维度，物料身份继续使用 AEKey/AEKeyType。本阶段迁入资源声明和权威元数据校验；数值预算、logical lease、计算组件供给与研究公式的执行仍待迁移。
+计算资源是 PN 的计算预算维度，物料身份继续使用 AEKey/AEKeyType。资源声明/权威校验之后，已接每 tick 数值账本、logical lease 与 owner 凭据，见[预算说明](network-budgets.md)。计算组件供给、普通配方/研究消费与公式执行仍待迁移。
 
 ## 已接入的 Java API
 
@@ -30,7 +30,7 @@
 
 ## 后续预算与 lease 的准确边界
 
-以下来自旧源码审计，是后续迁移要求，尚未实现：
+以下保留旧源码审计作为迁移依据；每 tick 账本、准确代补偿和操作序号现已接入，研究消费与完整参与者仍未完成，具体范围见[预算说明](network-budgets.md)：
 
 - `NetworkMachineLeaseBookImpl` 每 tick 以机器 UUID 幂等申请一份 logical thread。同机器的其他工位是 ALREADY_GRANTED；没有工位完成即 release 的语义。中心免租，其他机器和研究贡献者共享本 tick 机器集合；它不控制 JVM worker 数。
 - `NetworkTeamTickBudgetImpl` 的研究 numeric 向量与普通工位 reservation 余额是独立两份，lease 共享。这是旧 API 明确约定，不能在迁移中悄然合并消费而改变效果。研究站先申请贡献机器的 lease，随后普通工作使用剩余许可。

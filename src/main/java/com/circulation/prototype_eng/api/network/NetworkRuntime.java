@@ -2,11 +2,17 @@ package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
 import java.util.Objects;
@@ -25,8 +31,11 @@ public final class NetworkRuntime implements AutoCloseable {
     private final OwnerTeamResolver teams;
     private final Runnable ownerCheck;
     private final Reference2ObjectLinkedOpenHashMap<Object, Registration> registrations = new Reference2ObjectLinkedOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<String, NetworkTeamBudget> budgets = new Object2ObjectOpenHashMap<>();
     @Nullable private volatile Publication published;
     private long nextEpoch;
+    private long tick = -1;
+    private boolean ticking;
     private boolean preparing;
     private boolean captureRevoked;
     private boolean closed;
@@ -37,6 +46,23 @@ public final class NetworkRuntime implements AutoCloseable {
         if (!resources.isFrozen()) { throw new IllegalStateException("Network runtime requires frozen computing resources"); }
         this.teams = Objects.requireNonNull(teams);
         this.ownerCheck = Objects.requireNonNull(ownerCheck);
+    }
+
+    /** Begin once per actual server tick, independently of how often its network is captured. */
+    public void beginTick(long tick) {
+        requireMutation();
+        if (ticking || tick < 0 || tick <= this.tick) { throw new IllegalStateException("Network tick must advance after the previous tick ends"); }
+        this.tick = tick;
+        ticking = true;
+    }
+
+    /** End after all accepted workers have joined; old receipts retain only issuing-tick compensation. */
+    public void endTick() {
+        requireMutation();
+        revoke();
+        for (var budget : budgets.values()) { budget.close(); }
+        budgets.clear();
+        ticking = false;
     }
 
     /** The source and validation proof run only on the owner thread, never on a recipe worker. */
@@ -62,6 +88,7 @@ public final class NetworkRuntime implements AutoCloseable {
      */
     public boolean refresh(LongFunction<? extends List<NetworkContribution>> participants) {
         requireMutation();
+        if (!ticking) { throw new IllegalStateException("Network capture requires an active server tick"); }
         Objects.requireNonNull(participants);
         revoke();
         long epoch = nextEpoch;
@@ -89,11 +116,20 @@ public final class NetworkRuntime implements AutoCloseable {
                 if (!entry.getKey().identity.unique() || !entry.getValue().current().getAsBoolean()) { return false; }
             }
             if (captureRevoked || identities.revision() != revision) { return false; }
+            var additions = new Object2ObjectOpenHashMap<String, NetworkTeamBudget>();
+            for (var entry : plan.teams().entrySet()) {
+                if (!budgets.containsKey(entry.getKey())) {
+                    additions.put(entry.getKey(), new NetworkTeamBudget(tick, resources, entry.getValue().resourcesPerTick(), ownerCheck));
+                }
+            }
             var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>();
             for (var registration : captures.keySet()) {
                 states.put(registration, Objects.requireNonNull(plan.workStates().get(registration.identity.identity().machineId())));
             }
-            published = new Publication(revision, plan, states);
+            if (captureRevoked || identities.revision() != revision) { return false; }
+            // Existing teams retain their first accepted capacity and all consumption for this tick.
+            budgets.putAll(additions);
+            published = new Publication(revision, plan, states, captures);
             return true;
         } finally { preparing = false; }
     }
@@ -115,7 +151,7 @@ public final class NetworkRuntime implements AutoCloseable {
         ownerCheck.run();
         if (preparing) { throw new IllegalStateException("Cannot close while capturing a network batch"); }
         if (closed) { return; }
-        revoke();
+        endTick();
         closed = true;
         for (var registration : registrations.values()) { registration.active = false; }
         registrations.clear();
@@ -126,7 +162,7 @@ public final class NetworkRuntime implements AutoCloseable {
         if (closed || preparing) { throw new IllegalStateException("Network runtime is closed or capturing"); }
     }
 
-    /** A detached snapshot plus an owner-only exact-state proof, retained only until publication. */
+    /** A detached snapshot plus an owner-only exact-state proof, also checked before budget work. */
     public record Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current) {
         public Capture { Objects.requireNonNull(snapshot); Objects.requireNonNull(current); }
     }
@@ -156,6 +192,15 @@ public final class NetworkRuntime implements AutoCloseable {
             return state == NetworkWorkState.ACTIVE_CENTER || state == NetworkWorkState.ACTIVE_DATA_CENTER || state == NetworkWorkState.ACTIVE_DEVICE;
         }
 
+        /** Capture an owner-side work capability for this exact publication, or null while denied. */
+        @Nullable public WorkPermit workPermit() {
+            runtime.ownerCheck.run();
+            var current = runtime.published;
+            if (current == null || !allowsNetworkWork()) { return null; }
+            var teamId = Objects.requireNonNull(current.plan.teamIds().get(identity.identity().machineId()));
+            return new WorkPermit(this, current, teamId, Objects.requireNonNull(runtime.budgets.get(teamId)));
+        }
+
         @Override public void close() {
             runtime.ownerCheck.run();
             if (!active) { return; }
@@ -167,5 +212,85 @@ public final class NetworkRuntime implements AutoCloseable {
         }
     }
 
-    private record Publication(long revision, NetworkPlan plan, Reference2ObjectOpenHashMap<Registration, NetworkWorkState> states) { }
+    /**
+     * Current publication authority, separate from the tick's persistent balances. All budget operations
+     * are owner-only. Workers may inspect current() but cannot spend or commit through this capability.
+     */
+    public static final class WorkPermit {
+        private final Registration registration;
+        private final Publication publication;
+        private final String teamId;
+        private final NetworkTeamBudget budget;
+
+        private WorkPermit(Registration registration, Publication publication, String teamId, NetworkTeamBudget budget) {
+            this.registration = registration;
+            this.publication = publication;
+            this.teamId = teamId;
+            this.budget = budget;
+        }
+
+        public boolean current() {
+            var runtime = registration.runtime;
+            return runtime.published == publication && registration.active && registration.identity.unique()
+                && publication.revision == runtime.identities.revision();
+        }
+
+        public long tick() { return budget.tick(); }
+        public long epoch() { return publication.plan.epoch(); }
+        @SuppressWarnings("unused") // External research/participant hosts retain the captured team alongside work identity.
+        public String teamId() { return teamId; }
+
+        /** Immutable research supply; it is independent of ordinary work reservations, as in PN. */
+        public Object2LongMap<NetworkResourceType> numericResources() { return budget.numericResources(); }
+
+        /** Diagnostic snapshot of this issuing tick, including after its permit expires. */
+        public Object2LongMap<NetworkResourceType> availableResources() { return budget.availableResources(); }
+
+        public NetworkTeamBudget.LeaseStatus requestLease() { return requestLease(NetworkResources.THREAD); }
+
+        /** Centers are exempt only from the standard machine thread lease. */
+        public NetworkTeamBudget.LeaseStatus requestLease(NetworkResourceType type) {
+            if (!authorized()) { return NetworkTeamBudget.LeaseStatus.EXPIRED; }
+            if (type.equals(NetworkResources.THREAD) && publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER) {
+                return NetworkTeamBudget.LeaseStatus.NOT_REQUIRED;
+            }
+            return budget.requestLease(registration.identity.identity().machineId(), type);
+        }
+
+        /**
+         * Apply PN's machine lease before an ordinary numeric reservation. Null means expired authority,
+         * insufficient logical capacity or an insufficient numeric vector. Each new work attempt needs
+         * a stable source id and a new sequence; capture epoch is not a work sequence.
+         */
+        @Nullable public NetworkTeamBudget.Reservation reserve(ResourceLocation sourceId, long sequence,
+                Object2LongMap<NetworkResourceType> required) {
+            var operation = new NetworkTeamBudget.Operation(registration.identity.identity().machineId(), sourceId, sequence);
+            var lease = requestLease();
+            if (lease == NetworkTeamBudget.LeaseStatus.EXPIRED || lease == NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY) { return null; }
+            return budget.reserve(operation, required, this::authorized);
+        }
+
+        private boolean authorized() {
+            var runtime = registration.runtime;
+            runtime.ownerCheck.run();
+            if (!current()) { return false; }
+            boolean valid;
+            try {
+                valid = true;
+                // A device also depends on the selected center and captured suppliers, not only itself.
+                for (var capture : publication.captures.values()) {
+                    if (!capture.current().getAsBoolean() || !current()) { valid = false; break; }
+                }
+            }
+            catch (RuntimeException | Error failure) {
+                if (runtime.published == publication) { runtime.revoke(); }
+                throw failure;
+            }
+            if (!valid && runtime.published == publication) { runtime.revoke(); }
+            return valid && current();
+        }
+    }
+
+    private record Publication(long revision, NetworkPlan plan, Reference2ObjectOpenHashMap<Registration, NetworkWorkState> states,
+                               Reference2ObjectOpenHashMap<Registration, Capture> captures) { }
 }

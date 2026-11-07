@@ -108,6 +108,8 @@ class MachineNetworkDeviceTest {
             var original = fixture.create();
             assertTrue(fixture.network.refresh());
             original.owner.onSchedule();
+            var originalPermit = Objects.requireNonNull(fixture.networkDevice(original).workPermit());
+            var originalWork = Objects.requireNonNull(originalPermit.reserve(id("saved_work"), 0, Object2LongMaps.emptyMap()));
             var first = original.process("first");
             var committed = first.state();
             var saved = fixture.assembly.encode(original.owner);
@@ -119,6 +121,8 @@ class MachineNetworkDeviceTest {
             assertEquals(OWNER, fixture.ownership(restored).identity().ownerId());
 
             assertTrue(fixture.network.refresh());
+            assertFalse(originalWork.commit());
+            originalWork.rollback();
             original.owner.onSchedule();
             restored.owner.onSchedule();
             restored.work().tickProcesses();
@@ -139,6 +143,9 @@ class MachineNetworkDeviceTest {
             assertEquals(committed, resumed.state(), "Restored uniqueness cannot revive the pre-conflict publication");
             assertEquals(45, restored.input.storedEnergy());
             assertTrue(fixture.network.refresh());
+            var restoredPermit = Objects.requireNonNull(fixture.networkDevice(restored).workPermit());
+            var restoredWork = Objects.requireNonNull(restoredPermit.reserve(id("saved_work"), 1, Object2LongMaps.emptyMap()));
+            assertTrue(restoredWork.commit());
             restored.owner.onSchedule();
             assertEquals(2, resumed.state().successfulTicks());
             assertEquals(1, restored.process("second").state().successfulTicks());
@@ -230,9 +237,11 @@ class MachineNetworkDeviceTest {
                 @Override public void onTick(MachineInstance owner, int[] ticks) { ticks[0]++; }
             }));
         private final MachineAssembly assembly;
+        private final ComponentType<MachineInstance, MachineNetworkDevice> networkType;
 
         private Fixture() {
-            var networkType = MachineNetworkDevice.component(id("network"),
+            network.beginTick(0);
+            networkType = MachineNetworkDevice.component(id("network"),
                 ownershipType, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER,
                     1, Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
                     NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
@@ -272,6 +281,7 @@ class MachineNetworkDeviceTest {
 
         private RecipeScanner scanner(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(scannerType)); }
         private MachineOwnership ownership(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(ownershipType)); }
+        private MachineNetworkDevice networkDevice(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(networkType)); }
         private int ordinaryTicks(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(ordinaryType))[0]; }
         private void unload(AssembledMachine machine) {
             Objects.requireNonNull(machine.owner.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);

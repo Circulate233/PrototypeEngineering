@@ -62,6 +62,13 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
 
     @Nullable public NetworkWorkState state() { return registration == null ? null : registration.state(); }
 
+    /** Owner-side budget access for this exact attachment and publication; never persisted. */
+    @Nullable public NetworkRuntime.WorkPermit workPermit() {
+        var lifecycle = Objects.requireNonNull(owner.lifecycle());
+        lifecycle.host().requireServerThread();
+        return allowsNetworkWork() ? Objects.requireNonNull(registration).workPermit() : null;
+    }
+
     @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
         requireOwner(event);
         if (loadAttempted) { throw new IllegalStateException("A network device cannot load twice"); }

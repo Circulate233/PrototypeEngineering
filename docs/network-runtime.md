@@ -1,6 +1,6 @@
 # 网络角色、整批发布与配方门限
 
-本阶段把[网络规划](network-planning.md)接入实际机器生命周期和服务器调度。使用方仍自行声明角色、等级、资源和机器；没有内置正式机器。当前实现的是网络这一项工作条件，研究条件、计算预算消费、lease 和正式 planned 提交仍须继续迁移。
+本阶段把[网络规划](network-planning.md)接入实际机器生命周期和服务器调度。使用方仍自行声明角色、等级、资源和机器；没有内置正式机器。当前提供共同网络条件及 owner 侧每 tick 预算/lease 凭据；普通配方、研究和正式 planned 的自动消费链仍须继续迁移。
 
 ## 声明与恢复
 
@@ -14,7 +14,7 @@ MachineAssembly 为该网络组件使用 `recreated`，身份仍用 MachineOwner
 
 每个 NetworkRuntime 绑定一个 MachineIdentityRegistry、冻结的 NetworkResourceRegistry、OwnerTeamResolver 和 owner 线程检查。资源声明在 post-init 的 NetworkResourceRegistrationEvent 注册并冻结，内置服务器使用全局表；独立宿主可传自己的冻结表。`register(identity, source)` 只接受同一 identity registry 的当前身份；一个运行实例只登记一个网络角色。source 可以返回空表示当前没有可用宿主，也可以返回 Capture（冻结 snapshot 和 owner-only 有效性证明）。内置组件检查生命周期、准确组件绑定、formed，以及实际结构宿主的配置/World/TE 有效性。
 
-`refresh()` 首先撤销旧发布，再按当前唯一身份捕获全部设备、解析队伍并规划，最后重验每份证明和身份 registry 修订号，单次 volatile 发布完整结果。捕获/解析/规划抛错时异常直接传播，旧结果保持失效；证明过期返回 false，等待下一次新捕获，没有部分授权。回调显式 revoke 也会让本次捕获失效，不能随后重新发布。
+`beginTick(tick)` 开始实际服务器 tick 后才能 refresh。refresh 首先撤销旧发布，再捕获唯一设备、解析队伍并规划，最后重验全部证明和 identity revision，单次 volatile 发布。异常直接传播，旧结果失效；证明过期或显式 revoke 返回 false，不发布部分许可。同队伍账本在本 tick 首次成功发布后保留，revoke 和重捕获都不补充额度，详见[预算边界](network-budgets.md)。
 
 `refresh(participantSource)` 提供当前捕获 epoch 给参与者来源，供后续完整参与者集成。来源必须返回 ACTIVE、版本经过验证且在此 owner 边界内保持稳定的资源投影；本阶段内置服务器尚未安装参与者来源，未冒充已实现其注册、工作单元、材料来源或版本提交协议。
 
@@ -30,7 +30,7 @@ Registration 的 `allowsNetworkWork()` 与 `state()` 只读取已发布状态、
 
 内置 prepare 调用 NetworkRuntime.refresh。因此 MAIN 中发生的队伍、角色或身份变化会在下一 MAIN / worker 前重新捕获。默认 CONCURRENT 机器使用共享的阶段批次；MAIN 较多时会增加捕获次数，这是对任意 MAIN 回调可变更外部状态的明确处理，尚未取得性能压测证据，不能通过复用已失效批次省略这一步。
 
-prepare 失败沿用 scheduler 的永久 fault、真实 join 与完整清理协议。服务器 tick 在 finally 撤销网络发布，包括异常退出；旧许可不会跨 tick 复用。当前网络计算在 owner 上同步规划/发布，已有普通 CONCURRENT worker 和亲和 lanes 保持不变；这不等于已完成正式 planned 的 prepare/resolve 两次 worker join。
+prepare 失败沿用 scheduler 的永久 fault、真实 join 与完整清理协议。服务器每次 END 事件只 begin 一次网络 tick，在 scheduler 实际 join 后的 finally 调用 endTick，撤销发布并关闭账本，包括异常退出；旧 receipt 仍可原代补偿。当前网络计算在 owner 同步规划/发布，普通 CONCURRENT worker 与亲和 lanes 保持；这不等于正式 planned 的两次 worker join 已完成。
 
 服务启动顺序为 scheduler → identity → network，启动失败沿相反依赖顺序清理；正常停止先等待 scheduler 接受的工作实际退出，再关闭 network 和 identity。ServerNetworkRuntime 绑定准确 MinecraftServer 并默认使用 FtbOwnerTeamResolver。Mod 依赖声明同步加入 PN 原精确 FTBLib 5.4.7.2 / FTB Utilities 5.4.1.131，版本与开发构件一致。
 
@@ -46,4 +46,4 @@ prepare 失败沿用 scheduler 的永久 fault、真实 join 与完整清理协�
 
 新增 12 项逻辑测试，覆盖身份复制 ABA、prepare 的阶段顺序/失败、整批撤销与证明过期、跨线程读取/拒绝修改，以及真实 assembly、FE、scanner、工位、进程暂停恢复和部分 load 失败后新代继续工作。恢复用真实 FE 余额验证不会重复 START。完整计数与逐文件 MCP 证据见[实施进度](implementation-status.md)；没有初始化游戏或运行客户端/服务端。
 
-canonical 计算资源注册与运行时校验已接入。后续仍需组件单物品供给与研究阶段限额、预算与 lease 账本、研究/数据中心真实存储、完整参与者，以及 planned 两次 join 与提交补偿。捕获 epoch 标识一次发布，不是可重复补充资源的游戏 tick；接预算时必须保留每 tick 独立结算边界，不能因多次 MAIN 捕获重置预算。旧 lease、双份 numeric 预算及过期补偿问题见[计算资源迁移边界](network-resources.md)。
+canonical 注册、每 tick 账本及 owner 工作凭据已接入。后续仍需组件单物品供给/研究阶段限额、普通配方/研究预算消费、数据中心存储、完整参与者，以及 planned 两次 join 与提交补偿。capture epoch 标识发布，真实 tick 决定账本，两者已经分开。旧语义见[计算资源迁移边界](network-resources.md)，当前行为见[预算说明](network-budgets.md)。

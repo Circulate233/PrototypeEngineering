@@ -4,8 +4,9 @@
 
 ## 当前检查点
 
-- 已完成本阶段：计算资源 canonical 注册、post-init 事件/冻结及设备、修饰器、参与者的运行时权威校验。上一阶段的网络角色、整批发布、身份修订防复制 ABA 与共同配方条件已提交为 `ef624f0`。研究/预算/lease 和正式 planned 提交许可仍未接入。阶段本地提交，不推送；最新提交号以 Git 日志为准。原 23 份格式/注解修改仍保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 459 项测试；IDEA MCP 对 307 个 src Java 和 Tags 共 308 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/network-resources-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 已完成本阶段：真实 server tick 的预算生命周期、同 tick 固定容量/余额、每机器 lease、向量预留和原代补偿，以及准确 Publication/身份/全部宿主证明约束的 owner WorkPermit。计算资源注册上一阶段为 `be0852d`。普通配方、研究与正式 planned 的自动消费仍未接入，不能把共同网络 gate 当作已经消费预算。阶段本地提交、不推送；最新提交号以 Git 日志为准，原 23 份格式/注解修改保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 467 项测试；IDEA MCP 对 310 个 src Java 和 Tags 共 311 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/network-budgets-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
 - 计算声明：NetworkResourceRegistrationEvent 早于配方/机器runtime解析，冻结表含标准 thread/compute/qubit；同名完整metadata须一致，相等record无需对象身份相同。捕获检查设备/flat/ppm/参与者全部键，失败撤旧许可。maxPerTickValue限制组件单物品供给和研究segment grant，不限制设备/全队。旧预算与lease审计见network-resources.md。
 - 网络运行时：MachineNetworkDevice 显式声明且 recreated，ownership 先load；capture owner-only，精确identity/loadOrder/formed及宿主证明校验后整批发布。每次MAIN action前与CON捕获前refresh，tick退出revoke；失败无旧许可回退。registry revision拒副本来去后的旧批次；旧卸载不撤新代。只暂停配方，普通组件仍运行，恢复不重START。
 - 网络规划：OwnerTeamResolver 是扩展接口，FTB 使用真实 server/Universe 持久玩家，离线允许。capture 每 owner 一次查询、拒重复/过期/成员矛盾与同 ID 不同资源元数据；worker plan 只读。中心按等级/加载顺序，数据中心再比已有研究；满库可选。中心+合格电脑+同队参与者合计后一次 exact flat/ppm，不把 maxPerTickValue 当全队上限。
@@ -19,7 +20,7 @@
 
 ## 下一步
 
-1. 继续组件单物品供给/研究阶段限额、每tick预算与lease账本、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册已接。账本按实际server session/tick/team保留，不按capture epoch重充；旧lease按机器幂等每tick一份，研究与普通工位numeric独立且lease共享。过期提交权与原代补偿权分开，参与者补偿失败不能伪装成功。详细源码边界见network-resources.md。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。
+1. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。
 2. 正式 planned：复用 PM prepare/resolve 两次 join、稳定 source lane，接入 PN owner/team/epoch/向量预算、迟到隔离和补偿。旧 epoch/lease/ready 不从存档恢复为权限。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
 3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
@@ -47,6 +48,7 @@
 | PN 持久身份/准确登记/后续授权 | [machine-identity.md](machine-identity.md)、[pn-identity-migration-audit.md](pn-identity-migration-audit.md)，api/machine/identity |
 | 队伍/FTB/中心规划/计算贡献 | [network-planning.md](network-planning.md)，api/team、api/network、integration/ftb |
 | 计算资源注册/单物品限额/旧预算与lease审计 | [network-resources.md](network-resources.md)，api/network/resource |
+| 实际tick预算/lease/当前代工作凭据/原代补偿 | [network-budgets.md](network-budgets.md)，NetworkTeamBudget/NetworkRuntime.WorkPermit |
 | 网络角色/服务器发布/共同配方门限 | [network-runtime.md](network-runtime.md)，MachineNetworkDevice/NetworkRuntime/ServerNetworkRuntime |
 | 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle |
 | 控制器运行时/退休 | [machine-controller.md](machine-controller.md)，MachineController |

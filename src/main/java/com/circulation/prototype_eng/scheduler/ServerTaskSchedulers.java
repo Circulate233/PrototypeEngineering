@@ -33,16 +33,16 @@ public final class ServerTaskSchedulers {
     @SuppressWarnings("unused") // Public registration/submission entry for controller hosts and other addons.
     public static TaskScheduler forServer(MinecraftServer server) {
         var current = session;
-        if (current == null || current.server() != server) { throw new IllegalStateException("No scheduler for this server session"); }
-        return current.scheduler();
+        if (current == null || current.server != server) { throw new IllegalStateException("No scheduler for this server session"); }
+        return current.scheduler;
     }
 
     /** Called after server worlds have unloaded, so their controllers can unregister first. */
     public static synchronized void stop() {
         var current = session;
         if (current == null) { return; }
-        if (!current.server().isCallingFromMinecraftThread()) { throw new IllegalStateException("Scheduler shutdown requires the server thread"); }
-        current.scheduler().close();
+        if (!current.server.isCallingFromMinecraftThread()) { throw new IllegalStateException("Scheduler shutdown requires the server thread"); }
+        current.scheduler.close();
         session = null;
     }
 
@@ -52,11 +52,24 @@ public final class ServerTaskSchedulers {
         if (event.phase != TickEvent.Phase.END) { return; }
         var current = session;
         if (current != null) {
-            var network = ServerNetworkRuntime.forServer(current.server());
-            try { current.scheduler().tick(network::refresh); }
-            finally { network.revoke(); }
+            var network = ServerNetworkRuntime.forServer(current.server);
+            long tick = current.nextTick;
+            current.nextTick = Math.addExact(tick, 1);
+            network.beginTick(tick);
+            try { current.scheduler.tick(network::refresh); }
+            finally { network.endTick(); }
         }
     }
 
-    private record Session(MinecraftServer server, TaskScheduler scheduler) { }
+    private static final class Session {
+        private final MinecraftServer server;
+        private final TaskScheduler scheduler;
+        // Advances once per server END event, never once per task or network capture.
+        private long nextTick;
+
+        private Session(MinecraftServer server, TaskScheduler scheduler) {
+            this.server = server;
+            this.scheduler = scheduler;
+        }
+    }
 }

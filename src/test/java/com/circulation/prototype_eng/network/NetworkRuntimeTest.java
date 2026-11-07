@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifie
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
+import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
@@ -32,7 +33,7 @@ class NetworkRuntimeTest {
 
     @Test void duplicateArrivalAndDepartureCannotReauthorizeAnOlderPublishedBatch() {
         try (var identities = new MachineIdentityRegistry(() -> { });
-             var runtime = new NetworkRuntime(identities, resources(), NetworkRuntimeTest::team, () -> { })) {
+             var runtime = runtime(identities, resources(), NetworkRuntimeTest::team, () -> { })) {
             var world = new Object();
             var original = identity(identities, world, 1, 1);
             var device = runtime.register(original, () -> capture(original));
@@ -52,7 +53,7 @@ class NetworkRuntimeTest {
 
     @Test void lateOldUnloadCannotRevokeOrRemoveAReplacementBatch() {
         try (var identities = new MachineIdentityRegistry(() -> { });
-             var runtime = new NetworkRuntime(identities, resources(), NetworkRuntimeTest::team, () -> { })) {
+             var runtime = runtime(identities, resources(), NetworkRuntimeTest::team, () -> { })) {
             var world = new Object();
             var oldIdentity = identity(identities, world, 1, 1);
             var old = runtime.register(oldIdentity, () -> capture(oldIdentity));
@@ -76,7 +77,7 @@ class NetworkRuntimeTest {
         try (var identities = new MachineIdentityRegistry(() -> { })) {
             var failure = new IllegalStateException("team capture failed");
             var fail = new boolean[1];
-            try (var runtime = new NetworkRuntime(identities, resources(), owner -> {
+            try (var runtime = runtime(identities, resources(), owner -> {
                 if (fail[0]) { throw failure; }
                 return team(owner);
             }, () -> { })) {
@@ -112,7 +113,7 @@ class NetworkRuntimeTest {
             var world = new Object();
             var original = identity(identities, world, 1, 1);
             var mutate = new boolean[1];
-            try (var runtime = new NetworkRuntime(identities, resources(), owner -> {
+            try (var runtime = runtime(identities, resources(), owner -> {
                 if (mutate[0]) {
                     try (var ignored = identity(identities, world, 1, 2)) { assertFalse(original.unique()); }
                 }
@@ -137,7 +138,7 @@ class NetworkRuntimeTest {
             if (Thread.currentThread() != owner) { throw new IllegalStateException("Not owner"); }
         };
         try (var identities = new MachineIdentityRegistry(ownerCheck)) {
-            var runtime = new NetworkRuntime(identities, resources(), NetworkRuntimeTest::team, ownerCheck);
+            var runtime = runtime(identities, resources(), NetworkRuntimeTest::team, ownerCheck);
             var original = identity(identities, new Object(), 1, 1);
             var device = runtime.register(original, () -> capture(original));
             assertTrue(runtime.refresh());
@@ -170,7 +171,7 @@ class NetworkRuntimeTest {
         var supplied = new NetworkResourceType[] {equalCopy};
         var modifier = new NetworkResourceModifier[] {NetworkResourceModifier.EMPTY};
         try (var identities = new MachineIdentityRegistry(() -> { });
-             var runtime = new NetworkRuntime(identities, resources, NetworkRuntimeTest::team, () -> { })) {
+             var runtime = runtime(identities, resources, NetworkRuntimeTest::team, () -> { })) {
             var identity = identity(identities, new Object(), 1, 1);
             var device = runtime.register(identity, () -> new NetworkRuntime.Capture(new NetworkDeviceSnapshot(
                 identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1, true, identity.loadOrder(),
@@ -207,6 +208,13 @@ class NetworkRuntimeTest {
             assertTrue(runtime.refresh());
             assertTrue(device.allowsNetworkWork());
         }
+    }
+
+    private static NetworkRuntime runtime(MachineIdentityRegistry identities, NetworkResourceRegistry resources,
+            OwnerTeamResolver teams, Runnable ownerCheck) {
+        var runtime = new NetworkRuntime(identities, resources, teams, ownerCheck);
+        runtime.beginTick(0);
+        return runtime;
     }
 
     private static NetworkResourceRegistry resources() {
