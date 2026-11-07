@@ -243,6 +243,10 @@ public final class NetworkRuntime implements AutoCloseable {
 
         public long tick() { return budget.tick(); }
         public long epoch() { return publication.plan.epoch(); }
+        /** This exact attachment's frozen device in the issuing publication; never re-samples a source. */
+        public NetworkDeviceSnapshot deviceSnapshot() {
+            return Objects.requireNonNull(publication.captures.get(registration)).snapshot();
+        }
         @SuppressWarnings("unused") // External research/participant hosts retain the captured team alongside work identity.
         public String teamId() { return teamId; }
 

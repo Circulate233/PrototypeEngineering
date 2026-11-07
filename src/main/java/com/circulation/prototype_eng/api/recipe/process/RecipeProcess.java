@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.recipe.process;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
@@ -28,6 +29,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.List;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Random;
 import java.util.function.Supplier;
@@ -44,6 +46,7 @@ public final class RecipeProcess {
     private final List<RecipeRequirement<?>> orderedRequirements;
     private final long seed;
     private final ProbabilityTuning probabilityTuning;
+    @Nullable private final MachineHatches materialHatches;
     private final ComponentMap<RecipeProcess> components = new ComponentMap<>();
     private final MachineAttributes attributes;
     private State state = new State(Lifecycle.NEW, 0, 0, ProcessResult.SUCCESS);
@@ -66,12 +69,36 @@ public final class RecipeProcess {
     }
 
     public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning probabilityTuning) {
+        this(owner, recipe, seed, probabilityTuning, null);
+    }
+
+    private RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed, ProbabilityTuning probabilityTuning,
+                          @Nullable MachineHatches materialHatches) {
         this.owner = Objects.requireNonNull(owner);
         this.recipe = Objects.requireNonNull(recipe);
         this.seed = seed;
         this.probabilityTuning = Objects.requireNonNull(probabilityTuning);
+        this.materialHatches = materialHatches;
         attributes = new MachineAttributes(owner.attributes(), 1);
-        orderedRequirements = captureRequirements(owner, recipe);
+        if (materialHatches != null) {
+            // One segment pays one material execution; its own later modifiers remain effective.
+            attributes.setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+        }
+        orderedRequirements = materialHatches == null ? captureRequirements(owner, recipe)
+            : canonicalRequirements(recipe.orderedRequirements());
+    }
+
+    /**
+     * One complete material lifecycle on a real machine, using only the supplied canonical roots
+     * and captured hatch bindings. START and END follow normal transaction ordering; exactly one
+     * successful TICK is required, even when its scaled progress is zero. Machine recipe providers
+     * are deliberately excluded because this cycle is not ordinary recipe work.
+     */
+    public static RecipeProcess materialCycle(MachineInstance owner, ResourceLocation id,
+                                              Collection<? extends RecipeRequirement<?>> requirements,
+                                              MachineHatches hatches, long seed) {
+        return new RecipeProcess(owner, new MachineRecipe(id, 1, requirements), seed,
+            ProbabilityTuning.defaultTuning(), Objects.requireNonNull(hatches));
     }
 
     private static List<RecipeRequirement<?>> captureRequirements(MachineInstance owner, MachineRecipe recipe) {
@@ -83,7 +110,13 @@ public final class RecipeProcess {
                 supplied.addAll(Objects.requireNonNull(provider.requirementsFor(recipe), "Machine recipe requirements"));
             }
         }
-        var roots = supplied == null ? declared : supplied;
+        var roots = canonicalRequirements(supplied == null ? declared : supplied);
+        if (supplied == null) { return roots; }
+        supplied.sort(Comparator.comparing(root -> root.type().id().toString()));
+        return ObjectLists.unmodifiable(supplied);
+    }
+
+    private static List<RecipeRequirement<?>> canonicalRequirements(List<RecipeRequirement<?>> roots) {
         var types = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>();
         var ids = new ObjectOpenHashSet<ResourceLocation>();
         for (var root : roots) {
@@ -93,9 +126,7 @@ public final class RecipeProcess {
             if (previous != null && previous != root.type()) { throw new IllegalArgumentException("Different requirement types share id " + root.type().id()); }
             if (!ids.add(root.id())) { throw new IllegalArgumentException("Duplicate machine recipe requirement " + root.id()); }
         }
-        if (supplied == null) { return declared; }
-        supplied.sort(Comparator.comparing(root -> root.type().id().toString()));
-        return ObjectLists.unmodifiable(supplied);
+        return roots;
     }
 
     public MachineInstance owner() {
@@ -124,6 +155,13 @@ public final class RecipeProcess {
     public MachineRecipe recipe() {
         return recipe;
     }
+
+    /** Ordinary processes observe current machine bindings; material cycles retain their capture. */
+    public MachineHatches hatches() { return materialHatches == null ? MachineHatches.get(owner) : materialHatches; }
+
+    /** Persistence hosts must restore material cycles through their corresponding factory. */
+    @SuppressWarnings("unused") // External process codecs distinguish this explicitly restored clock.
+    public boolean isMaterialCycle() { return materialHatches != null; }
 
     /** Frozen canonical roots from the recipe and its actual machine component providers. */
     public List<RecipeRequirement<?>> orderedRequirements() { return orderedRequirements; }
@@ -228,6 +266,29 @@ public final class RecipeProcess {
         var process = new RecipeProcess(owner, recipe, seed, tuning);
         process.state = state;
         return process;
+    }
+
+    /**
+     * Recreates a material process at a confirmed stage boundary. Components/attributes must still
+     * be restored and validated by the host's process codec; this does not restore live tokens,
+     * hatch authority or a tick session. A one-cycle clock can contain only zero or one successful
+     * TICK, and completion requires that TICK even when scaled progress remained zero.
+     */
+    public static RecipeProcess restoredMaterialCycle(MachineInstance owner, MachineRecipe recipe, long seed,
+                                                       ProbabilityTuning tuning, State state, MachineHatches hatches) {
+        Objects.requireNonNull(state);
+        if (recipe.durationTicks() != 1 || state.successfulTicks() > 1
+            || state.successfulTicks() == 0 && state.progress() != 0
+            || state.lifecycle() == Lifecycle.COMPLETED && state.successfulTicks() != 1) {
+            throw new IllegalArgumentException("Invalid material cycle definition or confirmed state");
+        }
+        var process = new RecipeProcess(owner, recipe, seed, tuning, Objects.requireNonNull(hatches));
+        process.state = state;
+        return process;
+    }
+
+    private boolean workComplete() {
+        return materialHatches == null ? state.progress() >= recipe.durationTicks() : state.successfulTicks() >= 1;
     }
 
     /** Frozen scaled/unscaled timeline for requirements executing the current TICK stage. */
@@ -518,7 +579,7 @@ public final class RecipeProcess {
             if (stopped || process.workPaused() || process.state.lifecycle().isTerminal()) { return null; }
             RecipeStage phase;
             if (process.state.lifecycle() == Lifecycle.NEW) { phase = RecipeStage.START; }
-            else if (process.state.progress() >= process.recipe.durationTicks()) { phase = RecipeStage.END; }
+            else if (process.workComplete()) { phase = RecipeStage.END; }
             else if (!tickAttempted) { phase = RecipeStage.TICK; }
             else { return null; }
             process.stageVersion = Math.incrementExact(process.stageVersion);
@@ -728,11 +789,22 @@ public final class RecipeProcess {
          */
         @Nullable
         public static ResourceBatch tryAcquireBatch(List<Stage> stages) {
+            return tryAcquireBatch(stages, List.of());
+        }
+
+        /**
+         * Adds exact owner business acquisitions to this round, for example a material cycle's END
+         * grant. A busy fence returns null without taking any participant; the caller still owns
+         * their cleanup. On success all participants share the existing source/terminal boundary.
+         */
+        @Nullable
+        public static ResourceBatch tryAcquireBatch(List<Stage> stages,
+                                                    List<? extends ReversibleTransaction> participants) {
             var round = new ObjectArrayList<>(stages);
             if (round.isEmpty()) { throw new IllegalArgumentException("Recipe round is empty"); }
             var unique = new ReferenceOpenHashSet<Stage>();
             var reservations = new ObjectArrayList<ResourceReservation>();
-            var transactions = new ObjectArrayList<RequirementTransaction>();
+            var transactions = new ObjectArrayList<ReversibleTransaction>();
             for (var stage : round) {
                 stage.requireAcquired();
                 if (!unique.add(stage) || stage.synchronous || stage.batch != null || !stage.acquisition.inventoryComplete()) {
@@ -741,6 +813,7 @@ public final class RecipeProcess {
                 reservations.addAll(stage.acquisition.reservations());
                 transactions.addAll(stage.acquisition.transactions());
             }
+            transactions.addAll(Objects.requireNonNull(participants));
             for (var stage : round) { stage.session.executing = true; }
             try {
                 var bound = ResourceBatch.tryAcquire(reservations, transactions);

@@ -4,7 +4,6 @@ import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -59,7 +58,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         var reservations = new ObjectArrayList<ResourceReservation>();
         ResourceInputResolver.Selection selection = null;
         try {
-            var hatches = MachineHatches.get(process.owner()).resources();
+            var hatches = process.hatches().resources();
             String id = requirement.id().toString();
             int parallelism = RecipeParallelism.effective(process);
             double chance = payload.chance().effective(process);

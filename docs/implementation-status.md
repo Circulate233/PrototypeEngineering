@@ -10,14 +10,16 @@
 - 物理数据中心已有外部 DataCenterStorage 接口、MachineDataCenterStorage 组件及严格 NBT；保留下载/磁盘写入/循环升级规则，修复旧同步能产生互斥内容而无法恢复的问题。服务器下载授权、物品消费及自动云同步仍待接入，不能把存储 API 当完整下载链。
 - 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
-- 本阶段新增 6 项行为测试，并将同步与 planned 配方夹具接到同一实际供给捕获边界。完整 Gradle 构建通过 803 项测试、113 suites，零失败/错误/跳过；11 个本阶段 src Java 与 Tags 共 12 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/computer-supply-final.json。原生 ItemStack→AEItemKey 转换仅静态核对；未初始化 Bootstrap/FML 或运行游戏。原 23 份用户修改保留。
-- 服务器手动研究链已接通；仍待研究站完整材料和计算提交、领取 packet/UI 与存档事务绑定、下载，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
+- 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
+- 本阶段新增 34 项行为测试，完整 Gradle 构建通过 837 项测试、118 suites，零失败/错误/跳过；14 个 src Java 与 Tags 共 15 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/research-stations-core-final.json。未启动游戏，原 23 份用户修改保留；计算物品原生 ItemStack 转换仍仅静态核对。
+- 服务器手动研究链已接通；仍待研究站自动服务器调度、世界会话/材料进程保存恢复、领取 packet/UI 与存档事务绑定、下载，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
 
-- R29 已确认研究站每次有效推进完整执行材料 START/TICK/END；当前只完成执行审计，尚未接入站点消费者。必须保留真实阶段顺序、修改器及输出可见性，不能三阶段全部先 acquire 再 commit。
+- 计算组件供给阶段验证：新增 6 项行为测试，并将同步/planned 配方夹具接入真实供给边界；完整构建 803 项测试、113 suites 全通过，12 文件 IDEA 全级零诊断，MCP build_project 成功。证据 build/reports/idea/computer-supply-final.json。
+- R29 的顶层材料阶段顺序已按真实进程实现；既存 CheckpointRequirementSystem 内部的子阶段预获取/延后提交仍需修正嵌套 selector 顺序，不能据顶层周期验证声称任意嵌套组合已完成。
 - PN 普通配方阶段验证：新增 56 项行为测试，完整 Gradle 构建通过 797 项测试、112 suites，零失败/错误/跳过；50 个 src Java 与 Tags 共 51 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/network-recipes-final.json。
 
 - 服务器研究阶段已完成：ResearchWorld 管理共享玩家来源、队伍研究/黑名单/队列/手动会话；ServerResearch 在真实 FML 生命周期、既有 tick boundary、主世界保存/卸载、玩家登录退出中执行，并提供 Java 手动开始/接管。独占压缩原子存档；旧 pending 先重试，关闭失败不丢会话；FTB 不可用暂停，研究失效先处理扣料与完成义务再 prune。来源、接口、修复和边界见[服务器研究](server-research.md)。

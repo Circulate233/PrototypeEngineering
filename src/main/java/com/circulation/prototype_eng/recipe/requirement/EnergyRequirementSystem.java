@@ -43,7 +43,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         output = RecipeParallelism.scaleCount(output, parallelism);
         var reservations = new ObjectArrayList<ResourceReservation>();
         try {
-            var hatches = MachineHatches.get(process.owner());
+            var hatches = process.hatches();
             String id = requirement.id().toString();
             ProcessResult result = reserveInput(hatches, input, id, reservations);
             if (result == ProcessResult.SUCCESS) {

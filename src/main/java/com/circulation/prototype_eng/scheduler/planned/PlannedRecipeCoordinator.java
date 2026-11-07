@@ -8,12 +8,15 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationTo
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 /**
@@ -25,7 +28,11 @@ import java.util.function.LongSupplier;
 public final class PlannedRecipeCoordinator implements PlannedExecution {
     private final Thread owner = Thread.currentThread();
     private final PlannedTaskExecutor tasks;
-    private final MachineWorkSlots.TickGroup group;
+    @Nullable private final MachineWorkSlots.TickGroup group;
+    @Nullable private final RecipeProcess process;
+    @Nullable private final Function<RecipeProcess.Stage, List<? extends ReversibleTransaction>> participants;
+    @Nullable private RecipeProcess.TickSession processSession;
+    private boolean processFinished;
     private final PlannedDeadline forwardDeadline;
     private final PlannedCancellationToken cancellation;
     private final BooleanSupplier authorization;
@@ -54,6 +61,38 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         this.authorization = Objects.requireNonNull(authorization);
         this.nanoTime = Objects.requireNonNull(nanoTime);
         group = MachineWorkSlots.prepareTickGroup(hosts);
+        process = null;
+        participants = null;
+    }
+
+    /**
+     * Drives one unattached material cycle on its real owner and captured hatches. The caller retains
+     * this exact coordinator across busy domains, UNKNOWN cleanup and cancellation. Capture invokes
+     * no callbacks. After each successful requirement acquisition, participants is called once:
+     * null blocks and rolls back that stage; an empty list adds nothing. Returned acquisitions must
+     * be distinct, newly owned business transactions, with no stage-owned transaction repeated.
+     */
+    public static PlannedRecipeCoordinator forProcess(PlannedTaskExecutor tasks, RecipeProcess process,
+            PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation, BooleanSupplier authorization,
+            Function<RecipeProcess.Stage, List<? extends ReversibleTransaction>> participants) {
+        return new PlannedRecipeCoordinator(tasks, process, forwardDeadline, cancellation, authorization, participants);
+    }
+
+    private PlannedRecipeCoordinator(PlannedTaskExecutor tasks, RecipeProcess process,
+            PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation, BooleanSupplier authorization,
+            Function<RecipeProcess.Stage, List<? extends ReversibleTransaction>> participants) {
+        this.tasks = Objects.requireNonNull(tasks);
+        this.process = Objects.requireNonNull(process);
+        this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
+        this.cancellation = Objects.requireNonNull(cancellation);
+        this.authorization = Objects.requireNonNull(authorization);
+        this.participants = Objects.requireNonNull(participants);
+        nanoTime = System::nanoTime;
+        group = null;
+        if (!process.isMaterialCycle() || process.host() != null) {
+            throw new IllegalArgumentException("Detached coordination requires an unattached material cycle");
+        }
+        process.requirePersistenceBoundary();
     }
 
     /**
@@ -64,10 +103,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Override public boolean advance(PlannedDeadline cleanupDeadline) {
         requireOwner();
         Objects.requireNonNull(cleanupDeadline);
-        if (group.finished()) { return true; }
+        if (finished()) { return true; }
         executing = true;
         try {
-            while (!group.finished()) {
+            while (!finished()) {
                 if (settlement != null) {
                     if (!settleActive(cleanupDeadline)) { break; }
                     continue;
@@ -80,17 +119,17 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 }
                 if (!begun) {
                     begun = true;
-                    try { group.begin(); }
+                    try { beginProcesses(); }
                     catch (RuntimeException | Error beginFailure) { record(beginFailure); }
                     continue;
                 }
                 if (round.isEmpty()) {
                     try {
-                        for (var stage : group.nextRound()) { round.add(new Entry(stage)); }
+                        for (var stage : nextStages()) { round.add(new Entry(stage)); }
                     } catch (RuntimeException | Error captureFailure) {
                         record(captureFailure);
                         // nextRound can throw after creating earlier prepared leases.
-                        for (var stage : group.currentStages()) { round.add(new Entry(stage)); }
+                        for (var stage : currentStages()) { round.add(new Entry(stage)); }
                         continue;
                     }
                     acquisitionCursor = 0;
@@ -101,7 +140,12 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     entry.acquired = true;
                     try { entry.stage.acquire(); }
                     catch (RuntimeException | Error acquisitionFailure) { record(acquisitionFailure); continue; }
-                    if (entry.stage.result() != ProcessResult.SUCCESS) {
+                    boolean accepted = entry.stage.result() == ProcessResult.SUCCESS;
+                    if (accepted && participants != null) {
+                        try { accepted = captureParticipants(entry); }
+                        catch (RuntimeException | Error participantFailure) { record(participantFailure); continue; }
+                    }
+                    if (!accepted) {
                         // Release rejected holds before the next slot acquires, preserving PM ordering.
                         if (!bind(List.of(entry), true)) { break; }
                     }
@@ -120,10 +164,41 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         var observed = unreported;
         unreported = null;
         rethrow(observed);
-        return group.finished();
+        return finished();
     }
 
-    @Override public boolean finished() { return group.finished(); }
+    @Override public boolean finished() { return group != null ? group.finished() : processFinished; }
+
+    private void beginProcesses() {
+        if (group != null) { group.begin(); }
+        else { processSession = Objects.requireNonNull(process).beginTick(); }
+    }
+
+    private List<RecipeProcess.Stage> nextStages() {
+        if (group != null) { return group.nextRound(); }
+        var session = processSession;
+        var stage = session == null ? null : session.nextStage();
+        return stage == null ? List.of() : List.of(stage);
+    }
+
+    private List<RecipeProcess.Stage> currentStages() {
+        if (group != null) { return group.currentStages(); }
+        var session = processSession;
+        var stage = session == null ? null : session.currentStage();
+        return stage == null ? List.of() : List.of(stage);
+    }
+
+    private boolean captureParticipants(Entry entry) {
+        var captured = Objects.requireNonNull(participants).apply(entry.stage);
+        if (captured == null) { return false; }
+        var unique = new ReferenceOpenHashSet<ReversibleTransaction>();
+        for (var transaction : captured) {
+            Objects.requireNonNull(transaction, "Additional business acquisition");
+            if (!unique.add(transaction)) { throw new IllegalArgumentException("Repeated additional business acquisition"); }
+            entry.participants.add(transaction);
+        }
+        return true;
+    }
 
     /** Accepted source actions require physical exit before another owner settlement attempt. */
     public boolean hasActiveSources() {
@@ -169,9 +244,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
 
     private boolean bind(List<Entry> entries, boolean rollback) {
         var stages = new ObjectArrayList<RecipeProcess.Stage>(entries.size());
-        for (var entry : entries) { stages.add(entry.stage); }
+        var additional = new ObjectArrayList<ReversibleTransaction>();
+        for (var entry : entries) { stages.add(entry.stage); additional.addAll(entry.participants); }
         try {
-            var resources = RecipeProcess.Stage.tryAcquireBatch(stages);
+            var resources = RecipeProcess.Stage.tryAcquireBatch(stages, additional);
             if (resources == null) { stop(Reason.RESERVATION_CONFLICT); return false; }
             settlement = new Settlement(resources, new ObjectArrayList<>(entries), rollback);
             return true;
@@ -193,6 +269,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             if (!entry.localCleanup && entry.stage.transferable()) { transferable.add(entry); continue; }
             if (cleanupDeadline.expired(nanoTime.getAsLong())) { pending = true; continue; }
             entry.localCleanup = true;
+            if (!cleanParticipants(entry)) { pending = true; continue; }
             try {
                 if (!entry.cleanupStarted) { entry.cleanupStarted = true; entry.stage.rollbackSynchronously(); }
                 else { entry.stage.resolveSynchronously(); }
@@ -202,6 +279,22 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         if (!transferable.isEmpty()) { return bind(transferable.reversed(), true); }
         if (!pending) { clearRound(); }
         return !pending;
+    }
+
+    /** Only a failed transfer takes this local path; successful binds retain the combined batch. */
+    private boolean cleanParticipants(Entry entry) {
+        if (entry.participants.isEmpty()) { return true; }
+        if (entry.participantCleanup == null) {
+            entry.participantCleanup = Objects.requireNonNull(ResourceBatch.tryAcquire(List.of(), entry.participants));
+        }
+        var cleanup = entry.participantCleanup;
+        if (cleanup.finished()) { return true; }
+        try {
+            if (cleanup.decision() == ResourceBatch.Decision.OPEN) { cleanup.rollback(); }
+            else { cleanup.resolveBusiness(); }
+            if (cleanup.readyToFinish()) { cleanup.finish(); }
+        } catch (RuntimeException | Error failure) { record(failure); }
+        return cleanup.finished();
     }
 
     private ObjectArrayList<Entry> unresolved() {
@@ -309,13 +402,22 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     private void finishGroup() {
-        try { group.tryFinish(); }
+        if (group != null) {
+            try { group.tryFinish(); }
+            catch (RuntimeException | Error post) { record(post); }
+            return;
+        }
+        var session = processSession;
+        if (session == null) { processFinished = true; return; }
+        if (session.currentStage() != null) { return; }
+        try { session.finish(); }
         catch (RuntimeException | Error post) { record(post); }
+        finally { processFinished = Objects.requireNonNull(process).quiescent(); }
     }
 
     private void stop(Reason reason) {
         if (stopReason == null) { stopReason = reason; }
-        if (!group.finished()) { group.stop(); }
+        if (group != null && !group.finished()) { group.stop(); }
     }
 
     private void record(Throwable observed) {
@@ -324,7 +426,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         if (unreported == null) { unreported = observed; }
         else if (unreported != observed && unreported != failure) { unreported.addSuppressed(observed); }
         stop(Reason.WORKER_FAILURE);
-        if (!group.finished()) { group.recordFailure(observed); }
+        if (group != null && !group.finished()) { group.recordFailure(observed); }
+        else if (processSession != null && Objects.requireNonNull(process).pendingTick() == processSession) {
+            processSession.recordFailure(observed);
+        }
     }
 
     private void requireOwner() {
@@ -342,6 +447,8 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         private boolean acquired;
         private boolean localCleanup;
         private boolean cleanupStarted;
+        private final ObjectArrayList<ReversibleTransaction> participants = new ObjectArrayList<>();
+        @Nullable private ResourceBatch participantCleanup;
         private Entry(RecipeProcess.Stage stage) { this.stage = stage; }
     }
 

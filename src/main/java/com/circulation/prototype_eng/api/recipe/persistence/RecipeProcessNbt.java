@@ -4,6 +4,8 @@ import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.BuiltinOverlayCodecs;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
@@ -87,6 +89,7 @@ public final class RecipeProcessNbt {
         var index = new RecipeDefinitionIndex(process);
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 2);
+        if (process.isMaterialCycle()) { tag.setBoolean("MaterialCycle", true); }
         tag.setString("Recipe", recipe.id().toString());
         tag.setString("Revision", revision);
         tag.setInteger("Duration", recipe.durationTicks());
@@ -123,19 +126,36 @@ public final class RecipeProcessNbt {
     }
 
     public RecipeProcess decode(MachineInstance owner, NBTTagCompound saved) {
+        return decode(owner, saved, null);
+    }
+
+    /** Restores the complete material requirement graph against newly authorized physical sources. */
+    public RecipeProcess decodeMaterialCycle(MachineInstance owner, MachineHatches hatches, NBTTagCompound saved) {
+        return decode(owner, saved, Objects.requireNonNull(hatches));
+    }
+
+    private RecipeProcess decode(MachineInstance owner, NBTTagCompound saved, @Nullable MachineHatches hatches) {
         // Isolate even a codec that retains or edits its input from the caller and subsequent loads.
         var tag = Objects.requireNonNull(saved).copy();
-        StrictNbt.requireKeys(tag, "Version", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-            "Attributes", "Components", "PendingDependencies");
+        if (hatches == null) {
+            StrictNbt.requireKeys(tag, "Version", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
+                "Attributes", "Components", "PendingDependencies");
+        } else {
+            StrictNbt.requireKeys(tag, "Version", "MaterialCycle", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
+                "Attributes", "Components", "PendingDependencies");
+            if (!StrictNbt.requireBoolean(tag, "MaterialCycle")) { throw new IllegalArgumentException("Expected a material cycle save"); }
+        }
         if (StrictNbt.requireInt(tag, "Version") != 2 || !StrictNbt.requireId(tag, "Recipe").equals(recipe.id())
             || !StrictNbt.requireString(tag, "Revision").equals(revision) || StrictNbt.requireInt(tag, "Duration") != recipe.durationTicks()) {
             throw new IllegalArgumentException("Unsupported process save or incompatible recipe revision");
         }
         var tuning = StrictNbt.requireCompound(tag, "Tuning");
         StrictNbt.requireKeys(tuning, "ExactSmallBinomial", "Threshold");
-        var process = RecipeProcess.restored(owner, recipe, StrictNbt.requireLong(tag, "Seed"),
-            new ProbabilityTuning(StrictNbt.requireBoolean(tuning, "ExactSmallBinomial"), StrictNbt.requireInt(tuning, "Threshold")),
-            readState(StrictNbt.requireCompound(tag, "State")));
+        long seed = StrictNbt.requireLong(tag, "Seed");
+        var probability = new ProbabilityTuning(StrictNbt.requireBoolean(tuning, "ExactSmallBinomial"), StrictNbt.requireInt(tuning, "Threshold"));
+        var state = readState(StrictNbt.requireCompound(tag, "State"));
+        var process = hatches == null ? RecipeProcess.restored(owner, recipe, seed, probability, state)
+            : RecipeProcess.restoredMaterialCycle(owner, recipe, seed, probability, state, hatches);
         var graph = StrictNbt.requireList(tag, "Graph", Constants.NBT.TAG_LIST);
         var expected = new ObjectArrayList<>(new RecipeDefinitionIndex(process).requirements().keySet());
         if (graph.tagCount() != expected.size()) { throw new IllegalArgumentException("Recipe requirement graph changed"); }
