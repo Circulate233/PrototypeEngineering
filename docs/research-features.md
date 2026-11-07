@@ -1,6 +1,6 @@
 # 研究定义、资格、完成与奖励执行
 
-已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 玩家 Java 入队、服务器奖励领取与世界检查点已接；界面/packet、未确认奖励库存的完整恢复保护、数据中心自动同步与下载仍须完成。
+已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 玩家 Java 入队、服务器奖励领取与世界检查点已接；原生奖励物品保护已接，界面/packet、可靠未发出证明、数据中心自动同步与下载仍须完成。
 
 ## 定义与注册
 
@@ -60,10 +60,10 @@
 `MinecraftRewardItemDeliveryAdapter` 已由 ServerResearch.requestReward 使用，绑定准确玩家会话和 ResearchWorld 的同一 writer。CONFIRMED 检查点成功后幂等清除真实交付标签，登录与掉落后续加载补清；详见[服务器奖励](research-rewards.md)。仍有以下实际边界：
 
 - 服务器 Java 领取、逐次世界检查点与保存失败恢复已接；领取 packet/UI 尚未完成。
-- 默认只把实际观察视为已交付；加载中的背包/实体扫描不能证明全局缺失。缺失证明扩展默认返回 false，完整交互冻结和权威存储恢复仍待接入。
+- 默认只把实际观察视为已交付；加载中的背包/实体扫描不能证明全局缺失。原生玩家操作、死亡重生、光标、掉落与漏斗保护已接；第三方直接改栈须遵守公开查询。缺失证明扩展仍默认返回 false，效果前持久凭据尚待接入。
 - 未运行 Minecraft 或服务端，游戏交互、标签移动及掉落恢复尚未做实机验证。
 
-来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。下载事件、特殊磁盘交互与未确认奖励库存的完整保护仍未完成；CraftTweaker 按用户要求最后实现。
+来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。下载事件、特殊磁盘交互与崩溃后的可靠未发出证明仍未完成；CraftTweaker 按用户要求最后实现。
 
 ## 验证
 

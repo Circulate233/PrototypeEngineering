@@ -32,6 +32,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
@@ -247,7 +248,6 @@ public final class ServerResearch {
 
     /** A confirmed drop may load after its owner logged in; clean it after the join finishes. */
     @SubscribeEvent
-    @SuppressWarnings("resource") // Cleanup uses the existing server-owned MAIN queue.
     public static void onRewardEntityJoin(EntityJoinWorldEvent event) {
         var current = session;
         if (current == null || current.closing || event.getWorld().isRemote
@@ -258,7 +258,24 @@ public final class ServerResearch {
         var identity = StrictNbt.requireCompound(Objects.requireNonNull(stack.getTagCompound()), MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG);
         var id = UUID.fromString(StrictNbt.requireString(identity, "Player"));
         var player = current.server.getPlayerList().getPlayerByUUID(id);
-        if (player == null || !currentActor(current, player) || !current.rewardCleanup.add(id)) { return; }
+        if (player != null) queueRewardCleanup(current, player);
+    }
+
+    @SubscribeEvent
+    public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) { cleanupCurrentPlayer(event.player); }
+
+    @SubscribeEvent
+    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) { cleanupCurrentPlayer(event.player); }
+
+    private static void cleanupCurrentPlayer(EntityPlayer actor) {
+        var current = session;
+        if (current != null && actor instanceof EntityPlayerMP player && !player.world.isRemote) queueRewardCleanup(current, player);
+    }
+
+    @SuppressWarnings("resource") // Cleanup uses the existing server-owned MAIN queue.
+    private static void queueRewardCleanup(Session current, EntityPlayerMP player) {
+        var id = player.getUniqueID();
+        if (!currentActor(current, player) || !current.rewardCleanup.add(id)) return;
         try {
             ServerTaskSchedulers.forServer(current.server).submit(() -> {
                 current.rewardCleanup.remove(id);
@@ -316,6 +333,10 @@ public final class ServerResearch {
 
     /** A crash after the research checkpoint may restore old delivery tags; remove only proven leaves. */
     private static void releaseConfirmedRewards(Session current, EntityPlayerMP player) {
+        // A read-only snapshot may contain a CONFIRMED transition whose writer failed. Flush its
+        // exact pending snapshot first; a nested world operation may only request a deferred save.
+        current.world.checkpoint(operationTime(current));
+        if (current.world.busy() || current.world.savePending()) return;
         var delivery = new MinecraftRewardItemDeliveryAdapter(player);
         for (var saved : current.world.snapshot().players()) {
             if (!saved.playerUuid().equals(player.getUniqueID())) { continue; }

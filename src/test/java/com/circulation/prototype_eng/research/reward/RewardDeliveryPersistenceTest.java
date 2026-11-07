@@ -71,6 +71,52 @@ class RewardDeliveryPersistenceTest {
         assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyHost(saveHost(ENTITY, leaf()), PLAYER, leaf()));
     }
 
+    @Test void verifiesProtectedCursorThroughBothPlayerAndIntegratedHostRecoveryFiles() throws IOException {
+        var player = playerData(PLAYER);
+        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, leaf());
+        var file = directory.resolve("cursor-player.dat");
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), leaf());
+        var host = new NBTTagCompound();
+        var data = new NBTTagCompound();
+        data.setTag("Player", player);
+        host.setTag("Data", data);
+        var hostFile = directory.resolve("cursor-level.dat");
+        try (var output = Files.newOutputStream(hostFile)) { CompressedStreamTools.writeCompressed(host, output); }
+        RewardDeliveryPersistence.verifyHost(hostFile, PLAYER, leaf(), leaf());
+    }
+
+    @Test void cursorCannotConfirmADuplicateChangedOrMalformedDelivery() throws IOException {
+        var file = directory.resolve("cursor-conflict.dat");
+        var player = playerData(PLAYER, leaf());
+        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, leaf());
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), leaf()));
+        player = playerData(PLAYER);
+        var changed = leaf();
+        changed.setByte("Count", (byte) 1);
+        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, changed);
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), leaf()));
+        player = playerData(PLAYER, leaf());
+        player.setString(RewardPlayerInventory.PROTECTED_CURSOR_TAG, "invalid");
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf()));
+        var otherCursor = leaf();
+        otherCursor.getCompoundTag("tag").getCompoundTag(MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG).setString("Fragment", PLAYER.toString());
+        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, otherCursor);
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), otherCursor);
+        var brokenCursor = otherCursor.copy();
+        brokenCursor.removeTag("id");
+        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, brokenCursor);
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), otherCursor));
+        player.removeTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG);
+        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(player, output); }
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), otherCursor));
+    }
+
     @Test void verifiesActualRegionFileAtNegativeChunkCoordinates() throws IOException {
         writeChunk(-33, 65, entity(ENTITY, leaf()));
         RewardDeliveryPersistence.verifyDrop(directory, -33, 65, ENTITY, leaf(), protection());

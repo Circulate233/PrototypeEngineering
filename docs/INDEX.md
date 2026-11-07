@@ -9,8 +9,8 @@
 - 真实计算组件物品供给已接通：AEItemKey 精确注册、真实 committed 槽、long 数量、单物品上限和整机供给合并；提取预留仍供给，待插入输出不供给。捕获后的授权只读版本证明，可在材料/FE 锁及 source fence 内使用，见[计算资源](network-resources.md)。
 - 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；Version 2 世界存档保存原站和完整材料，见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接：同一外层阶段逐段执行子 START/TICK/END；候选 Blocked/Failure 时，在原 fence 和 source lanes 撤销完整候选后缀，确认后尝试下一项，外层成功前缀保留。支持嵌套选择、产物链、满仓闭环与 modifier/overlay 顺序；普通 continuation 保留跨来源并行，见[检查点审计](checkpoint-execution-audit.md)。
-- 服务器奖励领取已接准确玩家会话与世界检查点；真实物品确认核对 UUID.dat、单人 level.dat 和原 Anvil region，确认后清标签，登录/掉落后加载补清。确定未调用或明确零效果的尝试保存 RETRY_PLANNED 后可沿原计划续发，不确定交付不回退。完整交互保护和崩溃后的可靠缺失证明仍缺，旧 PN 的副手/创造/死亡/漏斗边界已复核，见[服务器奖励](research-rewards.md)。
-- 最近验证（2026-11-07）：确定零效果恢复阶段新增 5 项行为测试；完整构建 980 tests / 132 suites，零失败/错误/跳过。7 个阶段 src Java 加 Tags 共 8 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-reward-no-effect-final.json。原 23 份修改保留，未启动游戏或服务端。
+- 服务器奖励领取与原生交互保护已接：准确世界检查点、UUID.dat/单人 level.dat/Anvil 文件核验、明确零效果重试；Mixin 在原执行处覆盖副手/创造/使用、死亡重生、光标关闭/保存、装备损耗和漏斗。清标签前重写 pending，第三方直接改栈使用公开保护查询；崩溃后的可靠未发出证明仍缺，见[服务器奖励](research-rewards.md)。
+- 最近验证（2026-11-07）：奖励原生保护阶段新增 2 项实际 NBT 文件行为测试，覆盖光标持久化、跨库存/光标重复、改变/缺失/损坏及单人宿主恢复。完整构建 982 tests / 132 suites 全通过；19 个 src Java 加 Tags 共 20 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。生产 Jar 已包含配置、10 个 Mixin 及生成 refmap；未运行游戏，注入点依据实际源码/字节码与编译映射核验。证据 build/reports/idea/research-reward-protection-final.json。原 23 份修改保留。
 - 物理数据中心的存储接口、机器组件、真实内容证明及 NBT 已有；普通下载、磁盘写入、循环研究升级的存储规则已迁入，自动云同步、下载授权/事件与物品消费恢复仍缺。正 tier 玩家 Java 入队已接；研究界面/packet 仍缺；永久破坏后的材料会话仍待接生命周期，见[研究功能](research-features.md)。
 - 服务器手动研究已接通世界单一存档、FML 生命周期、FTB 成员核对、tick 边界和 Java 开始/接管；失效队列先结算回执再 prune，旧 pending 检查点先重试，关闭失败保留会话。见[服务器研究](server-research.md)。
 - 配方事件已有真实 Java 调用：需求 START/TICK/END、选择提交回调、检查点/属性效果、动态匹配条件、进程钩子及 PN 配方扩展。机器事件不计入；CT 最后，见[事件复审](pm-recipe-events-audit.md)。
@@ -18,7 +18,7 @@
 
 ## 下一步
 
-1. 确定零效果的奖励重试已完成；接下来按[保护审计](research-rewards.md)接真实玩家库存入口、断线/重生及拒绝同步，明确死亡/漏斗边界后完成可靠缺失证明，再接领取/研究视图 packet 和 GUI。随后按[配方功能核对](recipe-feature-parity.md)继续下载事件与永久破坏后的材料会话。复用已有定义、资格、权限、队列、手动执行、完成与奖励，不把可调用步骤称为完整服务器链；Java 先完整，CT 最后。
+1. 奖励明确零效果重试及原生物品保护已接，下一步完成效果前持久的未发出凭据，保持未知结果不补发，再接领取/研究视图 packet 和 GUI。随后按[配方功能核对](recipe-feature-parity.md)继续下载事件与永久破坏后的材料会话。复用已有定义、资格、权限、队列、手动执行、完成与奖励，不把可调用步骤称为完整服务器链；Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；数据中心自动云同步/下载操作必须带当前授权和真实物品事务。
 3. 在具体消费者中完成纯 prepare、冻结输入/结果及内部工作预算；复用已接好的机器游标、生命周期与 source lanes，不脱离业务反复扩底座。整体重开发仍在进行。
 4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义 JEI 及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。

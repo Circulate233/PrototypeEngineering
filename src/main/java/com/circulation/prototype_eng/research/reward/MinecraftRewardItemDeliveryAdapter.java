@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
 import com.circulation.prototype_eng.api.research.reward.RewardFragment;
 import com.circulation.prototype_eng.api.research.reward.RewardItemDeliveryAdapter;
+import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -37,7 +38,7 @@ import org.jetbrains.annotations.Nullable;
 /** Actual server inventory/drop delivery and synchronous persistence, with conservative unknown recovery. */
 @SuppressWarnings("unused") // Library runtime entry point; no built-in gameplay or packet is registered.
 public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliveryAdapter {
-    public static final String DELIVERY_TAG = "PrototypeEngineeringRewardDelivery";
+    public static final String DELIVERY_TAG = RewardItemProtection.DELIVERY_TAG;
     private static final String DROP_PROTECTION = "PrototypeEngineeringRewardProtection";
     private static final int MAX_FRAGMENTS = 4096;
     private final EntityPlayerMP player;
@@ -117,6 +118,7 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
         var observed = new ObjectOpenHashSet<UUID>();
         var entities = new Object2ObjectLinkedOpenHashMap<UUID, UUID>();
         for (int slot = 0; slot < player.inventory.getSizeInventory(); slot++) observe(player.inventory.getStackInSlot(slot), null, expected, observed, entities);
+        observe(player.inventory.getItemStack(), null, expected, observed, entities);
         for (var world : DimensionManager.getWorlds()) {
             if (world.getMinecraftServer() != server) continue;
             for (var entity : world.loadedEntityList) {
@@ -212,6 +214,7 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
         if (fragment.target() instanceof RewardFragment.Inventory) {
             if (delivery.entityUuid().isPresent()) throw new IllegalArgumentException("Inventory reward cannot have entity identity");
             requireInventoryLeaf(expected);
+            var cursor = protectedCursor();
             var handler = requirePlayerSaveHandler();
             boolean host = server.isSinglePlayer() && player.getName().equals(server.getServerOwner());
             if (host) server.getPlayerList().saveAllPlayerData(); // Refreshes IntegratedPlayerList's authoritative host snapshot.
@@ -219,16 +222,17 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
             requireOwner();
             try {
                 RewardDeliveryPersistence.verifyPlayer(handler.getWorldDirectory().toPath().resolve("playerdata").resolve(player.getUniqueID() + ".dat"),
-                    player.getUniqueID(), fragment.taggedStackNbt());
+                    player.getUniqueID(), fragment.taggedStackNbt(), cursor);
                 if (host) {
                     var hostData = Objects.requireNonNull(server.getPlayerList().getHostPlayerData(), "Reward host player snapshot");
                     handler.saveWorldInfoWithPlayer(overworld.getWorldInfo(), hostData);
                     requireOwner();
-                    RewardDeliveryPersistence.verifyHost(handler.getWorldDirectory().toPath().resolve("level.dat"), player.getUniqueID(), fragment.taggedStackNbt());
+                    RewardDeliveryPersistence.verifyHost(handler.getWorldDirectory().toPath().resolve("level.dat"), player.getUniqueID(), fragment.taggedStackNbt(), cursor);
                 }
             } catch (IOException failure) { throw new UncheckedIOException(failure); }
             requireOwner();
             requireInventoryLeaf(expected);
+            if (!cursor.equals(protectedCursor())) throw new IllegalStateException("Reward cursor changed during its persistence barrier");
             return;
         }
         var entityId = delivery.entityUuid().orElseThrow();
@@ -267,9 +271,14 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
     }
 
     private void requireInventoryLeaf(ItemStack expected) {
-        int count = 0;
+        int count = exact(player.inventory.getItemStack(), expected) ? 1 : 0;
         for (int slot = 0; slot < player.inventory.getSizeInventory(); slot++) if (exact(player.inventory.getStackInSlot(slot), expected)) count++;
         if (count != 1) throw new IllegalStateException("Reward inventory persistence requires exactly one tagged leaf");
+    }
+
+    private NBTTagCompound protectedCursor() {
+        var cursor = player.inventory.getItemStack();
+        return RewardItemProtection.isProtected(cursor) ? cursor.writeToNBT(new NBTTagCompound()) : new NBTTagCompound();
     }
 
     private SaveHandler requirePlayerSaveHandler() {
@@ -286,6 +295,7 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
         var expected = new ItemStack(fragment.taggedStackNbt());
         var slots = new IntArrayList();
         var drops = new ObjectArrayList<EntityItem>();
+        boolean cursor = releaseCandidate(player.inventory.getItemStack(), fragment, expected);
         for (int slot = 0; slot < player.inventory.getSizeInventory(); slot++) {
             var stack = player.inventory.getStackInSlot(slot);
             if (releaseCandidate(stack, fragment, expected)) slots.add(slot);
@@ -298,8 +308,9 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
                 }
             }
         }
-        if (slots.size() + drops.size() > 1) throw new IllegalStateException("Duplicate confirmed reward leaf " + fragment.id());
+        if (slots.size() + drops.size() + (cursor ? 1 : 0) > 1) throw new IllegalStateException("Duplicate confirmed reward leaf " + fragment.id());
         for (int slot : slots) player.inventory.setInventorySlotContents(slot, releasedStack(player.inventory.getStackInSlot(slot)));
+        if (cursor) player.inventory.setItemStack(releasedStack(player.inventory.getItemStack()));
         for (var entity : drops) {
             restoreDrop(entity, fragment);
             entity.setItem(releasedStack(entity.getItem()));
@@ -308,9 +319,10 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
                 if (loadedChunk != null) loadedChunk.markDirty();
             }
         }
-        if (!slots.isEmpty()) {
+        if (!slots.isEmpty() || cursor) {
             player.inventory.markDirty();
             if (player.inventoryContainer != null) player.inventoryContainer.detectAndSendChanges();
+            if (cursor) player.sendContainerToPlayer(player.openContainer);
         }
         requireOwner();
         // Cleanup is repeatable after reload. Missing/previously released leaves never create items.

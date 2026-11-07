@@ -12,16 +12,18 @@
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
 - 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接真实执行：RequirementAlternatives 在候选开始前建立 ResourceBatch.Savepoint，Blocked/Failure 后只撤销候选及完整嵌套后缀，确认后按声明顺序改选。同步和 PlannedRecipeCoordinator 共用原 fence/来源 lanes；跨工位成功前缀保留，普通 continuation 仍可跨来源并行。UNKNOWN、超时及未退出回调保留原 Stage 和补偿义务，取消扩大为整批回退且不重放，见[检查点审计](checkpoint-execution-audit.md)。
-- 确定零效果恢复阶段新增 5 项行为测试；完整构建 980 tests / 132 suites，零失败/错误/跳过。7 个阶段 src Java 加 Tags 共 8 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-reward-no-effect-final.json。原 23 份修改保留，未启动游戏或服务端。
+- 奖励原生保护阶段新增 2 项实际 NBT 文件行为测试，覆盖光标持久化、跨库存/光标重复、改变/缺失/损坏及单人宿主恢复。完整构建 982 tests / 132 suites 全通过；19 个 src Java 加 Tags 共 20 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。生产 Jar 已包含配置、10 个 Mixin 及生成 refmap；未运行游戏，注入点依据实际源码/字节码与编译映射核验。证据 build/reports/idea/research-reward-protection-final.json。原 23 份修改保留。
 - 研究站自动服务器阶段已接：ResearchWorld 每队持有材料消费者，调度器在普通工作之前持有 PlannedExecution；来源未退出或 UNKNOWN 阻止新捕获，结清后保存。Version 2 世界存档绑定准确队头/原站/完整材料；失权后的 stored 会话凭真实原站只做取消，异常保留原进程不重放。已结清异常释放执行所有权并令世界 faulted，正常业务 Failure 清理后保留队列以供后续工作。
 - 正 tier 玩家 Java 入队已接：ServerResearch.requestStart 复用 MAIN 提交与已有刷新，执行时重查玩家/FTB/原publication；ResearchStations.admission 只读实际设备等级与当前可用 numeric，不抢 THREAD、不扣材料。客户端界面和 packet 仍待实现。
 - 服务器奖励 Java 领取已接：ResearchWorld 持有准确 RewardSession，逐次完整世界检查点仅放行自己的玩家写入；旧 pending 先重写，组/片段不重放。ServerResearch.requestReward 走 MAIN 并重验实际玩家会话；确认落盘后清交付标签，登录及掉落后续加载补清已确认片段。平台文件证据与剩余恢复保护见[服务器奖励](research-rewards.md)。
-- 奖励明确未调用/零效果的尝试保存 RETRY_PLANNED，重试保持原 ID、标签、数量和目标；记录保存失败由原 pending 快照先结清。异常、partial、null、已观察效果和未知缺失不回退；Forge 取消生成也不据此认定零效果。旧 PN 容器代理及当前 vanilla 死亡/漏斗路径已审计，完整保护仍待实现。
-- 仍待研究界面/packet、未确认奖励库存的完整交互保护与缺失证明、下载、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
+- 奖励明确未调用/零效果的尝试保存 RETRY_PLANNED，重试保持原计划。原生交互保护已接：必要 Mixin 在原 MAIN 方法阻止物品操作，保留死亡奖励并在 Clone 前移交，保护光标关闭/存档、装备损耗、掉落更新及漏斗提取；不取消玩家死亡。共享查询位于独立 API 包，第三方直接改栈仍须遵守该契约。确认清理先重写原 pending，不能根据只读内存快照提前清标签。
+- 仍待研究界面/packet、崩溃后的可靠未发出证明、下载、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
+
+- 奖励原生保护阶段新增 2 项实际 NBT 文件行为测试，覆盖光标持久化、跨库存/光标重复、改变/缺失/损坏及单人宿主恢复。完整构建 982 tests / 132 suites 全通过；19 个 src Java 加 Tags 共 20 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。生产 Jar 已包含配置、10 个 Mixin 及生成 refmap；未运行游戏，注入点依据实际源码/字节码与编译映射核验。证据 build/reports/idea/research-reward-protection-final.json。原 23 份修改保留。
 
 - 确定零效果恢复阶段：新增 5 项行为测试，完整构建 980 tests / 132 suites 全通过；8 文件 IDEA MCP 全级零诊断、build_project 成功。World 用例验证失败的重试记录先准确重写，再经真实 NBT 重载恢复，不依赖扫描猜测缺失；不确定回执和失权后的已观察效果继续保留。证据 build/reports/idea/research-reward-no-effect-final.json。
 

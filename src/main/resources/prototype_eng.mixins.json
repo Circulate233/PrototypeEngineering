@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "package": "com.circulation.prototype_eng.mixin",
+  "refmap": "prototype_eng.refmap.json",
+  "minVersion": "0.8.7",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "NetHandlerPlayServerMixin",
+    "ContainerMixin",
+    "EntityItemMixin",
+    "InventoryPlayerMixin",
+    "EntityPlayerMixin",
+    "EntityPlayerMPMixin",
+    "TileEntityHopperMixin",
+    "ArmorPropertiesMixin",
+    "ItemStackMixin",
+    "EnchantmentThornsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

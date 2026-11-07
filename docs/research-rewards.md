@@ -42,26 +42,34 @@ IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有�
 
 普通 `saveAllPlayerData` 和 chunk writer 可能吞掉 IO 错误，仅方法返回不能证明物品已经可恢复；单人宿主还可能从 level.dat 的 Data.Player 恢复而非 UUID.dat。平台确认必须核对实际保存入口中的准确玩家/实体身份和唯一 tagged leaf，不能宣称研究文件与 vanilla 存档跨文件原子。
 
-## 交互保护源码复核（尚未实现）
+## 原生玩家入口与物品保护
 
-以下核对 PN 的 `impl/download/ResearchItemDownloadAccessGateImpl.java` 及当前依赖 `build/moddev/artifacts/cleanroom-0.6.13-alpha-sources.jar`，不是保护已经接入的证明。
+已核对 PN 的 `impl/download/ResearchItemDownloadAccessGateImpl.java` 及当前依赖 `build/moddev/artifacts/cleanroom-0.6.13-alpha-sources.jar`。旧容器代理缺少副手/创造写槽入口，网络拦截又无法追回已经进入 vanilla 主线程队列的请求，因此使用必要的 Mixin，在原方法实际执行处保护物品；不替换容器、网络队列、玩家库存或掉落实体类型。`use_mixins=true`，配置为 `prototype_eng.mixins.json`。
 
-| 路径 | 实际行为及迁移边界 |
+| 路径 | 已接入的保护及范围 |
 |---|---|
-| 容器点击 | 旧 PN 170–174 行的 SWAP 在目标属于箱子时漏查 hotbar，CLONE 始终放行。Container 代理思路可复用，但这两处分支不能照搬。 |
-| 副手与创造写槽 | NetHandlerPlayServer 734–740 行直接交换持有物，1417–1428 行直接写 inventoryContainer；均绕过 openContainer.slotClick。关闭及附魔也有独立入口。 |
-| 连接与主线程 | NetworkManager.channel() 是公开 API，可以承载有限入口门禁；Netty 不得读取库存，判断必须在 MAIN 核对准确玩家和原连接。重生会复用连接并创建新玩家，已排入 vanilla 队列的任务也需考虑，不能只按 UUID 认证。 |
-| 死亡 | EntityPlayerMP 549–554 行在 PlayerDropsEvent 之前删除消失诅咒物品并清空库存；取消掉落事件不能保住原物品。不能以长期取消死亡替代恢复协议。 |
-| 漏斗与漏斗矿车 | TileEntityHopper 450–470 行直接复制物品、插入并 setDead/setItem；EntityMinecartHopper 159–173 行复用此路径，不检查拾取延迟，也不触发玩家拾取事件。现有掉落保护不覆盖这些转移。 |
+| 点击、副手、创造、使用、挖掘、附魔与配方书 | NetHandlerPlayServer 的十个入口在原 PacketThreadUtil 切回 MAIN 后、效果前检查执行时的真实玩家/连接。任一库存或光标含交付证据时拒绝相关操作；创造包传入的交付标签始终拒绝，防止已清标签后的旧快照重放。检查原玩家 41 槽和光标，修正旧 SWAP/CLONE 遗漏。 |
+| 拒绝同步与关闭 | 使用原交易确认、真实窗口/光标、手持槽和已加载方块同步。只有外部容器槽中仍有标签时才拒绝关闭；玩家槽和受保护光标允许正常关闭。Container.onContainerClosed 在丢弃/清空前保留受保护光标，服务器主动关闭和登出也走同一边界。客户端关闭请求完成后补发真实保留光标，不重开 GUI。 |
+| Forge 玩家事件与使用中物品 | 拾取、交互、攻击、破坏及物品使用 Start/Tick/Stop 在效果前拒绝。Cleanroom 取消 UseItem Tick 会返回负时长并继续完成，所以先清 active hand；Finish 已是效果之后且不可取消，不用作保护。 |
+| 死亡与重生 | 不取消玩家死亡。跳过受保护栈的消失诅咒删除和 dropAllItems 清空，物品仍在原玩家真实库存，可写死亡存档。copyFrom 在 Forge Clone 前预检全部目标后移交原栈并清旧槽；keepInventory/keepEverything 不再复制一份。 |
+| 光标存档与确认 | 原版不保存光标；仅受保护光标写入玩家根 NBT 的 PrototypeEngineeringRewardCursor。读取、重生移交、领取 scan/commit/release 均支持它；UUID.dat 和单人 Data.Player 的核验共同检查库存/光标唯一性，并与完整真实光标一致，即使它属于另一片段也不能损坏或缺失。 |
+| 库存更新与装备损耗 | 有证据时暂停库存 item/armor 更新回调，不取消玩家 tick。ItemStack.damageItem 统一保护玩家工具、盾牌、砧击头盔及鞘翅耐久；Forge ISpecialArmor 和荆棘的特殊损耗另行保护，保留玩家伤害、减伤及反伤。经验拾取事件在经验修补之前暂停，避免直接改变待确认工具的损伤值。手动研究始终排除保护栈，并与调用方额外保护条件组合。 |
+| 掉落与漏斗 | 受保护 EntityItem 暂停更新、自定义物品更新、合并和伤害；TileEntityHopper 的实际提取入口拒绝保护栈，漏斗矿车共用该路径。确认清标签后原实体恢复运行，原临时 Age/PickupDelay/Invulnerable 按已保存值恢复。 |
 
-下一段先接真实玩家入口门禁、断线/重生处理及拒绝后的同步，并在协议中明确死亡和漏斗边界。玩家文件 PREPARED 不能单独证明 region 中的掉落未生成；任何可用的未发出凭据都必须在效果前持久建立、保持单调并覆盖实际恢复入口。未完成这些条件前，默认缺失证明继续关闭。
+`RewardItemProtection.isProtected` / `hasProtectedInventory` 是独立 API 包中的共享查询。标签存在即保护，包括 CONFIRMED 尚未清理或格式异常的证据；查询不代表资格或交付成功。外部模组直接修改 ItemStack、自己的能力端口或自定义实体流程必须遵守该查询，不能把原生入口保护宣称成任意模组写入的全局拦截。
+
+登录、重生、换维度及掉落后加载会补清已确认片段。清理先执行研究 checkpoint；只读 snapshot 可能含写入失败的内存 CONFIRMED，不能直接据此释放标签。繁忙时延后，保存异常保留原证据，原请求仍由已有 MAIN 调度队列管理。
+
+保护不提供跨文件原子提交或全局缺失证明。玩家文件 PREPARED 不能单独证明 region 中的掉落未生成；未发出凭据必须在效果前持久建立并保持单调。该协议仍待接入，默认缺失证明继续关闭。
 
 ## 剩余接线与验证范围
 
-领取 packet、研究视图与 GUI、跨 tick 未确认库存片段的完整交互保护和可靠缺失证明仍需继续实现。未知交付保持恢复状态，不能为了让领取返回成功而重新生成物品。下载及其物品回执沿自己的操作链迁移，不与奖励证据混用。
+领取 packet、研究视图与 GUI、崩溃后的可靠未发出证明仍需继续实现。原生交互保护已接，第三方直接物品操作仍依赖公开契约。未知交付保持恢复状态，不能为了让领取返回成功而重新生成物品。下载及其物品回执沿自己的操作链迁移，不与奖励证据混用。
 
 世界集成测试使用真实 ResearchWorld、ResearchRewardClaimer 和 ResearchWorldNbt，覆盖有序事件/物品、选择与各交付阶段保存失败、准确 pending 重写、重载观察、确认后清理失败不补发、会话隔离、重入、延迟保存、原玩家证明失效和永久资格保留。Minecraft 物品调用按实际依赖源码和 IDEA MCP 检查；没有启动游戏、Bootstrap 或 FML。阶段完整构建、平台文件验证和逐文件诊断由[实施进度](implementation-status.md)记录。
 
 服务器奖励阶段新增 24 项行为测试；完整构建 975 tests / 132 suites，零失败/错误/跳过。9 个阶段 src Java 加 Tags 共 10 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-rewards-server-final.json。原 23 份修改保留，未启动游戏或服务端。
 
 确定零效果恢复阶段新增 5 项行为测试，覆盖重试记录保存失败、准确 pending 重写、NBT 重载、不确定回执、观察后失权和状态迁移限制。完整构建 980 tests / 132 suites 全通过；7 个 src Java 加 Tags 共 8 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/research-reward-no-effect-final.json。未启动游戏或服务端，原 23 份修改保留。
+
+奖励原生保护阶段新增 2 项实际 NBT 文件行为测试，覆盖光标持久化、跨库存/光标重复、改变/缺失/损坏及单人宿主恢复。完整构建 982 tests / 132 suites 全通过；19 个 src Java 加 Tags 共 20 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。生产 Jar 已包含配置、10 个 Mixin 及生成 refmap；未运行游戏，注入点依据实际源码/字节码与编译映射核验。证据 build/reports/idea/research-reward-protection-final.json。原 23 份修改保留。

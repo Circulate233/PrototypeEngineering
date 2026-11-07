@@ -19,11 +19,19 @@ final class RewardDeliveryPersistence {
     private RewardDeliveryPersistence() { }
 
     static void verifyPlayer(Path file, UUID player, NBTTagCompound expected) throws IOException {
-        requirePlayer(readCompressed(file), player, expected);
+        verifyPlayer(file, player, expected, new NBTTagCompound());
+    }
+
+    static void verifyPlayer(Path file, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
+        requirePlayer(readCompressed(file), player, expected, cursor);
     }
 
     static void verifyHost(Path file, UUID player, NBTTagCompound expected) throws IOException {
-        requirePlayer(readCompressed(file).getCompoundTag("Data").getCompoundTag("Player"), player, expected);
+        verifyHost(file, player, expected, new NBTTagCompound());
+    }
+
+    static void verifyHost(Path file, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
+        requirePlayer(readCompressed(file).getCompoundTag("Data").getCompoundTag("Player"), player, expected, cursor);
     }
 
     private static NBTTagCompound readCompressed(Path file) throws IOException {
@@ -33,9 +41,9 @@ final class RewardDeliveryPersistence {
         }
     }
 
-    private static void requirePlayer(NBTTagCompound saved, UUID player, NBTTagCompound expected) throws IOException {
+    private static void requirePlayer(NBTTagCompound saved, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
         if (!saved.hasUniqueId("UUID") || !player.equals(saved.getUniqueId("UUID"))) throw new IOException("Saved reward player identity differs");
-        requireUniqueLeaf(saved.getTagList("Inventory", Constants.NBT.TAG_COMPOUND), expected);
+        requireUniqueLeaf(saved, expected, cursor);
     }
 
     static void verifyDrop(Path directory, int x, int z, UUID entityId, NBTTagCompound expected, NBTTagCompound protection) throws IOException {
@@ -73,7 +81,8 @@ final class RewardDeliveryPersistence {
         } finally { region.close(); }
     }
 
-    private static void requireUniqueLeaf(NBTTagList entries, NBTTagCompound expected) throws IOException {
+    private static void requireUniqueLeaf(NBTTagCompound player, NBTTagCompound expected, NBTTagCompound expectedCursor) throws IOException {
+        NBTTagList entries = player.getTagList("Inventory", Constants.NBT.TAG_COMPOUND);
         int matches = 0;
         var slots = new IntOpenHashSet();
         for (int index = 0; index < entries.tagCount(); index++) {
@@ -86,6 +95,21 @@ final class RewardDeliveryPersistence {
                 if (!actual.equals(expected)) throw new IOException("Saved reward inventory leaf payload differs");
                 matches++;
             }
+        }
+        if (player.hasKey(RewardPlayerInventory.PROTECTED_CURSOR_TAG)) {
+            if (!player.hasKey(RewardPlayerInventory.PROTECTED_CURSOR_TAG, Constants.NBT.TAG_COMPOUND)) {
+                throw new IOException("Saved reward cursor evidence is malformed");
+            }
+            var cursor = player.getCompoundTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG);
+            // Match the complete live cursor even when it belongs to another fragment. An unrelated
+            // corrupt cursor would make readProtectedCursor reject this entire saved player.
+            if (expectedCursor.isEmpty() || !cursor.equals(expectedCursor)) throw new IOException("Saved protected cursor differs from its actual owner");
+            if (sameFragment(cursor, expected)) {
+                if (!cursor.equals(expected)) throw new IOException("Saved reward cursor payload differs");
+                matches++;
+            }
+        } else if (!expectedCursor.isEmpty()) {
+            throw new IOException("Saved protected cursor is missing");
         }
         if (matches != 1) throw new IOException("Saved reward inventory requires exactly one tagged leaf; found " + matches);
     }
