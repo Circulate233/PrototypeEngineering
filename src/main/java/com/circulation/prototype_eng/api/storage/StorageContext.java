@@ -157,6 +157,29 @@ public final class StorageContext {
         }
     }
 
+    /** Exact transferable isolation proof for exposing reversible effects to later sequence steps. */
+    public StorageFence requireFenceAccess() {
+        requireLock();
+        var activeFence = fence;
+        if (activeFence == null) { throw new IllegalStateException("Sequential effects require retained fence isolation"); }
+        return activeFence;
+    }
+
+    /** Pin isolation before releasing an applied reservation's compensation holds. */
+    public StorageFence retainSequentialReservation() {
+        var activeFence = requireFenceAccess();
+        activeFence.retainSequentialReservation();
+        return activeFence;
+    }
+
+    /** Release one exact exposure only after its reservation has reached a confirmed terminal state. */
+    public void releaseSequentialReservation(StorageFence expected) {
+        if (requireFenceAccess() != Objects.requireNonNull(expected)) {
+            throw new IllegalStateException("Sequential reservation belongs to another fence");
+        }
+        expected.releaseSequentialReservation();
+    }
+
     public long revision() {
         requireLock();
         return revision;

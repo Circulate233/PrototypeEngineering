@@ -25,7 +25,7 @@ class StorageRevisionBudgetTest {
 
     @Test
     void appliedInputAndInvalidationKeepRefundCreditsAfterOrdinaryChangesExhaustTheirBudget() {
-        var storage = resources(Long.MAX_VALUE - 7, 40);
+        var storage = resources(Long.MAX_VALUE - 8, 40);
         var context = storage.context();
         var token = accepted(storage.reserveExtract(storage.snapshot(), KEY, 10));
         assertEquals(5, storage.insert(KEY, 5, Actionable.MODULATE));
@@ -54,7 +54,7 @@ class StorageRevisionBudgetTest {
 
     @Test
     void energyLimitChangesCannotSpendEitherTokensApplyOrCompletionCredits() {
-        var energy = energy(Long.MAX_VALUE - 9);
+        var energy = energy(Long.MAX_VALUE - 11);
         var take = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var give = accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 10));
         energy.setTransferLimits(99, 100);
@@ -71,26 +71,28 @@ class StorageRevisionBudgetTest {
     }
 
     @Test
-    void pendingRollbackReturnsUnusedApplyCreditForOneFinalRestore() {
-        var energy = energy(Long.MAX_VALUE - 5);
+    void pendingRollbackReturnsUnusedApplyAndExposureCreditsForTwoFinalRestores() {
+        var energy = energy(Long.MAX_VALUE - 6);
         var take = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         assertThrows(IllegalStateException.class, () -> energy.receiveEnergy(1, Actionable.MODULATE));
         ResourceTransactions.rollback(List.of(take));
         energy.restore(80);
         assertEquals(80, energy.storedEnergy());
-        assertThrows(IllegalStateException.class, () -> energy.restore(90));
+        energy.restore(90);
+        assertThrows(IllegalStateException.class, () -> energy.restore(95));
         energy.invalidate();
-        assertEquals(80, energy.savedEnergy());
+        assertEquals(90, energy.savedEnergy());
 
-        var storage = resources(Long.MAX_VALUE - 5, 20);
+        var storage = resources(Long.MAX_VALUE - 6, 20);
         var extract = accepted(storage.reserveExtract(storage.snapshot(), KEY, 5));
         assertThrows(IllegalStateException.class, () -> storage.insert(KEY, 1, Actionable.MODULATE));
         ResourceTransactions.rollback(List.of(extract));
         storage.restore(List.of(new GenericStack(KEY, 30)));
         assertEquals(30, storage.amount(KEY));
-        assertThrows(IllegalStateException.class, () -> storage.restore(List.of(new GenericStack(KEY, 40))));
+        storage.restore(List.of(new GenericStack(KEY, 40)));
+        assertThrows(IllegalStateException.class, () -> storage.restore(List.of(new GenericStack(KEY, 50))));
         storage.context().invalidate();
-        assertEquals(30, storage.getAmount(0));
+        assertEquals(40, storage.getAmount(0));
     }
 
     @Test
@@ -116,8 +118,8 @@ class StorageRevisionBudgetTest {
 
     @Test
     void mixedBusinessFailureCompensatesAllAppliedTokensAtExhaustion() {
-        var storage = resources(Long.MAX_VALUE - 6, 60);
-        var energy = energy(Long.MAX_VALUE - 6);
+        var storage = resources(Long.MAX_VALUE - 7, 60);
+        var energy = energy(Long.MAX_VALUE - 7);
         var material = accepted(storage.reserveExtract(storage.snapshot(), KEY, 20));
         var power = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         storage.insert(KEY, 10, Actionable.MODULATE);
@@ -144,8 +146,8 @@ class StorageRevisionBudgetTest {
     }
 
     @Test
-    void cancellingOnePendingTokenFreesItsUnusedCreditWithoutTakingAnotherTokensTerminalCredit() {
-        var storage = resources(Long.MAX_VALUE - 9, 20);
+    void cancellingOnePendingTokenReturnsItsTwoUnusedCreditsWithoutTakingAnotherTokensTerminalCredit() {
+        var storage = resources(Long.MAX_VALUE - 11, 20);
         var take = accepted(storage.reserveExtract(storage.snapshot(), KEY, 5));
         var give = accepted(storage.reserveInsert(storage.snapshot(), KEY, 7));
         storage.insert(KEY, 1, Actionable.MODULATE);
@@ -154,14 +156,41 @@ class StorageRevisionBudgetTest {
             take.apply();
             give.rollback();
             assertEquals(1, storage.extract(KEY, 1, Actionable.MODULATE));
+            assertEquals(1, storage.extract(KEY, 1, Actionable.MODULATE));
             assertThrows(IllegalStateException.class, () -> storage.extract(KEY, 1, Actionable.MODULATE));
             take.complete();
             assertEquals(ResourceReservation.Resolution.COMPLETED, take.resolution());
-            assertEquals(15, storage.amount(KEY));
+            assertEquals(14, storage.amount(KEY));
             storage.context().invalidate();
         });
         fence.release();
-        assertEquals(15, storage.getAmount(0));
+        assertEquals(14, storage.getAmount(0));
+    }
+
+
+    @Test
+    void exposureAndInvalidationCannotSpendTheLastPromisedCompensationCredit() {
+        var storage = resources(Long.MAX_VALUE - 6, 40);
+        var energy = energy(Long.MAX_VALUE - 6);
+        var material = accepted(storage.reserveExtract(storage.snapshot(), KEY, 20));
+        var power = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
+        var fence = Objects.requireNonNull(StorageFence.tryAcquire(List.of(storage.context(), energy.context())));
+        try {
+            fence.access(() -> {
+                material.apply(); power.apply();
+                material.exposeApplied(); power.exposeApplied();
+                assertThrows(IllegalStateException.class, () -> storage.reserveInsert(storage.snapshot(), KEY, 1));
+                assertThrows(IllegalStateException.class, () -> energy.reserveReceiveEnergy(energy.energySnapshot(), 1));
+                storage.context().invalidate(); energy.invalidate();
+                material.rollback(); power.rollback();
+                assertEquals(Long.MAX_VALUE, storage.context().revision());
+                assertEquals(Long.MAX_VALUE, energy.context().revision());
+                assertEquals(40, storage.getAmount(0));
+                assertEquals(60, energy.savedEnergy());
+                assertEquals(ResourceReservation.Resolution.ROLLED_BACK, material.resolution());
+                assertEquals(ResourceReservation.Resolution.ROLLED_BACK, power.resolution());
+            });
+        } finally { fence.release(); }
     }
 
     private static ResourceReservation accepted(ReservationResult result) {

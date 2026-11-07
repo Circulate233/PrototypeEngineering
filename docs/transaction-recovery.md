@@ -28,7 +28,7 @@ RecipeProcess.ScopedRequirement保留原RequirementPath和获取时的冻结Tick
 
 ## 为已预留资源保留 revision 额度
 
-StorageContext以普通long reservedChanges记录已承诺的版本递增，沿共享锁保护。资源/FE reservation只在现有token中增加byte余量：成功reserve为apply与最终complete/rollback保留2次；apply消费1次；终态消费1次，pending直接rollback时返还没用的apply额度。
+StorageContext以普通long reservedChanges记录已承诺的版本递增，沿共享锁保护。资源/FE reservation只在现有token中增加byte余量：成功 reserve 为 apply、可选 exposeApplied 与最终 complete/rollback 保留 3 次；apply/expose 各消费 1 次；终态消费 1 次并返还全部未使用额度（例如 pending rollback 返还 apply 和 expose 两次）。顺序原语持有准确 fence，详情见[检查点审计](checkpoint-execution-audit.md)。
 
 普通transfer、restore、限额更新及新reserve在修改状态前统一调用context.requireChange，不能花掉已有token额度。valid期间还始终保留独立的1次invalidate额度；常规额度用尽后仍可撤销有效性，并用原token余额完成退款。失效不夺走补偿权，终态可以消耗最后的reserved版本额度。
 

@@ -6,6 +6,8 @@ import com.circulation.prototype_eng.api.energy.EnergySnapshot;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import com.circulation.prototype_eng.api.storage.StorageFence;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -153,7 +155,7 @@ public final class EnergyBuffer implements EnergyHatch {
             }
             long nextReceive = receive ? Math.addExact(reservedReceive, amount) : reservedReceive;
             long nextExtract = receive ? reservedExtract : Math.addExact(reservedExtract, amount);
-            context.reserveChanges(2);
+            context.reserveChanges(3);
             reservedReceive = nextReceive;
             reservedExtract = nextExtract;
             activeReservations++;
@@ -224,13 +226,14 @@ public final class EnergyBuffer implements EnergyHatch {
         return new ReservationResult(status, null);
     }
 
-    private enum State { PENDING, APPLIED, COMMITTED, ROLLED_BACK }
+    private enum State { PENDING, APPLIED, STAGED, COMMITTED, ROLLED_BACK }
 
     private final class Reservation implements ResourceReservation {
         private final long amount;
         private final boolean receive;
         private State state = State.PENDING;
-        private byte revisionChanges = 2;
+        private byte revisionChanges = 3;
+        @Nullable private StorageFence stagedFence;
 
         private Reservation(long amount, boolean receive) {
             this.amount = amount;
@@ -245,12 +248,32 @@ public final class EnergyBuffer implements EnergyHatch {
         @Override
         public Resolution resolution() {
             context.requireLock();
+            requireStagedFence();
             return switch (state) {
                 case PENDING -> Resolution.RESERVED;
-                case APPLIED -> Resolution.APPLIED;
+                case APPLIED, STAGED -> Resolution.APPLIED;
                 case COMMITTED -> Resolution.COMPLETED;
                 case ROLLED_BACK -> Resolution.ROLLED_BACK;
             };
+        }
+
+        @Override public boolean supportsSequentialUse() { return true; }
+
+        @Override public void exposeApplied() {
+            context.requireFenceAccess();
+            requireState(State.APPLIED);
+            context.requireReservedChange(revisionChanges);
+            long nextExtract = receive ? Math.subtractExact(reservedExtract, amount) : reservedExtract;
+            long nextReceive = receive ? reservedReceive : Math.subtractExact(reservedReceive, amount);
+            validateBalance(stored, nextExtract, nextReceive);
+            // Retain isolation before returning refund/quantity holds to later steps. The exact
+            // amount and direction still own this token's undo until its original fence settles.
+            stagedFence = context.retainSequentialReservation();
+            reservedExtract = nextExtract;
+            reservedReceive = nextReceive;
+            state = State.STAGED;
+            context.reservedChanged(revisionChanges, false);
+            revisionChanges--;
         }
 
         @Override
@@ -283,19 +306,23 @@ public final class EnergyBuffer implements EnergyHatch {
         @Override
         public void complete() {
             context.requireLock();
-            requireState(State.APPLIED);
+            if (state != State.APPLIED && state != State.STAGED) { throw new IllegalStateException("Cannot complete unapplied or terminal energy reservation"); }
+            requireStagedFence();
             release(false);
             state = State.COMMITTED;
+            releaseSequentialPin();
         }
 
         @Override
         public void rollback() {
             context.requireLock();
-            if (state != State.PENDING && state != State.APPLIED) {
+            if (state != State.PENDING && state != State.APPLIED && state != State.STAGED) {
                 throw new IllegalStateException("Cannot roll back terminal energy reservation");
             }
-            release(state == State.APPLIED);
+            requireStagedFence();
+            release(state == State.APPLIED || state == State.STAGED);
             state = State.ROLLED_BACK;
+            releaseSequentialPin();
         }
 
         private void release(boolean restore) {
@@ -303,10 +330,11 @@ public final class EnergyBuffer implements EnergyHatch {
             if (activeReservations <= 0) {
                 throw new IllegalStateException("Energy reservation count is inconsistent");
             }
-            // Applied input holds refund space; applied output holds the produced quantity.
+            // Ordinary applied input holds refund space and output holds produced quantity.
+            // Exposed tokens already returned that hold; reverse settlement only restores energy.
             boolean holdsReceive = (state == State.PENDING) == receive;
-            long nextExtract = holdsReceive ? reservedExtract : Math.subtractExact(reservedExtract, amount);
-            long nextReceive = holdsReceive ? Math.subtractExact(reservedReceive, amount) : reservedReceive;
+            long nextExtract = state == State.STAGED || holdsReceive ? reservedExtract : Math.subtractExact(reservedExtract, amount);
+            long nextReceive = state == State.STAGED || !holdsReceive ? reservedReceive : Math.subtractExact(reservedReceive, amount);
             long nextStored = stored;
             if (restore) {
                 nextStored = receive ? Math.subtractExact(stored, amount) : Math.addExact(stored, amount);
@@ -318,6 +346,19 @@ public final class EnergyBuffer implements EnergyHatch {
             activeReservations--;
             context.reservedChanged(revisionChanges, true);
             revisionChanges = 0;
+        }
+
+        private void requireStagedFence() {
+            if (state == State.STAGED && context.requireFenceAccess() != stagedFence) {
+                throw new IllegalStateException("Sequential energy reservation belongs to another storage fence");
+            }
+        }
+
+        private void releaseSequentialPin() {
+            if (stagedFence != null) {
+                context.releaseSequentialReservation(stagedFence);
+                stagedFence = null;
+            }
         }
 
         private void requireState(State expected) {

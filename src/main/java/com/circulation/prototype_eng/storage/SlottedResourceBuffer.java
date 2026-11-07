@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
@@ -258,7 +259,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (activeReservations == Integer.MAX_VALUE) {
                 throw new IllegalStateException("Too many active storage reservations");
             }
-            context.requireChange(2);
+            context.requireChange(3);
             long nextInsertHold = insert ? Math.addExact(insertHolds.getLong(key), amount) : 0;
             long nextExtractHold = insert ? 0 : Math.addExact(extractHolds.getLong(key), amount);
             long[] holds = insert ? reservedInsert : reservedExtract;
@@ -268,7 +269,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                     throw new IllegalStateException("Reserved slot amount exceeds long capacity");
                 }
             }
-            context.reserveChanges(2);
+            context.reserveChanges(3);
             for (int part = 0; part < allocation.slots.length; part++) {
                 int slot = allocation.slots[part];
                 keys[slot] = key;
@@ -574,14 +575,15 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private record Allocation(int[] slots, long[] amounts, long total) {
     }
 
-    private enum State { PENDING, APPLIED, COMMITTED, ROLLED_BACK }
+    private enum State { PENDING, APPLIED, EXPOSED, COMMITTED, ROLLED_BACK }
 
     private final class Reservation implements ResourceReservation {
         private final AEKey key;
         private final Allocation allocation;
         private final boolean insert;
         private State state = State.PENDING;
-        private byte revisionChanges = 2;
+        private byte revisionChanges = 3;
+        @Nullable private StorageFence exposedFence;
 
         private Reservation(AEKey key, Allocation allocation, boolean insert) {
             this.key = key;
@@ -600,9 +602,41 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             return switch (state) {
                 case PENDING -> Resolution.RESERVED;
                 case APPLIED -> Resolution.APPLIED;
+                case EXPOSED -> { requireExposure(); yield Resolution.APPLIED; }
                 case COMMITTED -> Resolution.COMPLETED;
                 case ROLLED_BACK -> Resolution.ROLLED_BACK;
             };
+        }
+
+        @Override public boolean supportsSequentialUse() { return true; }
+
+        @Override public void exposeApplied() {
+            context.requireLock();
+            requireState(State.APPLIED);
+            context.requireFenceAccess();
+            context.requireReservedChange(revisionChanges);
+            var holds = insert ? reservedExtract : reservedInsert;
+            var totalsHeld = insert ? extractHolds : insertHolds;
+            long nextHeld = Math.subtractExact(totalsHeld.getLong(key), allocation.total);
+            if (nextHeld < 0) { throw new IllegalStateException("Reservation lost its aggregate compensation hold"); }
+            for (int part = 0; part < allocation.slots.length; part++) {
+                int slot = allocation.slots[part];
+                if (!key.equals(keys[slot]) || holds[slot] < allocation.amounts[part]) {
+                    throw new IllegalStateException("Reservation lost its compensation allocation");
+                }
+            }
+            // Reserve isolation before making this token's output/refund capacity reusable.
+            exposedFence = context.retainSequentialReservation();
+            for (int part = 0; part < allocation.slots.length; part++) {
+                int slot = allocation.slots[part];
+                holds[slot] -= allocation.amounts[part];
+                cleanSlot(slot);
+                changedSlots.set(slot);
+            }
+            addAmount(totalsHeld, key, -allocation.total, nextHeld);
+            state = State.EXPOSED;
+            context.reservedChanged(revisionChanges, false);
+            revisionChanges--;
         }
 
         @Override
@@ -657,7 +691,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         @Override
         public void complete() {
             context.requireLock();
-            requireState(State.APPLIED);
+            if (state != State.APPLIED && state != State.EXPOSED) { throw new IllegalStateException("Only applied storage reservations can complete"); }
             release(false);
             state = State.COMMITTED;
         }
@@ -665,14 +699,15 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         @Override
         public void rollback() {
             context.requireLock();
-            if (state != State.PENDING && state != State.APPLIED) {
+            if (state != State.PENDING && state != State.APPLIED && state != State.EXPOSED) {
                 throw new IllegalStateException("Cannot roll back terminal storage reservation");
             }
-            release(state == State.APPLIED);
+            release(state == State.APPLIED || state == State.EXPOSED);
             state = State.ROLLED_BACK;
         }
 
         private void release(boolean restore) {
+            if (state == State.EXPOSED) { finishExposed(restore); return; }
             context.requireReservedChange(revisionChanges);
             if (activeReservations <= 0) {
                 throw new IllegalStateException("Reservation count is inconsistent");
@@ -710,6 +745,45 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             activeReservations--;
             context.reservedChanged(revisionChanges, true);
             revisionChanges = 0;
+        }
+
+        private void finishExposed(boolean restore) {
+            var fence = requireExposure();
+            context.requireReservedChange(revisionChanges);
+            if (activeReservations <= 0) { throw new IllegalStateException("Reservation count is inconsistent"); }
+            if (restore) {
+                long delta = insert ? -allocation.total : allocation.total;
+                long nextTotal = Math.addExact(totals.getLong(key), delta);
+                if (nextTotal < 0 || !insert && allocation.total > insertionHeadroom(key)) {
+                    throw new IllegalStateException("Sequential rollback lost its aggregate compensation capacity");
+                }
+                for (int part = 0; part < allocation.slots.length; part++) {
+                    int slot = allocation.slots[part];
+                    long portion = allocation.amounts[part];
+                    if (slotTransferable(slot, key, portion, !insert) != portion) {
+                        throw new IllegalStateException("Sequential rollback requires later dependent reservations to resolve first");
+                    }
+                    checkedSlotChange(slot, key, portion, !insert);
+                }
+                for (int part = 0; part < allocation.slots.length; part++) {
+                    int slot = allocation.slots[part];
+                    writeSlot(slot, key, allocation.amounts[part], !insert);
+                }
+                addAmount(totals, key, delta, nextTotal);
+            }
+            activeReservations--;
+            context.reservedChanged(revisionChanges, true);
+            revisionChanges = 0;
+            context.releaseSequentialReservation(fence);
+            exposedFence = null;
+        }
+
+        private StorageFence requireExposure() {
+            var fence = Objects.requireNonNull(exposedFence, "Reservation lost its sequential fence");
+            if (context.requireFenceAccess() != fence) {
+                throw new IllegalStateException("Sequential reservation belongs to another fence");
+            }
+            return fence;
         }
 
         private void requireState(State expected) {

@@ -20,6 +20,7 @@ public final class StorageFence {
     private final Thread owner = Thread.currentThread();
     private final ObjectArrayList<StorageContext> contexts;
     private int activeAccesses;
+    private int sequentialReservations;
     private boolean released;
 
     private StorageFence(ObjectArrayList<StorageContext> contexts) {
@@ -140,6 +141,7 @@ public final class StorageFence {
         synchronized (this) {
             if (released) { throw new IllegalStateException("Storage fence has already been released"); }
             if (activeAccesses != 0) { throw new IllegalStateException("Storage fence still has active source or owner work"); }
+            if (sequentialReservations != 0) { throw new IllegalStateException("Storage fence retains exposed source reservations"); }
             contexts.forEach(StorageContext::lockPhysical);
             try {
                 for (var context : contexts) {
@@ -177,6 +179,18 @@ public final class StorageFence {
         if (Thread.currentThread() != owner) {
             throw new IllegalStateException("Storage fence owner work requires its creating thread");
         }
+    }
+
+    synchronized void retainSequentialReservation() {
+        if (released || activeAccesses == 0) { throw new IllegalStateException("Sequential reservation requires an active fence scope"); }
+        sequentialReservations = Math.incrementExact(sequentialReservations);
+    }
+
+    synchronized void releaseSequentialReservation() {
+        if (released || activeAccesses == 0 || sequentialReservations == 0) {
+            throw new IllegalStateException("Sequential reservation lost its fence retention");
+        }
+        sequentialReservations--;
     }
 
     synchronized boolean released() { return released; }

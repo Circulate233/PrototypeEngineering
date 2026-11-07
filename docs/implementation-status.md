@@ -11,7 +11,8 @@
 - 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
 - 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
-- 玩家研究入队阶段新增 7 项行为测试；完整 Gradle 构建通过 886 项测试、124 suites，零失败/错误/跳过。3 个本阶段 src Java 与 Tags 共 4 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-admission-final.json。原 23 份修改保留，未启动游戏或服务端。
+- 检查点所需顺序存储原语已实现：资源/FE 的已应用 token 可在准确 fence 内暴露前序结果/腾出的容量，保持 undo，并 pin fence 到确认终态。未接 checkpoint/ResourceBatch/selector 消费者，功能边界见[检查点审计](checkpoint-execution-audit.md)。
+- 顺序存储阶段新增 17 项行为测试；完整构建 903 tests / 126 suites，零失败/错误/跳过。8 个阶段 src Java 加 Tags 共 9 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/sequential-storage-final.json。原 23 份修改保留，未启动游戏或服务端。
 - 研究站自动服务器阶段已接：ResearchWorld 每队持有材料消费者，调度器在普通工作之前持有 PlannedExecution；来源未退出或 UNKNOWN 阻止新捕获，结清后保存。Version 2 世界存档绑定准确队头/原站/完整材料；失权后的 stored 会话凭真实原站只做取消，异常保留原进程不重放。已结清异常释放执行所有权并令世界 faulted，正常业务 Failure 清理后保留队列以供后续工作。
 - 正 tier 玩家 Java 入队已接：ServerResearch.requestStart 复用 MAIN 提交与已有刷新，执行时重查玩家/FTB/原publication；ResearchStations.admission 只读实际设备等级与当前可用 numeric，不抢 THREAD、不扣材料。客户端界面和 packet 仍待实现。
 - 仍待研究界面/packet、领取与存档事务绑定、下载、永久破坏后的材料会话、嵌套 checkpoint 子阶段顺序，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
@@ -19,6 +20,8 @@
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
+
+- 玩家研究入队阶段：新增 7 项行为测试；完整构建 886 tests / 124 suites 全通过，4 文件 IDEA MCP 全级零诊断，MCP build_project 成功。证据 build/reports/idea/research-admission-final.json。
 
 - 研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。
 

@@ -16,6 +16,22 @@ public interface ResourceReservation {
     void complete();
     void rollback();
 
+    /** Whether applied effects can be reused by later steps in the same isolated sequence. */
+    default boolean supportsSequentialUse() { return false; }
+
+    /**
+     * Release this applied token's quantity/refund holds to the same retained StorageFence without
+     * completing it. Implementations must first call context.retainSequentialReservation() and release
+     * that exact retention only after confirmed completion/rollback. The token keeps full undo
+     * information, remains APPLIED, and stays live until the enclosing sequence completes or rolls back in reverse acquisition order. No earlier step
+     * may be compensated before its dependent later steps. All subsequent terminal actions require
+     * the original fence; ordinary readers/writers must remain excluded until settlement is proven.
+     * Call only once, after apply, under the context's fence scope. The enclosing coordinator must
+     * check supportsSequentialUse before accepting the token into a sequence. External storage
+     * implementations opt in only when they can honor this stronger compensation contract.
+     */
+    default void exposeApplied() { throw new UnsupportedOperationException("Reservation does not support sequential use"); }
+
     /**
      * Optional exact recovery proof, read under the context lock. UNKNOWN forbids retrying a failed
      * terminal callback: it does not prove that mutation is still running. A reported RESERVED or
