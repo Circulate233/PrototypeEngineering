@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -19,9 +22,10 @@ public final class ResearchRegistry {
     public static final ResearchRegistry INSTANCE = new ResearchRegistry();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ResearchDefinition> registrations = new Object2ObjectLinkedOpenHashMap<>();
     @Nullable private volatile Frozen frozen;
+    private boolean materialBindingStarted;
 
     public ResearchDefinition register(ResearchDefinition definition) {
-        if (frozen != null) { throw new IllegalStateException("Research registration has ended"); }
+        if (frozen != null || materialBindingStarted) { throw new IllegalStateException("Research registration has ended"); }
         Objects.requireNonNull(definition);
         if (registrations.putIfAbsent(definition.id(), definition) != null) {
             throw new IllegalArgumentException("Duplicate research " + definition.id());
@@ -33,6 +37,7 @@ public final class ResearchRegistry {
 
     public void freeze(NetworkResourceRegistry resources) {
         if (frozen != null) { throw new IllegalStateException("Research registry already frozen"); }
+        if (materialBindingStarted) { throw new IllegalStateException("Research material configuration cannot be replayed"); }
         if (!Objects.requireNonNull(resources).isFrozen()) { throw new IllegalStateException("Computing resources must be frozen before research"); }
         for (var definition : registrations.values()) {
             for (var stage : definition.stages()) {
@@ -48,7 +53,20 @@ public final class ResearchRegistry {
         }
         validatePrerequisiteGraph();
         var definitions = new Object2ObjectLinkedOpenHashMap<>(registrations);
-        frozen = new Frozen(definitions, ObjectLists.unmodifiable(new ObjectArrayList<>(definitions.values())));
+        var materials = new Object2ObjectOpenHashMap<ResourceLocation, Int2ObjectOpenHashMap<RecipeProcessNbt>>();
+        // Validation failures above remain repairable. Addon configuration is attempted once and
+        // must not reenter registration/freeze or be replayed after a partial callback failure.
+        materialBindingStarted = true;
+        for (var definition : definitions.values()) {
+            var stages = new Int2ObjectOpenHashMap<RecipeProcessNbt>();
+            for (var stage : definition.stages()) {
+                if (stage.researchTier() == 0) { continue; }
+                var recipe = new MachineRecipe(definition.id(), 1, stage.materialRequirements());
+                stages.put(stage.firstLevel(), stage.materialPersistence(recipe));
+            }
+            materials.put(definition.id(), stages);
+        }
+        frozen = new Frozen(definitions, ObjectLists.unmodifiable(new ObjectArrayList<>(definitions.values())), materials);
         registrations.clear();
     }
 
@@ -59,6 +77,16 @@ public final class ResearchRegistry {
     }
 
     public ObjectList<ResearchDefinition> all() { return requireFrozen().ordered; }
+
+    /** Canonical material definition and codec shared by levels in this positive-tier stage only. */
+    public RecipeProcessNbt materials(ResourceLocation id, int targetLevel) {
+        var current = requireFrozen();
+        var definition = current.byId.get(Objects.requireNonNull(id));
+        if (definition == null) { throw new IllegalArgumentException("Unknown research " + id); }
+        var stage = definition.stageForLevel(targetLevel);
+        if (stage.researchTier() == 0) { throw new IllegalArgumentException("Tier-zero research has no station material process"); }
+        return Objects.requireNonNull(current.materials.get(id).get(stage.firstLevel()));
+    }
 
     private ResearchDefinition validateReference(ResearchDefinition owner, ResourceLocation id, int level, String kind) {
         if (owner.id().equals(id)) { throw new IllegalArgumentException("Research cannot " + kind + " itself: " + id); }
@@ -121,5 +149,6 @@ public final class ResearchRegistry {
     }
 
     private record Frozen(Object2ObjectLinkedOpenHashMap<ResourceLocation, ResearchDefinition> byId,
-                          ObjectList<ResearchDefinition> ordered) { }
+                          ObjectList<ResearchDefinition> ordered,
+                          Object2ObjectOpenHashMap<ResourceLocation, Int2ObjectOpenHashMap<RecipeProcessNbt>> materials) { }
 }

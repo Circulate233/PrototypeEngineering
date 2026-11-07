@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -37,6 +38,7 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
         for (var team : teams) {
             if (!teamIds.add(team.teamId())) { throw new IllegalArgumentException("Duplicate research world team"); }
             if (team.queue().updatedAtWorldTime() > serverTime) { throw new IllegalArgumentException("Research queue exceeds world time"); }
+            if (team.stationWork().lastGrantedTime() > serverTime) { throw new IllegalArgumentException("Station grant exceeds research world time"); }
             for (var member : team.knownMembers()) { requirePlayer(playerIds, member); }
             for (var entry : team.queue().entries()) { requirePlayer(playerIds, entry.requestedBy()); }
             for (var session : team.manualSessions()) {
@@ -57,7 +59,14 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
     /** knownMembers is retained history, so a former member may also be known by another team. */
     public record Team(String teamId, ObjectSet<UUID> knownMembers, ObjectSet<ResourceLocation> blacklist,
                        TeamOwnedResearch.Snapshot research, TeamResearchQueue.Snapshot queue,
-                       ObjectList<ManualResearchSession> manualSessions) {
+                       ObjectList<ManualResearchSession> manualSessions, ResearchStationWork.Saved stationWork) {
+        /** Manual-only hosts retain an explicit empty station checkpoint. */
+        public Team(String teamId, ObjectSet<UUID> knownMembers, ObjectSet<ResourceLocation> blacklist,
+                    TeamOwnedResearch.Snapshot research, TeamResearchQueue.Snapshot queue,
+                    ObjectList<ManualResearchSession> manualSessions) {
+            this(teamId, knownMembers, blacklist, research, queue, manualSessions, new ResearchStationWork.Saved(-1, null));
+        }
+
         public Team {
             Objects.requireNonNull(teamId);
             if (teamId.isBlank() || !teamId.equals(teamId.trim())) { throw new IllegalArgumentException("Invalid research team id"); }
@@ -66,6 +75,7 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
             Objects.requireNonNull(research);
             Objects.requireNonNull(queue);
             manualSessions = frozenList(manualSessions);
+            Objects.requireNonNull(stationWork);
             if (!teamId.equals(research.teamId()) || !teamId.equals(queue.teamId())) {
                 throw new IllegalArgumentException("Research team sources have different owners");
             }
@@ -75,6 +85,11 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                 if (!queueIds.add(entry.key().queueEntryId()) || !queueKeys.add(entry.key())) {
                     throw new IllegalArgumentException("Duplicate saved queue entry key");
                 }
+            }
+            var segment = stationWork.segment();
+            if (segment != null && (!segment.key().equals(queue.activeHead()) || !queueKeys.contains(segment.key())
+                || segment.key().queueEntryId() >= queue.nextEntryId())) {
+                throw new IllegalArgumentException("Station materials lost their exact allocated queue head");
             }
             var sessionIds = new ObjectOpenHashSet<UUID>();
             var sessionEntries = new LongOpenHashSet();

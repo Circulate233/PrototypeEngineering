@@ -62,15 +62,6 @@ public final class ServerTaskSchedulers {
             current.currentTick = tick;
             current.tickOpen = true;
             try {
-                // Retained workers must exit before research mutates shared sources. Coalesce waits
-                // rather than accumulating one material advancement for every blocked server tick.
-                if (!current.researchQueued) {
-                    current.researchQueued = true;
-                    current.scheduler.runAtBoundary(() -> {
-                        current.researchQueued = false;
-                        ServerResearch.tick(current.server);
-                    });
-                }
                 current.scheduler.tick(network::refresh);
             }
             finally { current.tickOpen = false; network.endTick(); }
@@ -84,14 +75,14 @@ public final class ServerTaskSchedulers {
         private long nextTick;
         private long currentTick;
         private boolean tickOpen;
-        private boolean researchQueued;
 
         @SuppressWarnings("resource") // The FML network service owns this borrowed session runtime.
         private Session(MinecraftServer server, int workers, int lanes) {
             this.server = server;
             var factory = new NetworkRecipeExecutionFactory(this::candidates,
                 () -> ServerNetworkRuntime.forServer(server).refresh(), () -> currentTick, () -> tickOpen);
-            scheduler = new TaskScheduler(Thread.currentThread(), workers, lanes, factory, Duration.ofSeconds(5));
+            scheduler = new TaskScheduler(Thread.currentThread(), workers, lanes, factory,
+                (tasks, deadline) -> ServerResearch.prepareTick(server, tasks, deadline), Duration.ofSeconds(5));
         }
 
         private List<TaskScheduler.PlannedCandidate> candidates() { return scheduler.plannedCandidates(); }

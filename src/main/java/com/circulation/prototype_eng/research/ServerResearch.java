@@ -10,6 +10,13 @@ import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
+import com.circulation.prototype_eng.api.research.station.ResearchStations;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
+import com.circulation.prototype_eng.machine.ServerMachineIdentities;
+import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
@@ -67,11 +74,12 @@ public final class ServerResearch {
     @SuppressWarnings("unused") // Public Java research entry for server hosts and addons.
     public static ResearchWorld forServer(MinecraftServer server) { return active(server).world; }
 
-    /** Called once by the existing server END scheduler boundary, never by a second tick subscriber. */
-    public static void tick(MinecraftServer server) {
+    /** Read-only capture; the scheduler takes ownership before research can execute or save. */
+    @SuppressWarnings("resource") // The server lifecycle owns the borrowed network runtime.
+    @Nullable public static PlannedExecution prepareTick(MinecraftServer server, PlannedTaskExecutor tasks, PlannedDeadline deadline) {
         requireThread(Objects.requireNonNull(server));
         var current = session;
-        if (current == null || current.closing) { return; }
+        if (current == null || current.closing) { return null; }
         if (current.server != server || server.getWorld(0) != current.overworld) {
             throw new IllegalStateException("Research tick changed its server or overworld identity");
         }
@@ -79,13 +87,12 @@ public final class ServerResearch {
         var seeds = new ObjectOpenHashSet<>(current.world.trackedPlayers());
         seeds.addAll(online.keySet());
         var captures = capture(current, seeds);
-        if (unavailable(captures)) { return; }
         var proof = proof(current, captures, online);
-        if (!proof.getAsBoolean()) { return; }
         // A research checkpoint can reach disk before vanilla world time. Persisted research time
         // therefore advances independently once per server tick and never moves backwards on reload.
         long time = Math.max(Math.incrementExact(current.world.serverTime()), current.overworld.getTotalWorldTime());
-        current.world.tick(time, captures, online.keySet(), id -> inventory(current, id), proof);
+        return current.world.prepareTick(time, captures, online.keySet(), id -> inventory(current, id), proof,
+            current.stations, () -> ServerNetworkRuntime.forServer(server).refresh(), tasks, deadline);
     }
 
     /** Only the actual actor can create a tier-zero session; tiered device admission has a separate host. */
@@ -154,24 +161,36 @@ public final class ServerResearch {
     }
 
     @SubscribeEvent
+    @SuppressWarnings("resource") // The server owns the borrowed scheduler.
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         var current = session;
         if (current == null || current.closing || !(event.player instanceof EntityPlayerMP player)
             || !belongsTo(current, player) || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) { return; }
         requireThread(current.server);
-        current.world.playerLogin(player.getUniqueID(), operationTime(current));
+        ServerTaskSchedulers.forServer(current.server).runAtBoundary(() -> {
+            if (session == current && !current.closing && belongsTo(current, player)
+                && current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player) {
+                current.world.playerLogin(player.getUniqueID(), operationTime(current));
+            }
+        });
     }
 
     @SubscribeEvent
+    @SuppressWarnings("resource") // Logout follows retained source work on the existing scheduler boundary.
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         var current = session;
         if (current == null || current.closing || !(event.player instanceof EntityPlayerMP player) || !belongsTo(current, player)) { return; }
         requireThread(current.server);
         var registered = current.server.getPlayerList().getPlayerByUUID(player.getUniqueID());
         if (registered != null && registered != player) { return; }
-        var remaining = new ObjectOpenHashSet<>(onlinePlayers(current).keySet());
-        remaining.remove(player.getUniqueID());
-        current.world.playerLogout(player.getUniqueID(), operationTime(current), remaining);
+        ServerTaskSchedulers.forServer(current.server).runAtBoundary(() -> {
+            if (session != current || current.closing) { return; }
+            var now = current.server.getPlayerList().getPlayerByUUID(player.getUniqueID());
+            if (now != null && now != player) { return; }
+            var remaining = new ObjectOpenHashSet<>(onlinePlayers(current).keySet());
+            remaining.remove(player.getUniqueID());
+            current.world.playerLogout(player.getUniqueID(), operationTime(current), remaining);
+        });
     }
 
     private static Session active(MinecraftServer server) {
@@ -309,6 +328,7 @@ public final class ServerResearch {
         private final WorldServer overworld;
         private final ResearchWorld world;
         private final FtbOwnerTeamResolver resolver;
+        private final ResearchStations stations;
         private boolean closing;
 
         private Session(MinecraftServer server, WorldServer overworld, ResearchWorld world) {
@@ -316,6 +336,7 @@ public final class ServerResearch {
             this.overworld = overworld;
             this.world = world;
             resolver = new FtbOwnerTeamResolver(server);
+            stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server));
         }
     }
 }

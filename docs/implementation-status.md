@@ -11,14 +11,18 @@
 - 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
 - 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
-- 本阶段新增 34 项行为测试，完整 Gradle 构建通过 837 项测试、118 suites，零失败/错误/跳过；14 个 src Java 与 Tags 共 15 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/research-stations-core-final.json。未启动游戏，原 23 份用户修改保留；计算物品原生 ItemStack 转换仍仅静态核对。
-- 服务器手动研究链已接通；仍待研究站自动服务器调度、世界会话/材料进程保存恢复、领取 packet/UI 与存档事务绑定、下载，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
+- 研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。
+- 研究站自动服务器阶段已接：ResearchWorld 每队持有材料消费者，调度器在普通工作之前持有 PlannedExecution；来源未退出或 UNKNOWN 阻止新捕获，结清后保存。Version 2 世界存档绑定准确队头/原站/完整材料；失权后的 stored 会话凭真实原站只做取消，异常保留原进程不重放。已结清异常释放执行所有权并令世界 faulted，正常业务 Failure 清理后保留队列以供后续工作。
+- 仍待正 tier 玩家平台入队、领取 packet/UI 与存档事务绑定、下载、永久破坏后的材料会话、嵌套 checkpoint 子阶段顺序，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
 
+- 研究站显式消费者阶段新增 34 项行为测试，完整 Gradle 构建通过 837 项测试、118 suites，零失败/错误/跳过；14 个 src Java 与 Tags 共 15 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/research-stations-core-final.json。未启动游戏，原 23 份用户修改保留；计算物品原生 ItemStack 转换仍仅静态核对。
+
 - 计算组件供给阶段验证：新增 6 项行为测试，并将同步/planned 配方夹具接入真实供给边界；完整构建 803 项测试、113 suites 全通过，12 文件 IDEA 全级零诊断，MCP build_project 成功。证据 build/reports/idea/computer-supply-final.json。
+- 服务器阶段回归覆盖真实入队/材料/END grant、跨 runtime 原站恢复、world writer 失败、UNKNOWN/关闭、存档转队清理、取消异常不重放、已结清 acquisition/commit 故障与正常 Failure、FTB 部分不可用和 owner callback 恢复。手动 COMMITTED 保存失败仍由既有 ManualResearchTest 验证；服务器分支的适配器分类静态复核，不伪称无游戏测试已执行真实背包。
 - R29 的顶层材料阶段顺序已按真实进程实现；既存 CheckpointRequirementSystem 内部的子阶段预获取/延后提交仍需修正嵌套 selector 顺序，不能据顶层周期验证声称任意嵌套组合已完成。
 - PN 普通配方阶段验证：新增 56 项行为测试，完整 Gradle 构建通过 797 项测试、112 suites，零失败/错误/跳过；50 个 src Java 与 Tags 共 51 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/network-recipes-final.json。
 

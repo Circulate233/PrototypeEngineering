@@ -97,7 +97,15 @@ public final class RecipeProcess {
     public static RecipeProcess materialCycle(MachineInstance owner, ResourceLocation id,
                                               Collection<? extends RecipeRequirement<?>> requirements,
                                               MachineHatches hatches, long seed) {
-        return new RecipeProcess(owner, new MachineRecipe(id, 1, requirements), seed,
+        return materialCycle(owner, new MachineRecipe(id, 1, requirements), hatches, seed);
+    }
+
+    /** Uses the canonical definition owned by a frozen material persistence binding. */
+    public static RecipeProcess materialCycle(MachineInstance owner, MachineRecipe canonical, MachineHatches hatches, long seed) {
+        if (Objects.requireNonNull(canonical).durationTicks() != 1) {
+            throw new IllegalArgumentException("Material cycle definition must declare one work tick");
+        }
+        return new RecipeProcess(owner, canonical, seed,
             ProbabilityTuning.defaultTuning(), Objects.requireNonNull(hatches));
     }
 

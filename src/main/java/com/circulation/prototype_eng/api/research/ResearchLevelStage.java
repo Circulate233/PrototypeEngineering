@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.research;
 
 import ae2.api.stacks.AEItemKey;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
@@ -19,6 +21,7 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * PN's inclusive level range, fixed prerequisites/materials and sparse exact-level reward choices.
@@ -33,6 +36,8 @@ public final class ResearchLevelStage {
     private final ObjectList<ResearchMutexRule> mutexRules;
     private final ResearchResourceFormula resourceFormula;
     private final ObjectList<RecipeRequirement<?>> materialRequirements;
+    private final String materialRevision;
+    private final Consumer<RecipeProcessNbt.Builder> materialConfiguration;
     private final Int2ObjectMap<ObjectList<RewardGroup>> rewardsByLevel;
 
     private ResearchLevelStage(Builder builder) {
@@ -51,6 +56,8 @@ public final class ResearchLevelStage {
             materials.add(requirement);
         }
         materialRequirements = ObjectLists.unmodifiable(materials);
+        materialRevision = builder.materialRevision;
+        materialConfiguration = builder.materialConfiguration;
         validateManualMaterials();
         var rewards = new Int2ObjectOpenHashMap<ObjectList<RewardGroup>>();
         for (var entry : builder.rewardsByLevel.int2ObjectEntrySet()) {
@@ -76,6 +83,16 @@ public final class ResearchLevelStage {
     }
     public Object2LongMap<NetworkResourceType> segmentGrantLimits() { return resourceFormula.segmentGrantLimits(); }
     public ObjectList<RecipeRequirement<?>> materialRequirements() { return materialRequirements; }
+
+    /** Loading-only binding; the registry invokes configuration once per definition and stage. */
+    RecipeProcessNbt materialPersistence(MachineRecipe recipe) {
+        // Explicit framing separates user behavior revision from this definition's stage interval.
+        String revision = "research-material:" + firstLevel + ":" + lastLevel + ":"
+            + materialRevision.length() + ":" + materialRevision;
+        var builder = RecipeProcessNbt.builder(recipe, revision);
+        materialConfiguration.accept(builder);
+        return builder.build();
+    }
     /** Sparse exact-level choices, including rewards on an Integer.MAX_VALUE tail. */
     public Int2ObjectMap<ObjectList<RewardGroup>> rewardGroupsByLevel() { return rewardsByLevel; }
     public ObjectList<RewardGroup> rewardsForLevel(int level) {
@@ -115,6 +132,8 @@ public final class ResearchLevelStage {
         private final ObjectArrayList<ResearchMutexRule> mutexRules = new ObjectArrayList<>();
         private ResearchResourceFormula resourceFormula;
         private final ObjectArrayList<RecipeRequirement<?>> materialRequirements = new ObjectArrayList<>();
+        private String materialRevision = "1";
+        private Consumer<RecipeProcessNbt.Builder> materialConfiguration = _ -> { };
         private final Int2ObjectOpenHashMap<ObjectArrayList<RewardGroup>> rewardsByLevel = new Int2ObjectOpenHashMap<>();
 
         private Builder(int firstLevel, int lastLevel) {
@@ -144,6 +163,17 @@ public final class ResearchLevelStage {
         }
         public Builder resourceFormula(ResearchResourceFormula formula) { resourceFormula = Objects.requireNonNull(formula); return this; }
         public Builder materialRequirement(RecipeRequirement<?> requirement) { materialRequirements.add(Objects.requireNonNull(requirement)); return this; }
+        /**
+         * Explicit revision and existing process codec extensions for positive-tier material work.
+         * Change revision whenever Java behavior or payloads change incompatibly. Configuration runs
+         * only at registry freeze, never per segment, target level or restored process.
+         */
+        public Builder materialPersistence(String revision, Consumer<RecipeProcessNbt.Builder> configure) {
+            if (Objects.requireNonNull(revision).isBlank()) { throw new IllegalArgumentException("Blank material behavior revision"); }
+            materialRevision = revision;
+            materialConfiguration = Objects.requireNonNull(configure);
+            return this;
+        }
         public Builder rewardGroup(int level, RewardGroup reward) {
             if (level < firstLevel || level > lastLevel) { throw new IllegalArgumentException("Reward level outside research stage"); }
             rewardsByLevel.computeIfAbsent(level, _ -> new ObjectArrayList<>()).add(Objects.requireNonNull(reward));

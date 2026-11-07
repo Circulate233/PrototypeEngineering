@@ -41,6 +41,7 @@ public final class TaskScheduler implements AutoCloseable {
     private final int workerThreads;
     private final int laneCount;
     @Nullable private final PlannedFactory plannedFactory;
+    @Nullable private final PlannedFactory beforeOrdinary;
     private final long plannedTimeoutNanos;
     private final Reference2ObjectLinkedOpenHashMap<ScheduledTask, Registration> registered = new Reference2ObjectLinkedOpenHashMap<>();
     private final Object submissionLock = new Object();
@@ -69,11 +70,18 @@ public final class TaskScheduler implements AutoCloseable {
     /** Optional internal owner cycle factory; arbitrary PLANNED_PARALLEL tasks remain unsupported. */
     TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
                   Duration plannedTimeout) {
+        this(owner, workerThreads, laneCount, plannedFactory, null, plannedTimeout);
+    }
+
+    /** Optional prerequisite cycle completes and proves source exit before ordinary work is captured. */
+    TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
+                  @Nullable PlannedFactory beforeOrdinary, Duration plannedTimeout) {
         this.owner = Objects.requireNonNull(owner);
         if (workerThreads < 1 || laneCount < 1) { throw new IllegalArgumentException("Worker and lane counts must be positive"); }
         this.workerThreads = workerThreads;
         this.laneCount = laneCount;
         this.plannedFactory = plannedFactory;
+        this.beforeOrdinary = beforeOrdinary;
         Objects.requireNonNull(plannedTimeout);
         if (plannedTimeout.isNegative() || plannedTimeout.isZero()) {
             throw new IllegalArgumentException("Planned cleanup budget must be positive");
@@ -88,7 +96,12 @@ public final class TaskScheduler implements AutoCloseable {
 
     TaskScheduler(Thread owner, int workerThreads, int laneCount, ExecutorService workers, ExecutorService[] lanes,
                   @Nullable PlannedFactory plannedFactory, Duration plannedTimeout) {
-        this(owner, workerThreads, laneCount, plannedFactory, plannedTimeout);
+        this(owner, workerThreads, laneCount, workers, lanes, plannedFactory, null, plannedTimeout);
+    }
+
+    TaskScheduler(Thread owner, int workerThreads, int laneCount, ExecutorService workers, ExecutorService[] lanes,
+                  @Nullable PlannedFactory plannedFactory, @Nullable PlannedFactory beforeOrdinary, Duration plannedTimeout) {
+        this(owner, workerThreads, laneCount, plannedFactory, beforeOrdinary, plannedTimeout);
         Objects.requireNonNull(workers);
         ExecutorService[] copied = Objects.requireNonNull(lanes).clone();
         if (copied.length != laneCount) { throw new IllegalArgumentException("Injected lane count differs from configuration"); }
@@ -187,8 +200,18 @@ public final class TaskScheduler implements AutoCloseable {
             failures.throwIfPresent();
             if (pendingExecution == null && !resumingClose) {
                 requireHealthy();
-                executeOrdinary(prepare, futures, failures);
-                capturePlanned = true;
+                if (beforeOrdinary != null) {
+                    plannedCandidates.clear();
+                    capturePlanned(beforeOrdinary);
+                    if (pendingExecution != null) { drivePending(failures, true); }
+                    drainBoundary(failures, false);
+                    failures.throwIfPresent();
+                }
+                if (pendingExecution == null) {
+                    requireHealthy();
+                    executeOrdinary(prepare, futures, failures);
+                    capturePlanned = true;
+                }
             }
         } catch (Throwable failure) {
             failures.add(failure);
@@ -307,9 +330,14 @@ public final class TaskScheduler implements AutoCloseable {
     private void capturePlanned(Runnable prepare) {
         state = State.CAPTURING_PLANNED;
         prepare.run();
+        capturePlanned(Objects.requireNonNull(plannedFactory));
+    }
+
+    private void capturePlanned(PlannedFactory factory) {
+        state = State.CAPTURING_PLANNED;
         initializeExecutors();
         if (plannedTasks == null) { plannedTasks = new PlannedTaskExecutor(workers, lanes); }
-        var captured = Objects.requireNonNull(plannedFactory).capture(plannedTasks, cleanupDeadline());
+        var captured = factory.capture(plannedTasks, cleanupDeadline());
         if (captured != null) {
             // Publication precedes the first callback or asynchronous action in this execution.
             pendingExecution = captured;

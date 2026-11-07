@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.api.research;
 
+import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.research.station.ResearchStations;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
@@ -8,6 +11,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -16,12 +20,15 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -141,6 +148,55 @@ class ResearchWorldTest {
         assertSame(pending, writes.get(2)); assertEquals(1, writes.get(2).serverTime());
         assertEquals(2, writes.getLast().serverTime()); assertEquals(2, team(world, "a").queue().entries().size());
         assertEquals(2, calls.get()); assertFalse(world.savePending());
+    }
+
+    @Test void ownerCallbackFailureRetainsItsTickUntilCheckpointAndAllowsALaterTickAndClose() {
+        var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+        var world = fixture(ResearchStartCondition.ALWAYS_ALLOWED).world(writes::add);
+        var membership = membership(ALICE, "a", ALICE);
+        var queued = start(world, membership, FIRST, 1).entry();
+        var failure = new IllegalStateException("recoverable owner callback failure");
+        var proofCalls = new AtomicInteger();
+        var refreshes = new AtomicInteger();
+        try (var identities = new MachineIdentityRegistry(() -> { });
+             var workers = Executors.newSingleThreadExecutor();
+             var lane = Executors.newSingleThreadExecutor()) {
+            var stations = new ResearchStations(identities, () -> { });
+            var tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+            var execution = world.prepareTick(2, Map.of(ALICE, membership), Set.of(ALICE), _ -> null, () -> {
+                if (proofCalls.incrementAndGet() == 2) { throw failure; }
+                return true;
+            }, stations, refreshes::incrementAndGet, tasks, PlannedDeadline.after(Duration.ofSeconds(5)));
+            assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> execution.advance(PlannedDeadline.after(Duration.ofSeconds(5)))));
+            assertEquals(2, world.serverTime());
+            assertTrue(world.busy()); assertFalse(world.faulted()); assertFalse(execution.finished());
+            assertFalse(world.savePending());
+            assertEquals(1, writes.size());
+            assertEquals(0, refreshes.get());
+            assertThrows(IllegalStateException.class, world::snapshot);
+            assertThrows(IllegalStateException.class, () -> world.prepareTick(3, Map.of(ALICE, membership), Set.of(ALICE),
+                _ -> null, () -> true, stations, refreshes::incrementAndGet, tasks, PlannedDeadline.after(Duration.ofSeconds(5))));
+            world.checkpoint(2);
+            execution.awaitExit();
+            assertTrue(execution.advance(PlannedDeadline.after(Duration.ofSeconds(5))));
+            assertTrue(execution.finished()); assertFalse(world.busy()); assertFalse(world.faulted());
+            assertEquals(2, proofCalls.get(), "Cleanup must not replay the throwing owner callback");
+            assertEquals(2, writes.size());
+            assertEquals(world.snapshot(), writes.getLast());
+            assertEquals(ObjectList.of(queued), team(world, "a").queue().entries());
+            var next = world.prepareTick(3, Map.of(ALICE, membership), Set.of(ALICE), _ -> null, () -> true,
+                stations, refreshes::incrementAndGet, tasks, PlannedDeadline.after(Duration.ofSeconds(5)));
+            assertTrue(next.advance(PlannedDeadline.after(Duration.ofSeconds(5))));
+            assertTrue(next.finished()); assertFalse(world.busy()); assertFalse(world.faulted());
+            assertEquals(3, world.serverTime());
+            assertEquals(ObjectList.of(queued), team(world, "a").queue().entries());
+            world.close(4);
+            assertEquals(4, writes.getLast().serverTime());
+            assertEquals(ObjectList.of(queued), writes.getLast().teams().getFirst().queue().entries());
+            assertFalse(world.faulted()); assertFalse(world.savePending());
+            int saves = writes.size(); world.close(5); assertEquals(saves, writes.size());
+        }
     }
 
     @Test void writerCallbackReentryIsRejectedWithoutPoisoningTheClosingFlag() {

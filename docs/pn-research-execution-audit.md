@@ -29,7 +29,7 @@
 - 旧持久链可复用：世界 MATERIAL_COMMIT_PENDING → 玩家 PREPARED（原背包）→ 材料提交 → 玩家 COMMITTED（后背包）→ 世界 MATERIAL_COMMITTED → manualWork 结算与 receipt 确认。
 - 最终完成先冻结成员/等级基线/时间，COMPLETION_PENDING → COMPLETION_PROPAGATED → QUEUE_HEAD_REMOVED → 删除 session。未知材料结果不能重新扣一次。
 
-手动 session、真实玩家物料事务和服务器单一存档链现已迁入，见[服务器研究](server-research.md)；研究站仍须按独立的材料和来源契约接入。
+手动 session、真实玩家物料事务和服务器单一存档链现已迁入，见[服务器研究](server-research.md)；研究站已按完整材料和真实来源契约接入自动调度及世界保存。
 
 ## 研究站与队列
 
@@ -43,13 +43,13 @@
 
 旧 station commit 顺序为 queue grant → completion propagation → PM material commit；材料未准确 COMMITTED 才补偿逻辑。旧层只有 markDirty，没有完整跨库存/世界写前日志，不能宣称存档原子；UNKNOWN 时清理 executor 的旧行为也会丢失恢复义务。
 
-旧材料投影丢掉 item properties/output，合并 fluid/FE 不同阶段输入，并且不执行正常需求生命周期。新库应复用完整 `RecipeRequirement` 与真实阶段事务，不复建那套投影 DTO。站点选择和真实材料/计算/队列的共同提交现已由显式 Java 消费者接入，服务器调度与世界会话保存仍缺，见[研究站执行](research-stations.md)。
+旧材料投影丢掉 item properties/output，合并 fluid/FE 不同阶段输入，并且不执行正常需求生命周期。新库应复用完整 `RecipeRequirement` 与真实阶段事务，不复建那套投影 DTO。站点选择和真实材料/计算/队列的共同提交现已由显式 Java 消费者接入，服务器调度与世界会话保存也已接入，见[研究站执行](research-stations.md)。
 
-## 下一阶段接线复核（2026-11-07）
+## 服务器接线复核（2026-11-07）
 
 用户已确认 R29：每次有效研究推进都完整执行材料 START/TICK/END。显式消费者与验证现见[研究站执行](research-stations.md)，以下保留接线审计约束。旧代码只能证明每次 segment 支付一份投影材料，不能证明其已经支持这些阶段；不引入研究时长或把整项研究改成仅付一次 START。
 
-- 旧站点流程先于普通配方申请共享 lease。新 ServerTaskSchedulers 的研究 boundary 在普通 network.refresh 前，站点必须在旧 pending 恢复、worker 实际退出后的 owner 边界取得当前网络发布；不能撤销仍待结算的旧凭据。
+- 旧站点流程先于普通配方申请共享 lease。新 ServerTaskSchedulers 的研究 PlannedExecution 在普通 network.refresh 前，站点必须在旧 pending 恢复、worker 实际退出后的 owner 边界取得当前网络发布；不能撤销仍待结算的旧凭据。
 - 旧站点先按维度轮换，再在维度内按 UUID 排序；筛选同队、已加载、成型、等级达标站点，所有获准站分摊一份材料，站数只影响独立资源的阶段上限。
 - 研究读取 WorkPermit.numericResources 并申请整机 lease，不调用扣普通配方余额的 reserve。队列已有每资源独立 grant、准确队头和持久时间去重，直接复用。
 - 完整材料不能简单同时 acquire 三个阶段再一起 commit：SelectiveRequirementSystem 在 START commit 才安装 modifier，后续 TICK/END 必须看到其效果。CheckpointRequirementSystem 的三阶段聚合也不能充当这种动态顺序已正确的证据。实际资源 apply 顺序、输出对后续输入的可见性和外部回调同样需要核对，不能只提前运行业务回调就声称完整等价。

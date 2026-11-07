@@ -1,6 +1,6 @@
 # 研究定义、资格、完成与奖励执行
 
-已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、领取入口、数据中心自动同步与下载仍须完成。
+已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 平台入队、领取入口、数据中心自动同步与下载仍须完成。
 
 ## 定义与注册
 
@@ -11,7 +11,7 @@
 - `ResearchResourceFormula`：沿 PN 的阶段相对 affine 公式，计算需求时精确检查溢出；每段授予上限与总需求分离。
 - `ResearchRegistry`：冻结前检查引用、全图前置环、各覆盖阶段的互斥对称性、计算资源元数据。`Integer.MAX_VALUE` 末段不逐等级展开。
 
-材料使用本工程 `RecipeRequirement<?>`，没有复制 PM 旧类型或跨模组快照。tier 0 只接受旧手动消费者实际支持的静态 AEItemKey START 输入；旧代码只取 ITEM inputs 投影、忽略其他效果，新代码明确拒绝这些不支持的完整载荷。普通阶段保存完整需求，其研究站执行仍待接入，不能将保存定义视为已经消耗材料。
+材料使用本工程 `RecipeRequirement<?>`，没有复制 PM 旧类型或跨模组快照。tier 0 只接受旧手动消费者实际支持的静态 AEItemKey START 输入；旧代码只取 ITEM inputs 投影、忽略其他效果，新代码明确拒绝这些不支持的完整载荷。正 tier 阶段的完整需求已通过真实材料进程执行 START、一次成功 TICK、END，阶段 codec 随注册表冻结绑定。
 
 来源：PN `ResearchDefinitionImpl`、`ResearchLevelStageImpl`、`ResearchResourceFormulaImpl`、`ResearchRegistryImpl`。合并不必要的接口/Impl 镜像，保留真实扩展职责 `ResearchStartCondition`。
 
@@ -25,7 +25,7 @@
 - `canStart` 校验实际请求者属于捕获成员、目标为当前有效等级加一，再执行真实 `startCondition.canStart`。回调异常传播。
 - `structurallyEligible` 供已有队列重建使用，只核对结构资格，不重新执行用户开始条件。
 
-沿 `TeamResearchViewCalculatorImpl` 的算法，把旧逐等级回退改为逐阶段回退。`calculateStructural` 为保留已有目标提供不执行 startCondition 的视图；`ResearchWorld` 已将其接到服务端 FTB 成员变化和队列协调。正 tier 的实际中心/站点消费者仍待接入。
+沿 `TeamResearchViewCalculatorImpl` 的算法，把旧逐等级回退改为逐阶段回退。`calculateStructural` 为保留已有目标提供不执行 startCondition 的视图；`ResearchWorld` 已将其接到服务端 FTB 成员变化和队列协调。正 tier 消费者已从真实中心/站点取得工作证明，并在失效时先清理会话再 prune。
 
 ## 实际入队与研究队列
 
@@ -37,7 +37,7 @@
 
 成员变化的prune只重查next-level、前置、互斥和黑名单；不能根据包含startCondition的预览缓存取消已入队目标。队列、结果与mutation都限创建/restore的owner线程，快照供异步处理。ResearchQueueNbt保存顺序、进度、nextEntryId、epoch和授予时间；恢复不恢复旧plan。时间参数使用统一且可持久恢复的服务器时间线，例如主世界totalWorldTime，不能混用维度时间或重启归零tickCounter。
 
-实际规则和旧材料投影缺陷见[执行审计](pn-research-execution-audit.md)。队列目前尚未与完整材料需求、逻辑lease、站点选择及完成传播接成同一个服务器工作提交。
+实际规则和旧材料投影缺陷见[执行审计](pn-research-execution-audit.md)。队列已与完整材料需求、共享 THREAD、真实站点选择及完成传播接入服务器工作提交；END 成功后才 grant，未确认事务继续由原 execution 持有。
 
 ## 完成传播与持久数据
 
@@ -51,7 +51,7 @@
 - 按各阶段实际奖励等级遍历，移除旧 `boolean[targetLevel+1]` 和逐等级扫描。
 - 准备后的具体玩家/队伍事务持有原状态写入权，支持提交、反向回滚和最终完成；源被下载或领取占用时正常返回 busy。准备失败释放之前已准备的准确实例。
 
-`PlayerResearchStateNbt` 保存个人等级和完整领取状态；`TeamOwnedResearch.CODEC` 保存直属等级。`ResearchWorldNbt` 将玩家来源、直属研究、黑名单、队列和手动会话一起保存到独占研究文件；不注册 MapStorage 第二 writer。它们不保存运行权限，恢复重新核对当前定义/成员/业务资格。材料、研究进度和完成传播尚未接成同一个研究站工作提交。
+`PlayerResearchStateNbt` 保存个人等级和完整领取状态；`TeamOwnedResearch.CODEC` 保存直属等级。`ResearchWorldNbt` 将玩家来源、直属研究、黑名单、队列、手动会话和研究站材料进程一起保存到独占研究文件；不注册 MapStorage 第二 writer。它们不保存运行权限，恢复重新核对当前定义/成员/业务资格。材料 END、研究进度和完成传播在同一运行期提交中结算；这不提供 vanilla chunk 库存与研究文件的跨文件原子保证。
 
 ## 奖励回调与物品交付
 
@@ -63,8 +63,8 @@
 - 默认只把实际观察视为已交付；加载中的背包/实体扫描不能证明全局缺失。缺失证明扩展默认返回 false，完整交互冻结和权威存储恢复仍待接入。
 - 未运行 Minecraft 或服务端，游戏交互、标签移动及掉落恢复尚未做实机验证。
 
-来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。下载事件、特殊磁盘、队列服务器接线与实际配方研究/计算条件仍未完成；CraftTweaker 按用户要求最后实现。
+来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。下载事件、特殊磁盘交互与领取平台接线仍未完成；CraftTweaker 按用户要求最后实现。
 
 ## 验证
 
-累计 98 项研究行为测试覆盖权限/真实入队/队列进度、手动材料/会话/回执/执行恢复，以及：公式/阶段/冻结引用，双来源/前置回退/真实开始条件，奖励 checkpoint 失败恢复和精确片段，双策略完成/补偿/稀疏无限等级/存档校验。手动执行测试隔离了依赖Bootstrap的真实AEItemKey构造，运行真实队列和完成状态机；不替代游戏背包验证。最终构建和 IDEA MCP 结果记入实施进度；不以这些测试代替尚未接入的服务器流程。
+早期 98 项研究行为测试覆盖权限/真实入队/队列进度、手动材料/会话/回执/执行恢复，以及：公式/阶段/冻结引用，双来源/前置回退/真实开始条件，奖励 checkpoint 失败恢复和精确片段，双策略完成/补偿/稀疏无限等级/存档校验。手动执行测试隔离了依赖Bootstrap的真实AEItemKey构造，运行真实队列和完成状态机；不替代游戏背包验证。最终构建和 IDEA MCP 结果记入实施进度；不以这些测试代替尚未接入的服务器流程。

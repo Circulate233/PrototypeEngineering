@@ -1,6 +1,6 @@
 # 研究站材料与推进
 
-2026-11-07。当前完成显式 Java 消费者、真实站点捕获和材料进程恢复入口；尚未安装到 `ResearchWorld` / `ServerResearch` 的自动执行与世界会话存档。下述执行可以直接调用，但不表示服务器研究站功能已经完整。
+2026-11-07。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权及世界会话保存恢复。正 tier 的玩家平台入队、领取和下载入口仍待完成；库不注册正式研究内容。
 
 ## 对齐旧实现与 R29
 
@@ -27,14 +27,26 @@ START 完成 source apply → business commit → 全部终态确认后，才获
 
 结束业务被拒时，只补偿该次 END 的物料/FE、grant 和 completion，历史 START/TICK 不回滚。结束已经决定 COMPLETE 后，即使外部 complete 结果未知，也保留原 grant/完成结果与原 token，仅查询或执行有明确可重试证明的终态确认，不重放完整材料或重新发放研究。
 
-## 存档范围及后续接线
+## 世界会话与原站恢复
 
 `RecipeProcessNbt.encode` 对材料周期增加显式 `MaterialCycle` 标志；`decodeMaterialCycle` 复用完整属性、selector、overlay、输入锁和组件 codec，并调用 `restoredMaterialCycle`。普通/材料恢复入口互相拒绝错误模式，速度为 0 的“已成功 TICK、进度仍为 0”合法。恢复仍由新宿主提供仓室与授权，不恢复旧 token/epoch/lease。扩展组件继续需要显式 codec 与定义 revision，不静默丢弃未知状态。
 
-尚未完成：消费者所属世界会话、队头/原站身份/进程存档的共同恢复、真实 tiered start 入口、调度器对研究 pending 的所有权及服务器自动执行。不能只在当前 `runAtBoundary(Runnable)` 回调里调用 `advance` 然后放任普通工作继续：pending fence 或未退出的 source task 必须阻止后续捕获与访问。现有单一世界 writer 只应在全部事务终态确认后保存，写失败保留原 pendingSave。
+`ResearchRegistry.freeze` 为每个定义的正 tier 阶段绑定唯一材料配方与完整 `RecipeProcessNbt`，同阶段等级共用，跨定义隔离。`ResearchLevelStage.Builder.materialPersistence(revision, configure)` 提供外部组件/选择器/overlay 所需 codec 配置。注册前置校验失败可修正；外部配置开始后禁止重入或重放。
+
+`ResearchWorldNbt` Version 2 在同一研究文件内保存队头、原站 UUID/owner/维度/位置、最后授予时间与完整材料进程。严格拒绝缺字段、重复站、错误队头和旧格式；NBT 防御复制。恢复先保留原会话，原站真实加载、身份与位置准确且重新获准后才解码，不重放历史 START/TICK。旧站不可用时保存并等待，不换另一批站继续半途材料。
+
+换队或黑名单使研究失效时，`restoreForCleanup` 只证明原真实站点和仓室，允许在失去旧队网络工作许可后解码并取消；该证明不能用于推进，不获取 THREAD/numeric。原实体缺失时仍等待。取消异常保留已重建进程，禁止重新解码重放回调。永久破坏后原实体不再存在的会话处理仍待衔接实际生命周期。
 
 当前仓室 token 没有可持久结果回执，因此不宣称 vanilla chunk 库存与研究文件跨文件原子。另有既存的嵌套检查点顺序问题：`CheckpointRequirementSystem` 内部仍先获取子 START/TICK/END 再统一提交；子 selector 在 START commit 才生效，不能据本阶段顶层周期通过验证，就声称该嵌套组合也已正确。
 
+## 自动调度与故障边界
+
+`ServerTaskSchedulers` 将研究安装为普通工作之前的 `PlannedExecution`。调度器先持有 execution，再捕获真实来源、持有贡献机器生命周期句柄并执行。旧 tick、source fence、UNKNOWN 或未退出任务未结清时，不放行新的网络捕获及普通工作；仍使用原 lanes，没有另起执行框架。
+
+`ResearchWorld.StationTick` 保留当前队伍游标和消费者。存档失败先重写准确 pendingSave，正常缺料只保留未完成材料阶段；未知事务保留旧 execution 并允许确认后恢复。已结清的异常释放执行所有权，世界保留原错误与材料现场并禁止新工作或保存，不伪装成永久等待。正常业务 Failure 走真实取消清理。
+
 ## 验证
 
-本阶段新增 34 项行为测试：真实站点资格/维度轮换/租约、完整阶段产物与 selector 顺序、速度/并行、同一 source lanes 的拒绝/取消/UNKNOWN、实际 queue grant/completion 与新宿主完整进程恢复。完整 Gradle 构建通过 837 项测试、118 suites，零失败/错误/跳过；14 个 src Java 与 Tags 共 15 文件 IDEA MCP `errorsOnly:false` 零错误/警告/弱警告，MCP `build_project` 成功。证据 `build/reports/idea/research-stations-core-final.json`。未启动游戏；自动服务器链与跨世界文件恢复仍待实现。
+研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。
+
+显式消费者阶段新增 34 项行为测试：真实站点资格/维度轮换/租约、完整阶段产物与 selector 顺序、速度/并行、同一 source lanes 的拒绝/取消/UNKNOWN、实际 queue grant/completion 与新宿主完整进程恢复。完整 Gradle 构建通过 837 项测试、118 suites，零失败/错误/跳过；14 个 src Java 与 Tags 共 15 文件 IDEA MCP `errorsOnly:false` 零错误/警告/弱警告，MCP `build_project` 成功。证据 `build/reports/idea/research-stations-core-final.json`。未启动游戏。这是显式消费者阶段的历史验证；自动服务器/存档阶段的最新验证见实施进度。

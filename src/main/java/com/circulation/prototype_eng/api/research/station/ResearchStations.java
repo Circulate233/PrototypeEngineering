@@ -6,6 +6,9 @@ import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
@@ -16,6 +19,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
@@ -65,16 +69,84 @@ public final class ResearchStations {
             if (station.identity.worldIdentity() == worldIdentity && station.physicallyCurrent() && lease(station.permit)) { leased.add(station); }
         }
         if (leased.isEmpty()) { return null; }
+        var result = new Capture(this, teamId, requiredTier, dimension, leased, pool(leased.stream().map(Station::hatches).toList()));
+        return result.current() ? result : null;
+    }
+
+    /** Reload only the saved physical identities and locations; a new runtime must obtain fresh authority. */
+    @Nullable public Capture restore(String teamId, int requiredTier, List<Site> sites) {
+        ownerCheck.run();
+        if (Objects.requireNonNull(teamId).isBlank() || requiredTier < 1) { throw new IllegalArgumentException("Station restoration requires a team and positive tier"); }
+        var saved = validatedSites(sites);
+        var registered = uniqueById();
+        var restored = new ObjectArrayList<Station>(saved.size());
+        Object worldIdentity = null;
+        for (var site : saved) {
+            var identity = registered.get(site.identity().machineId());
+            if (identity == null || !identity.identity().equals(site.identity()) || !identity.location().equals(site.location())
+                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) { return null; }
+            if (worldIdentity == null) { worldIdentity = identity.worldIdentity(); }
+            else if (identity.worldIdentity() != worldIdentity) { return null; }
+            var station = candidate(identity, machine, teamId, requiredTier);
+            if (station == null) { return null; }
+            restored.add(station);
+        }
+        for (var station : restored) { if (!station.physicallyCurrent() || !lease(station.permit)) { return null; } }
+        var result = new Capture(this, teamId, requiredTier, saved.getFirst().location().dimension(), restored, pool(restored.stream().map(Station::hatches).toList()));
+        return result.current() ? result : null;
+    }
+
+    /** Reacquire only real physical owners for terminal cleanup, even after their network team changes. */
+    @Nullable public CleanupSources restoreForCleanup(List<Site> sites) {
+        ownerCheck.run();
+        var saved = validatedSites(sites);
+        var registered = uniqueById();
+        var restored = new ObjectArrayList<PhysicalSite>(saved.size());
+        Object worldIdentity = null;
+        for (var site : saved) {
+            var identity = registered.get(site.identity().machineId());
+            if (identity == null || !identity.identity().equals(site.identity()) || !identity.location().equals(site.location())
+                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) { return null; }
+            if (worldIdentity == null) { worldIdentity = identity.worldIdentity(); }
+            else if (identity.worldIdentity() != worldIdentity) { return null; }
+            var restoredSite = new PhysicalSite(identity, machine, MachineHatches.get(machine));
+            if (!restoredSite.current()) { return null; }
+            restored.add(restoredSite);
+        }
+        var result = new CleanupSources(this, saved, restored, pool(restored.stream().map(PhysicalSite::hatches).toList()));
+        return result.current() ? result : null;
+    }
+
+    private Object2ObjectOpenHashMap<UUID, MachineIdentityRegistry.Registration> uniqueById() {
+        var registered = new Object2ObjectOpenHashMap<UUID, MachineIdentityRegistry.Registration>();
+        for (var identity : identities.uniqueRegistrations()) { registered.put(identity.identity().machineId(), identity); }
+        return registered;
+    }
+
+    static List<Site> validatedSites(List<Site> sites) {
+        var saved = List.copyOf(sites);
+        if (saved.isEmpty()) { throw new IllegalArgumentException("A material segment requires physical stations"); }
+        int dimension = saved.getFirst().location().dimension();
+        var ids = new ObjectLinkedOpenHashSet<UUID>();
+        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>();
+        for (var site : saved) {
+            if (!ids.add(site.identity().machineId()) || !locations.add(site.location()) || site.location().dimension() != dimension) {
+                throw new IllegalArgumentException("Saved stations must be distinct and in one dimension");
+            }
+        }
+        return saved;
+    }
+
+    private static MachineHatches pool(List<MachineHatches> sources) {
         var resources = new ObjectArrayList<ResourceHatch>();
         var inputs = new ObjectArrayList<EnergyInput>();
         var outputs = new ObjectArrayList<EnergyOutput>();
-        for (var station : leased) {
-            resources.addAll(station.hatches.resources());
-            inputs.addAll(station.hatches.energyInputs());
-            outputs.addAll(station.hatches.energyOutputs());
+        for (var hatches : sources) {
+            resources.addAll(hatches.resources());
+            inputs.addAll(hatches.energyInputs());
+            outputs.addAll(hatches.energyOutputs());
         }
-        var result = new Capture(this, teamId, requiredTier, dimension, leased, new MachineHatches(resources, inputs, outputs));
-        return result.current() ? result : null;
+        return new MachineHatches(resources, inputs, outputs);
     }
 
     /** Continue exactly the original station instances and source pool with this tick's new permits and leases. */
@@ -128,12 +200,46 @@ public final class ResearchStations {
                            MachineHatches hatches, NetworkRuntime.WorkPermit permit) {
         private boolean physicallyCurrent() {
             var lifecycle = machine.lifecycle();
-            return identity.unique() && identity.runtimeIdentity() == machine && machine.components().get(roleType) == role
-                && lifecycle != null && lifecycle.schedulingAllowed() && lifecycle.formed()
-                && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
-                && MachineHatches.get(machine) == hatches && hatches.resources().stream().allMatch(ResourceHatch::isValid)
-                && hatches.energyInputs().stream().allMatch(EnergyInput::isValid) && hatches.energyOutputs().stream().allMatch(EnergyOutput::isValid);
+            return physicalCurrent(identity, machine, hatches) && machine.components().get(roleType) == role
+                && lifecycle != null && lifecycle.schedulingAllowed() && lifecycle.formed();
         }
+    }
+
+    private static boolean physicalCurrent(MachineIdentityRegistry.Registration identity, MachineInstance machine, MachineHatches hatches) {
+        var lifecycle = machine.lifecycle();
+        return identity.unique() && identity.runtimeIdentity() == machine && lifecycle != null && lifecycle.state() == MachineLifecycle.State.LOADED
+            && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
+            && MachineHatches.get(machine) == hatches && hatches.resources().stream().allMatch(ResourceHatch::isValid)
+            && hatches.energyInputs().stream().allMatch(EnergyInput::isValid) && hatches.energyOutputs().stream().allMatch(EnergyOutput::isValid);
+    }
+
+    private record PhysicalSite(MachineIdentityRegistry.Registration identity, MachineInstance machine, MachineHatches hatches) {
+        private boolean current() { return physicalCurrent(identity, machine, hatches); }
+    }
+
+    /** Only physical identity and location are persistent; world sessions, runtimes and permits are not. */
+    public record Site(PersistentMachineIdentity identity, MachineIdentity location) {
+        public Site { Objects.requireNonNull(identity); Objects.requireNonNull(location); }
+    }
+
+    /** Physical-only recovery proof. This type grants no forward work, network lease or numeric supply. */
+    public static final class CleanupSources {
+        private final ResearchStations selector;
+        private final List<Site> sites;
+        private final List<PhysicalSite> physical;
+        private final MachineHatches hatches;
+
+        private CleanupSources(ResearchStations selector, List<Site> sites, List<PhysicalSite> physical, MachineHatches hatches) {
+            this.selector = selector;
+            this.sites = sites;
+            this.physical = List.copyOf(physical);
+            this.hatches = hatches;
+        }
+
+        public List<Site> sites() { return sites; }
+        public MachineInstance primary() { return physical.getFirst().machine(); }
+        public MachineHatches hatches() { return hatches; }
+        public boolean current() { selector.ownerCheck.run(); return physical.stream().allMatch(PhysicalSite::current); }
     }
 
     /** Immutable site/source identities with replaceable per-tick authority; no station registry or numeric reservation. */
@@ -143,6 +249,8 @@ public final class ResearchStations {
         private final int requiredTier;
         private final int dimension;
         private final List<Station> stations;
+        private final List<Site> sites;
+        private final List<MachineInstance> machines;
         private final ObjectSet<UUID> stationIds;
         private final MachineHatches hatches;
 
@@ -152,6 +260,8 @@ public final class ResearchStations {
             this.requiredTier = requiredTier;
             this.dimension = dimension;
             this.stations = List.copyOf(stations);
+            sites = this.stations.stream().map(station -> new Site(station.identity.identity(), station.identity.location())).toList();
+            machines = this.stations.stream().map(Station::machine).toList();
             this.hatches = hatches;
             var ids = new ObjectLinkedOpenHashSet<UUID>();
             stations.forEach(station -> ids.add(station.identity.identity().machineId()));
@@ -163,6 +273,8 @@ public final class ResearchStations {
         public int requiredTier() { return requiredTier; }
         public int dimension() { return dimension; }
         public ObjectSet<UUID> stationIds() { return stationIds; }
+        public List<Site> sites() { return sites; }
+        public List<MachineInstance> machines() { return machines; }
         public MachineInstance primary() { return stations.getFirst().machine; }
         public MachineHatches hatches() { return hatches; }
         public Object2LongMap<NetworkResourceType> numericResources() { return stations.getFirst().permit.numericResources(); }

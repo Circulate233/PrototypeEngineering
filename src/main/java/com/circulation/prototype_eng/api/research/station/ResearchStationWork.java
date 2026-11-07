@@ -16,6 +16,7 @@ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.nbt.NBTTagCompound;
 
 import java.util.Collection;
 import java.util.List;
@@ -38,6 +39,8 @@ public final class ResearchStationWork {
     private final TeamResearchCompletion completion;
     private final Random random = new Random();
     @Nullable private Segment segment;
+    @Nullable private SavedSegment stored;
+    @Nullable private Cleanup cleanup;
     @Nullable private Cycle cycle;
     private Result result = new Result(Status.WAITING, null, ProcessResult.SUCCESS);
     private long lastGrantedTime = -1;
@@ -56,10 +59,87 @@ public final class ResearchStationWork {
     /** Renew these exact physical sources between ticks; never replace a partially paid segment. */
     @Nullable public ResearchStations.Capture sources() { requireOwner(); return segment == null ? null : segment.sources; }
 
-    @Nullable public RecipeProcess.State materialState() { requireOwner(); return segment == null ? null : segment.process.state(); }
+    @Nullable public RecipeProcess.State materialState() { requireOwner(); return cleanup != null ? cleanup.process.state() : segment == null ? null : segment.process.state(); }
 
     public Result result() { requireOwner(); return result; }
     public boolean pending() { requireOwner(); return cycle != null; }
+
+    @Nullable public TeamResearchQueue.Key key() { requireOwner(); return cleanup != null ? cleanup.saved.key() : segment != null ? segment.key : stored == null ? null : stored.key(); }
+
+    public List<ResearchStations.Site> sites() { requireOwner(); return cleanup != null ? cleanup.saved.sites() : segment != null ? segment.sources.sites() : stored == null ? List.of() : stored.sites(); }
+
+    /** Snapshot only confirmed material boundaries; no source action, receipt or authority is serialized. */
+    public Saved snapshot() {
+        requireOwner();
+        if (cycle != null || cleanup != null || queue.busy()) { throw new IllegalStateException("Station work has pending or faulted settlement"); }
+        executing = true;
+        try { return new Saved(lastGrantedTime, saveSegment()); }
+        finally { executing = false; }
+    }
+
+    /** Retain an exact saved session until its real physical owner and current sources are available. */
+    public void restore(Saved saved) {
+        requireOwner();
+        Objects.requireNonNull(saved);
+        if (cycle != null || cleanup != null || segment != null || stored != null || queue.busy()) { throw new IllegalStateException("Station work cannot replace an owned session"); }
+        if (saved.segment() != null) { requireHead(saved.segment().key()); }
+        lastGrantedTime = saved.lastGrantedTime();
+        stored = saved.segment();
+        result = new Result(Status.WAITING, null, ProcessResult.SUCCESS);
+    }
+
+    /** Encode before releasing unloaded runtimes. Successful START/TICK phases are neither ended nor refunded. */
+    public boolean suspend() {
+        requireOwner();
+        if (cycle != null || cleanup != null || queue.busy() || segment != null && (!segment.process.persistenceReady() || segment.process.state().lifecycle().isTerminal())) { return false; }
+        executing = true;
+        try {
+            stored = saveSegment();
+            segment = null;
+            return true;
+        } finally { executing = false; }
+    }
+
+    /** Reconstruct on the original real sites without planning numeric work or running any material phase. */
+    public boolean resume(ResearchStations.Capture sources) {
+        requireOwner();
+        Objects.requireNonNull(sources);
+        if (cycle != null || cleanup != null || queue.busy()) { return false; }
+        executing = true;
+        try { return resumeStored(sources); }
+        finally { executing = false; }
+    }
+
+    /** Scheduler cancellation stops only the current tick; the partial material session remains owned. */
+    public void requestStop(PlannedCancellationToken.Reason reason) {
+        requireOwner();
+        Objects.requireNonNull(reason);
+        if (cycle != null) { Objects.requireNonNull(cycle.coordinator).cancel(reason); }
+    }
+
+    /** Reconstruct exact real owners only to cancel saved work; no network authority or material phase is executed. */
+    public boolean cancelRestored(ResearchStations.CleanupSources sources) {
+        requireOwner();
+        Objects.requireNonNull(sources);
+        if (cycle != null || queue.busy()) { return false; }
+        executing = true;
+        try {
+            if (cleanup != null) { return finishCleanup(); }
+            var saved = stored;
+            if (saved == null) { return segment == null; }
+            requireHead(saved.key());
+            if (!saved.sites().equals(sources.sites()) || !sources.current()) { return false; }
+            var materials = queue.registry().materials(saved.key().researchId(), saved.key().targetLevel());
+            var restored = materials.decodeMaterialCycle(sources.primary(), sources.hatches(), saved.processTag());
+            if (restored.state().lifecycle().isTerminal()) { throw new IllegalArgumentException("Saved station material session is terminal"); }
+            if (!sources.current()) { return false; }
+            // Own the reconstructed process before invoking terminal callbacks. Failure must never
+            // leave the saved tag eligible to decode and repeat those callbacks on a new process.
+            cleanup = new Cleanup(saved, sources, restored);
+            stored = null;
+            return finishCleanup();
+        } finally { executing = false; }
+    }
 
     /**
      * At most one segment per call. A retained cycle is resolved before inspecting the supplied new
@@ -74,6 +154,7 @@ public final class ResearchStationWork {
         executing = true;
         try {
             if (cycle != null) { return drive(deadline); }
+            if (cleanup != null) { return set(Status.FAILED, null); }
             if (context.time() < lastGrantedTime) { throw new IllegalArgumentException("Research segment time moved backwards"); }
             if (context.time() == lastGrantedTime) { return set(Status.WAITING, null); }
             if (segment != null && !segment.process.persistenceReady()) { return set(Status.FAILED, null); }
@@ -82,6 +163,7 @@ public final class ResearchStationWork {
             if (queue.busy() || context.members().isEmpty() || !context.current().getAsBoolean() || !sources.current()) { return set(Status.WAITING, null); }
             var head = queue.activeHead().orElse(null);
             if (head == null) { return set(Status.WAITING, null); }
+            if (stored != null && !resumeStored(sources)) { return set(Status.WAITING, null); }
             if (segment != null && (!segment.key.equals(head.key()) || segment.sources.primary() != sources.primary()
                 || segment.sources.hatches() != sources.hatches() || !segment.sources.stationIds().equals(sources.stationIds()))) {
                 return set(Status.WAITING, null);
@@ -91,7 +173,8 @@ public final class ResearchStationWork {
             var plan = queue.planSegment(head.key(), sources.stationIds(), sources.numericResources(), context.time()).orElse(null);
             if (plan == null || !context.current().getAsBoolean() || !sources.current()) { return set(Status.WAITING, null); }
             if (segment == null) {
-                var process = RecipeProcess.materialCycle(sources.primary(), head.key().researchId(), plan.materialRequirements(), sources.hatches(), random.nextLong());
+                var materials = queue.registry().materials(head.key().researchId(), head.key().targetLevel());
+                var process = RecipeProcess.materialCycle(sources.primary(), materials.recipe(), sources.hatches(), random.nextLong());
                 segment = new Segment(head.key(), sources, process);
             }
             var attempt = new Cycle(segment, sources, context, plan);
@@ -131,6 +214,8 @@ public final class ResearchStationWork {
                 drive(cleanupDeadline);
                 if (cycle != null) { return false; }
             }
+            if (cleanup != null) { return finishCleanup(); }
+            if (stored != null) { return false; }
             if (segment == null) { return true; }
             if (!segment.process.persistenceReady()) { return false; }
             if (!segment.process.state().lifecycle().isTerminal()) { segment.process.cancel(); }
@@ -171,8 +256,54 @@ public final class ResearchStationWork {
     }
 
     private Result set(Status status, @Nullable TeamResearchQueue.GrantResult grant) {
-        result = new Result(status, grant, segment == null ? ProcessResult.SUCCESS : segment.process.state().result());
+        result = new Result(status, grant, cleanup != null ? cleanup.process.state().result() : segment == null ? ProcessResult.SUCCESS : segment.process.state().result());
         return result;
+    }
+
+    private boolean finishCleanup() {
+        var owned = Objects.requireNonNull(cleanup);
+        if (!owned.process.persistenceReady() || !owned.sources.current()) { return false; }
+        if (!owned.process.state().lifecycle().isTerminal()) {
+            try { owned.process.cancel(); }
+            catch (RuntimeException | Error failure) { set(Status.FAILED, null); throw failure; }
+        }
+        result = new Result(Status.CANCELLED, null, owned.process.state().result());
+        cleanup = null;
+        return true;
+    }
+
+    @Nullable private SavedSegment saveSegment() {
+        if (segment == null) {
+            if (stored != null) { requireHead(stored.key()); }
+            return stored;
+        }
+        if (segment.process.state().lifecycle().isTerminal()) { throw new IllegalStateException("Terminal station materials cannot be saved as unfinished work"); }
+        requireHead(segment.key);
+        var materials = queue.registry().materials(segment.key.researchId(), segment.key.targetLevel());
+        return new SavedSegment(segment.key, segment.sources.sites(), materials.encode(segment.process));
+    }
+
+    private boolean resumeStored(ResearchStations.Capture sources) {
+        if (!queue.teamId().equals(sources.teamId())) { return false; }
+        var saved = stored;
+        if (saved == null) { return segment != null && segment.sources.primary() == sources.primary()
+            && segment.sources.hatches() == sources.hatches() && segment.sources.sites().equals(sources.sites()) && sources.current(); }
+        requireHead(saved.key());
+        if (!saved.sites().equals(sources.sites()) || !sources.current()) { return false; }
+        var stage = queue.registry().require(saved.key().researchId()).stageForLevel(saved.key().targetLevel());
+        if (stage.researchTier() < 1 || sources.requiredTier() < stage.researchTier()) { return false; }
+        var materials = queue.registry().materials(saved.key().researchId(), saved.key().targetLevel());
+        var restored = materials.decodeMaterialCycle(sources.primary(), sources.hatches(), saved.processTag());
+        if (restored.state().lifecycle().isTerminal()) { throw new IllegalArgumentException("Saved station material session is terminal"); }
+        if (!sources.current()) { return false; }
+        segment = new Segment(saved.key(), sources, restored);
+        stored = null;
+        return true;
+    }
+
+    private void requireHead(TeamResearchQueue.Key expected) {
+        var head = queue.activeHead().orElse(null);
+        if (head == null || !head.key().equals(expected)) { throw new IllegalStateException("Saved station session requires its exact queue head"); }
     }
 
     private void requireOwner() {
@@ -198,7 +329,21 @@ public final class ResearchStationWork {
         }
     }
 
+    public record Saved(long lastGrantedTime, @Nullable SavedSegment segment) {
+        public Saved { if (lastGrantedTime < -1) { throw new IllegalArgumentException("Invalid last station grant time"); } }
+    }
+
+    public record SavedSegment(TeamResearchQueue.Key key, List<ResearchStations.Site> sites, NBTTagCompound processTag) {
+        public SavedSegment {
+            Objects.requireNonNull(key);
+            sites = ResearchStations.validatedSites(sites);
+            processTag = Objects.requireNonNull(processTag).copy();
+        }
+        @Override public NBTTagCompound processTag() { return processTag.copy(); }
+    }
+
     private record Segment(TeamResearchQueue.Key key, ResearchStations.Capture sources, RecipeProcess process) { }
+    private record Cleanup(SavedSegment saved, ResearchStations.CleanupSources sources, RecipeProcess process) { }
 
     private final class Cycle {
         private final Segment segment;

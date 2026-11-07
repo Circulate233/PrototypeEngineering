@@ -16,7 +16,7 @@
 | PM 显式 overlay 回调 | Java 显式入口已接 | 旧 `RecipeOverlayModifierPipeline.apply` 按 ID 调用修改器，但旧普通执行链未自动调用；新 `RecipeOverlayPipeline.apply` 可显式执行并撤销。不能将此入口算作自动触发的 START 事件。 |
 | PM 并行数量需求 | 实际效果已迁；旧空类不复制 | 旧 ParallelismRequirementComponent/System 是空壳。实际效果来自扫描时选择 PROCESS_PARALLELISM 和资源/FE 数量缩放，新 scanner/RecipeParallelism/需求系统已有对应逻辑。 |
 | PN 给每个配方追加研究/计算条件的扩展回调 | Java 注册与真实阶段消费者已接入 | NetworkRecipeExtensions 按目录/优先级调用回调并一次冻结。NetworkRecipeWork 合并机器默认与配方需求，实际 START/TICK/END 检查选中物理数据中心、按并行量占用 numeric、按机器 UUID 共享 THREAD，并与材料/FE 同阶段补偿；探针不占额度。服务器调度与验证见[配方消费者](network-recipes.md)。 |
-| PN 研究启动条件、队列、阶段推进及完成 | 手动服务器链及研究站显式消费者已接 | ResearchRegistry 注册、权限/真实 startCondition 入队、队列/逐项投料/回执恢复/冻结完成已执行。ResearchWorld/ServerResearch 已绑定单一世界存档、FTB 成员核对、既有 tick 边界及登录退出，并提供 Java 开始/接管入口。ResearchStations/ResearchStationWork 已使用真实站点、共享 lease、完整材料周期与 END grant/completion；原来源 lanes 和 UNKNOWN 恢复共用。研究站自动服务器入口与世界会话保存尚缺，见[研究站执行](research-stations.md)。 |
+| PN 研究启动条件、队列、阶段推进及完成 | 手动及研究站服务器执行、世界会话已接 | ResearchRegistry 注册、权限/真实 startCondition 入队、队列/逐项投料/回执恢复/冻结完成已执行。ResearchWorld/ServerResearch 已绑定单一世界存档、FTB 成员核对、既有 tick 边界及登录退出，并提供 Java 开始/接管入口。ResearchStations/ResearchStationWork 已使用真实站点、共享 lease、完整材料周期与 END grant/completion；原来源 lanes 和 UNKNOWN 恢复共用。研究站自动调度与世界会话保存已接；正 tier 玩家平台入队、领取及下载入口仍缺，见[研究站执行](research-stations.md)。 |
 | PN 研究奖励及事件奖励 | Java 领取/恢复核心已有执行；服务器入口未接 | ResearchRewardClaimer 在实际领取时调用 RewardEventAction.deliver，保留选择、片段和checkpoint；Minecraft物品adapter可调用。权威世界存档已有，但领取 packet/UI、领取事务与存档绑定及完整物品交互冻结尚未接入，默认未知交付不盲目重发。 |
 | PN 研究物品下载事件 | 未迁移 | 旧 ResearchItemDownloadEvent.createOutput 按材料注册，由 ResearchItemDownloadEvaluation 调用，再进入权威下载事务；当前没有对应 download 模块。 |
 | PN 计算组件的实际物品供给 | Java 生产链已接 | AEItemKey 精确注册、公开 committed 仓槽读取、每物品上限后按 long 数量累加并合并 declared vector；准确版本证明进入真实同步/planned 配方许可。真实仓负责恢复，未知普通物品不供给。原生 ItemStack 适配仅静态核对，未启动游戏。 |
@@ -28,7 +28,7 @@
 
 ## 后续工作顺序
 
-1. PN 普通配方研究/计算条件已接通，继续接研究站自动服务器执行/世界会话保存及下载交互：先核对旧定义、状态及执行入口，复用可用逻辑，改写 Kotlin 与不必要的桥接层。新接口放在本项目真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
+1. PN 普通配方研究/计算条件已接通，继续接正 tier 平台入队、领取及下载交互，并处理永久破坏后的材料会话边界：先核对旧定义、状态及执行入口，复用可用逻辑，改写 Kotlin 与不必要的桥接层。新接口放在本项目真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
 2. 研究启动、队列/阶段推进、完成、奖励与下载事件逐项接到真实注册、运行和持久化入口。状态说明按“定义、执行、存档、外部扩展”分别给出，不以仅有模型或预算底座冒充完整功能。
 3. 在具体功能需要的地方使用已有事务和调度能力；服务器网络机器游标与来源 lanes 已接，纯 prepare、内部工作预算与其他 PN 消费者仍须完成，但不继续脱离功能主线反复细化底座。
 4. 继续已确认的结构投影/复杂渲染/每池默认与自定义 JEI 等功能，CraftTweaker 最后。保持纯库定位，不迁入旧开发示例的正式机器、配方或玩法数值。

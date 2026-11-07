@@ -172,7 +172,7 @@ class ResearchWorldPersistenceTest {
         var fixture = fixture(); var codec = fixture.codec(); var world = world(fixture, ObjectList.of());
         var unknown = codec.encode(world); unknown.setString("Extra", "field");
         assertThrows(IllegalArgumentException.class, () -> codec.decode(unknown));
-        var version = codec.encode(world); version.setInteger("Version", 2);
+        var version = codec.encode(world); version.setInteger("Version", 999);
         assertThrows(IllegalArgumentException.class, () -> codec.decode(version));
         var time = codec.encode(world); time.setInteger("ServerTime", 10);
         assertThrows(IllegalArgumentException.class, () -> codec.decode(time));
