@@ -6,6 +6,9 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
@@ -65,6 +68,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.FakePlayer;
+import net.minecraftforge.common.DimensionManager;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.WorldEvent;
@@ -838,6 +842,7 @@ public final class ServerResearch {
         current.closing = true;
         // The file writer retains its absolute path, so serverStopped can retry after world unload.
         current.world.close(operationTime(current));
+        current.stationLifecycle.close();
         session = null;
     }
 
@@ -1190,6 +1195,7 @@ public final class ServerResearch {
         private final ResearchStations stations;
         private final ResearchDataCenters dataCenters;
         private final DataCenterResearchAccess database;
+        private final MachineLifecycleRegistry.Subscription stationLifecycle;
         private final ObjectOpenHashSet<UUID> rewardCleanup = new ObjectOpenHashSet<>();
         private boolean closing;
 
@@ -1198,9 +1204,44 @@ public final class ServerResearch {
             this.overworld = overworld;
             this.world = world;
             resolver = new FtbOwnerTeamResolver(server);
-            stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server));
+            stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server), this::stationAbsent);
             dataCenters = new ResearchDataCenters(ServerMachineIdentities.forServer(server), () -> requireThread(server));
             database = new DataCenterResearchAccess(world, ServerNetworkRuntime.forServer(server), dataCenters);
+            var listener = world.stationLifecycle(stations);
+            stationLifecycle = MachineLifecycleRegistry.GLOBAL.register(new MachineLifecycleListener() {
+                @Override
+                public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
+                    if (event.context().server() == server) {
+                        listener.onControllerBroken(event);
+                    }
+                }
+
+                @Override
+                public void onUnassembledControllerBroken(MachineLifecycleEvent.UnassembledControllerBroken event) {
+                    if (event.host().server() == server) {
+                        listener.onUnassembledControllerBroken(event);
+                    }
+                }
+            });
+        }
+
+        private boolean stationAbsent(ResearchStations.Site site) {
+            var expected = site.controllerBlockId();
+            if (expected == null) {
+                return false;
+            }
+            var dimension = DimensionManager.getWorld(site.location().dimension());
+            var position = site.location().controllerPos();
+            if (dimension == null || dimension.getMinecraftServer() != server || !dimension.isBlockLoaded(position, false)) {
+                return false;
+            }
+            var tile = dimension.getTileEntity(position);
+            if (tile instanceof MachineControllerHost physical) {
+                var identity = physical.savedIdentity();
+                return identity != null && !identity.equals(site.identity());
+            }
+            // A custom opaque tile may retain the identity outside the common host contract.
+            return tile == null && !expected.equals(dimension.getBlockState(position).getBlock().getRegistryName());
         }
     }
 }

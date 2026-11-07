@@ -34,6 +34,11 @@ import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 
+import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
+
 /**
  * Empty construction/read never assembles. The next server update observes the final placement/NBT
  * after Forge's cancellation window. A reattached dormant tile owns a new controller generation.
@@ -51,6 +56,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     private boolean replacementData;
     private Object attachmentEpoch = new Object();
     private boolean changingState;
+    private boolean controllerDestroyed;
     private boolean updated;
     private long lastTick;
     private long displayGeneration;
@@ -95,6 +101,23 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     @Nullable public MachineInstance machine() { return controller == null ? null : controller.machine(); }
+
+    @Override
+    @Nullable
+    public PersistentMachineIdentity savedIdentity() {
+        requireServer();
+        var current = machine();
+        if (current != null && !replacementData) {
+            for (var binding : current.components().assemblyBindings()) {
+                if (binding.component() instanceof MachineOwnership ownership) {
+                    return ownership.identity();
+                }
+            }
+            return null;
+        }
+        var saved = controller != null && !replacementData ? controller.save() : data == null ? null : data.runtime();
+        return saved == null ? null : MachineTypeRegistry.INSTANCE.assembly(type()).savedIdentity(saved);
+    }
     public MachineType type() { return requireBlock().type(); }
 
     /** The callback runs on the server after accepted workers join; recheck the open container there. */
@@ -286,10 +309,34 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     public void controllerBroken() {
+        if (controllerDestroyed) {
+            return;
+        }
+        var current = machine();
+        boolean dormant = controller == null || replacementData
+            || current != null && Objects.requireNonNull(current.lifecycle()).state() != MachineLifecycle.State.LOADED;
+        if (dormant && data != null) {
+            requireServer();
+            var type = Objects.requireNonNull(MachineTypeRegistry.INSTANCE.get(data.type()), "Saved controller type is not registered");
+            var assembly = MachineTypeRegistry.INSTANCE.assembly(type);
+            var bound = new ControllerLifecycleHost(data.type(), this, null, null);
+            var saved = controller != null && !replacementData ? controller.save() : data.runtime();
+            if (saved != null) {
+                scheduler().runAtBoundary(() -> {
+                    var identity = assembly.savedIdentity(saved);
+                    if (identity != null) {
+                        MachineLifecycleRegistry.GLOBAL.unassembledControllerBroken(bound, identity);
+                    }
+                });
+            }
+        }
+        controllerDestroyed = true;
         wantsLoad = false;
         placement = null;
         attachmentEpoch = new Object();
-        if (controller != null) { controller.controllerBroken(); }
+        if (controller != null && !replacementData) {
+            controller.controllerBroken();
+        }
     }
     private void stop(MachineLifecycleEvent.UnloadReason reason) {
         wantsLoad = false;

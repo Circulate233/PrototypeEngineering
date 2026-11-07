@@ -55,6 +55,7 @@ final class StationFixtures implements AutoCloseable {
     final NetworkResourceRegistry resources = new NetworkResourceRegistry();
     final ResearchRegistry research = new ResearchRegistry();
     final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
+    final MachineLifecycleRegistry listeners = new MachineLifecycleRegistry();
     final NetworkRuntime network;
     final ResearchStations selector = new ResearchStations(identities, this::requireOwner);
     final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"), machine -> new MachineOwnership(machine, _ -> identities), List.of());
@@ -81,25 +82,30 @@ final class StationFixtures implements AutoCloseable {
     }
 
     Entry station(int level, int dimension) { return role(NetworkDeviceRole.RESEARCH_STATION, level, dimension, OWNER, world); }
+
     Entry role(NetworkDeviceRole role, int level, int dimension, UUID player, Object worldIdentity) {
         var vector = new Object2LongOpenHashMap<NetworkResourceType>();
-        if (role == NetworkDeviceRole.NETWORK_CENTER) { vector.put(NetworkResources.THREAD, threads); vector.put(NetworkResources.COMPUTE, compute); }
+        if (role == NetworkDeviceRole.NETWORK_CENTER) {
+            vector.put(NetworkResources.THREAD, threads);
+            vector.put(NetworkResources.COMPUTE, compute);
+        }
         var attached = MachineNetworkDevice.component(id("role_" + positions), ownership,
             (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, level, Objects.requireNonNull(machine.lifecycle()).formed(),
                 identity.loadOrder(), vector, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         var type = MachineType.builder(id("machine_" + positions), GuiText.ResourceStorage, id("structure")).component(ownership).component(attached).build();
         var assembly = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).recreated(attached).build();
-        return attach(assembly.create(host(type.id(), dimension, player, worldIdentity), new MachineLifecycleRegistry()), assembly, attached);
+        return attach(assembly.create(host(type.id(), dimension, player, worldIdentity), listeners), assembly, attached);
     }
 
     void dataCenter(int level) {
-        var storage = MachineDataCenterStorage.component(id("storage_" + positions), ownership, level, 10, research, _ -> { });
+        var storage = MachineDataCenterStorage.component(id("storage_" + positions), ownership, level, 10, research, _ -> {
+        });
         var role = MachineNetworkDevice.capturedComponent(id("data_role_" + positions), ownership,
             (machine, identity) -> Objects.requireNonNull(machine.components().get(storage)).networkCapture(identity,
                 Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
         var type = MachineType.builder(id("data_" + positions), GuiText.ResourceStorage, id("structure")).component(ownership).component(storage).component(role).build();
         var assembly = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).component(storage, MachineDataCenterStorage.CODEC).recreated(role).build();
-        attach(assembly.create(host(type.id(), 0, OWNER, world), new MachineLifecycleRegistry()), assembly, role);
+        attach(assembly.create(host(type.id(), 0, OWNER, world), listeners), assembly, role);
     }
 
     Entry attach(MachineInstance machine, MachineAssembly assembly, ComponentType<MachineInstance, MachineNetworkDevice> role) {

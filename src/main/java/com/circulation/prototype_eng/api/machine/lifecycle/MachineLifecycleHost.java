@@ -7,12 +7,20 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.UUID;
 
+import net.minecraft.util.ResourceLocation;
+
 /**
  * World access supplied by a controller host. External controller implementations may supply this
  * contract directly. Lifecycle callbacks use it only on the server thread, never on recipe workers.
  */
 public interface MachineLifecycleHost {
     MachineIdentity identity();
+
+    /** Original physical controller block; opaque or non-block hosts keep absence unprovable. */
+    @Nullable
+    default ResourceLocation controllerBlockId() {
+        return null;
+    }
     World world();
 
     /** Stable world-object identity for registries; custom non-Forge hosts provide an equivalent token. */

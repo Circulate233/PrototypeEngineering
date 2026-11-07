@@ -1,6 +1,6 @@
 # 研究站材料与推进
 
-2026-11-07。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权及世界会话保存恢复。正 tier 玩家 Java 入队已通过 ServerResearch.requestStart 接入；研究界面/packet 与领取入口已接，下载入口仍待完成；库不注册正式研究内容。
+2026-11-07。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权、世界会话保存恢复与永久破坏清理。正 tier 入队、研究界面/packet、领取、普通下载及接口式用户盘共同导入均已接；盘物品、tier、布局由外部注册，库不注册正式研究内容或内置盘。
 
 ## 对齐旧实现与 R29
 
@@ -33,9 +33,19 @@ START 完成 source apply → business commit → 全部终态确认后，才获
 
 `ResearchRegistry.freeze` 为每个定义的正 tier 阶段绑定唯一材料配方与完整 `RecipeProcessNbt`，同阶段等级共用，跨定义隔离。`ResearchLevelStage.Builder.materialPersistence(revision, configure)` 提供外部组件/选择器/overlay 所需 codec 配置。注册前置校验失败可修正；外部配置开始后禁止重入或重放。
 
-`ResearchWorldNbt` Version 2 在同一研究文件内保存队头、原站 UUID/owner/维度/位置、最后授予时间与完整材料进程。严格拒绝缺字段、重复站、错误队头和旧格式；NBT 防御复制。恢复先保留原会话，原站真实加载、身份与位置准确且重新获准后才解码，不重放历史 START/TICK。旧站不可用时保存并等待，不换另一批站继续半途材料。
+`ResearchWorldNbt` Schema 5 在同一研究文件内保存队头、原站 UUID/owner/维度/位置、可选原控制器方块 ID、最后授予时间与完整材料进程。严格拒绝缺字段、重复站、错误队头和旧格式；NBT 防御复制。恢复先保留原会话，原站真实加载、身份与位置准确且重新获准后才解码，不重放历史 START/TICK。方块 ID 只证明物理来源，不是另一层运行身份；相同站点恢复保留原凭据。普通不可用继续等待，不换另一批站续付半途材料。
 
-换队或黑名单使研究失效时，`restoreForCleanup` 只证明原真实站点和仓室，允许在失去旧队网络工作许可后解码并取消；该证明不能用于推进，不获取 THREAD/numeric。原实体缺失时仍等待。取消异常保留已重建进程，禁止重新解码重放回调。永久破坏后原实体不再存在的会话处理仍待衔接实际生命周期。
+换队或黑名单使研究失效时，`restoreForCleanup` 只证明原真实站点和仓室，允许在失去旧队网络工作许可后解码并取消；该证明不能用于推进，不获取 THREAD/numeric。取消异常保留已重建进程，禁止重新解码重放回调。
+
+## 永久破坏与原进程所有权
+
+`ResearchWorld.stationLifecycle(stations)` 接真实 `ControllerBroken`；`ServerResearch` 会话在 GLOBAL 注册，成功关闭才解除。事件在所有原 source 退出、事务终态及 fence 结清后的 scheduler boundary 执行，先于原 ownership 的 Unloaded 注销；破坏事实从准确原 runtime/registry/world/位置取得，不要求 formed、工作许可或 UUID 当前唯一。普通卸载和结构失效不调用材料取消。
+
+`suspend` 编码后保留原 `RecipeProcess` 作为仅取消现场：它不提供 sources、租约或新阶段授权，成功 resume 才释放旧引用。即使主站已卸载，另一原贡献站破坏也沿原 owner/仓室执行 cancel，保留已成功 START/TICK 的 IO，停止未完成材料周期，队列的已获 numeric 与研究完成不退。UNKNOWN 的已经决定结果仍只确认原 token，不重放材料或发放。原过程或已重建 cleanup 取消失败使世界 faulted，拒绝旧 tag 再保存/恢复。
+
+跨重启只剩 raw checkpoint、没有已拥有的重建进程或 source token 时，真实永久破坏直接终结局部恢复状态，不构造不存在的机器，也不宣称执行了 abort 回调。`MachineAssembly.savedIdentity` 只读准确 ownership codec；未装配、queued load 被停止和已停放 raw 控制器通过 `UnassembledControllerBroken` 通知。TE 的 replacementData 使用当前保存源，vanilla 已替换方块时使用保存的规范 type，不重读新方块来认领旧身份。
+
+销毁前旧 checkpoint 写失败保留精确破坏事实和原进程，先重写旧快照，再取消；销毁后写失败保留准确终止快照，只重写不重跑 cancel。vanilla chunk 与研究文件仍不跨文件原子：重启后只对 cold raw 核验已经加载的原位置，不强制加载。默认宿主先核实际 ControllerHost 的 live/raw 身份；准确原身份仍在时保留，未知外部宿主/未知 raw/未加载区块不能判毁。无实体且原物理方块已不存在，或实际宿主证明原身份已被替换，才终结旧局部状态。虚拟宿主默认不提供方块凭据，外部可通过 ResearchStations 的明确 absence 职责提供等价证明。
 
 当前仓室 token 没有可持久结果回执，因此不宣称 vanilla chunk 库存与研究文件跨文件原子。嵌套检查点已通过原批次分段执行修复阶段可见性，候选后续拒绝已支持局部退款再改选，见[专项审计](checkpoint-execution-audit.md)。检查点仍以一次外层触发为共同补偿边界，不能与研究站材料周期已经提交的历史阶段混同。
 
@@ -46,6 +56,8 @@ START 完成 source apply → business commit → 全部终态确认后，才获
 `ResearchWorld.StationTick` 保留当前队伍游标和消费者。存档失败先重写准确 pendingSave，正常缺料只保留未完成材料阶段；未知事务保留旧 execution 并允许确认后恢复。已结清的异常释放执行所有权，世界保留原错误与材料现场并禁止新工作或保存，不伪装成永久等待。正常业务 Failure 走真实取消清理。
 
 ## 验证
+
+永久破坏阶段新增 10 项 World 行为，覆盖真实 broken 原进程、主站卸载后贡献站破坏、cold raw 不重建、queued/parked raw 通知、旧 checkpoint/终止 checkpoint 写失败、取消故障、UUID 冲突及重启后准确 absence 补结。原 UNKNOWN 用例改走永久 destroy，仍保留已决定 completion 和原 token。完整 build 1224 tests / 156 suites 全通过；18 Java IDEA MCP errorsOnly:false 全级零诊断，23 文件构建前后 SHA 无漂移，独立只读审计无剩余确定缺陷。证据 `build/reports/idea/research-station-destruction-final.json`、`build/staging/research-station-destruction/full-build-result.json` 与同目录完整测试/原始快照。真实 Chunk 先换 block 再调用旧 breakBlock、DimensionManager 非初始化读取及 AE2S 清理时序按本机源码静态核对；未启动游戏或服务端。
 
 研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。
 

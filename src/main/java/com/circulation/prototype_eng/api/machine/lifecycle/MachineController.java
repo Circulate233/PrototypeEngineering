@@ -27,6 +27,7 @@ public final class MachineController implements ScheduledTask {
     @Nullable private volatile Stop requestedStop;
     private volatile Phase phase = Phase.NEW;
     private boolean loadRequested;
+    private boolean unassembledDestructionPublished;
     @Nullable private NBTTagCompound pendingSave;
 
     @SuppressWarnings("unused") // Public API uses the global lifecycle registry by default.
@@ -86,23 +87,57 @@ public final class MachineController implements ScheduledTask {
     public void controllerBroken() { requestStop(Stop.BROKEN); }
 
     private void requestStop(Stop reason) {
-        if (phase == Phase.STOPPED || phase == Phase.FAILED) { return; }
+        if (phase == Phase.STOPPED && reason == Stop.BROKEN && machine == null && pendingSave != null && !unassembledDestructionPublished) {
+            scheduler.runAtBoundary(this::publishUnassembledDestruction);
+            return;
+        }
+        if (phase == Phase.STOPPED || phase == Phase.FAILED) {
+            return;
+        }
         scheduler.runAtBoundary(() -> stopAtBoundary(reason));
         // This happens only after successful admission; IDLE cleanup may already have completed.
         synchronized (this) {
-            if (phase == Phase.STOPPING || phase == Phase.STOPPED || phase == Phase.FAILED) { return; }
+            if (phase == Phase.STOPPING || phase == Phase.STOPPED || phase == Phase.FAILED) {
+                return;
+            }
             requestedStop = stronger(requestedStop, reason);
             var current = machine;
-            if (current != null) { Objects.requireNonNull(current.lifecycle()).retire(); }
+            if (current != null) {
+                Objects.requireNonNull(current.lifecycle()).retire();
+            }
+        }
+    }
+
+    private void publishUnassembledDestruction() {
+        host.requireServerThread();
+        if (unassembledDestructionPublished || pendingSave == null) {
+            return;
+        }
+        var identity = assembly.savedIdentity(pendingSave);
+        unassembledDestructionPublished = true;
+        if (identity != null) {
+            listeners.unassembledControllerBroken(host, identity);
         }
     }
 
     private void loadAtBoundary(@Nullable NBTTagCompound saved) {
         host.requireServerThread();
+        Stop stop;
         synchronized (this) {
-            if (phase == Phase.STOPPED || requestedStop != null) { phase = Phase.STOPPED; return; }
-            if (phase != Phase.NEW) { throw new IllegalStateException("Controller assembly has already started"); }
-            phase = Phase.LOADING;
+            if (phase == Phase.STOPPED) {
+                return;
+            }
+            stop = requestedStop;
+            if (phase != Phase.NEW) {
+                throw new IllegalStateException("Controller assembly has already started");
+            }
+            if (stop == null) {
+                phase = Phase.LOADING;
+            }
+        }
+        if (stop != null) {
+            stopAtBoundary(stop);
+            return;
         }
         try {
             var created = saved == null ? assembly.create(host, listeners) : assembly.restore(host, saved, listeners);
@@ -120,11 +155,21 @@ public final class MachineController implements ScheduledTask {
             if (current != null) {
                 var lifecycle = Objects.requireNonNull(current.lifecycle());
                 lifecycle.retire();
-                try { lifecycle.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED); }
-                catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }
+                try {
+                    lifecycle.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED);
+                } catch (RuntimeException | Error cleanup) {
+                    if (failure != cleanup) {
+                        failure.addSuppressed(cleanup);
+                    }
+                }
             }
-            try { scheduler.unregister(this); }
-            catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }
+            try {
+                scheduler.unregister(this);
+            } catch (RuntimeException | Error cleanup) {
+                if (failure != cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
             phase = Phase.FAILED;
             throw failure;
         }
@@ -134,7 +179,9 @@ public final class MachineController implements ScheduledTask {
         host.requireServerThread();
         Stop stop;
         synchronized (this) {
-            if (phase == Phase.STOPPING || phase == Phase.STOPPED || phase == Phase.FAILED) { return; }
+            if (phase == Phase.STOPPING || phase == Phase.STOPPED || phase == Phase.FAILED) {
+                return;
+            }
             stop = stronger(requestedStop, reason);
             requestedStop = stop;
             phase = Phase.STOPPING;
@@ -151,15 +198,25 @@ public final class MachineController implements ScheduledTask {
                     lifecycle.unload(stop == Stop.CHUNK_UNLOAD ? MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD
                         : MachineLifecycleEvent.UnloadReason.INVALIDATED);
                 }
+            } else if (stop == Stop.BROKEN && pendingSave != null) {
+                publishUnassembledDestruction();
             }
-        } catch (RuntimeException | Error cleanup) { failure = cleanup; }
-        finally {
-            try { scheduler.unregister(this); }
-            catch (RuntimeException | Error cleanup) { failure = append(failure, cleanup); }
+        } catch (RuntimeException | Error cleanup) {
+            failure = cleanup;
+        } finally {
+            try {
+                scheduler.unregister(this);
+            } catch (RuntimeException | Error cleanup) {
+                failure = append(failure, cleanup);
+            }
             phase = failure == null ? Phase.STOPPED : Phase.FAILED;
         }
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
     }
 
     private static Stop stronger(@Nullable Stop current, Stop requested) {

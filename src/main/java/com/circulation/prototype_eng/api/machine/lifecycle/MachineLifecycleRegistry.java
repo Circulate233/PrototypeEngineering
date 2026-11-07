@@ -5,6 +5,8 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
+
 /**
  * Ordered, thread-safe registrations for machine lifecycle listeners.
  * Publishers capture one {@link #snapshot()} per publication, so changes made during a callback
@@ -49,6 +51,33 @@ public final class MachineLifecycleRegistry {
     /** Returns an immutable registration-order snapshot that remains valid after cancellation. */
     public List<MachineLifecycleListener> snapshot() {
         return snapshot;
+    }
+
+    /**
+     * Actual hosts publish this after worker exit when a saved controller never had an instance.
+     * Cleanup attempts the captured listeners once and preserves the first failure.
+     */
+    public void unassembledControllerBroken(MachineLifecycleHost host, PersistentMachineIdentity ownership) {
+        Objects.requireNonNull(host).requireServerThread();
+        var event = new MachineLifecycleEvent.UnassembledControllerBroken(host, host.identity(), ownership);
+        Throwable failure = null;
+        for (var listener : snapshot) {
+            try {
+                listener.onUnassembledControllerBroken(event);
+            } catch (RuntimeException | Error cleanup) {
+                if (failure == null) {
+                    failure = cleanup;
+                } else if (failure != cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
+        }
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
     }
 
     private synchronized boolean remove(Entry entry) {

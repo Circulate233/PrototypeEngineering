@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-07 永久破坏材料会话已接并完整验证：真实 broken/未装配 raw 通知、同服原 owner cancel、cold 局部终结及重启后已加载原位置核验；Schema 5 保存可选原物理方块凭据，外部未知宿主不判毁。新增 10 项 World 行为，完整 build 1224 tests / 156 suites 全通过，18 Java IDEA errorsOnly:false 全级零诊断、23 文件构建前后 SHA 一致；独立审计闭环。精确阶段快照/证据 `build/staging/research-station-destruction/`，见[研究站执行](research-stations.md)。本阶段已精确本地提交，未推送，未启动游戏或服务端。
+
 - 2026-11-07 扩展阶段完成实现与最终验证：AE2S 物理继承/开放扩展、仓室接口和 GUI、流体每次 fill/drain 转移限额与 clear/source fence、组件亲和及任意轻量结构端口；MachineAssembly Schema 2 保存成型次数，同代 refresh 不增、恢复不带形成授权。完整 build 1179 tests / 153 suites，零失败/错误/跳过；79 Java 的 IDEA errorsOnly:false 全级零诊断（40 格式改动复检、39 原 SHA 未变复用），Document/磁盘一致、构建前后 SHA 无漂移，MCP build_project 成功。原 IDE Git 新文件确认对话框阻塞已解除；验证及准确暂存证据见 `build/staging/component-extension/full-build-final-result.json`、`build/reports/idea/component-extension-inspections-79-final.json` 和同目录 `exact-index-manifest.json`。见[组件扩展](component-extension-migration.md)、[仓室](hatches.md)、[控制器集成](controller-integration.md)。下载已提交 `f180bfc`，扩展阶段已本地提交；未推送、未启动游戏或服务端。
 
 - 2026-11-07 R30 接口式分级盘源码已接：使用方注册自己的 Item/tier/布局，Carrier 与现编码事件便捷注册复用精确 AEItemKey 转换，统一 RightClickBlock hook 在 GUI 前接实际服务器导入；库不内置盘/等级表。World Schema 4 复用准确单槽材料凭据，与数据库原子内容+receipt、真实落盘回读共同恢复。编码仅研究门槛 tier ≤ 盘 tier，导入再检查盘 tier ≤ 目标数据库 tier，完成等级独立。databaseArmed 区分安全取消、首次明确拒绝和未知义务；原目标恢复及登录/tick/物品保护已接。本阶段新增 35 项行为，完整 build 1214 tests / 156 suites 全通过，29 Java IDEA errorsOnly:false 全级零诊断、构建前后 SHA 一致；独立审计三项闭环，三种当前 Jar 无内置盘残留。盘阶段已精确本地提交，未推送。见[物品化下载](research-downloads.md)，证据/基线入口 `build/staging/research-disk-workflow/`。
@@ -15,7 +17,7 @@
 - PN 普通配方研究/计算已接通：有序扩展注册、机器默认与逐配方条件合并、真实选中数据中心、阶段占用/提交/补偿。算力等 numeric 随并行量缩放；THREAD 按整机 UUID 只占 1，不随工位或 Java 线程数重复。START/扫描只检查，工作 TICK 占用，零时长 START 占用一次。见[配方消费者](network-recipes.md)。
 - 服务器 CONCURRENT 网络机器已自动转入 owner 协调，原组件游标在工位处理处暂停，材料/FE 来源 lanes 仍并行，结算后恢复后续 normal/post；pending、卸载及旧 tick 保留准确清理义务。独立三参 scheduler 不自动安装此工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍未接。
 - 真实计算组件物品供给已接通：AEItemKey 精确注册、真实 committed 槽、long 数量、单物品上限和整机供给合并；提取预留仍供给，待插入输出不供给。捕获后的授权只读版本证明，可在材料/FE 锁及 source fence 内使用，见[计算资源](network-resources.md)。
-- 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；当前 Schema 3 世界存档继续保存原站和完整材料，并包含物品下载操作，见[研究站执行](research-stations.md)。
+- 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；当前 Schema 5 保存原站、可选原控制器方块凭据和完整材料，并包含接口式用户盘导入；永久破坏沿原进程 cancel 或精确 cold 局部终结，见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接：同一外层阶段逐段执行子 START/TICK/END；候选 Blocked/Failure 时，在原 fence 和 source lanes 撤销完整候选后缀，确认后尝试下一项，外层成功前缀保留。支持嵌套选择、产物链、满仓闭环与 modifier/overlay 顺序；普通 continuation 保留跨来源并行，见[检查点审计](checkpoint-execution-audit.md)。
 - 服务器奖励领取与原生交互保护已接：准确世界检查点、UUID.dat/单人 level.dat/Anvil 文件核验、明确零效果重试；Mixin 在原执行处覆盖副手/创造/使用、死亡重生、光标关闭/保存、装备损耗和漏斗。清标签前重写 pending，第三方直接改栈使用公开保护查询；效果前 PREPARED/ISSUING 凭据、加载时合并与准确未发出恢复已接，ISSUING 缺失仍未知，见[服务器奖励](research-rewards.md)。
 - 最近验证（2026-11-07，物品化下载）：新增 18 项 World 行为测试，全 test 1164 tests / 150 suites 全通过；World 核心 8 Java、材料修复 2 Java、旧 schema 契约测试 1 Java IDEA MCP 全级零诊断。随后一项 native 文件回读恢复及下载/奖励受影响 suite 已通过合并定向运行，共享模板修复 2 Java IDEA MCP 全级零诊断。证据 build/reports/idea/download-world-final.json、download-world-verification-final.json、download-native-template-final.json；平台见 download-platform-final.json。原修改保留，未启动游戏或服务端。
@@ -26,9 +28,9 @@
 
 ## 下一步
 
-0. 扩展阶段实现、最终验证与准确 57 文件本地提交已完成；原 23 文件、背景修改及 `docs/INDEX.md~` 保留，继续推进 R30 盘物品与共同导入事务。
+0. 扩展和 R30 接口式用户盘共同导入均已实现、验证并本地提交；盘物品/tier/布局由外部注册，无内置盘/等级表。永久破坏材料会话本阶段已接真实入口，最终证据见 `build/staging/research-station-destruction/`；背景修改及 `docs/INDEX.md~` 保留。
 
-1. 研究视图、领取、普通数据库下载及普通物品转换均已接；未知结果继续保留准确义务、不补发。R30 接口式用户盘与真实特殊磁盘共同事务已接并通过共同完整构建/全级 MCP 验证，下一步按[配方功能核对](recipe-feature-parity.md)处理永久破坏后的材料会话；Java 先完整，CT 最后。
+1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。下一步按[配方功能核对](recipe-feature-parity.md)在具体配方消费者完成 pure prepare、冻结输入/结果及内部工作预算；Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
 3. 在具体消费者中完成纯 prepare、冻结输入/结果及内部工作预算；复用已接好的机器游标、生命周期与 source lanes，不脱离业务反复扩底座。整体重开发仍在进行。
 4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义 JEI 及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。

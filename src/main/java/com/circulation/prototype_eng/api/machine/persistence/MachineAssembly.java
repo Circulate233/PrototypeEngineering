@@ -39,6 +39,8 @@ import java.util.function.Consumer;
 
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
+
 /**
  * Attached-host assembly and explicit persistence for one canonical machine declaration revision.
  * Creation/restoration completes before lifecycle load; successful load returns an unregistered
@@ -88,6 +90,27 @@ public final class MachineAssembly {
 
     /** The exact declaration this assembly creates and restores. */
     public MachineType type() { return type; }
+
+    /** Read this assembly's explicit ownership codec without factories, loading or world effects. */
+    @Nullable
+    public PersistentMachineIdentity savedIdentity(NBTTagCompound saved) {
+        var tag = Objects.requireNonNull(saved).copy();
+        StrictNbt.requireKeys(tag, "Version", "Type", "Revision", "Attributes", "Components", "PendingDependencies", "FormationGeneration");
+        if (StrictNbt.requireInt(tag, "Version") != 2 || !StrictNbt.requireId(tag, "Type").equals(type.id())
+            || !StrictNbt.requireString(tag, "Revision").equals(revision)) {
+            throw new IllegalArgumentException("Saved identity requires this exact machine assembly");
+        }
+        PersistentMachineIdentity identity = null;
+        for (var component : readComponents(StrictNbt.requireList(tag, "Components", Constants.NBT.TAG_COMPOUND)).values()) {
+            if (component.binding().codec() == MachineOwnership.CODEC) {
+                if (identity != null) {
+                    throw new IllegalArgumentException("Saved machine has multiple ownership components");
+                }
+                identity = PersistentMachineIdentity.decode(component.data());
+            }
+        }
+        return identity;
+    }
 
     public MachineInstance create(MachineLifecycleHost host) { return create(host, MachineLifecycleRegistry.GLOBAL); }
 

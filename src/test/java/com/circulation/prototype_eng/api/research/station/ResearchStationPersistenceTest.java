@@ -401,32 +401,57 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void unknownAndFaultedMaterialSessionsCannotProduceAFalseSaveBoundary() {
+    @Test
+    void unknownAndFaultedMaterialSessionsCannotProduceAFalseSaveBoundary() {
         var failure = new IllegalStateException("unknown station END");
         boolean[] confirmed = {false};
         int[] completions = {0};
         try (var fixture = new StationFixtures(10, 100, 2, definition(phase -> phase == RecipeStage.END ? new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { }
-            @Override public void rollback() { }
-            @Override public void complete() { completions[0]++; throw failure; }
-            @Override public Resolution resolution() { return confirmed[0] ? Resolution.COMPLETED : Resolution.UNKNOWN; }
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+            }
+
+            @Override
+            public void rollback() {
+            }
+
+            @Override
+            public void complete() {
+                completions[0]++;
+                throw failure;
+            }
+
+            @Override
+            public Resolution resolution() {
+                return confirmed[0] ? Resolution.COMPLETED : Resolution.UNKNOWN;
+            }
         } : RequirementTransaction.SUCCESS)); var lanes = new Lanes()) {
-            var station = fixture.station(2, 0); put(station, RAW, 10, false); fixture.refresh();
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            fixture.refresh();
             var state = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             assertSame(failure, assertThrows(IllegalStateException.class, () -> state.work.advance(capture, context(1), lanes.tasks, deadline())));
             assertThrows(IllegalStateException.class, state.work::snapshot);
             assertFalse(state.work.suspend());
-            assertFalse(state.work.cancel(deadline()));
+            assertFalse(state.work.destroy(capture.sites().getFirst(), deadline()));
             confirmed[0] = true;
-            assertTrue(state.work.cancel(deadline()));
+            assertTrue(state.work.destroy(capture.sites().getFirst(), deadline()));
             assertEquals(1, completions[0]);
             assertEquals(1, state.player.completedLevel(id("research")));
             assertNull(state.work.snapshot().segment());
         }
-        try (var fixture = new StationFixtures(10, 100, 2, definition(_ -> { throw failure; })); var lanes = new Lanes()) {
-            var station = fixture.station(2, 0); put(station, RAW, 10, false); fixture.refresh();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(_ -> {
+            throw failure;
+        })); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            fixture.refresh();
             var state = new State(fixture);
             assertSame(failure, assertThrows(IllegalStateException.class, () -> state.work.advance(Objects.requireNonNull(fixture.selector.capture("team", 2)), context(1), lanes.tasks, deadline())));
             assertFalse(state.work.pending());

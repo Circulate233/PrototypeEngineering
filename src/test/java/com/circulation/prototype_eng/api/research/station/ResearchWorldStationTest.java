@@ -72,6 +72,10 @@ import java.util.function.Function;
 import static com.circulation.prototype_eng.api.research.station.StationFixtures.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineController;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.scheduler.TaskScheduler;
+
 class ResearchWorldStationTest {
     private static final TestResources.Key RAW = new TestResources.Key(TYPE, "world_raw");
     private static final TestResources.Key PRODUCT = new TestResources.Key(TYPE, "world_product");
@@ -582,30 +586,359 @@ class ResearchWorldStationTest {
         };
     }
 
+    @Test
+    void permanentDestructionCancelsTheOriginalPaidProcessBeforeItsRegistrationCloses() {
+        var observations = new Observations();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var world = world(fixture, _ -> {});
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var original = Objects.requireNonNull(observations.lastProcess.get());
+            var paid = world.snapshot();
+            assertNotNull(team(paid, "team").stationWork().segment());
+            assertEquals(7, amount(station, RAW, false));
+            assertTrue(Objects.requireNonNull(station.machine().lifecycle()).controllerBroken());
+            assertEquals(RecipeProcess.Lifecycle.CANCELLED, original.state().lifecycle());
+            assertEquals(1, observations.cancellations.get());
+            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), observations.phases);
+            assertNull(team(world.snapshot(), "team").stationWork().segment());
+            assertEquals(team(paid, "team").queue(), team(world.snapshot(), "team").queue());
+            assertEquals(7, amount(station, RAW, false));
+            assertEquals(100, amount(station, PRODUCT, true));
+            assertNull(fixture.selector.restoreForCleanup(Objects.requireNonNull(team(paid, "team").stationWork().segment()).sites()));
+            subscription.close();
+        }
+    }
+
+    @Test
+    void contributionDestructionCancelsTheRetainedOriginalOwnerAfterItsChunkUnloads() {
+        var observations = new Observations();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var first = fixture.station(2, 0);
+            var second = fixture.station(2, 0);
+            for (var station : List.of(first, second)) {
+                put(station, RAW, 10, false);
+                put(station, PRODUCT, 100, true);
+            }
+            var world = world(fixture, _ -> {});
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var original = Objects.requireNonNull(observations.lastProcess.get());
+            var primary = original.owner() == first.machine() ? first : second;
+            var contributor = primary == first ? second : first;
+            var paid = world.snapshot();
+            Objects.requireNonNull(primary.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            fixture.advanceTick();
+            assertTrue(prepare(world, fixture, lanes, 2, membership("team")).advance(deadline()));
+            assertNotNull(team(world.snapshot(), "team").stationWork().segment());
+            assertEquals(0, observations.cancellations.get());
+            assertTrue(Objects.requireNonNull(contributor.machine().lifecycle()).controllerBroken());
+            assertEquals(RecipeProcess.Lifecycle.CANCELLED, original.state().lifecycle());
+            assertEquals(1, observations.cancellations.get());
+            assertNull(team(world.snapshot(), "team").stationWork().segment());
+            assertEquals(team(paid, "team").queue(), team(world.snapshot(), "team").queue());
+            assertEquals(17, amount(first, RAW, false) + amount(second, RAW, false));
+            subscription.close();
+        }
+    }
+
+    @Test
+    void coldSavedMaterialsEndWithoutReconstructingLocalEffectsOrReplayingStages() {
+        var observations = new Observations();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var original = world(fixture, _ -> {});
+            assertEquals(TeamResearchStart.Status.STARTED, start(original, 0).status());
+            assertTrue(prepare(original, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var saved = original.snapshot();
+            var restored = world(fixture, _ -> {});
+            restored.restore(saved);
+            var subscription = fixture.listeners.register(restored.stationLifecycle(fixture.selector));
+            assertTrue(Objects.requireNonNull(station.machine().lifecycle()).controllerBroken());
+            assertEquals(0, observations.cancellations.get());
+            assertNull(team(restored.snapshot(), "team").stationWork().segment());
+            assertEquals(observations.phases, List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END));
+            assertEquals(7, amount(station, RAW, false));
+            subscription.close();
+        }
+    }
+
+    @Test
+    void queuedSavedControllerDestructionPublishesItsIdentityWithoutAssemblyAndEndsColdMaterials() {
+        var observations = new Observations();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes();
+             var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var original = world(fixture, _ -> {});
+            assertEquals(TeamResearchStart.Status.STARTED, start(original, 0).status());
+            assertTrue(prepare(original, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var saved = original.snapshot();
+            var site = Objects.requireNonNull(team(saved, "team").stationWork().segment()).sites().getFirst();
+            var machineTag = station.assembly().encode(station.machine());
+            Objects.requireNonNull(station.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            var restored = world(fixture, _ -> {});
+            restored.restore(saved);
+            var subscription = fixture.listeners.register(restored.stationLifecycle(fixture.selector));
+            var controller = new MachineController(station.assembly(), host(fixture, site), scheduler, fixture.listeners);
+            scheduler.submit(() -> {
+                controller.load(machineTag);
+                assertNull(controller.machine());
+                controller.controllerBroken();
+                assertNull(controller.machine());
+            }, ExecutionMode.MAIN_THREAD);
+            scheduler.tick();
+            assertNull(controller.machine());
+            assertEquals(0, scheduler.registeredCount());
+            assertEquals(0, observations.cancellations.get());
+            assertNull(team(restored.snapshot(), "team").stationWork().segment());
+            assertEquals(team(saved, "team").queue(), team(restored.snapshot(), "team").queue());
+            controller.controllerBroken();
+            assertNull(team(restored.snapshot(), "team").stationWork().segment());
+            subscription.close();
+        }
+    }
+
+    @Test
+    void parkedUnassembledSavedControllerStillPublishesPermanentDestructionOnce() {
+        var observations = new Observations();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes();
+             var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var original = world(fixture, _ -> {});
+            assertEquals(TeamResearchStart.Status.STARTED, start(original, 0).status());
+            assertTrue(prepare(original, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var saved = original.snapshot();
+            var site = Objects.requireNonNull(team(saved, "team").stationWork().segment()).sites().getFirst();
+            var tag = station.assembly().encode(station.machine());
+            Objects.requireNonNull(station.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            var restored = world(fixture, _ -> {});
+            restored.restore(saved);
+            var subscription = fixture.listeners.register(restored.stationLifecycle(fixture.selector));
+            var controller = new MachineController(station.assembly(), host(fixture, site), scheduler, fixture.listeners);
+            scheduler.submit(() -> {
+                controller.load(tag);
+                controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            }, ExecutionMode.MAIN_THREAD);
+            scheduler.tick();
+            assertNull(controller.machine());
+            assertNotNull(team(restored.snapshot(), "team").stationWork().segment());
+            controller.controllerBroken();
+            assertNull(team(restored.snapshot(), "team").stationWork().segment());
+            controller.controllerBroken();
+            assertEquals(0, observations.cancellations.get());
+            subscription.close();
+        }
+    }
+
+    @Test
+    void failedOldCheckpointRetainsDestructionEvidenceAndItsOriginalOwnerUntilTheWriteCanFinish() {
+        var observations = new Observations();
+        var failedWrite = new AtomicBoolean();
+        var failure = new IllegalStateException("old research checkpoint unavailable");
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var world = world(fixture, _ -> {
+                if (failedWrite.get()) throw failure;
+            });
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var process = Objects.requireNonNull(observations.lastProcess.get());
+            failedWrite.set(true);
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> world.checkpoint(1)));
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> Objects.requireNonNull(station.machine().lifecycle()).controllerBroken()));
+            assertEquals(0, observations.cancellations.get());
+            assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
+            failedWrite.set(false);
+            world.checkpoint(2);
+            assertEquals(1, observations.cancellations.get());
+            assertEquals(RecipeProcess.Lifecycle.CANCELLED, process.state().lifecycle());
+            assertNull(team(world.snapshot(), "team").stationWork().segment());
+            world.checkpoint(3);
+            assertEquals(1, observations.cancellations.get());
+            subscription.close();
+        }
+    }
+
+    @Test
+    void failedDestructionSaveRetriesOnlyTheExactTerminatedSnapshotWithoutReplayingAbort() {
+        var observations = new Observations();
+        var failedWrite = new AtomicBoolean();
+        var failure = new IllegalStateException("terminated research checkpoint unavailable");
+        var writes = new ObjectArrayList<ResearchWorldSnapshot>();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var world = world(fixture, snapshot -> {
+                if (failedWrite.get()) throw failure;
+                writes.add(snapshot);
+            });
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            failedWrite.set(true);
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> Objects.requireNonNull(station.machine().lifecycle()).controllerBroken()));
+            var terminated = world.snapshot();
+            assertNull(team(terminated, "team").stationWork().segment());
+            assertEquals(1, observations.cancellations.get());
+            failedWrite.set(false);
+            world.checkpoint(1);
+            assertEquals(terminated, writes.getLast());
+            assertEquals(1, observations.cancellations.get());
+            subscription.close();
+        }
+    }
+
+    @Test
+    void suspendedAbortFailureRetainsItsOriginalFaultedProcessAndCannotSaveOrResumeItsOldTag() {
+        var observations = new Observations();
+        var failure = new IllegalStateException("original suspended abort failed");
+        observations.abort = _ -> { throw failure; };
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var first = fixture.station(2, 0);
+            var second = fixture.station(2, 0);
+            for (var station : List.of(first, second)) {
+                put(station, RAW, 10, false);
+                put(station, PRODUCT, 100, true);
+            }
+            var world = world(fixture, _ -> {});
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var original = Objects.requireNonNull(observations.lastProcess.get());
+            var primary = original.owner() == first.machine() ? first : second;
+            var contributor = primary == first ? second : first;
+            Objects.requireNonNull(primary.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            fixture.advanceTick();
+            assertTrue(prepare(world, fixture, lanes, 2, membership("team")).advance(deadline()));
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> Objects.requireNonNull(contributor.machine().lifecycle()).controllerBroken()));
+            assertFalse(original.persistenceReady());
+            assertEquals(RecipeProcess.Lifecycle.CANCELLED, original.state().lifecycle());
+            assertFatal(failure, world::snapshot);
+            assertFatal(failure, () -> world.checkpoint(3));
+            assertEquals(1, observations.cancellations.get());
+            subscription.close();
+        }
+    }
+
+    @Test
+    void identityConflictDoesNotPreventExactOriginalDestructionCleanup() {
+        var observations = new Observations();
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var world = world(fixture, _ -> {});
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var identity = fixture.identity(station);
+            var duplicate = fixture.identities.register(identity.identity(), new MachineIdentity(identity.location().machineType(), 0,
+                identity.location().controllerPos().add(10, 0, 0)), fixture.world, new Object());
+            assertFalse(identity.unique());
+            fixture.advanceTick();
+            assertTrue(prepare(world, fixture, lanes, 2, membership("team")).advance(deadline()));
+            assertTrue(Objects.requireNonNull(station.machine().lifecycle()).controllerBroken());
+            assertNull(team(world.snapshot(), "team").stationWork().segment());
+            assertEquals(1, observations.cancellations.get());
+            duplicate.close();
+            subscription.close();
+        }
+    }
+
+    @Test
+    void coldRecoveryEndsAWriteFailedDestructionOnlyAfterTheHostProvesTheOriginalSiteAbsent() {
+        var observations = new Observations();
+        var fail = new AtomicBoolean();
+        var failure = new IllegalStateException("destruction checkpoint never reached disk");
+        try (var fixture = new StationFixtures(10, 100, 2, definition(10, observations, _ -> true)); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            var disk = new AtomicReference<ResearchWorldSnapshot>();
+            var world = world(fixture, snapshot -> {
+                if (fail.get()) throw failure;
+                disk.set(snapshot);
+            });
+            var subscription = fixture.listeners.register(world.stationLifecycle(fixture.selector));
+            assertEquals(TeamResearchStart.Status.STARTED, start(world, 0).status());
+            assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
+            var original = Objects.requireNonNull(disk.get());
+            var savedSite = Objects.requireNonNull(team(original, "team").stationWork().segment()).sites().getFirst();
+            fail.set(true);
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> Objects.requireNonNull(station.machine().lifecycle()).controllerBroken()));
+            assertEquals(1, observations.cancellations.get());
+            var restored = world(fixture, _ -> {});
+            restored.restore(Objects.requireNonNull(disk.get()));
+            fixture.advanceTick();
+            assertTrue(prepare(restored, fixture, lanes, 2, membership("team")).advance(deadline()));
+            assertNotNull(team(restored.snapshot(), "team").stationWork().segment(), "Registry disappearance does not prove physical destruction");
+            var queried = new ObjectArrayList<ResearchStations.Site>();
+            var physical = new ResearchStations(fixture.identities, fixture::requireOwner, site -> {
+                queried.add(site);
+                return site.sameStation(savedSite);
+            });
+            fixture.advanceTick();
+            var execution = restored.prepareTick(3, Map.of(OWNER, membership("team")), Set.of(OWNER), _ -> null,
+                () -> true, physical, fixture::refresh, lanes.tasks, deadline());
+            assertTrue(execution.advance(deadline()));
+            assertEquals(List.of(savedSite), queried);
+            assertNull(team(restored.snapshot(), "team").stationWork().segment());
+            assertEquals(team(original, "team").queue(), team(restored.snapshot(), "team").queue());
+            assertEquals(1, observations.cancellations.get(), "Cold recovery does not replay the old JVM's abort");
+            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), observations.phases);
+            subscription.close();
+        }
+    }
+
     /** External Java requirement, with real reversible END completion rather than synthetic storage tokens. */
     private static final class Observations {
+        private Consumer<RecipeProcess> abort = _ -> {};
         private final ObjectArrayList<RecipeStage> phases = new ObjectArrayList<>();
         private final AtomicInteger cancellations = new AtomicInteger();
         private final AtomicReference<RecipeProcess> lastProcess = new AtomicReference<>();
         private final Function<RecipeStage, RequirementTransaction> action;
         private Observations() { this(_ -> RequirementTransaction.SUCCESS); }
         private Observations(Function<RecipeStage, RequirementTransaction> action) { this.action = action; }
+
         private RecipeRequirement<Observations> requirement() {
             var type = new RecipeRequirementType<>(new ResourceLocation("aaa_world_station_test", "observation"), new RecipeRequirementSystem<Observations>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Observations> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Observations> requirement) {
                     requirement.payload().lastProcess.set(process);
                     return requirement.payload().acquire(RecipeStage.START);
                 }
-                @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Observations> requirement) {
+
+                @Override
+                public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Observations> requirement) {
                     requirement.payload().lastProcess.set(process);
                     return requirement.payload().acquire(RecipeStage.TICK);
                 }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Observations> requirement) {
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Observations> requirement) {
                     requirement.payload().lastProcess.set(process);
                     return requirement.payload().acquire(RecipeStage.END);
                 }
-                @Override public void cancel(RecipeProcess process, RecipeRequirement<Observations> requirement) {
+
+                @Override
+                public void cancel(RecipeProcess process, RecipeRequirement<Observations> requirement) {
                     requirement.payload().cancellations.incrementAndGet();
+                    requirement.payload().abort.accept(process);
                 }
             });
             return type.requirement(id("world_observer"), this);

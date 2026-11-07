@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.machine;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.tile.AEBaseTile;
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import net.minecraft.entity.EntityLivingBase;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,6 +16,12 @@ public interface MachineControllerHost {
 
     @Nullable
     MachineInstance machine();
+
+    /** Exact currently attached or pending-save ownership; null means the host cannot prove it. */
+    @Nullable
+    default PersistentMachineIdentity savedIdentity() {
+        return null;
+    }
 
     BlockOrientation orientation();
 

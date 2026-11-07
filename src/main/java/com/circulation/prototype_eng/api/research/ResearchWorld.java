@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
@@ -81,6 +83,7 @@ public final class ResearchWorld {
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadOperation> downloads = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadReceipt> downloadReceipts = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDiskOperation> diskImports = new Object2ObjectLinkedOpenHashMap<>();
+    private final ObjectSet<ResearchStations.Site> pendingDestructions = new ObjectOpenHashSet<>();
     private Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectLinkedOpenHashMap<>();
     @Nullable
     private ResearchWorldSnapshot pendingSave;
@@ -108,6 +111,52 @@ public final class ResearchWorld {
         admission = new TeamResearchStart(registry, resources, permissions);
         eligibility = new ResearchEligibility(registry);
         downloadSources = new ResearchDownloadSources(registry);
+    }
+
+    /**
+     * Register with the host's real lifecycle registry. Temporary unloading and structure changes
+     * do not cancel materials; only the exact permanently destroyed station ends its owned session.
+     */
+    public MachineLifecycleListener stationLifecycle(ResearchStations stations) {
+        return new StationLifecycle(this, Objects.requireNonNull(stations));
+    }
+
+    /**
+     * Trusted hosts report the exact destroyed identity and location after all accepted source
+     * actions exit. Retain the evidence before IO so a failed old checkpoint cannot lose it.
+     */
+    public void stationDestroyed(ResearchStations.Site site) {
+        requireOwner();
+        if (executing || activeTick != null || closed) {
+            throw new IllegalStateException("Station destruction requires the exclusive research owner");
+        }
+        pendingDestructions.add(Objects.requireNonNull(site));
+        operate(serverTime, true, () -> {
+            if (dirty) {
+                persist();
+            }
+            return null;
+        });
+    }
+
+    private void applyDestructions() {
+        if (pendingDestructions.isEmpty()) {
+            return;
+        }
+        for (var site : pendingDestructions) {
+            for (var team : teams.values()) {
+                if (team.station.sites().stream().anyMatch(source -> source.sameStation(site))) {
+                    try {
+                        team.station.destroy(site, PlannedDeadline.after(Duration.ofSeconds(5)));
+                    } catch (RuntimeException | Error failure) {
+                        fatalFailure = failure;
+                        throw failure;
+                    }
+                    dirty = true;
+                }
+            }
+        }
+        pendingDestructions.clear();
     }
 
     private static void releaseReceipt(ResearchDownloadReceipt receipt, ItemDeliveryAdapter adapter, BooleanSupplier current) {
@@ -1645,6 +1694,7 @@ public final class ResearchWorld {
         executing = true;
         try {
             flushPending();
+            applyDestructions();
             releaseDurableDownloads();
             for (var team : teams.values()) {
                 team.manual.retryCheckpoint();
@@ -1701,6 +1751,21 @@ public final class ResearchWorld {
             research = new TeamOwnedResearch(id, registry);
             manual = new ManualResearch(queue, research, sources, state -> manualCheckpoint(this, state));
             station = new ResearchStationWork(queue, research, sources);
+        }
+    }
+
+    private record StationLifecycle(ResearchWorld world, ResearchStations stations) implements MachineLifecycleListener {
+        @Override
+        public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
+            var site = stations.destroyedSite(event.context());
+            if (site != null) {
+                world.stationDestroyed(site);
+            }
+        }
+
+        @Override
+        public void onUnassembledControllerBroken(MachineLifecycleEvent.UnassembledControllerBroken event) {
+            world.stationDestroyed(new ResearchStations.Site(event.ownership(), event.identity(), event.host().controllerBlockId()));
         }
     }
 
@@ -1767,6 +1832,7 @@ public final class ResearchWorld {
             executing = true;
             try {
                 flushPending();
+                applyDestructions();
                 for (var team : teams.values()) {
                     team.manual.retryCheckpoint();
                 }
@@ -1797,7 +1863,26 @@ public final class ResearchWorld {
                         continue;
                     }
                     stationOperation = true;
+                    if (team.station.cold()) {
+                        for (var site : team.station.sites()) {
+                            if (stations.absent(site)) {
+                                team.station.destroy(site, cleanupDeadline);
+                                dirty = true;
+                                break;
+                            }
+                        }
+                    }
                     var savedKey = team.station.key();
+                    var destroyed = team.station.destroyedSite();
+                    if (destroyed != null) {
+                        if (team.station.destroy(destroyed, cleanupDeadline)) {
+                            dirty = true;
+                        } else {
+                            stationOperation = false;
+                            continue;
+                        }
+                    }
+                    savedKey = team.station.key();
                     if (savedKey != null && team.station.sources() == null) {
                         if (!eligibility.structurallyEligible(structural(team, team.knownMembers.isEmpty()),
                             savedKey.researchId(), savedKey.targetLevel())) {

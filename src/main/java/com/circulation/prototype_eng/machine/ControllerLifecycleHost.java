@@ -28,6 +28,8 @@ public final class ControllerLifecycleHost implements MachineStructureHost {
     private final TileEntity controller;
     private final World world;
     private final MachineIdentity identity;
+    @Nullable
+    private final ResourceLocation controllerBlockId;
     private final WorldStructureSource structureSource;
     @Nullable private final UUID placementPlayer;
     @Nullable private StructureConfiguration configuration;
@@ -37,15 +39,29 @@ public final class ControllerLifecycleHost implements MachineStructureHost {
     }
 
     public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer) {
+        this(machineType, controller, placementPlayer,
+            Objects.requireNonNull(controller.getWorld(), "Machine controller has no world").getBlockState(controller.getPos()).getBlock().getRegistryName());
+    }
+
+    /** Terminal hosts may supply no block provenance after vanilla has replaced the old block. */
+    public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer,
+                                   @Nullable ResourceLocation controllerBlockId) {
         this.controller = Objects.requireNonNull(controller);
         this.placementPlayer = placementPlayer;
         world = Objects.requireNonNull(controller.getWorld(), "Machine controller has no world");
         identity = new MachineIdentity(machineType, world.provider.getDimension(), controller.getPos());
+        this.controllerBlockId = controllerBlockId;
         structureSource = new WorldStructureSource(this);
         requireServerThread();
     }
 
     @Override public MachineIdentity identity() { return identity; }
+
+    @Override
+    @Nullable
+    public ResourceLocation controllerBlockId() {
+        return controllerBlockId;
+    }
 
     @Override public World world() { return world; }
     @Override @Nullable public UUID placementPlayer() { return placementPlayer; }

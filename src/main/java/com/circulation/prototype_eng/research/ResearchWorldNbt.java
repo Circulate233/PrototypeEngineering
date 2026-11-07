@@ -77,6 +77,9 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
                 location.setInteger("Y", position.getY());
                 location.setInteger("Z", position.getZ());
                 entry.setTag("Location", location);
+                if (site.controllerBlockId() != null) {
+                    entry.setString("ControllerBlock", site.controllerBlockId().toString());
+                }
                 sites.appendTag(entry);
             }
             saved.setTag("Sites", sites);
@@ -106,13 +109,14 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         var savedSites = StrictNbt.requireList(segment, "Sites", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < savedSites.tagCount(); index++) {
             var site = savedSites.getCompoundTagAt(index);
-            StrictNbt.requireKeys(site, "Identity", "Location");
+            StrictNbt.requireKeys(site, "Identity", "Location", "ControllerBlock");
             var identity = PersistentMachineIdentity.decode(StrictNbt.requireCompound(site, "Identity"));
             var location = StrictNbt.requireCompound(site, "Location");
             StrictNbt.requireKeys(location, "Type", "Dimension", "X", "Y", "Z");
             sites.add(new ResearchStations.Site(identity, new MachineIdentity(StrictNbt.requireId(location, "Type"),
                 StrictNbt.requireInt(location, "Dimension"), new BlockPos(StrictNbt.requireInt(location, "X"),
-                StrictNbt.requireInt(location, "Y"), StrictNbt.requireInt(location, "Z")))));
+                StrictNbt.requireInt(location, "Y"), StrictNbt.requireInt(location, "Z"))),
+                site.hasKey("ControllerBlock") ? StrictNbt.requireId(site, "ControllerBlock") : null));
         }
         // The envelope checks structure only. Recipe/revision/state validation needs the restored
         // real owner and frozen material definition in ResearchStationWork.resume.
@@ -124,7 +128,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     public NBTTagCompound encode(ResearchWorldSnapshot value) {
         Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 4);
+        tag.setInteger("Version", 5);
         tag.setLong("ServerTime", value.serverTime());
         var savedPlayers = new NBTTagList();
         for (var player : value.players()) {
@@ -151,7 +155,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     @Override
     public ResearchWorldSnapshot decode(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Version", "ServerTime", "Players", "Teams", "Downloads", "DownloadReceipts", "DiskImports");
-        if (StrictNbt.requireInt(tag, "Version") != 4) {
+        if (StrictNbt.requireInt(tag, "Version") != 5) {
             throw new IllegalArgumentException("Unknown research world version");
         }
         var playerList = new ObjectArrayList<PlayerResearchState.Snapshot>();

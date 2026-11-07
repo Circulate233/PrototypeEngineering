@@ -34,15 +34,35 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleContext;
+import java.util.function.Predicate;
+import net.minecraft.util.ResourceLocation;
+
 /** Owner-side station selection. One dimension and world session share one material pool per segment. */
 public final class ResearchStations {
     private final MachineIdentityRegistry identities;
     private final Runnable ownerCheck;
+    private final Predicate<Site> absenceProof;
     private final Object2IntOpenHashMap<String> lastDimensions = new Object2IntOpenHashMap<>();
 
     public ResearchStations(MachineIdentityRegistry identities, Runnable ownerCheck) {
+        this(identities, ownerCheck, _ -> false);
+    }
+
+    /**
+     * Optional physical absence proof for cold recovery. Missing registry entries, unloaded chunks
+     * and hosts whose saved identity cannot be read must return false. Never force-load a chunk.
+     */
+    public ResearchStations(MachineIdentityRegistry identities, Runnable ownerCheck, Predicate<Site> absenceProof) {
         this.identities = Objects.requireNonNull(identities);
         this.ownerCheck = Objects.requireNonNull(ownerCheck);
+        this.absenceProof = Objects.requireNonNull(absenceProof);
+    }
+
+    public boolean absent(Site site) {
+        ownerCheck.run();
+        return absenceProof.test(Objects.requireNonNull(site));
     }
 
     /** Capture admission facts without selecting a material pool, taking a lease or consuming work. */
@@ -114,10 +134,15 @@ public final class ResearchStations {
         return result.current() ? result : null;
     }
 
-    /** Reload only the saved physical identities and locations; a new runtime must obtain fresh authority. */
-    @Nullable public Capture restore(String teamId, int requiredTier, List<Site> sites) {
+    /**
+     * Reload only the saved physical identities and locations; a new runtime must obtain fresh authority.
+     */
+    @Nullable
+    public Capture restore(String teamId, int requiredTier, List<Site> sites) {
         ownerCheck.run();
-        if (Objects.requireNonNull(teamId).isBlank() || requiredTier < 1) { throw new IllegalArgumentException("Station restoration requires a team and positive tier"); }
+        if (Objects.requireNonNull(teamId).isBlank() || requiredTier < 1) {
+            throw new IllegalArgumentException("Station restoration requires a team and positive tier");
+        }
         var saved = validatedSites(sites);
         var registered = uniqueById();
         var restored = new ObjectArrayList<Station>(saved.size());
@@ -125,15 +150,27 @@ public final class ResearchStations {
         for (var site : saved) {
             var identity = registered.get(site.identity().machineId());
             if (identity == null || !identity.identity().equals(site.identity()) || !identity.location().equals(site.location())
-                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) { return null; }
-            if (worldIdentity == null) { worldIdentity = identity.worldIdentity(); }
-            else if (identity.worldIdentity() != worldIdentity) { return null; }
+                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) {
+                return null;
+            }
+            if (worldIdentity == null) {
+                worldIdentity = identity.worldIdentity();
+            } else if (identity.worldIdentity() != worldIdentity) {
+                return null;
+            }
             var station = candidate(identity, machine, teamId, requiredTier);
-            if (station == null) { return null; }
+            if (station == null) {
+                return null;
+            }
             restored.add(station);
         }
-        for (var station : restored) { if (!station.physicallyCurrent() || !lease(station.permit)) { return null; } }
-        var result = new Capture(this, teamId, requiredTier, saved.getFirst().location().dimension(), restored, pool(restored.stream().map(Station::hatches).toList()));
+        for (var station : restored) {
+            if (!station.physicallyCurrent() || !lease(station.permit)) {
+                return null;
+            }
+        }
+        var result = new Capture(this, teamId, requiredTier, saved.getFirst().location().dimension(), restored,
+            pool(restored.stream().map(Station::hatches).toList()), saved);
         return result.current() ? result : null;
     }
 
@@ -164,6 +201,23 @@ public final class ResearchStations {
         return registered;
     }
 
+    /** Observe the original registration during ControllerBroken, before Unloaded closes it. */
+    @Nullable
+    public Site destroyedSite(MachineLifecycleContext context) {
+        ownerCheck.run();
+        Objects.requireNonNull(context).host().requireServerThread();
+        for (var binding : context.machine().components().assemblyBindings()) {
+            if (binding.component() instanceof MachineOwnership ownership) {
+                var identity = ownership.registration();
+                if (identity != null && identities.owns(identity) && identity.current() && identity.runtimeIdentity() == context.machine()
+                    && identity.worldIdentity() == context.host().worldIdentity() && identity.location().equals(context.identity())) {
+                    return new Site(identity.identity(), identity.location(), context.host().controllerBlockId());
+                }
+            }
+        }
+        return null;
+    }
+
     static List<Site> validatedSites(List<Site> sites) {
         var saved = List.copyOf(sites);
         if (saved.isEmpty()) { throw new IllegalArgumentException("A material segment requires physical stations"); }
@@ -190,18 +244,27 @@ public final class ResearchStations {
         return new MachineHatches(resources, inputs, outputs);
     }
 
-    /** Continue exactly the original station instances and source pool with this tick's new permits and leases. */
-    @Nullable public Capture renew(Capture previous) {
+    /**
+     * Continue exactly the original station instances and source pool with this tick's new permits and leases.
+     */
+    @Nullable
+    public Capture renew(Capture previous) {
         ownerCheck.run();
-        if (Objects.requireNonNull(previous).selector != this) { throw new IllegalArgumentException("Station capture belongs to another selector"); }
+        if (Objects.requireNonNull(previous).selector != this) {
+            throw new IllegalArgumentException("Station capture belongs to another selector");
+        }
         var renewed = new ObjectArrayList<Station>(previous.stations.size());
         for (var old : previous.stations) {
-            if (!old.physicallyCurrent()) { return null; }
+            if (!old.physicallyCurrent()) {
+                return null;
+            }
             var permit = old.role.workPermit();
-            if (!eligible(permit, old.identity, previous.teamId, previous.requiredTier) || !lease(Objects.requireNonNull(permit))) { return null; }
+            if (!eligible(permit, old.identity, previous.teamId, previous.requiredTier) || !lease(Objects.requireNonNull(permit))) {
+                return null;
+            }
             renewed.add(new Station(old.identity, old.machine, old.roleType, old.role, old.hatches, permit));
         }
-        var result = new Capture(this, previous.teamId, previous.requiredTier, previous.dimension, renewed, previous.hatches);
+        var result = new Capture(this, previous.teamId, previous.requiredTier, previous.dimension, renewed, previous.hatches, previous.sites);
         return result.current() ? result : null;
     }
 
@@ -275,9 +338,19 @@ public final class ResearchStations {
         private boolean current() { return physicalCurrent(identity, machine, hatches); }
     }
 
-    /** Only physical identity and location are persistent; world sessions, runtimes and permits are not. */
-    public record Site(PersistentMachineIdentity identity, MachineIdentity location) {
+    /**
+     * Only physical identity and location are persistent; world sessions, runtimes and permits are not.
+     */
+    public record Site(PersistentMachineIdentity identity, MachineIdentity location, @Nullable ResourceLocation controllerBlockId) {
+        public Site(PersistentMachineIdentity identity, MachineIdentity location) {
+            this(identity, location, null);
+        }
         public Site { Objects.requireNonNull(identity); Objects.requireNonNull(location); }
+
+        /** The block provenance is recovery evidence, not an additional runtime identity. */
+        public boolean sameStation(Site other) {
+            return identity.equals(other.identity) && location.equals(other.location);
+        }
     }
 
     /** Frozen original network facts; revalidation never obtains replacement permission after callbacks. */
@@ -335,12 +408,18 @@ public final class ResearchStations {
         private final MachineHatches hatches;
 
         private Capture(ResearchStations selector, String teamId, int requiredTier, int dimension, List<Station> stations, MachineHatches hatches) {
+            this(selector, teamId, requiredTier, dimension, stations, hatches, null);
+        }
+
+        private Capture(ResearchStations selector, String teamId, int requiredTier, int dimension, List<Station> stations,
+                        MachineHatches hatches, @Nullable List<Site> originalSites) {
             this.selector = selector;
             this.teamId = teamId;
             this.requiredTier = requiredTier;
             this.dimension = dimension;
             this.stations = List.copyOf(stations);
-            sites = this.stations.stream().map(station -> new Site(station.identity.identity(), station.identity.location())).toList();
+            sites = originalSites == null ? this.stations.stream().map(station -> new Site(station.identity.identity(), station.identity.location(),
+                Objects.requireNonNull(station.machine.lifecycle()).host().controllerBlockId())).toList() : originalSites;
             machines = this.stations.stream().map(Station::machine).toList();
             this.hatches = hatches;
             var ids = new ObjectLinkedOpenHashSet<UUID>();

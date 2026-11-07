@@ -196,7 +196,7 @@ class ResearchWorldStationPersistenceTest {
         assertEquals(new ResearchStationWork.Saved(-1, null), oldHost.stationWork());
         var empty = new ResearchWorldSnapshot(10, ObjectList.of(fixture.player.snapshot()), ObjectList.of(oldHost));
         var encoded = fixture.codec.encode(empty);
-        assertEquals(4, encoded.getInteger("Version"));
+        assertEquals(5, encoded.getInteger("Version"));
         assertFalse(stationWork(encoded).getBoolean("HasSegment"));
         assertEquals(empty, fixture.codec.decode(encoded));
         List<Consumer<NBTTagCompound>> corruptions = List.of(
@@ -247,7 +247,7 @@ class ResearchWorldStationPersistenceTest {
         private final ResearchWorldNbt codec;
         private final NBTTagCompound processTag;
         private final List<ResearchStations.Site> sites = List.of(
-            new ResearchStations.Site(new PersistentMachineIdentity(new UUID(0, 5), PLAYER), new MachineIdentity(id("station"), -1, new BlockPos(12, 70, 19))),
+            new ResearchStations.Site(new PersistentMachineIdentity(new UUID(0, 5), PLAYER), new MachineIdentity(id("station"), -1, new BlockPos(12, 70, 19)), id("controller_block")),
             new ResearchStations.Site(new PersistentMachineIdentity(new UUID(0, 6), PLAYER), new MachineIdentity(id("other_station"), -1, new BlockPos(-14, 69, 21))));
 
         private Fixture() {

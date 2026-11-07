@@ -12,4 +12,8 @@ public interface MachineLifecycleListener {
     default void onUnloaded(MachineLifecycleEvent.Unloaded event) {}
     default void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {}
     default void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {}
+
+    /** Saved controller destroyed before assembly; distinct from a loaded machine's callbacks. */
+    default void onUnassembledControllerBroken(MachineLifecycleEvent.UnassembledControllerBroken event) {
+    }
 }
