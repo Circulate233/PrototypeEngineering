@@ -270,7 +270,7 @@ public final class RecipeProcess {
      */
     public ProcessResult tick() {
         requirePersistenceBoundary();
-        if (state.lifecycle().isTerminal() || retired()) {
+        if (state.lifecycle().isTerminal() || workPaused()) {
             return state.result();
         }
         ticking = true;
@@ -302,7 +302,7 @@ public final class RecipeProcess {
 
     private boolean execute(RecipeStage stage) {
         // Retirement pauses at complete stage boundaries, never inside acquisition/commit/rollback.
-        if (retired()) { return false; }
+        if (workPaused()) { return false; }
         State before = state;
         State next = switch (stage) {
             case START -> new State(Lifecycle.RUNNING, before.progress(), before.successfulTicks(), ProcessResult.SUCCESS);
@@ -347,9 +347,9 @@ public final class RecipeProcess {
         return true;
     }
 
-    private boolean retired() {
+    private boolean workPaused() {
         var lifecycle = owner.lifecycle();
-        return lifecycle != null && lifecycle.retired();
+        return lifecycle != null && lifecycle.retired() || !owner.recipeWorkAllowed();
     }
 
     public enum Lifecycle {

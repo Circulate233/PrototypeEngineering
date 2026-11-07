@@ -126,6 +126,18 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     public void tick() {
+        tick(() -> {});
+    }
+
+    /**
+     * Prepares current authority on the owner before each executed main action and before concurrent
+     * metadata capture. Preparation has exclusive ownership and cannot recursively tick, close,
+     * mutate scheduler registrations or request an owner boundary. Thread-safe submissions still
+     * belong to a later tick. A preparation failure faults execution and follows the normal join
+     * and boundary-cleanup path; neither preparation nor the rejected action is retried.
+     */
+    public void tick(Runnable prepare) {
+        Objects.requireNonNull(prepare);
         enterTick();
         var failures = new Failures();
         var futures = new ObjectArrayList<FutureTask<Void>>();
@@ -147,7 +159,7 @@ public final class TaskScheduler implements AutoCloseable {
             var executed = new ReferenceOpenHashSet<ScheduledTask>();
             state = State.MAIN;
             for (Submission submission : batch) {
-                if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, failures); }
+                if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, prepare, failures); }
             }
             for (Registration registration : main) {
                 ScheduledTask task = registration.task;
@@ -161,10 +173,11 @@ public final class TaskScheduler implements AutoCloseable {
                 } finally { state = State.MAIN; }
                 if (mode == ExecutionMode.MAIN_THREAD && active) {
                     executed.add(task);
-                    runMain(task::onSchedule, failures);
+                    runMain(task::onSchedule, prepare, failures);
                 }
             }
             state = State.CAPTURING_CONCURRENT;
+            prepare.run();
             var concurrent = new ObjectArrayList<Snapshot>();
             for (Registration registration : registered.values()) {
                 ScheduledTask task = registration.task;
@@ -221,8 +234,13 @@ public final class TaskScheduler implements AutoCloseable {
         failures.throwIfPresent();
     }
 
-    private void runMain(Runnable action, Failures failures) {
-        try { action.run(); }
+    private void runMain(Runnable action, Runnable prepare, Failures failures) {
+        try {
+            state = State.CAPTURING_MAIN;
+            prepare.run();
+            state = State.MAIN;
+            action.run();
+        }
         catch (Throwable failure) { failures.add(failure); fault(); }
         finally { drainBoundary(failures, false); }
         failures.throwIfPresent();

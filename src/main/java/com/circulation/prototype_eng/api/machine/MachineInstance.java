@@ -8,11 +8,13 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
@@ -26,6 +28,7 @@ public final class MachineInstance implements ScheduledTask {
     @Nullable private final MachineType type;
     @Nullable
     private MachineLifecycle lifecycle;
+    @Nullable private ObjectArrayList<BooleanSupplier> recipeWorkGates;
 
     /** Standalone execution has no declared machine type or world authority. */
     public MachineInstance() { type = null; }
@@ -50,7 +53,33 @@ public final class MachineInstance implements ScheduledTask {
     @Nullable
     public MachineLifecycle lifecycle() { return lifecycle; }
 
-    public boolean canProcessRecipes() { return lifecycle == null ? type == null : lifecycle.processingAllowed(); }
+    public boolean canProcessRecipes() {
+        if (!(lifecycle == null ? type == null : lifecycle.processingAllowed())) { return false; }
+        return recipeWorkAllowed();
+    }
+
+    /** Additional permissions for low-level recipe APIs; formation remains the scheduler host's condition. */
+    public boolean recipeWorkAllowed() {
+        if (recipeWorkGates != null) {
+            for (var permission : recipeWorkGates) { if (!permission.getAsBoolean()) { return false; } }
+        }
+        return true;
+    }
+
+    /**
+     * Adds a permanent recipe-only condition during unpublished assembly. Conditions must read only
+     * thread-safe runtime state; they may not read a World or team backend on recipe workers.
+     * Gates are recreated by component factories, never persisted, removed, or used to retire ordinary components.
+     */
+    public void addRecipeWorkGate(BooleanSupplier permission) {
+        Objects.requireNonNull(permission);
+        if (lifecycle != null) {
+            lifecycle.host().requireServerThread();
+            if (lifecycle.state() != MachineLifecycle.State.CREATED) { throw new IllegalStateException("Recipe gates require unpublished assembly"); }
+        }
+        if (recipeWorkGates == null) { recipeWorkGates = new ObjectArrayList<>(); }
+        recipeWorkGates.add(permission);
+    }
 
     /** Unformed machines still run their ordinary non-recipe components. */
     @Override public boolean active() { return lifecycle == null ? type == null : lifecycle.schedulingAllowed(); }

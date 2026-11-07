@@ -92,7 +92,7 @@ public final class RecipeScanner {
         Objects.requireNonNull(limits);
         if (scanning || faulted) { throw new IllegalStateException("Recipe scanner is executing or faulted"); }
         host.snapshot();
-        if (retired()) { return result(Status.PAUSED, 0, 0); }
+        if (workPaused()) { return result(Status.PAUSED, 0, 0); }
         scanning = true;
         try {
             return advance(limits);
@@ -109,28 +109,28 @@ public final class RecipeScanner {
         var active = host.activeProcesses();
         for (var process : active) { running.add(process.recipe().id()); }
         int capacity = host.capacity();
-        if (retired()) { return result(Status.PAUSED, 0, 0); }
+        if (workPaused()) { return result(Status.PAUSED, 0, 0); }
         if (active.size() >= capacity) { return result(Status.FULL, 0, 0); }
         if (candidates.isEmpty()) { candidates = catalog.candidates(host.owner(), groups, indexes); }
         int examined = 0;
         int probes = 0;
         while (cursor < candidates.size() && examined < limits.candidates()) {
-            if (retired()) { return result(Status.PAUSED, examined, probes); }
+            if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             var recipe = candidates.get(cursor);
             examined++;
             var slot = eligibleSlot(recipe);
             if (slot == null || running.contains(recipe.id())) { next(); continue; }
             int parentLimit = Math.max(1, (int) Math.floor(host.owner().attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1)));
             if (search == null || search.parentLimit != parentLimit) { search = begin(recipe, parentLimit); }
-            if (retired()) { return result(Status.PAUSED, examined, probes); }
+            if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             while (search.low <= search.high && probes < limits.probes()) {
-                if (retired()) { return result(Status.PAUSED, examined, probes); }
+                if (workPaused()) { return result(Status.PAUSED, examined, probes); }
                 int amount = search.monotonic ? (int) (search.low + (search.high - search.low) / 2) : (int) search.high;
                 var process = candidate(recipe, amount, search);
-                if (retired()) { return result(Status.PAUSED, examined, probes); }
+                if (workPaused()) { return result(Status.PAUSED, examined, probes); }
                 probes++;
                 boolean accepted = canStart(process);
-                if (retired()) { return result(Status.PAUSED, examined, probes); }
+                if (workPaused()) { return result(Status.PAUSED, examined, probes); }
                 if (accepted && !search.monotonic) { return admit(slot, process, examined, probes); }
                 if (accepted) {
                     search.best = amount;
@@ -143,10 +143,10 @@ public final class RecipeScanner {
             if (search.best != 0) {
                 if (probes >= limits.probes()) { return result(Status.YIELDED, examined, probes); }
                 var process = candidate(recipe, search.best, search);
-                if (retired()) { return result(Status.PAUSED, examined, probes); }
+                if (workPaused()) { return result(Status.PAUSED, examined, probes); }
                 probes++;
                 boolean accepted = canStart(process);
-                if (retired()) { return result(Status.PAUSED, examined, probes); }
+                if (workPaused()) { return result(Status.PAUSED, examined, probes); }
                 if (accepted) { return admit(slot, process, examined, probes); }
                 // A previous success is not a lease. Re-observe on a later call if live storage changed.
                 search = null;
@@ -155,7 +155,7 @@ public final class RecipeScanner {
             next();
             if (probes >= limits.probes() && cursor < candidates.size()) { return result(Status.YIELDED, examined, probes); }
         }
-        if (retired()) { return result(Status.PAUSED, examined, probes); }
+        if (workPaused()) { return result(Status.PAUSED, examined, probes); }
         if (cursor == candidates.size()) {
             resetPass();
             return result(Status.EXHAUSTED, examined, probes);
@@ -191,18 +191,18 @@ public final class RecipeScanner {
 
     private ProcessResult checkPrepared(RecipeProcess process) {
         for (var constraint : constraints) {
-            if (retired()) { return RecipeText.Cancelled.blocked(); }
+            if (workPaused()) { return RecipeText.Cancelled.blocked(); }
             var result = Objects.requireNonNull(constraint.test(process));
             if (result != ProcessResult.SUCCESS) { return result; }
         }
-        if (retired()) { return RecipeText.Cancelled.blocked(); }
+        if (workPaused()) { return RecipeText.Cancelled.blocked(); }
         return RecipeStageExecutor.probeStart(process);
     }
 
     private Result admit(WorkSlot slot, RecipeProcess process, int examined, int probes) {
-        if (retired()) { return result(Status.PAUSED, examined, probes); }
+        if (workPaused()) { return result(Status.PAUSED, examined, probes); }
         if (!host.startIn(slot.name(), process)) {
-            if (retired()) { return result(Status.PAUSED, examined, probes); }
+            if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             // Admission can change after a pure constraint only if the host configuration changed.
             search = null;
             return result(Status.YIELDED, examined, probes);
@@ -220,9 +220,9 @@ public final class RecipeScanner {
     }
 
     private void next() { cursor++; search = null; }
-    private boolean retired() {
+    private boolean workPaused() {
         var lifecycle = host.owner().lifecycle();
-        return lifecycle != null && lifecycle.retired();
+        return lifecycle != null && lifecycle.retired() || !host.owner().recipeWorkAllowed();
     }
     private void resetPass() { candidates = List.of(); cursor = 0; search = null; }
     private static Result result(Status status, int examined, int probes) { return new Result(status, null, examined, probes); }

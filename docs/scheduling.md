@@ -32,10 +32,12 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 `ServerTaskSchedulers` 在 FMLServerAboutToStart 创建一个确切 MinecraftServer 身份的 session，在 ServerTick.END 调用真实普通调度，并在 FMLServerStopped（世界卸载之后）关闭。没有静态全局线程池，也不允许旧 server 引用取得新 session。外部控制器通过 forServer 取得本会话实例；实际 MachineControllerBlockEntity 现已经 MachineController 登记，世界接线见[控制器集成](controller-integration.md)。
 
+网络角色现使用 `tick(prepare)`：每次实际 MAIN action 前和 CONCURRENT 元数据捕获前，owner 同步捕获/规划/发布当前网络条件；正常及异常 tick 退出都撤销。prepare 不能改 scheduler 登记或请求 owner 边界，失败沿用既有 fault/join/清理。默认无参 tick 保留原流程，网络拒绝仅暂停配方，不停普通组件。具体身份修订、临时失权和多次 MAIN 捕获的成本边界见[网络运行时](network-runtime.md)。
+
 `SchedulerConfig` 单独保存到 `prototype_eng/scheduler.cfg`，普通 worker 默认 `max(2, availableProcessors)`，lane 默认 `clamp(availableProcessors, 2, 8)`，来自 PM 原配置，服务器启动时生效。planned 超时、后端切换、性能统计窗口/命令和 Modern Backend 能力仍需后续迁移，当前没有用配置占位冒充已实现功能。
 
 ## 验证与后续
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用已接入，当前仍需实现正式 planned 调度及 PN 权限/预算、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用及共同网络条件已接入，当前仍需实现正式 planned 调度、研究/预算/lease 许可、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。

@@ -98,8 +98,8 @@ public final class MachineWorkSlots {
         requireBoundary();
         validateUnattached(process);
         var slot = requireSlot(name);
-        if (retired() || slot.process() != null || activeCount() >= capacity() || !accepts(slot, process)) { return false; }
-        if (retired()) { return false; }
+        if (workPaused() || slot.process() != null || activeCount() >= capacity() || !accepts(slot, process)) { return false; }
+        if (workPaused()) { return false; }
         process.attachTo(this);
         slot.setState(process, process.state().result());
         return true;
@@ -195,7 +195,7 @@ public final class MachineWorkSlots {
         executing = true;
         try {
             for (var slot : slots) {
-                if (retired()) { break; }
+                if (workPaused()) { break; }
                 var process = slot.process();
                 if (process == null) { continue; }
                 if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
@@ -219,9 +219,9 @@ public final class MachineWorkSlots {
         }
     }
 
-    private boolean retired() {
+    private boolean workPaused() {
         var lifecycle = owner.lifecycle();
-        return lifecycle != null && lifecycle.retired();
+        return lifecycle != null && lifecycle.retired() || !owner.recipeWorkAllowed();
     }
 
     public List<SlotSnapshot> snapshot() {

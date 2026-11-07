@@ -24,11 +24,14 @@ public final class MachineIdentityRegistry implements AutoCloseable {
     private final Object2ObjectOpenHashMap<UUID, ReferenceLinkedOpenHashSet<Registration>> byMachine = new Object2ObjectOpenHashMap<>();
     private final ReferenceLinkedOpenHashSet<Registration> registrations = new ReferenceLinkedOpenHashSet<>();
     private long nextLoadOrder;
+    private volatile long revision;
     private boolean closed;
 
     public MachineIdentityRegistry(Runnable ownerCheck) {
         this.ownerCheck = Objects.requireNonNull(ownerCheck, "ownerCheck");
     }
+
+    public boolean owns(Registration registration) { return Objects.requireNonNull(registration).registry == this; }
 
     /**
      * Replaces another runtime at the exact world object and block position, regardless of machine type.
@@ -53,6 +56,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         if (nextLoadOrder == Long.MAX_VALUE) {
             throw new IllegalStateException("Machine registration load order exhausted");
         }
+        long nextRevision = Math.addExact(revision, 1L);
 
         long position = location.controllerPos().toLong();
         var locations = byWorld.get(worldIdentity);
@@ -68,6 +72,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         machineRegistrations.add(registration);
         updateUniqueness(machineRegistrations);
         registration.current = true;
+        revision = nextRevision;
         return registration;
     }
 
@@ -79,8 +84,18 @@ public final class MachineIdentityRegistry implements AutoCloseable {
             throw new IllegalArgumentException("Registration belongs to another machine identity registry");
         }
         if (registration.current) {
+            long nextRevision = Math.addExact(revision, 1L);
             remove(registration);
+            revision = nextRevision;
         }
+    }
+
+    /**
+     * Effective membership revision, readable by workers. A captured batch must retain this registry
+     * and revision: a duplicate arriving and leaving invalidates the batch even if uniqueness recovers.
+     */
+    public long revision() {
+        return revision;
     }
 
     /** Frozen membership in increasing load order; individual registration state remains live and revocable. */
@@ -102,6 +117,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         if (closed) {
             return;
         }
+        long nextRevision = Math.addExact(revision, 1L);
         closed = true;
         for (var registration : registrations) {
             registration.current = false;
@@ -111,6 +127,7 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         byWorld.clear();
         byRuntime.clear();
         byMachine.clear();
+        revision = nextRevision;
     }
 
     @SuppressWarnings("resource") // Registrations are revoked here; removed/remaining index values must not be closed again.

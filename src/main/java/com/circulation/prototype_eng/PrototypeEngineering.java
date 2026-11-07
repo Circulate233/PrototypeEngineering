@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
+import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
@@ -21,7 +22,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 @Mod(modid = Tags.MOD_ID, name = Tags.MOD_NAME, version = Tags.VERSION,
-        dependencies = "required-after:ae2@[1.1.0,);after:appflux@[1.0.0,)")
+        dependencies = "required-after:ae2@[1.1.0,);required-after:ftblib@[5.4.7.2];required-after:ftbutilities@[5.4.1.131];after:appflux@[1.0.0,)")
 public class PrototypeEngineering {
 
     public static final Logger LOGGER = LogManager.getLogger(Tags.MOD_NAME);
@@ -53,9 +54,16 @@ public class PrototypeEngineering {
     @Mod.EventHandler
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {
         ServerTaskSchedulers.start(event.getServer());
-        try { ServerMachineIdentities.start(event.getServer()); }
+        try {
+            ServerMachineIdentities.start(event.getServer());
+            ServerNetworkRuntime.start(event.getServer());
+        }
         catch (RuntimeException | Error failure) {
-            try { ServerTaskSchedulers.stop(); }
+            try {
+                ServerTaskSchedulers.stop();
+                ServerNetworkRuntime.stop();
+                ServerMachineIdentities.stop();
+            }
             catch (RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
             throw failure;
         }
@@ -64,6 +72,7 @@ public class PrototypeEngineering {
     @Mod.EventHandler
     public void serverStopped(FMLServerStoppedEvent event) {
         ServerTaskSchedulers.stop();
+        ServerNetworkRuntime.stop();
         ServerMachineIdentities.stop();
     }
 

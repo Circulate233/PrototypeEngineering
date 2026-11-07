@@ -13,11 +13,33 @@ import java.util.concurrent.FutureTask;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineIdentityRegistryTest {
+    @Test
+    void aRecoveredUniqueRegistrationCannotReuseTheBatchCapturedBeforeItsCopyArrived() {
+        try (var registry = registry()) {
+            var world = new Object();
+            var identity = identity(1);
+            var first = registry.register(identity, location(1), world, new Object());
+            var captured = registry.uniqueRegistrations();
+            long capturedRevision = registry.revision();
+            var copy = registry.register(identity, location(2), world, new Object());
+            assertFalse(first.unique());
+            copy.close();
+
+            assertTrue(first.current());
+            assertTrue(first.unique());
+            assertEquals(captured, registry.uniqueRegistrations());
+            assertSame(first, registry.uniqueRegistrations().getFirst());
+            assertNotEquals(capturedRevision, registry.revision(),
+                "Recovered identity must not reactivate authority from the pre-copy batch");
+        }
+    }
+
     @Test
     void copiedMachineUuidRevokesAllCopiesAndOnlyTheLastRemainingCopyRecovers() {
         var registry = registry();
@@ -55,8 +77,11 @@ class MachineIdentityRegistryTest {
         var registry = registry();
         var world = new Object();
         var first = registry.register(identity(1), location(1), world, new Object());
+        long firstRevision = registry.revision();
         var changedType = new MachineIdentity(new ResourceLocation("test", "replacement"), 0, new BlockPos(1, 2, 3));
         var second = registry.register(identity(2), changedType, world, new Object());
+        long replacementRevision = registry.revision();
+        assertEquals(firstRevision + 1L, replacementRevision, "Replacement is one effective membership mutation");
 
         assertFalse(first.current());
         assertFalse(first.unique());
@@ -66,8 +91,10 @@ class MachineIdentityRegistryTest {
         registry.unregister(first);
         assertEquals(List.of(second), registry.uniqueRegistrations());
         assertSame(second, registry.register(identity(2), changedType, world, second.runtimeIdentity()));
+        assertEquals(replacementRevision, registry.revision(), "Old close and identical register are no-ops");
 
         second.close();
+        assertEquals(replacementRevision + 1L, registry.revision());
         assertFalse(second.current());
         assertTrue(registry.uniqueRegistrations().isEmpty());
     }
@@ -148,13 +175,17 @@ class MachineIdentityRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> otherRegistry.unregister(unique));
         assertTrue(unique.current());
 
+        long capturedRevision = registry.revision();
         registry.close();
+        long closedRevision = registry.revision();
+        assertEquals(capturedRevision + 1L, closedRevision);
         for (var registration : List.of(first, second, unique)) {
             assertFalse(registration.current());
             assertFalse(registration.unique());
             registration.close();
         }
         registry.close();
+        assertEquals(closedRevision, registry.revision(), "Repeated close cannot invalidate another generation");
         assertTrue(registry.uniqueRegistrations().isEmpty());
         assertThrows(IllegalStateException.class, () -> registry.register(identity(2), location(3), world, unique.runtimeIdentity()));
         assertThrows(IllegalStateException.class, () -> registry.register(identity(3), location(4), world, new Object()));
@@ -165,9 +196,11 @@ class MachineIdentityRegistryTest {
         var registry = registry();
         var world = new Object();
         var registration = registry.register(identity(1), location(1), world, new Object());
+        long capturedRevision = registry.revision();
         var worker = new FutureTask<>(() -> {
             assertTrue(registration.current());
             assertTrue(registration.unique());
+            assertEquals(capturedRevision, registry.revision());
             assertThrows(IllegalStateException.class, () -> registry.register(identity(2), location(2), world, new Object()));
             assertThrows(IllegalStateException.class, () -> registry.unregister(registration));
             assertThrows(IllegalStateException.class, registration::close);

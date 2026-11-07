@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -50,7 +51,11 @@ public final class ServerTaskSchedulers {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) { return; }
         var current = session;
-        if (current != null) { current.scheduler().tick(); }
+        if (current != null) {
+            var network = ServerNetworkRuntime.forServer(current.server());
+            try { current.scheduler().tick(network::refresh); }
+            finally { network.revoke(); }
+        }
     }
 
     private record Session(MinecraftServer server, TaskScheduler scheduler) { }

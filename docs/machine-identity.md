@@ -38,6 +38,6 @@ FRESH 加载必须有真实放置者，创建随机 machine UUID 并保存其 ow
 
 14 项逻辑测试覆盖重复副本及恢复唯一性、同位置不同类型替换、旧卸载隔离、相等对象的引用区分、跨线程约束、永久关闭、严格 NBT，以及真实 assembly/lifecycle 的搬运和部分加载失败清理。完整构建和逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)。没有初始化游戏环境；真实 Forge 放置、搬运和区块卸载仍未运行验证。
 
-队伍 provider、FTB 持久玩家适配和网络规划核心已迁入，见[网络规划](network-planning.md)，离线玩家不自动失效。实际服务器发布和工作权限仍待接，应同时约束新扫描和已有工位推进；临时失去资格不能退休整个机器或阻止普通组件恢复。预算、研究和 planned 两次 join 按[PN 审计](pn-identity-migration-audit.md)继续迁移。
+队伍 provider、FTB 持久玩家适配和网络规划核心已迁入，见[网络规划](network-planning.md)，离线玩家不自动失效。服务器发布和扫描/工位/进程共同网络门限现已接入，见[网络运行时](network-runtime.md)；临时失去资格不退休整个机器，普通组件继续运行。registry revision同时拒绝复制副本来去后的旧批次，唯一性恢复仍需重新捕获。预算、研究和 planned 两次 join 按[PN 审计](pn-identity-migration-audit.md)继续迁移。
 
 原生 TileEntity 的迟到 onChunkUnload 只有 this，无法证明异常 loader 复用同一 TE 时通知属于哪一代；当前句柄解决准确旧代清理，不臆造无法获得的卸载代证明，也不宽泛复活已退休实例。

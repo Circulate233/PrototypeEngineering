@@ -21,6 +21,103 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TaskSchedulerTest {
     @Test
+    void preparationCapturesEveryMainMutationBeforeTheNextActionAndConcurrentMetadata() {
+        Thread owner = Thread.currentThread();
+        var log = new ConcurrentLinkedQueue<String>();
+        int[] current = {0};
+        int[] captured = {-1};
+        try (var scheduler = new TaskScheduler(owner, 1, 1)) {
+            scheduler.submit(() -> {
+                log.add("custom:" + captured[0]);
+                current[0] = 1;
+            }, ExecutionMode.MAIN_THREAD);
+            scheduler.register(task(ExecutionMode.MAIN_THREAD, Set.of(), () -> {
+                log.add("first:" + captured[0]);
+                current[0] = 2;
+            }));
+            var inactive = task(ExecutionMode.MAIN_THREAD, Set.of(), () -> fail("Inactive task executed"));
+            inactive.enabled = false;
+            scheduler.register(inactive);
+            scheduler.register(task(ExecutionMode.MAIN_THREAD, Set.of(), () -> {
+                log.add("second:" + captured[0]);
+                scheduler.runAtBoundary(() -> current[0] = 3);
+            }));
+            scheduler.register(new Task(ExecutionMode.CONCURRENT, Set.of("source"), () -> {
+                assertNotSame(owner, Thread.currentThread());
+                log.add("worker:" + captured[0]);
+            }) {
+                @Override public Set<?> affinityKeys() {
+                    assertSame(owner, Thread.currentThread());
+                    assertEquals(3, captured[0], "Prepare must precede worker metadata callbacks");
+                    return super.affinityKeys();
+                }
+            });
+
+            scheduler.tick(() -> {
+                assertSame(owner, Thread.currentThread());
+                assertThrows(IllegalStateException.class, () -> scheduler.register(inactive));
+                assertThrows(IllegalStateException.class, () -> scheduler.unregister(inactive));
+                assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> fail("Forbidden boundary executed")));
+                assertThrows(IllegalStateException.class, scheduler::tick);
+                assertThrows(IllegalStateException.class, scheduler::close);
+                captured[0] = current[0];
+                log.add("prepare:" + captured[0]);
+            });
+
+            assertEquals(List.of("prepare:0", "custom:0", "prepare:1", "first:1",
+                "prepare:2", "second:2", "prepare:3", "worker:3"), List.copyOf(log));
+        }
+    }
+
+    @Test
+    void mainPreparationFailureRejectsTheActionAndWorkersWithoutRetryingAuthority() {
+        var log = new ConcurrentLinkedQueue<String>();
+        int[] preparations = {0};
+        var primary = new IllegalStateException("authority capture failed");
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
+            scheduler.register(task(ExecutionMode.MAIN_THREAD, Set.of(), () -> {
+                log.add("first");
+                scheduler.runAtBoundary(() -> log.add("cleanup"));
+                scheduler.submit(() -> fail("Faulted next-tick work executed"), ExecutionMode.MAIN_THREAD);
+            }));
+            scheduler.register(task(ExecutionMode.MAIN_THREAD, Set.of(), () -> fail("Rejected main executed")));
+            scheduler.register(task(ExecutionMode.CONCURRENT, Set.of(), () -> fail("Rejected worker executed")));
+
+            assertSame(primary, assertThrows(IllegalStateException.class, () -> scheduler.tick(() -> {
+                if (++preparations[0] == 2) { throw primary; }
+            })));
+            assertEquals(List.of("first", "cleanup"), List.copyOf(log));
+            assertEquals(2, preparations[0]);
+            assertThrows(IllegalStateException.class, () -> scheduler.tick(() -> fail("Faulted preparation retried")));
+            assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.CONCURRENT));
+            scheduler.runAtBoundary(() -> log.add("fault cleanup"));
+            assertEquals(List.of("first", "cleanup", "fault cleanup"), List.copyOf(log));
+        }
+    }
+
+    @Test
+    void concurrentPreparationFailureNeverDispatchesTheCapturedBatch() {
+        int[] preparations = {0};
+        int[] mains = {0};
+        var primary = new IllegalArgumentException("concurrent authority failed");
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
+            scheduler.submit(() -> mains[0]++, ExecutionMode.MAIN_THREAD);
+            scheduler.submit(() -> fail("Rejected custom worker executed"), ExecutionMode.CONCURRENT);
+            var worker = task(ExecutionMode.CONCURRENT, Set.of(), () -> fail("Rejected registered worker executed"));
+            scheduler.register(worker);
+
+            assertSame(primary, assertThrows(IllegalArgumentException.class, () -> scheduler.tick(() -> {
+                if (++preparations[0] == 2) { throw primary; }
+            })));
+            assertEquals(1, mains[0]);
+            assertEquals(2, preparations[0]);
+            assertThrows(IllegalStateException.class, scheduler::tick);
+            assertThrows(IllegalStateException.class, () -> scheduler.register(worker));
+            scheduler.unregister(worker);
+        }
+    }
+
+    @Test
     void mainPhasePrecedesIndependentWorkersWhichReallyOverlapAndJoin() {
         Thread owner = Thread.currentThread();
         var log = new ConcurrentLinkedQueue<String>();

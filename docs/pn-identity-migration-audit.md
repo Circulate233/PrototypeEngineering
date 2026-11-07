@@ -28,7 +28,7 @@
 - Universe 未加载、未知 owner、无队伍、无效队伍或不支持的类型返回拒绝；损坏成员/队长 UUID 是错误，不作为正常拒绝吞掉。
 - 返回当前队伍 UID、类型、成员及可选队长的独立快照；保存的 team 或新的放置者不能替代这次查询。
 
-旧依赖为 `curse.maven:ftb-library-237167:2985811` 与 `curse.maven:ftb-utilities-237102:3157548`。队伍/规划阶段已配置两依赖，新增公开 OwnerTeamResolver 与直接 FtbOwnerTeamResolver；没有无条件允许的队伍替身或名称镜像接口。capture 每批每 owner 一次解析并检查成员一致性，worker plan 只读快照。服务器发布和配方许可仍未接，详见[网络规划](network-planning.md)。
+旧依赖为 `curse.maven:ftb-library-237167:2985811` 与 `curse.maven:ftb-utilities-237102:3157548`。队伍/规划阶段已配置两依赖，新增公开 OwnerTeamResolver 与直接 FtbOwnerTeamResolver；没有无条件允许的队伍替身或名称镜像接口。capture 每批每 owner 一次解析并检查成员一致性，worker plan 只读快照。服务器整批发布和扫描、工位、进程共同的网络工作条件已接入；研究、预算及 planned 提交许可仍待接入，详见[网络规划](network-planning.md)与[网络运行时](network-runtime.md)。
 
 ## planned 边界
 

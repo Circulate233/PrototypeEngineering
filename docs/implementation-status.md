@@ -7,8 +7,9 @@
 ## 当前状态
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
-- 队伍/网络规划核心已接入：OwnerTeamResolver 与直接 FtbOwnerTeamResolver，具体不可变结果保留离线 owner、有效 PLAYER/SERVER 和成员语义。NetworkPlanner.capture 每 owner 一次查询，检查重复设备/参与者、参与者 epoch、全局资源 metadata 与成员互相一致；plan 可在 worker 只读执行。保留中心/数据中心优先级和满库选择、等级状态、通用 DEVICE，中心+合格电脑+同队参与者合计后一次 exact flat/ppm，数量使用 fastutil addTo；所有公开 map/entries 冻结。仅迁入规划核心，真实角色组件、服务器整批发布、统一 recipe gate、canonical 资源注册/单来源上限、预算/lease/研究及完整参与者仍待接。详见[网络规划](network-planning.md)。
-- PN 持久身份已接入：MachineOwnership 为显式组件，复用 MachineAssembly 内置 codec 和生命周期；FRESH 由真实放置者创建 machine/owner UUID，RESTORED 保留旧身份，FakePlayer 不授 owner。MachineIdentityRegistry 绑定服务器会话与准确 MachineInstance，World 引用 + pos 定位，不含类型；同位置替换撤旧句柄，旧卸载不删新代，重复 UUID 全部失去唯一性且剩一个可恢复。所有变更/枚举限定 owner 线程，关闭会话永久撤销；身份不保存 team/epoch/lease/ready，也不授权工作。当前队伍、中心、预算、研究与统一配方许可仍待接，详见[身份说明](machine-identity.md)及[PN 审计](pn-identity-migration-audit.md)。
+- 网络运行时已接入：MachineNetworkDevice 显式角色组件在未发布装配安装永久 gate，recreated 恢复，ownership 按依赖先load。NetworkRuntime owner捕获、同批规划和证明/registry revision重验后volatile发布；失败/过期/显式revoke不回退旧批次。复制来去的unique ABA、同位置旧卸载、加载失败均不能恢复或撤销错误代。TaskScheduler prepare位于每次MAIN action前与CON捕获前，服务器finally撤销；ordinary并行/join不变。canProcessRecipes保留formation，低层scanner/工位/进程叠加recipeWorkAllowed，失权不退休普通组件且恢复不重START。研究/预算/lease与正式planned仍须接，详见[网络运行时](network-runtime.md)。
+- 队伍/网络规划核心已接入：OwnerTeamResolver 与直接 FtbOwnerTeamResolver，具体不可变结果保留离线 owner、有效 PLAYER/SERVER 和成员语义。NetworkPlanner.capture 每 owner 一次查询，检查重复设备/参与者、参与者 epoch、全局资源 metadata 与成员互相一致；plan 可在 worker 只读执行。保留中心/数据中心优先级和满库选择、等级状态、通用 DEVICE，中心+合格电脑+同队参与者合计后一次 exact flat/ppm，数量使用 fastutil addTo；所有公开 map/entries 冻结。规划核心已由真实角色组件、服务器整批发布和共同网络门限接入；canonical 资源注册/单来源上限、预算/lease/研究及完整参与者仍待接。详见[网络规划](network-planning.md)。
+- PN 持久身份已接入：MachineOwnership 为显式组件，复用 MachineAssembly 内置 codec 和生命周期；FRESH 由真实放置者创建 machine/owner UUID，RESTORED 保留旧身份，FakePlayer 不授 owner。MachineIdentityRegistry 绑定服务器会话与准确 MachineInstance，World 引用 + pos 定位，不含类型；同位置替换撤旧句柄，旧卸载不删新代，重复 UUID 全部失去唯一性且剩一个可恢复。所有变更/枚举限定 owner 线程，关闭会话永久撤销；身份不保存 team/epoch/lease/ready，也不授权工作。当前队伍、中心与共同网络门限已接；预算、研究与正式提交许可仍待接，详见[身份说明](machine-identity.md)及[PN 审计](pn-identity-migration-audit.md)。
 - 已完成：工程标识、Java 25 模板、需求基线；固定 AE2S `v1.1.0:dev` 与 HEI `4.35.1`；移除模板示例 Mixin；开发包和生产重混淆构建。
 - 独立资源后端已完成：ResourceHatch 返回 ResourceStorage，槽位扩展由 SlottedResourceStorage 表达；SlottedResourceBuffer 独立持有 AEKey/long 余额、可用量、输入数量预留及输出容量预留。MEStorage、GenericInternalInventory 与 GUI 均为共享同一 context 的适配层，不再依赖 GenericStackInv 持有核心状态。外部仓室仍通过公开接口扩展，不依赖内置 TileEntity。FE 独立 long 存储已用同一无 AEKey 字段的预留生命周期参与并发批结算。
 - P1 已接入：资源/能源各输入、输出、混合三方向十阶，共 60 个方块及物品注册；方块实体保存和能力暴露、挖掘保留内容、Java 容器和直接继承 AEBaseGui 的资源/能源界面。十阶默认值来自 PM ItemHatchConfig/ItemIOHatchConfig、FluidHatchConfig 与 EnergyHatchConfig，均可配置。资源输入/输出独立滚动，最多 5 行并随分辨率压缩，隐藏槽禁用且索引保持；能源 GUI 为 176×214，使用原 16×66 纵向条，支持速率/自动标志、Enter 提交和完整 long tooltip。实际 GUI/游戏交互未运行验证。
@@ -51,6 +52,10 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（网络运行时）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，458 项逻辑测试全部通过，无失败、错误或跳过。新增 12 项覆盖身份修订防ABA、MAIN/CON prepare顺序及故障、整批失效/证明过期/跨线程约束，以及真实assembly/FE/scanner/工位/进程的暂停恢复、保存复制和部分load失败新代隔离。低层原formation契约保持，原retirement回归用例继续通过；未初始化游戏或使用反射。
+- 2026-11-07（网络运行时）：本机 IDEA MCP 对 304 个 src Java 和 Tags 共 305 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告及超时；MCP `build_project` 成功且 `problems:[]`。报告 [network-runtime-final.json](../build/reports/idea/network-runtime-final.json)。新runtime句柄使用static类与显式所属runtime；测试清理不再引入常值参数。未操作桌面或启动客户端/服务端。
+- 2026-11-07（网络运行时审计）：PN旧START发布在PM END调度前，未覆盖所有普通配方；新共同条件包括直接scanner/工位/进程阶段，既有事务完整结束后再暂停。MAIN回调之间重新捕获以反映外部变化，网络计划当前在owner同步完成；尚无性能压测或正式planned证据。FTB依赖版本已在Mod声明与开发依赖一致配置。预算必须按游戏tick单独结算，不能按捕获epoch重充。
 
 - 2026-11-07（队伍/网络规划）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，446 项逻辑测试全部通过，无失败、错误或跳过。新增 13 项覆盖成员换队快照、选择/满库/等级/角色、汇总与修饰顺序、每 owner 一次查询/真实 worker、重复/迟到输入、矛盾成员、故障传播、exact 边界和 map entry 不可变。删除两项仅测参数/getter 的初稿，不增加游戏初始化或反射。
 - 2026-11-07（队伍/网络规划）：本机 IDEA MCP 对 299 个 src Java 和 Tags 共 300 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告及超时；MCP `build_project` 成功且 `problems:[]`。报告 [network-planning-final.json](../build/reports/idea/network-planning-final.json)。全程不操作桌面、不启动游戏；FTB 的真实 Universe 生命周期尚未运行验证。

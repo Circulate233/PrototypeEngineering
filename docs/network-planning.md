@@ -10,7 +10,7 @@
 
 `NetworkPlanner.plan(inputs)` 只读取已冻结输入，可以放在 worker 执行。它不再查询 FTB，不读取世界，不改机器。结果包含 epoch、每设备 `NetworkWorkState`、可解析设备的 teamId 和每个有活动中心的队伍选择。公开结果表使用 fastutil backing 与保护 `Map.Entry.setValue` 的只读包装；数量表的 primitive entries 同样不可变。
 
-**当前没有把规划结果发布到实际机器。** `ACTIVE_DEVICE` 等只是拓扑决策，不能当成研究条件、预算预留或可执行 worker 许可。服务器会话整批发布、配置/登记代重验、当前工作门限和 planned 两次 join 仍是后续工作；不能只把结果接到 scanner ready 就声称已有工位也受控。
+NetworkRuntime 现已把整批结果发布到显式 MachineNetworkDevice，并作为扫描、已有工位及进程阶段共同的网络条件；准确登记/修订号和宿主证明重验见[运行时接线](network-runtime.md)。`ACTIVE_DEVICE` 等仍是拓扑决策，不能替代研究条件、预算预留或正式 planned worker 的提交许可。
 
 ## FTB 查询
 
@@ -18,7 +18,7 @@
 
 Universe 未加载或不属于本服务器、未知 owner、无队伍、无效队伍和不支持的类型返回结构化拒绝。损坏成员 UUID、跨 Universe 的 team 等非法状态抛错，不能变成常规空队伍。拒绝结果不提供有效 team payload；不会每 tick 刷重复告警日志。FTBLib 自身 isValid 已排除真实无队长 PLAYER；公共结果工厂沿用旧 API，对外部 provider 不增加这条额外限制。
 
-开发依赖使用 PN 原坐标 `curse.maven:ftb-library-237167:2985811` 与 `curse.maven:ftb-utilities-237102:3157548`。仓库声明拆入 `gradle/scripts/repositories.gradle`，在 MDG 首次解析之前加载；Curse 坐标仅走 CurseMaven / CleanroomCurseMaven，防止插件仓库错误承接。其余依赖声明保留原执行阶段。公开队伍 API 不引用 FTB 类型，当前没有增加默认服务器队伍服务或无条件允许的后备 provider。
+开发依赖使用 PN 原坐标 `curse.maven:ftb-library-237167:2985811` 与 `curse.maven:ftb-utilities-237102:3157548`。仓库声明拆入 `gradle/scripts/repositories.gradle`，在 MDG 首次解析之前加载；Curse 坐标仅走 CurseMaven / CleanroomCurseMaven，防止插件仓库错误承接。其余依赖声明保留原执行阶段。公开队伍 API 不引用 FTB 类型；内置 ServerNetworkRuntime 现默认使用准确 server 绑定的 FTB resolver，Mod 声明所需版本，无无条件允许的后备 provider。
 
 ## 保留的选择与状态规则
 
@@ -49,4 +49,4 @@ modifier 沿用 `floor((base + flat) × (1_000_000 + ppm) / 1_000_000)`，负 fl
 
 新增 13 项逻辑测试覆盖选择优先级/满库、等级与角色过滤、参与者与中心修饰顺序、捕获与 worker 隔离、每 owner 一次解析、重复和迟到参与者、跨查询成员矛盾、失败传播、算术边界及快照不可变。仅测参数拒绝或 getter 门限的两项初稿已删除，这些条件由静态检查和完整规划用例覆盖。完整测试数和逐文件 MCP 证据见[实施进度](implementation-status.md)。未启动 Minecraft，也未在测试中初始化 FTB Universe；FTB 原生 API 通过依赖编译、源码/字节码核对及 MCP 检查验证。
 
-下一步将这些算法接到当前准确机器登记、运行角色组件、server tick 的捕获/发布边界，并以同一许可约束新扫描和已有工位。正式 planned、资源/lease 账本、研究/队伍持久状态、完整参与者、数据中心存储及网络工作 GUI 继续迁移，不能由本阶段的选择和汇总结果替代。
+准确机器登记、运行角色组件、server tick 的捕获/发布边界和共同网络门限已接入。正式 planned、资源/lease 账本、研究/队伍持久状态、完整参与者、数据中心存储及网络工作 GUI 继续迁移，不能由选择和汇总结果替代。
