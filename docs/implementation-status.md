@@ -6,6 +6,8 @@
 
 ## 当前状态
 
+- 用户要求已调整优先级：先补具体功能，不再优先细化调度底座。PM需求START/TICK/END和内置资源/FE/属性/检查点/选择器已有真实执行；PN逐配方研究/计算扩展、研究启动/队列/阶段、奖励和下载事件仍未迁移，不能用网络账本或通用coordinator代替完成证明。后续先按[配方功能核对](recipe-feature-parity.md)补齐业务链，CT仍最后。
+
 - 调度器planned所有权已实现：公开PlannedExecution按advance/awaitExit/finished/cancel职责划分，内部factory不暴露任意host提交。TaskScheduler在普通join后先持准确cycle再执行，旧pending在任何新业务前恢复，正常false不故障、不丢ordinary队列；初始取消后等实际退出并有界清理，跨tick只清理。取消未确认或await无退出证明均保留，wholecycle完成加退出证明才开放boundary。tryClose在原lane上先清理，closingRequested保留关闭请求，tick清完也须再确认线程池终止才排卸载。prepare新增beforeDispatch，复用原runner；真实机器factory、组件cycle/登记代、PN消费者和纯prepare扩展仍待接，mode仍拒绝。见[调度所有权](scheduler-planned-ownership.md)。
 
 - 可暂停机器边界已实现：ComponentMap.captureDispatch在无回调时冻结同一图，begin全pre、advance逐normal、finish全post且首错停止，失败/重入/跨线程不重放；原普通tick与process post语义不变。MachineLifecycle.beginScheduled的准确句柄跨暂停持RUNNING，前进/清理分开，全部已观察工作槽quiescent才释放；替换组件不隐藏原义务，正常pending返回false，故障不复活。新增MachineWorkSlots.quiescent事实查询。尚未接真实MachineInstance处理器拦截、跨机器scope、TaskScheduler或服务器，PLANNED_PARALLEL仍拒绝；先清旧pending以防fence/join死锁、清理后关闭lane与PN授权缺口已记录，详见[机器tick边界](machine-tick-boundaries.md)。

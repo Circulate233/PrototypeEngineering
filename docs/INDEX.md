@@ -4,6 +4,7 @@
 
 ## 当前检查点
 
+- 用户最新纠偏：功能优先，停止脱离功能主线继续细化调度。PM需求三阶段与内置效果已接真实执行；PN逐配方研究/计算扩展、研究业务、奖励及下载事件仍缺失。先读[配方功能核对](recipe-feature-parity.md)，不能把测试数量/基础接口视为这些功能完成。
 - 本阶段接入TaskScheduler的planned执行所有权：PlannedExecution四方法/包内factory，在普通join后先保留准确cycle再advance；旧pending先于任何新业务，false保留提交队列，取消与实际退出分别确认。tryClose先使用原lane清理，正常pending保留现场；closingRequested阻止tick恢复后提前排卸载。runPrepare补beforeDispatch句柄。实际机器factory、复合组件/生命周期接线、pureprepare与PN预算仍待完成，正式mode仍拒绝，见scheduler-planned-ownership.md。
 - 已具备机器暂停边界：ComponentMap.captureDispatch固定同一dispatch，normal逐项推进并保持机器fail-fast；MachineLifecycle.beginScheduled持RUNNING至全部已观察工作槽确认quiescent，retire/fault后只清理。基础API已测试，尚未接MachineInstance拦截、跨机器scope与TaskScheduler；下一步先处理pending优先清理、源lane关闭顺序已由调度器持有；真实组件接线仍待完成，详见machine-tick-boundaries.md、scheduler-planned-ownership.md。
 - 上一阶段已接入真实多宿主阶段协调器：TickGroup先整体捕获/持lease、共享callback作用域并统一释放；PlannedRecipeCoordinator按真实current-stage获取/拒绝补偿/成功批次source apply→owner提交→原lane确认→release/ack推进，保留pending与实际退出。runner派发前交付Batch、直接异常完整stop/freeze。服务器调度、纯prepare扩展及PN预算仍未接入，PLANNED_PARALLEL继续拒绝。阶段本地提交、不推送，原23份修改保留未暂存。
@@ -25,9 +26,10 @@
 
 ## 下一步
 
-1. 正式 planned：真实多宿主阶段/source协调器及可暂停组件cursor/持续生命周期句柄已可显式调用。TaskScheduler持有准确pending及取消/退出清理已完成。下一步捕获真实MachineController/Registration/MachineInstance绑定，连接机器cursor在准确处理器处暂停、全部生命周期预捕获和共享callback scope；旧pending必须在任何新业务前清理，避免普通worker等fence与owner join死锁；close须先在原lane清理再关闭线程池，UNKNOWN保留session。跨机器预捕获与低层工位scope仍待接。随后迁移独立纯prepare/frozen input/result、内部工作预算和PN owner/team/epoch/向量receipt，current()不能代替owner全量授权。当前source apply/terminal两个屏障不冒充旧纯prepare，mode仍拒绝。见machine-tick-boundaries.md、planned-recipe-coordinator.md。
-2. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
-3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
+1. 先按recipe-feature-parity.md迁移实际功能：PN逐配方研究/计算条件的扩展注册与执行、研究定义/启动/队列/阶段推进/完成、奖励及下载事件。核对旧真实入口再复用，不能只写模型、接口或预算底座；Java功能先完整，CraftTweaker最后。
+2. 将研究与普通配方消费者接到真实计算供给/阶段限额、队伍当前状态及预算，保留numeric独立、lease共享与准确原代补偿。角色与账本已经存在，不能只检查共同gate或worker current()就跳过具体配方条件和提交校验。
+3. 结合具体功能连接真实MachineController/Registration/MachineInstance与机器cursor、完整生命周期和planned cycle。已有调度持有pending/取消/退出/tryClose，优先复用；纯prepare/frozen input/result、内部工作预算与PN向量receipt仍待完成，正式mode仍拒绝，不先扩展无业务消费者的底座。
+4. 完成严格两阶段JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义JEI及其他未取消功能，最后CraftTweaker。Applied-Flux继续暂缓，保留v1.0.0:dev。
 
 ## 必须遵守
 
@@ -45,6 +47,7 @@
 | 已确认需求/功能范围 | [development-spec.md](development-spec.md)，R 编号 |
 | 实际完成度/验证证据 | [implementation-status.md](implementation-status.md) |
 | 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
+| 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md) |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md)，api/recipe、api/machine/workslot |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md)，api/gui、api/client/gui、container/MachineContainer |
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md)，item、OrientationToolConfig |
