@@ -13,7 +13,7 @@ PM 的配方扩展绝不只有机器 tick。它目前没有独立于 `requiremen
 | 能力 | PM 的定义与实际触发 | PE 当前对应 |
 |---|---|---|
 | 每配方 START/TICK/END | `RecipeRequirementSystem.kt:74,99`；`FactoryRecipeProcessorSystem.kt:245,256,260,266` 遍历当前配方需求并执行 | `RecipeRequirement.acquire`、`RecipeStageExecutor` 和 `RecipeProcess` 已执行对应阶段 |
-| 配方进程组件 Pre/Normal/Post | `RecipeProcessComponentType.kt:17`、`RecipeProcessSystem.kt:11`；`FactoryRecipeProcessorSystem.kt:37,149,175` 实际派发 | `ComponentType/ComponentSystem<RecipeProcess>`，`RecipeProcess.java:397,477` 实际开启和结束组件会话 |
+| 配方进程组件 Pre/Normal/Post | `RecipeProcessComponentType.kt:17`、`RecipeProcessSystem.kt:11`；`FactoryRecipeProcessorSystem.kt:175,181–183` 实际派发。六种内置进程组件中五种无 system，唯一 SelectiveState system 的三个回调均为空；这是扩展钩子，不是额外的内置配方效果 | `ComponentType/ComponentSystem<RecipeProcess>`，`RecipeProcess.java:397,477` 实际开启和结束组件会话 |
 | 属性效果 | `AttributeModifierRequirementComponent.kt:18` 配置属性、modifier、applyAtStart/removeAtEnd；对应 system `:24,60` 安装/撤销 | `AttributeRequirementSystem` 已实现，并保留回滚和最终阶段属性有效期 |
 | 定时检查点 | `CheckpointRequirementComponent.kt:19` 的时间、子需求、速度缩放；system `:45,67,93,109,128` 跨阈值后执行子需求 START/TICK/END | `CheckpointRequirementSystem` 已执行；修正旧 time=0 不触发的问题 |
 | **选择提交修改器** | `SelectiveRequirementComponent.kt:29` 的 candidates/modifierIds；system `:71,87` 在所选子 START 提交后查注册表，`:91` 真调用 `modifier.apply(ctx)` | `SelectiveRequirement` 绑定描述符；`SelectiveRequirementSystem.java:160,180` 已实际执行自定义回调，并清理登记的效果 |
@@ -33,6 +33,8 @@ PM 活跃内置需求系统共六类：item、fluid、energy、attribute_modifie
 - PE [选择提交回调](../src/main/java/com/circulation/prototype_eng/recipe/requirement/SelectiveRequirementSystem.java)、[动态匹配执行](../src/main/java/com/circulation/prototype_eng/recipe/requirement/DynamicInputCandidates.java)、[检查点](../src/main/java/com/circulation/prototype_eng/recipe/requirement/CheckpointRequirementSystem.java)、[属性效果](../src/main/java/com/circulation/prototype_eng/recipe/requirement/AttributeRequirementSystem.java)。
 
 机器 `MachineTickEvent` 和 Loaded/Unloaded/FormedStateChanged/ControllerBroken 属于另一层生命周期，不应拿来代替本表的配方事件。
+
+PM 当前也没有独立的配方取消/失败回调：`FactoryRecipeProcessorSystem.kt:57,81,118,141` 的 Failure 分支直接清空工位进程，`:149–150` 仍进入进程组件 POST。阶段事务 rollback 是补偿，不是 `onRecipeCancel/onRecipeFailure` 事件。PE 的 `RecipeRequirementSystem.cancel` 是新增的终止清理边界，不计作旧事件迁移。进程空回调可见 [SelectiveStateProcessComponentType.kt](F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/process/component/SelectiveStateProcessComponentType.kt:14)。
 
 ## 范围与限度
 

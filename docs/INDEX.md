@@ -5,6 +5,7 @@
 ## 当前检查点
 
 - 配方事件已按用户要求由独立子代理重查：PM并非只有机器tick；选择提交回调、动态匹配脚本、检查点/属性效果、进程组件都有实际入口，PE对应Java调用已有，CT桥仍最后。此前宽泛的“没有配方runtime回调/DSL”已纠正，见[配方事件复审](pm-recipe-events-audit.md)。功能优先，不继续脱离业务细化调度。
+- 配方专项复核边界：PM进程Pre/Normal/Post确有派发，但内置回调为空，只算扩展入口；PM没有独立配方取消/失败事件，PE的cancel属于新增清理能力。机器tick和机器生命周期不纳入配方事件清单。本轮只核对源码并修正文档，没有推进研究实现或重新构建。
 - 研究已具备定义/冻结注册、双来源资格、完成传播和奖励执行；本阶段新增真实权限→设备等级→请求者startCondition→入队，以及容量5的队列/多站numeric规划/grant/prune/NBT。已有目标保留只检查结构资格，不重跑开始条件；owner线程与回滚后epoch防旧计划重新有效。手动session、站点实际材料/计算/完成共同提交、服务器存档/领取入口仍待接，见[研究功能](research-features.md)。
 - PN工作单元与研究执行已独立审计：旧planned每tick每槽按候选operation收费，未接真实配方进度，不能硬迁为重复START投料；研究门槛必须读选中DC真实存储。计费阶段/并行缩放已向用户核对，研究流程独立继续。见[pn-research-execution-audit.md](pn-research-execution-audit.md)。
 - 生命周期按侧代理整理：主类仅委托，CommonProxy承载双端通用初始化及server生命周期，ClientProxy.preInit先super再注册唯一客户端模型处理；辅助模型类不重复订阅。

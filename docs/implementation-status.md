@@ -6,6 +6,8 @@
 
 ## 当前状态
 
+- 配方事件专项复核：复用独立子代理检查PM当前源码，未发现既有审计之外的独立配方事件框架。补充两个边界：进程Pre/Normal/Post内置回调为空，仅迁移扩展钩子；旧Failure清空工位且继续POST，没有独立取消/失败事件，PE cancel为新增清理。对应Java实际调用已核对，CT仍最后。此次仅更新文档，不重跑构建，不将历史647项测试当作本轮新增验证；原23份源码修改保留。
+
 - 研究启动/队列阶段已实现：ResearchPermissionPolicy保留PN默认同队/管理角色规则；TeamResearchStart在当前证明下校验权限、设备等级、结构资格与真实actor/resources条件后入队，不扣物料或numeric，重复/满队/忙返回业务结果。回调后重验authority及queue epoch，异常原样传播。TeamResearchQueue保留容量5、稳定entryId、多站numeric独立授予、同entry/time去重、grant/prune可逆提交及严格NBT。prune不用匿名startable缓存；队列及mutation强制准确owner线程，回滚递增epoch防旧plan复活。材料/逻辑lease/真实站点/手动session及服务器存档服务尚未接入，不能据此称完整研究流程完成。
 
 - 本阶段验证：`gradlew.bat spotlessApply build --console=plain`通过647项测试、97 suites，零失败/错误/跳过；新增14项queue和7项启动行为测试。本机IDEA MCP对本阶段涉及的30个src Java及Tags共31文件逐个errorsOnly:false，零错误/警告/弱警告、无超时；build_project成功。证据`build/reports/idea/research-queue-start-final.json`。原23份工作区修改逐文件与阶段基线完全相同。
