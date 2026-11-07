@@ -424,6 +424,75 @@ class ResearchWorldRewardTest {
         assertEquals(0, player(saves.durable, ALICE).completedLevels().getInt(RESEARCH));
     }
 
+    @Test void neverInvokedDeliveryPersistsRetryPlanThroughFailedWorldSaveAndNbtRestart() {
+        var fixture = fixture(items());
+        var saves = new Saves(fixture);
+        var world = fixture.world(saves);
+        var adapter = new Adapter(saves);
+        adapter.proveAbsence = false;
+        var current = new AtomicBoolean(true);
+        saves.beforeWrite = snapshot -> {
+            if (fragments(snapshot).getFirst().status() == RewardFragment.Status.DELIVERING) current.set(false);
+        };
+        saves.reject = snapshot -> fragments(snapshot).getFirst().status() == RewardFragment.Status.RETRY_PLANNED;
+
+        assertSame(saves.failure, assertThrows(IllegalStateException.class, () -> claim(world, adapter, current::get)));
+        var pending = saves.attempts.getLast();
+        var originalPlan = fragments(saves.attempts.getFirst()).getFirst();
+        assertEquals(RewardFragment.Status.DELIVERING, fragments(saves.durable).getFirst().status());
+        assertEquals(RewardFragment.Status.RETRY_PLANNED, fragments(pending).getFirst().status());
+        assertEquals(originalPlan.started().retryPlanned(), fragments(pending).getFirst());
+        assertEquals(0, adapter.deliveries);
+        assertEquals(0, adapter.commits);
+        assertTrue(world.savePending());
+        assertSame(saves.failure, assertThrows(IllegalStateException.class, () -> claim(world, adapter, current::get)));
+        assertSame(pending, saves.attempts.getLast());
+        saves.reject = _ -> false;
+        saves.beforeWrite = _ -> { };
+        assertEquals(ResearchRewardClaimer.Status.STALE_CONTEXT, claim(world, adapter, current::get).status());
+        assertSame(pending, saves.attempts.getLast());
+        assertFalse(world.savePending());
+        var restored = fixture.restore(saves, saves.durable);
+        current.set(true);
+        assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(restored, adapter, current::get).status());
+        assertEquals(1, adapter.plans);
+        assertEquals(0, adapter.scans);
+        assertEquals(2, adapter.deliveries);
+        assertEquals(2, adapter.physical.size());
+    }
+
+    @Test void explicitZeroEffectRetrySaveFailureRewritesBeforeRestartWithoutAbsenceScan() {
+        var fixture = fixture(items());
+        var saves = new Saves(fixture);
+        var world = fixture.world(saves);
+        var adapter = new Adapter(saves);
+        adapter.zeroEffect = true;
+        adapter.proveAbsence = false;
+        saves.reject = snapshot -> fragments(snapshot).getFirst().status() == RewardFragment.Status.RETRY_PLANNED;
+
+        assertSame(saves.failure, assertThrows(IllegalStateException.class, () -> claim(world, adapter)));
+        var pending = saves.attempts.getLast();
+        assertEquals(RewardFragment.Status.RETRY_PLANNED, fragments(pending).getFirst().status());
+        assertEquals(1, adapter.deliveries);
+        assertEquals(0, adapter.commits);
+        assertEquals(0, adapter.releases);
+        assertTrue(adapter.physical.isEmpty());
+        assertSame(saves.failure, assertThrows(IllegalStateException.class, () -> claim(world, adapter)));
+        assertSame(pending, saves.attempts.getLast());
+        assertEquals(1, adapter.deliveries);
+        saves.reject = _ -> false;
+        assertEquals(ResearchRewardClaimer.Status.STALE_CONTEXT, claim(world, adapter, () -> false).status());
+        assertSame(pending, saves.attempts.getLast());
+        var restored = fixture.restore(saves, saves.durable);
+        adapter.zeroEffect = false;
+        assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(restored, adapter).status());
+        assertEquals(1, adapter.plans);
+        assertEquals(0, adapter.scans);
+        assertEquals(3, adapter.deliveries);
+        assertEquals(2, adapter.commits);
+        assertEquals(2, adapter.released.size());
+    }
+
     private static ResearchRewardClaimer.Result claim(ResearchWorld world, Adapter adapter) {
         return claim(world, adapter, () -> true);
     }
@@ -515,6 +584,8 @@ class ResearchWorldRewardTest {
         private Consumer<RewardFragment> afterCommit = _ -> { };
         private Consumer<RewardFragment> afterRelease = _ -> { };
         private Runnable afterPlan = () -> { };
+        private boolean zeroEffect;
+        private boolean proveAbsence = true;
         private int plans;
         private int scans;
         private int deliveries;
@@ -547,7 +618,7 @@ class ResearchWorldRewardTest {
             for (var fragment : delivering) {
                 assertEquals(RewardFragment.Status.DELIVERING, fragment.status());
                 var found = physical.get(fragment.id());
-                if (found == null) { absent.add(fragment.id()); }
+                if (found == null) { if (proveAbsence) absent.add(fragment.id()); }
                 else {
                     assertEquals(fragment, found);
                     observed.add(fragment.id());
@@ -565,6 +636,7 @@ class ResearchWorldRewardTest {
             assertEquals(RewardFragment.Status.DELIVERING, durable.status());
             beforeDelivery.accept(fragment);
             deliveries++;
+            if (zeroEffect) return new Delivery(0, Optional.empty());
             assertNull(physical.putIfAbsent(fragment.id(), fragment), "A real item fragment must never be issued twice");
             UUID entity = null;
             if (fragment.target() instanceof RewardFragment.WorldDrop) {

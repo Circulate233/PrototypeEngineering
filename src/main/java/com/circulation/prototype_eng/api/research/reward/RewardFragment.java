@@ -19,7 +19,7 @@ public record RewardFragment(UUID id, RewardEventKey parent, AEKey resource, int
         Objects.requireNonNull(entityUuid, "entityUuid");
         Objects.requireNonNull(status, "status");
         if (count < 1 || taggedStackNbt.isEmpty()) throw new IllegalArgumentException("Invalid reward fragment payload");
-        if ((target instanceof Inventory || status == Status.PLANNED) && entityUuid.isPresent()) {
+        if ((target instanceof Inventory || status == Status.PLANNED || status == Status.RETRY_PLANNED) && entityUuid.isPresent()) {
             throw new IllegalArgumentException("Unexpected reward entity identity");
         }
         if (target instanceof WorldDrop && status == Status.CONFIRMED && entityUuid.isEmpty()) {
@@ -30,8 +30,16 @@ public record RewardFragment(UUID id, RewardEventKey parent, AEKey resource, int
     @Override public NBTTagCompound taggedStackNbt() { return taggedStackNbt.copy(); }
 
     public RewardFragment started() {
-        if (status != Status.PLANNED) throw new IllegalStateException("Only planned fragments can start");
+        if (status != Status.PLANNED && status != Status.RETRY_PLANNED) throw new IllegalStateException("Only planned fragments can start");
         return new RewardFragment(id, parent, resource, count, taggedStackNbt, target, entityUuid, Status.DELIVERING);
+    }
+
+    /** Caller has proved that this started attempt performed no effect; the exact plan remains fixed. */
+    public RewardFragment retryPlanned() {
+        if (status != Status.DELIVERING || entityUuid.isPresent()) {
+            throw new IllegalStateException("Only a started fragment without an entity can record no effect");
+        }
+        return new RewardFragment(id, parent, resource, count, taggedStackNbt, target, Optional.empty(), Status.RETRY_PLANNED);
     }
 
     public RewardFragment confirmed(@Nullable UUID entityId) {
@@ -41,7 +49,7 @@ public record RewardFragment(UUID id, RewardEventKey parent, AEKey resource, int
         return new RewardFragment(id, parent, resource, count, taggedStackNbt, target, entity, Status.CONFIRMED);
     }
 
-    public enum Status { PLANNED, DELIVERING, CONFIRMED, ERROR }
+    public enum Status { PLANNED, RETRY_PLANNED, DELIVERING, CONFIRMED, ERROR }
     public sealed interface Target permits Inventory, WorldDrop { }
     public record Inventory(int slot) implements Target {
         public Inventory { if (slot < 0) throw new IllegalArgumentException("Invalid inventory slot"); }

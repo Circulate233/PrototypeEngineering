@@ -179,7 +179,7 @@ public final class ResearchRewardClaimer {
         // Preserve the plan's inventory-first order; UUID ordering cannot encode target preference.
         var planned = new ObjectArrayList<>(session.requireCurrent().children().get(index).fragments().values());
         for (var fragment : planned) {
-            if (fragment.status() != RewardFragment.Status.PLANNED) continue;
+            if (fragment.status() != RewardFragment.Status.PLANNED && fragment.status() != RewardFragment.Status.RETRY_PLANNED) continue;
             if (!request.current().getAsBoolean()) return stale();
             if (!request.itemDelivery().canDeliver(fragment)) return result(Status.RETRY_LATER, "Reward target is unavailable");
             if (!request.current().getAsBoolean()) return stale();
@@ -206,14 +206,28 @@ public final class ResearchRewardClaimer {
     }
 
     private static Result deliverStarted(Request request, PlayerResearchState.RewardSession session, int index, RewardFragment fragment) {
-        if (!request.current().getAsBoolean()) return stale();
+        // This call follows a fresh started checkpoint or authoritative absence proof. It has not
+        // invoked delivery yet; observed and unknown recovery leaves never enter this path.
+        if (!request.current().getAsBoolean()) {
+            if (fragment.entityUuid().isEmpty()) retryPlanned(request, session, index, fragment);
+            return stale();
+        }
         var delivery = request.itemDelivery().deliver(fragment);
+        if (delivery != null && delivery.acceptedCount() == 0 && delivery.entityUuid().isEmpty() && fragment.entityUuid().isEmpty()) {
+            retryPlanned(request, session, index, fragment);
+            return result(Status.RETRY_LATER, "Reward delivery performed no effect");
+        }
         if (delivery == null || delivery.acceptedCount() != fragment.count() || !validEntity(fragment, delivery.entityUuid().orElse(null))) {
             return result(Status.RETRY_LATER, "Reward delivery is not an exact confirmed success");
         }
         request.itemDelivery().commit(fragment, delivery);
         confirm(request, session, index, fragment, delivery.entityUuid().orElse(null));
         return null;
+    }
+
+    private static void retryPlanned(Request request, PlayerResearchState.RewardSession session, int index, RewardFragment fragment) {
+        var current = session.requireCurrent();
+        save(request, session, current.replaceChild(index, current.children().get(index).replaceFragment(fragment.retryPlanned())));
     }
 
     private static boolean validEntity(RewardFragment fragment, @Nullable UUID entity) {

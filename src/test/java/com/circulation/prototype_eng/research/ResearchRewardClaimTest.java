@@ -19,9 +19,11 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -235,6 +237,78 @@ class ResearchRewardClaimTest {
         assertEquals(keys.getFirst(), keys.getLast());
     }
 
+    @Test void ambiguousDeliveryRepliesNeverRecordNoEffectAndObservedRecoveryDoesNotRedeliver() {
+        var replies = ObjectList.<Function<RewardFragment, RewardItemDeliveryAdapter.Delivery>>of(
+            _ -> null,
+            fragment -> new RewardItemDeliveryAdapter.Delivery(fragment.count() - 1, Optional.empty()),
+            _ -> new RewardItemDeliveryAdapter.Delivery(0, Optional.of(UUID.randomUUID())),
+            fragment -> new RewardItemDeliveryAdapter.Delivery(fragment.count(), Optional.of(UUID.randomUUID())));
+        var definition = definition(group(new RewardChild.Item(id("items"), ITEM, 5)));
+        for (var reply : replies) {
+            var player = eligible();
+            var adapter = new Adapter();
+            adapter.reply = reply;
+            var durable = new AtomicReference<RewardClaim>();
+            assertEquals(ResearchRewardClaimer.Status.RETRY_LATER, claim(player, definition, GROUP, durable::set, adapter).status());
+            var first = durable.get().children().getFirst().fragments().values().iterator().next();
+            assertEquals(RewardFragment.Status.DELIVERING, first.status());
+            assertEquals(1, adapter.deliveries);
+            assertEquals(1, adapter.physical.size());
+            adapter.reply = fragment -> new RewardItemDeliveryAdapter.Delivery(fragment.count(), Optional.empty());
+            assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(player, definition, GROUP, durable::set, adapter).status());
+            assertEquals(2, adapter.deliveries);
+            assertEquals(2, adapter.physical.size());
+        }
+    }
+
+    @Test void losingCurrentAfterObservationLeavesTheExistingEffectDeliveringUntilConfirmed() {
+        var player = eligible();
+        var definition = definition(group(new RewardChild.Item(id("items"), ITEM, 5)));
+        var adapter = new Adapter();
+        adapter.failCommit = true;
+        var durable = new AtomicReference<RewardClaim>();
+        assertThrows(IllegalStateException.class, () -> claim(player, definition, GROUP, durable::set, adapter));
+        var first = durable.get().children().getFirst().fragments().values().iterator().next();
+        var current = new AtomicBoolean(true);
+        adapter.afterScan = () -> current.set(false);
+        adapter.failCommit = false;
+        assertEquals(ResearchRewardClaimer.Status.STALE_CONTEXT, executor.claim(new ResearchRewardClaimer.Request(
+            player, definition, 1, GROUP, 20, durable::set, adapter, current::get)).status());
+        assertEquals(first, durable.get().children().getFirst().fragments().get(first.id()));
+        assertEquals(RewardFragment.Status.DELIVERING, first.status());
+        assertEquals(1, adapter.deliveries);
+        assertTrue(adapter.physical.containsKey(first.id()));
+        adapter.afterScan = () -> { };
+        current.set(true);
+        assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(player, definition, GROUP, durable::set, adapter).status());
+        assertEquals(2, adapter.deliveries);
+    }
+
+    @Test void retryPlanKeepsIdentityAndCannotReopenTerminalOrEntityBearingFragments() {
+        var parent = new RewardEventKey(UUID.randomUUID(), RESEARCH, 1, GROUP, id("items"));
+        var planned = Adapter.fragment(parent, 0, 2);
+        var delivering = planned.started();
+        var retry = delivering.retryPlanned();
+        var fragments = new Object2ObjectOpenHashMap<UUID, RewardFragment>();
+        fragments.put(delivering.id(), delivering);
+        var child = new RewardClaim.Child(parent, RewardClaim.Kind.ITEM, RewardClaim.ChildStatus.PENDING, fragments);
+        var claim = RewardClaim.unclaimed(new RewardClaim.Key(parent.playerUuid(), RESEARCH, 1), 10)
+            .select(GROUP, 20, ObjectList.of(child));
+        assertThrows(IllegalStateException.class, () -> claim.replaceChild(0, child.replaceFragment(planned)));
+        var retryClaim = claim.replaceChild(0, child.replaceFragment(retry));
+        claim.requireTransitionTo(retryClaim);
+        assertEquals(delivering, retry.started());
+        assertThrows(IllegalStateException.class, () -> retryClaim.replaceChild(0, child.replaceFragment(planned)));
+        assertThrows(IllegalStateException.class, () -> retryClaim.replaceChild(0, child.replaceFragment(delivering.confirmed(null))));
+        assertThrows(IllegalStateException.class, planned::retryPlanned);
+        assertThrows(IllegalStateException.class, () -> delivering.confirmed(null).retryPlanned());
+        var entityBearing = new RewardFragment(UUID.randomUUID(), parent, ITEM, 2, planned.taggedStackNbt(),
+            new RewardFragment.WorldDrop(0, 0, 0, 1, 64, 1), Optional.of(UUID.randomUUID()), RewardFragment.Status.DELIVERING);
+        assertThrows(IllegalStateException.class, entityBearing::retryPlanned);
+        var terminal = claim.replaceChild(0, child.replaceFragment(delivering.confirmed(null)));
+        assertThrows(IllegalStateException.class, () -> terminal.replaceChild(0, child.replaceFragment(retry)));
+    }
+
     private ResearchRewardClaimer.Result claim(PlayerResearchState player, ResearchDefinition definition, ResourceLocation choice, RewardClaimCheckpoint checkpoint, Adapter adapter) {
         return executor.claim(new ResearchRewardClaimer.Request(player, definition, 1, choice, 20, checkpoint, adapter));
     }
@@ -255,6 +329,8 @@ class ResearchRewardClaimTest {
     private static final class Adapter implements RewardItemDeliveryAdapter {
         private final Object2ObjectOpenHashMap<UUID, RewardFragment> physical = new Object2ObjectOpenHashMap<>();
         private Consumer<RewardFragment> beforeDelivery = _ -> { };
+        private Runnable afterScan = () -> { };
+        private Function<RewardFragment, Delivery> reply = fragment -> new Delivery(fragment.count(), Optional.empty());
         private int deliveries;
         private boolean failBeforeEffect;
         private boolean failCommit;
@@ -277,6 +353,7 @@ class ResearchRewardClaimTest {
                 if (physical.containsKey(fragment.id()) || conflictScan) observed.add(fragment.id());
                 if (proveAbsence && !physical.containsKey(fragment.id())) absent.add(fragment.id());
             }
+            afterScan.run();
             return new Scan(observed, new Object2ObjectOpenHashMap<>(), absent);
         }
         @Override public boolean canDeliver(RewardFragment fragment) { return !physical.containsKey(fragment.id()); }
@@ -285,7 +362,7 @@ class ResearchRewardClaimTest {
             deliveries++;
             if (failBeforeEffect) throw new IllegalStateException("unknown delivery");
             assertNull(physical.putIfAbsent(fragment.id(), fragment));
-            return new Delivery(fragment.count(), Optional.empty());
+            return reply.apply(fragment);
         }
         @Override public void commit(RewardFragment fragment, Delivery delivery) {
             assertEquals(fragment, physical.get(fragment.id()));

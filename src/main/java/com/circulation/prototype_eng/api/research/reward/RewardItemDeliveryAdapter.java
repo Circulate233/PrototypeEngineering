@@ -19,6 +19,11 @@ public interface RewardItemDeliveryAdapter {
     ObjectList<RewardFragment> plan(RewardEventKey parent, RewardChild.Item reward);
     Scan scan(ObjectList<RewardFragment> delivering);
     boolean canDeliver(RewardFragment fragment);
+    /**
+     * Zero accepted items and no entity is an authoritative statement that this invocation caused
+     * no delivery effect. The claimer durably records it before retrying the same immutable plan.
+     * Never return zero to hide an exception, partial effect or an unknown spawn outcome.
+     */
     Delivery deliver(RewardFragment fragment);
 
     /** Synchronously save and flush the exact successful side effect before fragment confirmation. */

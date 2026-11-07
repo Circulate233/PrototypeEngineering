@@ -16,6 +16,10 @@
 
 每个片段保持固定资源、数量、目标槽或掉落位置。先保存完整选择和计划，再保存 DELIVERING，实际交付、保存目标物品，最后保存 CONFIRMED。恢复先观察真实片段；只有明确缺失证明才能重新交付，加载范围内没有看见不等于全局不存在。
 
+确定没有发生交付的尝试现在保存为 RETRY_PLANNED，保留原片段 ID、完整标签、数量和目标。仅两种路径可以进入：本次刚保存 DELIVERING（或已取得权威缺失证明），但在调用 deliver 之前玩家证明失效；或者 deliver 正常返回零数量且没有实体身份。下一次执行仍先检查原目标、保存 DELIVERING，之后才发放，不重新选组或生成计划。重试记录写入失败时，原 ResearchWorld.pendingSave 持有完整快照，后续操作必须先重写它。
+
+异常、null、部分数量、冲突实体、已经观察到的效果以及扫描未知均不能转入 RETRY_PLANNED。Minecraft 适配器只把实际写入前的目标不可用当作零效果；World.spawnEntity 返回 false 时，Forge 回调已经见过带标签实体，保留其实体身份作为不确定回执，不能据取消生成推定回调没有转移物品。外部适配器也必须遵守这一零效果契约。
+
 `RewardItemDeliveryAdapter.release` 在 CONFIRMED 世界检查点成功之后调用，只清理交付标签或临时保护，绝不补发缺失物品。默认实现无需标签清理，Minecraft 适配器清理真实栈。清理失败不会把确认状态退回 DELIVERING；再次领取以及 ALREADY_CLAIMED 会重做幂等清理。登录时补清玩家已确认片段，带标签掉落实体后续加载时通过同一 MAIN 队列合并清理请求。
 
 清理后的奖励恢复原业务 NBT，可正常堆叠并参与 AEKey 精确匹配。不能在仅内存确认或保存失败时提前去掉标签，否则恢复将失去准确交付证据。
@@ -38,6 +42,20 @@ IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有�
 
 普通 `saveAllPlayerData` 和 chunk writer 可能吞掉 IO 错误，仅方法返回不能证明物品已经可恢复；单人宿主还可能从 level.dat 的 Data.Player 恢复而非 UUID.dat。平台确认必须核对实际保存入口中的准确玩家/实体身份和唯一 tagged leaf，不能宣称研究文件与 vanilla 存档跨文件原子。
 
+## 交互保护源码复核（尚未实现）
+
+以下核对 PN 的 `impl/download/ResearchItemDownloadAccessGateImpl.java` 及当前依赖 `build/moddev/artifacts/cleanroom-0.6.13-alpha-sources.jar`，不是保护已经接入的证明。
+
+| 路径 | 实际行为及迁移边界 |
+|---|---|
+| 容器点击 | 旧 PN 170–174 行的 SWAP 在目标属于箱子时漏查 hotbar，CLONE 始终放行。Container 代理思路可复用，但这两处分支不能照搬。 |
+| 副手与创造写槽 | NetHandlerPlayServer 734–740 行直接交换持有物，1417–1428 行直接写 inventoryContainer；均绕过 openContainer.slotClick。关闭及附魔也有独立入口。 |
+| 连接与主线程 | NetworkManager.channel() 是公开 API，可以承载有限入口门禁；Netty 不得读取库存，判断必须在 MAIN 核对准确玩家和原连接。重生会复用连接并创建新玩家，已排入 vanilla 队列的任务也需考虑，不能只按 UUID 认证。 |
+| 死亡 | EntityPlayerMP 549–554 行在 PlayerDropsEvent 之前删除消失诅咒物品并清空库存；取消掉落事件不能保住原物品。不能以长期取消死亡替代恢复协议。 |
+| 漏斗与漏斗矿车 | TileEntityHopper 450–470 行直接复制物品、插入并 setDead/setItem；EntityMinecartHopper 159–173 行复用此路径，不检查拾取延迟，也不触发玩家拾取事件。现有掉落保护不覆盖这些转移。 |
+
+下一段先接真实玩家入口门禁、断线/重生处理及拒绝后的同步，并在协议中明确死亡和漏斗边界。玩家文件 PREPARED 不能单独证明 region 中的掉落未生成；任何可用的未发出凭据都必须在效果前持久建立、保持单调并覆盖实际恢复入口。未完成这些条件前，默认缺失证明继续关闭。
+
 ## 剩余接线与验证范围
 
 领取 packet、研究视图与 GUI、跨 tick 未确认库存片段的完整交互保护和可靠缺失证明仍需继续实现。未知交付保持恢复状态，不能为了让领取返回成功而重新生成物品。下载及其物品回执沿自己的操作链迁移，不与奖励证据混用。
@@ -45,3 +63,5 @@ IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有�
 世界集成测试使用真实 ResearchWorld、ResearchRewardClaimer 和 ResearchWorldNbt，覆盖有序事件/物品、选择与各交付阶段保存失败、准确 pending 重写、重载观察、确认后清理失败不补发、会话隔离、重入、延迟保存、原玩家证明失效和永久资格保留。Minecraft 物品调用按实际依赖源码和 IDEA MCP 检查；没有启动游戏、Bootstrap 或 FML。阶段完整构建、平台文件验证和逐文件诊断由[实施进度](implementation-status.md)记录。
 
 服务器奖励阶段新增 24 项行为测试；完整构建 975 tests / 132 suites，零失败/错误/跳过。9 个阶段 src Java 加 Tags 共 10 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-rewards-server-final.json。原 23 份修改保留，未启动游戏或服务端。
+
+确定零效果恢复阶段新增 5 项行为测试，覆盖重试记录保存失败、准确 pending 重写、NBT 重载、不确定回执、观察后失权和状态迁移限制。完整构建 980 tests / 132 suites 全通过；7 个 src Java 加 Tags 共 8 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/research-reward-no-effect-final.json。未启动游戏或服务端，原 23 份修改保留。

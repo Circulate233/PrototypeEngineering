@@ -72,10 +72,12 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
             var before = entry.getValue();
             var after = replacement.fragments().get(entry.getKey());
             if (!samePlan(before, after) || (before.entityUuid().isPresent() && !before.entityUuid().equals(after.entityUuid()))
-                    || (before.status() == RewardFragment.Status.PLANNED && after.status() != RewardFragment.Status.PLANNED
+                    || ((before.status() == RewardFragment.Status.PLANNED || before.status() == RewardFragment.Status.RETRY_PLANNED)
+                            && after.status() != before.status()
                             && after.status() != RewardFragment.Status.DELIVERING && after.status() != RewardFragment.Status.ERROR)
                     || (before.status() == RewardFragment.Status.DELIVERING && after.status() != RewardFragment.Status.DELIVERING
-                            && after.status() != RewardFragment.Status.CONFIRMED)
+                            && after.status() != RewardFragment.Status.CONFIRMED
+                            && !(after.status() == RewardFragment.Status.RETRY_PLANNED && before.entityUuid().isEmpty()))
                     || ((before.status() == RewardFragment.Status.CONFIRMED || before.status() == RewardFragment.Status.ERROR)
                             && !before.equals(after))) {
                 throw new IllegalStateException("Reward fragment plan or terminal state changed");

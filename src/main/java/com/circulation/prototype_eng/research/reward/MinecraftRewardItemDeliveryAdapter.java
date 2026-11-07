@@ -156,7 +156,8 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
 
     @Override public boolean canDeliver(RewardFragment fragment) {
         requireOwner(); validate(fragment);
-        if (fragment.status() != RewardFragment.Status.PLANNED && fragment.status() != RewardFragment.Status.DELIVERING) return false;
+        if (fragment.status() != RewardFragment.Status.PLANNED && fragment.status() != RewardFragment.Status.RETRY_PLANNED
+                && fragment.status() != RewardFragment.Status.DELIVERING) return false;
         return switch (fragment.target()) {
             case RewardFragment.Inventory inventory -> {
                 requirePlayerSaveHandler();
@@ -194,7 +195,9 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
                 entity.setUniqueId(fragment.id());
                 protectDrop(entity, fragment);
                 if (world.getEntityFromUuid(fragment.id()) != null) throw new IllegalStateException("Reward entity identity already exists");
-                if (!world.spawnEntity(entity)) yield new Delivery(0, Optional.empty());
+                // Forge join callbacks have already seen the tagged entity. A cancelled spawn is
+                // not proof that a callback left it untouched or did not transfer its contents.
+                if (!world.spawnEntity(entity)) yield new Delivery(0, Optional.of(entity.getUniqueID()));
                 requireOwner();
                 if (!exact(entity.getItem(), stack)) throw new IllegalStateException("Reward spawn changed payload");
                 yield new Delivery(fragment.count(), Optional.of(entity.getUniqueID()));
