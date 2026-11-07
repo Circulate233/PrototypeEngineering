@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /**
  * Reversible source application followed by one owner business decision and source finalization.
@@ -235,6 +236,12 @@ public final class ResourceBatch {
         requireIdleOwner();
         if (!sequential || !stagedBoundary || decision != Decision.OPEN || business != Business.ACQUIRED || rewind != null) {
             throw new IllegalStateException("Sequential segment is not ready for acquisition or append");
+        }
+    }
+
+    public boolean acquiringNext() {
+        synchronized (lock) {
+            return nextAcquired;
         }
     }
 
@@ -570,6 +577,7 @@ public final class ResourceBatch {
         private boolean[] terminal;
         private boolean[] uncertain;
         private int appliedTokens;
+        private int checkedTokens;
         private final String affinity;
         private SourceState state = SourceState.RESERVED;
 
@@ -585,6 +593,7 @@ public final class ResourceBatch {
             terminal = Arrays.copyOf(terminal, tokens.size() + added.size());
             uncertain = Arrays.copyOf(uncertain, tokens.size() + added.size());
             tokens.addAll(added);
+            checkedTokens = appliedTokens;
             state = SourceState.RESERVED;
         }
 
@@ -594,6 +603,7 @@ public final class ResourceBatch {
             terminal = Arrays.copyOf(terminal, first);
             uncertain = Arrays.copyOf(uncertain, first);
             appliedTokens = first;
+            checkedTokens = first;
             state = SourceState.APPLIED;
         }
 
@@ -603,6 +613,13 @@ public final class ResourceBatch {
 
         /** Called on the assigned serial source lane. False is a known rejection, never a timeout. */
         public boolean apply() {
+            return applyWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE));
+                }
+
+        /**
+         * True includes an ordinary work yield; APPLIED alone proves all token effects finished.
+         */
+        public boolean applyWithinBudget(RecipeWorkBudget budget) {
             StorageFence.requireOutsideAccess();
             StorageContext.requireNoLocks();
             synchronized (lock) {
@@ -614,20 +631,32 @@ public final class ResourceBatch {
                 runningSources++;
             }
             boolean[] accepted = {false};
+            boolean[] yielded = {false};
             SourceState outcome = SourceState.APPLY_FAILED;
             try {
                 fence.access(context, () -> {
-                    for (int index = appliedTokens; index < tokens.size(); index++) { if (!tokens.get(index).canApply()) { return; } }
-                    for (int index = appliedTokens; index < tokens.size(); index++) {
-                        var token = tokens.get(index);
+                    while (checkedTokens < tokens.size()) {
+                        if (!budget.take()) {
+                            yielded[0] = true;
+                            return;
+                        }
+                        if (!tokens.get(checkedTokens).canApply()) { return; }
+                        checkedTokens++;
+                    }
+                    while (appliedTokens < tokens.size()) {
+                        if (!budget.take()) {
+                            yielded[0] = true;
+                            return;
+                        }
+                        var token = tokens.get(appliedTokens);
                         token.apply();
                         if (sequential) { token.exposeApplied(); }
+                        appliedTokens++;
                     }
-                    appliedTokens = tokens.size();
                     accepted[0] = true;
                 });
-                outcome = accepted[0] ? SourceState.APPLIED : SourceState.REJECTED;
-                return accepted[0];
+                outcome = yielded[0] ? SourceState.RESERVED : accepted[0] ? SourceState.APPLIED : SourceState.REJECTED;
+                return accepted[0] || yielded[0];
             } finally {
                 synchronized (lock) { state = outcome; runningSources--; }
             }

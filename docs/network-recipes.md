@@ -48,6 +48,10 @@ ServerTaskSchedulers 为服务器会话安装 NetworkRecipeExecutionFactory。�
 
 pending 保留准确 lifecycle 句柄和原始期限，失效 tick 只确认/补偿旧事务，不能继续下一阶段或后续 normal 回调。卸载与取消在来源实际退出、进程 post 及事务确认完成后才释放生命周期门限；UNKNOWN 保持 pending，不盲目重发完成回调。刷新网络只发生在来源工作之外。
 
-自动识别属于内置 ServerTaskSchedulers。独立宿主仍通过 owner 上的配方执行入口或显式 PlannedRecipeCoordinator 协调；公共三参 TaskScheduler 不自动安装网络工厂。独立 pure prepare/frozen input/result、完整内部工作预算及正式 PLANNED_PARALLEL 模式仍待完成。
+自动识别属于内置 ServerTaskSchedulers。独立宿主仍通过 owner 上的配方执行入口或显式 PlannedRecipeCoordinator 协调；公共三参 TaskScheduler 不自动安装网络工厂。块一已在真实 CONCURRENT 网络消费者和研究材料消费者接通纯 prepare 与内置实际工作预算；正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算属于块二。
+
+owner 先增量捕获资源数量及 revision，纯 worker 根据冻结数据计算倍率、随机输出和动态候选；owner 再捕获当前数量，验证原事实和来源版本，完成选择、预检与资源/FE 预留。动态 kernel 保留全部已排序匹配，owner 先过滤当前非零可用项，再应用 maxCandidates 并选择满足数量的项。来源变化不能让旧候选误消费；成功 START/历史 tick 的材料与效果不因计算暂停重复执行。
+
+NetworkRecipeExecution 和 ResearchStationWork.drive 在原 deadline、原 current attempt 下继续普通 work yield，UNKNOWN 仍保留原确认义务。跨 tick 缓存只有纯事实，当前许可、来源池、lease、receipt 和预留必须重取/重验；终态清除缓存，存档不携带它。研究站永久破坏、原 owner 取消和 Schema 5 原物理凭据恢复保持原行为，R30 接口盘与数据库共同导入状态不变。外部 snapshot、matcher/comparator 与 opaque callback 仍是合作回调边界，见[执行预算](planned-execution.md)。
 
 验证使用真实 MachineAssembly、MachineController、调度器、FE/资源事务、网络账本及研究存储，未启动游戏。最终测试计数与 IDEA MCP 证据见[实施进度](implementation-status.md)。

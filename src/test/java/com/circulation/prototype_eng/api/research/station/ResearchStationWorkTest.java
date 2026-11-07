@@ -39,6 +39,16 @@ import java.util.function.Function;
 
 import static com.circulation.prototype_eng.api.research.station.StationFixtures.*;
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
+import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
+import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 class ResearchStationWorkTest {
     private static final TestResources.Key RAW = new TestResources.Key(TYPE, "raw");
@@ -208,6 +218,115 @@ class ResearchStationWorkTest {
     private static void put(Entry station, long amount) { assertEquals(amount, Objects.requireNonNull(station.warehouse().input()).insert(RAW, amount, Actionable.MODULATE)); }
     private static long input(Entry station) { return Objects.requireNonNull(station.warehouse().input()).amount(RAW); }
     private static long output(Entry station) { return Objects.requireNonNull(station.warehouse().output()).amount(PRODUCT); }
+
+    @Test
+    void realStationWorkContinuesMoreThanOneBudgetOfEmptyMaterialRootsUnderItsOriginalCapture() {
+        var phases = new ObjectArrayList<RecipeStage>();
+        var roots = new ObjectArrayList<RecipeRequirement<?>>();
+        for (int index = 0; index < 16_500; index++) {
+            roots.add(RecipeRequirements.RESOURCES.requirement(id("empty_" + index), new ResourceRequirement(List.of(), List.of())));
+        }
+        roots.add(observe(phase -> {
+            phases.add(phase);
+            return RequirementTransaction.SUCCESS;
+        }));
+        var definition = definition(1, 1, roots.toArray(RecipeRequirement<?>[]::new));
+        try (var fixture = new StationFixtures(1, 100, 2, definition); var lanes = new Lanes()) {
+            fixture.station(2, 0);
+            fixture.refresh();
+            var state = new State(fixture);
+            var result = state.work.advance(Objects.requireNonNull(fixture.selector.capture("team", 2)), context(1), lanes.tasks, deadline());
+            assertEquals(ResearchStationWork.Status.COMPLETED, result.status());
+            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), phases);
+            assertEquals(1, state.player.completedLevel(id("research")));
+            assertEquals(0, state.queue.size());
+        }
+    }
+
+    @Test
+    void realStationWorkReauthorizesLargePureEndSlicesWithoutRepeatingMaterialTickOrGrant() {
+        var phases = new ObjectArrayList<RecipeStage>();
+        var pool = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>();
+        for (int index = 0; index < 1000; index++) {
+            pool.add(new WeightedSampling.Weighted<>(new GenericStack(PRODUCT, 1), index + 1));
+        }
+        var current = new AtomicBoolean(true);
+        var firstSlice = new AtomicBoolean(true);
+        var builtin = RecipeRequirements.RESOURCES.system();
+        var controlled = new RecipeRequirementType<>(id("controlled_random"), new RecipeRequirementSystem<ResourceRequirement>() {
+            @Override
+            @SuppressWarnings("ReturnOfInnerClass")
+            // Revokes a real research capture only after its first accepted pure slice.
+            public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement, RecipeStage stage) {
+                var binding = builtin.prepare(process, requirement, stage);
+                if (binding == null || !firstSlice.get()) {
+                    return binding;
+                }
+                var original = binding.computation();
+                RecipePureComputation computation = budget -> {
+                    boolean ready = Objects.requireNonNull(original).advance(budget);
+                    if (!ready && firstSlice.compareAndSet(true, false)) {
+                        current.set(false);
+                    }
+                    return ready;
+                };
+                return new RequirementPreparation() {
+                    @Override
+                    public RecipePureComputation computation() {
+                        return computation;
+                    }
+
+                    @Override
+                    public RequirementTransaction acquire() {
+                        return binding.acquire();
+                    }
+
+                    @Override
+                    public void retainPureFacts() {
+                        binding.retainPureFacts();
+                    }
+                };
+            }
+        });
+        var random = controlled.requirement(id("random"), new ResourceRequirement(List.of(), List.of(), List.of(), List.of(),
+            false, new ResourceChance(12_800, null), new RandomOutputPool(pool, 3)));
+        var definition = definition(1, 1, io(1, 1, 1), random, observe(phase -> {
+            phases.add(phase);
+            return RequirementTransaction.SUCCESS;
+        }));
+        try (var fixture = new StationFixtures(1, 100, 2, definition); var lanes = new Lanes()) {
+            var station = fixture.station(2, 0);
+            var warehouse = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 10_000L), () -> {
+            });
+            Objects.requireNonNull(warehouse.input()).insert(RAW, 3, Actionable.MODULATE);
+            Objects.requireNonNull(station.machine().lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(station.energy()), List.of(station.energy())));
+            fixture.refresh();
+            var state = new State(fixture);
+            long time = 1;
+            var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
+            var result = state.work.advance(capture, new ResearchStationWork.Context(time, Set.of(OWNER), current::get), lanes.tasks, deadline());
+            assertEquals(ResearchStationWork.Status.PENDING, result.status());
+            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK), phases);
+            assertEquals(0, state.player.completedLevel(id("research")));
+            while (result.status() != ResearchStationWork.Status.COMPLETED) {
+                assertTrue(time < 100, "New station captures must continue the pure cursor under fresh authority");
+                state.work.requestStop(PlannedCancellationToken.Reason.EPOCH_CHANGED);
+                state.work.awaitExit();
+                state.work.resolve(deadline());
+                fixture.nextTick();
+                current.set(true);
+                time++;
+                capture = Objects.requireNonNull(fixture.selector.renew(Objects.requireNonNull(state.work.sources())));
+                result = state.work.advance(capture, new ResearchStationWork.Context(time, Set.of(OWNER), current::get), lanes.tasks, deadline());
+            }
+            assertTrue(time > 1);
+            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), phases);
+            assertEquals(1, Objects.requireNonNull(warehouse.input()).amount(RAW));
+            assertEquals(385, Objects.requireNonNull(warehouse.output()).amount(PRODUCT));
+            assertEquals(1, state.player.completedLevel(id("research")));
+            assertEquals(0, state.queue.size());
+        }
+    }
 
     private static final class State {
         private final TeamResearchQueue queue;

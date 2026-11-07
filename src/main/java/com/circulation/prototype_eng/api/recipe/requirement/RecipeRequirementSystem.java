@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 
 import java.util.List;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * External start/tick/end extension. Acquisition may reserve/apply reversible changes. It must
@@ -15,6 +16,16 @@ import java.util.List;
  * between concurrent owners without an explicit reservation/ownership protocol.
  */
 public interface RecipeRequirementSystem<C> {
+    /**
+     * Optional pure preparation at this requirement's actual arrival, after preceding modifiers and
+     * overlays. Capture has no effects; only the returned computation runs on a worker. Opaque legacy
+     * callbacks retain their owner execution. Null selects the ordinary start/tick/end callback.
+     */
+    default @Nullable RequirementPreparation prepare(RecipeProcess process,
+                                                     RecipeRequirement<C> requirement,
+                                                     RecipeStage stage) {
+        return null;
+    }
     /** Immutable structural children used to bind nested saved state; this does not execute them. */
     default List<RecipeRequirement<?>> children(C payload) { return List.of(); }
 

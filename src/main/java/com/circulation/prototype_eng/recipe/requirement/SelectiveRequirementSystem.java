@@ -26,6 +26,9 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
+import com.circulation.prototype_eng.recipe.PreparedRequirement;
 
 /**
  * PM's first available alternative, with provisional selection and one enclosing stage settlement.
@@ -172,7 +175,10 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
     }
 
     private static CapturedTransaction capture(RecipeProcess process, RecipeRequirement<?> requirement, RecipeStage stage) {
-        var child = Objects.requireNonNull(requirement.acquire(process, stage), "selected child transaction");
+        return capture(Objects.requireNonNull(requirement.acquire(process, stage), "selected child transaction"));
+        }
+
+    private static CapturedTransaction capture(RequirementTransaction child) {
         var reservations = new ObjectArrayList<ResourceReservation>();
         try {
             reservations.addAll(Objects.requireNonNull(child.reservations(), "selected child reservations"));
@@ -195,6 +201,150 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             });
         } catch (RuntimeException | Error cleanup) {
             if (primary != cleanup) { primary.addSuppressed(cleanup); }
+        }
+    }
+
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // The owner binding intentionally retains its captured callback scope.
+    public @Nullable RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<SelectiveRequirement> requirement, RecipeStage stage) {
+        var state = process.components().get(SelectiveState.TYPE);
+        var path = process.requirementPath();
+        var selection = state == null ? null : state.selection(path);
+        var payload = requirement.payload();
+        if (stage == RecipeStage.START) {
+            if (selection != null || payload.candidates().stream().anyMatch(RecipeRequirement::usesContinuations)) {
+                return null;
+            }
+            return new FlatPreparation(process, path, payload, 0);
+        }
+        if (selection == null || selection.completed() || selection.index() < 0) {
+            return null;
+        }
+        var child = chosen(payload, selection).prepareBinding(process, stage);
+        return new RequirementPreparation() {
+            @Override
+            public boolean ownerWorkMetered() {
+                return child.ownerWorkMetered();
+            }
+
+            @Override
+            public @Nullable RecipePureComputation computation() {
+                return child.computation();
+            }
+
+            @Override
+            public void retainPureFacts() {
+                child.retainPureFacts();
+            }
+
+            @Override
+            public RequirementTransaction acquire() {
+                var acquired = capture(child.acquire());
+                return stage == RecipeStage.END ? new EndTransaction(acquired, selection) : acquired;
+            }
+        };
+    }
+
+    /**
+     * Flat alternatives retain their original owner reserve/rollback/install boundary.
+     */
+    private static class FlatPreparation implements RequirementPreparation {
+        private final RecipeProcess process;
+        private final RequirementPath path;
+        private final SelectiveRequirement payload;
+        private final int index;
+        @Nullable
+        private final RequirementPreparation child;
+
+        private FlatPreparation(RecipeProcess process, RequirementPath path, SelectiveRequirement payload, int index) {
+            this.process = process;
+            this.path = path;
+            this.payload = payload;
+            this.index = index;
+            child = index == payload.candidates().size() ? null
+                : process.withPreparationContext(path, () -> payload.candidates().get(index).prepareBinding(process, RecipeStage.START));
+        }
+
+        @Override
+        public boolean ownerWorkMetered() {
+            return child != null && child.ownerWorkMetered();
+        }
+
+        @Override
+        public @Nullable RecipePureComputation computation() {
+            return child == null ? null : child.computation();
+        }
+
+        @Override
+        public void retainPureFacts() {
+            if (child != null) {
+                child.retainPureFacts();
+            }
+        }
+
+        @Override
+        public RequirementTransaction acquire() {
+            return process.withPreparationContext(path, () -> {
+                var state = SelectiveState.getOrCreate(process);
+                if (child == null) {
+                    return begin(process, state, path, -1, EMPTY, ObjectLists.emptyList());
+                }
+                return finishCandidate(child.acquire());
+            });
+        }
+
+        private RequirementTransaction finishCandidate(RequirementTransaction transaction) {
+            return process.withPreparationContext(path, () -> {
+                var continuation = transaction.continuation();
+                if (continuation != null && continuation.preparationPending()) {
+                    var binding = new RequirementPreparation() {
+                        @Override
+                        public boolean ownerWorkMetered() {
+                            return continuation.ownerWorkMetered();
+                        }
+
+                        @Override
+                        public @Nullable RecipePureComputation computation() {
+                            return continuation.computation();
+                        }
+
+                        @Override
+                        public void retainPureFacts() {
+                            continuation.retainPureFacts();
+                        }
+
+                        @Override
+                        public RequirementTransaction acquire() {
+                            return finishCandidate(Objects.requireNonNull(continuation.acquireNext(), "Prepared candidate must produce its actual result"));
+                        }
+                    };
+                    return new PreparedRequirement(binding) {
+                        @Override
+                        public void complete() {
+                            transaction.complete();
+                            super.complete();
+                        }
+
+                        @Override
+                        public void rollback() {
+                            transaction.rollback();
+                            super.rollback();
+                        }
+                    };
+                }
+                var state = SelectiveState.getOrCreate(process);
+                var candidate = capture(transaction);
+                if (candidate.result() != ProcessResult.SUCCESS) {
+                    ResourceTransactions.rollback(candidate.reservations(), candidate::rollback);
+                    return new PreparedRequirement(new FlatPreparation(process, path, payload, index + 1));
+                }
+                if (candidate.continuation() != null) {
+                    var failure = new IllegalStateException("Continued alternative must declare its acquisition shape");
+                    rollbackAfterFailure(candidate, candidate.reservations(), failure);
+                    throw failure;
+                }
+                return begin(process, state, path, index, candidate, payload.modifiers());
+            });
         }
     }
 

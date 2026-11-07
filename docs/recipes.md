@@ -2,7 +2,7 @@
 
 `MachineRecipe` 已恢复为按需求职责分组的公开定义。它保存 id、时长、配方组及 `RecipeRequirementType<?> → List<RecipeRequirement<?>>`，不再以固定输入、输出和 FE 字段限定配方。需求类型绑定自己的 `RecipeRequirementSystem<C>`；资源身份继续使用 AE2 的 AEKey/AEKeyType，不再建立 PMKey 的替代类型体系。
 
-本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT Version 2/取消回执已接入并完成此前验证；机器/世界生命周期、普通并发调度与控制器结构接线也已接入，自动扫描组件见本文。PN 权限、正式 planned 与游戏运行证据仍待后续完成。
+本模块是库，不注册正式机器或玩法配方。参数、内容和自定义需求由使用方提供。高级需求、严格进程 NBT、工作槽/整组恢复、基础 admission/首刻 preparation 和受限固定 TICK/END 预筛/资源索引已完成此前阶段验证，准确证据见[实施进度](implementation-status.md)。显式 CANCELLED、业务 FAILED 清理、宿主取消协调、内置效果所有权及进程 NBT Version 2/取消回执已接入并完成此前验证；机器/世界生命周期、普通并发调度与控制器结构接线也已接入，自动扫描组件见本文。PN 配方条件已接真实消费者，见[网络消费者](network-recipes.md)；正式 PLANNED_PARALLEL、独立宿主自动接线及游戏运行证据仍待后续完成。
 
 ## 公开注册与需求扩展
 
@@ -32,7 +32,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 单进程循环和 `tick(owner, body)` 共用 `beginTick/finish` 会话：仍只捕获一次回调列表，Pre/Normal 全部成功后才进入业务 body；这两阶段的异常立即终止，尚未进入 body 时不执行 Post。进入 body 后，无论阻塞、业务异常或某个 Post 异常，都会依次执行全部已捕获的 Post 清理。业务原异常保持主异常，清理异常附加为 suppressed；没有业务异常时暴露首个 Post 异常并附加其余错误。
 
-`MachineInstance.onSchedule()` 调用这一分派；`MachineSystem` 默认把阶段适配为 `MachineTickEvent.Pre/Normal/Post`，具体系统也可覆盖阶段方法。此入口已接入普通调度与控制器宿主，结构成型/退休门限统一限制配方扫描和工位处理；PN 权限、正式 planned 和游戏运行验证仍须继续迁移。
+`MachineInstance.onSchedule()` 调用这一分派；`MachineSystem` 默认把阶段适配为 `MachineTickEvent.Pre/Normal/Post`，具体系统也可覆盖阶段方法。此入口已接入普通调度与控制器宿主，结构成型/退休门限统一限制配方扫描和工位处理；正式 PLANNED_PARALLEL、独立宿主自动接线和游戏运行验证仍须继续迁移。
 
 ## 需求阶段契约与整阶段完成依赖
 
@@ -49,6 +49,16 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。同步路径仍整段持锁；真实阶段现可经TickSession/Stage交给跨lane ResourceBatch，获取顺序、延迟post及准确恢复见[阶段会话](recipe-tick-sessions.md)，真实协调及原来源 lanes 接线见[配方协调](planned-recipe-coordinator.md)。
 
 `RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回；该进程随后拒绝 tick，不重放已完成阶段。阶段 rollback 成功只证明本次补偿，不使发生异常的原进程恢复执行资格。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过此前工作槽阶段验证，基础多工位 admission 已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
+
+## 内置纯 prepare 与实际工作预算
+
+块一已在真实 CONCURRENT 网络配方与研究材料消费者使用 `RecipeRequirementSystem.prepare`、`RequirementPreparation` 和 `RecipePureComputation`。owner 绑定保留需求路径及当前有效 overlay，独立 kernel 经既有 `runPrepare` 只计算冻结数据；普通外部需求 callback 和其内部嵌套调用仍在 owner 同步执行。平铺 selector 保留原 reserve/rollback/modifier 时机，检查点真实子生命周期和 source 段仍按原顺序推进。
+
+`RecipeWorkBudget` 在实际工作处扣减并保留游标。资源 owner 增量捕获每个来源/数量/revision，复制、合并、缩放需求，选择、预检、预留及安装锁；FE 按来源访问计费，包括空或无效来源。内置 `SlottedResourceBuffer.beginQuantityCapture` 每次复制一条数量，revision 改变时丢弃部分捕获再续办，完成后交出独立不可变事实；`snapshotFor(key)` 避免每次预留复制整张数量表。概率、随机逐次抽样、动态完整匹配/规范编码/排序和缓存证明在纯 worker 中按实际条目或内部步骤计费。
+
+透明预算暂停仍属于同一获取段，保留真实预留和当前游标，不人工 stage/append/expose。最终预留前再次证明当前捕获版本；新来源事实不在原候选证明内时阻塞重试。普通网络及研究材料工作只在原 deadline、原 attempt 仍 current 时继续 work yield；取消退还全部准确持有预留，UNKNOWN 等待原来源/业务确认。旧 `Stage.acquire()` 后续子段保留同步模式，纯 prepare 入口后续子段保留纯计算模式。
+
+进程本地缓存只保存纯计算状态，精确需求内容及来源数量证明通过后才复用；当前 permit、lease、来源与预留不进入缓存，跨 tick 必须重捕获当前授权，终态清除且不写 NBT。外部 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，使用方需保持既有纯/稳定契约，预算不抢占其内部实现。正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算属于块二，见[执行边界](planned-execution.md)。
 
 ## 已接入的固定需求和来源组件
 
@@ -95,7 +105,7 @@ BinomialSampler 保留 PM 的 gameplay 近似策略：概率大于 0.5 先用对
 
 RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最多 pickCount 个候选条目，非正权重忽略；不同条目即使具有同一 AEKey 也可同时选中，再合并数量。新 WeightedSampling 用 `nextLong(totalWeight)` 整数抽签，替代 PM 的 `nextDouble() * totalWeight` 转 long，避免大权重总和的浮点精度损失；保留权重效果，但同 seed 的逐次结果不要求与旧算法相同。输出容量按实际确定的 AEKey 和数量预留，固定保守检查也合并这些真实随机输出，不使用旧 largest-count 候选假设。
 
-若 pickCount 覆盖所有有效候选，所有条目必选，直接聚合并按执行次数批量缩放；其余池保留 PM 的逐执行循环、独立随机盐和无放回抽样效果。非平凡池在大执行次数下仍有逐次工作成本，未来 planned preparation 必须分配工作预算，不能把当前同步实现宣称为已有预算调度。voidExcessOutputs 对实际选中输出继续生效，阻塞重试重算相同确定选择；不另建一套资源身份。
+若 pickCount 覆盖所有有效候选，所有条目必选，直接聚合并按执行次数批量缩放；其余池保留 PM 的逐执行循环、独立随机盐和无放回抽样效果。块一纯 prepare 路径已对抽样及聚合的真实内部工作分配预算，暂停保留原确定游标；同步入口继续同步执行。voidExcessOutputs 对实际选中输出继续生效，阻塞重试保持相同确定选择；不另建一套资源身份。
 
 `RecipeRequirements.CHECKPOINT` 绑定 `CheckpointRequirement(time, childRequirement, scaleWithProcess)`。time=0 在 START 执行子需求完整 START/TICK/END，覆盖零时长配方；子 TICK 使用零宽的冻结 Tick 范围，不推进外层时钟。其他检查点在外层 TICK 的 scaled 进度或 unscaled 成功刻数跨过阈值时执行子生命周期。
 
@@ -105,7 +115,7 @@ RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最�
 
 `FuzzyInputGroup` 保存有序 AEKey 候选和每执行数量，按声明顺序选首个足量 key；空候选组明确不可满足。`DynamicInputGroup` 保存 AEKey pattern、公开 NamedResourceMatcher、数量、可选 displayedCandidates、maxCandidates 和可选稳定全序比较器。ResourceMatcher 是真实可扩展的纯 predicate；NamedResourceMatcher 将稳定 ID 直接绑定到不可变匹配实现，不通过可随时替换的全局注册表查运行中进程。displayedCandidates 仅供展示，不过滤实际来源。
 
-动态候选来自有效输入仓室快照中非零可用的 key，先按真实 context 去重并汇合。每个不同 key 都参与匹配，全扫描匹配结果后按 typeId、resourceId、完整 key NBT 的规范字节排序，再截取 maxCandidates；compound 字段名排序、list 保留顺序，叶子值用公开完整二进制编码，不以 hash、对象身份或可能省略内容的 NBT toString 排序。不同 key 序列化身份相同时拒绝，扩展类型可提供纯、稳定且区分所有不相等 key 的比较器。maxCandidates 只限制返回数量，不能作为总扫描/排序/NBT 内存预算；真实 planned 集成仍需另行分配工作预算。
+动态候选来自有效输入仓室快照中非零可用的 key，先按真实 context 去重并汇合。每个不同 key 都参与匹配，全扫描匹配结果后按 typeId、resourceId、完整 key NBT 的规范字节排序；compound 字段名排序、list 保留顺序，叶子完整编码，long array 经最小只读 Mixin 访问，不以 hash、对象身份或可能省略内容的 NBT toString 排序。块一 worker 保留全部已排序匹配，owner 先过滤当前非零可用项，再截取 maxCandidates 并判断数量；匹配、规范编码和排序内部工作均可按预算暂停。不同 key 序列化身份相同时拒绝，扩展类型可提供纯、稳定且区分所有不相等 key 的比较器。maxCandidates 只限制候选数量，不是总扫描/排序/NBT 内存预算；扫描消费者自己的完整预算仍属块二。
 
 内置 EXACT 用 AEKey.equals，ITEM_ONLY 保留 PM 的同 item + metadata、忽略 NBT。不能用 AEItemKey.dropSecondary 替代 ITEM_ONLY：该方法重新构造默认 ItemStack，也丢弃 metadata。自定义 matcher 和排序器须在配方/进程生命周期与未来恢复中保持行为稳定。
 
@@ -131,6 +141,8 @@ END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全�
 | `ENERGY_RATES` / `EnergyRequirementPatch` | inputsPerTick、outputsPerTick、voidExcessOutputs | null 继承，0 明确关闭该刻速率，负数拒绝；START input 和 END output 保留。Boolean false 是有效覆盖值。 |
 
 `RecipeOverlays` 是进程组件，按完整 RequirementPath 定位 canonical requirement，再按写入者自有的非空白 String layerId 保存层。层按首次插入顺序应用；同层替换保持原顺序，删除后重新插入视为新层。put/remove/rollback 在写时从 canonical payload 按剩余层重算 effective view，全部成功才发布新层与新 view；读取和执行热路径不重复运行 applier。撤销只恢复自己那一层的前次内容或移除自己新增的层，不用整 payload 快照覆盖其他写入者。
+
+内置 `ResourceRequirement.canonicalStacks` 验证并冻结一次 IO；私有规范化列表只包装自身独占副本。`ResourceRequirementPatch` 复用已冻结的变更列表及未变 IO/group 列表，单独修改 voidExcess 不复制全部条目。纯事实缓存的 owner 匹配只比较标量和列表尺寸；四组 IO、模糊/动态候选及随机池的精确内容证明在纯 worker 按条目计费，共享不可变列表身份可直接复用。同尺寸 IO 变化不能复用旧数量结果，原 overlay 写入/局部撤销顺序保持不变。
 
 `RecipeRequirement.definition()` 保留 canonical 不可变定义，`withPayload()` 产生保留身份的不可变 effective view。外部系统 callback 可用收到的有效 view 写同一 target，无需另持原定义；嵌套 target 要传完整路径。仅复制相同 type/ID 另建的 counterfeit 定义仍被拒绝，不能混用同一路径的不同 canonical 定义。每次 acquire 先进入原路径再解析一次，已获取事务的 payload 参数冻结；后续成功写入只影响之后的获取。选择器和检查点的嵌套子需求同样通过该入口。RecipeOverlays 在每层 apply 后，将系统 children() 返回的直接子需求与原 canonical payload 比较，要求数量及同序 child.definition() 对象身份不变；重建同 ID child 或重排 selector 分支都会在发布前拒绝。保留 canonical definition 身份的 effective child view 允许使用。此检查只覆盖直接 children，不递归证明任意外部 payload 内部变化或副作用；本阶段新增校验已通过本阶段构建与 MCP 检查。
 
@@ -302,9 +314,9 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 加权输出保留每个输出循环按权重无放回选取多个候选；`ignore_output_full` 保留部分产出并丢弃余量的效果。容量预留须覆盖实际确定的 key 和数量，不能只检查数量最大的候选而宣称覆盖所有随机结果。
 - 选择性包装器保留按顺序选择首个 START 成功的子需求、全程沿用选择、无可用候选时本次进程禁用但不阻塞，以及外部 modifier 施加进程属性效果。阻塞重试不能遗漏候选输入，也不能提前删除仍应生效的 modifier。
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
-- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。planned 迁移还需要这些定义、调参和状态的明确投影及工作预算契约；PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表高级效果已支持 planned。
+- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。块一真实消费者已使用这些定义和状态的纯事实及内部预算游标；正式模式、独立宿主和扫描消费者仍须块二接线。PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表任意高级外部效果已支持 planned。
 
-显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。真实世界结构宿主与普通调度已接，下一步继续 PN 权限与正式 planned。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
+显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。真实世界结构宿主、普通调度和 PN 配方权限已接，块二继续正式 PLANNED_PARALLEL、独立宿主自动接线与扫描预算。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
 
 ## 验证与未完成部分
 
@@ -314,4 +326,4 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 
 属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。此前工作槽宿主、单 driver 与整组 NBT 恢复通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。此前基础扫描、首刻局部 preparation、START 探测与 resolved-base/NBT Version 2 已通过扫描阶段构建与 MCP 检查；此前扫描阶段 230 项测试通过，178 文件零诊断，报告 `build/reports/idea/recipe-scanning-final.json`。当前固定预筛/资源索引扩展已通过此前固定预筛/索引阶段构建与 MCP 检查；此前固定预筛/索引阶段 240 项测试及 182 文件 MCP 零诊断证据见 `build/reports/idea/fixed-io-index-final.json`。当前显式取消、失败所有权清理及进程 NBT Version 2/回执已通过本阶段构建与 MCP 检查；本阶段 260 项测试通过，188 文件 MCP 零诊断，报告 `build/reports/idea/process-abort-final.json`；不替代游戏或真实调度集成验证。
 
-机器宿主生命周期已接入扫描/工位/保存：普通卸载保留、恢复等待新 load 及结构、失效暂停、破坏取消；普通并发/亲和性调度、控制器 NBT 与结构宿主、显式自动扫描均已接，准确阶段证据见[实施进度](implementation-status.md)。尚未完成：真实 TileEntity/World 交互验证、RESCAN 执行策略、PN 权限与运行补偿、正式 planned 预留补偿与内部工作预算、完整投影/预览/复杂渲染和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或 planned 完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。
+机器宿主生命周期已接入扫描/工位/保存：普通卸载保留、恢复等待新 load 及结构、失效暂停、破坏取消；普通并发/亲和性调度、控制器 NBT 与结构宿主、显式自动扫描均已接，准确阶段证据见[实施进度](implementation-status.md)。块一 pure prepare、内置实际预算和真实网络/研究材料运行补偿已完成，证据见[实施进度](implementation-status.md)。尚未完成：真实 TileEntity/World 交互验证、RESCAN 执行策略、块二正式 PLANNED_PARALLEL/独立宿主自动接线/扫描预算、完整投影/预览/复杂渲染和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或 planned 完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。

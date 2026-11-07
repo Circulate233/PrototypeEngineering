@@ -129,7 +129,11 @@ final class NetworkRecipeExecution implements PlannedExecution {
             try { current.advance(cleanupDeadline); }
             catch (RuntimeException | Error failure) { record(failure); }
             if (current.finished()) { break; }
-            if (!current.hasActiveSources()) { return false; }
+            if (!current.hasActiveSources()) {
+                if (current.workYielded() && forwardAllowed()) {
+                    continue;
+                }
+                return false; }
             current.awaitExit();
         }
         if (current.failure() != null) {

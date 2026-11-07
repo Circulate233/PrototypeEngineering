@@ -21,6 +21,8 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.Iterator;
 
 /** Stable dynamic alternatives from all available source keys, without storage or world access. */
 public final class DynamicInputCandidates {
@@ -82,6 +84,186 @@ public final class DynamicInputCandidates {
             result.add(matches.get(index));
         }
         return ObjectLists.unmodifiable(result);
+    }
+
+    /**
+     * Full matching, canonical encoding and stable ordering retain private cursors across slices.
+     */
+    public static class Cursor {
+        private final Iterator<AEKey> available;
+        private final DynamicInputGroup group;
+        private final boolean retainAll;
+        private final ObjectOpenHashSet<AEKey> seen = new ObjectOpenHashSet<>();
+        private final ObjectArrayList<StableKey> matches = new ObjectArrayList<>();
+        private final ObjectArrayList<AEKey> result = new ObjectArrayList<>();
+        @Nullable
+        private AEKey encodingKey;
+        @Nullable
+        private CanonicalKeyEncoding encoding;
+        @Nullable
+        private PureMergeSort<StableKey> sorted;
+        @Nullable
+        private PureMergeSort.Comparison comparison;
+        private int checked = 1;
+        private boolean complete;
+
+        Cursor(Collection<AEKey> independentKeys, DynamicInputGroup group, boolean retainAll) {
+            this.retainAll = retainAll;
+            available = Objects.requireNonNull(independentKeys).iterator();
+            this.group = Objects.requireNonNull(group);
+        }
+
+        public boolean advance(RecipeWorkBudget budget) {
+            if (complete) {
+                return true;
+            }
+            while (sorted == null && (encodingKey != null || available.hasNext())) {
+                if (encodingKey == null) {
+                    if (!budget.take()) {
+                        return false;
+                    }
+                    var key = Objects.requireNonNull(available.next());
+                    if (!seen.add(key) || !group.matcher().matches(key, group.pattern())) {
+                        continue;
+                    }
+                    encodingKey = key;
+                    if (group.candidateOrder() == null) {
+                        encoding = new CanonicalKeyEncoding(key.toTag());
+                    }
+                }
+                if (encoding != null && !encoding.advance(budget)) {
+                    return false;
+                }
+                var key = Objects.requireNonNull(encodingKey);
+                var resourceId = key.getId();
+                if (!budget.take()) {
+                    return false;
+                }
+                matches.add(new StableKey(key, key.getType().getId().toString(),
+                    resourceId == null ? null : resourceId.toString(), encoding == null ? new byte[0] : encoding.result()));
+                encoding = null;
+                encodingKey = null;
+            }
+            if (sorted == null) {
+                sorted = new PureMergeSort<>(matches, this::compareKeys);
+            }
+            if (!sorted.advance(budget)) {
+                return false;
+            }
+            var ordered = sorted.result();
+            while (checked < ordered.size()) {
+                if (comparison == null) {
+                    comparison = compareKeys(ordered.get(checked - 1), ordered.get(checked));
+                }
+                if (!comparison.advance(budget)) {
+                    return false;
+                }
+                if (comparison.result() == 0) {
+                    throw new IllegalArgumentException("Stable order must distinguish unequal resource keys");
+                }
+                comparison = null;
+                checked++;
+            }
+            int limit = retainAll ? ordered.size() : Math.min(ordered.size(), group.maxCandidates());
+            while (result.size() < limit) {
+                if (!budget.take()) {
+                    return false;
+                }
+                result.add(ordered.get(result.size()).key());
+            }
+            complete = true;
+            return true;
+        }
+
+        private PureMergeSort.Comparison compareKeys(StableKey first, StableKey second) {
+            var order = group.candidateOrder();
+            if (order == null) {
+                return new KeyComparison(first, second);
+            }
+            return new PureMergeSort.Comparison() {
+                private boolean complete;
+                private int result;
+
+                @Override
+                public boolean advance(RecipeWorkBudget budget) {
+                    if (!complete) {
+                        if (!budget.take()) {
+                            return false;
+                        }
+                        result = order.compare(first.key(), second.key());
+                        complete = true;
+                    }
+                    return true;
+                }
+
+                @Override
+                public int result() {
+                    return result;
+                }
+            };
+        }
+
+        public List<AEKey> result() {
+            if (!complete) {
+                throw new IllegalStateException("Dynamic candidate enumeration is incomplete");
+            }
+            return ObjectLists.unmodifiable(result);
+        }
+    }
+
+    private static class KeyComparison implements PureMergeSort.Comparison {
+        private final StableKey first;
+        private final StableKey second;
+        private PureMergeSort.StringComparison text;
+        private int phase;
+        private int cursor;
+        private int result;
+
+        private KeyComparison(StableKey first, StableKey second) {
+            this.first = first;
+            this.second = second;
+            text = new PureMergeSort.StringComparison(first.typeId(), second.typeId());
+        }
+
+        @Override
+        public boolean advance(RecipeWorkBudget budget) {
+            while (phase < 2) {
+                if (!text.advance(budget)) {
+                    return false;
+                }
+                result = text.result();
+                if (result != 0) {
+                    phase = 3;
+                    return true;
+                }
+                phase++;
+                if (phase == 1) {
+                    text = new PureMergeSort.StringComparison(first.resourceId(), second.resourceId());
+                }
+            }
+            if (phase == 3) {
+                return true;
+            }
+            while (cursor < first.tag().length && cursor < second.tag().length) {
+                if (!budget.take()) {
+                    return false;
+                }
+                result = Byte.toUnsignedInt(first.tag()[cursor]) - Byte.toUnsignedInt(second.tag()[cursor]);
+                cursor++;
+                if (result != 0) {
+                    phase = 3;
+                    return true;
+                }
+            }
+            result = first.tag().length - second.tag().length;
+            phase = 3;
+            return true;
+        }
+
+        @Override
+        public int result() {
+            return result;
+        }
     }
 
     private static ObjectArrayList<AEKey> matching(Collection<AEKey> availableKeys, DynamicInputGroup group) {

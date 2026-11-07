@@ -21,10 +21,10 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
                                   @Nullable RandomOutputPool randomOutputs, List<FuzzyInputGroup> fuzzyInputs,
                                   List<DynamicInputGroup> dynamicInputs) {
     public ResourceRequirement {
-        inputs = copy(inputs);
-        inputsPerTick = copy(inputsPerTick);
-        outputsPerTick = copy(outputsPerTick);
-        outputs = copy(outputs);
+        inputs = canonicalStacks(inputs);
+        inputsPerTick = canonicalStacks(inputsPerTick);
+        outputsPerTick = canonicalStacks(outputsPerTick);
+        outputs = canonicalStacks(outputs);
         Objects.requireNonNull(chance);
         fuzzyInputs = copyGroups(fuzzyInputs);
         dynamicInputs = copyGroups(dynamicInputs);
@@ -47,7 +47,13 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
         this(inputs, ObjectLists.emptyList(), ObjectLists.emptyList(), outputs, false);
     }
 
-    private static List<GenericStack> copy(List<GenericStack> stacks) {
+    /**
+     * Freezes and validates IO once; built-in overlays can reuse these privately owned lists.
+     */
+    public static List<GenericStack> canonicalStacks(List<GenericStack> stacks) {
+        if (stacks instanceof CanonicalList<?>) {
+            return stacks;
+        }
         var result = new ObjectArrayList<GenericStack>(stacks.size());
         for (var stack : stacks) {
             Objects.requireNonNull(stack);
@@ -57,12 +63,21 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
             }
             result.add(stack);
         }
-        return ObjectLists.unmodifiable(result);
+        return new CanonicalList<>(result);
     }
 
     private static <T> List<T> copyGroups(List<T> groups) {
+        if (groups instanceof CanonicalList<?>) {
+            return groups;
+        }
         var result = new ObjectArrayList<T>(groups.size());
         for (var group : groups) { result.add(Objects.requireNonNull(group)); }
-        return ObjectLists.unmodifiable(result);
+        return new CanonicalList<>(result);
+    }
+
+    private static final class CanonicalList<T> extends ObjectLists.UnmodifiableList<T> {
+        private CanonicalList(ObjectArrayList<T> owned) {
+            super(owned);
+        }
     }
 }

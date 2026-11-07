@@ -7,6 +7,8 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import com.circulation.prototype_eng.recipe.PreparedRequirement;
+import java.util.function.Supplier;
 
 /** Typed payload binding avoids the unchecked component/system cast in PM's stage executor. */
 public final class RecipeRequirement<C> {
@@ -60,10 +62,63 @@ public final class RecipeRequirement<C> {
         return process.acquireRequirement(this, () -> {
             var overlays = process.components().get(RecipeOverlays.TYPE);
             var effective = overlays == null ? this : overlays.resolve(this, process.requirementPath());
-            return switch (stage) {
+            if (process.usesPurePreparation()) {
+                var prepared = type.system().prepare(process, effective, stage);
+                if (prepared != null) {
+                    return new PreparedRequirement(prepared);
+                }
+            }
+            Supplier<RequirementTransaction> callback = () -> switch (stage) {
                 case START -> type.system().start(process, effective);
                 case TICK -> type.system().tick(process, effective);
                 case END -> type.system().end(process, effective);
+            };
+            return process.usesPurePreparation() ? new PreparedRequirement(() -> process.withSynchronousRequirements(callback)) : callback.get();
+        });
+    }
+
+    /**
+     * Captures one nested child's effective definition at its actual candidate arrival. The binding
+     * retains owner scope; its kernel alone may leave the owner. Opaque callbacks remain synchronous,
+     * including any nested child calls they perform. This method neither reserves nor acquires effects.
+     */
+    public RequirementPreparation prepareBinding(RecipeProcess process, RecipeStage stage) {
+        var path = path(process.requirementPath());
+        return process.withPreparationContext(path, () -> {
+            var overlays = process.components().get(RecipeOverlays.TYPE);
+            var effective = overlays == null ? this : overlays.resolve(this, path);
+            var prepared = type.system().prepare(process, effective, stage);
+            Supplier<RequirementTransaction> callback = () -> switch (stage) {
+                case START -> type.system().start(process, effective);
+                case TICK -> type.system().tick(process, effective);
+                case END -> type.system().end(process, effective);
+            };
+            return new RequirementPreparation() {
+                @Override
+                public boolean ownerWorkMetered() {
+                    return prepared != null && prepared.ownerWorkMetered();
+                }
+
+                @Override
+                public @Nullable RecipePureComputation computation() {
+                    return prepared == null ? null : prepared.computation();
+                }
+
+                @Override
+                public void retainPureFacts() {
+                    if (prepared != null) {
+                        process.withPreparationContext(path, () -> {
+                            prepared.retainPureFacts();
+                            return null;
+                        });
+                    }
+                }
+
+                @Override
+                public RequirementTransaction acquire() {
+                    return process.acquireRequirement(RecipeRequirement.this,
+                        () -> prepared == null ? process.withSynchronousRequirements(callback) : prepared.acquire());
+                }
             };
         });
     }

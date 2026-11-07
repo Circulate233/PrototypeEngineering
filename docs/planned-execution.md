@@ -1,6 +1,6 @@
 # Planned 执行屏障基础
 
-本阶段移植 PM 的 runner、取消注册和单调 deadline，为正式 planned coordinator 提供执行基础。TaskScheduler 的 PLANNED_PARALLEL 仍明确拒绝；尚未把它降级为普通 Runnable，也未声称两次 join、source 事务和真实配方已经全部接通。原行为及适配缺口见[迁移审计](planned-migration-audit.md)。
+PM 的 runner、取消注册和单调 deadline 已用于真实阶段协调器。块一已在服务器 CONCURRENT 网络配方和研究材料消费者接通纯 prepare、实际 owner 工作预算及原 source 结算屏障；TaskScheduler 的正式 PLANNED_PARALLEL 仍明确拒绝，独立宿主自动接线与扫描预算属于块二。原行为及适配缺口见[迁移审计](planned-migration-audit.md)。
 
 ## 取消与 deadline
 
@@ -30,4 +30,14 @@ executor 的提交拒绝变成对应 Failure，其他已接受动作仍收束到
 
 本工具仅管理执行机制，generic Job 不证明任意对象深度不可变。正式 coordinator 必须在 owner 冻结独立输入，prepare 只读冻结数据；source mutation 使用专门 reservation/resolve 协议。不能把含 World/TileEntity 的现有 callback 直接投进 prepare。
 
-后续按审计接 discover/snapshot/plan/reserve、prepare 屏障、owner decide、source resolve 屏障、有序 owner commit、全批 complete 和 pending compensation。跨lane的StorageFence/ResourceBatch已提供短物理锁、跨屏障独占、延迟complete和准确token恢复，见[资源批次](deferred-resource-batches.md)；业务query、真实RecipeProcess[阶段会话](recipe-tick-sessions.md)与[工位批次](work-slot-batches.md)已接；[真实阶段协调器](planned-recipe-coordinator.md)已可显式调用；服务器调度、独立纯prepare、预算消费与退休接线仍待完成。完整验证数量及 MCP 证据记在实施进度。
+真实消费者已复用 StorageFence/ResourceBatch 的跨屏障独占、延迟 complete 和准确 token 恢复，见[资源批次](deferred-resource-batches.md)、[阶段会话](recipe-tick-sessions.md)、[工位批次](work-slot-batches.md)及[真实阶段协调器](planned-recipe-coordinator.md)。块二继续处理正式模式、独立宿主和 discover/扫描内部预算；不将当前显式入口当作这些接线已完成。完整验证数量及 MCP 证据记在实施进度。
+
+## 块一纯 prepare 与工作预算
+
+`RecipeRequirementSystem.prepare` 返回 owner 绑定的 `RequirementPreparation`；只有其 `RecipePureComputation` 进入既有 `runPrepare`。内置资源 kernel 只持不可变需求、完成的数量捕获和纯数量/候选游标，不持机器、World、来源 context、permit、lease 或预留 token。有效 overlay 在需求实际到达时解析；普通外部 start/tick/end 回调仍在 owner 同步执行，其内部嵌套需求保留同步语义。
+
+`PlannedRecipeCoordinator` 在派发前保留准确 prepare Batch，等待动作实际退出后只接受原有序结果，accepted Success 才发布纯事实。进程缓存只保存纯计算状态，不能保存绑定或授权；重试/跨 tick 要重新捕获当前来源和工作许可，精确内容证明后才能复用纯事实，终态清除且不写入 NBT。取消或迟到结果不能修改已经接受的缓存进度，发布异常也不重放。
+
+`RecipeWorkBudget` 在内置循环实际访问处扣减：owner 捕获来源/数量/revision，合并当前余额，复制和缩放需求，选择、预检、真实资源/FE 预留及锁安装；worker 执行概率、随机逐次抽样、动态完整匹配/规范 NBT 编码/排序及缓存内容证明。小切片保持游标，透明暂停仍属于原获取段，不制造 stage/append/expose。首次 `Stage.acquire()` 的同步模式与 `acquirePreparedWithinBudget` 的纯 prepare 模式分别保留到其后续子段。
+
+网络 `NetworkRecipeExecution` 和研究 `ResearchStationWork.drive` 只在 `workYielded`、原 deadline 未过期且原 attempt 仍 current 时继续。工作暂停不续期、不重充数值额度、不换授权；UNKNOWN 来源/业务结果继续等待确认。外部 `ResourceStorage` 默认 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，预算不能强行中断其内部实现；外部来源可用 `beginQuantityCapture` 提供增量捕获。

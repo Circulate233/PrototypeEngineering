@@ -2,8 +2,6 @@ package com.circulation.prototype_eng.api.recipe.overlay;
 
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -41,15 +39,6 @@ public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
         if (stacks == null) {
             return null;
         }
-        var copy = new ObjectArrayList<GenericStack>(stacks.size());
-        for (var stack : stacks) {
-            Objects.requireNonNull(stack, "stack");
-            Objects.requireNonNull(stack.what(), "resource key");
-            if (stack.amount() <= 0) {
-                throw new IllegalArgumentException("Resource overlay quantities must be positive");
+        return ResourceRequirement.canonicalStacks(stacks);
             }
-            copy.add(stack);
-        }
-        return ObjectLists.unmodifiable(copy);
-    }
 }

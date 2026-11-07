@@ -15,7 +15,8 @@
     "TileEntityHopperMixin",
     "ArmorPropertiesMixin",
     "ItemStackMixin",
-    "EnchantmentThornsMixin"
+    "EnchantmentThornsMixin",
+    "NBTTagLongArrayMixin"
   ],
   "injectors": {
     "defaultRequire": 1

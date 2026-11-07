@@ -6,6 +6,7 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import java.util.List;
 import java.util.Objects;
 import java.util.random.RandomGenerator;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /** Weighted draws without replacement of candidate entries, preserving PM's random-output semantics. */
 public final class WeightedSampling {
@@ -53,5 +54,88 @@ public final class WeightedSampling {
             total -= candidate.weight();
         }
         return results;
+    }
+
+    /**
+     * Retains the exact lottery position and RNG across bounded slices, without pool shifts.
+     */
+    public static class Cursor<T> {
+        private final RandomGenerator random;
+        private final List<Weighted<T>> candidates;
+        private final int count;
+        private final ObjectArrayList<Weighted<T>> pool = new ObjectArrayList<>();
+        private final ObjectArrayList<T> results = new ObjectArrayList<>();
+        private int captured;
+        private int draw;
+        private int selected;
+        private long total;
+        private long ticket;
+        private boolean drawing;
+        private boolean complete;
+
+        public Cursor(RandomGenerator random, List<Weighted<T>> candidates, int count) {
+            this.random = Objects.requireNonNull(random);
+            this.candidates = Objects.requireNonNull(candidates);
+            this.count = Math.max(0, count);
+        }
+
+        public boolean advance(RecipeWorkBudget budget) {
+            if (complete) {
+                return true;
+            }
+            if (count == 0) {
+                complete = true;
+                return true;
+            }
+            while (captured < candidates.size()) {
+                if (!budget.take()) {
+                    return false;
+                }
+                var candidate = Objects.requireNonNull(candidates.get(captured++));
+                if (candidate.weight() > 0) {
+                    pool.add(candidate);
+                    total += candidate.weight();
+                }
+            }
+            int draws = Math.min(count, pool.size());
+            while (draw < draws) {
+                if (!drawing) {
+                    if (!budget.take()) {
+                        return false;
+                    }
+                    ticket = random.nextLong(total);
+                    selected = 0;
+                    drawing = true;
+                }
+                while (selected < pool.size()) {
+                    if (!budget.take()) {
+                        return false;
+                    }
+                    var candidate = pool.get(selected);
+                    if (candidate == null) {
+                        selected++;
+                    } else if (ticket >= candidate.weight()) {
+                        ticket -= candidate.weight();
+                        selected++;
+                    } else {
+                        results.add(candidate.value());
+                        pool.set(selected, null);
+                        total -= candidate.weight();
+                        draw++;
+                        drawing = false;
+                        break;
+                    }
+                }
+            }
+            complete = true;
+            return true;
+        }
+
+        public List<T> result() {
+            if (!complete) {
+                throw new IllegalStateException("Weighted draw is incomplete");
+            }
+            return ObjectLists.unmodifiable(results);
+        }
     }
 }

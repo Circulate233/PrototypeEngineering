@@ -20,7 +20,7 @@
 
 ## 唯一存档与提交顺序
 
-当前 Schema 4 的 `ResearchWorldSnapshot` 同时包含所有玩家/队伍、手动/站点会话、pending 下载及 terminal receipt，以及独立研究盘操作。`ResearchWorldNbt` 严格读写这一明确 schema，没有第二份下载或研究盘世界存档，也不回退旧 schema。以下普通转换的业务阶段保持原协议。
+当前 Schema 5 的 `ResearchWorldSnapshot` 同时包含所有玩家/队伍、手动/站点会话、pending 下载及 terminal receipt，以及独立研究盘操作。`ResearchWorldNbt` 严格读写这一明确 schema，没有第二份下载或研究盘世界存档，也不回退旧 schema。以下普通转换的业务阶段保持原协议。
 
 1. `PREPARED` 保存原 intent、成员/个人或直属来源 before/after、材料完整 native tag/ForgeCaps 与库存 before/after、输出模板和数量。按 researchId 预约，其他研究仍可推进。
 2. 保存 `materialArmed` 后才写玩家 PREPARED 凭据；消费前必须完整 before 相等，只扣准确槽一件。真实库存写入观察到完整 after 后，玩家 COMMITTED 凭据同步保存；World 再保存 `MATERIAL_COMMITTED`。
@@ -75,7 +75,7 @@ ItemStack encoded = ResearchDiskNbtCodec.writeCopy(new ItemStack(disk),
     new ResearchDiskData(ResearchRegistry.INSTANCE, tier, entries));
 ```
 
-已静态核对本机 Cleanroom/Forge 实际调用顺序：客户端 `RightClickBlock` 取消仍发送原生 packet；服务端 event cancel 直接返回，位于 `onItemUseFirst` 与 block activation 之前。独立只读审计闭环了 armed 缺失 receipt 禁止再次调用、block GUI 前导入、LOWEST 尊重已有取消/useItem DENY 三项，报告 `build/staging/research-disk-audit/report.md`。本阶段新增 35 项真实行为测试（World 23、数据库侧 12），共同完整 `gradlew.bat build --console=plain` 为 1214 tests / 156 suites，零失败/错误/跳过；29 Java IDEA MCP `errorsOnly:false` 零错误/警告/弱警告，无 timeout，构建前后 SHA 一致。证据 `build/staging/research-disk-workflow/full-build-final-result.json`、`full-build-final-test-results/`、`pre-build-java-sha256.json`、`post-build-java-sha256.json` 与 `build/reports/idea/research-disk-inspections-final.json`。当前 HEAD 的 main/dev/sources 三个 Jar 都有 Carrier/Interactions、无已移除内置盘类/模型/专有 item 文案残留，见 `jar-verification-final.json`。没有启动游戏或服务端，实机点击与平台生命周期未计为验收；本阶段待准确本地提交。
+已静态核对本机 Cleanroom/Forge 实际调用顺序：客户端 `RightClickBlock` 取消仍发送原生 packet；服务端 event cancel 直接返回，位于 `onItemUseFirst` 与 block activation 之前。独立只读审计闭环了 armed 缺失 receipt 禁止再次调用、block GUI 前导入、LOWEST 尊重已有取消/useItem DENY 三项，报告 `build/staging/research-disk-audit/report.md`。本阶段新增 35 项真实行为测试（World 23、数据库侧 12），共同完整 `gradlew.bat build --console=plain` 为 1214 tests / 156 suites，零失败/错误/跳过；29 Java IDEA MCP `errorsOnly:false` 零错误/警告/弱警告，无 timeout，构建前后 SHA 一致。证据 `build/staging/research-disk-workflow/full-build-final-result.json`、`full-build-final-test-results/`、`pre-build-java-sha256.json`、`post-build-java-sha256.json` 与 `build/reports/idea/research-disk-inspections-final.json`。当前 HEAD 的 main/dev/sources 三个 Jar 都有 Carrier/Interactions、无已移除内置盘类/模型/专有 item 文案残留，见 `jar-verification-final.json`。没有启动游戏或服务端，实机点击与平台生命周期未计为验收；本阶段已精确本地提交 `8da5da7`，未推送。
 
 ## 验证
 

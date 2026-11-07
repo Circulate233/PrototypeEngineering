@@ -88,6 +88,19 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.*;
+import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
+import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.testsupport.TestResources.Key;
+import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import java.util.Collections;
 
 class NetworkRecipeExecutionTest {
     private static final ResourceLocation SCANNING_ID = new RecipeScanningSystem(new ScanLimits(1, 1), _ -> true).id();
@@ -312,6 +325,32 @@ class NetworkRecipeExecutionTest {
 
     private enum Layout { ORDINARY, ALIAS, SECONDARY, FAIL_AFTER_DEFER }
 
+    private static class OverlapComputation implements RecipePureComputation {
+        private final CountDownLatch entered;
+        private final List<Thread> threads;
+        private boolean complete;
+
+        private OverlapComputation(CountDownLatch entered, List<Thread> threads) {
+            this.entered = entered;
+            this.threads = threads;
+        }
+
+        @Override
+        public boolean advance(RecipeWorkBudget budget) {
+            if (complete) {
+                return true;
+            }
+            if (!budget.take()) {
+                return false;
+            }
+            threads.add(Thread.currentThread());
+            entered.countDown();
+            await(entered);
+            complete = true;
+            return true;
+        }
+    }
+
     private static final class Fixture implements AutoCloseable {
         private final Thread owner = Thread.currentThread();
         private final Object world = new Object();
@@ -331,23 +370,60 @@ class NetworkRecipeExecutionTest {
         private final MachineInstance computer;
         private long tick;
         private boolean tickOpen;
+        private final AtomicBoolean tickGate;
         private boolean tickExecuted;
         private int position;
         private Runnable onRefresh = () -> { };
 
+        private final CountDownLatch pureEntered = new CountDownLatch(2);
+        private final List<Thread> pureThreads = Collections.synchronizedList(new ObjectArrayList<>());
+
         private Fixture(long threads, long compute, int duration) {
+            this(threads, compute, duration, false);
+                            }
+
+        private Fixture(long threads, long compute, int duration, boolean pure) {
+            this(threads, compute, duration, pure, UnaryOperator.identity());
+        }
+
+        private Fixture(long threads, long compute, int duration, boolean pure, UnaryOperator<MachineRecipe> customize) {
+            this(threads, compute, duration, pure, customize, new AtomicBoolean(true));
+        }
+
+        private Fixture(long threads, long compute, int duration, boolean pure, UnaryOperator<MachineRecipe> customize, AtomicBoolean tickGate) {
+            this.tickGate = tickGate;
             var resources = new NetworkResourceRegistry();
             var research = new ResearchRegistry();
             resources.freeze();
             research.freeze(resources);
             network = new NetworkRuntime(identities, resources,
                 identity -> OwnerTeamResolution.resolved(identity, "team", OwnerTeamType.SERVER, ObjectSets.singleton(identity), Optional.empty()), this::requireOwner);
-            var factory = new NetworkRecipeExecutionFactory(this::candidates, this::refresh, () -> tick, () -> tickOpen);
+            var factory = new NetworkRecipeExecutionFactory(this::candidates, this::refresh, () -> tick, () -> tickOpen && tickGate.get());
             scheduler = new TaskScheduler(owner, 2, 2, factory, Duration.ofSeconds(5));
             role = MachineNetworkDevice.component(id("role"), ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 1,
                     Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var source = new RecipeRequirementSystem<String>() {
+                @Override
+                @SuppressWarnings("ReturnOfInnerClass") // Exercises a captured owner binding.
+                public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<String> requirement, RecipeStage stage) {
+                    if (!pure || stage != RecipeStage.START || process.probing()) {
+                        return null;
+                    }
+                    var computation = new OverlapComputation(pureEntered, pureThreads);
+                    return new RequirementPreparation() {
+                        @Override
+                        public RecipePureComputation computation() {
+                            return computation;
+                        }
+
+                        @Override
+                        public RequirementTransaction acquire() {
+                            return start(process, requirement);
+                        }
+                    };
+                }
+
                 @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                     requireOwner();
                     var worker = Objects.requireNonNull(workers.get(process.owner()));
@@ -369,7 +445,7 @@ class NetworkRecipeExecutionTest {
                 }
             };
             var requirement = new RecipeRequirementType<>(id("source"), source).requirement(id("source"), "energy");
-            recipe = new MachineRecipe(id("recipe"), duration, List.of(requirement));
+            recipe = customize.apply(new MachineRecipe(id("recipe"), duration, List.of(requirement)));
             catalog = new RecipeCatalog(List.of(new RecipePool(id("pool"), "network_execution_test.pool", List.of(recipe))));
             var extensions = new NetworkRecipeExtensions();
             extensions.publish(catalog, research, resources);
@@ -507,6 +583,7 @@ class NetworkRecipeExecutionTest {
             if (tickExecuted) { network.endTick(); network.beginTick(++tick); }
             tickExecuted = true;
             tickOpen = true;
+            tickGate.set(true);
             try { scheduler.tick(this::refresh); }
             finally { tickOpen = false; }
         }
@@ -585,4 +662,133 @@ class NetworkRecipeExecutionTest {
 
     private static MachineType.Builder type(String name) { return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure")); }
     private static ResourceLocation id(String name) { return new ResourceLocation("network_execution_test", name); }
+
+    @Test
+    void realConcurrentControllersOverlapPurePreparationAndKeepOriginalOwnerAndSourceCallbacks() {
+        try (var fixture = new Fixture(2, 20, 1, true)) {
+            var first = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            var second = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            var one = fixture.process(first, first.slots, 1);
+            var two = fixture.process(second, second.slots, 1);
+            fixture.tick();
+            assertEquals(0, fixture.pureEntered.getCount(), "Both independent kernels must enter before either continues");
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, one.state().lifecycle());
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, two.state().lifecycle());
+            assertEquals(90, first.energy.savedEnergy());
+            assertEquals(90, second.energy.savedEnergy());
+            assertEquals(1, first.processPost.get());
+            assertEquals(1, second.processPost.get());
+            assertNotSame(fixture.owner, fixture.pureThreads.getFirst());
+            assertNotSame(fixture.pureThreads.getFirst(), fixture.pureThreads.getLast());
+            assertEquals(List.of("pre", "before", "after", "post"), first.events);
+            assertEquals(List.of("pre", "before", "after", "post"), second.events);
+        }
+    }
+
+    @Test
+    void realControllerContinuesMoreThanOneBudgetOfEmptyRootsInsideTheOriginalDeadline() {
+        try (var fixture = new Fixture(1, 1000, 0, false, original -> {
+            var roots = new ObjectArrayList<>(original.orderedRequirements());
+            for (int index = 0; index < 16_500; index++) {
+                roots.add(RecipeRequirements.RESOURCES.requirement(id("empty_" + index), new ResourceRequirement(List.of(), List.of())));
+            }
+            return new MachineRecipe(original.id(), original.durationTicks(), roots);
+        })) {
+            var worker = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            var process = fixture.process(worker, worker.slots, 1);
+            fixture.tick();
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+            assertEquals(90, worker.energy.savedEnergy());
+            assertEquals(1, worker.processPre.get());
+            assertEquals(1, worker.processPost.get());
+            assertEquals(1, worker.sourceApplies.get());
+        }
+    }
+
+    @Test
+    void realConcurrentControllerResumesOnlyPureFactsAcrossNewAuthorizedTicksAndRejectsChangedQuantities() {
+        var type = new KeyType("cross_tick_random");
+        var keys = new ObjectArrayList<Key>();
+        var pool = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>();
+        for (int index = 0; index < 1000; index++) {
+            var key = new Key(type, "key_" + index);
+            keys.add(key);
+            pool.add(new WeightedSampling.Weighted<>(new GenericStack(key, 1), index + 1));
+        }
+        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1000, Map.of(type, 10_000L), () -> {
+        });
+        var firstSlice = new AtomicBoolean(true);
+        var tickGate = new AtomicBoolean(true);
+        var builtin = RecipeRequirements.RESOURCES.system();
+        var controlled = new RecipeRequirementType<>(id("controlled_random"), new RecipeRequirementSystem<ResourceRequirement>() {
+            @Override
+            @SuppressWarnings("ReturnOfInnerClass")
+            // Deliberately revoke the first actual capture after one accepted pure slice.
+            public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement, RecipeStage stage) {
+                var binding = builtin.prepare(process, requirement, stage);
+                if (binding == null || !firstSlice.get()) {
+                    return binding;
+                }
+                var original = binding.computation();
+                RecipePureComputation computation = budget -> {
+                    boolean ready = Objects.requireNonNull(original).advance(budget);
+                    if (!ready && firstSlice.compareAndSet(true, false)) {
+                        tickGate.set(false);
+                    }
+                    return ready;
+                };
+                return new RequirementPreparation() {
+                    @Override
+                    public RecipePureComputation computation() {
+                        return computation;
+                    }
+
+                    @Override
+                    public RequirementTransaction acquire() {
+                        return binding.acquire();
+                    }
+
+                    @Override
+                    public void retainPureFacts() {
+                        binding.retainPureFacts();
+                    }
+                };
+            }
+        });
+        var random = controlled.requirement(id("random"), new ResourceRequirement(
+            List.of(), List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS, new RandomOutputPool(pool, 3)));
+        try (var fixture = new Fixture(1, 1000, 0, false, original -> {
+            var requirements = new ObjectArrayList<>(original.orderedRequirements());
+            requirements.add(random);
+            return new MachineRecipe(original.id(), original.durationTicks(), requirements);
+        }, tickGate)) {
+            var worker = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            Objects.requireNonNull(worker.machine.lifecycle()).form(new MachineHatches(List.of(output), List.of(worker.energy), List.of()));
+            var process = fixture.process(worker, worker.slots, 128);
+            fixture.tick();
+            assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
+            assertEquals(90, worker.energy.savedEnergy(), "The confirmed START must not run again after END pure work yields");
+            for (var key : keys) {
+                assertEquals(0, Objects.requireNonNull(output.output()).amount(key));
+            }
+            // The next capture must discard the old 128-execution cursor instead of continuing its RNG.
+            process.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 64);
+            int ticks = 1;
+            while (process.state().lifecycle() != RecipeProcess.Lifecycle.COMPLETED) {
+                assertTrue(++ticks < 100, "Real scheduler capture must accumulate pure slices across ticks");
+                fixture.tick();
+            }
+            assertEquals(2, ticks);
+            long produced = 0;
+            for (var key : keys) {
+                produced += Objects.requireNonNull(output.output()).amount(key);
+            }
+            assertEquals(64 * 3, produced);
+            assertEquals(90, worker.energy.savedEnergy());
+            assertEquals(1, worker.sourceApplies.get());
+            assertEquals(0, process.state().successfulTicks());
+            assertEquals(ticks, worker.processPre.get());
+            assertEquals(ticks, worker.processPost.get());
+        }
+    }
 }

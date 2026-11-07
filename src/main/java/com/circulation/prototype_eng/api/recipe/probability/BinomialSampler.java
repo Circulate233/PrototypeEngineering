@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.recipe.probability;
 import java.util.Objects;
 import java.util.Random;
 import java.util.random.RandomGenerator;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /**
  * PM's gameplay sampler: optional exact Bernoulli trials for small n, Poisson approximation below
@@ -64,6 +65,93 @@ public final class BinomialSampler {
         double gaussian = GAUSSIAN_TABLE[random.nextInt() & GAUSSIAN_TABLE_MASK];
         int sampled = (int) Math.floor(mean + deviation * gaussian + 0.5);
         return Math.clamp(sampled, 0, n);
+    }
+
+    /**
+     * The same branch and RNG calls as sample(), retaining trial/Poisson state across slices.
+     */
+    public static class Cursor {
+        private final RandomGenerator random;
+        private final int n;
+        private final double probability;
+        private final ProbabilityTuning tuning;
+        private final boolean complement;
+        private int trials;
+        private int successes;
+        private double product = 1;
+        private boolean complete;
+        private int result;
+
+        public Cursor(RandomGenerator random, int n, double probability, ProbabilityTuning tuning) {
+            this.random = Objects.requireNonNull(random);
+            this.n = n;
+            if (!Double.isFinite(probability)) {
+                throw new IllegalArgumentException("Probability must be finite");
+            }
+            complement = probability > 0.5 && probability < 1;
+            this.probability = complement ? 1 - probability : probability;
+            this.tuning = Objects.requireNonNull(tuning);
+        }
+
+        public boolean advance(RecipeWorkBudget budget) {
+            if (complete) {
+                return true;
+            }
+            if (n <= 0 || probability <= 0) {
+                finish(0);
+                return true;
+            }
+            if (probability >= 1) {
+                finish(n);
+                return true;
+            }
+            if (tuning.exactSmallBinomial() && n <= tuning.exactSmallBinomialThreshold()) {
+                while (trials < n) {
+                    if (!budget.take()) {
+                        return false;
+                    }
+                    if (random.nextDouble() < probability) {
+                        successes++;
+                    }
+                    trials++;
+                }
+                finish(successes);
+                return true;
+            }
+            double mean = n * probability;
+            if (mean < 16) {
+                double limit = Math.exp(-mean);
+                while (true) {
+                    if (!budget.take()) {
+                        return false;
+                    }
+                    product *= random.nextDouble();
+                    if (product <= limit || successes == n) {
+                        finish(successes);
+                        return true;
+                    }
+                    successes++;
+                }
+            }
+            if (!budget.take()) {
+                return false;
+            }
+            double gaussian = GAUSSIAN_TABLE[random.nextInt() & GAUSSIAN_TABLE_MASK];
+            finish(Math.clamp((int) Math.floor(mean + Math.sqrt(mean * (1 - probability)) * gaussian + 0.5), 0, n));
+            return true;
+        }
+
+        private void finish(int sampled) {
+            result = complement ? n - sampled : sampled;
+            complete = true;
+        }
+
+        public int result() {
+            if (!complete) {
+                throw new IllegalStateException("Binomial draw is incomplete");
+            }
+            return result;
+        }
     }
 
     /** Stop once the clamped result is known, preventing counter overflow even with extreme draws. */

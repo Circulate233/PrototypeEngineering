@@ -20,6 +20,9 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import java.util.Iterator;
 
 /** Independent multi-type slots. Every view and reservation shares one balance and lock. */
 public final class SlottedResourceBuffer implements SlottedResourceStorage {
@@ -84,6 +87,93 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             return new StorageSnapshot(context, context.revision(), available);
         } finally {
             context.unlock();
+        }
+    }
+
+    @Override
+    public StorageSnapshot snapshotFor(AEKey key) {
+        context.lock();
+        try {
+            var available = new AEKey2LongMap.LinkdOpenHashMap();
+            long amount = context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
+            if (amount < 0) {
+                throw new IllegalStateException("Extraction holds exceed stored resources");
+            }
+            if (amount > 0) {
+                available.addTo(key, amount);
+            }
+            return new StorageSnapshot(context, context.revision(), available);
+        } finally {
+            context.unlock();
+        }
+    }
+
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // The owner capture must retain this source's lock and revision.
+    public QuantityCapture beginQuantityCapture() {
+        return new AvailableCapture();
+    }
+
+    /**
+     * Copies each entry once; revision changes discard partial work before the live iterator resumes.
+     */
+    private final class AvailableCapture implements QuantityCapture {
+        private long revision = -1;
+        private AEKey2LongMap quantities = new AEKey2LongMap.LinkdOpenHashMap();
+        private Iterator<Object2LongMap.Entry<AEKey>> entries;
+        private boolean complete;
+
+        @Override
+        public boolean advance(RecipeWorkBudget budget) {
+            context.lock();
+            try {
+                if (complete) {
+                    return true;
+                }
+                if (revision != context.revision()) {
+                    revision = context.revision();
+                    quantities = new AEKey2LongMap.LinkdOpenHashMap();
+                    entries = totals.object2LongEntrySet().iterator();
+                }
+                if (context.isValid()) {
+                    while (entries.hasNext()) {
+                        if (!budget.take()) {
+                            return false;
+                        }
+                        var entry = entries.next();
+                        long amount = entry.getLongValue() - extractHolds.getLong(entry.getKey());
+                        if (amount < 0) {
+                            throw new IllegalStateException("Extraction holds exceed stored resources");
+                        }
+                        if (amount > 0) {
+                            quantities.addTo(entry.getKey(), amount);
+                        }
+                    }
+                }
+                quantities = new AEKey2LongMap.UnmodifiableMap(quantities);
+                complete = true;
+                return true;
+            } finally {
+                context.unlock();
+            }
+        }
+
+        @Override
+        public AEKey2LongMap available() {
+            if (!complete) {
+                throw new IllegalStateException("Quantity capture is incomplete");
+            }
+            return quantities;
+        }
+
+        @Override
+        public boolean current() {
+            context.lock();
+            try {
+                return complete && context.isValid() && revision == context.revision();
+            } finally {
+                context.unlock();
+            }
         }
     }
 

@@ -12,4 +12,29 @@ import org.jetbrains.annotations.Nullable;
 @FunctionalInterface
 public interface RequirementContinuation {
     @Nullable RequirementTransaction acquireNext();
+
+    /**
+     * Framework transparent acquisition pause; this does not stage physical or business effects.
+     */
+    default boolean preparationPending() {
+        return false;
+    }
+
+    /**
+     * True only when the owner callback charges every internal step to the scoped budget.
+     */
+    default boolean ownerWorkMetered() {
+        return false;
+    }
+
+    /** Owner-only transfer after the corresponding worker's physical exit. */
+    default void retainPureFacts() {
+    }
+
+    /**
+     * The already captured pure computation at this exact continuation boundary, if any.
+     */
+    default @Nullable RecipePureComputation computation() {
+        return null;
+    }
 }

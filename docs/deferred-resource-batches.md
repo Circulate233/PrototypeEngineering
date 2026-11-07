@@ -1,6 +1,6 @@
 # 跨 source lane 的资源批次结算
 
-这是 planned 的存储结算基础，已接入真实 RecipeProcess、网络预算消费与服务器 CONCURRENT owner 协调；TaskScheduler 的完整 PLANNED_PARALLEL/pure prepare 仍待接入。它复用现有 ResourceReservation 和资源/FE 缓存；没有新建固定输入输出配方系统。原实现与缺口见 [planned 迁移审计](planned-migration-audit.md)。
+这是 planned 的存储结算基础，已接入真实 RecipeProcess、网络预算消费与服务器 CONCURRENT owner 协调；块一的纯 prepare 和内置实际工作预算已接入网络/研究材料消费者，正式 PLANNED_PARALLEL 与独立宿主接线仍属于块二。它复用现有 ResourceReservation 和资源/FE 缓存；没有新建固定输入输出配方系统。原实现与缺口见 [planned 迁移审计](planned-migration-audit.md)。
 
 ## 独占与物理锁
 
@@ -18,6 +18,8 @@ ResourceBatch.tryAcquire 冻结准确 tokens 与按 context 分组的 Sources；
 
 每个 source 在独占 scope 内先检查本组全部 canApply，再依顺序 apply。一个 source 部分应用后抛错时，所有原 token 都保留，不能只补偿已返回成功的 token。异步 rollback 决策立即阻止尚未进入的 apply；已进入动作继续被计数，owner 的业务 rollback 必须等待它们真正退出。
 
+`Source.applyWithinBudget` 分别按 token 检查与实际 apply 计费并保留游标；返回 true 也可能只是普通预算暂停，只有 APPLIED 状态证明全部 token 效果已完成，动作退出仍须由原 Batch join 证明。无参 `apply()` 保留同步调用与方法引用兼容性。owner 的透明获取暂停只登记准确新增 token，取消时收回本次及此前暂停持有的预留，不人工 expose 段内产物；检查点真正续段仍沿原 stage/append/source 顺序执行。
+
 owner commit 只接受全部 source 已应用并退出的批次。进入全部域 scope 后，先检查域有效性与授权，再执行业务 commit，然后再次检查；拒绝或 commit 抛错决定 rollback。全部成功后先记录不可逆 COMPLETE 决策，再调用业务 complete。此后无论业务或 source complete 抛错，都不能转成 rollback。
 
 rollback 先在 owner scope 撤销业务，再将准确 source tokens 沿原 lane 逆序回滚；complete 则沿原 lane 正序完成。每个 token 的成功终态单独记录，不因另一 token 出错而重放。finish 只有在业务、全部 token 与实际 source 动作都已确认终态时才释放 fence。非法持锁/嵌套 scope 的调用在修改状态前拒绝，不会把未执行的清理误标为永久 pending。
@@ -28,11 +30,11 @@ ResourceReservation.resolution 是可选的准确恢复证明；默认 UNKNOWN�
 
 业务现可传入逐个ReversibleTransaction，RequirementTransaction直接扩展该职责。resolveBusiness查询每个失败项，准确REVERSIBLE才重试，准确终态只确认；原三个Runnable重载仍默认UNKNOWN。ScopedRequirement已经保留原路径/冻结Tick并在准确终态后关闭，检查点/选择器亦按子事务与自身动作确认，详见[事务恢复](transaction-recovery.md)。
 
-失效当前沿普通 context.lock：其他线程等待 fence，owner 必须在本批 scope 内执行 invalidate；失效不释放准确 token，rollback 仍可退款。正式退休/卸载接线需要将取消决策、实际退出、scope 内失效与最终清理按顺序连接，不能在 owner scope 外直接调用并等待自身。
+失效当前沿普通 context.lock：其他线程等待 fence，owner 必须在本批 scope 内执行 invalidate；失效不释放准确 token，rollback 仍可退款。真实 CONCURRENT 网络/研究消费者的退休、卸载和取消沿原执行持有准确退出及清理；独立宿主接线仍须按取消决策、实际退出、scope 内失效与最终清理连接，不能在 owner scope 外直接调用并等待自身。
 
 原revision耗尽问题已修复：context为token的apply/终态和独立invalidate预留额度，普通mutation不侵占；pending rollback归还未用apply额度。内置资源/FE均使用该协议，扩展需遵守新的额度契约，详见[事务恢复](transaction-recovery.md)。
 
-后续实际配方按当前阶段组成 round batch，每 process 每轮至多一个阶段；整批 complete 后再获取同 tick 后继 START/TICK/END，保留 selection、modifier、overlay、概率和检查点依赖。组件 pre/tick/post 没有 undo 契约，需要一次性 tick session 保留回调义务；不能把任意回调声称为整批可逆。阶段 lease/version、工位批次驱动、owner/team/epoch/WorkPermit 与预算许可仍须一起接线。
+实际配方按当前阶段组成 round batch，每 process 每轮至多一个阶段；整批 complete 后再获取同 tick 后继 START/TICK/END，保留 selection、modifier、overlay、概率和检查点依赖。组件 pre/tick/post 没有 undo 契约，需要一次性 tick session 保留回调义务；不能把任意回调声称为整批可逆。阶段 lease/version、工位批次驱动、owner/team/epoch/WorkPermit 与预算许可已在真实 CONCURRENT 网络/研究材料消费者共同接线；正式模式及独立宿主自动驱动仍属块二。
 
 ## 验证范围
 

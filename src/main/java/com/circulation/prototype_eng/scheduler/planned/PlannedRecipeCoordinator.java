@@ -18,6 +18,8 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /**
  * One captured multi-machine tick, driven through real recipe stages and original source lanes.
@@ -38,9 +40,18 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private final BooleanSupplier authorization;
     private final LongSupplier nanoTime;
     private final ObjectArrayList<Entry> round = new ObjectArrayList<>();
+    private long workPerAdvance = 16_384;
+    private RecipeWorkBudget work = new RecipeWorkBudget(0);
+    @Nullable
+    private PlannedTaskExecutor.Batch<Boolean> preparing;
+    private final ReferenceOpenHashSet<RecipePureComputation> preparedComputations = new ReferenceOpenHashSet<>();
+    private final ObjectArrayList<RecipeWorkBudget> prepareSlices = new ObjectArrayList<>();
+    private final ObjectArrayList<RecipeProcess.Stage> prepareOwners = new ObjectArrayList<>();
     private int acquisitionCursor;
+    private int preparationCursor;
     private boolean begun;
     private boolean executing;
+    private boolean workYielded;
     @Nullable private Reason stopReason;
     @Nullable private Throwable failure;
     @Nullable private Throwable unreported;
@@ -78,6 +89,17 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return new PlannedRecipeCoordinator(tasks, process, forwardDeadline, cancellation, authorization, participants);
     }
 
+    /**
+     * Cooperative internal work allowance; may be set only before the first owner advance.
+     */
+    public void workPerAdvance(long units) {
+        requireOwner();
+        if (begun || units < 1) {
+            throw new IllegalStateException("Recipe work allowance must be positive and set before execution");
+        }
+        workPerAdvance = units;
+    }
+
     private PlannedRecipeCoordinator(PlannedTaskExecutor tasks, RecipeProcess process,
             PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation, BooleanSupplier authorization,
             Function<RecipeProcess.Stage, List<? extends ReversibleTransaction>> participants) {
@@ -104,9 +126,18 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         requireOwner();
         Objects.requireNonNull(cleanupDeadline);
         if (finished()) { return true; }
+        if (preparing == null && (settlement == null || settlement.barrier == null)) {
+            work = new RecipeWorkBudget(workPerAdvance);
+        }
         executing = true;
+        workYielded = false;
         try {
             while (!finished()) {
+                if (preparing != null) {
+                    if (!finishPrepare()) {
+                        break;
+                    }
+                }
                 if (settlement != null) {
                     if (!settleActive(cleanupDeadline)) { break; }
                     continue;
@@ -136,18 +167,43 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     if (round.isEmpty()) { finishGroup(); break; }
                 }
                 if (acquisitionCursor < round.size()) {
+                    if (!takeOwnerWork()) {
+                        break;
+                    }
                     var entry = round.get(acquisitionCursor++);
                     entry.acquired = true;
-                    try { entry.stage.acquire(); }
+                    try { entry.stage.acquirePreparedWithinBudget(work); }
                     catch (RuntimeException | Error acquisitionFailure) { record(acquisitionFailure); continue; }
+                    continue;
+                }
+                if (preparationCursor < round.size()) {
+                    var entry = round.get(preparationCursor);
+                    if (entry.stage.preparationPending()) {
+                        var stages = new ObjectArrayList<RecipeProcess.Stage>();
+                        for (int index = preparationCursor; index < round.size(); index++) {
+                            stages.add(round.get(index).stage);
+                        }
+                        if (!prepareContinuations(stages) || !entry.stage.ownerWorkMetered() && !takeOwnerWork()) {
+                            break;
+                        }
+                        try {
+                            entry.stage.resumePreparedWithinBudget(work);
+                            if (work.remaining() == 0 && entry.stage.preparationPending()) {
+                                workYielded = true;
+                                break;
+                            }
+                        } catch (RuntimeException | Error acquisitionFailure) {
+                            record(acquisitionFailure);
+                        }
+                        continue;
+                    }
+                    preparationCursor++;
                     boolean accepted = entry.stage.result() == ProcessResult.SUCCESS;
                     if (accepted && participants != null) {
                         try { accepted = captureParticipants(entry); }
                         catch (RuntimeException | Error participantFailure) { record(participantFailure); continue; }
                     }
-                    if (!accepted) {
-                        // Release rejected holds before the next slot acquires, preserving PM ordering.
-                        if (!bind(List.of(entry), true)) { break; }
+                    if (!accepted && !bind(List.of(entry), true)) { break;
                     }
                     continue;
                 }
@@ -168,6 +224,22 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     @Override public boolean finished() { return group != null ? group.finished() : processFinished; }
+
+    private boolean takeOwnerWork() {
+        if (work.take()) {
+            return true;
+        }
+        workYielded = true;
+        return false;
+    }
+
+    /**
+     * Only ordinary bounded work may continue; UNKNOWN confirmation never enters this path.
+     */
+    public boolean workYielded() {
+        requireOwner();
+        return workYielded && stopReason == null && failure == null && !finished();
+    }
 
     private void beginProcesses() {
         if (group != null) { group.begin(); }
@@ -203,7 +275,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     /** Accepted source actions require physical exit before another owner settlement attempt. */
     public boolean hasActiveSources() {
         requireOwner();
-        return settlement != null && settlement.barrier != null;
+        return preparing != null || settlement != null && settlement.barrier != null;
     }
 
     @Override public void cancel(Reason reason) {
@@ -220,9 +292,16 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Override public void awaitExit() {
         requireOwner();
         var current = settlement;
-        if (current == null || current.barrier == null) { return; }
+        if (preparing == null && (current == null || current.barrier == null)) { return; }
         executing = true;
-        try { current.barrier.awaitQuiescence(); }
+        try {
+            if (preparing != null) {
+                preparing.awaitQuiescence();
+            }
+            if (current != null && current.barrier != null) {
+                current.barrier.awaitQuiescence();
+            }
+        }
         catch (RuntimeException | Error interruption) {
             stop(Reason.INTERRUPTED);
             record(interruption);
@@ -303,7 +382,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return entries;
     }
 
-    private void clearRound() { round.clear(); acquisitionCursor = 0; }
+    private void clearRound() { round.clear(); acquisitionCursor = 0;
+        preparationCursor = 0;
+        preparedComputations.clear();
+    }
 
     private boolean settleActive(PlannedDeadline cleanupDeadline) {
         var active = Objects.requireNonNull(settlement);
@@ -324,6 +406,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     if (!active.resolving) { stop(Reason.RESERVATION_CONFLICT); }
                 }
             }
+            for (var slice : active.slices) {
+                work.reclaim(slice);
+            }
+            active.slices.clear();
             active.barrier = null;
             if (active.resolving) {
                 if (active.rewinding != null && resources.decision() == ResourceBatch.Decision.OPEN) {
@@ -342,8 +428,38 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     return false;
                 }
             }
-            active.applied = successful;
-            if (!successful) { active.rollback = true; }
+            active.applied = successful && resources.sources().stream()
+                                                    .allMatch(source -> source.state() == ResourceBatch.SourceState.APPLIED);
+            if (!successful) { active.rollback = true;
+            }
+        }
+
+        if (resources.acquiringNext()) {
+            var stages = new ObjectArrayList<RecipeProcess.Stage>();
+            for (var entry : active.entries) {
+                stages.add(entry.stage);
+            }
+            if (active.rollback || !forwardAllowed()) {
+                if (!RecipeProcess.Stage.adoptNextBatch(stages, resources, true)) {
+                    return false;
+                }
+                active.rollback = true;
+            } else {
+                if (!prepareContinuations(stages) || stages.stream().anyMatch(stage -> !stage.ownerWorkMetered()) && !takeOwnerWork()) {
+                    return false;
+                }
+                try {
+                    active.rollback = !RecipeProcess.Stage.acquireNextBatchWithinBudget(stages, resources, work);
+                    if (work.remaining() == 0 && stages.stream().anyMatch(RecipeProcess.Stage::preparationPending)) {
+                        workYielded = true;
+                    }
+                } catch (RuntimeException | Error acquisitionFailure) {
+                    record(acquisitionFailure);
+                    active.rollback = true;
+                }
+                active.applied = false;
+                active.staged = false;
+                return true; }
         }
 
         if (resources.decision() == ResourceBatch.Decision.OPEN) {
@@ -354,6 +470,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             } else if (active.rewinding != null || active.entries.stream().anyMatch(entry -> entry.stage.hasRejectedAlternative())) {
                 return rewindAlternative(active, cleanupDeadline);
             } else if (!active.applied) {
+                if (work.remaining() == 0) {
+                    workYielded = true;
+                    return false;
+                }
                 dispatch(active, false, forwardDeadline);
                 return true;
             } else {
@@ -364,7 +484,14 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                             active.staged = true;
                             var stages = new ObjectArrayList<RecipeProcess.Stage>(active.entries.size());
                             for (var entry : active.entries) { stages.add(entry.stage); }
-                            active.rollback = !RecipeProcess.Stage.acquireNextBatch(stages, resources);
+                            if (!prepareContinuations(stages)) {
+                                return false;
+                            }
+                            if (!takeOwnerWork()) {
+                                return false;
+                            }
+                            active.rollback = !RecipeProcess.Stage.acquireNextBatchWithinBudget(stages, resources, work);
+                            preparedComputations.clear();
                             active.applied = false;
                             active.staged = false;
                             return true;
@@ -390,6 +517,92 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         if (!pendingSources) { return false; }
         dispatch(active, true, cleanupDeadline);
         return true;
+    }
+
+    private boolean prepareContinuations(List<RecipeProcess.Stage> stages) {
+        var computations = new ObjectArrayList<RecipePureComputation>();
+        for (var stage : stages) {
+            var computation = stage.computation();
+            if (computation != null && !preparedComputations.contains(computation)) {
+                computations.add(computation);
+                prepareOwners.add(stage);
+            }
+        }
+        if (computations.isEmpty()) {
+            return true;
+        }
+        if (work.remaining() < computations.size()) {
+            workYielded = true;
+            prepareOwners.clear();
+            return false;
+        }
+        long portion = work.remaining() / computations.size();
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(computations.size());
+        for (int index = 0; index < computations.size(); index++) {
+            var computation = computations.get(index);
+            prepareOwners.get(index).withdrawPreparedFacts(computation);
+            var slice = work.allocate(portion);
+            prepareSlices.add(slice);
+            jobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> computation.advance(slice)));
+        }
+        try {
+            tasks.runPrepare(jobs, forwardDeadline, batch -> preparing = batch);
+        } catch (RuntimeException | Error dispatchFailure) {
+            record(dispatchFailure);
+        }
+        return finishPrepare(computations);
+    }
+
+    private final ObjectArrayList<RecipePureComputation> prepareRound = new ObjectArrayList<>();
+
+    private boolean finishPrepare(List<RecipePureComputation> computations) {
+        prepareRound.clear();
+        prepareRound.addAll(computations);
+        return finishPrepare();
+    }
+
+    private boolean finishPrepare() {
+        var barrier = preparing;
+        if (barrier == null) {
+            return stopReason == null;
+        }
+        if (!barrier.quiescent()) {
+            return false;
+        }
+        boolean completed = true;
+        var results = barrier.results();
+        for (int index = 0; index < results.size(); index++) {
+            var result = results.get(index);
+            if (result instanceof PlannedTaskExecutor.Success<Boolean>(var ready)) {
+                try {
+                    prepareOwners.get(index).retainPreparedFacts(prepareRound.get(index));
+                } catch (RuntimeException | Error publicationFailure) {
+                    record(publicationFailure);
+                    completed = false;
+                }
+                completed &= ready;
+                if (ready) {
+                    preparedComputations.add(prepareRound.get(index));
+                }
+            } else if (result instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) {
+                record(cause);
+                completed = false;
+            } else if (result instanceof PlannedTaskExecutor.Stopped<Boolean> stopped) {
+                stop(stopped.reason());
+                completed = false;
+            }
+        }
+        for (var slice : prepareSlices) {
+            work.reclaim(slice);
+        }
+        prepareSlices.clear();
+        prepareOwners.clear();
+        preparing = null;
+        prepareRound.clear();
+        if (!completed && stopReason == null && failure == null) {
+            workYielded = true;
+        }
+        return completed || stopReason != null;
     }
 
     private boolean rewindAlternative(Settlement active, PlannedDeadline deadline) {
@@ -422,12 +635,17 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private void dispatch(Settlement active, boolean resolving, PlannedDeadline deadline) {
         active.resolving = resolving;
         var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>();
+        long portion = resolving ? Long.MAX_VALUE : Math.max(1, work.remaining() / Math.max(1, active.resources.sources().size()));
         for (var source : active.resources.sources()) {
             if (!resolving && source.state() != ResourceBatch.SourceState.RESERVED) { continue; }
             if (resolving && (source.state() == ResourceBatch.SourceState.COMPLETED
                 || source.state() == ResourceBatch.SourceState.ROLLED_BACK)) { continue; }
+            var slice = resolving ? null : work.allocate(portion);
+            if (slice != null) {
+                active.slices.add(slice);
+            }
             jobs.add(new PlannedTaskExecutor.SourceJob<>(source.affinity(), new PlannedTaskExecutor.Job<>(
-                resolving ? null : cancellation, resolving ? source::resolve : source::apply)));
+                resolving ? null : cancellation, resolving ? source::resolve : () -> source.applyWithinBudget(Objects.requireNonNull(slice)))));
         }
         // Mandatory cleanup still runs after owner interruption; restore the flag on return.
         boolean interrupted = resolving && Thread.interrupted();
@@ -509,6 +727,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private static final class Settlement {
         private final ResourceBatch resources;
         private final List<Entry> entries;
+        private final ObjectArrayList<RecipeWorkBudget> slices = new ObjectArrayList<>();
         @Nullable private PlannedTaskExecutor.Batch<Boolean> barrier;
         private boolean rollback;
         private boolean applied;

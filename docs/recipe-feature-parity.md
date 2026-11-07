@@ -10,6 +10,7 @@
 | PM 配方进程组件 Pre/Normal/Post | 扩展钩子已有真实派发 | 旧 `RecipeProcessSystem` 继承通用 ComponentSystem，由 `FactoryRecipeProcessorSystem` 对当前进程派发；内置进程 system 的回调为空。新 `RecipeProcess.beginTick` 和会话结束实际调用 `ComponentMap`；外部通过 `RecipeProcessFactory` 给进程安装自己的组件。不能将机器 tick 或空内置回调计成额外的配方预设效果。 |
 | PM 物品/流体需求阶段 | 已迁入 AEKey 通用资源实现 | `ResourceRequirementSystem.start/tick/end` 分别处理初始输入、每刻输入/输出及结束输出；概率、动态/模糊输入、随机输出和数量倍率有具体执行逻辑。 |
 | PM FE 需求阶段 | 已有独立实现 | `EnergyRequirementSystem.start/tick/end` 使用独立 FE 存储与预留，不造 FE 资源类型。 |
+| 真实配方消费者 pure prepare 与内部工作预算 | 块一已接 CONCURRENT 网络及研究材料消费者 | `RequirementPreparation` 分离 owner 绑定与纯 kernel，既有 runPrepare 保留准确 Batch 并等待实际退出；资源/FE owner 捕获、选择、预检和预留按真实访问计费，概率、随机、动态规范编码/排序和缓存证明在 worker 续办。原 deadline 内 work yield 不重充授权，跨 tick 只复用无授权纯事实；overlay 复用冻结列表，旧同步入口后续子段模式保持。外部 snapshot/matcher/comparator/opaque callback 为合作边界；正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算属于块二，见[执行边界](planned-execution.md)。 |
 | PM 属性效果与定时检查点 | 分段执行与候选局部回退已接 | `AttributeRequirementSystem` 在配置阶段安装/撤销属性；`CheckpointRequirementSystem` 跨过目标时间后执行子需求的 START/TICK/END，保留进度、嵌套状态与效果清理；子阶段现逐段获取/source apply/expose/可逆 stage，外层最后共同结算，START 修改器对后继获取可见；selector 的候选本身是 checkpoint 时，Blocked/Failure 已按原保存点局部回退并确认后改选，嵌套效果及其他工位前缀有集成验证，见[检查点审计](checkpoint-execution-audit.md)。 |
 | PM 选择成功后的配方回调 | Java 回调已接；CT 桥及速度便捷预设未接 | 旧 `SelectiveModifier.apply(ctx)` 在选中子需求 START 提交后调用，CT 提供自定义 lambda 与 `registerProcessSpeedMultiplier`。新 `SelectiveRequirementSystem` 在提交时实际调用 `SelectiveModifierDescriptor.modifier().apply(context)`，可用公开上下文添加属性或 overlay；结束/回滚清理所登记效果。 |
 | PM 动态输入匹配条件 | Java 条件及 EXACT/ITEM_ONLY 预设已接；CT 桥未接 | 旧 ItemRequirementSystem 调用注册的 matcher；新 `DynamicInputCandidates` 调用 `group.matcher().matches` 并由 ResourceInputResolver 锁定候选。这是匹配条件，不是配方完成事件。 |
@@ -29,7 +30,7 @@
 
 ## 后续工作顺序
 
-1. PN 普通配方研究/计算条件、研究界面/packet 与领取、普通数据库下载/自动同步和普通物品转换均已接通。接口式使用方盘和真实特殊磁盘导入共同事务已通过完整构建及全级检查；永久破坏材料会话已接真实生命周期、原 owner 取消、未装配 raw 终结和 cold 物理缺失恢复，当前世界格式 Schema 5。下一步在具体配方消费者完成 pure prepare、冻结输入/结果及内部工作预算；新接口继续放在真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
+1. PN 普通配方研究/计算条件、研究界面/packet 与领取、普通数据库下载/自动同步和普通物品转换均已接通。接口式使用方盘和真实特殊磁盘导入共同事务已通过完整构建及全级检查；永久破坏材料会话已接真实生命周期、原 owner 取消、未装配 raw 终结和 cold 物理缺失恢复，当前世界格式 Schema 5。块一真实网络/研究材料 pure prepare、冻结事实及内置实际预算已完成；下一步块二接正式模式、独立宿主和扫描内部预算。新接口继续放在真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
 2. 研究启动、队列/阶段推进、完成、奖励与下载事件逐项接到真实注册、运行和持久化入口。状态说明按“定义、执行、存档、外部扩展”分别给出，不以仅有模型或预算底座冒充完整功能。
-3. 在具体功能需要的地方使用已有事务和调度能力；服务器网络机器游标与来源 lanes 已接，纯 prepare、内部工作预算与其他 PN 消费者仍须完成，但不继续脱离功能主线反复细化底座。
+3. 在具体功能需要的地方使用已有事务和调度能力；服务器网络机器游标、来源 lanes 及本块实际 prepare/预算已接，其他 PN 消费者按具体调用链继续迁移，不将本块合作回调边界或显式入口当成完整自动接线。
 4. 继续已确认的结构投影/复杂渲染/每池默认与自定义 JEI 等功能，CraftTweaker 最后。保持纯库定位，不迁入旧开发示例的正式机器、配方或玩法数值。

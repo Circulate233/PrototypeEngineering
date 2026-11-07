@@ -371,7 +371,11 @@ public final class ResearchStationWork {
 
     private Result drive(PlannedDeadline deadline) {
         var attempt = Objects.requireNonNull(cycle);
-        try { Objects.requireNonNull(attempt.coordinator).advance(deadline); }
+        try {
+            var coordinator = Objects.requireNonNull(attempt.coordinator);
+            do {
+                coordinator.advance(deadline);
+            } while (coordinator.workYielded() && !deadline.expired(System.nanoTime()) && attempt.current()); }
         catch (RuntimeException | Error failure) {
             try { finish(attempt); }
             catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }

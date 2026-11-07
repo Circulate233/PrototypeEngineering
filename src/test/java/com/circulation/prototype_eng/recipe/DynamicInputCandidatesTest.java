@@ -26,6 +26,29 @@ import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import ae2.api.config.Actionable;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.recipe.requirement.NbtLongArrayAccess;
+import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
+import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import javax.annotation.Nonnull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DynamicInputCandidatesTest {
     private static final NamedResourceMatcher ALL = new NamedResourceMatcher(id("all"), (_, _) -> true);
@@ -115,6 +138,77 @@ class DynamicInputCandidatesTest {
         assertEquals(List.of(a), DynamicInputCandidates.enumerate(available, stable));
         var ambiguous = new DynamicInputGroup(ALL, a, 1, List.of(), 1, (_, _) -> 0);
         assertThrows(IllegalArgumentException.class, () -> DynamicInputCandidates.enumerate(available, ambiguous));
+    }
+
+    @Test
+    void realDynamicRecipeReadsEveryLongArrayElementAcrossPureSlicesBeforeChoosingTheCanonicalKey() {
+        var type = new TaggedKeyType("sliced_long_arrays");
+        long[] firstValues = new long[512];
+        long[] secondValues = new long[512];
+        firstValues[511] = 1;
+        secondValues[511] = 9;
+        var firstTag = new NBTTagCompound();
+        firstTag.setTag("data", new ReadableLongArray(firstValues));
+        var secondTag = new NBTTagCompound();
+        secondTag.setTag("data", new ReadableLongArray(secondValues));
+        var first = new TaggedKey(type, firstTag, "first");
+        var second = new TaggedKey(type, secondTag, "second");
+        var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Map.of(type, 10L), () -> {
+        });
+        var input = Objects.requireNonNull(warehouse.input());
+        input.insert(second, 1, Actionable.MODULATE);
+        input.insert(first, 1, Actionable.MODULATE);
+        var group = new DynamicInputGroup(ALL, first, 1, List.of(), 1);
+        assertEquals(List.of(first), DynamicInputCandidates.enumerate(List.of(second, first), group));
+        var requirement = RecipeRequirements.RESOURCES.requirement(id("long_array_material"), new ResourceRequirement(
+            List.of(), List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS, null, List.of(), List.of(group)));
+        var machine = new MachineInstance();
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(warehouse), List.of(), List.of()));
+        var slots = new MachineWorkSlots(machine, List.of());
+        var process = new RecipeProcess(machine, new MachineRecipe(id("long_array_recipe"), 0, List.of(requirement)), 13);
+        assertTrue(slots.start(process));
+        try (var workers = Executors.newFixedThreadPool(2); var lane = Executors.newSingleThreadExecutor()) {
+            var tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+            var deadline = PlannedDeadline.after(Duration.ofSeconds(10));
+            var coordinator = new PlannedRecipeCoordinator(tasks, List.of(slots), deadline, new PlannedCancellationToken(), () -> true);
+            coordinator.workPerAdvance(64);
+            assertFalse(coordinator.advance(PlannedDeadline.after(Duration.ofSeconds(10))));
+            int slices = 0;
+            while (!coordinator.advance(PlannedDeadline.after(Duration.ofSeconds(10)))) {
+                assertTrue(++slices < 10_000);
+            }
+            assertTrue(slices > 100, "Late long-array data must be read and compared under the original allowance");
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+            assertEquals(0, input.amount(first));
+            assertEquals(1, input.amount(second));
+        }
+    }
+
+    /**
+     * Supplies the same read-only view the production Mixin supplies, without starting FML.
+     */
+    private static class ReadableLongArray extends NBTTagLongArray implements NbtLongArrayAccess {
+        private final long[] values;
+
+        private ReadableLongArray(long[] values) {
+            super(values);
+            this.values = values;
+        }
+
+        @Override
+        public @Nonnull NBTTagLongArray copy() {
+            return new ReadableLongArray(values.clone());
+        }
+
+        @Override
+        public int prototype_eng$length() {
+            return values.length;
+        }
+
+        @Override
+        public long prototype_eng$value(int index) {
+            return values[index];
+        }
     }
 
     private static NBTTagCompound nested(int first, int second, boolean reversed) {
