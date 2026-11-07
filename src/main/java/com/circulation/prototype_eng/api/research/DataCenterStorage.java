@@ -22,16 +22,29 @@ public interface DataCenterStorage {
         return new Capture(snapshot, () -> current(snapshot));
     }
 
-    Result downloadResearch(ResourceLocation researchId, int requestedLevel, TeamResearchView cloud);
+    default Result downloadResearch(ResourceLocation researchId, int requestedLevel, TeamResearchView cloud) {
+        return downloadResearch(researchId, requestedLevel, cloud, () -> true);
+    }
+
+    /** Recheck the caller's read-only authority immediately before publishing physical changes. */
+    Result downloadResearch(ResourceLocation researchId, int requestedLevel, TeamResearchView cloud, BooleanSupplier current);
 
     /** Atomically validate all disk entries before publishing any of them. Item consumption belongs to its caller. */
-    Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud);
+    default Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud) {
+        return storeFromDisk(entries, cloud, () -> true);
+    }
+
+    Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current);
 
     /**
      * Upgrade only already stored multi-level research within the data-center tier. Never lower
      * levels or add missing ids; reject the whole update if an upgrade conflicts with cloud or stored research.
      */
-    Result synchronizeLoopingResearch(TeamResearchView cloud);
+    default Result synchronizeLoopingResearch(TeamResearchView cloud) {
+        return synchronizeLoopingResearch(cloud, () -> true);
+    }
+
+    Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current);
 
     record Capture(DataCenterResearchSnapshot snapshot, BooleanSupplier current) {
         public Capture { Objects.requireNonNull(snapshot); Objects.requireNonNull(current); }
@@ -39,7 +52,7 @@ public interface DataCenterStorage {
 
     enum Result {
         UPDATED, UNCHANGED, SPECIAL_ONLY_REJECTED, ITEM_ONLY_REJECTED, MISSING_CLOUD_RESEARCH_LEVEL,
-        DATA_CENTER_LEVEL_TOO_LOW, MUTEX_BLOCKED, CAPACITY_FULL;
+        DATA_CENTER_LEVEL_TOO_LOW, MUTEX_BLOCKED, CAPACITY_FULL, STALE_CONTEXT;
 
         public boolean accepted() { return this == UPDATED || this == UNCHANGED; }
     }

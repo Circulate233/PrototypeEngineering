@@ -23,6 +23,48 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResearchDataCenterTest {
+    @Test void losingAuthorityAtPublicationLeavesDownloadsDiskWritesAndSyncUnchanged() {
+        var registry = registry(ordinary("loop", 3, 1), ordinary("other", 1, 1));
+        var player = new PlayerResearchState(new UUID(0, 1));
+        player.completeAtLeast(id("loop"), 1);
+        player.completeAtLeast(id("other"), 1);
+        int[] dirty = {0};
+        var storage = new ResearchDataCenter(new UUID(0, 2), 1, 3, registry, () -> { }, () -> dirty[0]++);
+        storage.downloadResearch(id("loop"), 1, cloud(registry, player));
+        player.completeAtLeast(id("loop"), 3);
+        var view = cloud(registry, player);
+        var before = storage.capture();
+        int[] checks = {0};
+        assertEquals(DataCenterStorage.Result.STALE_CONTEXT, storage.downloadResearch(id("other"), 1, view, () -> ++checks[0] == 1));
+        checks[0] = 0;
+        assertEquals(DataCenterStorage.Result.STALE_CONTEXT, storage.storeFromDisk(levels("other"), view, () -> ++checks[0] == 1));
+        checks[0] = 0;
+        assertEquals(DataCenterStorage.Result.STALE_CONTEXT, storage.synchronizeLoopingResearch(view, () -> ++checks[0] == 1));
+        assertTrue(before.current().getAsBoolean());
+        assertEquals(1, storage.snapshot().storedResearch().getInt(id("loop")));
+        assertFalse(storage.snapshot().storedResearch().containsKey(id("other")));
+        assertEquals(1, dirty[0]);
+        var failure = new IllegalStateException("authority provider failed");
+        assertSame(failure, assertThrows(IllegalStateException.class,
+            () -> storage.downloadResearch(id("other"), 1, view, () -> { throw failure; })));
+        assertTrue(before.current().getAsBoolean());
+    }
+
+    @Test void consecutiveDownloadsNeedFreshContentProofAndPreserveEarlierCommits() {
+        var registry = registry(ordinary("first", 1, 1), ordinary("second", 1, 1));
+        var player = new PlayerResearchState(new UUID(0, 1));
+        player.completeAtLeast(id("first"), 1);
+        player.completeAtLeast(id("second"), 1);
+        var storage = new ResearchDataCenter(new UUID(0, 2), 1, 2, registry, () -> { }, () -> { });
+        var view = cloud(registry, player);
+        var original = storage.capture();
+        assertEquals(DataCenterStorage.Result.UPDATED, storage.downloadResearch(id("first"), 1, view, original.current()));
+        assertEquals(DataCenterStorage.Result.STALE_CONTEXT, storage.downloadResearch(id("second"), 1, view, original.current()));
+        var fresh = storage.capture();
+        assertEquals(DataCenterStorage.Result.UPDATED, storage.downloadResearch(id("second"), 1, view, fresh.current()));
+        assertEquals(levels("first", "second"), storage.snapshot().storedResearch());
+    }
+
     @Test void cloudCompletionRequiresAnExplicitDownloadAndOnlyExistingLoopingResearchSynchronizes() {
         var registry = registry(ordinary("loop", 3, 1), ordinary("other", 1, 1), ordinary("too_high", 1, 2));
         var player = new PlayerResearchState(new UUID(0, 1));
@@ -73,6 +115,23 @@ class ResearchDataCenterTest {
         assertEquals(DataCenterStorage.Result.CAPACITY_FULL, storage.storeFromDisk(levels("a"), cloud));
         assertTrue(saved.current().getAsBoolean());
         assertEquals(Set.of(special.id(), itemOnly.id()), storage.snapshot().storedResearch().keySet());
+    }
+
+    @Test void automaticSynchronizationNeverUpgradesSpecialOrItemOnlyResearchImportedFromDisk() {
+        var special = definition("special", 3).specialOnly().stage(stage(3, 1).build()).build();
+        var itemOnly = ResearchDefinition.builder(id("item_only")).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+            .stage(stage(3, 1).build()).build();
+        var registry = registry(special, itemOnly);
+        var player = new PlayerResearchState(new UUID(0, 1));
+        var cloud = new ResearchEligibility(registry).calculateStructural("team", List.of(player.playerUuid()),
+            Map.of(player.playerUuid(), player), Object2IntMaps.singleton(itemOnly.id(), 3), Set.of());
+        assertEquals(3, cloud.completedLevel(itemOnly.id()));
+        var storage = new ResearchDataCenter(new UUID(0, 2), 1, 2, registry, () -> { }, () -> { });
+        assertEquals(DataCenterStorage.Result.UPDATED, storage.storeFromDisk(levels("special", "item_only"), cloud));
+        var stored = storage.capture();
+        assertEquals(DataCenterStorage.Result.UNCHANGED, storage.synchronizeLoopingResearch(cloud));
+        assertTrue(stored.current().getAsBoolean());
+        assertEquals(levels("special", "item_only"), storage.snapshot().storedResearch());
     }
 
     @Test void savedContentsRestoreToAFreshProofAndNeitherFrozenEntriesNorBadPayloadsCanAlterTheLiveDatabase() {

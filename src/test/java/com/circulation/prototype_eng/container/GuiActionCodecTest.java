@@ -30,7 +30,7 @@ class GuiActionCodecTest {
     @Test void researchActionPreservesEnumStringsBooleanAndLongIdentity() {
         String inbound = """
             {"kind":"CLAIM","research":"test:research/path","level":4,
-             "entryId":9223372036854775806,"group":"test:choice/path","blacklisted":true}
+             "entryId":9223372036854775806,"group":"test:choice/path","blacklisted":true,"expectedTeam":"team_a"}
             """;
         var decoded = codec.fromJson(inbound, ResearchContainer.Action.class);
         assertEquals(ResearchContainer.Kind.CLAIM, decoded.kind);
@@ -39,14 +39,16 @@ class GuiActionCodecTest {
         assertEquals(Long.MAX_VALUE - 1, decoded.entryId);
         assertEquals("test:choice/path", decoded.group);
         assertTrue(decoded.blacklisted);
+        assertEquals("team_a", decoded.expectedTeam);
         String outbound = """
             {"kind":"BLACKLIST","research":"test:research/path","level":4,
-             "entryId":9223372036854775806,"group":"","blacklisted":false}
+             "entryId":9223372036854775806,"group":"","blacklisted":false,"expectedTeam":"team_b"}
             """;
         String encoded = codec.toJson(new ResearchContainer.Action(ResearchContainer.Kind.BLACKLIST,
-            "test:research/path", 4, Long.MAX_VALUE - 1, "", false));
+            "test:research/path", 4, Long.MAX_VALUE - 1, "", false, "team_b"));
         assertEquals(codec.fromJson(outbound, JsonObject.class), codec.fromJson(encoded, JsonObject.class));
         assertEquals(Long.MAX_VALUE - 1, codec.fromJson(encoded, ResearchContainer.Action.class).entryId);
+        assertEquals("team_b", codec.fromJson(encoded, ResearchContainer.Action.class).expectedTeam);
     }
 
     @Test void machineViewUsesTheExistingInboundAndOutboundShape() {

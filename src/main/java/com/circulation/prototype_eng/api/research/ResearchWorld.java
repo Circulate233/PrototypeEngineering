@@ -210,6 +210,97 @@ public final class ResearchWorld {
         } finally { executing = false; }
     }
 
+    /**
+     * Capture an operation's cloud authority independently of GUI view permissions. The caller's
+     * proof must retain the captured membership and permission through the eventual backend write.
+     */
+    @Nullable public CloudCapture captureCloud(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                               ResearchPermissionPolicy.Action action, BooleanSupplier current) {
+        requireOwner();
+        Objects.requireNonNull(membership);
+        Objects.requireNonNull(permission);
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(current);
+        if (!membership.accepted()) return null;
+        if (!membership.ownerId().equals(permission.actorId()) || !membership.teamId().equals(permission.actorTeamId())
+            || !membership.teamId().equals(permission.targetTeamId())) {
+            throw new IllegalArgumentException("Research cloud must target the actor's captured team");
+        }
+        return captureCloudCurrent(membership, permission, action, current);
+    }
+
+    /** System synchronization has no player requester and does not invoke a player permission policy. */
+    @Nullable public CloudCapture captureCloud(OwnerTeamResolution membership, BooleanSupplier current) {
+        requireOwner();
+        Objects.requireNonNull(membership);
+        Objects.requireNonNull(current);
+        return membership.accepted() ? captureCloudCurrent(membership, null, null, current) : null;
+    }
+
+    private @Nullable CloudCapture captureCloudCurrent(OwnerTeamResolution membership, @Nullable ResearchPermissionContext permission,
+                                                        @Nullable ResearchPermissionPolicy.Action action, BooleanSupplier current) {
+        if (!cloudAvailable()) return null;
+        executing = true;
+        try {
+            if (!current.getAsBoolean()) return null;
+            var sources = new ObjectArrayList<CloudSource>();
+            var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+            for (var member : membership.members()) {
+                var source = players.get(member);
+                if (source != null && source.busy()) return null;
+                sources.add(new CloudSource(member, source, source == null ? null : source.snapshot()));
+                members.put(member, source == null ? new PlayerResearchState(member) : source);
+            }
+            var team = teams.get(membership.teamId());
+            if (team != null && (team.queue.busy() || team.research.busy() || team.manual.checkpointPending())) return null;
+            var teamSnapshot = team == null ? null : team.research.snapshot();
+            var knownMembers = team == null ? ObjectSets.<UUID>emptySet() : team.knownMembers;
+            var blacklist = team == null ? ObjectSets.<ResourceLocation>emptySet() : new ObjectOpenHashSet<>(team.blacklist);
+            var decision = permission == null ? ResearchPermissionPolicy.Decision.ALLOWED
+                : Objects.requireNonNull(permissions.can(Objects.requireNonNull(action), permission));
+            var view = decision == ResearchPermissionPolicy.Decision.ALLOWED
+                ? eligibility.calculateStructural(membership.teamId(), membership.members(), members,
+                    teamSnapshot == null ? Object2IntMaps.emptyMap() : teamSnapshot.levels(), blacklist) : null;
+            BooleanSupplier sourceCurrent = () -> cloudSourcesCurrent(membership.teamId(), sources, team, teamSnapshot, knownMembers, blacklist);
+            if (!current.getAsBoolean() || !sourceCurrent.getAsBoolean()) return null;
+            if (decision != ResearchPermissionPolicy.Decision.ALLOWED) return new CloudCapture(decision, null, () -> false);
+            return new CloudCapture(decision, view, () -> {
+                requireOwner();
+                if (!cloudAvailable()) return false;
+                executing = true;
+                try { return current.getAsBoolean() && sourceCurrent.getAsBoolean(); }
+                finally { executing = false; }
+            });
+        } finally { executing = false; }
+    }
+
+    private boolean cloudAvailable() { return !executing && activeTick == null && !closing && !closed && fatalFailure == null; }
+
+    private boolean cloudSourcesCurrent(String teamId, ObjectList<CloudSource> sources, @Nullable TeamProgress team,
+                                         @Nullable TeamOwnedResearch.Snapshot teamSnapshot, ObjectSet<UUID> knownMembers,
+                                         ObjectSet<ResourceLocation> blacklist) {
+        if (activeTick != null || closing || closed || fatalFailure != null || teams.get(teamId) != team) return false;
+        for (var captured : sources) {
+            var source = players.get(captured.player());
+            if (source != captured.source() || source != null && (source.busy() || source.snapshot() != captured.snapshot())) return false;
+        }
+        return team == null || !team.queue.busy() && !team.research.busy() && !team.manual.checkpointPending()
+            && team.research.snapshot() == teamSnapshot && team.knownMembers.equals(knownMembers) && team.blacklist.equals(blacklist);
+    }
+
+    /** A detached cloud view and a revocable owner-side proof; denied operations expose no levels. */
+    public record CloudCapture(ResearchPermissionPolicy.Decision decision, @Nullable TeamResearchView view, BooleanSupplier current) {
+        public CloudCapture {
+            Objects.requireNonNull(decision);
+            Objects.requireNonNull(current);
+            if ((decision == ResearchPermissionPolicy.Decision.ALLOWED) == (view == null)) {
+                throw new IllegalArgumentException("Cloud view presence must match operation permission");
+            }
+        }
+    }
+
+    private record CloudSource(UUID player, @Nullable PlayerResearchState source, @Nullable PlayerResearchState.Snapshot snapshot) { }
+
     /** Exposes an existing source to an authoritative integration; never implicitly creates one. */
     public PlayerResearchState player(UUID id) {
         return operate(serverTime, false, () -> {

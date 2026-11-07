@@ -12,16 +12,16 @@
 - 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；Version 2 世界存档保存原站和完整材料，见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接：同一外层阶段逐段执行子 START/TICK/END；候选 Blocked/Failure 时，在原 fence 和 source lanes 撤销完整候选后缀，确认后尝试下一项，外层成功前缀保留。支持嵌套选择、产物链、满仓闭环与 modifier/overlay 顺序；普通 continuation 保留跨来源并行，见[检查点审计](checkpoint-execution-audit.md)。
 - 服务器奖励领取与原生交互保护已接：准确世界检查点、UUID.dat/单人 level.dat/Anvil 文件核验、明确零效果重试；Mixin 在原执行处覆盖副手/创造/使用、死亡重生、光标关闭/保存、装备损耗和漏斗。清标签前重写 pending，第三方直接改栈使用公开保护查询；效果前 PREPARED/ISSUING 凭据、加载时合并与准确未发出恢复已接，ISSUING 缺失仍未知，见[服务器奖励](research-rewards.md)。
-- 最近验证（2026-11-07）：研究视图与 GUI 阶段新增 40 项行为测试：只读投影的权限/成员/重入/保存边界、分页与实际进度/材料映射、完整奖励组浏览、严格 packet、文案文件/schema，以及实际 Gson 动作编解码。完整构建 1049 tests / 138 suites 全通过；20 个 src Java 加 Tags 共 21 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。证据 build/reports/idea/research-gui-final.json。没有启动游戏，原 23 份修改保留。
-- 物理数据中心的存储接口、机器组件、真实内容证明及 NBT 已有；普通下载、磁盘写入、循环研究升级的存储规则已迁入，自动云同步、下载授权/事件与物品消费恢复仍缺。正 tier 玩家 Java 入队已接；研究界面/packet 已接；永久破坏后的材料会话仍待接生命周期，见[研究功能](research-features.md)。
+- 最近验证（2026-11-07）：数据中心下载与自动同步阶段新增 44 项行为测试，覆盖云权限/成员与只读边界、真实外部存储授权、连续下载与同 tick 预算、普通升级过滤、dirty 异常保留已写内容、数据库分页/编解码和旧点击换队。完整构建 1093 tests / 143 suites 全通过；20 个 src Java 加 Tags 共 21 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。证据 build/reports/idea/datacenter-download-final.json。原 23 份修改保留，未启动游戏或服务端。
+- 数据中心普通下载与自动同步已接到当前队伍权限、真实物理存储和服务器独占边界；每 tick 在研究结算后同步一次，写后刷新不补预算。数据库 GUI 已接，动作绑定原队伍/数据库/研究；物品化下载事件和特殊磁盘消费恢复仍缺，见[数据中心](data-centers.md)。
 - 服务器手动研究已接通世界单一存档、FML 生命周期、FTB 成员核对、tick 边界和 Java 开始/接管；失效队列先结算回执再 prune，旧 pending 检查点先重试，关闭失败保留会话。见[服务器研究](server-research.md)。
 - 配方事件已有真实 Java 调用：需求 START/TICK/END、选择提交回调、检查点/属性效果、动态匹配条件、进程钩子及 PN 配方扩展。机器事件不计入；CT 最后，见[事件复审](pm-recipe-events-audit.md)。
 - 控制器、结构捕获/匹配、三方向十阶通用资源/独立 FE 仓、普通调度、扫描、默认/自定义 Java GUI 与方向工具已接入。GUI 直接 AEBaseGui，资源数量使用 AEKey2LongMap；实际边界按专题及实施进度核对。
 
 ## 下一步
 
-1. 奖励明确零效果重试、原生物品保护和效果前持久凭据已接；研究视图和领取 GUI 已接，保持未知结果不补发。下一步按[配方功能核对](recipe-feature-parity.md)继续下载事件与永久破坏后的材料会话。复用已有定义、资格、权限、队列、手动执行、完成与奖励，不把可调用步骤称为完整服务器链；Java 先完整，CT 最后。
-2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；数据中心自动云同步/下载操作必须带当前授权和真实物品事务。
+1. 奖励明确零效果重试、原生物品保护和效果前持久凭据已接；研究视图和领取 GUI 已接，保持未知结果不补发。下一步按[配方功能核对](recipe-feature-parity.md)继续物品化下载事件、特殊磁盘消费恢复与永久破坏后的材料会话。复用已有定义、资格、权限、队列、手动执行、完成与奖励，不把可调用步骤称为完整服务器链；Java 先完整，CT 最后。
+2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；普通数据库下载/自动同步已带当前授权；后续物品化下载和特殊磁盘必须接真实物品事务。
 3. 在具体消费者中完成纯 prepare、冻结输入/结果及内部工作预算；复用已接好的机器游标、生命周期与 source lanes，不脱离业务反复扩底座。整体重开发仍在进行。
 4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义 JEI 及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
@@ -43,6 +43,7 @@
 | 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
 | 检查点分段执行、嵌套选择与候选局部回退 | [checkpoint-execution-audit.md](checkpoint-execution-audit.md)，CheckpointRequirementSystem、ResourceBatch |
 | 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
+| 普通数据库下载/自动升级/真实物理授权/数据库 GUI | [data-centers.md](data-centers.md)，ResearchDataCenters、DataCenterResearchAccess |
 | 研究 GUI/分页同步/文案/开始接管黑名单与领取 | [research-gui.md](research-gui.md)，ResearchGuiAccess、ResearchContainer、ResearchGuiSnapshot |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md)，api/research、research |
 | 研究站显式消费者/真实来源/材料周期/END共同提交 | [research-stations.md](research-stations.md)，api/research/station、RecipeProcess.materialCycle |

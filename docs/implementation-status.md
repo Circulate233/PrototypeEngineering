@@ -6,11 +6,15 @@
 
 ## 当前状态
 
+- 数据中心下载与自动同步阶段新增 44 项行为测试，覆盖云权限/成员与只读边界、真实外部存储授权、连续下载与同 tick 预算、普通升级过滤、dirty 异常保留已写内容、数据库分页/编解码和旧点击换队。完整构建 1093 tests / 143 suites 全通过；20 个 src Java 加 Tags 共 21 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。证据 build/reports/idea/datacenter-download-final.json。原 23 份修改保留，未启动游戏或服务端。
+
+- 数据中心普通下载、自动同步与 GUI 已接：ResearchWorld 捕获当前云来源和动作权限，ResearchDataCenters 按外部存储接口核对准确物理实例；DataCenterResearchAccess 写后刷新且沿用原 tick 预算。自动同步在研究结算后的首个普通准备边界每 tick 一次，仅升级已存普通多等级研究。数据库页绑定最后绘制的队伍/数据库/条目；原研究页的开始/接管/黑名单也补齐原队伍端到端绑定，个人奖励仍独立于队伍。详见[数据中心](data-centers.md)。
+
 - 研究客户端已接入：ResearchWorld.project 按当前成员和权限产生只读视图，不创建来源/保存/执行开始条件；默认 ResearchGui 直接继承 AEBaseGui，ResearchContainer 复用 AE2 GuiSync/窗口动作，提供目录、队列、奖励、文案和图标，以及开始/接管/黑名单/领取。原队伍与准确 queue entry、窗口和玩家实例参与校验；本人历史奖励不依赖当前队伍。主列表/详情各 6 行分页，完整选择组可达。MC 同步先于输入的时序通过最后绘制身份与目标值绑定处理；旧 Gson 不支持 record 动作参数的问题已在研究与原机器分页 DTO 一并修正。详情见[研究界面](research-gui.md)。
 - 研究视图与 GUI 阶段新增 40 项行为测试：只读投影的权限/成员/重入/保存边界、分页与实际进度/材料映射、完整奖励组浏览、严格 packet、文案文件/schema，以及实际 Gson 动作编解码。完整构建 1049 tests / 138 suites 全通过；20 个 src Java 加 Tags 共 21 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。证据 build/reports/idea/research-gui-final.json。没有启动游戏，原 23 份修改保留。
 
 - PN 普通配方消费者已接通：NetworkRecipeExtensions 在真实注册事件中有序发布；NetworkRecipeWork 合并机器默认与逐配方研究/数值需求，真实 START/TICK/END 检查选中物理数据中心、按并行量占用 numeric，并按整机 UUID 共享一份 THREAD。扫描不占额度；授权失效与物料/FE/业务同阶段补偿，历史完成 tick 不重扣或退款。
-- 物理数据中心已有外部 DataCenterStorage 接口、MachineDataCenterStorage 组件及严格 NBT；保留下载/磁盘写入/循环升级规则，修复旧同步能产生互斥内容而无法恢复的问题。服务器下载授权、物品消费及自动云同步仍待接入，不能把存储 API 当完整下载链。
+- 物理数据中心已有外部 DataCenterStorage 接口、MachineDataCenterStorage 组件及严格 NBT；普通下载和自动云同步已接服务器，特殊/ITEM_ONLY 不自动升级，黑名单不删除已存内容。磁盘只有存储规则，真实消费与共同恢复、物品化下载事件/扣级/产物交付仍未完成。
 - 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
 - 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
@@ -21,7 +25,7 @@
 - 服务器奖励 Java 领取已接：ResearchWorld 持有准确 RewardSession，逐次完整世界检查点仅放行自己的玩家写入；旧 pending 先重写，组/片段不重放。ServerResearch.requestReward 走 MAIN 并重验实际玩家会话；确认落盘后清交付标签，登录及掉落后续加载补清已确认片段。平台文件证据与剩余恢复保护见[服务器奖励](research-rewards.md)。
 - 奖励明确未调用/零效果的尝试保存 RETRY_PLANNED，重试保持原计划。原生交互保护已接：必要 Mixin 在原 MAIN 方法阻止物品操作，保留死亡奖励并在 Clone 前移交，保护光标关闭/存档、装备损耗、掉落更新及漏斗提取；不取消玩家死亡。共享查询位于独立 API 包，第三方直接改栈仍须遵守该契约。确认清理先重写原 pending，不能根据只读内存快照提前清标签。
 - 奖励效果前持久凭据已接：prepare 保存玩家 PREPARED，世界保存 DELIVERING 后先持久 ISSUING 再操作物品；准确未发出恢复先保存 RETRY_PLANNED。玩家加载时合并 live/UUID.dat/单人 Data.Player，任一 ISSUING 或缺失源保留未知，防普通保存覆盖强证据；确认后仅删除准确自身凭据。
-- 仍待下载、个人遗忘/管理员操作、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
+- 仍待物品化下载、特殊磁盘消费恢复、个人遗忘/管理员操作、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 

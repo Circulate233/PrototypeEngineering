@@ -61,8 +61,9 @@ public final class ServerTaskSchedulers {
             network.beginTick(tick);
             current.currentTick = tick;
             current.tickOpen = true;
+            current.dataCentersSynced = false;
             try {
-                current.scheduler.tick(network::refresh);
+                current.scheduler.tick(current::prepareNetwork);
             }
             finally { current.tickOpen = false; network.endTick(); }
         }
@@ -75,6 +76,7 @@ public final class ServerTaskSchedulers {
         private long nextTick;
         private long currentTick;
         private boolean tickOpen;
+        private boolean dataCentersSynced;
 
         @SuppressWarnings("resource") // The FML network service owns this borrowed session runtime.
         private Session(MinecraftServer server, int workers, int lanes) {
@@ -86,5 +88,14 @@ public final class ServerTaskSchedulers {
         }
 
         private List<TaskScheduler.PlannedCandidate> candidates() { return scheduler.plannedCandidates(); }
+
+        @SuppressWarnings("resource") // Only the server lifecycle closes the borrowed network runtime.
+        private void prepareNetwork() {
+            if (dataCentersSynced) ServerNetworkRuntime.forServer(server).refresh();
+            else {
+                ServerResearch.refreshDataCenters(server);
+                dataCentersSynced = true;
+            }
+        }
     }
 }

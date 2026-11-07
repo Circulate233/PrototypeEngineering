@@ -4,6 +4,9 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
+import com.circulation.prototype_eng.api.research.ResearchDataCenters;
+import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
@@ -79,6 +82,94 @@ public final class ServerResearch {
         try { file.read().ifPresent(world::restore); }
         catch (IOException failure) { throw new UncheckedIOException(failure); }
         session = new Session(server, overworld, world);
+    }
+
+    /** Refresh at the scheduler's exclusive boundary, after research work and before ordinary work. */
+    @SuppressWarnings("resource")
+    public static void refreshDataCenters(MinecraftServer server) {
+        requireThread(server);
+        var network = ServerNetworkRuntime.forServer(server);
+        if (!network.refresh()) return;
+        var current = session;
+        if (current == null || current.closing) return;
+        if (current.server != server || current.overworld != server.getWorld(0)) {
+            throw new IllegalStateException("Database synchronization changed its server identity");
+        }
+        if (current.world.savePending()) return;
+        var teams = new ObjectArrayList<>(Objects.requireNonNull(network.plan()).teams().keySet());
+        for (var teamId : teams) {
+            var plan = network.plan();
+            if (plan == null) return;
+            var team = plan.teams().get(teamId);
+            if (team == null || team.dataCenterId() == null) continue;
+            var physical = current.dataCenters.capture(teamId, team.dataCenterId());
+            if (physical == null) continue;
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(physical.ownerId()));
+            if (unavailable(captures)) return;
+            var membership = Objects.requireNonNull(captures.get(physical.ownerId()));
+            if (!membership.accepted() || !teamId.equals(membership.teamId())) continue;
+            var authority = proof(current, captures, online);
+            var synchronizedResult = current.database.synchronize(membership, () -> authority.getAsBoolean() && physical.current());
+            if (synchronizedResult.status() == DataCenterResearchAccess.Status.SAVE_PENDING
+                || synchronizedResult.status() == DataCenterResearchAccess.Status.STALE_CONTEXT) return;
+        }
+    }
+
+    /** The request names the exact database shown by the server, never a replacement selected later. */
+    @SuppressWarnings("resource")
+    public static void requestDataCenterDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
+                                                 ResourceLocation id, int level, BooleanSupplier ownerCurrent,
+                                                 Consumer<DataCenterResearchAccess.Result> result) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(expectedTeam);
+        Objects.requireNonNull(expectedDataCenterId);
+        Objects.requireNonNull(ownerCurrent);
+        Objects.requireNonNull(result);
+        ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(level);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) { result.accept(staleDownload()); return; }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) { result.accept(staleDownload()); return; }
+            var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+            if (!membership.accepted() || !expectedTeam.equals(membership.teamId())) { result.accept(staleDownload()); return; }
+            var permission = permission(current, actor, membership);
+            if (permission == null) { result.accept(staleDownload()); return; }
+            var authority = proof(current, captures, online);
+            result.accept(current.database.download(membership, permission, expectedDataCenterId, id, level,
+                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership))));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    @SuppressWarnings("resource")
+    public static void requestDataCenterView(EntityPlayerMP actor, BooleanSupplier ownerCurrent, Consumer<DataCenterPlayerView> result) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(ownerCurrent);
+        Objects.requireNonNull(result);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) { result.accept(null); return; }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) { result.accept(null); return; }
+            var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+            if (!membership.accepted()) {
+                result.accept(new DataCenterPlayerView("", ResearchPermissionPolicy.Decision.MISSING_ACTOR_TEAM,
+                    ResearchPermissionPolicy.Decision.MISSING_ACTOR_TEAM, current.world.savePending(), null, null));
+                return;
+            }
+            var permission = permission(current, actor, membership);
+            if (permission == null) { result.accept(null); return; }
+            var authority = proof(current, captures, online);
+            result.accept(current.database.view(membership, permission,
+                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership))));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    private static DataCenterResearchAccess.Result staleDownload() {
+        return new DataCenterResearchAccess.Result(DataCenterResearchAccess.Status.STALE_CONTEXT, null);
     }
 
     /** Exact server identity rejects callbacks from an earlier integrated-server session. */
@@ -592,6 +683,8 @@ public final class ServerResearch {
         private final ResearchWorld world;
         private final FtbOwnerTeamResolver resolver;
         private final ResearchStations stations;
+        private final ResearchDataCenters dataCenters;
+        private final DataCenterResearchAccess database;
         private final ObjectOpenHashSet<UUID> rewardCleanup = new ObjectOpenHashSet<>();
         private boolean closing;
 
@@ -601,6 +694,8 @@ public final class ServerResearch {
             this.world = world;
             resolver = new FtbOwnerTeamResolver(server);
             stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server));
+            dataCenters = new ResearchDataCenters(ServerMachineIdentities.forServer(server), () -> requireThread(server));
+            database = new DataCenterResearchAccess(world, ServerNetworkRuntime.forServer(server), dataCenters);
         }
     }
 }

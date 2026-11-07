@@ -13,6 +13,7 @@ import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.content.ResearchContentLoadResult;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import com.circulation.prototype_eng.container.ResearchContainer;
+import com.circulation.prototype_eng.container.DataCenterGuiSnapshot;
 import com.circulation.prototype_eng.container.ResearchGuiSnapshot;
 import com.circulation.prototype_eng.container.ResearchGuiSnapshot.Entry;
 import com.circulation.prototype_eng.container.ResearchGuiSnapshot.Selection;
@@ -23,6 +24,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.io.IOException;
 import java.util.Objects;
+import java.util.List;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -38,12 +40,13 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     private final ResearchContentLoader contentLoader = new ResearchContentLoader(Loader.instance().getConfigDir().toPath());
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ResearchContentLoadResult> contents = new Object2ObjectLinkedOpenHashMap<>();
     private final Scrollbar descriptionScroll = new Scrollbar();
-    private final GuiButton[] tabs = new GuiButton[3];
+    private final GuiButton[] tabs = new GuiButton[4];
     private final GuiButton[] rows = new GuiButton[ResearchGuiSnapshot.MAX_ROWS];
     private final GuiButton[] choices = new GuiButton[ResearchGuiSnapshot.MAX_DETAILS];
     private final Selection[] rowSelections = new Selection[ResearchGuiSnapshot.MAX_ROWS];
     private final Selection[] choiceSelections = new Selection[ResearchGuiSnapshot.MAX_DETAILS];
     private final ResourceLocation[] choiceGroups = new ResourceLocation[ResearchGuiSnapshot.MAX_DETAILS];
+    private final DataCenterGuiSnapshot.Selection[] databaseSelections = new DataCenterGuiSnapshot.Selection[DataCenterGuiSnapshot.MAX_ROWS];
     private final ObjectArrayList<String> descriptionLines = new ObjectArrayList<>();
     private GuiButton previous;
     private GuiButton next;
@@ -56,7 +59,11 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     private String language = "";
     @Nullable private Selection displayed;
     @Nullable private Entry actionEntry;
+    @Nullable private DataCenterGuiSnapshot.Entry databaseActionEntry;
+    private DataCenterGuiSnapshot drawnDatabase = DataCenterGuiSnapshot.EMPTY;
+    private boolean drawnDatabaseMode;
     private Tab actionTab = Tab.RESEARCH;
+    private String actionTeam = "";
     @Nullable private ResourceLocation selectedGroup;
     @Nullable private ResourceLocation iconTexture;
     private ItemStack iconItem = ItemStack.EMPTY;
@@ -76,7 +83,8 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         super.initGui();
         columnWidth = (xSize - 24) / 2;
         right = columnWidth + 16;
-        for (int i = 0; i < tabs.length; i++) tabs[i] = button(i, 8 + i * (xSize - 16) / 3, 24, (xSize - 16) / 3, 18, tabText(Tab.values()[i]).getLocal());
+        for (int i = 0; i < tabs.length; i++) tabs[i] = button(i, 8 + i * (xSize - 16) / tabs.length, 24,
+            (xSize - 16) / tabs.length, 18, (i == 3 ? ResearchGuiText.Database : tabText(Tab.values()[i])).getLocal());
         for (int i = 0; i < rows.length; i++) rows[i] = button(100 + i, 8, 58 + i * 20, columnWidth, 18, "");
         previous = button(10, 8, ySize - 34, 40, 18, ResearchGuiText.Previous.getLocal());
         next = button(11, columnWidth - 32, ySize - 34, 40, 18, ResearchGuiText.Next.getLocal());
@@ -108,12 +116,16 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     private void updateControls() {
         var locale = mc.getLanguageManager().getCurrentLanguage().getLanguageCode();
         if (!language.equals(locale)) { language = locale; contents.clear(); displayed = null; }
+        if (drawnDatabaseMode != container.databaseMode) displayed = null;
+        drawnDatabaseMode = container.databaseMode;
+        primary.width = drawnDatabaseMode ? columnWidth : columnWidth / 2;
+        if (drawnDatabaseMode) { updateDatabaseControls(); return; }
         var view = container.snapshot;
         var entry = selected();
         if (!Objects.equals(displayed, view.selected())) {
             displayed = view.selected();
             selectedGroup = entry == null ? null : entry.selectedGroup();
-            rebuildDescription(entry);
+            rebuildDescription(entry == null ? null : entry.id());
         }
         if (entry != null && entry.selectedGroup() != null) selectedGroup = entry.selectedGroup();
         else if (selectedGroup != null && view.details().stream().noneMatch(detail -> detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE
@@ -139,6 +151,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         secondary.visible = entry != null && view.tab() == Tab.RESEARCH;
         actionEntry = entry;
         actionTab = view.tab();
+        actionTeam = container.displayedTeam;
         if (entry != null) {
             var kind = primaryKind(view.tab());
             primary.displayString = (kind == ResearchContainer.Kind.START ? ResearchGuiText.Start
@@ -162,14 +175,53 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
     }
 
-    private void rebuildDescription(@Nullable Entry entry) {
+    private void updateDatabaseControls() {
+        var view = container.databaseSnapshot;
+        drawnDatabase = view;
+        var entry = databaseSelected();
+        var identity = entry == null ? null : new Selection(entry.id(), entry.targetLevel(), 0);
+        if (!Objects.equals(displayed, identity)) {
+            displayed = identity;
+            rebuildDescription(entry == null ? null : entry.id());
+        }
+        actionEntry = null;
+        databaseActionEntry = entry;
+        selectedGroup = null;
+        for (int i = 0; i < tabs.length; i++) tabs[i].enabled = i != 3;
+        for (int i = 0; i < rows.length; i++) {
+            var button = rows[i];
+            button.visible = i < view.rows().size();
+            rowSelections[i] = null;
+            databaseSelections[i] = button.visible ? view.rows().get(i).selection() : null;
+            if (!button.visible) continue;
+            var row = view.rows().get(i);
+            button.displayString = fit(title(row.id()), columnWidth - 8);
+            button.enabled = !row.selection().equals(view.selected());
+        }
+        previous.enabled = view.offset() > 0;
+        next.enabled = view.offset() + view.rows().size() < view.total();
+        description.enabled = !showingDescription && entry != null;
+        details.enabled = showingDescription && entry != null;
+        detailPrevious.visible = detailNext.visible = false;
+        primary.visible = entry != null;
+        primary.displayString = ResearchGuiText.Download.getLocal();
+        primary.enabled = entry != null && !container.actionQueued && view.canDownload(entry);
+        secondary.visible = false;
+        for (int i = 0; i < choices.length; i++) {
+            choices[i].visible = false;
+            choiceSelections[i] = null;
+            choiceGroups[i] = null;
+        }
+    }
+
+    private void rebuildDescription(@Nullable ResourceLocation researchId) {
         descriptionLines.clear();
         descriptionScroll.setCurrentScroll(0);
         iconItem = ItemStack.EMPTY;
         iconTexture = null;
-        if (entry != null) {
-            var content = content(entry.id()).content();
-            if (content.isEmpty()) descriptionLines.add(ResearchGuiText.MissingContent.getLocal(entry.id()));
+        if (researchId != null) {
+            var content = content(researchId).content();
+            if (content.isEmpty()) descriptionLines.add(ResearchGuiText.MissingContent.getLocal(researchId));
             else {
                 var icon = content.orElseThrow().icon();
                 if (icon.kind() == ResearchContent.Kind.ITEM) {
@@ -200,18 +252,28 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         for (var entry : container.snapshot.rows()) if (selection(entry).equals(container.snapshot.selected())) return entry;
         return null;
     }
+    @Nullable private DataCenterGuiSnapshot.Entry databaseSelected() {
+        var selection = container.databaseSnapshot.selected();
+        return selection == null ? null : container.databaseSnapshot.find(selection);
+    }
 
     @Override protected void actionPerformed(GuiButton button) throws IOException {
         var view = container.snapshot;
         // Minecraft applies queued GuiSync before input and updates screens afterwards. A button
         // still represents the last displayed identity, never the same index in a newer page.
         if (!button.visible || !button.enabled) return;
-        if (button.id < 3) {
-            showingDescription = button.id == 0;
-            container.requestView(Tab.values()[button.id], 0, null, 0);
+        if (button.id < tabs.length) {
+            showingDescription = button.id == 0 || button.id == 3;
+            if (button.id == 3) container.requestDatabaseView(0, null);
+            else container.requestView(Tab.values()[button.id], 0, null, 0);
         } else if (button.id >= 100 && button.id < 100 + rows.length) {
+            if (drawnDatabaseMode) {
+                var target = databaseSelections[button.id - 100];
+                if (target != null && currentDatabaseRow(target)) container.requestDatabaseView(drawnDatabase.offset(), target);
+                return;
+            }
             var target = rowSelections[button.id - 100];
-            if (target != null && actionTab == view.tab() && view.rows().stream().anyMatch(entry -> entry.selection().equals(target))) {
+            if (!container.databaseMode && target != null && actionTab == view.tab() && view.rows().stream().anyMatch(entry -> entry.selection().equals(target))) {
                 container.requestView(view.tab(), view.offset(), target, 0);
             }
         } else if (button.id >= 200 && button.id < 200 + choices.length) {
@@ -222,6 +284,22 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                 selectedGroup = group;
             }
         } else {
+            if (drawnDatabaseMode && button.id != 12 && button.id != 13) {
+                if (!container.databaseMode) return;
+                if (button.id == 10 || button.id == 11) {
+                    if (Objects.equals(drawnDatabase.dataCenterId(), container.databaseSnapshot.dataCenterId())
+                        && drawnDatabase.teamId().equals(container.databaseSnapshot.teamId())) {
+                        int offset = button.id == 10 ? Math.max(0, drawnDatabase.offset() - DataCenterGuiSnapshot.MAX_ROWS)
+                            : drawnDatabase.offset() + drawnDatabase.rows().size();
+                        container.requestDatabaseView(offset, null);
+                    }
+                } else if (button.id == 16 && databaseActionEntry != null && currentDatabaseRow(databaseActionEntry.selection())
+                    && databaseActionEntry.selection().equals(container.databaseSnapshot.selected())) {
+                    container.requestDatabaseDownload(drawnDatabase, databaseActionEntry);
+                }
+                return;
+            }
+            if (!drawnDatabaseMode && container.databaseMode) return;
             switch (button.id) {
                 case 10 -> container.requestView(view.tab(), Math.max(0, view.offset() - ResearchGuiSnapshot.MAX_ROWS), null, 0);
                 case 11 -> container.requestView(view.tab(), view.offset() + view.rows().size(), null, 0);
@@ -229,11 +307,15 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                 case 13 -> showingDescription = false;
                 case 14 -> container.requestView(view.tab(), view.offset(), view.selected(), Math.max(0, view.detailOffset() - ResearchGuiSnapshot.MAX_DETAILS));
                 case 15 -> container.requestView(view.tab(), view.offset(), view.selected(), view.detailOffset() + view.details().size());
-                case 16 -> { var entry = selected(); if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection())) container.requestAction(primaryKind(view.tab()), actionEntry, selectedGroup); }
-                case 17 -> { var entry = selected(); if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection())) container.requestAction(ResearchContainer.Kind.BLACKLIST, actionEntry, null); }
+                case 16 -> { var entry = selected(); if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection())) container.requestAction(primaryKind(view.tab()), actionEntry, selectedGroup, actionTeam); }
+                case 17 -> { var entry = selected(); if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection())) container.requestAction(ResearchContainer.Kind.BLACKLIST, actionEntry, null, actionTeam); }
                 default -> super.actionPerformed(button);
             }
         }
+    }
+
+    private boolean currentDatabaseRow(DataCenterGuiSnapshot.Selection selection) {
+        return container.databaseMode && container.databaseSnapshot.contains(drawnDatabase.teamId(), drawnDatabase.dataCenterId(), selection);
     }
 
     private static ResearchContainer.Kind primaryKind(Tab tab) {
@@ -249,6 +331,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     }
 
     @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
+        if (container.databaseMode) { drawDatabaseFG(mouseX, mouseY); return; }
         var view = container.snapshot;
         fontRenderer.drawString(ResearchGuiText.Title.getLocal(), 8, 8, 0x404040);
         var state = !view.initialized() ? ResearchGuiText.Loading : view.savePending() ? ResearchGuiText.Saving : ResearchGuiText.team(view.teamStatus());
@@ -286,6 +369,37 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
     }
 
+    private void drawDatabaseFG(int mouseX, int mouseY) {
+        var view = container.databaseSnapshot;
+        fontRenderer.drawString(ResearchGuiText.Title.getLocal(), 8, 8, 0x404040);
+        var state = !view.initialized() ? ResearchGuiText.Loading : view.savePending() ? ResearchGuiText.Saving
+            : view.viewPermission() != Decision.ALLOWED ? ResearchGuiText.TeamDenied
+            : view.dataCenterId() == null ? ResearchGuiText.NoDatabase : ResearchGuiText.Database;
+        fontRenderer.drawString(fit(state.getLocal(), columnWidth), 8, 46, 0x404040);
+        fontRenderer.drawString(fit(container.feedback.getLocal(), xSize - 16), 8, ySize - 12, 0x404040);
+        if (view.dataCenterId() != null) fontRenderer.drawString(fit(ResearchGuiText.DatabaseSummary.getLocal(view.level(),
+            view.storedCount(), view.capacity()), columnWidth), right, 8, 0x404040);
+        if (view.initialized() && view.rows().isEmpty()) fontRenderer.drawString(ResearchGuiText.NoEntries.getLocal(), 8, 62, 0x404040);
+        var page = ResearchGuiText.Page.getLocal(view.total() == 0 ? 0 : view.offset() / DataCenterGuiSnapshot.MAX_ROWS + 1,
+            (view.total() + (long) DataCenterGuiSnapshot.MAX_ROWS - 1) / DataCenterGuiSnapshot.MAX_ROWS);
+        fontRenderer.drawString(fit(page, columnWidth - 84), 50, ySize - 29, 0x404040);
+        var entry = databaseSelected();
+        if (entry == null) return;
+        drawIcon();
+        fontRenderer.drawString(fit(title(entry.id()), columnWidth - 20), right + 20, 46, 0x404040);
+        fontRenderer.drawString(fit(ResearchGuiText.CloudLevel.getLocal(entry.cloudLevel()), columnWidth), right, 62, 0x404040);
+        fontRenderer.drawString(fit(ResearchGuiText.DatabaseLevel.getLocal(entry.storedLevel()), columnWidth), right, 73, 0x404040);
+        if (showingDescription) {
+            for (int i = 0; i < descriptionRows && i + descriptionScroll.getCurrentScroll() < descriptionLines.size(); i++) {
+                fontRenderer.drawString(descriptionLines.get(i + descriptionScroll.getCurrentScroll()), right, 106 + i * 10, 0x404040);
+            }
+            descriptionScroll.drawForegroundLayer(descriptionScroll.getBounds(), new Point(mouseX - guiLeft, mouseY - guiTop));
+        } else {
+            var lines = databaseTooltip(entry);
+            for (int i = 2; i < lines.size(); i++) fontRenderer.drawString(fit(lines.get(i), columnWidth), right, 106 + (i - 2) * 11, 0x404040);
+        }
+    }
+
     private static String detailText(Entry entry, ResearchGuiSnapshot.Detail detail) {
         String name;
         if (detail.kind() == ResearchGuiSnapshot.Kind.NUMERIC) {
@@ -319,6 +433,18 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         updateControls();
         super.drawScreen(mouseX, mouseY, partialTicks);
+        if (container.databaseMode) {
+            var database = container.databaseSnapshot;
+            if (database.dataCenterId() != null && isPointInRegion(right, 8, columnWidth, 10, mouseX, mouseY)) {
+                drawHoveringText(List.of(ResearchGuiText.DatabaseTeam.getLocal(database.teamId()),
+                    ResearchGuiText.DatabaseIdentity.getLocal(database.dataCenterId()),
+                    ResearchGuiText.DatabaseSummary.getLocal(database.level(), database.storedCount(), database.capacity())), mouseX, mouseY);
+            }
+            for (int i = 0; i < database.rows().size(); i++) {
+                if (isPointInRegion(8, 58 + i * 20, columnWidth, 18, mouseX, mouseY)) drawHoveringText(databaseTooltip(database.rows().get(i)), mouseX, mouseY);
+            }
+            return;
+        }
         var view = container.snapshot;
         for (int i = 0; i < view.rows().size(); i++) {
             if (isPointInRegion(8, 58 + i * 20, columnWidth, 18, mouseX, mouseY)) drawHoveringText(rowTooltip(view.rows().get(i)), mouseX, mouseY);
@@ -338,6 +464,19 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             } else tooltip.add(detailText(entry, detail));
             drawHoveringText(tooltip, mouseX, mouseY);
         }
+    }
+
+    private ObjectArrayList<String> databaseTooltip(DataCenterGuiSnapshot.Entry entry) {
+        var lines = new ObjectArrayList<String>();
+        lines.add(title(entry.id()));
+        lines.add(entry.id().toString());
+        lines.add(ResearchGuiText.CloudLevel.getLocal(entry.cloudLevel()));
+        lines.add(ResearchGuiText.DatabaseLevel.getLocal(entry.storedLevel()));
+        if (entry.targetLevel() > 0) {
+            lines.add(ResearchGuiText.TargetLevel.getLocal(entry.targetLevel()));
+            lines.add(ResearchGuiText.Tier.getLocal(entry.requiredTier()));
+        } else lines.add(ResearchGuiText.DatabaseStoredOnly.getLocal());
+        return lines;
     }
 
     private ObjectArrayList<String> rowTooltip(Entry entry) {

@@ -3,12 +3,14 @@ package com.circulation.prototype_eng.localization;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
+import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
+import java.util.Objects;
 
 /** Shared feedback is synchronized as an enum; translation happens on the receiving client. */
 public enum ResearchGuiText implements LocalizationEnum {
@@ -24,7 +26,10 @@ public enum ResearchGuiText implements LocalizationEnum {
     ManualActive, ManualPaused, MaterialCommitPending, MaterialCommitted, MaterialAbortPending,
     MaterialSettlementPending, CompletionPropagated, QueueHeadRemoved,
     ContributorOffline, ContributorTeamChanged, SessionTimeout, ExplicitPause, WorldRestored, ResearchInvalidated,
-    Unclaimed, Claiming, RewardClaimed, Compute, Qubit, Threads;
+    Unclaimed, Claiming, RewardClaimed, Compute, Qubit, Threads,
+    Database, Download, CloudLevel, DatabaseLevel, DatabaseSummary, NoDatabase, DatabaseStoredOnly,
+    DatabaseUpdated, DatabaseUnchanged, DatabaseSpecialOnly, DatabaseItemOnly, DatabaseMissingCloud,
+    DatabaseCapacityFull, DatabaseMutexBlocked, DatabaseIdentity, DatabaseTeam;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".research." + name();
     @Override public String getTranslationKey() { return translationKey; }
@@ -120,5 +125,25 @@ public enum ResearchGuiText implements LocalizationEnum {
 
     public static ResearchGuiText permission(ResearchPermissionPolicy.Decision decision) {
         return decision == ResearchPermissionPolicy.Decision.ALLOWED ? Changed : Forbidden;
+    }
+
+    public static ResearchGuiText database(DataCenterResearchAccess.Result result) {
+        return switch (result.status()) {
+            case PERMISSION_DENIED -> Forbidden;
+            case NO_ACTIVE_DATA_CENTER -> NoDatabase;
+            case SAVE_PENDING -> Saving;
+            case STALE_CONTEXT -> Stale;
+            case COMPLETED -> switch (Objects.requireNonNull(result.storageResult())) {
+                case UPDATED -> DatabaseUpdated;
+                case UNCHANGED -> DatabaseUnchanged;
+                case SPECIAL_ONLY_REJECTED -> DatabaseSpecialOnly;
+                case ITEM_ONLY_REJECTED -> DatabaseItemOnly;
+                case MISSING_CLOUD_RESEARCH_LEVEL -> DatabaseMissingCloud;
+                case DATA_CENTER_LEVEL_TOO_LOW -> DataCenterTier;
+                case MUTEX_BLOCKED -> DatabaseMutexBlocked;
+                case CAPACITY_FULL -> DatabaseCapacityFull;
+                case STALE_CONTEXT -> Stale;
+            };
+        };
     }
 }

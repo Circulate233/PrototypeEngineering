@@ -12,6 +12,7 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /** PN database rules with one atomic content publication and monotonic owner-side revision. */
 public final class ResearchDataCenter implements DataCenterStorage {
@@ -41,9 +42,11 @@ public final class ResearchDataCenter implements DataCenterStorage {
     @Override public DataCenterResearchSnapshot snapshot() { ownerCheck.run(); return contents; }
     @Override public boolean current(DataCenterResearchSnapshot snapshot) { ownerCheck.run(); return contents == snapshot; }
 
-    @Override public Result downloadResearch(ResourceLocation researchId, int requestedLevel, TeamResearchView cloud) {
+    @Override public Result downloadResearch(ResourceLocation researchId, int requestedLevel, TeamResearchView cloud, BooleanSupplier current) {
         ownerCheck.run();
         requireCloud(cloud);
+        var before = contents;
+        if (!Objects.requireNonNull(current).getAsBoolean() || contents != before) return Result.STALE_CONTEXT;
         var definition = registry.require(researchId);
         if (definition.specialOnly()) { return Result.SPECIAL_ONLY_REJECTED; }
         if (definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) { return Result.ITEM_ONLY_REJECTED; }
@@ -57,32 +60,37 @@ public final class ResearchDataCenter implements DataCenterStorage {
             if (cloud.completedLevel(researchId) < target) { return Result.MISSING_CLOUD_RESEARCH_LEVEL; }
         }
         definition.stageForLevel(target);
-        var replacement = new Object2IntOpenHashMap<>(contents.storedResearch());
+        var replacement = new Object2IntOpenHashMap<>(before.storedResearch());
         var result = store(definition, target, replacement, cloud.sharedLevels());
-        return result.accepted() ? publish(replacement) : result;
+        return result.accepted() ? publish(before, replacement, current) : result;
     }
 
-    @Override public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud) {
+    @Override public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) {
         ownerCheck.run();
         requireCloud(cloud);
-        var replacement = new Object2IntOpenHashMap<>(contents.storedResearch());
+        var before = contents;
+        if (!Objects.requireNonNull(current).getAsBoolean() || contents != before) return Result.STALE_CONTEXT;
+        var replacement = new Object2IntOpenHashMap<>(before.storedResearch());
         for (var entry : Objects.requireNonNull(entries).object2IntEntrySet()) {
             var definition = registry.require(entry.getKey());
             definition.stageForLevel(entry.getIntValue());
             var result = store(definition, entry.getIntValue(), replacement, cloud.sharedLevels());
             if (!result.accepted()) { return result; }
         }
-        return publish(replacement);
+        return publish(before, replacement, current);
     }
 
-    @Override public Result synchronizeLoopingResearch(TeamResearchView cloud) {
+    @Override public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
         ownerCheck.run();
         requireCloud(cloud);
-        var replacement = new Object2IntOpenHashMap<>(contents.storedResearch());
-        for (var entry : contents.storedResearch().object2IntEntrySet()) {
+        var before = contents;
+        if (!Objects.requireNonNull(current).getAsBoolean() || contents != before) return Result.STALE_CONTEXT;
+        var replacement = new Object2IntOpenHashMap<>(before.storedResearch());
+        for (var entry : before.storedResearch().object2IntEntrySet()) {
             var definition = registry.require(entry.getKey());
             int target = cloud.completedLevel(entry.getKey());
-            if (definition.maxLevel() > 1 && target > entry.getIntValue()
+            if (!definition.specialOnly() && definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM
+                && definition.maxLevel() > 1 && target > entry.getIntValue()
                 && definition.researchTierForLevel(target) <= contents.level()) {
                 replacement.put(entry.getKey(), target);
             }
@@ -97,7 +105,7 @@ public final class ResearchDataCenter implements DataCenterStorage {
                 return Result.MUTEX_BLOCKED;
             }
         }
-        return publish(replacement);
+        return publish(before, replacement, current);
     }
 
     private Result store(ResearchDefinition definition, int target, Object2IntOpenHashMap<ResourceLocation> replacement,
@@ -136,7 +144,8 @@ public final class ResearchDataCenter implements DataCenterStorage {
         }
     }
 
-    private Result publish(Object2IntMap<ResourceLocation> replacement) {
+    private Result publish(DataCenterResearchSnapshot before, Object2IntMap<ResourceLocation> replacement, BooleanSupplier current) {
+        if (!current.getAsBoolean() || contents != before) return Result.STALE_CONTEXT;
         if (contents.storedResearch().equals(replacement)) { return Result.UNCHANGED; }
         long revision = Math.incrementExact(contents.revision());
         contents = new DataCenterResearchSnapshot(contents.dataCenterId(), contents.level(), contents.capacity(), revision, replacement);

@@ -24,6 +24,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 
 /** Persistent physical database attachment. Its version proof also requires the exact live component binding. */
 public final class MachineDataCenterStorage implements DataCenterStorage, MachineLifecycleListener {
@@ -112,19 +113,19 @@ public final class MachineDataCenterStorage implements DataCenterStorage, Machin
         return live() && Objects.requireNonNull(state).current(snapshot);
     }
 
-    @Override public Result downloadResearch(ResourceLocation id, int requestedLevel, TeamResearchView cloud) {
+    @Override public Result downloadResearch(ResourceLocation id, int requestedLevel, TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
-        return Objects.requireNonNull(state).downloadResearch(id, requestedLevel, cloud);
+        return Objects.requireNonNull(state).downloadResearch(id, requestedLevel, cloud, () -> current.getAsBoolean() && live());
     }
 
-    @Override public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud) {
+    @Override public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
-        return Objects.requireNonNull(state).storeFromDisk(entries, cloud);
+        return Objects.requireNonNull(state).storeFromDisk(entries, cloud, () -> current.getAsBoolean() && live());
     }
 
-    @Override public Result synchronizeLoopingResearch(TeamResearchView cloud) {
+    @Override public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
-        return Objects.requireNonNull(state).synchronizeLoopingResearch(cloud);
+        return Objects.requireNonNull(state).synchronizeLoopingResearch(cloud, () -> current.getAsBoolean() && live());
     }
 
     /** Combine with MachineNetworkDevice.capturedComponent so physical and content proofs are both retained. */
