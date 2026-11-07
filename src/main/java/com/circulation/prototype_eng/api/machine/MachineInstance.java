@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
-import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -18,6 +17,7 @@ import java.util.function.BooleanSupplier;
 
 import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
@@ -25,7 +25,7 @@ import com.circulation.prototype_eng.api.structure.StructureComponents;
  * one MachineLifecycle before scheduling. Unbound instances support standalone library execution;
  * they carry no world/scheduler permission. Scheduler registration and world matching remain external.
  */
-public final class MachineInstance implements ScheduledTask {
+public final class MachineInstance implements PlannedMachineTask {
     private final ComponentMap<MachineInstance> components = new ComponentMap<>();
     private final MachineAttributes attributes = new MachineAttributes();
     @Nullable private final MachineType type;
@@ -82,6 +82,11 @@ public final class MachineInstance implements ScheduledTask {
         }
         if (recipeWorkGates == null) { recipeWorkGates = new ObjectArrayList<>(); }
         recipeWorkGates.add(permission);
+    }
+
+    @Override
+    public MachineInstance plannedMachine() {
+        return this;
     }
 
     /** Unformed machines still run their ordinary non-recipe components. */

@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 
 /**
  * Owned ordinary worker pool and serialized affinity lanes. Every tick joins all accepted tasks
@@ -40,7 +41,12 @@ public final class TaskScheduler implements AutoCloseable {
     private final Thread owner;
     private final int workerThreads;
     private final int laneCount;
-    @Nullable private final PlannedFactory plannedFactory;
+    private final PlannedFactory plannedFactory;
+    private final boolean defaultMachineFactory;
+    private long tickGeneration;
+    private boolean tickOpen;
+    @Nullable
+    private Runnable tickPreparation;
     @Nullable private final PlannedFactory beforeOrdinary;
     private final long plannedTimeoutNanos;
     private final Reference2ObjectLinkedOpenHashMap<ScheduledTask, Registration> registered = new Reference2ObjectLinkedOpenHashMap<>();
@@ -61,13 +67,15 @@ public final class TaskScheduler implements AutoCloseable {
     private boolean pendingExitProven = true;
     @Nullable private Reason pendingStopReason;
     private boolean pendingStopConfirmed;
-    private final ObjectArrayList<Registration> plannedCandidates = new ObjectArrayList<>();
+    private final ObjectArrayList<PlannedRegistration> plannedCandidates = new ObjectArrayList<>();
 
     public TaskScheduler(Thread owner, int workerThreads, int laneCount) {
         this(owner, workerThreads, laneCount, null, Duration.ofSeconds(5));
     }
 
-    /** Optional internal owner cycle factory; arbitrary PLANNED_PARALLEL tasks remain unsupported. */
+    /**
+     * Explicit owner-cycle factories remain supported; null installs the built-in machine entry.
+     */
     TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
                   Duration plannedTimeout) {
         this(owner, workerThreads, laneCount, plannedFactory, null, plannedTimeout);
@@ -80,7 +88,10 @@ public final class TaskScheduler implements AutoCloseable {
         if (workerThreads < 1 || laneCount < 1) { throw new IllegalArgumentException("Worker and lane counts must be positive"); }
         this.workerThreads = workerThreads;
         this.laneCount = laneCount;
-        this.plannedFactory = plannedFactory;
+        defaultMachineFactory = plannedFactory == null;
+        this.plannedFactory = defaultMachineFactory
+            ? new MachineRecipeExecutionFactory(this::plannedCandidates, this::capturePreparation,
+            () -> tickGeneration, () -> tickOpen, _ -> false) : Objects.requireNonNull(plannedFactory);
         this.beforeOrdinary = beforeOrdinary;
         Objects.requireNonNull(plannedTimeout);
         if (plannedTimeout.isNegative() || plannedTimeout.isZero()) {
@@ -115,7 +126,7 @@ public final class TaskScheduler implements AutoCloseable {
         State previous = enterMutation(true);
         try {
             Objects.requireNonNull(task);
-            requireOrdinary(task.executionMode());
+            requireScheduledMode(task);
             if (!registered.containsKey(task)) { registered.put(task, new Registration(task)); }
         } finally { state = previous; }
     }
@@ -131,7 +142,9 @@ public final class TaskScheduler implements AutoCloseable {
         return registered.size();
     }
 
-    /** Thread-safe enqueue; PLANNED_PARALLEL is explicitly unsupported by this ordinary scheduler. */
+    /**
+     * Thread-safe Runnable enqueue; PLANNED_PARALLEL requires a typed scheduled host instead.
+     */
     public void submit(Runnable task, ExecutionMode mode) {
         Objects.requireNonNull(task);
         requireOrdinary(mode);
@@ -178,7 +191,9 @@ public final class TaskScheduler implements AutoCloseable {
 
     /**
      * Prepares current authority on the owner before each executed main action and before concurrent
-     * metadata capture. Preparation has exclusive ownership and cannot recursively tick, close,
+     * metadata capture. Formal machine execution also refreshes before its owner component
+     * boundaries, using this original callback throughout the captured tick. Preparation has
+     * exclusive ownership and cannot recursively tick, close,
      * mutate scheduler registrations or request an owner boundary. Thread-safe submissions still
      * belong to a later tick. A preparation failure faults execution and follows the normal join
      * and boundary-cleanup path; neither preparation nor the rejected action is retried.
@@ -186,6 +201,7 @@ public final class TaskScheduler implements AutoCloseable {
     public void tick(Runnable prepare) {
         Objects.requireNonNull(prepare);
         enterTick();
+        tickPreparation = prepare;
         var failures = new Failures();
         var futures = new ObjectArrayList<FutureTask<Void>>();
         boolean capturePlanned = false;
@@ -236,7 +252,7 @@ public final class TaskScheduler implements AutoCloseable {
             }
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
-            if (capturePlanned && !failures.present() && plannedFactory != null) {
+            if (capturePlanned && !failures.present()) {
                 try { capturePlanned(prepare); }
                 catch (Throwable failure) { failures.add(failure); fault(); }
                 if (pendingExecution != null) { drivePending(failures, true); }
@@ -244,6 +260,8 @@ public final class TaskScheduler implements AutoCloseable {
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
             drainBoundary(failures, false);
+            tickOpen = false;
+            tickPreparation = null;
             state = State.IDLE;
             failures.restoreInterrupt();
         }
@@ -259,7 +277,7 @@ public final class TaskScheduler implements AutoCloseable {
         }
         var main = new ObjectArrayList<Registration>();
         for (Registration registration : registered.values()) {
-            if (requireOrdinary(registration.task.executionMode()) == ExecutionMode.MAIN_THREAD) { main.add(registration); }
+            if (requireScheduledMode(registration.task) == ExecutionMode.MAIN_THREAD) { main.add(registration); }
         }
         var executed = new ReferenceOpenHashSet<ScheduledTask>();
         state = State.MAIN;
@@ -273,7 +291,7 @@ public final class TaskScheduler implements AutoCloseable {
             ExecutionMode mode;
             state = State.CAPTURING_MAIN;
             try {
-                mode = requireOrdinary(task.executionMode());
+                mode = requireScheduledMode(task);
                 active = task.active();
             } finally { state = State.MAIN; }
             if (mode == ExecutionMode.MAIN_THREAD && active) {
@@ -286,10 +304,10 @@ public final class TaskScheduler implements AutoCloseable {
         var concurrent = new ObjectArrayList<Snapshot>();
         for (Registration registration : registered.values()) {
             ScheduledTask task = registration.task;
-            ExecutionMode mode = requireOrdinary(task.executionMode());
-            if (mode != ExecutionMode.CONCURRENT || executed.contains(task) || !task.active()) { continue; }
-            if (plannedFactory != null && plannedFactory.owns(task)) {
-                plannedCandidates.add(registration);
+            ExecutionMode mode = requireScheduledMode(task);
+            if (mode == ExecutionMode.MAIN_THREAD || executed.contains(task) || !task.active()) { continue; }
+            if (mode == ExecutionMode.PLANNED_PARALLEL || plannedFactory.owns(task)) {
+                plannedCandidates.add(new PlannedRegistration(registration, mode));
                 continue;
             }
             var keys = new ObjectOpenHashSet<>();
@@ -327,10 +345,26 @@ public final class TaskScheduler implements AutoCloseable {
         failures.throwIfPresent();
     }
 
+    private Runnable capturePreparation() {
+        var captured = Objects.requireNonNull(tickPreparation);
+        return () -> {
+            State previous = state;
+            state = State.CAPTURING_PLANNED;
+            try {
+                captured.run();
+            } finally {
+                state = previous;
+            }
+        };
+    }
+
     private void capturePlanned(Runnable prepare) {
+        if (defaultMachineFactory && plannedCandidates.isEmpty()) {
+            return;
+        }
         state = State.CAPTURING_PLANNED;
         prepare.run();
-        capturePlanned(Objects.requireNonNull(plannedFactory));
+        capturePlanned(plannedFactory);
     }
 
     private void capturePlanned(PlannedFactory factory) {
@@ -353,10 +387,14 @@ public final class TaskScheduler implements AutoCloseable {
         requireOwner();
         if (state != State.CAPTURING_PLANNED) { throw new IllegalStateException("Planned candidates require owner capture"); }
         var result = new ObjectArrayList<PlannedCandidate>();
-        for (var registration : plannedCandidates) {
+        for (var captured : plannedCandidates) {
+            var registration = captured.registration;
             var task = registration.task;
-            if (registered.get(task) == registration && task.active()) {
-                result.add(new PlannedCandidate(task, () -> registered.get(task) == registration && task.active()));
+            var mode = captured.mode;
+            BooleanSupplier current = () -> registered.get(task) == registration && task.active()
+                && task.executionMode() == mode;
+            if (current.getAsBoolean()) {
+                result.add(new PlannedCandidate(task, mode, current));
             }
         }
         return List.copyOf(result);
@@ -610,6 +648,8 @@ public final class TaskScheduler implements AutoCloseable {
 
     private void enterTick() {
         requireOwnerIdle();
+        tickGeneration = Math.addExact(tickGeneration, 1);
+        tickOpen = true;
         state = State.CAPTURING_MAIN;
     }
 
@@ -639,9 +679,22 @@ public final class TaskScheduler implements AutoCloseable {
         if (Thread.currentThread() != owner) { throw new IllegalStateException("Scheduler requires its owning thread"); }
     }
 
-    private static ExecutionMode requireOrdinary(ExecutionMode mode) {
+    private static void requireOrdinary(ExecutionMode mode) {
         Objects.requireNonNull(mode);
-        if (mode == ExecutionMode.PLANNED_PARALLEL) { throw new IllegalArgumentException("PLANNED_PARALLEL requires a formal planned coordinator"); }
+        if (mode == ExecutionMode.PLANNED_PARALLEL) { throw new IllegalArgumentException("PLANNED_PARALLEL does not accept Runnable tasks"); }
+    }
+
+    private static ExecutionMode requireScheduledMode(ScheduledTask task) {
+        var mode = Objects.requireNonNull(task.executionMode());
+        if (mode == ExecutionMode.PLANNED_PARALLEL) {
+            if (!(task instanceof PlannedMachineTask host)) {
+                throw new IllegalArgumentException("PLANNED_PARALLEL requires PlannedMachineTask");
+            }
+            var machine = host.plannedMachine();
+            if (machine == null || machine.lifecycle() == null) {
+                throw new IllegalArgumentException("PLANNED_PARALLEL requires a real lifecycle-bound machine");
+            }
+        }
         return mode;
     }
 
@@ -651,12 +704,17 @@ public final class TaskScheduler implements AutoCloseable {
      */
     @FunctionalInterface
     interface PlannedFactory {
-        /** Only recognized ordinary concurrent registrations transfer to this owner execution. */
+        /**
+         * Controls ordinary CONCURRENT auto-admission; explicit formal registrations remain typed.
+         */
         default boolean owns(ScheduledTask task) { return false; }
         @Nullable PlannedExecution capture(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline);
     }
 
-    record PlannedCandidate(ScheduledTask task, BooleanSupplier current) {}
+    record PlannedCandidate(ScheduledTask task, ExecutionMode mode, BooleanSupplier current) {}
+
+    private record PlannedRegistration(Registration registration, ExecutionMode mode) {
+    }
 
     private enum State { IDLE, REGISTERING, CAPTURING_MAIN, MAIN, CAPTURING_CONCURRENT, DISPATCHING, JOINING, CAPTURING_PLANNED, PLANNED, BOUNDARY, CLOSING, CLOSED }
     private record Registration(ScheduledTask task) {}

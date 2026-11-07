@@ -1,8 +1,6 @@
 package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineController;
-import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
@@ -16,51 +14,59 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
+import java.util.function.Predicate;
 
-/** Server-owned bridge for real ordinary concurrent network machines; capture invokes no work. */
-final class NetworkRecipeExecutionFactory implements TaskScheduler.PlannedFactory {
+/**
+ * Owner bridge for real planned machines; ordinary concurrent admission is provided by the caller.
+ */
+final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactory {
     private final Supplier<List<TaskScheduler.PlannedCandidate>> candidates;
-    private final Runnable refresh;
+    private final Supplier<Runnable> preparation;
     private final LongSupplier tick;
     private final BooleanSupplier tickOpen;
+    private final Predicate<MachineInstance> concurrentAdmission;
 
-    NetworkRecipeExecutionFactory(Supplier<List<TaskScheduler.PlannedCandidate>> candidates, Runnable refresh,
-                                  LongSupplier tick, BooleanSupplier tickOpen) {
+    MachineRecipeExecutionFactory(Supplier<List<TaskScheduler.PlannedCandidate>> candidates, Supplier<Runnable> preparation,
+                                  LongSupplier tick, BooleanSupplier tickOpen, Predicate<MachineInstance> concurrentAdmission) {
         this.candidates = Objects.requireNonNull(candidates);
-        this.refresh = Objects.requireNonNull(refresh);
+        this.preparation = Objects.requireNonNull(preparation);
         this.tick = Objects.requireNonNull(tick);
         this.tickOpen = Objects.requireNonNull(tickOpen);
+        this.concurrentAdmission = Objects.requireNonNull(concurrentAdmission);
     }
 
     @Override public boolean owns(ScheduledTask task) {
         var machine = machine(task);
         if (machine == null || machine.lifecycle() == null) { return false; }
-        for (var binding : machine.components().assemblyBindings()) {
-            if (binding.component() instanceof NetworkRecipeWork) { return true; }
-        }
-        return false;
-    }
+        var mode = task.executionMode();
+        return mode == ExecutionMode.PLANNED_PARALLEL
+            || mode == ExecutionMode.CONCURRENT && concurrentAdmission.test(machine); }
 
     @Override @Nullable public PlannedExecution capture(PlannedTaskExecutor tasks, PlannedDeadline forwardDeadline) {
-        var captured = new ObjectArrayList<NetworkRecipeExecution.Candidate>();
+        var captured = new ObjectArrayList<MachineRecipeExecution.Candidate>();
         var unique = new ReferenceOpenHashSet<MachineInstance>();
         for (var candidate : candidates.get()) {
+            if (!candidate.current().getAsBoolean()) {
+                continue;
+            }
             var machine = machine(candidate.task());
             if (machine == null || !owns(candidate.task())) { continue; }
             var lifecycle = Objects.requireNonNull(machine.lifecycle());
+            var machineMode = machine.executionMode();
             if (!unique.add(machine)) { throw new IllegalStateException("Machine registered through multiple scheduled hosts"); }
-            captured.add(new NetworkRecipeExecution.Candidate(machine, lifecycle,
-                () -> candidate.current().getAsBoolean() && machine(candidate.task()) == machine
-                    && machine.lifecycle() == lifecycle));
+            captured.add(new MachineRecipeExecution.Candidate(machine, lifecycle,
+                () -> candidate.current().getAsBoolean() && candidate.task().executionMode() == candidate.mode() && machine(candidate.task()) == machine
+                    && machine.lifecycle() == lifecycle && machine.executionMode() == machineMode));
         }
         if (captured.isEmpty()) { return null; }
         long capturedTick = tick.getAsLong();
-        return new NetworkRecipeExecution(tasks, captured, forwardDeadline, refresh,
+        return new MachineRecipeExecution(tasks, captured, forwardDeadline, Objects.requireNonNull(preparation.get()),
             () -> tickOpen.getAsBoolean() && tick.getAsLong() == capturedTick);
     }
 
     @Nullable private static MachineInstance machine(ScheduledTask task) {
-        if (task instanceof MachineController controller) { return controller.machine(); }
-        return task instanceof MachineInstance machine ? machine : null;
+        return task instanceof PlannedMachineTask host ? host.plannedMachine() : null;
     }
 }

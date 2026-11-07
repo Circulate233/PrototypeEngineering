@@ -3,13 +3,13 @@ package com.circulation.prototype_eng.api.machine.lifecycle;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
-import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import net.minecraft.nbt.NBTTagCompound;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.Set;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 
 /**
  * One controller generation's owned assembly and scheduler registration. The tile owns this object
@@ -18,7 +18,7 @@ import java.util.Set;
  * may come from workers, but world access, registration and cleanup run only at the scheduler owner.
  * The actual tile still owns pending NBT before constructing this controller, orientation and display.
  */
-public final class MachineController implements ScheduledTask {
+public final class MachineController implements PlannedMachineTask {
     private final MachineAssembly assembly;
     private final MachineLifecycleHost host;
     private final MachineLifecycleRegistry listeners;
@@ -217,6 +217,11 @@ public final class MachineController implements ScheduledTask {
         if (failure instanceof Error error) {
             throw error;
         }
+    }
+
+    @Override
+    public @Nullable MachineInstance plannedMachine() {
+        return machine;
     }
 
     private static Stop stronger(@Nullable Stop current, Stop requested) {

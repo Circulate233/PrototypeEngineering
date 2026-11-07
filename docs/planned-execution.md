@@ -1,6 +1,6 @@
-# Planned 执行屏障基础
+# Planned 执行屏障与正式机器宿主
 
-PM 的 runner、取消注册和单调 deadline 已用于真实阶段协调器。块一已在服务器 CONCURRENT 网络配方和研究材料消费者接通纯 prepare、实际 owner 工作预算及原 source 结算屏障；TaskScheduler 的正式 PLANNED_PARALLEL 仍明确拒绝，独立宿主自动接线与扫描预算属于块二。原行为及适配缺口见[迁移审计](planned-migration-audit.md)。
+PM 的 runner、取消注册和单调 deadline 已用于真实阶段协调器。块一已在服务器 CONCURRENT 网络配方和研究材料消费者接通纯 prepare、实际 owner 工作预算及原 source 结算屏障；2A 已将正式 PLANNED_PARALLEL 与公共三参 scheduler 的独立机器宿主接到同一真实执行流程；扫描内部工作预算属于 2B。原行为及适配缺口见[迁移审计](planned-migration-audit.md)。
 
 ## 取消与 deadline
 
@@ -30,7 +30,17 @@ executor 的提交拒绝变成对应 Failure，其他已接受动作仍收束到
 
 本工具仅管理执行机制，generic Job 不证明任意对象深度不可变。正式 coordinator 必须在 owner 冻结独立输入，prepare 只读冻结数据；source mutation 使用专门 reservation/resolve 协议。不能把含 World/TileEntity 的现有 callback 直接投进 prepare。
 
-真实消费者已复用 StorageFence/ResourceBatch 的跨屏障独占、延迟 complete 和准确 token 恢复，见[资源批次](deferred-resource-batches.md)、[阶段会话](recipe-tick-sessions.md)、[工位批次](work-slot-batches.md)及[真实阶段协调器](planned-recipe-coordinator.md)。块二继续处理正式模式、独立宿主和 discover/扫描内部预算；不将当前显式入口当作这些接线已完成。完整验证数量及 MCP 证据记在实施进度。
+真实消费者已复用 StorageFence/ResourceBatch 的跨屏障独占、延迟 complete 和准确 token 恢复，见[资源批次](deferred-resource-batches.md)、[阶段会话](recipe-tick-sessions.md)、[工位批次](work-slot-batches.md)及[真实阶段协调器](planned-recipe-coordinator.md)。正式模式与独立机器入口已由 2A 接通；discover/扫描内部预算仍待 2B。完整验证数量及 MCP 证据记在实施进度。
+
+## 正式宿主与当前性
+
+公开 `api.scheduler.planned.PlannedMachineTask` 仅增加 `@Nullable MachineInstance plannedMachine()`。宿主读取在 owner，不能执行回调、取得生命周期/资源义务或登记第二 owner；Instance 返回自身，Controller 返回实际已加载机器，外部 ScheduledTask 包装实现同一接口。正式注册必须交付已有 lifecycle 的真实机器，Runnable 和无契约的正式任务拒绝；普通 MAIN/CONCURRENT 行为保持。
+
+公共三参 TaskScheduler 及未显式指定 factory 的构造默认接 `MachineRecipeExecutionFactory`，显式内部 custom factory 保留。独立路径不访问服务器静态 PN 服务；服务器只注入普通 CONCURRENT 网络 admission/refresh。MAIN 完成、普通 CONCURRENT 全部 join 后才 capture/执行正式机器，重复同机别名在任一 gate 前拒绝，准确 pending 在 beginScheduled 之前发布。
+
+捕获凭据包括原 Registration 身份、active、宿主 mode、原 MachineInstance/lifecycle 与底层 machine mode；失权阻止后继前向工作，清理仍沿原凭据。独立 scheduler 的实际 tickGeneration/tickOpen 或服务器原 tick 证明只属于该 capture。`tick(Runnable)` 是可重复的当前授权准备回调；默认入口冻结原 callback，在 formal owner 组件边界调用时保留 CAPTURING_PLANNED 的递归、登记和 owner-boundary 限制。每次刷新返回后重新检查 current，再执行 dispatch.begin/advance/finish 或设置 begun/cursorDone，不能因刷新内 inactive/换机/换模式而多执行一个组件。旧 pending 先确认实际退出及原义务，不获得新 callback、期限或前向授权。
+
+执行体复用 MachineLifecycle、ComponentMap 原游标、MachineWorkSlots 暂停、PlannedRecipeCoordinator 和 source lanes，不新增配方引擎。资源/FE 普通同步 continuation、PN numeric 并行缩放及 THREAD 整机 1 保持；UNKNOWN、卸载和 tryClose 沿原确认/补偿/实际退出路径。2A 完整测试与逐文件 MCP 证据见[实施进度](implementation-status.md)，客户端/服务器游戏运行未验收。
 
 ## 块一纯 prepare 与工作预算
 
@@ -40,4 +50,4 @@ executor 的提交拒绝变成对应 Failure，其他已接受动作仍收束到
 
 `RecipeWorkBudget` 在内置循环实际访问处扣减：owner 捕获来源/数量/revision，合并当前余额，复制和缩放需求，选择、预检、真实资源/FE 预留及锁安装；worker 执行概率、随机逐次抽样、动态完整匹配/规范 NBT 编码/排序及缓存内容证明。小切片保持游标，透明暂停仍属于原获取段，不制造 stage/append/expose。首次 `Stage.acquire()` 的同步模式与 `acquirePreparedWithinBudget` 的纯 prepare 模式分别保留到其后续子段。
 
-网络 `NetworkRecipeExecution` 和研究 `ResearchStationWork.drive` 只在 `workYielded`、原 deadline 未过期且原 attempt 仍 current 时继续。工作暂停不续期、不重充数值额度、不换授权；UNKNOWN 来源/业务结果继续等待确认。外部 `ResourceStorage` 默认 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，预算不能强行中断其内部实现；外部来源可用 `beginQuantityCapture` 提供增量捕获。
+机器 `MachineRecipeExecution` 和研究 `ResearchStationWork.drive` 只在 `workYielded`、原 deadline 未过期且原 attempt 仍 current 时继续。工作暂停不续期、不重充数值额度、不换授权；UNKNOWN 来源/业务结果继续等待确认。外部 `ResourceStorage` 默认 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，预算不能强行中断其内部实现；外部来源可用 `beginQuantityCapture` 提供增量捕获。

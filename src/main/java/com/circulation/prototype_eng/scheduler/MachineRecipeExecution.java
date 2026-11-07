@@ -17,8 +17,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
-/** Retains machine dispatches, exact lifecycle handles and source ownership through one server tick. */
-final class NetworkRecipeExecution implements PlannedExecution {
+/**
+ * Retains machine dispatches, exact lifecycle handles and source ownership through one captured owner tick.
+ */
+final class MachineRecipeExecution implements PlannedExecution {
     private final Thread owner = Thread.currentThread();
     private final PlannedTaskExecutor tasks;
     private final ObjectArrayList<Entry> entries = new ObjectArrayList<>();
@@ -32,7 +34,7 @@ final class NetworkRecipeExecution implements PlannedExecution {
     private boolean finished;
     @Nullable private Throwable unreported;
 
-    NetworkRecipeExecution(PlannedTaskExecutor tasks, List<Candidate> candidates, PlannedDeadline forwardDeadline,
+    MachineRecipeExecution(PlannedTaskExecutor tasks, List<Candidate> candidates, PlannedDeadline forwardDeadline,
                            Runnable refresh, BooleanSupplier tickCurrent) {
         this.tasks = Objects.requireNonNull(tasks);
         this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
@@ -101,17 +103,26 @@ final class NetworkRecipeExecution implements PlannedExecution {
         if (!entry.begun) {
             if (!forwardAllowed()) { return; }
             refresh.run();
+            if (!forwardAllowed()) {
+                return;
+            }
             entry.begun = true;
             if (!handle.run(dispatch::begin)) { return; }
         }
         while (forwardAllowed()) {
             refresh.run();
+            if (!forwardAllowed()) {
+                return;
+            }
             entry.advanced = false;
             if (!handle.runComponent(() -> entry.advanced = dispatch.advance())) { return; }
             if (handle.deferredRecipeWork() != null) { return; }
             if (!entry.advanced) {
                 if (!forwardAllowed()) { return; }
                 refresh.run();
+                if (!forwardAllowed()) {
+                    return;
+                }
                 entry.cursorDone = true;
                 if (!handle.run(dispatch::finish)) {
                     handle.cleanup(dispatch::abort);

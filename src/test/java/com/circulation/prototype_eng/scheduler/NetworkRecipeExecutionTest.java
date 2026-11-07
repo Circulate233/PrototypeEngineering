@@ -127,9 +127,10 @@ class NetworkRecipeExecutionTest {
     }
 
     @Test void sameMachineSlotsScaleNumericResourcesAndShareOneThreadWhileAnotherMachineIsDenied() {
+        for (var mode : List.of(ExecutionMode.CONCURRENT, ExecutionMode.PLANNED_PARALLEL)) {
         try (var fixture = new Fixture(1, 20, 3)) {
-            var first = fixture.worker(false, 2, ExecutionMode.CONCURRENT, Layout.ALIAS);
-            var second = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            var first = fixture.worker(false, 2, mode, Layout.ALIAS);
+            var second = fixture.worker(false, 1, mode, Layout.ORDINARY);
             var one = fixture.process(first, first.slots, 2);
             var two = fixture.process(first, first.slots, 2);
             var other = fixture.process(second, second.slots, 1);
@@ -144,6 +145,7 @@ class NetworkRecipeExecutionTest {
             assertEquals(NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY, fixture.permit(second).requestLease());
             assertEquals(80, first.energy.savedEnergy());
         }
+    }
     }
 
     @Test void distinctWorkSlotBindingsResumeInOrderWithoutReplayingEarlierWork() {
@@ -217,11 +219,12 @@ class NetworkRecipeExecutionTest {
     }
 
     @Test void unloadDuringPhysicalApplyWaitsForActualSourceExitAndCompensatesBeforeBoundary() throws Exception {
+        for (var mode : List.of(ExecutionMode.CONCURRENT, ExecutionMode.PLANNED_PARALLEL)) {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var sourceExited = new AtomicBoolean();
         try (var fixture = new Fixture(1, 20, 3)) {
-            var worker = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            var worker = fixture.worker(false, 1, mode, Layout.ORDINARY);
             worker.adapter = actual -> new ReservationAdapter(actual) {
                 @Override public void apply() {
                     super.apply();
@@ -253,12 +256,14 @@ class NetworkRecipeExecutionTest {
             } finally { release.countDown(); retire.get(5, TimeUnit.SECONDS); }
         } finally { release.countDown(); }
     }
+    }
 
     @Test void unknownCompletionRetainsOriginalCycleAndOldTickOnlyConfirmsWithoutSuccessorReplay() {
+        for (var mode : List.of(ExecutionMode.CONCURRENT, ExecutionMode.PLANNED_PARALLEL)) {
         var proof = new AtomicBoolean();
         var completions = new AtomicInteger();
         try (var fixture = new Fixture(1, 20, 3)) {
-            var worker = fixture.worker(false, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            var worker = fixture.worker(false, 1, mode, Layout.ORDINARY);
             worker.adapter = actual -> new ReservationAdapter(actual) {
                 @Override public void complete() {
                     completions.incrementAndGet();
@@ -288,6 +293,7 @@ class NetworkRecipeExecutionTest {
             assertEquals(90, worker.energy.savedEnergy());
             assertEquals(MachineLifecycle.State.UNLOADED, Objects.requireNonNull(worker.machine.lifecycle()).state());
         } finally { proof.set(true); }
+    }
     }
 
     @Test void independentMachinesKeepParallelSourceLanesAndRefreshOnlyAfterTheirActualExit() {
@@ -398,7 +404,8 @@ class NetworkRecipeExecutionTest {
             research.freeze(resources);
             network = new NetworkRuntime(identities, resources,
                 identity -> OwnerTeamResolution.resolved(identity, "team", OwnerTeamType.SERVER, ObjectSets.singleton(identity), Optional.empty()), this::requireOwner);
-            var factory = new NetworkRecipeExecutionFactory(this::candidates, this::refresh, () -> tick, () -> tickOpen && tickGate.get());
+            var factory = new MachineRecipeExecutionFactory(this::candidates, () -> this::refresh, () -> tick, () -> tickOpen && tickGate.get(), machine -> machine.components().assemblyBindings().stream()
+                .anyMatch(binding -> binding.component() instanceof NetworkRecipeWork));
             scheduler = new TaskScheduler(owner, 2, 2, factory, Duration.ofSeconds(5));
             role = MachineNetworkDevice.component(id("role"), ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 1,

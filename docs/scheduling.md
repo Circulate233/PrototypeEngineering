@@ -1,8 +1,8 @@
 # 普通调度、所有权与服务器接线
 
-TaskScheduler现已通过包内factory实际持有完整PlannedExecution，保留pending、取消与实际退出证明，并支持先清理后停原lane的tryClose。服务器默认构造尚未安装真实机器factory；机器组件/生命周期复合cycle、PN预算与纯prepare仍待接，mode仍拒绝。具体阶段和真实资源测试边界见[planned所有权](scheduler-planned-ownership.md)。
+TaskScheduler 持有完整 PlannedExecution，保留 pending、取消与实际退出证明，并支持先清理后停原 lane 的 tryClose。2A 已将公共三参 scheduler 的正式机器入口接到原组件游标、生命周期、工位 coordinator 与纯 prepare；服务器只追加普通 CONCURRENT 网络 admission/refresh。具体所有权边界见[planned 所有权](scheduler-planned-ownership.md)与[正式执行](planned-execution.md)。
 
-PM JavaTaskSchedulerBackend 的普通 MAIN_THREAD / CONCURRENT 路径已迁移，保留真实线程池、共享资源亲和分组和 join。planned runner、真实配方阶段协调、取消与 deadline 及调度器持有的清理基础现已完成，见[执行屏障](planned-execution.md)和[原实现审计](planned-migration-audit.md)；正式 discover/plan/reserve/prepare/resolve/commit、两次结果屏障与 PN 预算消费仍须接线。`PLANNED_PARALLEL` 当前明确拒绝，不降级为普通并发。源码入口为 `api/scheduler`、`scheduler/TaskScheduler` 和 `scheduler/ServerTaskSchedulers`。
+PM JavaTaskSchedulerBackend 的普通 MAIN_THREAD / CONCURRENT 路径已迁移，保留真实线程池、共享资源亲和分组和 join。planned runner、真实配方阶段协调、取消与 deadline 及调度器持有的清理基础现已完成，见[执行屏障](planned-execution.md)和[原实现审计](planned-migration-audit.md)；真实配方资源预留/提交/补偿、纯 prepare、PN 消费与 2A 正式机器接线已完成。`PLANNED_PARALLEL` 只接受交付真实 lifecycle-bound MachineInstance 的 PlannedMachineTask，Runnable 正式提交仍拒绝，正式执行不会落入普通并发。源码入口为 `api/scheduler`、`scheduler/TaskScheduler` 和 `scheduler/ServerTaskSchedulers`。
 
 ## 可复用行为与已修正问题
 
@@ -28,20 +28,20 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 ## 机器与服务器
 
-`MachineInstance` 直接实现 ScheduledTask。缺少显式 MachineScheduling 组件时沿用 PM 的 CONCURRENT 默认值；组件以不可变 ExecutionMode 值表达选择，变更须发生在合法 owner 边界。生命周期 active 门保留未成型机器的普通组件执行，只停止配方扫描/推进；卸载、破坏和故障机器不再进入新一轮业务。
+`MachineInstance` 与 `MachineController` 实现 PlannedMachineTask 并继承 ScheduledTask；外部包装交付同一真实机器即可使用公共正式入口。缺少显式 MachineScheduling 组件时沿用 PM 的 CONCURRENT 默认值；组件以不可变 ExecutionMode 值表达选择，变更须发生在合法 owner 边界。生命周期 active 门保留未成型机器的普通组件执行，只停止配方扫描/推进；卸载、破坏和故障机器不再进入新一轮业务。
 
 机器 affinity 从 MachineHatches 的公开资源 input/output storageIdentity 和能源 input/output storageIdentity 收集。混合仓的独立侧缓存保持独立身份；同一真实存储的别名汇为同一个共享 key。发现与元数据采集在 owner 上完成，不在 worker 查 TileEntity 或 World。缺省行为不能替代 PN 后续计算资源/来源 lane 的精确权限模型。
 
 `ServerTaskSchedulers` 在 FMLServerAboutToStart 创建一个确切 MinecraftServer 身份的 session，在 ServerTick.END 调用真实普通调度，并在 FMLServerStopped（世界卸载之后）关闭。没有静态全局线程池，也不允许旧 server 引用取得新 session。外部控制器通过 forServer 取得本会话实例；实际 MachineControllerBlockEntity 现已经 MachineController 登记，世界接线见[控制器集成](controller-integration.md)。
 
-网络角色现使用 `tick(prepare)`：每次实际 MAIN action 前和 CONCURRENT 元数据捕获前，owner 同步捕获/规划/发布当前网络条件；正常及异常 tick 退出都撤销。prepare 不能改 scheduler 登记或请求 owner 边界，失败沿用既有 fault/join/清理。默认无参 tick 保留原流程，网络拒绝仅暂停配方，不停普通组件。具体身份修订、临时失权和多次 MAIN 捕获的成本边界见[网络运行时](network-runtime.md)。
+网络角色现使用 `tick(prepare)`：每次实际 MAIN action 前、CONCURRENT 元数据捕获前及 formal owner 组件边界，owner 同步捕获/规划/发布当前网络条件；正常及异常 tick 退出都撤销。prepare 不能改 scheduler 登记或请求 owner 边界，失败沿用既有 fault/join/清理。默认无参 tick 保留原流程，网络拒绝仅暂停配方，不停普通组件。具体身份修订、临时失权和多次 MAIN 捕获的成本边界见[网络运行时](network-runtime.md)。
 
 `SchedulerConfig` 单独保存到 `prototype_eng/scheduler.cfg`，普通 worker 默认 `max(2, availableProcessors)`，lane 默认 `clamp(availableProcessors, 2, 8)`，来自 PM 原配置，服务器启动时生效。planned 超时、后端切换、性能统计窗口/命令和 Modern Backend 能力仍需后续迁移，当前没有用配置占位冒充已实现功能。
 
 ## 验证与后续
 
-真实接线前的持续机器gate与逐normal组件cursor已实现，见[机器tick边界](machine-tick-boundaries.md)。调度仍须先恢复旧pending再派任何新业务，避免普通worker等StorageFence而owner在join导致死锁；close须在source lanes存活时完成清理。当前正常pending尚未纳入控制器STOPPING与scheduler边界，不能直接解除mode拒绝。
+持续机器 gate 与逐 normal 组件 cursor 已接入真实正式执行，见[机器 tick 边界](machine-tick-boundaries.md)。先恢复旧 pending 并证明 source 实际退出，再派新业务；close 在 source lanes 存活时完成清理，UNKNOWN/卸载仍保留准确义务。公共三参入口的 tickGeneration/tickOpen 撤销原前向权，旧 pending 不换 callback/deadline；MAIN → CONCURRENT join → planned 顺序保持。
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。真实网络机器组件游标、控制器登记和配方/研究预算消费者已接通。研究作为普通工作之前的 PlannedExecution，先持有再执行，旧 pending 未结清不放行普通捕获；见[服务器研究](server-research.md)。仍需纯 prepare 扩展、正式 PLANNED_PARALLEL、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。真实网络机器组件游标、控制器登记和配方/研究预算消费者已接通。研究作为普通工作之前的 PlannedExecution，先持有再执行，旧 pending 未结清不放行普通捕获；见[服务器研究](server-research.md)。块一纯 prepare/需求工作预算与 2A 正式模式已接；仍需 2B 扫描内部工作预算、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。

@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-08 块二 A 正式 PLANNED_PARALLEL 与独立机器宿主已接通并验证：公开 PlannedMachineTask 交付真实 MachineInstance，Controller/Instance/外部 wrapper 共用原生命周期、组件游标、工位 coordinator 和来源 lanes；公共三参 scheduler 默认接正式机器，服务器仅为 CONCURRENT 网络机器追加 admission/refresh。捕获登记、active、宿主及底层 mode、原机器/lifecycle，owner prepare 返回后重验 current，旧 pending 不续权；MAIN → CONCURRENT join → planned 顺序保持。正常完整 build 1264 tests / 160 suites、受影响 170 tests / 20 suites 全通过，12 Java IDEA MCP errorsOnly:false 全级零、完整 read_file 项目文本/磁盘一致，12 源码构建前后 SHA 稳定。见[正式执行](planned-execution.md)、[调度](scheduling.md)和[网络消费者](network-recipes.md)，准确写前基线/最终快照/证据入口 `build/staging/planned-mode-hosts/`。扫描内部工作预算属于 2B；本阶段实现与验证已完成，未推送、未启动游戏或服务端。
+
 - 2026-11-08 JEI 每池默认/独立自定义页面已实现并验证：客户端以稳定池 ID 绑定一个生效分类实例，默认按 IO 最大槽数生成并分页，自定义直接实现原生页面接口；AEKey/long、独立 FE、条件与原生交互保持。全池及当前全部 registered ingredient 在任何 wrapper/index 发布前按原生 helper UID 统一捕获，已知冲突 key 全部降级并提示，正常查询沿原生 helper 语义；不证明未知后续 NBT 全域精确查询。两 suite 12 行为及完整 build 1259 tests / 159 suites 全通过，17 Java IDEA MCP errorsOnly:false 全级零诊断、完整 MCP 项目文件读回/磁盘一致，19 源码资源构建前后 SHA 稳定，17 Java 在 MCP 验证后无变化，MCP build_project 成功。见[JEI 页面](jei.md)，准确基线/最终快照/证据入口 `build/staging/jei-pool-migration/`。额外转移/书签/结构预览/历史 decorator 资产不计完成，客户端实机未验收；已本地提交 `caf721849b8cc01d96e16a66717407daa0fafcc4`，未推送、未启动游戏或服务端。
 
 - 2026-11-08 块一真实 pure prepare 与内置工作预算已实现、验证并补齐文档：CONCURRENT 网络及研究材料消费者经既有 runPrepare 派发纯 kernel，owner 实际捕获/选择/预检/预留按预算续办；原 deadline/current attempt 内 work yield 不续权，跨 tick 仅复用无授权纯事实，overlay 复用规范化冻结列表，旧同步 acquisition 的后续子段模式保持。完整 build 1247 tests / 157 suites 全通过，33 Java IDEA MCP errorsOnly:false 全级零诊断、MCP项目文件读回与磁盘一致、MCP build_project 成功，34 源码/资源文件构建前后 SHA 一致。外部 snapshot/matcher/comparator/opaque callback 是合作回调边界；正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算归块二。见[执行边界](planned-execution.md)、[配方](recipes.md)、[网络消费者](network-recipes.md)及[功能核对](recipe-feature-parity.md)，精确基线/统一最终清单与快照入口 `build/staging/recipe-pure-prepare/`。未推送，未启动游戏或服务端。
@@ -19,7 +21,7 @@
 - 研究默认 GUI 与 AE2 分页同步已接：目录/队列/奖励、文案/图标、Java 打开及开始/接管/黑名单/领取。请求绑定原窗口、玩家、队伍和准确队列项，奖励保留本人永久资格；详情见[研究界面](research-gui.md)。
 
 - PN 普通配方研究/计算已接通：有序扩展注册、机器默认与逐配方条件合并、真实选中数据中心、阶段占用/提交/补偿。算力等 numeric 随并行量缩放；THREAD 按整机 UUID 只占 1，不随工位或 Java 线程数重复。START/扫描只检查，工作 TICK 占用，零时长 START 占用一次。见[配方消费者](network-recipes.md)。
-- 服务器 CONCURRENT 网络机器已自动转入 owner 协调，原组件游标在工位处理处暂停，材料/FE 来源 lanes 仍并行，结算后恢复后续 normal/post；pending、卸载及旧 tick 保留准确清理义务。独立三参 scheduler 不自动安装此工厂；块一实际 pure prepare/预算已接，正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算归块二。
+- 服务器 CONCURRENT 网络机器已自动转入 owner 协调，原组件游标在工位处理处暂停，材料/FE 来源 lanes 仍并行，结算后恢复后续 normal/post；pending、卸载及旧 tick 保留准确清理义务。公共三参 scheduler 默认接正式机器宿主；普通 CONCURRENT 网络 admission/refresh 由服务器注入，扫描内部预算归 2B。
 - 真实计算组件物品供给已接通：AEItemKey 精确注册、真实 committed 槽、long 数量、单物品上限和整机供给合并；提取预留仍供给，待插入输出不供给。捕获后的授权只读版本证明，可在材料/FE 锁及 source fence 内使用，见[计算资源](network-resources.md)。
 - 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；当前 Schema 5 保存原站、可选原控制器方块凭据和完整材料，并包含接口式用户盘导入；永久破坏沿原进程 cancel 或精确 cold 局部终结，见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接：同一外层阶段逐段执行子 START/TICK/END；候选 Blocked/Failure 时，在原 fence 和 source lanes 撤销完整候选后缀，确认后尝试下一项，外层成功前缀保留。支持嵌套选择、产物链、满仓闭环与 modifier/overlay 顺序；普通 continuation 保留跨来源并行，见[检查点审计](checkpoint-execution-audit.md)。
@@ -34,9 +36,9 @@
 
 0. 扩展和 R30 接口式用户盘共同导入均已实现、验证并本地提交；盘物品/tier/布局由外部注册，无内置盘/等级表。永久破坏材料会话本阶段已接真实入口，最终证据见 `build/staging/research-station-destruction/`；背景修改及 `docs/INDEX.md~` 保留。
 
-1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；下一步按[配方功能核对](recipe-feature-parity.md)接块二正式 PLANNED_PARALLEL、独立宿主自动接线及扫描预算。Java 先完整，CT 最后。
+1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；2A 正式 PLANNED_PARALLEL 与独立宿主已验证；下一步按[配方功能核对](recipe-feature-parity.md)接 2B 扫描内部工作预算。Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
-3. 块二复用已验证的纯 kernel、实际预算游标、机器生命周期与 source lanes，接正式模式、独立宿主及扫描预算；外部合作回调不冒充可抢占实现。整体重开发仍在进行。
+3. 2B 复用已验证的纯 kernel、实际预算游标、机器生命周期与 source lanes，接扫描内部预算；外部合作回调不冒充可抢占实现。整体重开发仍在进行。
 4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
 ## 必须遵守
@@ -75,7 +77,7 @@
 | 队伍/FTB/中心规划/计算贡献 | [network-planning.md](network-planning.md)，api/team、api/network、integration/ftb |
 | 计算资源注册/单物品限额/旧预算与lease审计 | [network-resources.md](network-resources.md)，api/network/resource |
 | 实际tick预算/lease/当前代工作凭据/原代补偿 | [network-budgets.md](network-budgets.md)，NetworkTeamBudget/NetworkRuntime.WorkPermit |
-| PN 配方扩展/并行占用/真实数据中心/服务器自动协调 | [network-recipes.md](network-recipes.md)，api/network/recipe、NetworkRecipeWorkSystem、NetworkRecipeExecution |
+| PN 配方扩展/并行占用/真实数据中心/服务器自动协调 | [network-recipes.md](network-recipes.md)，api/network/recipe、NetworkRecipeWorkSystem、MachineRecipeExecution |
 | 网络角色/服务器发布/共同配方门限 | [network-runtime.md](network-runtime.md)，MachineNetworkDevice/NetworkRuntime/ServerNetworkRuntime |
 | 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle |
 | 可暂停机器组件/持续执行gate/调度接线风险 | [machine-tick-boundaries.md](machine-tick-boundaries.md)，ComponentMap.TickDispatch、MachineLifecycle.ScheduledExecution |

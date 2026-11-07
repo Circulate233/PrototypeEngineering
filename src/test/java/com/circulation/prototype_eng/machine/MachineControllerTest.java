@@ -76,7 +76,7 @@ class MachineControllerTest {
     }
 
     @Test
-    void plannedRegistrationFailureUnloadsTheLoadedMachineAggregatesCleanupAndLeavesNoRegistration() {
+    void formalControllerLoadsAndAggregatesUnloadCleanupWithoutLeavingARegistration() {
         var component = counterType(new Action());
         var assembly = assembly(component, ExecutionMode.PLANNED_PARALLEL);
         var firstCleanup = new IllegalStateException("first cleanup");
@@ -97,9 +97,11 @@ class MachineControllerTest {
                 @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { log.add("unloaded:second"); throw secondCleanup; }
             });
             var controller = new MachineController(assembly, new Host(), scheduler, registry);
-            var failure = assertThrows(IllegalArgumentException.class, () -> controller.load(null));
-            assertArrayEquals(new Throwable[]{firstCleanup}, failure.getSuppressed());
-            assertArrayEquals(new Throwable[]{secondCleanup}, firstCleanup.getSuppressed());
+            controller.load(null);
+            assertEquals(1, scheduler.registeredCount());
+            var failure = assertThrows(IllegalStateException.class, () -> controller.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED));
+            assertSame(firstCleanup, failure);
+            assertArrayEquals(new Throwable[]{secondCleanup}, failure.getSuppressed());
             assertEquals(List.of("loaded:first", "loaded:second", "unloaded:first", "unloaded:second"), log);
             assertEquals(0, scheduler.registeredCount());
             controller.controllerBroken();

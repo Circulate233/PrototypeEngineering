@@ -12,6 +12,8 @@ import org.jetbrains.annotations.Nullable;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 
 /**
  * One scheduler per actual server session, including integrated-server restarts in the same JVM.
@@ -81,10 +83,19 @@ public final class ServerTaskSchedulers {
         @SuppressWarnings("resource") // The FML network service owns this borrowed session runtime.
         private Session(MinecraftServer server, int workers, int lanes) {
             this.server = server;
-            var factory = new NetworkRecipeExecutionFactory(this::candidates,
-                () -> ServerNetworkRuntime.forServer(server).refresh(), () -> currentTick, () -> tickOpen);
+            var factory = new MachineRecipeExecutionFactory(this::candidates,
+                () -> () -> ServerNetworkRuntime.forServer(server).refresh(), () -> currentTick, () -> tickOpen, Session::networkMachine);
             scheduler = new TaskScheduler(Thread.currentThread(), workers, lanes, factory,
                 (tasks, deadline) -> ServerResearch.prepareTick(server, tasks, deadline), Duration.ofSeconds(5));
+        }
+
+        private static boolean networkMachine(MachineInstance machine) {
+            for (var binding : machine.components().assemblyBindings()) {
+                if (binding.component() instanceof NetworkRecipeWork) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private List<TaskScheduler.PlannedCandidate> candidates() { return scheduler.plannedCandidates(); }

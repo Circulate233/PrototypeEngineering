@@ -1,6 +1,10 @@
 package com.circulation.prototype_eng.api.scheduler;
 
-/** Planned execution requires a formal coordinator and must never fall back to ordinary workers. */
+/**
+ * Planned execution requires PlannedMachineTask and a real lifecycle-bound machine. It runs after
+ * ordinary concurrent work joins, through the owner coordinator, and never falls back to workers.
+ * Runnable submissions cannot select PLANNED_PARALLEL.
+ */
 public enum ExecutionMode {
     MAIN_THREAD,
     CONCURRENT,
