@@ -31,4 +31,9 @@ public abstract class EntityPlayerMixin {
     private void prototype_eng$restoreRewardCursor(NBTTagCompound compound, CallbackInfo callback) {
         RewardPlayerInventory.readProtectedCursor((EntityPlayer) (Object) this, compound);
     }
+
+    @Inject(method = "readEntityFromNBT", at = @At("HEAD"), require = 1, allow = 1)
+    private void prototype_eng$reconcileRewardJournal(NBTTagCompound compound, CallbackInfo callback) {
+        RewardPlayerInventory.reconcileDeliveryJournal((EntityPlayer) (Object) this, compound);
+    }
 }

@@ -13,8 +13,10 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Objects;
@@ -127,10 +129,18 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
                 }
             }
         }
-        var absent = new ObjectOpenHashSet<UUID>();
-        for (var fragment : fragments) {
-            // Loaded inventory/entities can observe an effect; they cannot prove global durable absence.
-            if (!observed.contains(fragment.id()) && absenceProof.provenAbsent(player, fragment)) absent.add(fragment.id());
+        var unobserved = new ObjectArrayList<RewardFragment>();
+        for (var fragment : fragments) if (!observed.contains(fragment.id())) unobserved.add(fragment);
+        var handler = requirePlayerSaveHandler();
+        ObjectSet<UUID> absent;
+        try {
+            // Read before any player save can replace evidence. A failed ISSUING save leaves the
+            // live journal ISSUING, so an older PREPARED file cannot authorize another effect.
+            absent = RewardDeliveryPersistence.preparedFragments(playerFile(handler), isHost() ? hostFile(handler) : null,
+                player.getUniqueID(), readJournal(), unobserved);
+        } catch (IOException failure) { throw new UncheckedIOException(failure); }
+        for (var fragment : unobserved) {
+            if (!absent.contains(fragment.id()) && absenceProof.provenAbsent(player, fragment)) absent.add(fragment.id());
         }
         requireOwner();
         return new Scan(observed, entities, absent);
@@ -175,9 +185,22 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
         };
     }
 
+    @Override public void prepare(RewardFragment fragment) {
+        requireOwner(); validate(fragment);
+        var journal = readJournal();
+        journal.prepare(fragment);
+        journal.writeTo(player.getEntityData());
+        persistPlayer(null);
+    }
+
     @Override public Delivery deliver(RewardFragment fragment) {
         requireOwner(); validate(fragment);
         if (fragment.status() != RewardFragment.Status.DELIVERING) throw new IllegalStateException("Reward fragment has not durably started");
+        var journal = readJournal();
+        journal.issue(fragment);
+        // Publish first so every intervening vanilla save carries ISSUING, including on failure.
+        journal.writeTo(player.getEntityData());
+        persistPlayer(null);
         var stack = new ItemStack(fragment.taggedStackNbt());
         return switch (fragment.target()) {
             case RewardFragment.Inventory inventory -> {
@@ -210,29 +233,15 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
     @Override public void commit(RewardFragment fragment, Delivery delivery) {
         requireOwner(); validate(fragment);
         if (fragment.status() != RewardFragment.Status.DELIVERING || delivery.acceptedCount() != fragment.count()) throw new IllegalArgumentException("Invalid reward commit");
+        if (readJournal().contains(fragment, RewardDeliveryJournal.State.PREPARED)) {
+            throw new IllegalStateException("Observed reward effect contradicts its prepared journal");
+        }
         var expected = new ItemStack(fragment.taggedStackNbt());
         if (fragment.target() instanceof RewardFragment.Inventory) {
             if (delivery.entityUuid().isPresent()) throw new IllegalArgumentException("Inventory reward cannot have entity identity");
             requireInventoryLeaf(expected);
-            var cursor = protectedCursor();
-            var handler = requirePlayerSaveHandler();
-            boolean host = server.isSinglePlayer() && player.getName().equals(server.getServerOwner());
-            if (host) server.getPlayerList().saveAllPlayerData(); // Refreshes IntegratedPlayerList's authoritative host snapshot.
-            else handler.getPlayerNBTManager().writePlayerData(player);
-            requireOwner();
-            try {
-                RewardDeliveryPersistence.verifyPlayer(handler.getWorldDirectory().toPath().resolve("playerdata").resolve(player.getUniqueID() + ".dat"),
-                    player.getUniqueID(), fragment.taggedStackNbt(), cursor);
-                if (host) {
-                    var hostData = Objects.requireNonNull(server.getPlayerList().getHostPlayerData(), "Reward host player snapshot");
-                    handler.saveWorldInfoWithPlayer(overworld.getWorldInfo(), hostData);
-                    requireOwner();
-                    RewardDeliveryPersistence.verifyHost(handler.getWorldDirectory().toPath().resolve("level.dat"), player.getUniqueID(), fragment.taggedStackNbt(), cursor);
-                }
-            } catch (IOException failure) { throw new UncheckedIOException(failure); }
-            requireOwner();
+            persistPlayer(fragment.taggedStackNbt());
             requireInventoryLeaf(expected);
-            if (!cursor.equals(protectedCursor())) throw new IllegalStateException("Reward cursor changed during its persistence barrier");
             return;
         }
         var entityId = delivery.entityUuid().orElseThrow();
@@ -281,6 +290,39 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
         return RewardItemProtection.isProtected(cursor) ? cursor.writeToNBT(new NBTTagCompound()) : new NBTTagCompound();
     }
 
+    private RewardDeliveryJournal readJournal() {
+        return RewardDeliveryJournal.read(player.getEntityData(), player.getUniqueID());
+    }
+
+    /** Uses vanilla's existing writers and verifies both integrated-host recovery sources. */
+    private void persistPlayer(@Nullable NBTTagCompound leaf) {
+        var journal = readJournal().snapshot();
+        var cursor = protectedCursor();
+        var handler = requirePlayerSaveHandler();
+        if (isHost()) server.getPlayerList().saveAllPlayerData();
+        else handler.getPlayerNBTManager().writePlayerData(player);
+        requireOwner();
+        try {
+            RewardDeliveryPersistence.verifyPlayerState(playerFile(handler), player.getUniqueID(), journal, cursor, leaf);
+            if (isHost()) {
+                var hostData = Objects.requireNonNull(server.getPlayerList().getHostPlayerData(), "Reward host player snapshot");
+                handler.saveWorldInfoWithPlayer(overworld.getWorldInfo(), hostData);
+                requireOwner();
+                RewardDeliveryPersistence.verifyHostState(hostFile(handler), player.getUniqueID(), journal, cursor, leaf);
+            }
+        } catch (IOException failure) { throw new UncheckedIOException(failure); }
+        requireOwner();
+        if (!journal.equals(readJournal().snapshot()) || !cursor.equals(protectedCursor())) {
+            throw new IllegalStateException("Reward player evidence changed during its persistence barrier");
+        }
+    }
+
+    private boolean isHost() { return server.isSinglePlayer() && player.getName().equals(server.getServerOwner()); }
+    private Path playerFile(SaveHandler handler) {
+        return handler.getWorldDirectory().toPath().resolve("playerdata").resolve(player.getUniqueID() + ".dat");
+    }
+    private static Path hostFile(SaveHandler handler) { return handler.getWorldDirectory().toPath().resolve("level.dat"); }
+
     private SaveHandler requirePlayerSaveHandler() {
         var handler = overworld.getSaveHandler();
         if (!(handler instanceof SaveHandler vanilla) || handler.getPlayerNBTManager() != handler) {
@@ -292,6 +334,8 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
     @Override public void release(RewardFragment fragment) {
         requireOwner(); validate(fragment);
         if (fragment.status() != RewardFragment.Status.CONFIRMED) throw new IllegalArgumentException("Only durably confirmed reward fragments can be released");
+        // Validate even when the already released item is gone; a reused receipt ID is not ours.
+        readJournal().contains(fragment, RewardDeliveryJournal.State.ISSUING);
         var expected = new ItemStack(fragment.taggedStackNbt());
         var slots = new IntArrayList();
         var drops = new ObjectArrayList<EntityItem>();
@@ -325,6 +369,11 @@ public final class MinecraftRewardItemDeliveryAdapter implements RewardItemDeliv
             if (cursor) player.sendContainerToPlayer(player.openContainer);
         }
         requireOwner();
+        var journal = readJournal();
+        if (journal.remove(fragment)) {
+            journal.writeTo(player.getEntityData());
+            player.inventory.markDirty();
+        }
         // Cleanup is repeatable after reload. Missing/previously released leaves never create items.
     }
 

@@ -309,6 +309,37 @@ class ResearchRewardClaimTest {
         assertThrows(IllegalStateException.class, () -> terminal.replaceChild(0, child.replaceFragment(retry)));
     }
 
+    @Test void authoritativeAbsencePersistsRetryPlanBeforePrepareAndPreparationFailureCanRetryIt() {
+        var player = eligible();
+        var definition = definition(group(new RewardChild.Item(id("items"), ITEM, 5)));
+        var adapter = new Adapter();
+        adapter.failBeforeEffect = true;
+        var durable = new AtomicReference<RewardClaim>();
+        assertThrows(IllegalStateException.class, () -> claim(player, definition, GROUP, durable::set, adapter));
+        var first = durable.get().children().getFirst().fragments().values().iterator().next();
+        assertEquals(RewardFragment.Status.DELIVERING, first.status());
+        var failure = new IllegalStateException("retry preparation flush failed");
+        adapter.failBeforeEffect = false;
+        adapter.beforePrepare = fragment -> {
+            assertEquals(first.retryPlanned(), fragment);
+            assertEquals(fragment, durable.get().children().getFirst().fragments().get(fragment.id()));
+            throw failure;
+        };
+
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> claim(player, definition, GROUP, durable::set, adapter)));
+        assertEquals(first.retryPlanned(), durable.get().children().getFirst().fragments().get(first.id()));
+        assertEquals(1, adapter.deliveries);
+        assertTrue(adapter.physical.isEmpty());
+        assertFalse(player.busy());
+        adapter.beforePrepare = fragment -> assertEquals(fragment, durable.get().children().getFirst().fragments().get(fragment.id()));
+        assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(player, definition, GROUP, durable::set, adapter).status());
+        assertEquals(ObjectList.of(RewardFragment.Status.PLANNED, RewardFragment.Status.RETRY_PLANNED,
+            RewardFragment.Status.RETRY_PLANNED, RewardFragment.Status.PLANNED),
+            new ObjectArrayList<>(adapter.prepared.stream().map(RewardFragment::status).toList()));
+        assertEquals(3, adapter.deliveries);
+        assertEquals(2, adapter.physical.size());
+    }
+
     private ResearchRewardClaimer.Result claim(PlayerResearchState player, ResearchDefinition definition, ResourceLocation choice, RewardClaimCheckpoint checkpoint, Adapter adapter) {
         return executor.claim(new ResearchRewardClaimer.Request(player, definition, 1, choice, 20, checkpoint, adapter));
     }
@@ -329,6 +360,8 @@ class ResearchRewardClaimTest {
     private static final class Adapter implements RewardItemDeliveryAdapter {
         private final Object2ObjectOpenHashMap<UUID, RewardFragment> physical = new Object2ObjectOpenHashMap<>();
         private Consumer<RewardFragment> beforeDelivery = _ -> { };
+        private Consumer<RewardFragment> beforePrepare = _ -> { };
+        private final ObjectList<RewardFragment> prepared = new ObjectArrayList<>();
         private Runnable afterScan = () -> { };
         private Function<RewardFragment, Delivery> reply = fragment -> new Delivery(fragment.count(), Optional.empty());
         private int deliveries;
@@ -357,6 +390,11 @@ class ResearchRewardClaimTest {
             return new Scan(observed, new Object2ObjectOpenHashMap<>(), absent);
         }
         @Override public boolean canDeliver(RewardFragment fragment) { return !physical.containsKey(fragment.id()); }
+        @Override public void prepare(RewardFragment fragment) {
+            RewardItemDeliveryAdapter.super.prepare(fragment);
+            prepared.add(fragment);
+            beforePrepare.accept(fragment);
+        }
         @Override public Delivery deliver(RewardFragment fragment) {
             beforeDelivery.accept(fragment);
             deliveries++;

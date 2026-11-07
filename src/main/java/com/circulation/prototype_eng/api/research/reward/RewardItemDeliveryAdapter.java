@@ -19,6 +19,20 @@ public interface RewardItemDeliveryAdapter {
     ObjectList<RewardFragment> plan(RewardEventKey parent, RewardChild.Item reward);
     Scan scan(ObjectList<RewardFragment> delivering);
     boolean canDeliver(RewardFragment fragment);
+
+    /**
+     * Durably prepares this exact PLANNED or RETRY_PLANNED leaf after its complete selection plan
+     * is saved, before the claimer saves DELIVERING. This hook must never issue items. Repeated
+     * calls retain the same plan; only RETRY_PLANNED carries a durable proof of a prior zero effect.
+     * Failures propagate unchanged and prevent the corresponding delivery from starting.
+     */
+    default void prepare(RewardFragment fragment) {
+        var status = Objects.requireNonNull(fragment).status();
+        if (status != RewardFragment.Status.PLANNED && status != RewardFragment.Status.RETRY_PLANNED) {
+            throw new IllegalArgumentException("Only planned reward fragments may prepare their delivery evidence");
+        }
+    }
+
     /**
      * Zero accepted items and no entity is an authoritative statement that this invocation caused
      * no delivery effect. The claimer durably records it before retrying the same immutable plan.

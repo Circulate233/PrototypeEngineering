@@ -168,9 +168,9 @@ public final class ResearchRewardClaimer {
             for (var fragment : delivering) {
                 if (!scan.provenAbsent().contains(fragment.id())) continue;
                 if (!request.current().getAsBoolean()) return stale();
-                if (!request.itemDelivery().canDeliver(fragment)) return result(Status.RETRY_LATER, "Proven absent fragment target is unavailable");
-                var pause = deliverStarted(request, session, index, fragment);
-                if (pause != null) return pause;
+                // Record the authoritative zero-effect proof before the platform may prepare a new
+                // attempt. Recovery then joins the same planned path as every ordinary delivery.
+                retryPlanned(request, session, index, fragment);
             }
             for (var fragment : session.requireCurrent().children().get(index).fragments().values()) {
                 if (fragment.status() == RewardFragment.Status.DELIVERING) return result(Status.RETRY_LATER, "Reward delivery remains unknown");
@@ -182,6 +182,8 @@ public final class ResearchRewardClaimer {
             if (fragment.status() != RewardFragment.Status.PLANNED && fragment.status() != RewardFragment.Status.RETRY_PLANNED) continue;
             if (!request.current().getAsBoolean()) return stale();
             if (!request.itemDelivery().canDeliver(fragment)) return result(Status.RETRY_LATER, "Reward target is unavailable");
+            if (!request.current().getAsBoolean()) return stale();
+            request.itemDelivery().prepare(fragment);
             if (!request.current().getAsBoolean()) return stale();
             var started = fragment.started();
             var current = session.requireCurrent();
@@ -206,8 +208,8 @@ public final class ResearchRewardClaimer {
     }
 
     private static Result deliverStarted(Request request, PlayerResearchState.RewardSession session, int index, RewardFragment fragment) {
-        // This call follows a fresh started checkpoint or authoritative absence proof. It has not
-        // invoked delivery yet; observed and unknown recovery leaves never enter this path.
+        // This call follows a fresh preparation and started checkpoint. It has not invoked delivery
+        // yet; observed and unknown recovery leaves never enter this path.
         if (!request.current().getAsBoolean()) {
             if (fragment.entityUuid().isEmpty()) retryPlanned(request, session, index, fragment);
             return stale();

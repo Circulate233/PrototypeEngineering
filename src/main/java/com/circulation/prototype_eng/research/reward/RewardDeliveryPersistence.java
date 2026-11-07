@@ -7,12 +7,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.UUID;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.research.reward.RewardFragment;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.chunk.storage.RegionFile;
 import net.minecraftforge.common.util.Constants;
+import org.jetbrains.annotations.Nullable;
 
 /** Verifies vanilla's actual files after its writer settles; never reads a pending chunk cache. */
 final class RewardDeliveryPersistence {
@@ -34,6 +41,61 @@ final class RewardDeliveryPersistence {
         requirePlayer(readCompressed(file).getCompoundTag("Data").getCompoundTag("Player"), player, expected, cursor);
     }
 
+    static RewardDeliveryJournal readPlayerJournal(Path file, UUID player) throws IOException {
+        return journal(readCompressed(file), player);
+    }
+
+    static RewardDeliveryJournal readHostJournal(Path file, UUID player) throws IOException {
+        var saved = readCompressed(file);
+        var data = StrictNbt.requireCompound(saved, "Data");
+        // A newly created singleplayer world can predate its first host-player save.
+        return data.hasKey("Player") ? journal(StrictNbt.requireCompound(data, "Player"), player)
+            : RewardDeliveryJournal.read(new NBTTagCompound(), player);
+    }
+
+    /** No saves or fallbacks: an ISSUING or missing receipt in any authoritative source stays unknown. */
+    static ObjectSet<UUID> preparedFragments(Path playerFile, @Nullable Path hostFile, UUID player,
+            RewardDeliveryJournal live, ObjectList<RewardFragment> fragments) throws IOException {
+        var candidates = new ObjectArrayList<RewardFragment>();
+        for (var fragment : fragments) {
+            if (fragment.status() != RewardFragment.Status.DELIVERING) throw new IllegalArgumentException("Only delivering fragments need absence evidence");
+            if (live.contains(fragment, RewardDeliveryJournal.State.PREPARED)) candidates.add(fragment);
+        }
+        var result = new ObjectOpenHashSet<UUID>();
+        if (candidates.isEmpty()) return result;
+        var saved = readPlayerJournal(playerFile, player);
+        var host = hostFile == null ? null : readHostJournal(hostFile, player);
+        for (var fragment : candidates) {
+            if (saved.contains(fragment, RewardDeliveryJournal.State.PREPARED)
+                && (host == null || host.contains(fragment, RewardDeliveryJournal.State.PREPARED))) result.add(fragment.id());
+        }
+        return result;
+    }
+
+    static void verifyPlayerState(Path file, UUID player, NBTTagCompound expectedJournal, NBTTagCompound cursor,
+            @Nullable NBTTagCompound leaf) throws IOException {
+        requirePlayerState(readCompressed(file), player, expectedJournal, cursor, leaf);
+    }
+
+    static void verifyHostState(Path file, UUID player, NBTTagCompound expectedJournal, NBTTagCompound cursor,
+            @Nullable NBTTagCompound leaf) throws IOException {
+        var saved = readCompressed(file);
+        requirePlayerState(StrictNbt.requireCompound(StrictNbt.requireCompound(saved, "Data"), "Player"), player, expectedJournal, cursor, leaf);
+    }
+
+    private static RewardDeliveryJournal journal(NBTTagCompound saved, UUID player) throws IOException {
+        requirePlayerIdentity(saved, player);
+        var entityData = saved.hasKey("ForgeData") ? StrictNbt.requireCompound(saved, "ForgeData") : new NBTTagCompound();
+        return RewardDeliveryJournal.read(entityData, player);
+    }
+
+    private static void requirePlayerState(NBTTagCompound saved, UUID player, NBTTagCompound expected, NBTTagCompound cursor,
+            @Nullable NBTTagCompound leaf) throws IOException {
+        if (!journal(saved, player).snapshot().equals(expected)) throw new IOException("Saved reward delivery journal differs");
+        if (leaf == null) requireCursor(saved, cursor);
+        else requireUniqueLeaf(saved, leaf, cursor);
+    }
+
     private static NBTTagCompound readCompressed(Path file) throws IOException {
         try (var channel = FileChannel.open(file, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
             channel.force(true);
@@ -42,8 +104,12 @@ final class RewardDeliveryPersistence {
     }
 
     private static void requirePlayer(NBTTagCompound saved, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
-        if (!saved.hasUniqueId("UUID") || !player.equals(saved.getUniqueId("UUID"))) throw new IOException("Saved reward player identity differs");
+        requirePlayerIdentity(saved, player);
         requireUniqueLeaf(saved, expected, cursor);
+    }
+
+    private static void requirePlayerIdentity(NBTTagCompound saved, UUID player) throws IOException {
+        if (!saved.hasUniqueId("UUID") || !player.equals(saved.getUniqueId("UUID"))) throw new IOException("Saved reward player identity differs");
     }
 
     static void verifyDrop(Path directory, int x, int z, UUID entityId, NBTTagCompound expected, NBTTagCompound protection) throws IOException {
@@ -96,6 +162,15 @@ final class RewardDeliveryPersistence {
                 matches++;
             }
         }
+        requireCursor(player, expectedCursor);
+        if (!expectedCursor.isEmpty() && sameFragment(expectedCursor, expected)) {
+            if (!expectedCursor.equals(expected)) throw new IOException("Saved reward cursor payload differs");
+            matches++;
+        }
+        if (matches != 1) throw new IOException("Saved reward inventory requires exactly one tagged leaf; found " + matches);
+    }
+
+    private static void requireCursor(NBTTagCompound player, NBTTagCompound expectedCursor) throws IOException {
         if (player.hasKey(RewardPlayerInventory.PROTECTED_CURSOR_TAG)) {
             if (!player.hasKey(RewardPlayerInventory.PROTECTED_CURSOR_TAG, Constants.NBT.TAG_COMPOUND)) {
                 throw new IOException("Saved reward cursor evidence is malformed");
@@ -104,14 +179,9 @@ final class RewardDeliveryPersistence {
             // Match the complete live cursor even when it belongs to another fragment. An unrelated
             // corrupt cursor would make readProtectedCursor reject this entire saved player.
             if (expectedCursor.isEmpty() || !cursor.equals(expectedCursor)) throw new IOException("Saved protected cursor differs from its actual owner");
-            if (sameFragment(cursor, expected)) {
-                if (!cursor.equals(expected)) throw new IOException("Saved reward cursor payload differs");
-                matches++;
-            }
         } else if (!expectedCursor.isEmpty()) {
             throw new IOException("Saved protected cursor is missing");
         }
-        if (matches != 1) throw new IOException("Saved reward inventory requires exactly one tagged leaf; found " + matches);
     }
 
     private static boolean sameFragment(NBTTagCompound actual, NBTTagCompound expected) {

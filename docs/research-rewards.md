@@ -14,9 +14,9 @@
 
 ## 物品确认与证据清理
 
-每个片段保持固定资源、数量、目标槽或掉落位置。先保存完整选择和计划，再保存 DELIVERING，实际交付、保存目标物品，最后保存 CONFIRMED。恢复先观察真实片段；只有明确缺失证明才能重新交付，加载范围内没有看见不等于全局不存在。
+每个片段保持固定资源、数量、目标槽或掉落位置。先保存完整选择和计划，调用 prepare 持久保存玩家 PREPARED，再保存世界 DELIVERING；适配器持久保存并回读 ISSUING 后才实际交付，保存目标物品后再保存 CONFIRMED。恢复先观察真实片段；只有明确未发出证明才能重新交付，加载范围内没有看见不等于全局不存在。
 
-确定没有发生交付的尝试现在保存为 RETRY_PLANNED，保留原片段 ID、完整标签、数量和目标。仅两种路径可以进入：本次刚保存 DELIVERING（或已取得权威缺失证明），但在调用 deliver 之前玩家证明失效；或者 deliver 正常返回零数量且没有实体身份。下一次执行仍先检查原目标、保存 DELIVERING，之后才发放，不重新选组或生成计划。重试记录写入失败时，原 ResearchWorld.pendingSave 持有完整快照，后续操作必须先重写它。
+确定没有发生交付的尝试保存为 RETRY_PLANNED，保留原片段 ID、完整标签、数量和目标。允许的来源为：本次刚保存 DELIVERING 但尚未调用 deliver；deliver 正常返回零数量且没有实体身份；恢复扫描取得准确未发出证明。第三条也先持久保存 RETRY_PLANNED，再统一经过原目标检查、prepare 和 DELIVERING，不直接跳入发放，也不重新选组或生成计划。prepare 异常或回调后失权不会进入新的 DELIVERING。重试记录写入失败时，原 ResearchWorld.pendingSave 持有完整快照，后续操作必须先重写它。
 
 异常、null、部分数量、冲突实体、已经观察到的效果以及扫描未知均不能转入 RETRY_PLANNED。Minecraft 适配器只把实际写入前的目标不可用当作零效果；World.spawnEntity 返回 false 时，Forge 回调已经见过带标签实体，保留其实体身份作为不确定回执，不能据取消生成推定回调没有转移物品。外部适配器也必须遵守这一零效果契约。
 
@@ -32,7 +32,19 @@
 
 未确认的新掉落保存原 Age、PickupDelay 和 Invulnerable，临时暂停老化、拾取及普通伤害；确认后恢复原值并清标记。保存的临时保护也参与磁盘核对，防止重载后在确认前自然消失。非标准玩家存档处理器或非 Anvil 掉落目标在发放之前明确拒绝，外部平台可实现 RewardItemDeliveryAdapter 提供自己的准确凭据。
 
-IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有文件协议，不提供研究文件与 vanilla 文件的原子提交。没有可靠缺失证明时，崩溃发生在 DELIVERING 保存与实际插入之间也会保留未知状态；后续恢复保护不能以“原槽空了”直接补发。
+IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有文件协议，不提供研究文件与 vanilla 文件的原子提交。未发出证明只覆盖下面的 PREPARED 边界；已经进入 ISSUING 却没有观察到物品时仍保留未知，不能以“原槽空了”直接补发。
+
+## 效果前凭据与加载恢复
+
+`RewardDeliveryJournal` 复用玩家 `ForgeData / PlayerPersisted / prototype_eng / reward_delivery_receipts`，与手动材料凭据并列。每条记录保存完整片段身份、父奖励、数量、物品 NBT、目标和 PREPARED/ISSUING；不另造 AEKey 类型、claim 或世界文件。严格检查版本、重复 ID、嵌入身份、数量及目标，最多 4096 条；读写深拷贝并保留手动凭据和其他命名空间。
+
+prepare 即使发现相同的内存 PREPARED 也重新执行保存和核验，因为上一次写入可能失败。issue 先将内存改为 ISSUING，再调用原玩家 writer，并回读核对完整 journal 和受保护光标；单人宿主要求 UUID.dat 与 level.dat/Data.Player 都成功。保存、核验、会话或内存后验失败均不进入库存插入/掉落回调，也不把 ISSUING 回退。只有已经持久保存的 RETRY_PLANNED 才能重新准备同一片段；直接重复 deliver 被拒绝。
+
+恢复扫描在任何保存之前读取真实文件。仅当当前玩家、UUID.dat 以及单人宿主 Data.Player 都保存完全匹配的 PREPARED，才返回该片段的未发出证明。缺少旧版本凭据不构成证明；ISSUING 也不构成证明。外部 AbsenceProof 仍是独立扩展，默认不提供额外证明。
+
+玩家读取 NBT 时还必须合并两份文件，防止单人加载旧 PREPARED 后，普通保存覆盖另一文件里较新的 ISSUING。现有 EntityPlayerMixin 在 readEntityFromNBT 的 HEAD 调用恢复：此时 Entity 已加载 ForgeData，尚未调用 Forge 玩家加载事件；以 GameProfile 推导 UUID 并检查存档身份，不能信任尚未由 EntityPlayer 修正的实体 UUID。所有来源先按完整身份校验再合并；任一来源为 ISSUING 或缺少该条记录，合并结果为 ISSUING；只有全部必需来源一致 PREPARED 才保留它。该步骤只更新内存，不保存、不发物品。正常重生 copyFrom 和玩家维度切换不重走此读取路径，后续已授权的 RETRY_PLANNED 不会被每次普通保存误升级。
+
+确认清理先校验凭据与片段完全相同，在物品清理后重新读取当前 journal，只移除自己的记录；缺失记录幂等，其他奖励和手动数据保留。已确认世界状态仍是清理的前提。部分文件保存失败可以留下保守的未知状态，本协议不承诺自动判定所有崩溃窗口。
 
 ## 旧平台实现的实际问题
 
@@ -60,11 +72,11 @@ IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有�
 
 登录、重生、换维度及掉落后加载会补清已确认片段。清理先执行研究 checkpoint；只读 snapshot 可能含写入失败的内存 CONFIRMED，不能直接据此释放标签。繁忙时延后，保存异常保留原证据，原请求仍由已有 MAIN 调度队列管理。
 
-保护不提供跨文件原子提交或全局缺失证明。玩家文件 PREPARED 不能单独证明 region 中的掉落未生成；未发出凭据必须在效果前持久建立并保持单调。该协议仍待接入，默认缺失证明继续关闭。
+保护不提供跨文件原子提交或全局缺失证明。新凭据通过“所有物品效果之前先持久 ISSUING”的执行顺序证明 PREPARED 尚未发出；它不是扫描玩家文件来猜测 region 中有没有掉落。效果已进入后的缺失仍未知。
 
 ## 剩余接线与验证范围
 
-领取 packet、研究视图与 GUI、崩溃后的可靠未发出证明仍需继续实现。原生交互保护已接，第三方直接物品操作仍依赖公开契约。未知交付保持恢复状态，不能为了让领取返回成功而重新生成物品。下载及其物品回执沿自己的操作链迁移，不与奖励证据混用。
+领取 packet、研究视图与 GUI 仍需继续实现。原生交互保护及效果前持久凭据已接，第三方直接物品操作仍依赖公开契约。未知交付保持恢复状态，不能为了让领取返回成功而重新生成物品。下载及其物品回执沿自己的操作链迁移，不与奖励证据混用。
 
 世界集成测试使用真实 ResearchWorld、ResearchRewardClaimer 和 ResearchWorldNbt，覆盖有序事件/物品、选择与各交付阶段保存失败、准确 pending 重写、重载观察、确认后清理失败不补发、会话隔离、重入、延迟保存、原玩家证明失效和永久资格保留。Minecraft 物品调用按实际依赖源码和 IDEA MCP 检查；没有启动游戏、Bootstrap 或 FML。阶段完整构建、平台文件验证和逐文件诊断由[实施进度](implementation-status.md)记录。
 
@@ -73,3 +85,6 @@ IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有�
 确定零效果恢复阶段新增 5 项行为测试，覆盖重试记录保存失败、准确 pending 重写、NBT 重载、不确定回执、观察后失权和状态迁移限制。完整构建 980 tests / 132 suites 全通过；7 个 src Java 加 Tags 共 8 文件 IDEA MCP 全级零诊断，build_project 成功。证据 build/reports/idea/research-reward-no-effect-final.json。未启动游戏或服务端，原 23 份修改保留。
 
 奖励原生保护阶段新增 2 项实际 NBT 文件行为测试，覆盖光标持久化、跨库存/光标重复、改变/缺失/损坏及单人宿主恢复。完整构建 982 tests / 132 suites 全通过；19 个 src Java 加 Tags 共 20 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。生产 Jar 已包含配置、10 个 Mixin 及生成 refmap；未运行游戏，注入点依据实际源码/字节码与编译映射核验。证据 build/reports/idea/research-reward-protection-final.json。原 23 份修改保留。
+
+
+奖励效果前凭据阶段新增 27 项行为测试，覆盖 prepare/世界检查点顺序、保存失败与失权、完整 NBT 凭据、双文件未发出证明及加载合并后普通保存不降级。完整构建 1009 tests / 134 suites 全通过；11 个 src Java 加 Tags 共 12 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。实际玩家加载时序与生产 Jar 的 readEntityFromNBT 映射已核对；未启动游戏。证据 build/reports/idea/research-reward-receipts-final.json。原 23 份修改保留。
