@@ -14,7 +14,7 @@
 | PM 并行数量需求 | 实际效果已迁；旧空类不复制 | 旧 ParallelismRequirementComponent/System 是空壳。实际效果来自扫描时选择 PROCESS_PARALLELISM 和资源/FE 数量缩放，新 scanner/RecipeParallelism/需求系统已有对应逻辑。 |
 | PM 加载、成型变化、卸载、破坏回调 | 已有具体生命周期入口 | `MachineLifecycleListener` 四方法由 MachineLifecycle 发布，普通控制器接线已存在；这不是“研究完成”事件。 |
 | PN 给每个配方追加研究/计算条件的扩展回调 | 未迁移 | 旧 `NetworkRecipeExtensionListener.extend`、有序 registry.publish/context.freeze/index 及 createWorkGate 是具体扩展链。新项目只有通用配方注册和网络共同 gate/账本，尚无对应的逐配方研究门槛及资源消费者。 |
-| PN 研究启动条件、队列、阶段推进及完成 | 定义/资格/权限入队/队列/完成传播已有执行；研究站未接 | ResearchRegistry 已接注册事件，ResearchEligibility 真执行 startCondition，TeamResearchCompletion 按双来源创建等级/奖励资格；TeamResearchStart/TeamResearchQueue已有真实入队/规划/grant/prune及NBT；手动session、研究站材料/计算提交和服务器存档链仍缺。不能将这些可调用步骤视为完整研究流程。 |
+| PN 研究启动条件、队列、阶段推进及完成 | 定义/资格/权限入队/队列/手动执行/完成传播已有执行；研究站未接 | ResearchRegistry 已接注册事件，ResearchEligibility 真执行 startCondition，TeamResearchCompletion 按双来源创建等级/奖励资格；TeamResearchStart/TeamResearchQueue已有真实入队/规划/grant/prune及NBT；ManualResearch已有逐项投料/回执恢复/暂停接管/冻结完成。研究站材料/计算提交和服务器存档链仍缺，不能将这些可调用步骤视为完整研究流程。 |
 | PN 研究奖励及事件奖励 | Java 领取/恢复核心已有执行；服务器入口未接 | ResearchRewardClaimer 在实际领取时调用 RewardEventAction.deliver，保留选择、片段和checkpoint；Minecraft物品adapter可调用。领取 packet/UI、权威存档服务及完整物品交互冻结尚未接入，默认未知交付不盲目重发。 |
 | PN 研究物品下载事件 | 未迁移 | 旧 ResearchItemDownloadEvent.createOutput 按材料注册，由 ResearchItemDownloadEvaluation 调用，再进入权威下载事务；当前没有对应 download 模块。 |
 | PN 计算组件的实际物品供给 | 仅快照/规划/账本底座 | 旧 DeviceRuntimeRegistry→ComponentInventory→ContributionCalculator 有真实 ItemStack 组件注册、读取和供给计算；当前 resourcesPerTick 数据快照与账本不能代替这条组件执行链。 |

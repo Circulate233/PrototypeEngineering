@@ -6,6 +6,10 @@
 
 ## 当前状态
 
+- 手动研究执行阶段已完成：ManualResearch绑定准确队列项，ManualMaterials按requirementId/inputIndex保留独立进度、每个未完成项各投1个；公开ManualResearchInventory与真实Minecraft背包实现保存完整before/after及PREPARED/COMMITTED/SETTLEMENT_CONFIRMED。九状态会话/NBT、暂停接管、冻结成员/等级/时间的完成传播和准确队头删除已接到执行链。正常缺料不固定PREPARED库存；世界checkpoint异常先重存准确状态，同进程未消费证明允许补准备，重载缺证据仍不重扣。旧source的41槽范围与同步执行保留，移除PM planned桥接。服务器存档owner、tick/登录退出/成员协调及操作入口仍待接，见[手动研究](manual-research.md)。
+
+- 本阶段验证：`gradlew.bat spotlessApply build --console=plain`通过691项测试、101 suites，零失败/错误/跳过；新增44项材料计划、会话/NBT、真实队列/完成状态机及回执恢复逻辑测试。IDEA MCP对本阶段14个src Java和Tags共15文件逐个errorsOnly:false，零错误/警告/弱警告、无超时；build_project成功。证据`build/reports/idea/manual-research-final.json`。未初始化Bootstrap/FML或运行游戏；真实Minecraft背包和磁盘IO尚无实机验收。原23份未暂存修改完整保持。
+
 - 配方事件专项复核：复用独立子代理检查PM当前源码，未发现既有审计之外的独立配方事件框架。补充两个边界：进程Pre/Normal/Post内置回调为空，仅迁移扩展钩子；旧Failure清空工位且继续POST，没有独立取消/失败事件，PE cancel为新增清理。对应Java实际调用已核对，CT仍最后。此次仅更新文档，不重跑构建，不将历史647项测试当作本轮新增验证；原23份源码修改保留。
 
 - 研究启动/队列阶段已实现：ResearchPermissionPolicy保留PN默认同队/管理角色规则；TeamResearchStart在当前证明下校验权限、设备等级、结构资格与真实actor/resources条件后入队，不扣物料或numeric，重复/满队/忙返回业务结果。回调后重验authority及queue epoch，异常原样传播。TeamResearchQueue保留容量5、稳定entryId、多站numeric独立授予、同entry/time去重、grant/prune可逆提交及严格NBT。prune不用匿名startable缓存；队列及mutation强制准确owner线程，回滚递增epoch防旧plan复活。材料/逻辑lease/真实站点/手动session及服务器存档服务尚未接入，不能据此称完整研究流程完成。

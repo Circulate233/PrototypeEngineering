@@ -33,7 +33,7 @@ public final class TeamOwnedResearch {
     public synchronized Snapshot snapshot() { return state; }
     public synchronized boolean busy() { return writer != null; }
 
-    ResearchRegistry registry() { return registry; }
+    public ResearchRegistry registry() { return registry; }
 
     /** Restore data only; a pending completion or download owns no serializable permission. */
     public synchronized void restore(Snapshot saved) {
