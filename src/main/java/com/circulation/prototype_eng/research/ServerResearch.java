@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
@@ -44,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /** Authoritative server research session; its file has one writer and is never registered in MapStorage. */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
@@ -95,11 +97,39 @@ public final class ServerResearch {
             current.stations, () -> ServerNetworkRuntime.forServer(server).refresh(), tasks, deadline);
     }
 
-    /** Only the actual actor can create a tier-zero session; tiered device admission has a separate host. */
+    /** Only the actual actor can create a tier-zero session; this direct entry needs no network publication. */
     @SuppressWarnings("unused") // Public Java operation until packet/command adapters are attached.
     public static TeamResearchStart.Result startManual(EntityPlayerMP actor, ResourceLocation id, int target) {
         var current = actorSession(actor);
         requireManual(id, target);
+        return startCurrent(current, actor, id, target);
+    }
+
+    /**
+     * Queue a player start through the existing server scheduler. Its MAIN action receives a fresh
+     * network publication after old research/source work has settled. Actor and team authority are
+     * captured again when executed; the caller supplies no device levels or resource vector.
+     * The result callback runs once after the attempted admission and its world checkpoint succeed.
+     * Unexecuted requests follow scheduler lifetime and are discarded during server shutdown.
+     */
+    @SuppressWarnings({"unused", "resource"}) // Public Java operation; the server owns the borrowed scheduler.
+    public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target,
+                                    Consumer<TeamResearchStart.Result> result) {
+        var current = actorSession(actor);
+        ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(target);
+        Objects.requireNonNull(result);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (session != current || current.closing || current.server.getWorld(0) != current.overworld
+                || !belongsTo(current, actor) || current.server.getPlayerList().getPlayerByUUID(actor.getUniqueID()) != actor) {
+                result.accept(staleStart());
+                return;
+            }
+            result.accept(startCurrent(current, actor, id, target));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    @SuppressWarnings("resource") // This read-only publication is owned by the server lifecycle.
+    private static TeamResearchStart.Result startCurrent(Session current, EntityPlayerMP actor, ResourceLocation id, int target) {
         var online = onlinePlayers(current);
         var captures = capture(current, Set.of(actor.getUniqueID()));
         if (unavailable(captures)) { return staleStart(); }
@@ -110,9 +140,18 @@ public final class ServerResearch {
         }
         var permission = permission(current, actor, membership);
         if (permission == null) { return staleStart(); }
-        return current.world.start(membership, permission, id, target,
-            new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), operationTime(current),
-            online.keySet(), proof(current, captures, online));
+        var actorCurrent = proof(current, captures, online);
+        if (ResearchRegistry.INSTANCE.require(id).researchTierForLevel(target) == 0) {
+            return current.world.start(membership, permission, id, target,
+                new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), operationTime(current),
+                online.keySet(), actorCurrent);
+        }
+        var network = ServerNetworkRuntime.forServer(current.server);
+        var publication = network.plan();
+        if (publication == null) { return staleStart(); }
+        var admission = current.stations.admission(membership.teamId());
+        return current.world.start(membership, permission, id, target, admission.environment(), operationTime(current),
+            online.keySet(), () -> actorCurrent.getAsBoolean() && network.plan() == publication && admission.current());
     }
 
     @SuppressWarnings("unused") // Public Java operation; login deliberately does not resume research.
@@ -206,7 +245,7 @@ public final class ServerResearch {
         Objects.requireNonNull(actor);
         var current = active(Objects.requireNonNull(actor.getServerWorld().getMinecraftServer()));
         if (!belongsTo(current, actor) || current.server.getPlayerList().getPlayerByUUID(actor.getUniqueID()) != actor) {
-            throw new IllegalArgumentException("Manual research requires the actual online server player");
+            throw new IllegalArgumentException("Research requires the actual online server player");
         }
         return current;
     }

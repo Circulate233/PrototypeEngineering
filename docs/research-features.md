@@ -1,6 +1,6 @@
 # 研究定义、资格、完成与奖励执行
 
-已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 平台入队、领取入口、数据中心自动同步与下载仍须完成。
+已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 玩家 Java 入队已接；界面/packet、领取入口、数据中心自动同步与下载仍须完成。
 
 ## 定义与注册
 
@@ -31,7 +31,7 @@
 
 `ResearchPermissionPolicy` 提供真实扩展接口，默认策略沿 PN：同队成员可开始研究，队长/管理员可维护本队黑名单，服务器操作员可执行管理操作。`ResearchPermissionContext` 由服务器捕获身份与角色，不能接受客户端自报权限。
 
-`TeamResearchStart.start` 先检查当前队伍/定义、权限与结构资格；正tier要求活动中心、足够等级的数据中心及研究站。实际startCondition收到真实请求者与资源，即使匿名预览拒绝，也按这次实际请求重算。回调前后重查current证明与队列epoch，拒绝重入；重复/满队/忙不执行无意义的开始条件，也不消耗材料。tier0的准确入队结果交给`ManualResearch.begin`绑定会话，再把队列和会话一起保存。
+`TeamResearchStart.start` 先检查当前队伍/定义、权限与结构资格；正tier要求活动中心、足够等级的数据中心及研究站。实际startCondition收到真实请求者与资源，即使匿名预览拒绝，也按这次实际请求重算。回调前后重查current证明与队列epoch，拒绝重入；重复/满队/忙不执行无意义的开始条件，也不消耗材料。tier0的准确入队结果交给`ManualResearch.begin`绑定会话，再把队列和会话一起保存。服务器 `requestStart` 通过现有 MAIN 提交队列执行所有等级开始请求，设备事实来自当前原 publication，开始条件读当前可用 numeric；研究 grant 的独立 numeric 供给不因此改变。
 
 `TeamResearchQueue` 保留容量5和稳定entryId，只规划队头。numeric按每种资源独立累计，单段授予为 `min(available,每站limit×参与站数,剩余需求)`，logical lease由真实站点消费者另行申请；plan不授予网络或库存权限。GrantMutation与PruneMutation实现已有ReversibleTransaction，持准确队列写入权，提交/补偿完成前不允许保存或其他写入。回滚恢复业务内容但递增epoch，旧plan不会重新有效。
 

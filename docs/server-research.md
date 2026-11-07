@@ -1,6 +1,6 @@
 # 服务器研究与世界存档
 
-服务器已接入手动研究和正 tier 研究站的世界所有者、同步存档、FTB 成员核对、玩家登录退出和既有调度边界。Java 使用方可调用 `ServerResearch.startManual` 开始 tier 0 研究，或 `takeoverManual` 接管已有会话；输入必须是真实在线服务端玩家。库不注册研究内容、正式机器或玩法数值。
+服务器已接入手动研究和正 tier 研究站的世界所有者、同步存档、FTB 成员核对、玩家登录退出和既有调度边界。Java 使用方可调用 `ServerResearch.startManual` 直接开始 tier 0 研究，或 `takeoverManual` 接管已有会话；所有等级也可通过 `ServerResearch.requestStart` 排队开始，输入必须是真实在线服务端玩家。库不注册研究内容、正式机器或玩法数值。
 
 ## 所有者与生命周期
 
@@ -9,6 +9,14 @@
 主类把 FML 生命周期委托给 `CommonProxy`。`serverStarting` 在主世界加载后建立准确的 server/overworld 会话；`serverStopping` 保存并关闭；`serverStopped` 在调度器关闭后提供研究关闭重试，再关闭网络和身份登记。主世界 Save 同步检查点，Unload 提供关闭兜底；其他维度不建立第二份研究存档。
 
 研究 tick 由 `ServerTaskSchedulers` 的既有 END 流程在普通工作之前安装为 `PlannedExecution`，调度器先持有后执行。旧 pending 和 worker 先结清，之后研究申请共享 THREAD，普通工作才捕获新网络并执行。未完成研究保留原队伍游标、来源和生命周期句柄，不积压新的投料调用。登录/退出继续排入同一个 boundary，执行时重验 server/session/player 代际。未初始化或关闭中的会话正常跳过。时间取持久研究时间与主世界时间的单调推进，世界时间存盘落后于研究检查点时也不倒退。
+
+## 玩家开始研究的 Java 入口
+
+`ServerResearch.requestStart(player, id, targetLevel, resultConsumer)` 使用现有 `TaskScheduler.submit(..., MAIN_THREAD)`。普通任务执行前已有网络 refresh，旧研究/source pending 未结清时任务留在原提交队列。执行时重新捕获实际在线玩家对象、FTB 成员及角色；离线、换 server/world 或同 UUID 换玩家实例的旧请求返回 STALE_CONTEXT。关闭前尚未执行的请求跟随 scheduler 生命周期丢弃，不保存为已入队研究。
+
+正 tier 从 `ResearchStations.admission(teamId)` 读取当前活动网络中心、选中数据中心和同队各维度活动研究站的最高等级，及当前可用 numeric 向量。它不申请 THREAD、不轮换实际工作站、不消耗算力或材料。开始条件执行前后重验原 publication、设备许可与捕获的可用余额，不能把客户端自报等级/资源作为事实，也不能用条件回调后另捕获的新许可替换原证明。
+
+成功入队沿用 `ResearchWorld.start` 的真实请求者条件和单一世界保存；resultConsumer 只在正常结果返回后执行。正 tier 材料会在后续研究 tick 推进。tier 0 沿原手动协议，直接开始/接管仍保留。此处已提供实际服务器 Java 入口，packet/GUI 适配仍待实现。
 
 ## 同步存档与失败恢复
 
@@ -30,9 +38,11 @@
 
 ## 范围与验证
 
+玩家研究入队阶段新增 7 项行为测试；完整 Gradle 构建通过 886 项测试、124 suites，零失败/错误/跳过。3 个本阶段 src Java 与 Tags 共 4 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-admission-final.json。原 23 份修改保留，未启动游戏或服务端。 入队逻辑测试使用真实机器装配、网络许可/账本及 TeamResearchStart；玩家对象/FTB/MAIN 提交的平台适配按静态代码与 MCP 检查，不以纯 JVM 测试冒充游戏调用。
+
 研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。
 
-已接平台入口的是 tier 0 的开始、接管；正 tier 队头的设备选择、材料/计算提交和自动推进也已接通，普通配方研究/计算消费者见[配方消费者](network-recipes.md)。正 tier 玩家平台入队、领取 packet/UI 及存档事务绑定、下载仍未完成。`ResearchWorld` 可供外部服务器宿主使用，但其可调用 API 不等于上述玩法流程已接通。
+已接服务器 Java 入口包括所有等级的排队开始、tier 0 直接开始/接管，以及正 tier 队头的设备选择、材料/计算提交和自动推进；普通配方研究/计算消费者见[配方消费者](network-recipes.md)。研究界面/packet、领取与存档事务绑定、下载仍未完成。`ResearchWorld` 可供外部服务器宿主使用，但其可调用 API 不等于上述玩法流程已接通。
 
 最初手动服务器阶段新增 50 项逻辑测试：世界 owner/成员/失败重试/恢复，结构资格，手动无效取消，以及严格世界 codec 与临时目录真实文件 IO。完整构建通过 741 项测试、104 suites，无失败/错误/跳过。本机 IDEA MCP 对 16 个本阶段 Java 与生成 Tags 共 17 文件逐个 `errorsOnly:false`，零错误/警告/弱警告；MCP 项目构建成功。证据：`build/reports/idea/server-research-final.json`。
 

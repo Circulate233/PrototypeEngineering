@@ -8,15 +8,15 @@
 - 服务器 CONCURRENT 网络机器已自动转入 owner 协调，原组件游标在工位处理处暂停，材料/FE 来源 lanes 仍并行，结算后恢复后续 normal/post；pending、卸载及旧 tick 保留准确清理义务。独立三参 scheduler 不自动安装此工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍未接。
 - 真实计算组件物品供给已接通：AEItemKey 精确注册、真实 committed 槽、long 数量、单物品上限和整机供给合并；提取预留仍供给，待插入输出不供给。捕获后的授权只读版本证明，可在材料/FE 锁及 source fence 内使用，见[计算资源](network-resources.md)。
 - 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；Version 2 世界存档保存原站和完整材料，见[研究站执行](research-stations.md)。
-- 最近验证（2026-11-07）：研究站服务器/存档阶段新增 42 项行为测试；完整 Gradle 构建通过 879 项测试、123 suites，零失败/错误/跳过。本阶段 18 个 src Java 与 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-stations-server-final.json。原 23 份用户修改保留，未启动游戏或服务端。 计算组件原生 ItemStack→AEItemKey 与真实游戏事件顺序仍仅静态核对。
-- 物理数据中心的存储接口、机器组件、真实内容证明及 NBT 已有；普通下载、磁盘写入、循环研究升级的存储规则已迁入，自动云同步、下载授权/事件与物品消费恢复仍缺。正 tier 玩家平台入队、领取 packet/UI 与存档事务绑定仍缺；永久破坏后的材料会话仍待接生命周期，见[研究功能](research-features.md)。
+- 最近验证（2026-11-07）：玩家研究入队阶段新增 7 项行为测试；完整 Gradle 构建通过 886 项测试、124 suites，零失败/错误/跳过。3 个本阶段 src Java 与 Tags 共 4 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/research-admission-final.json。原 23 份修改保留，未启动游戏或服务端。 玩家/FTB 平台适配按静态代码及 MCP 核对，未做游戏实机验收。
+- 物理数据中心的存储接口、机器组件、真实内容证明及 NBT 已有；普通下载、磁盘写入、循环研究升级的存储规则已迁入，自动云同步、下载授权/事件与物品消费恢复仍缺。正 tier 玩家 Java 入队已接；研究界面/packet、领取与存档事务绑定仍缺；永久破坏后的材料会话仍待接生命周期，见[研究功能](research-features.md)。
 - 服务器手动研究已接通世界单一存档、FML 生命周期、FTB 成员核对、tick 边界和 Java 开始/接管；失效队列先结算回执再 prune，旧 pending 检查点先重试，关闭失败保留会话。见[服务器研究](server-research.md)。
 - 配方事件已有真实 Java 调用：需求 START/TICK/END、选择提交回调、检查点/属性效果、动态匹配条件、进程钩子及 PN 配方扩展。机器事件不计入；CT 最后，见[事件复审](pm-recipe-events-audit.md)。
 - 控制器、结构捕获/匹配、三方向十阶通用资源/独立 FE 仓、普通调度、扫描、默认/自定义 Java GUI 与方向工具已接入。GUI 直接 AEBaseGui，资源数量使用 AEKey2LongMap；实际边界按专题及实施进度核对。
 
 ## 下一步
 
-1. 按[配方功能核对](recipe-feature-parity.md)继续正 tier 平台入队、领取入口与下载事件，处理永久破坏后的材料会话和嵌套 checkpoint 子阶段顺序。复用已有定义、资格、权限、队列、手动执行、完成与奖励，不把可调用步骤称为完整服务器链；Java 先完整，CT 最后。
+1. 按[配方功能核对](recipe-feature-parity.md)继续研究界面/packet、领取入口与下载事件，处理永久破坏后的材料会话和嵌套 checkpoint 子阶段顺序。复用已有定义、资格、权限、队列、手动执行、完成与奖励，不把可调用步骤称为完整服务器链；Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；数据中心自动云同步/下载操作必须带当前授权和真实物品事务。
 3. 在具体消费者中完成纯 prepare、冻结输入/结果及内部工作预算；复用已接好的机器游标、生命周期与 source lanes，不脱离业务反复扩底座。整体重开发仍在进行。
 4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义 JEI 及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
@@ -37,6 +37,7 @@
 | 已确认需求/功能范围 | [development-spec.md](development-spec.md)，R 编号 |
 | 实际完成度/验证证据 | [implementation-status.md](implementation-status.md) |
 | 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
+| 检查点完整子阶段的旧回滚语义与未修可见性 | [checkpoint-execution-audit.md](checkpoint-execution-audit.md)，CheckpointRequirementSystem、ResourceBatch |
 | 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md)，api/research、research |
 | 研究站显式消费者/真实来源/材料周期/END共同提交 | [research-stations.md](research-stations.md)，api/research/station、RecipeProcess.materialCycle |

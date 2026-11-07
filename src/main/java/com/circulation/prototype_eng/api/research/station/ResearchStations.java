@@ -12,13 +12,16 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
+import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
+import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -40,6 +43,44 @@ public final class ResearchStations {
     public ResearchStations(MachineIdentityRegistry identities, Runnable ownerCheck) {
         this.identities = Objects.requireNonNull(identities);
         this.ownerCheck = Objects.requireNonNull(ownerCheck);
+    }
+
+    /** Capture admission facts without selecting a material pool, taking a lease or consuming work. */
+    public Admission admission(String teamId) {
+        ownerCheck.run();
+        if (Objects.requireNonNull(teamId).isBlank()) { throw new IllegalArgumentException("Research admission requires a team"); }
+        long revision = identities.revision();
+        AdmissionDevice center = null;
+        var stations = new ObjectArrayList<AdmissionDevice>();
+        for (var identity : identities.uniqueRegistrations()) {
+            if (!(identity.runtimeIdentity() instanceof MachineInstance machine)) { continue; }
+            var binding = attachment(machine);
+            if (binding == null) { continue; }
+            var permit = binding.role.workPermit();
+            if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) { continue; }
+            var snapshot = permit.deviceSnapshot();
+            var state = binding.role.state();
+            if (!snapshot.identity().equals(identity.identity()) || snapshot.loadOrder() != identity.loadOrder() || !snapshot.formed()) { continue; }
+            if (state == NetworkWorkState.ACTIVE_CENTER && snapshot.role() == NetworkDeviceRole.NETWORK_CENTER) {
+                if (center != null) { throw new IllegalStateException("Team has multiple active physical network centers"); }
+                center = new AdmissionDevice(identity, machine, binding, permit, NetworkWorkState.ACTIVE_CENTER);
+            } else if (state == NetworkWorkState.ACTIVE_DEVICE && snapshot.role() == NetworkDeviceRole.RESEARCH_STATION) {
+                stations.add(new AdmissionDevice(identity, machine, binding, permit, NetworkWorkState.ACTIVE_DEVICE));
+            }
+        }
+        if (center == null) { return new Admission(this, revision, new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), List.of()); }
+        int level = center.permit.deviceSnapshot().level();
+        var dataCenter = center.permit.dataCenterResearch();
+        int highestStation = 0;
+        var sources = new ObjectArrayList<AdmissionDevice>();
+        sources.add(center);
+        for (var station : stations) {
+            if (station.permit.epoch() != center.permit.epoch() || station.permit.tick() != center.permit.tick()) { continue; }
+            highestStation = Math.max(highestStation, station.permit.deviceSnapshot().level());
+            sources.add(station);
+        }
+        return new Admission(this, revision, new TeamResearchStart.Environment(level, dataCenter == null ? 0 : dataCenter.level(),
+            highestStation, center.permit.availableResources()), sources);
     }
 
     /** Lease acquisition precedes queue.planSegment; station count scales numeric grant limits, not material copies. */
@@ -165,20 +206,37 @@ public final class ResearchStations {
     }
 
     @Nullable private static Station candidate(MachineIdentityRegistry.Registration identity, MachineInstance machine, String teamId, int tier) {
+        var binding = attachment(machine);
+        if (binding == null) { return null; }
+        var permit = binding.role.workPermit();
+        if (!eligible(permit, identity, teamId, tier)) { return null; }
+        var result = new Station(identity, machine, binding.type, binding.role, MachineHatches.get(machine), Objects.requireNonNull(permit));
+        return result.physicallyCurrent() ? result : null;
+    }
+
+    @Nullable private static RoleBinding attachment(MachineInstance machine) {
         ComponentType<MachineInstance, ?> roleType = null;
         MachineNetworkDevice role = null;
         for (var binding : machine.components().assemblyBindings()) {
             if (binding.component() instanceof MachineNetworkDevice device) {
-                if (role != null) { throw new IllegalStateException("Station machine has multiple network attachments"); }
+                if (role != null) { throw new IllegalStateException("Machine has multiple network attachments"); }
                 role = device;
                 roleType = binding.type();
             }
         }
-        if (role == null) { return null; }
-        var permit = role.workPermit();
-        if (!eligible(permit, identity, teamId, tier)) { return null; }
-        var result = new Station(identity, machine, Objects.requireNonNull(roleType), role, MachineHatches.get(machine), Objects.requireNonNull(permit));
-        return result.physicallyCurrent() ? result : null;
+        return role == null ? null : new RoleBinding(Objects.requireNonNull(roleType), role);
+    }
+
+    private record RoleBinding(ComponentType<MachineInstance, ?> type, MachineNetworkDevice role) { }
+
+    private record AdmissionDevice(MachineIdentityRegistry.Registration identity, MachineInstance machine, RoleBinding binding,
+                                   NetworkRuntime.WorkPermit permit, NetworkWorkState state) {
+        private boolean current() {
+            var lifecycle = machine.lifecycle();
+            return identity.unique() && identity.runtimeIdentity() == machine && lifecycle != null && lifecycle.schedulingAllowed() && lifecycle.formed()
+                && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
+                && machine.components().get(binding.type) == binding.role && binding.role.state() == state && permit.authorized();
+        }
     }
 
     private static boolean eligible(@Nullable NetworkRuntime.WorkPermit permit, MachineIdentityRegistry.Registration identity, String teamId, int tier) {
@@ -220,6 +278,28 @@ public final class ResearchStations {
     /** Only physical identity and location are persistent; world sessions, runtimes and permits are not. */
     public record Site(PersistentMachineIdentity identity, MachineIdentity location) {
         public Site { Objects.requireNonNull(identity); Objects.requireNonNull(location); }
+    }
+
+    /** Frozen original network facts; revalidation never obtains replacement permission after callbacks. */
+    public static final class Admission {
+        private final ResearchStations selector;
+        private final long revision;
+        private final TeamResearchStart.Environment environment;
+        private final List<AdmissionDevice> sources;
+
+        private Admission(ResearchStations selector, long revision, TeamResearchStart.Environment environment, List<AdmissionDevice> sources) {
+            this.selector = selector;
+            this.revision = revision;
+            this.environment = environment;
+            this.sources = List.copyOf(sources);
+        }
+
+        public TeamResearchStart.Environment environment() { return environment; }
+        public boolean current() {
+            selector.ownerCheck.run();
+            if (selector.identities.revision() != revision || !sources.stream().allMatch(AdmissionDevice::current)) { return false; }
+            return sources.isEmpty() || environment.availableResources().equals(sources.getFirst().permit.availableResources());
+        }
     }
 
     /** Physical-only recovery proof. This type grants no forward work, network lease or numeric supply. */
