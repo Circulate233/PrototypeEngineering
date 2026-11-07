@@ -5,6 +5,8 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
@@ -44,6 +46,8 @@ public class PrototypeEngineering {
 
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
+        MinecraftForge.EVENT_BUS.post(new NetworkResourceRegistrationEvent(NetworkResourceRegistry.INSTANCE));
+        NetworkResourceRegistry.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE));
         RecipeRegistry.INSTANCE.freeze();
         var machines = new MachineRuntimeRegistrationEvent(MachineTypeRegistry.INSTANCE);

@@ -12,7 +12,7 @@ MachineAssembly 为该网络组件使用 `recreated`，身份仍用 MachineOwner
 
 ## NetworkRuntime 的整批边界
 
-每个 NetworkRuntime 绑定一个 MachineIdentityRegistry、OwnerTeamResolver 和 owner 线程检查。`register(identity, source)` 只接受同一 registry 的当前身份；一个运行实例只登记一个网络角色。source 可以返回空表示当前没有可用宿主，也可以返回 Capture（冻结 snapshot 和 owner-only 有效性证明）。内置组件检查生命周期、准确组件绑定、formed，以及实际结构宿主的配置/World/TE 有效性。
+每个 NetworkRuntime 绑定一个 MachineIdentityRegistry、冻结的 NetworkResourceRegistry、OwnerTeamResolver 和 owner 线程检查。资源声明在 post-init 的 NetworkResourceRegistrationEvent 注册并冻结，内置服务器使用全局表；独立宿主可传自己的冻结表。`register(identity, source)` 只接受同一 identity registry 的当前身份；一个运行实例只登记一个网络角色。source 可以返回空表示当前没有可用宿主，也可以返回 Capture（冻结 snapshot 和 owner-only 有效性证明）。内置组件检查生命周期、准确组件绑定、formed，以及实际结构宿主的配置/World/TE 有效性。
 
 `refresh()` 首先撤销旧发布，再按当前唯一身份捕获全部设备、解析队伍并规划，最后重验每份证明和身份 registry 修订号，单次 volatile 发布完整结果。捕获/解析/规划抛错时异常直接传播，旧结果保持失效；证明过期返回 false，等待下一次新捕获，没有部分授权。回调显式 revoke 也会让本次捕获失效，不能随后重新发布。
 
@@ -46,4 +46,4 @@ prepare 失败沿用 scheduler 的永久 fault、真实 join 与完整清理协�
 
 新增 12 项逻辑测试，覆盖身份复制 ABA、prepare 的阶段顺序/失败、整批撤销与证明过期、跨线程读取/拒绝修改，以及真实 assembly、FE、scanner、工位、进程暂停恢复和部分 load 失败后新代继续工作。恢复用真实 FE 余额验证不会重复 START。完整计数与逐文件 MCP 证据见[实施进度](implementation-status.md)；没有初始化游戏或运行客户端/服务端。
 
-后续仍需 canonical 计算资源注册/单来源上限、预算与 lease 账本、研究/数据中心真实存储、完整参与者，以及 planned 两次 join 与提交补偿。捕获 epoch 标识一次发布，不是可重复补充资源的游戏 tick；接预算时必须保留每 tick 独立结算边界，不能因多次 MAIN 捕获重置预算。
+canonical 计算资源注册与运行时校验已接入。后续仍需组件单物品供给与研究阶段限额、预算与 lease 账本、研究/数据中心真实存储、完整参与者，以及 planned 两次 join 与提交补偿。捕获 epoch 标识一次发布，不是可重复补充资源的游戏 tick；接预算时必须保留每 tick 独立结算边界，不能因多次 MAIN 捕获重置预算。旧 lease、双份 numeric 预算及过期补偿问题见[计算资源迁移边界](network-resources.md)。

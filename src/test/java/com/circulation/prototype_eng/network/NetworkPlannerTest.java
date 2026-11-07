@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkPlanner;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
@@ -33,6 +34,15 @@ class NetworkPlannerTest {
     private static final UUID OTHER_OWNER = uuid(200);
     private static final NetworkResourceType COMPUTE = new NetworkResourceType(new ResourceLocation("test", "compute"), false, 1);
 
+    private static final NetworkResourceRegistry RESOURCES = registry();
+
+    private static NetworkResourceRegistry registry() {
+        var registry = new NetworkResourceRegistry();
+        registry.register(COMPUTE);
+        registry.freeze();
+        return registry;
+    }
+
     @Test void selectsCentersByLevelThenAgeAndDataCentersByLevelResearchThenAgeIncludingFullStorage() {
         var devices = List.of(
             device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 1, 0, 0),
@@ -46,7 +56,7 @@ class NetworkPlannerTest {
             device(9, NetworkDeviceRole.COMPUTER, 3, true, 0, 100, 0),
             device(10, NetworkDeviceRole.RESEARCH_STATION, 1, false, 0, 100, 0),
             device(11, NetworkDeviceRole.DEVICE, 0, true, 0, 100, 0));
-        var plan = NetworkPlanner.plan(NetworkPlanner.capture(1, devices, List.of(), teams()));
+        var plan = NetworkPlanner.plan(NetworkPlanner.capture(RESOURCES, 1, devices, List.of(), teams()));
         var team = plan.teams().get("team");
         assertEquals(uuid(3), team.centerId());
         assertEquals(uuid(7), team.dataCenterId());
@@ -73,8 +83,8 @@ class NetworkPlannerTest {
             device(7, NetworkDeviceRole.RESEARCH_STATION, 1, true, 6, 1_000, 0));
         var contributions = List.of(new NetworkContribution(uuid(20), OWNER, 4, 1, resources(5)),
             new NetworkContribution(uuid(21), OTHER_OWNER, 4, 1, resources(1_000)));
-        var plan = NetworkPlanner.plan(NetworkPlanner.capture(4, devices, contributions, teams()));
-        // maxPerTickValue=1 is per-provider metadata, not a limit on this team's aggregate.
+        var plan = NetworkPlanner.plan(NetworkPlanner.capture(RESOURCES, 4, devices, contributions, teams()));
+        // maxPerTickValue=1 is per-item metadata, not a limit on this team's aggregate.
         assertEquals(21, plan.teams().get("team").resourcesPerTick().getLong(COMPUTE));
         assertEquals(uuid(6), plan.teams().get("team").dataCenterId());
         assertEquals(NetworkWorkState.ACTIVE_DATA_CENTER, plan.workStates().get(uuid(6)));
@@ -97,7 +107,7 @@ class NetworkPlannerTest {
         devices.add(new NetworkDeviceSnapshot(identity(1), NetworkDeviceRole.NETWORK_CENTER, 1, true, 0,
             quantities, NetworkResourceModifier.EMPTY, 0, 0));
         devices.add(device(2, NetworkDeviceRole.COMPUTER, 1, true, 1, 3, 0));
-        var captured = NetworkPlanner.capture(1, devices,
+        var captured = NetworkPlanner.capture(RESOURCES, 1, devices,
             List.of(new NetworkContribution(uuid(30), OWNER, 1, 0, resources(4))), resolver);
         devices.clear();
         quantities.clear();
@@ -113,15 +123,15 @@ class NetworkPlannerTest {
     @Test void duplicateDevicesAndParticipantsOrStaleParticipantEpochRejectBeforeAnyOwnerQueries() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, 0, 0);
         OwnerTeamResolver forbidden = _ -> { throw new AssertionError("Invalid input must fail before querying teams"); };
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center, center), List.of(), forbidden));
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center, center), List.of(), forbidden));
         var contribution = new NetworkContribution(uuid(10), OWNER, 1, 0, resources(3));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(contribution, contribution), forbidden));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(2, List.of(center), List.of(contribution), forbidden));
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(contribution, contribution), forbidden));
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 2, List.of(center), List.of(contribution), forbidden));
         var conflicting = new NetworkResourceType(COMPUTE.id(), true, 1);
         var resources = new Object2LongOpenHashMap<NetworkResourceType>();
         resources.put(conflicting, 1);
         var conflict = new NetworkContribution(uuid(11), OWNER, 1, 0, resources);
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(conflict), forbidden));
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(conflict), forbidden));
     }
 
     @Test void noCenterAndRejectedOwnerKeepDistinctStatesAndDoNotCreateCapacity() {
@@ -131,7 +141,7 @@ class NetworkPlannerTest {
             NetworkDeviceRole.COMPUTER, 0, false, 2, resources(100), NetworkResourceModifier.EMPTY, 0, 0);
         OwnerTeamResolver resolver = owner -> owner.equals(OTHER_OWNER)
             ? OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "No current team") : teams().resolve(owner);
-        var plan = NetworkPlanner.plan(NetworkPlanner.capture(1, List.of(orphan, unformed, rejected),
+        var plan = NetworkPlanner.plan(NetworkPlanner.capture(RESOURCES, 1, List.of(orphan, unformed, rejected),
             List.of(new NetworkContribution(uuid(30), OWNER, 1, 0, resources(500))), resolver));
         assertEquals(NetworkWorkState.NO_ACTIVE_CENTER, plan.workStates().get(uuid(1)));
         assertEquals(NetworkWorkState.UNFORMED, plan.workStates().get(uuid(2)));
@@ -143,27 +153,27 @@ class NetworkPlannerTest {
     @Test void inconsistentOrMismatchedOwnerSnapshotsAndProviderFailuresAbortCapture() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, 0, 0);
         var secondOwner = new NetworkContribution(uuid(30), OTHER_OWNER, 1, 0, resources(1));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(secondOwner),
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(secondOwner),
             owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty())));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(secondOwner),
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(secondOwner),
             owner -> OwnerTeamResolution.resolved(owner, owner.equals(OWNER) ? "team" : "other",
                 OwnerTeamType.SERVER, ObjectSet.of(OWNER, OTHER_OWNER), Optional.empty())));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(secondOwner),
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(secondOwner),
             owner -> owner.equals(OWNER)
                 ? OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSet.of(OWNER, OTHER_OWNER), Optional.empty())
                 : OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "Owner left the team")));
-        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(),
+        assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(),
             _ -> teams().resolve(OTHER_OWNER)));
         var failure = new IllegalStateException("team backend failed");
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> NetworkPlanner.capture(1, List.of(center), List.of(), _ -> { throw failure; })));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), _ -> { throw failure; })));
     }
 
     @Test void accumulationAndExactModifierOverflowAbortTheWholePlan() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, Long.MAX_VALUE, 0);
         var computer = device(2, NetworkDeviceRole.COMPUTER, 1, true, 1, 1, 0);
-        var overflow = NetworkPlanner.capture(1, List.of(center, computer), List.of(), teams());
+        var overflow = NetworkPlanner.capture(RESOURCES, 1, List.of(center, computer), List.of(), teams());
         assertThrows(ArithmeticException.class, () -> NetworkPlanner.plan(overflow));
-        var intermediate = NetworkPlanner.capture(1, List.of(center), List.of(), teams());
+        var intermediate = NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), teams());
         assertThrows(ArithmeticException.class, () -> NetworkPlanner.plan(intermediate));
     }
 

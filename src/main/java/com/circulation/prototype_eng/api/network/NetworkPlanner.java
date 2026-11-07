@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
@@ -14,7 +15,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
 import java.util.Objects;
@@ -28,23 +28,23 @@ public final class NetworkPlanner {
      * Invoke on the server owner thread after capturing current unique runtimes and active participants.
      * Each owner is resolved once. A provider failure aborts the whole batch; never reuse an older permit.
      */
-    public static Inputs capture(long epoch, List<NetworkDeviceSnapshot> devices,
+    public static Inputs capture(NetworkResourceRegistry resources, long epoch, List<NetworkDeviceSnapshot> devices,
             List<NetworkContribution> contributions, OwnerTeamResolver resolver) {
         if (epoch < 0) { throw new IllegalArgumentException("Negative discovery epoch"); }
+        if (!resources.isFrozen()) { throw new IllegalStateException("Network capture requires frozen computing resources"); }
         Objects.requireNonNull(resolver);
         var deviceCopy = new ObjectArrayList<>(devices);
         var contributionCopy = new ObjectArrayList<>(contributions);
         var owners = new ObjectLinkedOpenHashSet<UUID>();
         var deviceIds = new ObjectOpenHashSet<UUID>();
         var participantIds = new ObjectOpenHashSet<UUID>();
-        var resourceTypes = new Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType>();
         for (var device : deviceCopy) {
             Objects.requireNonNull(device);
             if (!deviceIds.add(device.identity().machineId())) { throw new IllegalArgumentException("Duplicate device UUID in discovery"); }
             owners.add(device.identity().ownerId());
-            checkResources(resourceTypes, device.resourcesPerTick());
-            checkResources(resourceTypes, device.resourceModifier().flatAdjustments());
-            checkResources(resourceTypes, device.resourceModifier().multiplierPpmAdjustments());
+            checkResources(resources, device.resourcesPerTick());
+            checkResources(resources, device.resourceModifier().flatAdjustments());
+            checkResources(resources, device.resourceModifier().multiplierPpmAdjustments());
         }
         for (var contribution : contributionCopy) {
             Objects.requireNonNull(contribution);
@@ -52,7 +52,7 @@ public final class NetworkPlanner {
                 throw new IllegalArgumentException("Stale or duplicate participant contribution");
             }
             owners.add(contribution.ownerId());
-            checkResources(resourceTypes, contribution.resourcesPerTick());
+            checkResources(resources, contribution.resourcesPerTick());
         }
         var resolved = new Object2ObjectOpenHashMap<UUID, OwnerTeamResolution>();
         var teams = new Object2ObjectOpenHashMap<String, OwnerTeamResolution>();
@@ -161,10 +161,9 @@ public final class NetworkPlanner {
         }
     }
 
-    private static void checkResources(Object2ObjectMap<ResourceLocation, NetworkResourceType> types, Object2LongMap<NetworkResourceType> resources) {
+    private static void checkResources(NetworkResourceRegistry types, Object2LongMap<NetworkResourceType> resources) {
         for (var type : resources.keySet()) {
-            var previous = types.putIfAbsent(type.id(), type);
-            if (previous != null && !previous.equals(type)) { throw new IllegalArgumentException("Conflicting network resource metadata: " + type.id()); }
+            types.canonical(type);
         }
     }
 

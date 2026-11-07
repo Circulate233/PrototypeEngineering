@@ -7,8 +7,9 @@
 ## 当前状态
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
+- 计算资源注册已接入：NetworkResourceRegistry 保留标准 thread/compute/qubit，NetworkResourceRegistrationEvent 在 post-init 的配方/机器 runtime 解析前注册并冻结。完整 metadata 对照权威表，相等 record 不要求对象身份一致；NetworkRuntime/NetworkPlanner 明确接受冻结表，设备、flat/ppm 及参与者的资源声明均检查，元数据漂移或未注册键使捕获失败并撤销旧许可。单物品供给和研究阶段限额仍随对应执行链迁移，不误套设备/全队总量；旧 lease、双份 numeric 预算、同 tick 重捕获及过期补偿审计见[计算资源](network-resources.md)。
 - 网络运行时已接入：MachineNetworkDevice 显式角色组件在未发布装配安装永久 gate，recreated 恢复，ownership 按依赖先load。NetworkRuntime owner捕获、同批规划和证明/registry revision重验后volatile发布；失败/过期/显式revoke不回退旧批次。复制来去的unique ABA、同位置旧卸载、加载失败均不能恢复或撤销错误代。TaskScheduler prepare位于每次MAIN action前与CON捕获前，服务器finally撤销；ordinary并行/join不变。canProcessRecipes保留formation，低层scanner/工位/进程叠加recipeWorkAllowed，失权不退休普通组件且恢复不重START。研究/预算/lease与正式planned仍须接，详见[网络运行时](network-runtime.md)。
-- 队伍/网络规划核心已接入：OwnerTeamResolver 与直接 FtbOwnerTeamResolver，具体不可变结果保留离线 owner、有效 PLAYER/SERVER 和成员语义。NetworkPlanner.capture 每 owner 一次查询，检查重复设备/参与者、参与者 epoch、全局资源 metadata 与成员互相一致；plan 可在 worker 只读执行。保留中心/数据中心优先级和满库选择、等级状态、通用 DEVICE，中心+合格电脑+同队参与者合计后一次 exact flat/ppm，数量使用 fastutil addTo；所有公开 map/entries 冻结。规划核心已由真实角色组件、服务器整批发布和共同网络门限接入；canonical 资源注册/单来源上限、预算/lease/研究及完整参与者仍待接。详见[网络规划](network-planning.md)。
+- 队伍/网络规划核心已接入：OwnerTeamResolver 与直接 FtbOwnerTeamResolver，具体不可变结果保留离线 owner、有效 PLAYER/SERVER 和成员语义。NetworkPlanner.capture 每 owner 一次查询，检查重复设备/参与者、参与者 epoch、权威注册 metadata 与成员互相一致；plan 可在 worker 只读执行。保留中心/数据中心优先级和满库选择、等级状态、通用 DEVICE，中心+合格电脑+同队参与者合计后一次 exact flat/ppm，数量使用 fastutil addTo；所有公开 map/entries 冻结。规划核心已由真实角色组件、服务器整批发布和共同网络门限接入；组件供给/研究阶段限额、预算/lease/研究及完整参与者仍待接。详见[网络规划](network-planning.md)。
 - PN 持久身份已接入：MachineOwnership 为显式组件，复用 MachineAssembly 内置 codec 和生命周期；FRESH 由真实放置者创建 machine/owner UUID，RESTORED 保留旧身份，FakePlayer 不授 owner。MachineIdentityRegistry 绑定服务器会话与准确 MachineInstance，World 引用 + pos 定位，不含类型；同位置替换撤旧句柄，旧卸载不删新代，重复 UUID 全部失去唯一性且剩一个可恢复。所有变更/枚举限定 owner 线程，关闭会话永久撤销；身份不保存 team/epoch/lease/ready，也不授权工作。当前队伍、中心与共同网络门限已接；预算、研究与正式提交许可仍待接，详见[身份说明](machine-identity.md)及[PN 审计](pn-identity-migration-audit.md)。
 - 已完成：工程标识、Java 25 模板、需求基线；固定 AE2S `v1.1.0:dev` 与 HEI `4.35.1`；移除模板示例 Mixin；开发包和生产重混淆构建。
 - 独立资源后端已完成：ResourceHatch 返回 ResourceStorage，槽位扩展由 SlottedResourceStorage 表达；SlottedResourceBuffer 独立持有 AEKey/long 余额、可用量、输入数量预留及输出容量预留。MEStorage、GenericInternalInventory 与 GUI 均为共享同一 context 的适配层，不再依赖 GenericStackInv 持有核心状态。外部仓室仍通过公开接口扩展，不依赖内置 TileEntity。FE 独立 long 存储已用同一无 AEKey 字段的预留生命周期参与并发批结算。
@@ -52,6 +53,9 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（计算资源注册阶段）：迁入 PN 的权威注册/封闭语义，修正旧注册复制对象却要求 research 声明同一实例、computer calculator 仅校验 logicalConcurrency 等边界。新增 1 项运行时组合回归覆盖跨 capture 供给 metadata 漂移、未注册类型、仅修饰器/参与者出现的键、失败撤权后恢复，以及合法设备总量超过 per-item 上限。原规划和机器组件测试显式使用独立冻结表；未添加 getter/常量/hash 专用测试。
+- 2026-11-07（计算资源注册验证）：`gradlew.bat spotlessApply build --console=plain` 成功；72 suites、459 项测试全部通过，无失败/错误/跳过。本机 IDEA MCP 对 307 个 src Java 和 Tags 共 308 文件逐个 `get_file_problems(errorsOnly:false)`，最终零错误/警告/弱警告且无超时；MCP build_project 成功且 problems 为空。证据 `build/reports/idea/network-resources-final.json`。未操作桌面或启动 Minecraft/Bootstrap/FML 初始化。原 23 份格式/注解修改继续保留未暂存。
 
 - 2026-11-07（网络运行时）：最终 `gradlew.bat spotlessApply build --console=plain` 成功，458 项逻辑测试全部通过，无失败、错误或跳过。新增 12 项覆盖身份修订防ABA、MAIN/CON prepare顺序及故障、整批失效/证明过期/跨线程约束，以及真实assembly/FE/scanner/工位/进程的暂停恢复、保存复制和部分load失败新代隔离。低层原formation契约保持，原retirement回归用例继续通过；未初始化游戏或使用反射。
 - 2026-11-07（网络运行时）：本机 IDEA MCP 对 304 个 src Java 和 Tags 共 305 文件逐个 `errorsOnly:false`，最终零错误、警告、弱警告及超时；MCP `build_project` 成功且 `problems:[]`。报告 [network-runtime-final.json](../build/reports/idea/network-runtime-final.json)。新runtime句柄使用static类与显式所属runtime；测试清理不再引入常值参数。未操作桌面或启动客户端/服务端。

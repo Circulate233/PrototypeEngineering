@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
@@ -20,6 +21,7 @@ import java.util.function.Supplier;
  */
 public final class NetworkRuntime implements AutoCloseable {
     private final MachineIdentityRegistry identities;
+    private final NetworkResourceRegistry resources;
     private final OwnerTeamResolver teams;
     private final Runnable ownerCheck;
     private final Reference2ObjectLinkedOpenHashMap<Object, Registration> registrations = new Reference2ObjectLinkedOpenHashMap<>();
@@ -29,8 +31,10 @@ public final class NetworkRuntime implements AutoCloseable {
     private boolean captureRevoked;
     private boolean closed;
 
-    public NetworkRuntime(MachineIdentityRegistry identities, OwnerTeamResolver teams, Runnable ownerCheck) {
+    public NetworkRuntime(MachineIdentityRegistry identities, NetworkResourceRegistry resources, OwnerTeamResolver teams, Runnable ownerCheck) {
         this.identities = Objects.requireNonNull(identities);
+        this.resources = Objects.requireNonNull(resources);
+        if (!resources.isFrozen()) { throw new IllegalStateException("Network runtime requires frozen computing resources"); }
         this.teams = Objects.requireNonNull(teams);
         this.ownerCheck = Objects.requireNonNull(ownerCheck);
     }
@@ -79,7 +83,7 @@ public final class NetworkRuntime implements AutoCloseable {
                 captures.put(registration, capture);
                 devices.add(snapshot);
             }
-            var inputs = NetworkPlanner.capture(epoch, devices, participants.apply(epoch), teams);
+            var inputs = NetworkPlanner.capture(resources, epoch, devices, participants.apply(epoch), teams);
             var plan = NetworkPlanner.plan(inputs);
             for (var entry : captures.reference2ObjectEntrySet()) {
                 if (!entry.getKey().identity.unique() || !entry.getValue().current().getAsBoolean()) { return false; }

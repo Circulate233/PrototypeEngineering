@@ -4,7 +4,7 @@
 
 ## 当前入口与边界
 
-`NetworkPlanner.capture(epoch, devices, contributions, resolver)` 在服务器 owner 线程调用。宿主先取得当前唯一登记的设备和 ACTIVE 参与者，并保留准确登记、配置和参与者版本以供发布/提交复核；快照不含 World、TE 或可变运行状态。capture 会复制输入列表、检查设备 UUID 唯一性、参与者 UUID 唯一性和 epoch，以及所有资源的同 ID 元数据一致性，再为每个不同 owner 调用一次 resolver。
+`NetworkPlanner.capture(resources, epoch, devices, contributions, resolver)` 在服务器 owner 线程调用，resources 必须是冻结的 NetworkResourceRegistry。宿主先取得当前唯一登记的设备和 ACTIVE 参与者，并保留准确登记、配置和参与者版本以供发布/提交复核；快照不含 World、TE 或可变运行状态。capture 会复制输入列表、检查设备 UUID 唯一性、参与者 UUID 唯一性和 epoch，并对照注册表校验设备、修饰器及参与者的全部资源元数据，再为每个不同 owner 调用一次 resolver。
 
 同队伍结果的类型、成员和可选队长必须一致；已查询成员自己的结果也必须指向同一个队伍，不能一边声称它是成员、一边拒绝或归到另一队伍。异常或矛盾使整次 capture 失败，不产生部分输入。成员很多的队伍也只对本批实际 owner 查询一次。
 
@@ -39,7 +39,7 @@ NETWORK_CENTER 和 RESEARCH_STATION 保留正等级约束。COMPUTER、DATA_CENT
 
 NetworkResourceType 是计算预算的 metadata：ResourceLocation、logicalConcurrency、maxPerTickValue，承接 PN 的 thread/compute/qubit 等维度。物料身份仍使用 AEKey/AEKeyType，FE 仍独立；这些计算预算不作为仓室资源类型注册。
 
-元数据 record 默认按所有字段比较；每个向量、modifier 的多张表及完整 capture 都按 ID 拒绝不同元数据，避免同名键覆盖或拆成两种预算。后续注册和研究公式仍须接入 canonical 声明与单来源上限验证；`maxPerTickValue` 不限制全队汇总量，本阶段不将其误施到 totals。
+元数据 record 默认按所有字段比较；每个向量、modifier 的多张表按 ID 拒绝不同元数据，完整 capture 另行对照冻结的 canonical 注册表，避免未注册或跨批次元数据漂移。Java 注册事件和标准 thread/compute/qubit 已接入，详见[计算资源](network-resources.md)。`maxPerTickValue` 作用于固定计算组件的单物品供给和研究阶段 grant limit，不能限制堆叠、设备或全队总量；这两处执行约束随组件供给及研究公式继续迁移。
 
 每队基础贡献为：活动中心 + 成型且等级合格的 COMPUTER + 当前队伍的 ACTIVE 参与者贡献。其他中心、研究站、数据中心与通用 DEVICE 的资源不参与合计。所有贡献完成后，只应用一次活动中心 modifier。参与者不按种类或等级过滤；`NetworkContribution` 只是经过宿主验证的参与者资源投影，保留 epoch/version，尚未迁入其工位、材料来源、注册状态机或提交校验。
 

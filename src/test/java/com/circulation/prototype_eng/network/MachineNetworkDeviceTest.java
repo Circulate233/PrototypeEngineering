@@ -23,6 +23,7 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -199,13 +200,19 @@ class MachineNetworkDeviceTest {
         private RecipeProcess process(String name) { return Objects.requireNonNull(work().requireSlot(name).process()); }
     }
 
+    private static NetworkResourceRegistry resources() {
+        var registry = new NetworkResourceRegistry();
+        registry.freeze();
+        return registry;
+    }
+
     private static final class Fixture implements AutoCloseable {
         private final Thread ownerThread = Thread.currentThread();
         private final Object world = new Object();
         private final List<AssembledMachine> machines = new ObjectArrayList<>();
         private boolean rejected;
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
-        private final NetworkRuntime network = new NetworkRuntime(identities, owner -> rejected
+        private final NetworkRuntime network = new NetworkRuntime(identities, resources(), owner -> rejected
             ? OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "test owner has no team")
             : OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()),
             this::requireOwner);
