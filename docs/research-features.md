@@ -57,13 +57,13 @@
 
 `ResearchRewardClaimer.claim` 已实际执行选择、持久 checkpoint、逐 child/fragment 交付和恢复。固定组选择、事件幂等键和物品片段保存后不可任意替换；事件在领取时调用 `RewardEventAction.deliver`，完成过的 child 不重放。已开始但不确定的物品交付先查询真实观察或缺失证明，不盲目重发。外部 callback/checkpoint 异常在保留恢复状态、释放 session 后原样抛出；只有明确业务暂停才返回 RETRY_LATER。
 
-`MinecraftRewardItemDeliveryAdapter` 已由 ServerResearch.requestReward 使用，绑定准确玩家会话和 ResearchWorld 的同一 writer。CONFIRMED 检查点成功后幂等清除真实交付标签，登录与掉落后续加载补清；详见[服务器奖励](research-rewards.md)。仍有以下实际边界：
+`MinecraftItemDeliveryAdapter` 已由 ServerResearch.requestReward 使用，绑定准确玩家会话和 ResearchWorld 的同一 writer。CONFIRMED 检查点成功后幂等清除真实交付标签，登录与掉落后续加载补清；详见[服务器奖励](research-rewards.md)。仍有以下实际边界：
 
 - 服务器 Java 领取、逐次世界检查点与保存失败恢复已接；领取 packet/UI 已接入原服务器领取服务，见[研究界面](research-gui.md)。
 - 默认只把实际观察视为已交付；加载中的背包/实体扫描不能证明全局缺失。原生玩家操作、死亡重生、光标、掉落与漏斗保护已接；第三方直接改栈须遵守公开查询。内建恢复仅接受 live/UUID.dat/单人 Data.Player 完全一致的 PREPARED，加载合并保留任何 ISSUING 或缺失来源；外部缺失证明扩展仍默认返回 false。
 - 未运行 Minecraft 或服务端，游戏交互、标签移动及掉落恢复尚未做实机验证。
 
-来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。物品化下载事件与特殊磁盘交互仍未完成，ISSUING 后缺失仍保留未知；CraftTweaker 按用户要求最后实现。
+来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。普通物品化下载事件已接真实服务器事务，特殊磁盘实际导入共同事务仍未完成，ISSUING 后缺失仍保留未知；CraftTweaker 按用户要求最后实现。
 
 ## 验证
 

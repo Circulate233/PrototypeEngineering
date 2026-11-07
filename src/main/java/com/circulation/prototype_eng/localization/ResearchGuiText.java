@@ -2,17 +2,21 @@ package com.circulation.prototype_eng.localization;
 
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
+import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
+
 import java.util.Objects;
 
-/** Shared feedback is synchronized as an enum; translation happens on the receiving client. */
+/**
+ * Shared feedback is synchronized as an enum; translation happens on the receiving client.
+ */
 public enum ResearchGuiText implements LocalizationEnum {
     Title, Research, Queue, Rewards, Previous, Next, Page, Start, Takeover, Blacklist, Unblacklist, Claim,
     ContinueClaim, Description, Details, NoEntries, Loading, Ready, Saving, Busy, Stale, Forbidden,
@@ -29,10 +33,12 @@ public enum ResearchGuiText implements LocalizationEnum {
     Unclaimed, Claiming, RewardClaimed, Compute, Qubit, Threads,
     Database, Download, CloudLevel, DatabaseLevel, DatabaseSummary, NoDatabase, DatabaseStoredOnly,
     DatabaseUpdated, DatabaseUnchanged, DatabaseSpecialOnly, DatabaseItemOnly, DatabaseMissingCloud,
-    DatabaseCapacityFull, DatabaseMutexBlocked, DatabaseIdentity, DatabaseTeam;
+    DatabaseCapacityFull, DatabaseMutexBlocked, DatabaseIdentity, DatabaseTeam,
+    ItemDownload, ItemDownloaded, ItemDownloadAborted, ItemDownloadPending, ItemDownloadSourceRejected,
+    ItemDownloadNoEvent, ItemDownloadEventRejected, ItemDownloadNonceConflict,
+    ItemDownloadMaterial, ItemDownloadPersonalCost, ItemDownloadTeamCost;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".research." + name();
-    @Override public String getTranslationKey() { return translationKey; }
 
     public static ResearchGuiText start(TeamResearchStart.Status status) {
         return switch (status) {
@@ -145,5 +151,27 @@ public enum ResearchGuiText implements LocalizationEnum {
                 case STALE_CONTEXT -> Stale;
             };
         };
+    }
+
+    public static ResearchGuiText itemDownload(ResearchDownloadResult result) {
+        return switch (result.status()) {
+            case COMPLETED -> ItemDownloaded;
+            case ABORTED -> ItemDownloadAborted;
+            case PENDING -> ItemDownloadPending;
+            case BUSY -> Busy;
+            case STALE_CONTEXT -> Stale;
+            case PERMISSION_DENIED -> Forbidden;
+            case SOURCE_REJECTED -> ItemDownloadSourceRejected;
+            case MISSING_MATERIAL -> NoMaterials;
+            case NO_EVENT -> ItemDownloadNoEvent;
+            case EVENT_REJECTED -> ItemDownloadEventRejected;
+            case NONCE_CONFLICT -> ItemDownloadNonceConflict;
+            case RECOVERY_ERROR -> RecoveryError;
+        };
+    }
+
+    @Override
+    public String getTranslationKey() {
+        return translationKey;
     }
 }

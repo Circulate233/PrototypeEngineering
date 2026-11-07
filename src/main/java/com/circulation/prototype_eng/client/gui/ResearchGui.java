@@ -7,13 +7,14 @@ import ae2.client.gui.widgets.Scrollbar;
 import com.circulation.prototype_eng.api.client.gui.ResearchIconRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy.Decision;
+import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.content.ResearchContent;
 import com.circulation.prototype_eng.api.research.content.ResearchContentLoadResult;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
-import com.circulation.prototype_eng.container.ResearchContainer;
 import com.circulation.prototype_eng.container.DataCenterGuiSnapshot;
+import com.circulation.prototype_eng.container.ResearchContainer;
 import com.circulation.prototype_eng.container.ResearchGuiSnapshot;
 import com.circulation.prototype_eng.container.ResearchGuiSnapshot.Entry;
 import com.circulation.prototype_eng.container.ResearchGuiSnapshot.Selection;
@@ -22,9 +23,6 @@ import com.circulation.prototype_eng.localization.ResearchGuiText;
 import com.circulation.prototype_eng.research.content.ResearchContentLoader;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.io.IOException;
-import java.util.Objects;
-import java.util.List;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -35,7 +33,14 @@ import net.minecraftforge.fml.common.Loader;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.input.Mouse;
 
-/** Standard Java screen: AE2 supplies the container, background, actions and scrolling widget. */
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Standard Java screen: AE2 supplies the container, background, actions and scrolling widget.
+ */
 public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     private final ResearchContentLoader contentLoader = new ResearchContentLoader(Loader.instance().getConfigDir().toPath());
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ResearchContentLoadResult> contents = new Object2ObjectLinkedOpenHashMap<>();
@@ -56,16 +61,25 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     private GuiButton detailNext;
     private GuiButton primary;
     private GuiButton secondary;
+    private GuiButton itemDownload;
+    @Nullable
+    private UUID itemDatabase;
+    private int itemMaterialSlot;
     private String language = "";
-    @Nullable private Selection displayed;
-    @Nullable private Entry actionEntry;
-    @Nullable private DataCenterGuiSnapshot.Entry databaseActionEntry;
+    @Nullable
+    private Selection displayed;
+    @Nullable
+    private Entry actionEntry;
+    @Nullable
+    private DataCenterGuiSnapshot.Entry databaseActionEntry;
     private DataCenterGuiSnapshot drawnDatabase = DataCenterGuiSnapshot.EMPTY;
     private boolean drawnDatabaseMode;
     private Tab actionTab = Tab.RESEARCH;
     private String actionTeam = "";
-    @Nullable private ResourceLocation selectedGroup;
-    @Nullable private ResourceLocation iconTexture;
+    @Nullable
+    private ResourceLocation selectedGroup;
+    @Nullable
+    private ResourceLocation iconTexture;
     private ItemStack iconItem = ItemStack.EMPTY;
     private boolean showingDescription = true;
     private int right;
@@ -77,14 +91,68 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         descriptionScroll.setCaptureMouseWheel(false);
     }
 
-    @Override public void initGui() {
+    private static Selection selection(Entry entry) {
+        return new Selection(entry.id(), entry.targetLevel(), entry.entryId());
+    }
+
+    private static ResearchContainer.Kind primaryKind(Tab tab) {
+        return switch (tab) {
+            case RESEARCH -> ResearchContainer.Kind.START;
+            case QUEUE -> ResearchContainer.Kind.TAKEOVER;
+            case REWARDS -> ResearchContainer.Kind.CLAIM;
+        };
+    }
+
+    private static ResearchGuiText tabText(Tab tab) {
+        return switch (tab) {
+            case RESEARCH -> ResearchGuiText.Research;
+            case QUEUE -> ResearchGuiText.Queue;
+            case REWARDS -> ResearchGuiText.Rewards;
+        };
+    }
+
+    private static String detailText(Entry entry, ResearchGuiSnapshot.Detail detail) {
+        String name;
+        if (detail.kind() == ResearchGuiSnapshot.Kind.NUMERIC) {
+            name = detail.id().equals(NetworkResources.COMPUTE.id()) ? ResearchGuiText.Compute.getLocal()
+                : detail.id().equals(NetworkResources.QUBIT.id()) ? ResearchGuiText.Qubit.getLocal()
+                : detail.id().equals(NetworkResources.THREAD.id()) ? ResearchGuiText.Threads.getLocal() : detail.id().toString();
+        } else {
+            name = materialName(entry, detail);
+        }
+        return ResearchGuiText.ResourceProgress.getLocal(name, detail.current(), detail.required());
+    }
+
+    private static String materialName(Entry entry, ResearchGuiSnapshot.Detail detail) {
+        for (var requirement : ResearchRegistry.INSTANCE.require(entry.id()).materialRequirementsForLevel(entry.targetLevel())) {
+            if (requirement.id().equals(detail.id()) && requirement.payload() instanceof ResourceRequirement resources) {
+                return resources.inputs().get(detail.inputIndex()).what().getDisplayName().getFormattedText();
+            }
+        }
+        throw new IllegalStateException("Research material is missing from the client definition: " + detail.id());
+    }
+
+    private static RewardGroup group(Entry entry, ResourceLocation id) {
+        for (var group : ResearchRegistry.INSTANCE.require(entry.id()).rewardGroupsForLevel(entry.targetLevel()))
+            if (group.id().equals(id)) return group;
+        throw new IllegalStateException("Research reward choice is missing from the client registry: " + id);
+    }
+
+    private static String groupTitle(Entry entry, ResourceLocation id) {
+        var group = group(entry, id);
+        return group.title() == null ? id.toString() : group.title().getLocal();
+    }
+
+    @Override
+    public void initGui() {
         xSize = Math.min(440, width - 8);
         ySize = Math.min(286, height - 8);
         super.initGui();
         columnWidth = (xSize - 24) / 2;
         right = columnWidth + 16;
-        for (int i = 0; i < tabs.length; i++) tabs[i] = button(i, 8 + i * (xSize - 16) / tabs.length, 24,
-            (xSize - 16) / tabs.length, 18, (i == 3 ? ResearchGuiText.Database : tabText(Tab.values()[i])).getLocal());
+        for (int i = 0; i < tabs.length; i++)
+            tabs[i] = button(i, 8 + i * (xSize - 16) / tabs.length, 24,
+                (xSize - 16) / tabs.length, 18, (i == 3 ? ResearchGuiText.Database : tabText(Tab.values()[i])).getLocal());
         for (int i = 0; i < rows.length; i++) rows[i] = button(100 + i, 8, 58 + i * 20, columnWidth, 18, "");
         previous = button(10, 8, ySize - 34, 40, 18, ResearchGuiText.Previous.getLocal());
         next = button(11, columnWidth - 32, ySize - 34, 40, 18, ResearchGuiText.Next.getLocal());
@@ -94,8 +162,9 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         detailNext = button(15, right + columnWidth - 40, ySize - 54, 40, 16, ResearchGuiText.Next.getLocal());
         primary = button(16, right, ySize - 34, columnWidth / 2, 18, "");
         secondary = button(17, right + columnWidth / 2, ySize - 34, columnWidth - columnWidth / 2, 18, "");
+        itemDownload = button(18, right, ySize - 54, columnWidth, 18, "");
         for (int i = 0; i < choices.length; i++) choices[i] = button(200 + i, right, 106 + i * 11, columnWidth, 11, "");
-        descriptionRows = Math.max(1, (ySize - 54 - 106) / 10);
+        descriptionRows = Math.max(1, (ySize - 74 - 106) / 10);
         descriptionScroll.setPosition(new Point(right + columnWidth - 12, 106));
         descriptionScroll.setHeight(descriptionRows * 10);
         displayed = null;
@@ -108,18 +177,26 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return button;
     }
 
-    @Override public void updateScreen() {
+    @Override
+    public void updateScreen() {
         super.updateScreen();
         descriptionScroll.tick();
     }
 
     private void updateControls() {
         var locale = mc.getLanguageManager().getCurrentLanguage().getLanguageCode();
-        if (!language.equals(locale)) { language = locale; contents.clear(); displayed = null; }
+        if (!language.equals(locale)) {
+            language = locale;
+            contents.clear();
+            displayed = null;
+        }
         if (drawnDatabaseMode != container.databaseMode) displayed = null;
         drawnDatabaseMode = container.databaseMode;
         primary.width = drawnDatabaseMode ? columnWidth : columnWidth / 2;
-        if (drawnDatabaseMode) { updateDatabaseControls(); return; }
+        if (drawnDatabaseMode) {
+            updateDatabaseControls();
+            return;
+        }
         var view = container.snapshot;
         var entry = selected();
         if (!Objects.equals(displayed, view.selected())) {
@@ -129,7 +206,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
         if (entry != null && entry.selectedGroup() != null) selectedGroup = entry.selectedGroup();
         else if (selectedGroup != null && view.details().stream().noneMatch(detail -> detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE
-                && detail.id().equals(selectedGroup))) selectedGroup = null;
+            && detail.id().equals(selectedGroup))) selectedGroup = null;
         for (int i = 0; i < tabs.length; i++) tabs[i].enabled = view.tab().ordinal() != i;
         for (int i = 0; i < rows.length; i++) {
             var button = rows[i];
@@ -152,6 +229,12 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         actionEntry = entry;
         actionTab = view.tab();
         actionTeam = container.displayedTeam;
+        itemDatabase = container.databaseSnapshot.dataCenterId();
+        itemMaterialSlot = mc.player.inventory.currentItem;
+        itemDownload.visible = showingDescription && entry != null && view.tab() == Tab.RESEARCH;
+        itemDownload.enabled = entry != null && !container.actionQueued && ResearchContainer.canItemDownload(view, container.databaseSnapshot, entry)
+            && actionTeam.equals(container.databaseSnapshot.teamId()) && !mc.player.getHeldItemMainhand().isEmpty();
+        itemDownload.displayString = ResearchGuiText.ItemDownload.getLocal(entry == null ? 0 : entry.sharedLevel());
         if (entry != null) {
             var kind = primaryKind(view.tab());
             primary.displayString = (kind == ResearchContainer.Kind.START ? ResearchGuiText.Start
@@ -176,6 +259,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     }
 
     private void updateDatabaseControls() {
+        itemDownload.visible = false;
         var view = container.databaseSnapshot;
         drawnDatabase = view;
         var entry = databaseSelected();
@@ -225,11 +309,14 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             else {
                 var icon = content.orElseThrow().icon();
                 if (icon.kind() == ResearchContent.Kind.ITEM) {
-                    if (!Item.REGISTRY.containsKey(icon.id())) throw new IllegalArgumentException("Unknown research content item " + icon.id());
+                    if (!Item.REGISTRY.containsKey(icon.id()))
+                        throw new IllegalArgumentException("Unknown research content item " + icon.id());
                     iconItem = new ItemStack(Objects.requireNonNull(Item.REGISTRY.getObject(icon.id())), 1, icon.meta());
                 } else iconTexture = ResearchIconRegistry.require(icon.id());
-                if (!content.orElseThrow().summary().isEmpty()) descriptionLines.addAll(fontRenderer.listFormattedStringToWidth(content.orElseThrow().summary(), columnWidth - 18));
-                for (var line : content.orElseThrow().description()) descriptionLines.addAll(fontRenderer.listFormattedStringToWidth(line, columnWidth - 18));
+                if (!content.orElseThrow().summary().isEmpty())
+                    descriptionLines.addAll(fontRenderer.listFormattedStringToWidth(content.orElseThrow().summary(), columnWidth - 18));
+                for (var line : content.orElseThrow().description())
+                    descriptionLines.addAll(fontRenderer.listFormattedStringToWidth(line, columnWidth - 18));
             }
         }
         descriptionScroll.setRange(0, Math.max(0, descriptionLines.size() - descriptionRows), 1);
@@ -245,19 +332,29 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return result;
     }
 
-    private String title(ResourceLocation id) { return content(id).content().map(ResearchContent::title).orElseGet(id::toString); }
-    private String fit(String text, int width) { return fontRenderer.trimStringToWidth(text, Math.max(1, width)); }
-    private static Selection selection(Entry entry) { return new Selection(entry.id(), entry.targetLevel(), entry.entryId()); }
-    @Nullable private Entry selected() {
-        for (var entry : container.snapshot.rows()) if (selection(entry).equals(container.snapshot.selected())) return entry;
+    private String title(ResourceLocation id) {
+        return content(id).content().map(ResearchContent::title).orElseGet(id::toString);
+    }
+
+    private String fit(String text, int width) {
+        return fontRenderer.trimStringToWidth(text, Math.max(1, width));
+    }
+
+    @Nullable
+    private Entry selected() {
+        for (var entry : container.snapshot.rows())
+            if (selection(entry).equals(container.snapshot.selected())) return entry;
         return null;
     }
-    @Nullable private DataCenterGuiSnapshot.Entry databaseSelected() {
+
+    @Nullable
+    private DataCenterGuiSnapshot.Entry databaseSelected() {
         var selection = container.databaseSnapshot.selected();
         return selection == null ? null : container.databaseSnapshot.find(selection);
     }
 
-    @Override protected void actionPerformed(GuiButton button) throws IOException {
+    @Override
+    protected void actionPerformed(GuiButton button) throws IOException {
         var view = container.snapshot;
         // Minecraft applies queued GuiSync before input and updates screens afterwards. A button
         // still represents the last displayed identity, never the same index in a newer page.
@@ -269,7 +366,8 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         } else if (button.id >= 100 && button.id < 100 + rows.length) {
             if (drawnDatabaseMode) {
                 var target = databaseSelections[button.id - 100];
-                if (target != null && currentDatabaseRow(target)) container.requestDatabaseView(drawnDatabase.offset(), target);
+                if (target != null && currentDatabaseRow(target))
+                    container.requestDatabaseView(drawnDatabase.offset(), target);
                 return;
             }
             var target = rowSelections[button.id - 100];
@@ -280,7 +378,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             int index = button.id - 200;
             var group = choiceGroups[index];
             if (group != null && Objects.equals(choiceSelections[index], view.selected()) && view.tab() == Tab.REWARDS
-                    && view.details().stream().anyMatch(detail -> detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE && detail.id().equals(group))) {
+                && view.details().stream().anyMatch(detail -> detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE && detail.id().equals(group))) {
                 selectedGroup = group;
             }
         } else {
@@ -301,14 +399,34 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             }
             if (!drawnDatabaseMode && container.databaseMode) return;
             switch (button.id) {
-                case 10 -> container.requestView(view.tab(), Math.max(0, view.offset() - ResearchGuiSnapshot.MAX_ROWS), null, 0);
+                case 10 ->
+                    container.requestView(view.tab(), Math.max(0, view.offset() - ResearchGuiSnapshot.MAX_ROWS), null, 0);
                 case 11 -> container.requestView(view.tab(), view.offset() + view.rows().size(), null, 0);
                 case 12 -> showingDescription = true;
                 case 13 -> showingDescription = false;
-                case 14 -> container.requestView(view.tab(), view.offset(), view.selected(), Math.max(0, view.detailOffset() - ResearchGuiSnapshot.MAX_DETAILS));
-                case 15 -> container.requestView(view.tab(), view.offset(), view.selected(), view.detailOffset() + view.details().size());
-                case 16 -> { var entry = selected(); if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection())) container.requestAction(primaryKind(view.tab()), actionEntry, selectedGroup, actionTeam); }
-                case 17 -> { var entry = selected(); if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection())) container.requestAction(ResearchContainer.Kind.BLACKLIST, actionEntry, null, actionTeam); }
+                case 14 ->
+                    container.requestView(view.tab(), view.offset(), view.selected(), Math.max(0, view.detailOffset() - ResearchGuiSnapshot.MAX_DETAILS));
+                case 15 ->
+                    container.requestView(view.tab(), view.offset(), view.selected(), view.detailOffset() + view.details().size());
+                case 16 -> {
+                    var entry = selected();
+                    if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection()))
+                        container.requestAction(primaryKind(view.tab()), actionEntry, selectedGroup, actionTeam);
+                }
+                case 17 -> {
+                    var entry = selected();
+                    if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection()))
+                        container.requestAction(ResearchContainer.Kind.BLACKLIST, actionEntry, null, actionTeam);
+                }
+                case 18 -> {
+                    var entry = selected();
+                    if (entry != null && actionEntry != null && itemDatabase != null && actionTab == view.tab()
+                        && entry.selection().equals(actionEntry.selection()) && entry.sharedLevel() == actionEntry.sharedLevel()
+                        && itemDatabase.equals(container.databaseSnapshot.dataCenterId())
+                        && actionTeam.equals(container.databaseSnapshot.teamId())) {
+                        container.requestItemDownload(actionEntry, actionTeam, itemDatabase, itemMaterialSlot);
+                    }
+                }
                 default -> super.actionPerformed(button);
             }
         }
@@ -318,26 +436,25 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return container.databaseMode && container.databaseSnapshot.contains(drawnDatabase.teamId(), drawnDatabase.dataCenterId(), selection);
     }
 
-    private static ResearchContainer.Kind primaryKind(Tab tab) {
-        return switch (tab) { case RESEARCH -> ResearchContainer.Kind.START; case QUEUE -> ResearchContainer.Kind.TAKEOVER; case REWARDS -> ResearchContainer.Kind.CLAIM; };
-    }
-    private static ResearchGuiText tabText(Tab tab) {
-        return switch (tab) { case RESEARCH -> ResearchGuiText.Research; case QUEUE -> ResearchGuiText.Queue; case REWARDS -> ResearchGuiText.Rewards; };
-    }
-
-    @Override public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
+    @Override
+    public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         BackgroundGenerator.draw(xSize, ySize, x, y);
         GlStateManager.color(1, 1, 1, 1);
     }
 
-    @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
-        if (container.databaseMode) { drawDatabaseFG(mouseX, mouseY); return; }
+    @Override
+    public void drawFG(int x, int y, int mouseX, int mouseY) {
+        if (container.databaseMode) {
+            drawDatabaseFG(mouseX, mouseY);
+            return;
+        }
         var view = container.snapshot;
         fontRenderer.drawString(ResearchGuiText.Title.getLocal(), 8, 8, 0x404040);
         var state = !view.initialized() ? ResearchGuiText.Loading : view.savePending() ? ResearchGuiText.Saving : ResearchGuiText.team(view.teamStatus());
         fontRenderer.drawString(fit(state.getLocal(), columnWidth), 8, 46, 0x404040);
         fontRenderer.drawString(fit(container.feedback.getLocal(), xSize - 16), 8, ySize - 12, 0x404040);
-        if (view.initialized() && view.rows().isEmpty()) fontRenderer.drawString(ResearchGuiText.NoEntries.getLocal(), 8, 62, 0x404040);
+        if (view.initialized() && view.rows().isEmpty())
+            fontRenderer.drawString(ResearchGuiText.NoEntries.getLocal(), 8, 62, 0x404040);
         String page = ResearchGuiText.Page.getLocal(view.total() == 0 ? 0 : view.offset() / ResearchGuiSnapshot.MAX_ROWS + 1,
             (view.total() + (long) ResearchGuiSnapshot.MAX_ROWS - 1) / ResearchGuiSnapshot.MAX_ROWS);
         fontRenderer.drawString(fit(page, columnWidth - 84), 50, ySize - 29, 0x404040);
@@ -358,10 +475,12 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             }
             descriptionScroll.drawForegroundLayer(descriptionScroll.getBounds(), new Point(mouseX - guiLeft, mouseY - guiTop));
         } else {
-            if (view.details().isEmpty()) fontRenderer.drawString(ResearchGuiText.NoDetails.getLocal(), right, 106, 0x404040);
+            if (view.details().isEmpty())
+                fontRenderer.drawString(ResearchGuiText.NoDetails.getLocal(), right, 106, 0x404040);
             for (int i = 0; i < view.details().size(); i++) {
                 var detail = view.details().get(i);
-                if (detail.kind() != ResearchGuiSnapshot.Kind.REWARD_CHOICE) fontRenderer.drawString(fit(detailText(entry, detail), columnWidth), right, 106 + i * 11, 0x404040);
+                if (detail.kind() != ResearchGuiSnapshot.Kind.REWARD_CHOICE)
+                    fontRenderer.drawString(fit(detailText(entry, detail), columnWidth), right, 106 + i * 11, 0x404040);
             }
             var detailPage = ResearchGuiText.Page.getLocal(view.detailTotal() == 0 ? 0 : view.detailOffset() / ResearchGuiSnapshot.MAX_DETAILS + 1,
                 (view.detailTotal() + (long) ResearchGuiSnapshot.MAX_DETAILS - 1) / ResearchGuiSnapshot.MAX_DETAILS);
@@ -377,9 +496,11 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             : view.dataCenterId() == null ? ResearchGuiText.NoDatabase : ResearchGuiText.Database;
         fontRenderer.drawString(fit(state.getLocal(), columnWidth), 8, 46, 0x404040);
         fontRenderer.drawString(fit(container.feedback.getLocal(), xSize - 16), 8, ySize - 12, 0x404040);
-        if (view.dataCenterId() != null) fontRenderer.drawString(fit(ResearchGuiText.DatabaseSummary.getLocal(view.level(),
-            view.storedCount(), view.capacity()), columnWidth), right, 8, 0x404040);
-        if (view.initialized() && view.rows().isEmpty()) fontRenderer.drawString(ResearchGuiText.NoEntries.getLocal(), 8, 62, 0x404040);
+        if (view.dataCenterId() != null)
+            fontRenderer.drawString(fit(ResearchGuiText.DatabaseSummary.getLocal(view.level(),
+                view.storedCount(), view.capacity()), columnWidth), right, 8, 0x404040);
+        if (view.initialized() && view.rows().isEmpty())
+            fontRenderer.drawString(ResearchGuiText.NoEntries.getLocal(), 8, 62, 0x404040);
         var page = ResearchGuiText.Page.getLocal(view.total() == 0 ? 0 : view.offset() / DataCenterGuiSnapshot.MAX_ROWS + 1,
             (view.total() + (long) DataCenterGuiSnapshot.MAX_ROWS - 1) / DataCenterGuiSnapshot.MAX_ROWS);
         fontRenderer.drawString(fit(page, columnWidth - 84), 50, ySize - 29, 0x404040);
@@ -396,29 +517,9 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             descriptionScroll.drawForegroundLayer(descriptionScroll.getBounds(), new Point(mouseX - guiLeft, mouseY - guiTop));
         } else {
             var lines = databaseTooltip(entry);
-            for (int i = 2; i < lines.size(); i++) fontRenderer.drawString(fit(lines.get(i), columnWidth), right, 106 + (i - 2) * 11, 0x404040);
+            for (int i = 2; i < lines.size(); i++)
+                fontRenderer.drawString(fit(lines.get(i), columnWidth), right, 106 + (i - 2) * 11, 0x404040);
         }
-    }
-
-    private static String detailText(Entry entry, ResearchGuiSnapshot.Detail detail) {
-        String name;
-        if (detail.kind() == ResearchGuiSnapshot.Kind.NUMERIC) {
-            name = detail.id().equals(NetworkResources.COMPUTE.id()) ? ResearchGuiText.Compute.getLocal()
-                : detail.id().equals(NetworkResources.QUBIT.id()) ? ResearchGuiText.Qubit.getLocal()
-                : detail.id().equals(NetworkResources.THREAD.id()) ? ResearchGuiText.Threads.getLocal() : detail.id().toString();
-        } else {
-            name = materialName(entry, detail);
-        }
-        return ResearchGuiText.ResourceProgress.getLocal(name, detail.current(), detail.required());
-    }
-
-    private static String materialName(Entry entry, ResearchGuiSnapshot.Detail detail) {
-        for (var requirement : ResearchRegistry.INSTANCE.require(entry.id()).materialRequirementsForLevel(entry.targetLevel())) {
-            if (requirement.id().equals(detail.id()) && requirement.payload() instanceof ResourceRequirement resources) {
-                return resources.inputs().get(detail.inputIndex()).what().getDisplayName().getFormattedText();
-            }
-        }
-        throw new IllegalStateException("Research material is missing from the client definition: " + detail.id());
     }
 
     private void drawIcon() {
@@ -430,7 +531,8 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
     }
 
-    @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+    @Override
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         updateControls();
         super.drawScreen(mouseX, mouseY, partialTicks);
         if (container.databaseMode) {
@@ -441,15 +543,25 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                     ResearchGuiText.DatabaseSummary.getLocal(database.level(), database.storedCount(), database.capacity())), mouseX, mouseY);
             }
             for (int i = 0; i < database.rows().size(); i++) {
-                if (isPointInRegion(8, 58 + i * 20, columnWidth, 18, mouseX, mouseY)) drawHoveringText(databaseTooltip(database.rows().get(i)), mouseX, mouseY);
+                if (isPointInRegion(8, 58 + i * 20, columnWidth, 18, mouseX, mouseY))
+                    drawHoveringText(databaseTooltip(database.rows().get(i)), mouseX, mouseY);
             }
             return;
         }
         var view = container.snapshot;
         for (int i = 0; i < view.rows().size(); i++) {
-            if (isPointInRegion(8, 58 + i * 20, columnWidth, 18, mouseX, mouseY)) drawHoveringText(rowTooltip(view.rows().get(i)), mouseX, mouseY);
+            if (isPointInRegion(8, 58 + i * 20, columnWidth, 18, mouseX, mouseY))
+                drawHoveringText(rowTooltip(view.rows().get(i)), mouseX, mouseY);
         }
         var entry = selected();
+        if (entry != null && itemDownload.visible && isPointInRegion(right, ySize - 54, columnWidth, 18, mouseX, mouseY)) {
+            var definition = ResearchRegistry.INSTANCE.require(entry.id());
+            var material = mc.player.getHeldItemMainhand();
+            drawHoveringText(List.of(ResearchGuiText.ItemDownload.getLocal(entry.sharedLevel()),
+                ResearchGuiText.ItemDownloadMaterial.getLocal(material.isEmpty() ? ResearchGuiText.NoMaterials.getLocal() : material.getDisplayName()),
+                (definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY
+                    ? ResearchGuiText.ItemDownloadTeamCost : ResearchGuiText.ItemDownloadPersonalCost).getLocal(definition.itemDownloadLevelCost())), mouseX, mouseY);
+        }
         if (entry == null || showingDescription) return;
         for (int i = 0; i < view.details().size(); i++) {
             if (!isPointInRegion(right, 106 + i * 11, columnWidth, 11, mouseX, mouseY)) continue;
@@ -458,9 +570,11 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             if (detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE) {
                 var group = group(entry, detail.id());
                 tooltip.add(groupTitle(entry, detail.id()));
-                if (group.description() != null) tooltip.addAll(fontRenderer.listFormattedStringToWidth(group.description().getLocal(), 240));
+                if (group.description() != null)
+                    tooltip.addAll(fontRenderer.listFormattedStringToWidth(group.description().getLocal(), 240));
                 tooltip.add(detail.id().toString());
-                if (entry.selectedGroup() != null) tooltip.add(ResearchGuiText.FixedChoice.getLocal(entry.selectedGroup()));
+                if (entry.selectedGroup() != null)
+                    tooltip.add(ResearchGuiText.FixedChoice.getLocal(entry.selectedGroup()));
             } else tooltip.add(detailText(entry, detail));
             drawHoveringText(tooltip, mouseX, mouseY);
         }
@@ -484,7 +598,8 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         lines.add(title(entry.id()));
         lines.add(entry.id().toString());
         if (entry.blacklisted()) lines.add(ResearchGuiText.Blacklisted.getLocal());
-        if (container.snapshot.tab() == Tab.RESEARCH && entry.targetLevel() > 0) lines.add(ResearchGuiText.PrerequisitesOnly.getLocal());
+        if (container.snapshot.tab() == Tab.RESEARCH && entry.targetLevel() > 0)
+            lines.add(ResearchGuiText.PrerequisitesOnly.getLocal());
         if (entry.manualStatus() != null) lines.add(ResearchGuiText.session(entry.manualStatus()).getLocal());
         if (entry.pauseReason() != null) lines.add(ResearchGuiText.pause(entry.pauseReason()).getLocal());
         if (entry.contributor() != null) lines.add(ResearchGuiText.Contributor.getLocal(entry.contributor()));
@@ -492,29 +607,28 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return lines;
     }
 
-    private static RewardGroup group(Entry entry, ResourceLocation id) {
-        for (var group : ResearchRegistry.INSTANCE.require(entry.id()).rewardGroupsForLevel(entry.targetLevel())) if (group.id().equals(id)) return group;
-        throw new IllegalStateException("Research reward choice is missing from the client registry: " + id);
-    }
-    private static String groupTitle(Entry entry, ResourceLocation id) {
-        var group = group(entry, id);
-        return group.title() == null ? id.toString() : group.title().getLocal();
-    }
-
-    @Override protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
+    @Override
+    protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         if (showingDescription && descriptionScroll.getBounds().contains(mouseX - guiLeft, mouseY - guiTop)
-                && descriptionScroll.onMouseDown(new Point(mouseX - guiLeft, mouseY - guiTop), button)) return;
+            && descriptionScroll.onMouseDown(new Point(mouseX - guiLeft, mouseY - guiTop), button)) return;
         super.mouseClicked(mouseX, mouseY, button);
     }
-    @Override protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
-        if (showingDescription && descriptionScroll.onMouseDrag(new Point(mouseX - guiLeft, mouseY - guiTop), button)) return;
+
+    @Override
+    protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
+        if (showingDescription && descriptionScroll.onMouseDrag(new Point(mouseX - guiLeft, mouseY - guiTop), button))
+            return;
         super.mouseClickMove(mouseX, mouseY, button, elapsed);
     }
-    @Override protected void mouseReleased(int mouseX, int mouseY, int button) {
+
+    @Override
+    protected void mouseReleased(int mouseX, int mouseY, int button) {
         descriptionScroll.onMouseUp(new Point(mouseX - guiLeft, mouseY - guiTop), button);
         super.mouseReleased(mouseX, mouseY, button);
     }
-    @Override public void handleMouseInput() throws IOException {
+
+    @Override
+    public void handleMouseInput() throws IOException {
         super.handleMouseInput();
         int wheel = Mouse.getEventDWheel();
         int mouseX = Mouse.getEventX() * width / mc.displayWidth;

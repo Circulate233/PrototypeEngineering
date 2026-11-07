@@ -20,7 +20,7 @@
 
 异常、null、部分数量、冲突实体、已经观察到的效果以及扫描未知均不能转入 RETRY_PLANNED。Minecraft 适配器只把实际写入前的目标不可用当作零效果；World.spawnEntity 返回 false 时，Forge 回调已经见过带标签实体，保留其实体身份作为不确定回执，不能据取消生成推定回调没有转移物品。外部适配器也必须遵守这一零效果契约。
 
-`RewardItemDeliveryAdapter.release` 在 CONFIRMED 世界检查点成功之后调用，只清理交付标签或临时保护，绝不补发缺失物品。默认实现无需标签清理，Minecraft 适配器清理真实栈。清理失败不会把确认状态退回 DELIVERING；再次领取以及 ALREADY_CLAIMED 会重做幂等清理。登录时补清玩家已确认片段，带标签掉落实体后续加载时通过同一 MAIN 队列合并清理请求。
+`ItemDeliveryAdapter.release` 在 CONFIRMED 世界检查点成功之后调用，只清理交付标签或临时保护，绝不补发缺失物品。默认实现无需标签清理，Minecraft 适配器清理真实栈。清理失败不会把确认状态退回 DELIVERING；再次领取以及 ALREADY_CLAIMED 会重做幂等清理。登录时补清玩家已确认片段，带标签掉落实体后续加载时通过同一 MAIN 队列合并清理请求。
 
 清理后的奖励恢复原业务 NBT，可正常堆叠并参与 AEKey 精确匹配。不能在仅内存确认或保存失败时提前去掉标签，否则恢复将失去准确交付证据。
 
@@ -30,7 +30,7 @@
 
 掉落使用原 AnvilChunkLoader.saveChunk 保存实际加载的目标 chunk，等待既有文件 IO 退出，再 force 原 region 文件并用新的 RegionFile 读取落盘记录。必须匹配 chunk 坐标、minecraft:item、实体 UUID、完整物品及未确认保护。不存在、损坏、重复或不同内容都不能转为 CONFIRMED。这个路径无需保存整个世界；其他代码在领取中触发 World Save 时，仍由世界会话负责延后普通检查点。
 
-未确认的新掉落保存原 Age、PickupDelay 和 Invulnerable，临时暂停老化、拾取及普通伤害；确认后恢复原值并清标记。保存的临时保护也参与磁盘核对，防止重载后在确认前自然消失。非标准玩家存档处理器或非 Anvil 掉落目标在发放之前明确拒绝，外部平台可实现 RewardItemDeliveryAdapter 提供自己的准确凭据。
+未确认的新掉落保存原 Age、PickupDelay 和 Invulnerable，临时暂停老化、拾取及普通伤害；确认后恢复原值并清标记。保存的临时保护也参与磁盘核对，防止重载后在确认前自然消失。非标准玩家存档处理器或非 Anvil 掉落目标在发放之前明确拒绝，外部平台可实现 ItemDeliveryAdapter 提供自己的准确凭据。
 
 IO 和确认仍在真实服务器所有者线程逐片段完成，使用现有文件协议，不提供研究文件与 vanilla 文件的原子提交。未发出证明只覆盖下面的 PREPARED 边界；已经进入 ISSUING 却没有观察到物品时仍保留未知，不能以“原槽空了”直接补发。
 

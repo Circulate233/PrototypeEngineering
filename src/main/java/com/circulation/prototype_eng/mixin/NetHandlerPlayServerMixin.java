@@ -8,6 +8,7 @@ import net.minecraft.network.play.client.CPacketCloseWindow;
 import net.minecraft.network.play.client.CPacketCreativeInventoryAction;
 import net.minecraft.network.play.client.CPacketCustomPayload;
 import net.minecraft.network.play.client.CPacketEnchantItem;
+import net.minecraft.network.play.client.CPacketHeldItemChange;
 import net.minecraft.network.play.client.CPacketPlaceRecipe;
 import net.minecraft.network.play.client.CPacketPlayerDigging;
 import net.minecraft.network.play.client.CPacketPlayerTryUseItem;
@@ -22,17 +23,28 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Preserves vanilla's original queue and guards the first MAIN-thread item effect. */
+/**
+ * Preserves vanilla's original queue and guards the first MAIN-thread item effect.
+ */
 @Mixin(NetHandlerPlayServer.class)
 public abstract class NetHandlerPlayServerMixin {
-    @Unique private static final String MAIN_HANDOFF = "Lnet/minecraft/network/PacketThreadUtil;checkThreadAndEnqueue"
+    @Unique
+    private static final String MAIN_HANDOFF = "Lnet/minecraft/network/PacketThreadUtil;checkThreadAndEnqueue"
         + "(Lnet/minecraft/network/Packet;Lnet/minecraft/network/INetHandler;Lnet/minecraft/util/IThreadListener;)V";
 
-    @Shadow @Final private MinecraftServer server;
+    @Shadow
+    @Final
+    private MinecraftServer server;
 
     @Inject(method = "processClickWindow", at = @At(value = "INVOKE", target = MAIN_HANDOFF, shift = At.Shift.AFTER),
         cancellable = true, require = 1, allow = 1)
     private void prototype_eng$guardClick(CPacketClickWindow packet, CallbackInfo callback) {
+        prototype_eng$guard(packet, callback);
+    }
+
+    @Inject(method = "processHeldItemChange", at = @At(value = "INVOKE", target = MAIN_HANDOFF, shift = At.Shift.AFTER),
+        cancellable = true, require = 1, allow = 1)
+    private void prototype_eng$guardSelection(CPacketHeldItemChange packet, CallbackInfo callback) {
         prototype_eng$guard(packet, callback);
     }
 
@@ -95,7 +107,8 @@ public abstract class NetHandlerPlayServerMixin {
         prototype_eng$guard(packet, callback);
     }
 
-    @Unique private void prototype_eng$guard(Packet<?> packet, CallbackInfo callback) {
+    @Unique
+    private void prototype_eng$guard(Packet<?> packet, CallbackInfo callback) {
         if (RewardPlayerActions.reject(server, (NetHandlerPlayServer) (Object) this, packet)) callback.cancel();
     }
 }

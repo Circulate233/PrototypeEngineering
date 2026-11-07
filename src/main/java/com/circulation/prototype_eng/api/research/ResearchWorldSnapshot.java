@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.research;
 
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadReceipt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.station.ResearchStationWork;
@@ -16,15 +18,30 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Objects;
 import java.util.UUID;
 
-/** One immutable world checkpoint, including every offline player source needed for recovery. */
-public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams) {
+/**
+ * One immutable world checkpoint, including every offline player source needed for recovery.
+ */
+public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players,
+                                    ObjectList<Team> teams,
+                                    ObjectList<ResearchDownloadOperation> downloads,
+                                    ObjectList<ResearchDownloadReceipt> downloadReceipts) {
+    public ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams) {
+        this(serverTime, players, teams, ObjectList.of(), ObjectList.of());
+    }
+
     public ResearchWorldSnapshot {
-        if (serverTime < 0) { throw new IllegalArgumentException("Negative research world time"); }
+        if (serverTime < 0) {
+            throw new IllegalArgumentException("Negative research world time");
+        }
         players = frozenList(players);
         teams = frozenList(teams);
+        downloads = frozenList(downloads);
+        downloadReceipts = frozenList(downloadReceipts);
         var playerIds = new ObjectOpenHashSet<UUID>();
         for (var player : players) {
-            if (!playerIds.add(player.playerUuid())) { throw new IllegalArgumentException("Duplicate research world player"); }
+            if (!playerIds.add(player.playerUuid())) {
+                throw new IllegalArgumentException("Duplicate research world player");
+            }
             for (var claim : player.rewardClaims()) {
                 if (claim.eligibleAtWorldTime() > serverTime || claim.claimingAtWorldTime().orElse(0) > serverTime
                     || claim.claimedAtWorldTime().orElse(0) > serverTime) {
@@ -36,31 +53,102 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
         var sessionIds = new ObjectOpenHashSet<UUID>();
         var operations = new ObjectOpenHashSet<UUID>();
         for (var team : teams) {
-            if (!teamIds.add(team.teamId())) { throw new IllegalArgumentException("Duplicate research world team"); }
-            if (team.queue().updatedAtWorldTime() > serverTime) { throw new IllegalArgumentException("Research queue exceeds world time"); }
-            if (team.stationWork().lastGrantedTime() > serverTime) { throw new IllegalArgumentException("Station grant exceeds research world time"); }
-            for (var member : team.knownMembers()) { requirePlayer(playerIds, member); }
-            for (var entry : team.queue().entries()) { requirePlayer(playerIds, entry.requestedBy()); }
+            if (!teamIds.add(team.teamId())) {
+                throw new IllegalArgumentException("Duplicate research world team");
+            }
+            if (team.queue().updatedAtWorldTime() > serverTime) {
+                throw new IllegalArgumentException("Research queue exceeds world time");
+            }
+            if (team.stationWork().lastGrantedTime() > serverTime) {
+                throw new IllegalArgumentException("Station grant exceeds research world time");
+            }
+            for (var member : team.knownMembers()) {
+                requirePlayer(playerIds, member);
+            }
+            for (var entry : team.queue().entries()) {
+                requirePlayer(playerIds, entry.requestedBy());
+            }
             for (var session : team.manualSessions()) {
-                if (!sessionIds.add(session.id())) { throw new IllegalArgumentException("Duplicate research world session"); }
-                if (session.lastActivity() > serverTime) { throw new IllegalArgumentException("Manual session exceeds world time"); }
-                if (session.contributor() != null) { requirePlayer(playerIds, session.contributor()); }
+                if (!sessionIds.add(session.id())) {
+                    throw new IllegalArgumentException("Duplicate research world session");
+                }
+                if (session.lastActivity() > serverTime) {
+                    throw new IllegalArgumentException("Manual session exceeds world time");
+                }
+                if (session.contributor() != null) {
+                    requirePlayer(playerIds, session.contributor());
+                }
                 var material = session.materialIntent();
                 if (material != null) {
                     requirePlayer(playerIds, material.contributor());
-                    if (!operations.add(material.operationId())) { throw new IllegalArgumentException("Duplicate world material operation"); }
+                    if (!operations.add(material.operationId())) {
+                        throw new IllegalArgumentException("Duplicate world material operation");
+                    }
                 }
                 var completion = session.completionIntent();
-                if (completion != null) { for (var member : completion.baselines().keySet()) { requirePlayer(playerIds, member); } }
+                if (completion != null) {
+                    for (var member : completion.baselines().keySet()) {
+                        requirePlayer(playerIds, member);
+                    }
+                }
             }
+        }
+        var nonces = new ObjectOpenHashSet<RequestNonce>();
+        for (var operation : downloads) {
+            if (operation.createdAt() > serverTime || !operations.add(operation.id())
+                || !nonces.add(new RequestNonce(operation.intent().playerId(), operation.intent().nonce()))) {
+                throw new IllegalArgumentException("Duplicate or future world download operation");
+            }
+            requirePlayer(playerIds, operation.intent().playerId());
+            if (!teamIds.contains(operation.sources().teamId()))
+                throw new IllegalArgumentException("Download lost its original team source");
+            for (var member : operation.sources().members()) requirePlayer(playerIds, member);
+        }
+        for (var receipt : downloadReceipts) {
+            if (!operations.add(receipt.operationId()) || !nonces.add(new RequestNonce(receipt.intent().playerId(), receipt.intent().nonce()))) {
+                throw new IllegalArgumentException("Duplicate terminal world download operation");
+            }
+            requirePlayer(playerIds, receipt.intent().playerId());
+            if (!teamIds.contains(receipt.sources().teamId()))
+                throw new IllegalArgumentException("Terminal download lost its original team source");
+            for (var member : receipt.sources().members()) requirePlayer(playerIds, member);
         }
     }
 
-    /** knownMembers is retained history, so a former member may also be known by another team. */
+    private static void requirePlayer(ObjectSet<UUID> players, UUID id) {
+        if (!players.contains(id)) {
+            throw new IllegalArgumentException("Research world is missing an authoritative player source: " + id);
+        }
+    }
+
+    private static <T> ObjectList<T> frozenList(ObjectList<T> values) {
+        var copy = new ObjectArrayList<>(Objects.requireNonNull(values));
+        for (var value : copy) {
+            Objects.requireNonNull(value);
+        }
+        return ObjectLists.unmodifiable(copy);
+    }
+
+    private static <T> ObjectSet<T> frozenSet(ObjectSet<T> values) {
+        var copy = new ObjectLinkedOpenHashSet<>(Objects.requireNonNull(values));
+        for (var value : copy) {
+            Objects.requireNonNull(value);
+        }
+        return ObjectSets.unmodifiable(copy);
+    }
+
+    private record RequestNonce(UUID player, UUID nonce) {
+    }
+
+    /**
+     * knownMembers is retained history, so a former member may also be known by another team.
+     */
     public record Team(String teamId, ObjectSet<UUID> knownMembers, ObjectSet<ResourceLocation> blacklist,
                        TeamOwnedResearch.Snapshot research, TeamResearchQueue.Snapshot queue,
                        ObjectList<ManualResearchSession> manualSessions, ResearchStationWork.Saved stationWork) {
-        /** Manual-only hosts retain an explicit empty station checkpoint. */
+        /**
+         * Manual-only hosts retain an explicit empty station checkpoint.
+         */
         public Team(String teamId, ObjectSet<UUID> knownMembers, ObjectSet<ResourceLocation> blacklist,
                     TeamOwnedResearch.Snapshot research, TeamResearchQueue.Snapshot queue,
                     ObjectList<ManualResearchSession> manualSessions) {
@@ -69,7 +157,9 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
 
         public Team {
             Objects.requireNonNull(teamId);
-            if (teamId.isBlank() || !teamId.equals(teamId.trim())) { throw new IllegalArgumentException("Invalid research team id"); }
+            if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
+                throw new IllegalArgumentException("Invalid research team id");
+            }
             knownMembers = frozenSet(knownMembers);
             blacklist = frozenSet(blacklist);
             Objects.requireNonNull(research);
@@ -113,26 +203,12 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                         }
                     }
                     default -> {
-                        if (!queueKeys.contains(session.queueKey())) { throw new IllegalArgumentException("Manual session lost its exact queue entry"); }
+                        if (!queueKeys.contains(session.queueKey())) {
+                            throw new IllegalArgumentException("Manual session lost its exact queue entry");
+                        }
                     }
                 }
             }
         }
-    }
-
-    private static void requirePlayer(ObjectSet<UUID> players, UUID id) {
-        if (!players.contains(id)) { throw new IllegalArgumentException("Research world is missing an authoritative player source: " + id); }
-    }
-
-    private static <T> ObjectList<T> frozenList(ObjectList<T> values) {
-        var copy = new ObjectArrayList<>(Objects.requireNonNull(values));
-        for (var value : copy) { Objects.requireNonNull(value); }
-        return ObjectLists.unmodifiable(copy);
-    }
-
-    private static <T> ObjectSet<T> frozenSet(ObjectSet<T> values) {
-        var copy = new ObjectLinkedOpenHashSet<>(Objects.requireNonNull(values));
-        for (var value : copy) { Objects.requireNonNull(value); }
-        return ObjectSets.unmodifiable(copy);
     }
 }

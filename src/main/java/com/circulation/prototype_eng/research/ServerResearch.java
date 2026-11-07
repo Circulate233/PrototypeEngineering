@@ -6,44 +6,52 @@ import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
-import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
+import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadContext;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
-import com.circulation.prototype_eng.api.research.reward.RewardFragment;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
+import com.circulation.prototype_eng.api.research.view.DataCenterPlayerView;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
-import com.circulation.prototype_eng.machine.ServerMachineIdentities;
-import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
+import com.circulation.prototype_eng.machine.ServerMachineIdentities;
+import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
+import com.circulation.prototype_eng.research.download.MinecraftResearchDownloadInventory;
 import com.circulation.prototype_eng.research.manual.MinecraftManualResearchInventory;
-import com.circulation.prototype_eng.research.reward.MinecraftRewardItemDeliveryAdapter;
+import com.circulation.prototype_eng.research.reward.MinecraftItemDeliveryAdapter;
+import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.feed_the_beast.ftblib.lib.data.Universe;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.item.EntityItem;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.FakePlayer;
-import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
@@ -59,38 +67,58 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/** Authoritative server research session; its file has one writer and is never registered in MapStorage. */
+/**
+ * Authoritative server research session; its file has one writer and is never registered in MapStorage.
+ */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class ServerResearch {
-    @Nullable private static volatile Session session;
+    @Nullable
+    private static volatile Session session;
 
-    private ServerResearch() { }
+    private ServerResearch() {
+    }
 
-    /** FML serverStarting calls this after the overworld and frozen registries are available. */
+    /**
+     * FML serverStarting calls this after the overworld and frozen registries are available.
+     */
     public static synchronized void start(MinecraftServer server) {
         requireThread(Objects.requireNonNull(server));
-        if (session != null) { throw new IllegalStateException("A research server session is already installed"); }
+        if (session != null) {
+            throw new IllegalStateException("A research server session is already installed");
+        }
         var overworld = Objects.requireNonNull(server.getWorld(0), "Research startup requires the overworld");
         var registry = ResearchRegistry.INSTANCE;
         var resources = NetworkResourceRegistry.INSTANCE;
         var file = new ResearchStateFile(overworld.getSaveHandler().getMapFileFromName("prototype_eng_research").toPath(),
             new ResearchWorldNbt(registry, resources, new ResourceKeyNbt()));
         var world = new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, snapshot -> {
-            try { file.write(snapshot); }
-            catch (IOException failure) { throw new UncheckedIOException(failure); }
+            try {
+                file.write(snapshot);
+            } catch (IOException failure) {
+                throw new UncheckedIOException(failure);
+            }
         });
-        try { file.read().ifPresent(world::restore); }
-        catch (IOException failure) { throw new UncheckedIOException(failure); }
+        try {
+            file.read().ifPresent(world::restore);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        }
         session = new Session(server, overworld, world);
     }
 
-    /** Refresh at the scheduler's exclusive boundary, after research work and before ordinary work. */
+    /**
+     * Refresh at the scheduler's exclusive boundary, after research work and before ordinary work.
+     */
     @SuppressWarnings("resource")
     public static void refreshDataCenters(MinecraftServer server) {
         requireThread(server);
+        var current = session;
+        if (current != null && (current.server != server || current.overworld != server.getWorld(0))) {
+            throw new IllegalStateException("Download recovery changed its server identity");
+        }
+        if (current != null && !current.closing) recoverDownloads(current);
         var network = ServerNetworkRuntime.forServer(server);
         if (!network.refresh()) return;
-        var current = session;
         if (current == null || current.closing) return;
         if (current.server != server || current.overworld != server.getWorld(0)) {
             throw new IllegalStateException("Database synchronization changed its server identity");
@@ -116,7 +144,9 @@ public final class ServerResearch {
         }
     }
 
-    /** The request names the exact database shown by the server, never a replacement selected later. */
+    /**
+     * The request names the exact database shown by the server, never a replacement selected later.
+     */
     @SuppressWarnings("resource")
     public static void requestDataCenterDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
                                                  ResourceLocation id, int level, BooleanSupplier ownerCurrent,
@@ -128,14 +158,26 @@ public final class ServerResearch {
         Objects.requireNonNull(result);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(level);
         ServerTaskSchedulers.forServer(current.server).submit(() -> {
-            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) { result.accept(staleDownload()); return; }
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(staleDownload());
+                return;
+            }
             var online = onlinePlayers(current);
             var captures = capture(current, Set.of(actor.getUniqueID()));
-            if (unavailable(captures)) { result.accept(staleDownload()); return; }
+            if (unavailable(captures)) {
+                result.accept(staleDownload());
+                return;
+            }
             var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
-            if (!membership.accepted() || !expectedTeam.equals(membership.teamId())) { result.accept(staleDownload()); return; }
+            if (!membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+                result.accept(staleDownload());
+                return;
+            }
             var permission = permission(current, actor, membership);
-            if (permission == null) { result.accept(staleDownload()); return; }
+            if (permission == null) {
+                result.accept(staleDownload());
+                return;
+            }
             var authority = proof(current, captures, online);
             result.accept(current.database.download(membership, permission, expectedDataCenterId, id, level,
                 () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
@@ -149,10 +191,16 @@ public final class ServerResearch {
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
         ServerTaskSchedulers.forServer(current.server).submit(() -> {
-            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) { result.accept(null); return; }
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
             var online = onlinePlayers(current);
             var captures = capture(current, Set.of(actor.getUniqueID()));
-            if (unavailable(captures)) { result.accept(null); return; }
+            if (unavailable(captures)) {
+                result.accept(null);
+                return;
+            }
             var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
             if (!membership.accepted()) {
                 result.accept(new DataCenterPlayerView("", ResearchPermissionPolicy.Decision.MISSING_ACTOR_TEAM,
@@ -160,7 +208,10 @@ public final class ServerResearch {
                 return;
             }
             var permission = permission(current, actor, membership);
-            if (permission == null) { result.accept(null); return; }
+            if (permission == null) {
+                result.accept(null);
+                return;
+            }
             var authority = proof(current, captures, online);
             result.accept(current.database.view(membership, permission,
                 () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
@@ -172,16 +223,141 @@ public final class ServerResearch {
         return new DataCenterResearchAccess.Result(DataCenterResearchAccess.Status.STALE_CONTEXT, null);
     }
 
-    /** Exact server identity rejects callbacks from an earlier integrated-server session. */
-    @SuppressWarnings("unused") // Public Java research entry for server hosts and addons.
-    public static ResearchWorld forServer(MinecraftServer server) { return active(server).world; }
+    /**
+     * An exact native inventory slot supplies one material; the server freezes event output once.
+     */
+    @SuppressWarnings("resource")
+    public static void requestItemDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
+                                           ResourceLocation id, int level, int slot, UUID nonce, BooleanSupplier ownerCurrent,
+                                           Consumer<ResearchDownloadResult> result) {
+        var current = actorSession(actor);
+        var definition = ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
+        definition.stageForLevel(level);
+        var intent = new ResearchDownloadOperation.Intent(actor.getUniqueID(), nonce, expectedDataCenterId, expectedTeam, id, level, slot);
+        Objects.requireNonNull(ownerCurrent);
+        Objects.requireNonNull(result);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            var online = onlinePlayers(current);
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+            if (!membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            var permission = permission(current, actor, membership);
+            if (permission == null) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            var authority = proof(current, captures, online);
+            var physical = current.dataCenters.capture(expectedTeam, expectedDataCenterId);
+            if (physical == null || !membership.members().contains(physical.ownerId())) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            var cloud = current.world.captureCloud(membership, permission, ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER,
+                () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership)));
+            if (cloud == null) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            if (cloud.decision() != ResearchPermissionPolicy.Decision.ALLOWED) {
+                result.accept(new ResearchDownloadResult(ResearchDownloadResult.Status.PERMISSION_DENIED, null, null));
+                return;
+            }
+            if (!cloud.current().getAsBoolean()) {
+                result.accept(staleItemDownload());
+                return;
+            }
+            result.accept(current.world.requestItemDownload(intent, membership, permission, physical.snapshot(),
+                new MinecraftResearchDownloadInventory(actor), material -> ResearchItemDownloadRegistry.INSTANCE.evaluate(
+                    new ResearchItemDownloadContext(ResearchRegistry.INSTANCE, level, new ItemStack(material.material()), definition,
+                        actor, current.server, actor.getServerWorld(), expectedDataCenterId, expectedTeam,
+                        actor.getServerWorld().getTotalWorldTime(), material.operationId())), operationTime(current),
+                new MinecraftItemDeliveryAdapter(actor), () -> authority.getAsBoolean() && physical.current()
+                    && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                    && permission.equals(permission(current, actor, membership)),
+                () -> currentActor(current, actor) && ownerCurrent.getAsBoolean()));
+        }, ExecutionMode.MAIN_THREAD);
+    }
 
-    /** Read-only capture; the scheduler takes ownership before research can execute or save. */
+    private static ResearchDownloadResult staleItemDownload() {
+        return new ResearchDownloadResult(ResearchDownloadResult.Status.STALE_CONTEXT, null, null);
+    }
+
+    /**
+     * Owner boundary retries frozen obligations; completed outputs require no current team or database.
+     */
+    private static void recoverDownloads(Session current) {
+        for (var actor : onlinePlayers(current).values()) {
+            if (current.world.pendingDownloadOperations(actor.getUniqueID()).isEmpty()
+                && !MinecraftResearchDownloadInventory.hasPending(actor)) continue;
+            recoverDownloads(current, actor);
+        }
+    }
+
+    private static void recoverDownloads(Session current, EntityPlayerMP actor) {
+        if (!currentActor(current, actor)) return;
+        current.world.recoverItemDownloads(actor.getUniqueID(), new MinecraftResearchDownloadInventory(actor),
+            new MinecraftItemDeliveryAdapter(actor), operationTime(current), () -> currentActor(current, actor),
+            operation -> downloadAuthorized(current, actor, operation));
+    }
+
+    /**
+     * Only a PREPARED operation may depend on fresh team/database authorization.
+     */
+    private static boolean downloadAuthorized(Session current, EntityPlayerMP actor, ResearchDownloadOperation operation) {
+        if (!currentActor(current, actor)) return false;
+        var online = onlinePlayers(current);
+        var captures = capture(current, Set.of(actor.getUniqueID()));
+        if (unavailable(captures)) return false;
+        var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+        var intent = operation.intent();
+        if (!membership.accepted() || !intent.teamId().equals(membership.teamId())
+            || !membership.members().equals(new ObjectOpenHashSet<>(operation.sources().members()))) return false;
+        var permission = permission(current, actor, membership);
+        if (permission == null) return false;
+        var authority = proof(current, captures, online);
+        if (ResearchPermissionPolicy.DEFAULT.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission)
+            != ResearchPermissionPolicy.Decision.ALLOWED) return false;
+        var physical = current.dataCenters.capture(intent.teamId(), intent.databaseId());
+        if (physical == null || !membership.members().contains(physical.ownerId())) return false;
+        var definition = ResearchRegistry.INSTANCE.require(intent.researchId());
+        if (definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM
+            && (physical.snapshot().storedResearch().getInt(intent.researchId()) < intent.level()
+            || definition.researchTierForLevel(intent.level()) > physical.snapshot().level())) return false;
+        return authority.getAsBoolean() && physical.current() && currentActor(current, actor)
+            && permission.equals(permission(current, actor, membership));
+    }
+
+    /**
+     * Exact server identity rejects callbacks from an earlier integrated-server session.
+     */
+    @SuppressWarnings("unused") // Public Java research entry for server hosts and addons.
+    public static ResearchWorld forServer(MinecraftServer server) {
+        return active(server).world;
+    }
+
+    /**
+     * Read-only capture; the scheduler takes ownership before research can execute or save.
+     */
     @SuppressWarnings("resource") // The server lifecycle owns the borrowed network runtime.
-    @Nullable public static PlannedExecution prepareTick(MinecraftServer server, PlannedTaskExecutor tasks, PlannedDeadline deadline) {
+    @Nullable
+    public static PlannedExecution prepareTick(MinecraftServer server, PlannedTaskExecutor tasks, PlannedDeadline deadline) {
         requireThread(Objects.requireNonNull(server));
         var current = session;
-        if (current == null || current.closing) { return null; }
+        if (current == null || current.closing) {
+            return null;
+        }
         if (current.server != server || server.getWorld(0) != current.overworld) {
             throw new IllegalStateException("Research tick changed its server or overworld identity");
         }
@@ -197,7 +373,9 @@ public final class ServerResearch {
             current.stations, () -> ServerNetworkRuntime.forServer(server).refresh(), tasks, deadline);
     }
 
-    /** Only the actual actor can create a tier-zero session; this direct entry needs no network publication. */
+    /**
+     * Only the actual actor can create a tier-zero session; this direct entry needs no network publication.
+     */
     @SuppressWarnings("unused") // Public Java operation until packet/command adapters are attached.
     public static TeamResearchStart.Result startManual(EntityPlayerMP actor, ResourceLocation id, int target) {
         var current = actorSession(actor);
@@ -218,16 +396,20 @@ public final class ServerResearch {
         requestStart(actor, id, target, () -> true, result);
     }
 
-    /** A container can retain its exact open-window guard through admission callbacks. */
+    /**
+     * A container can retain its exact open-window guard through admission callbacks.
+     */
     public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target, BooleanSupplier ownerCurrent,
                                     Consumer<TeamResearchStart.Result> result) {
         requestStart(actor, id, target, null, ownerCurrent, result);
     }
 
-    /** Bind admission to the team displayed by the original server-owned container projection. */
+    /**
+     * Bind admission to the team displayed by the original server-owned container projection.
+     */
     @SuppressWarnings("resource")
     public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
-                                     BooleanSupplier ownerCurrent, Consumer<TeamResearchStart.Result> result) {
+                                    BooleanSupplier ownerCurrent, Consumer<TeamResearchStart.Result> result) {
         var current = actorSession(actor);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(target);
         Objects.requireNonNull(ownerCurrent);
@@ -248,7 +430,7 @@ public final class ServerResearch {
      */
     @SuppressWarnings("unused") // Public Java operation until packet/command adapters are attached.
     public static void requestReward(EntityPlayerMP actor, ResourceLocation id, int level, ResourceLocation group,
-                                      Consumer<ResearchRewardClaimer.Result> result) {
+                                     Consumer<ResearchRewardClaimer.Result> result) {
         requestReward(actor, id, level, group, () -> true, result);
     }
 
@@ -267,7 +449,7 @@ public final class ServerResearch {
                 return;
             }
             result.accept(current.world.claimReward(actor.getUniqueID(), id, level, group, operationTime(current),
-                new MinecraftRewardItemDeliveryAdapter(actor), () -> currentActor(current, actor) && ownerCurrent.getAsBoolean()));
+                new MinecraftItemDeliveryAdapter(actor), () -> currentActor(current, actor) && ownerCurrent.getAsBoolean()));
         }, ExecutionMode.MAIN_THREAD);
     }
 
@@ -277,10 +459,12 @@ public final class ServerResearch {
 
     @SuppressWarnings("resource")
     private static TeamResearchStart.Result startCurrent(Session current, EntityPlayerMP actor, ResourceLocation id, int target,
-                                                          @Nullable String expectedTeam, BooleanSupplier ownerCurrent) {
+                                                         @Nullable String expectedTeam, BooleanSupplier ownerCurrent) {
         var online = onlinePlayers(current);
         var captures = capture(current, Set.of(actor.getUniqueID()));
-        if (unavailable(captures)) { return staleStart(); }
+        if (unavailable(captures)) {
+            return staleStart();
+        }
         var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
         if (!membership.accepted()) {
             return new TeamResearchStart.Result(TeamResearchStart.Status.PERMISSION_DENIED, null,
@@ -288,7 +472,9 @@ public final class ServerResearch {
         }
         if (expectedTeam != null && !expectedTeam.equals(membership.teamId())) return staleStart();
         var permission = permission(current, actor, membership);
-        if (permission == null) { return staleStart(); }
+        if (permission == null) {
+            return staleStart();
+        }
         var capturedCurrent = proof(current, captures, online);
         BooleanSupplier actorCurrent = () -> capturedCurrent.getAsBoolean() && ownerCurrent.getAsBoolean()
             && permission.equals(permission(current, actor, membership));
@@ -299,7 +485,9 @@ public final class ServerResearch {
         }
         var network = ServerNetworkRuntime.forServer(current.server);
         var publication = network.plan();
-        if (publication == null) { return staleStart(); }
+        if (publication == null) {
+            return staleStart();
+        }
         var admission = current.stations.admission(membership.teamId());
         return current.world.start(membership, permission, id, target, admission.environment(), operationTime(current),
             online.keySet(), () -> actorCurrent.getAsBoolean() && network.plan() == publication && admission.current());
@@ -313,13 +501,18 @@ public final class ServerResearch {
     }
 
     private static ManualResearch.Status takeoverCurrent(Session current, EntityPlayerMP actor, ResourceLocation id, int target,
-                                                           @Nullable String expectedTeam, long expectedEntryId, BooleanSupplier ownerCurrent) {
+                                                         @Nullable String expectedTeam, long expectedEntryId, BooleanSupplier ownerCurrent) {
         var online = onlinePlayers(current);
         var captures = capture(current, Set.of(actor.getUniqueID()));
-        if (unavailable(captures)) { return ManualResearch.Status.STALE_CONTEXT; }
+        if (unavailable(captures)) {
+            return ManualResearch.Status.STALE_CONTEXT;
+        }
         var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
-        if (!membership.accepted()) { return ManualResearch.Status.CONTRIBUTOR_UNAVAILABLE; }
-        if (expectedTeam != null && !expectedTeam.equals(membership.teamId())) return ManualResearch.Status.STALE_CONTEXT;
+        if (!membership.accepted()) {
+            return ManualResearch.Status.CONTRIBUTOR_UNAVAILABLE;
+        }
+        if (expectedTeam != null && !expectedTeam.equals(membership.teamId()))
+            return ManualResearch.Status.STALE_CONTEXT;
         var authority = proof(current, captures, online);
         return current.world.takeover(membership, actor.getUniqueID(), id, target, expectedEntryId,
             operationTime(current), online.keySet(), () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean());
@@ -331,7 +524,9 @@ public final class ServerResearch {
         requestTakeover(actor, id, target, null, 0, ownerCurrent, result);
     }
 
-    /** Team and queue entry belong to the displayed session, not merely its research ID and level. */
+    /**
+     * Team and queue entry belong to the displayed session, not merely its research ID and level.
+     */
     @SuppressWarnings("resource")
     public static void requestTakeover(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
                                        long expectedEntryId, BooleanSupplier ownerCurrent, Consumer<ManualResearch.Status> result) {
@@ -341,7 +536,7 @@ public final class ServerResearch {
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
         ServerTaskSchedulers.forServer(current.server).submit(() -> result.accept(currentActor(current, actor) && ownerCurrent.getAsBoolean()
-            ? takeoverCurrent(current, actor, id, target, expectedTeam, expectedEntryId, ownerCurrent) : ManualResearch.Status.STALE_CONTEXT),
+                ? takeoverCurrent(current, actor, id, target, expectedTeam, expectedEntryId, ownerCurrent) : ManualResearch.Status.STALE_CONTEXT),
             ExecutionMode.MAIN_THREAD);
     }
 
@@ -353,7 +548,7 @@ public final class ServerResearch {
 
     @SuppressWarnings("resource")
     public static void requestBlacklist(EntityPlayerMP actor, ResourceLocation id, boolean blacklisted, @Nullable String expectedTeam,
-                                         BooleanSupplier ownerCurrent, Consumer<ResearchPermissionPolicy.Decision> result) {
+                                        BooleanSupplier ownerCurrent, Consumer<ResearchPermissionPolicy.Decision> result) {
         var current = actorSession(actor);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
         Objects.requireNonNull(ownerCurrent);
@@ -376,7 +571,10 @@ public final class ServerResearch {
                 return;
             }
             var permission = permission(current, actor, membership);
-            if (permission == null) { result.accept(ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER); return; }
+            if (permission == null) {
+                result.accept(ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER);
+                return;
+            }
             var authority = proof(current, captures, online);
             result.accept(current.world.setBlacklisted(membership, permission, id, blacklisted, operationTime(current),
                 () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
@@ -384,14 +582,19 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
-    /** The callback receives null for a busy/stale read, never a replacement empty research state. */
+    /**
+     * The callback receives null for a busy/stale read, never a replacement empty research state.
+     */
     @SuppressWarnings("resource")
     public static void requestView(EntityPlayerMP actor, BooleanSupplier ownerCurrent, Consumer<ResearchPlayerView> result) {
         var current = actorSession(actor);
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
         ServerTaskSchedulers.forServer(current.server).submit(() -> {
-            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) { result.accept(null); return; }
+            if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+                result.accept(null);
+                return;
+            }
             var online = onlinePlayers(current);
             var captures = capture(current, Set.of(actor.getUniqueID()));
             var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
@@ -401,7 +604,10 @@ public final class ServerResearch {
             }
             var team = membership;
             var permission = viewPermission(current, actor, team);
-            if (permission == null) { result.accept(null); return; }
+            if (permission == null) {
+                result.accept(null);
+                return;
+            }
             var authority = proof(current, captures, online);
             var view = current.world.project(actor.getUniqueID(), team, permission,
                 () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
@@ -410,28 +616,40 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
-    /** Mark closing before IO; a failed final checkpoint retains the exact session for retry. */
+    /**
+     * Mark closing before IO; a failed final checkpoint retains the exact session for retry.
+     */
     public static synchronized void stop(MinecraftServer server) {
         requireThread(Objects.requireNonNull(server));
         var current = session;
-        if (current == null) { return; }
-        if (current.server != server) { throw new IllegalStateException("Research shutdown changed server identity"); }
+        if (current == null) {
+            return;
+        }
+        if (current.server != server) {
+            throw new IllegalStateException("Research shutdown changed server identity");
+        }
         current.closing = true;
         // The file writer retains its absolute path, so serverStopped can retry after world unload.
         current.world.close(operationTime(current));
         session = null;
     }
 
-    /** Idempotent serverStopped fallback for a retained failed-close session. */
+    /**
+     * Idempotent serverStopped fallback for a retained failed-close session.
+     */
     public static synchronized void stop() {
         var current = session;
-        if (current != null) { stop(current.server); }
+        if (current != null) {
+            stop(current.server);
+        }
     }
 
     @SubscribeEvent
     public static void onWorldSave(WorldEvent.Save event) {
         var current = session;
-        if (current == null || event.getWorld() != current.overworld) { return; }
+        if (current == null || event.getWorld() != current.overworld) {
+            return;
+        }
         requireThread(current.server);
         current.world.checkpoint(operationTime(current));
     }
@@ -439,7 +657,9 @@ public final class ServerResearch {
     @SubscribeEvent
     public static void onWorldUnload(WorldEvent.Unload event) {
         var current = session;
-        if (current != null && event.getWorld() == current.overworld) { stop(current.server); }
+        if (current != null && event.getWorld() == current.overworld) {
+            stop(current.server);
+        }
     }
 
     @SubscribeEvent
@@ -447,7 +667,9 @@ public final class ServerResearch {
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         var current = session;
         if (current == null || current.closing || !(event.player instanceof EntityPlayerMP player)
-            || !belongsTo(current, player) || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) { return; }
+            || !belongsTo(current, player) || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) {
+            return;
+        }
         requireThread(current.server);
         ServerTaskSchedulers.forServer(current.server).runAtBoundary(() -> {
             if (session == current && !current.closing && belongsTo(current, player)
@@ -458,30 +680,42 @@ public final class ServerResearch {
         });
     }
 
-    /** A confirmed drop may load after its owner logged in; clean it after the join finishes. */
+    /**
+     * A confirmed drop may load after its owner logged in; clean it after the join finishes.
+     */
     @SubscribeEvent
     public static void onRewardEntityJoin(EntityJoinWorldEvent event) {
         var current = session;
         if (current == null || current.closing || event.getWorld().isRemote
-            || event.getWorld().getMinecraftServer() != current.server || !(event.getEntity() instanceof EntityItem item)) { return; }
+            || event.getWorld().getMinecraftServer() != current.server || !(event.getEntity() instanceof EntityItem item)) {
+            return;
+        }
         var stack = item.getItem();
-        if (!stack.hasTagCompound() || !Objects.requireNonNull(stack.getTagCompound()).hasKey(MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG)) { return; }
+        if (!stack.hasTagCompound() || !Objects.requireNonNull(stack.getTagCompound()).hasKey(MinecraftItemDeliveryAdapter.DELIVERY_TAG)) {
+            return;
+        }
         requireThread(current.server);
-        var identity = StrictNbt.requireCompound(Objects.requireNonNull(stack.getTagCompound()), MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG);
-        var id = UUID.fromString(StrictNbt.requireString(identity, "Player"));
+        var identity = StrictNbt.requireCompound(Objects.requireNonNull(stack.getTagCompound()), MinecraftItemDeliveryAdapter.DELIVERY_TAG);
+        var parent = ItemDeliveryKeyNbt.readIdentity(identity);
+        var id = parent.playerUuid();
         var player = current.server.getPlayerList().getPlayerByUUID(id);
         if (player != null) queueRewardCleanup(current, player);
     }
 
     @SubscribeEvent
-    public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) { cleanupCurrentPlayer(event.player); }
+    public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        cleanupCurrentPlayer(event.player);
+    }
 
     @SubscribeEvent
-    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) { cleanupCurrentPlayer(event.player); }
+    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        cleanupCurrentPlayer(event.player);
+    }
 
     private static void cleanupCurrentPlayer(EntityPlayer actor) {
         var current = session;
-        if (current != null && actor instanceof EntityPlayerMP player && !player.world.isRemote) queueRewardCleanup(current, player);
+        if (current != null && actor instanceof EntityPlayerMP player && !player.world.isRemote)
+            queueRewardCleanup(current, player);
     }
 
     @SuppressWarnings("resource") // Cleanup uses the existing server-owned MAIN queue.
@@ -491,23 +725,36 @@ public final class ServerResearch {
         try {
             ServerTaskSchedulers.forServer(current.server).submit(() -> {
                 current.rewardCleanup.remove(id);
-                if (currentActor(current, player)) { releaseConfirmedRewards(current, player); }
+                if (currentActor(current, player)) {
+                    releaseConfirmedRewards(current, player);
+                }
             }, ExecutionMode.MAIN_THREAD);
-        } catch (RuntimeException | Error failure) { current.rewardCleanup.remove(id); throw failure; }
+        } catch (RuntimeException | Error failure) {
+            current.rewardCleanup.remove(id);
+            throw failure;
+        }
     }
 
     @SubscribeEvent
     @SuppressWarnings("resource") // Logout follows retained source work on the existing scheduler boundary.
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         var current = session;
-        if (current == null || current.closing || !(event.player instanceof EntityPlayerMP player) || !belongsTo(current, player)) { return; }
+        if (current == null || current.closing || !(event.player instanceof EntityPlayerMP player) || !belongsTo(current, player)) {
+            return;
+        }
         requireThread(current.server);
         var registered = current.server.getPlayerList().getPlayerByUUID(player.getUniqueID());
-        if (registered != null && registered != player) { return; }
+        if (registered != null && registered != player) {
+            return;
+        }
         ServerTaskSchedulers.forServer(current.server).runAtBoundary(() -> {
-            if (session != current || current.closing) { return; }
+            if (session != current || current.closing) {
+                return;
+            }
             var now = current.server.getPlayerList().getPlayerByUUID(player.getUniqueID());
-            if (now != null && now != player) { return; }
+            if (now != null && now != player) {
+                return;
+            }
             var remaining = new ObjectOpenHashSet<>(onlinePlayers(current).keySet());
             remaining.remove(player.getUniqueID());
             current.world.playerLogout(player.getUniqueID(), operationTime(current), remaining);
@@ -543,24 +790,40 @@ public final class ServerResearch {
             && belongsTo(current, actor) && current.server.getPlayerList().getPlayerByUUID(actor.getUniqueID()) == actor;
     }
 
-    /** A crash after the research checkpoint may restore old delivery tags; remove only proven leaves. */
+    /**
+     * A crash after the research checkpoint may restore old delivery tags; remove only proven leaves.
+     */
     private static void releaseConfirmedRewards(Session current, EntityPlayerMP player) {
         // A read-only snapshot may contain a CONFIRMED transition whose writer failed. Flush its
         // exact pending snapshot first; a nested world operation may only request a deferred save.
         current.world.checkpoint(operationTime(current));
         if (current.world.busy() || current.world.savePending()) return;
-        var delivery = new MinecraftRewardItemDeliveryAdapter(player);
+        recoverDownloads(current, player);
+        if (current.world.busy() || current.world.savePending()) return;
+        var delivery = new MinecraftItemDeliveryAdapter(player);
         for (var saved : current.world.snapshot().players()) {
-            if (!saved.playerUuid().equals(player.getUniqueID())) { continue; }
+            if (!saved.playerUuid().equals(player.getUniqueID())) {
+                continue;
+            }
             for (var claim : saved.rewardClaims()) {
                 for (var child : claim.children()) {
                     for (var fragment : child.fragments().values()) {
-                        if (!currentActor(current, player)) { return; }
-                        if (fragment.status() == RewardFragment.Status.CONFIRMED) { delivery.release(fragment); }
+                        if (!currentActor(current, player)) {
+                            return;
+                        }
+                        if (fragment.status() == ItemDeliveryFragment.Status.CONFIRMED) {
+                            delivery.release(fragment);
+                        }
                     }
                 }
             }
-            return;
+            break;
+        }
+        for (var receipt : current.world.downloadReceipts(player.getUniqueID())) {
+            for (var fragment : receipt.fragments()) {
+                if (!currentActor(current, player)) return;
+                delivery.release(fragment);
+            }
         }
     }
 
@@ -568,8 +831,12 @@ public final class ServerResearch {
         requireThread(current.server);
         var result = new Object2ObjectOpenHashMap<UUID, EntityPlayerMP>();
         for (var player : current.server.getPlayerList().getPlayers()) {
-            if (!belongsTo(current, player) || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) { continue; }
-            if (result.putIfAbsent(player.getUniqueID(), player) != null) { throw new IllegalStateException("Duplicate actual online research player"); }
+            if (!belongsTo(current, player) || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) {
+                continue;
+            }
+            if (result.putIfAbsent(player.getUniqueID(), player) != null) {
+                throw new IllegalStateException("Duplicate actual online research player");
+            }
         }
         return result;
     }
@@ -582,17 +849,29 @@ public final class ServerResearch {
         var scheduled = new ObjectOpenHashSet<>(seeds);
         for (int index = 0; index < pending.size(); index++) {
             var id = Objects.requireNonNull(pending.get(index));
-            if (result.containsKey(id)) { continue; }
+            if (result.containsKey(id)) {
+                continue;
+            }
             var resolution = Objects.requireNonNull(current.resolver.resolve(id));
-            if (!id.equals(resolution.ownerId())) { throw new IllegalStateException("Team resolver changed the queried player"); }
+            if (!id.equals(resolution.ownerId())) {
+                throw new IllegalStateException("Team resolver changed the queried player");
+            }
             result.put(id, resolution);
             if (resolution.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) {
                 return result; // An unavailable provider is a normal pause, never evidence of team dissolution.
             }
-            if (!resolution.accepted()) { continue; }
+            if (!resolution.accepted()) {
+                continue;
+            }
             var previous = teams.putIfAbsent(resolution.teamId(), resolution);
-            if (previous != null && !sameTeam(previous, resolution)) { throw new IllegalStateException("Conflicting current research team captures"); }
-            for (var member : resolution.members()) { if (scheduled.add(member)) { pending.add(member); } }
+            if (previous != null && !sameTeam(previous, resolution)) {
+                throw new IllegalStateException("Conflicting current research team captures");
+            }
+            for (var member : resolution.members()) {
+                if (scheduled.add(member)) {
+                    pending.add(member);
+                }
+            }
         }
         // Every member returned by a team must resolve back to that same team, including offline members.
         for (var resolution : teams.values()) {
@@ -610,13 +889,23 @@ public final class ServerResearch {
                                          Map<UUID, EntityPlayerMP> online) {
         return () -> {
             requireThread(current.server);
-            if (session != current || current.closing || current.server.getWorld(0) != current.overworld) { return false; }
+            if (session != current || current.closing || current.server.getWorld(0) != current.overworld) {
+                return false;
+            }
             var nowOnline = onlinePlayers(current);
-            if (!nowOnline.keySet().equals(online.keySet())) { return false; }
-            for (var entry : online.entrySet()) { if (nowOnline.get(entry.getKey()) != entry.getValue()) { return false; } }
+            if (!nowOnline.keySet().equals(online.keySet())) {
+                return false;
+            }
+            for (var entry : online.entrySet()) {
+                if (nowOnline.get(entry.getKey()) != entry.getValue()) {
+                    return false;
+                }
+            }
             for (var entry : captures.entrySet()) {
                 var now = current.resolver.resolve(entry.getKey());
-                if (now == null || !sameResolution(entry.getValue(), now)) { return false; }
+                if (now == null || !sameResolution(entry.getValue(), now)) {
+                    return false;
+                }
             }
             return true;
         };
@@ -634,21 +923,27 @@ public final class ServerResearch {
 
     private static boolean unavailable(Map<UUID, OwnerTeamResolution> captures) {
         for (var resolution : captures.values()) {
-            if (resolution.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) { return true; }
+            if (resolution.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) {
+                return true;
+            }
         }
         return false;
     }
 
-    private static TeamResearchStart.Result staleStart() { return new TeamResearchStart.Result(TeamResearchStart.Status.STALE_CONTEXT, null, null); }
+    private static TeamResearchStart.Result staleStart() {
+        return new TeamResearchStart.Result(TeamResearchStart.Status.STALE_CONTEXT, null, null);
+    }
 
     private static @Nullable ResearchPermissionContext viewPermission(Session current, EntityPlayerMP actor, OwnerTeamResolution membership) {
         return membership.accepted() ? permission(current, actor, membership)
             : new ResearchPermissionContext(actor.getUniqueID(), null, actor.getUniqueID(), null,
-                false, false, current.server.getPlayerList().canSendCommands(actor.getGameProfile()));
+            false, false, current.server.getPlayerList().canSendCommands(actor.getGameProfile()));
     }
 
     private static @Nullable ResearchPermissionContext permission(Session current, EntityPlayerMP actor, OwnerTeamResolution membership) {
-        if (!Universe.loaded() || Universe.get().server != current.server) { return null; }
+        if (!Universe.loaded() || Universe.get().server != current.server) {
+            return null;
+        }
         var player = Universe.get().getPlayer(actor.getUniqueID());
         if (player == null || player.team == null || !player.team.isValid() || !membership.teamId().equals(player.team.getUIDCode())) {
             return null;
@@ -666,7 +961,8 @@ public final class ServerResearch {
     private static @Nullable ManualResearchInventory inventory(Session current, UUID id) {
         requireThread(current.server);
         var player = current.server.getPlayerList().getPlayerByUUID(id);
-        return player != null && belongsTo(current, player) ? new MinecraftManualResearchInventory(player) : null;
+        return player != null && belongsTo(current, player)
+            ? new MinecraftManualResearchInventory(player, _ -> MinecraftResearchDownloadInventory.hasPending(player)) : null;
     }
 
     private static long operationTime(Session current) {
@@ -674,7 +970,9 @@ public final class ServerResearch {
     }
 
     private static void requireThread(MinecraftServer server) {
-        if (!server.isCallingFromMinecraftThread()) { throw new IllegalStateException("Research operations require the authoritative server thread"); }
+        if (!server.isCallingFromMinecraftThread()) {
+            throw new IllegalStateException("Research operations require the authoritative server thread");
+        }
     }
 
     private static final class Session {

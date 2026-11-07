@@ -8,6 +8,8 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
@@ -57,6 +59,8 @@ public class CommonProxy implements IGuiHandler {
         NetworkComputerComponentRegistry.INSTANCE.freeze(NetworkResourceRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new ResearchRegistrationEvent(ResearchRegistry.INSTANCE));
         ResearchRegistry.INSTANCE.freeze(NetworkResourceRegistry.INSTANCE);
+        MinecraftForge.EVENT_BUS.post(new ResearchItemDownloadRegistrationEvent(ResearchItemDownloadRegistry.INSTANCE));
+        ResearchItemDownloadRegistry.INSTANCE.freeze(ResearchRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE));
         RecipeRegistry.INSTANCE.freeze();
         NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.catalog(), ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);

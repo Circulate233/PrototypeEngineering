@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.research.reward;
 
 import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
+import com.circulation.prototype_eng.research.download.MinecraftResearchDownloadInventory;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.network.NetHandlerPlayServer;
 import net.minecraft.network.Packet;
@@ -24,9 +25,12 @@ import net.minecraft.util.math.BlockPos;
  * have their own guards and do not rely on this packet entry.
  */
 public final class RewardPlayerActions {
-    private RewardPlayerActions() { }
+    private RewardPlayerActions() {
+    }
 
-    /** Returns whether the original vanilla handler must stop before performing its item action. */
+    /**
+     * Returns whether the original vanilla handler must stop before performing its item action.
+     */
     public static boolean reject(MinecraftServer server, NetHandlerPlayServer handler, Packet<?> packet) {
         // Vanilla's PacketThreadUtil normally prevents this path; never read inventory off MAIN.
         if (!server.isCallingFromMinecraftThread()) return true;
@@ -36,13 +40,15 @@ public final class RewardPlayerActions {
         var player = handler.player;
         if (!isCurrent(server, handler, player)) return true;
         if (packet instanceof CPacketCloseWindow) {
-            if (!hasProtectedClosingContents(player)) return false;
+            if (!MinecraftResearchDownloadInventory.hasPending(player) && !hasProtectedClosingContents(player))
+                return false;
         } else {
             // Creative installs the client stack; click's clickedItem is only a prediction comparison.
             // A creative snapshot can replay a formerly protected stack after its real tag cleared.
             boolean protectedInput = packet instanceof CPacketCreativeInventoryAction creative
                 && RewardItemProtection.isProtected(creative.getStack());
-            if (!protectedInput && !RewardItemProtection.hasProtectedInventory(player)) return false;
+            if (!protectedInput && !MinecraftResearchDownloadInventory.hasPending(player)
+                && !RewardItemProtection.hasProtectedInventory(player)) return false;
         }
         // Cancelling the inner custom-payload handler still returns to CPacketCustomPayload.processPacket,
         // which releases its buffer once. Do not release it here or consume its reader index.
@@ -59,11 +65,15 @@ public final class RewardPlayerActions {
         return false;
     }
 
-    /** The client normally clears its cursor on close; publish the actual retained server value. */
+    /**
+     * The client normally clears its cursor on close; publish the actual retained server value.
+     */
     public static void synchronizeProtectedCursor(MinecraftServer server, NetHandlerPlayServer handler) {
         if (!server.isCallingFromMinecraftThread() || !isCurrent(server, handler, handler.player)) return;
         var cursor = handler.player.inventory.getItemStack();
-        if (RewardItemProtection.isProtected(cursor)) handler.sendPacket(new SPacketSetSlot(-1, -1, cursor));
+        if (MinecraftResearchDownloadInventory.hasPending(handler.player) || RewardItemProtection.isProtected(cursor)) {
+            handler.sendPacket(new SPacketSetSlot(-1, -1, cursor));
+        }
     }
 
     private static boolean isCurrent(MinecraftServer server, NetHandlerPlayServer handler, EntityPlayerMP player) {

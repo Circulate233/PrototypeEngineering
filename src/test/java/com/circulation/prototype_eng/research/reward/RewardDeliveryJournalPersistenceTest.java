@@ -1,14 +1,9 @@
 package com.circulation.prototype_eng.research.reward;
 
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
-import com.circulation.prototype_eng.api.research.reward.RewardFragment;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Optional;
-import java.util.UUID;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -16,17 +11,56 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
+import java.util.UUID;
 
-/** Exercises the actual recovery decision against vanilla compressed player and host files. */
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Exercises the actual recovery decision against vanilla compressed player and host files.
+ */
 class RewardDeliveryJournalPersistenceTest {
     private static final UUID PLAYER = new UUID(0, 71);
     private static final TestResources.Key KEY = new TestResources.Key(new TestResources.KeyType("reward_journal"), "material");
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
 
-    @Test void reloadProvesOnlyPreparedInventoryAndDropAttempts() throws IOException {
-        var inventory = fragment(1, new RewardFragment.Inventory(4));
-        var drop = fragment(2, new RewardFragment.WorldDrop(-1, -2, 3, -31, 64, 49));
+    private static RewardDeliveryJournal empty() {
+        return RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
+    }
+
+    private static ItemDeliveryFragment fragment(int index, ItemDeliveryFragment.Target target) {
+        var id = new UUID(0, index);
+        var parent = new RewardEventKey(PLAYER, new ResourceLocation("test:research"), 1,
+            new ResourceLocation("test:group"), new ResourceLocation("test:child"));
+        var identity = new NBTTagCompound();
+        identity.setString("Player", PLAYER.toString());
+        identity.setString("Research", parent.researchId().toString());
+        identity.setInteger("Level", parent.level());
+        identity.setString("Group", parent.groupId().toString());
+        identity.setString("Child", parent.childId().toString());
+        identity.setString("Fragment", id.toString());
+        var tag = new NBTTagCompound();
+        tag.setTag(MinecraftItemDeliveryAdapter.DELIVERY_TAG, identity);
+        tag.setString("business", "preserved");
+        var stack = new NBTTagCompound();
+        stack.setString("id", "test:reward");
+        stack.setByte("Count", (byte) 2);
+        stack.setShort("Damage", (short) 0);
+        stack.setTag("tag", tag);
+        return new ItemDeliveryFragment(id, parent, KEY, 2, stack, target, Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+    }
+
+    @Test
+    void reloadProvesOnlyPreparedInventoryAndDropAttempts() throws IOException {
+        var inventory = fragment(1, new ItemDeliveryFragment.Inventory(4));
+        var drop = fragment(2, new ItemDeliveryFragment.WorldDrop(-1, -2, 3, -31, 64, 49));
         var journal = empty();
         journal.prepare(inventory);
         journal.prepare(drop);
@@ -42,8 +76,9 @@ class RewardDeliveryJournalPersistenceTest {
         assertTrue(actual.contains(drop.id()));
     }
 
-    @Test void failedIssuingSaveAndMissingLegacyReceiptsCannotBecomeAbsenceProof() throws IOException {
-        var fragment = fragment(1, new RewardFragment.Inventory(4));
+    @Test
+    void failedIssuingSaveAndMissingLegacyReceiptsCannotBecomeAbsenceProof() throws IOException {
+        var fragment = fragment(1, new ItemDeliveryFragment.Inventory(4));
         var journal = empty();
         journal.prepare(fragment);
         var file = save("player.dat", journal, false, null, null);
@@ -59,8 +94,9 @@ class RewardDeliveryJournalPersistenceTest {
         assertTrue(RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, prepared, ObjectList.of(fragment.started())).isEmpty());
     }
 
-    @Test void integratedRecoveryRequiresAgreementWithBothFilesBeforeAnyOverwrite() throws IOException {
-        var fragment = fragment(1, new RewardFragment.Inventory(4));
+    @Test
+    void integratedRecoveryRequiresAgreementWithBothFilesBeforeAnyOverwrite() throws IOException {
+        var fragment = fragment(1, new ItemDeliveryFragment.Inventory(4));
         var prepared = empty();
         prepared.prepare(fragment);
         var playerFile = save("player.dat", prepared, false, null, null);
@@ -84,9 +120,10 @@ class RewardDeliveryJournalPersistenceTest {
         assertTrue(RewardDeliveryPersistence.preparedFragments(playerFile, hostFile, PLAYER, reconciled, candidates).isEmpty());
     }
 
-    @Test void persistenceBarrierRequiresFullJournalAndCursorAlongsideTheDeliveredLeaf() throws IOException {
-        var fragment = fragment(1, new RewardFragment.Inventory(4));
-        var cursor = fragment(2, new RewardFragment.Inventory(5)).taggedStackNbt();
+    @Test
+    void persistenceBarrierRequiresFullJournalAndCursorAlongsideTheDeliveredLeaf() throws IOException {
+        var fragment = fragment(1, new ItemDeliveryFragment.Inventory(4));
+        var cursor = fragment(2, new ItemDeliveryFragment.Inventory(5)).taggedStackNbt();
         var prepared = empty();
         prepared.prepare(fragment);
         var file = save("player.dat", prepared, false, fragment.taggedStackNbt(), cursor);
@@ -102,11 +139,11 @@ class RewardDeliveryJournalPersistenceTest {
         save("player.dat", issuing, false, fragment.taggedStackNbt(), null);
         assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, PLAYER, issuing.snapshot(), cursor, null));
         save("player.dat", prepared, false, null, null);
-        var moved = new RewardFragment(fragment.id(), fragment.parent(), KEY, fragment.count(), fragment.taggedStackNbt(),
-            new RewardFragment.Inventory(6), Optional.empty(), RewardFragment.Status.DELIVERING);
+        var moved = new ItemDeliveryFragment(fragment.id(), fragment.parent(), KEY, fragment.count(), fragment.taggedStackNbt(),
+            new ItemDeliveryFragment.Inventory(6), Optional.empty(), ItemDeliveryFragment.Status.DELIVERING);
         var changedLive = empty();
-        changedLive.prepare(new RewardFragment(moved.id(), moved.parent(), KEY, moved.count(), moved.taggedStackNbt(), moved.target(),
-            Optional.empty(), RewardFragment.Status.PLANNED));
+        changedLive.prepare(new ItemDeliveryFragment(moved.id(), moved.parent(), KEY, moved.count(), moved.taggedStackNbt(), moved.target(),
+            Optional.empty(), ItemDeliveryFragment.Status.PLANNED));
         assertThrows(IllegalStateException.class, () -> RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, changedLive, ObjectList.of(moved)));
     }
 
@@ -132,31 +169,9 @@ class RewardDeliveryJournalPersistenceTest {
             root.setTag("Data", world);
         }
         var file = directory.resolve(name);
-        try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(root, output); }
+        try (var output = Files.newOutputStream(file)) {
+            CompressedStreamTools.writeCompressed(root, output);
+        }
         return file;
-    }
-
-    private static RewardDeliveryJournal empty() { return RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER); }
-
-    private static RewardFragment fragment(int index, RewardFragment.Target target) {
-        var id = new UUID(0, index);
-        var parent = new RewardEventKey(PLAYER, new ResourceLocation("test:research"), 1,
-            new ResourceLocation("test:group"), new ResourceLocation("test:child"));
-        var identity = new NBTTagCompound();
-        identity.setString("Player", PLAYER.toString());
-        identity.setString("Research", parent.researchId().toString());
-        identity.setInteger("Level", parent.level());
-        identity.setString("Group", parent.groupId().toString());
-        identity.setString("Child", parent.childId().toString());
-        identity.setString("Fragment", id.toString());
-        var tag = new NBTTagCompound();
-        tag.setTag(MinecraftRewardItemDeliveryAdapter.DELIVERY_TAG, identity);
-        tag.setString("business", "preserved");
-        var stack = new NBTTagCompound();
-        stack.setString("id", "test:reward");
-        stack.setByte("Count", (byte) 2);
-        stack.setShort("Damage", (short) 0);
-        stack.setTag("tag", tag);
-        return new RewardFragment(id, parent, KEY, 2, stack, target, Optional.empty(), RewardFragment.Status.PLANNED);
     }
 }

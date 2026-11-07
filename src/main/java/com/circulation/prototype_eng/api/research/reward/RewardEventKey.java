@@ -1,12 +1,16 @@
 package com.circulation.prototype_eng.api.research.reward;
 
-import java.util.Objects;
-import java.util.UUID;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
 import net.minecraft.util.ResourceLocation;
 
-/** Durable identity of one player's selected reward child, including across restarts. */
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Durable identity of one player's selected reward child, including across restarts.
+ */
 public record RewardEventKey(UUID playerUuid, ResourceLocation researchId, int level,
-        ResourceLocation groupId, ResourceLocation childId) {
+                             ResourceLocation groupId, ResourceLocation childId) implements ItemDeliveryKey {
     public RewardEventKey {
         Objects.requireNonNull(playerUuid, "playerUuid");
         Objects.requireNonNull(researchId, "researchId");

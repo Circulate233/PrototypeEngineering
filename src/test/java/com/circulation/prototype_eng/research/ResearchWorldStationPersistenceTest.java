@@ -40,15 +40,50 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchWorldStationPersistenceTest {
     private static final UUID PLAYER = new UUID(0, 1);
     private static final ResourceLocation STATION = id("station_research");
     private static final ResourceLocation MANUAL = id("manual_research");
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
 
-    @Test void actualStateFileRoundTripsStationMaterialsAlongsideManualAndPlayerWorldData() throws IOException {
+    private static ObjectOpenHashSet<UUID> members() {
+        return new ObjectOpenHashSet<>(ObjectList.of(PLAYER));
+    }
+
+    private static ResearchStationWork.SavedSegment segment(ResearchWorldSnapshot.Team team) {
+        return Objects.requireNonNull(team.stationWork().segment());
+    }
+
+    private static MachineHatches emptyHatches() {
+        return new MachineHatches(List.of(), List.of(), List.of());
+    }
+
+    private static NBTTagCompound stationWork(NBTTagCompound root) {
+        return root.getTagList("Teams", 10).getCompoundTagAt(0).getCompoundTag("StationWork");
+    }
+
+    private static NBTTagList sites(NBTTagCompound root) {
+        return stationWork(root).getCompoundTag("Segment").getTagList("Sites", 10);
+    }
+
+    private static NBTTagCompound processTag(NBTTagCompound root) {
+        return stationWork(root).getCompoundTag("Segment").getCompoundTag("Process");
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("research_world_station_test", path);
+    }
+
+    @Test
+    void actualStateFileRoundTripsStationMaterialsAlongsideManualAndPlayerWorldData() throws IOException {
         var fixture = new Fixture();
         var world = fixture.world(fixture.saved());
         var file = new ResearchStateFile(directory.resolve("research.dat"), fixture.codec);
@@ -72,7 +107,8 @@ class ResearchWorldStationPersistenceTest {
         assertNull(materials.host());
     }
 
-    @Test void rawNbtAndAllReturnedProcessTagsCannotMutateAWorldCheckpoint() {
+    @Test
+    void rawNbtAndAllReturnedProcessTagsCannotMutateAWorldCheckpoint() {
         var fixture = new Fixture();
         var original = fixture.processTag.copy();
         assertTrue(original.hasKey("State", 10));
@@ -95,7 +131,8 @@ class ResearchWorldStationPersistenceTest {
         assertEquals(original.getString("Revision"), segment(decoded.teams().getFirst()).processTag().getString("Revision"));
     }
 
-    @Test void stationCheckpointRequiresAnExactAllocatedHeadAndWorldTime() {
+    @Test
+    void stationCheckpointRequiresAnExactAllocatedHeadAndWorldTime() {
         var fixture = new Fixture();
         assertThrows(IllegalArgumentException.class, () -> new ResearchStationWork.Saved(-2, null));
         assertThrows(IllegalArgumentException.class, () -> fixture.world(new ResearchStationWork.Saved(11, null)));
@@ -124,7 +161,8 @@ class ResearchWorldStationPersistenceTest {
         }
     }
 
-    @Test void physicalSitesRequireStrictTypesCanonicalIdsDistinctIdentitiesAndOneDimension() {
+    @Test
+    void physicalSitesRequireStrictTypesCanonicalIdsDistinctIdentitiesAndOneDimension() {
         var fixture = new Fixture();
         List<Consumer<NBTTagCompound>> corruptions = List.of(
             tag -> sites(tag).getCompoundTagAt(0).getCompoundTag("Identity").setString("machineMost", "not a long"),
@@ -150,14 +188,15 @@ class ResearchWorldStationPersistenceTest {
         assertThrows(IllegalArgumentException.class, () -> fixture.codec.decode(empty));
     }
 
-    @Test void versionTwoRequiresExplicitStationEnvelopeAndNeverFallsBackToMissingOrOldFields() {
+    @Test
+    void versionThreeRequiresExplicitStationEnvelopeAndNeverFallsBackToMissingOrOldFields() {
         var fixture = new Fixture();
         var oldHost = new ResearchWorldSnapshot.Team("team", members(), new ObjectOpenHashSet<>(), fixture.research.snapshot(),
             fixture.queue.snapshot(), fixture.sessions());
         assertEquals(new ResearchStationWork.Saved(-1, null), oldHost.stationWork());
         var empty = new ResearchWorldSnapshot(10, ObjectList.of(fixture.player.snapshot()), ObjectList.of(oldHost));
         var encoded = fixture.codec.encode(empty);
-        assertEquals(2, encoded.getInteger("Version"));
+        assertEquals(3, encoded.getInteger("Version"));
         assertFalse(stationWork(encoded).getBoolean("HasSegment"));
         assertEquals(empty, fixture.codec.decode(encoded));
         List<Consumer<NBTTagCompound>> corruptions = List.of(
@@ -177,7 +216,8 @@ class ResearchWorldStationPersistenceTest {
         }
     }
 
-    @Test void envelopeValidatesResearchTierButFullMaterialRevisionWaitsForTheRealOwner() {
+    @Test
+    void envelopeValidatesResearchTierButFullMaterialRevisionWaitsForTheRealOwner() {
         var fixture = new Fixture();
         var manualQueue = new TeamResearchQueue(fixture.registry, fixture.resources, "team");
         var manualEntry = manualQueue.enqueue(MANUAL, 1, PLAYER, 1);
@@ -212,10 +252,11 @@ class ResearchWorldStationPersistenceTest {
             resources.freeze();
             var energy = RecipeRequirements.ENERGY.requirement(id("material_energy"), new EnergyRequirement(0, 3, 0, 0, false));
             registry.register(ResearchDefinition.builder(STATION).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
-                    .materialRequirement(energy).materialPersistence("station-v1", _ -> { }).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
+                                                                         .materialRequirement(energy).materialPersistence("station-v1", _ -> {
+                                                    }).build()).build());
             registry.register(ResearchDefinition.builder(MANUAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze(resources);
             queue = new TeamResearchQueue(registry, resources, "team");
             queue.enqueue(STATION, 1, PLAYER, 1);
@@ -227,24 +268,24 @@ class ResearchWorldStationPersistenceTest {
             processTag = registry.materials(STATION, 1).encode(materials);
         }
 
-        private TeamResearchQueue.Key head() { return queue.activeHead().orElseThrow().key(); }
-        private ResearchStationWork.Saved saved() { return new ResearchStationWork.Saved(4, new ResearchStationWork.SavedSegment(head(), sites, processTag)); }
+        private TeamResearchQueue.Key head() {
+            return queue.activeHead().orElseThrow().key();
+        }
+
+        private ResearchStationWork.Saved saved() {
+            return new ResearchStationWork.Saved(4, new ResearchStationWork.SavedSegment(head(), sites, processTag));
+        }
+
         private ObjectList<ManualResearchSession> sessions() {
             return ObjectList.of(ManualResearchSession.newActive(new UUID(0, 7), "team", queue.queueSnapshot().get(1).key(), PLAYER, 3));
         }
+
         private ResearchWorldSnapshot.Team team(TeamResearchQueue.Snapshot savedQueue, ResearchStationWork.Saved saved) {
             return new ResearchWorldSnapshot.Team("team", members(), new ObjectOpenHashSet<>(), research.snapshot(), savedQueue, sessions(), saved);
         }
+
         private ResearchWorldSnapshot world(ResearchStationWork.Saved saved) {
             return new ResearchWorldSnapshot(10, ObjectList.of(player.snapshot()), ObjectList.of(team(queue.snapshot(), saved)));
         }
     }
-
-    private static ObjectOpenHashSet<UUID> members() { return new ObjectOpenHashSet<>(ObjectList.of(PLAYER)); }
-    private static ResearchStationWork.SavedSegment segment(ResearchWorldSnapshot.Team team) { return Objects.requireNonNull(team.stationWork().segment()); }
-    private static MachineHatches emptyHatches() { return new MachineHatches(List.of(), List.of(), List.of()); }
-    private static NBTTagCompound stationWork(NBTTagCompound root) { return root.getTagList("Teams", 10).getCompoundTagAt(0).getCompoundTag("StationWork"); }
-    private static NBTTagList sites(NBTTagCompound root) { return stationWork(root).getCompoundTag("Segment").getTagList("Sites", 10); }
-    private static NBTTagCompound processTag(NBTTagCompound root) { return stationWork(root).getCompoundTag("Segment").getCompoundTag("Process"); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("research_world_station_test", path); }
 }

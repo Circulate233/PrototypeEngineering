@@ -10,6 +10,7 @@
     "EntityItemMixin",
     "InventoryPlayerMixin",
     "EntityPlayerMixin",
+    "EntityLivingBaseMixin",
     "EntityPlayerMPMixin",
     "TileEntityHopperMixin",
     "ArmorPropertiesMixin",

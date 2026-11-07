@@ -1,15 +1,12 @@
 package com.circulation.prototype_eng.research.reward;
 
+import com.circulation.prototype_eng.api.research.delivery.DownloadOutputKey;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
-import com.circulation.prototype_eng.api.research.reward.RewardFragment;
 import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import com.circulation.prototype_eng.testsupport.TestResources;
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.function.Consumer;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
@@ -18,9 +15,23 @@ import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Consumer;
 
-/** Actual NBT state transitions without players, registries, a Minecraft server or bootstrap. */
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Actual NBT state transitions without players, registries, a Minecraft server or bootstrap.
+ */
 class RewardDeliveryJournalTest {
     private static final UUID PLAYER = new UUID(0, 1);
     private static final UUID OTHER_PLAYER = new UUID(0, 2);
@@ -28,9 +39,108 @@ class RewardDeliveryJournalTest {
     private static final TestResources.Key ITEM = new TestResources.Key(new TestResources.KeyType("delivery_journal"), "item");
     private static final RewardEventKey PARENT = new RewardEventKey(PLAYER, id("research"), 2, id("group"), id("child"));
 
-    @Test void preparedIssueAndConfirmedRemovalSurviveActualNbtReloads() {
+    private static void rejectsMutation(NBTTagCompound original, Consumer<NBTTagCompound> mutation) {
+        var changed = original.copy();
+        mutation.accept(changed);
+        // NBTTagDouble.equals uses primitive ==, so a NaN does not equal even its own deep copy.
+        var before = assertDoesNotThrow(() -> nbtBytes(changed));
+        assertThrows(IllegalArgumentException.class, () -> RewardDeliveryJournal.read(changed, PLAYER));
+        assertArrayEquals(before, assertDoesNotThrow(() -> nbtBytes(changed)));
+    }
+
+    private static byte[] nbtBytes(NBTTagCompound tag) throws IOException {
+        var bytes = new ByteArrayOutputStream();
+        try (var output = new DataOutputStream(bytes)) {
+            CompressedStreamTools.write(tag, output);
+        }
+        return bytes.toByteArray();
+    }
+
+    private static RewardDeliveryJournal prepared(ItemDeliveryFragment fragment) {
+        var journal = RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
+        journal.prepare(fragment);
+        return journal;
+    }
+
+    private static NBTTagCompound saved(ItemDeliveryFragment fragment) {
         var data = new NBTTagCompound();
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+        prepared(fragment).writeTo(data);
+        return data;
+    }
+
+    private static NBTTagCompound journalEmptySnapshot() {
+        return RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER).snapshot();
+    }
+
+    private static NBTTagCompound store(NBTTagCompound data) {
+        return data.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG).getCompoundTag("prototype_eng").getCompoundTag("reward_delivery_receipts");
+    }
+
+    private static NBTTagCompound firstReceipt(NBTTagCompound data) {
+        return store(data).getTagList("receipts", 10).getCompoundTagAt(0);
+    }
+
+    private static ItemDeliveryFragment fragment(UUID id, RewardEventKey parent, int count, ItemDeliveryFragment.Target target) {
+        var identity = new NBTTagCompound();
+        identity.setString("Player", parent.playerUuid().toString());
+        identity.setString("Research", parent.researchId().toString());
+        identity.setInteger("Level", parent.level());
+        identity.setString("Group", parent.groupId().toString());
+        identity.setString("Child", parent.childId().toString());
+        identity.setString("Fragment", id.toString());
+        var tag = new NBTTagCompound();
+        tag.setTag(RewardItemProtection.DELIVERY_TAG, identity);
+        tag.setString("business", "retained");
+        var stack = new NBTTagCompound();
+        stack.setString("id", "minecraft:stone");
+        stack.setByte("Count", (byte) count);
+        stack.setShort("Damage", (short) 0);
+        stack.setTag("tag", tag);
+        return new ItemDeliveryFragment(id, parent, ITEM, count, stack, target, Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("prototype_eng", path);
+    }
+
+    @Test
+    void legacyRewardJournalMigratesWithoutChangingItsFrozenEvidence() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
+        var modern = saved(planned);
+        var legacy = modern.copy();
+        store(legacy).setInteger("version", 1);
+        var recovered = RewardDeliveryJournal.read(legacy, PLAYER);
+        assertTrue(recovered.contains(planned, RewardDeliveryJournal.State.PREPARED));
+        assertEquals(RewardDeliveryJournal.read(modern, PLAYER).snapshot(), recovered.snapshot());
+    }
+
+    @Test
+    void independentDownloadReceiptRetainsCapabilitiesAndRejectsOperationSubstitution() {
+        var key = new DownloadOutputKey(PLAYER, new UUID(0, 10));
+        var nativeStack = new NBTTagCompound();
+        nativeStack.setString("id", "delivery_journal:output");
+        nativeStack.setByte("Count", (byte) 1);
+        nativeStack.setShort("Damage", (short) 0);
+        var caps = new NBTTagCompound();
+        caps.setInteger("energy", 123);
+        nativeStack.setTag("ForgeCaps", caps);
+        var leaf = ItemDeliveryKeyNbt.fragmentId(key, 0);
+        var planned = new ItemDeliveryFragment(leaf, key, ITEM, 1, ItemDeliveryTemplates.taggedLeaf(nativeStack, 1, key, leaf),
+            new ItemDeliveryFragment.Inventory(7), Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+        var data = saved(planned);
+        var recovered = RewardDeliveryJournal.read(data, PLAYER);
+        assertTrue(recovered.contains(planned, RewardDeliveryJournal.State.PREPARED));
+        recovered.issue(planned.started());
+        assertTrue(recovered.contains(planned, RewardDeliveryJournal.State.ISSUING));
+        assertEquals(caps, firstReceipt(data).getCompoundTag("stack").getCompoundTag("ForgeCaps"));
+        rejectsMutation(data, changed -> firstReceipt(changed).getCompoundTag("delivery").setString("Operation", new UUID(0, 11).toString()));
+        rejectsMutation(data, changed -> store(changed).setInteger("version", 1));
+    }
+
+    @Test
+    void preparedIssueAndConfirmedRemovalSurviveActualNbtReloads() {
+        var data = new NBTTagCompound();
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var journal = RewardDeliveryJournal.read(data, PLAYER);
         assertFalse(journal.contains(planned, RewardDeliveryJournal.State.PREPARED));
         assertTrue(journal.prepare(planned));
@@ -50,8 +160,9 @@ class RewardDeliveryJournalTest {
         assertEquals(journalEmptySnapshot(), RewardDeliveryJournal.read(data, PLAYER).snapshot());
     }
 
-    @Test void issuingCannotRestartWithoutAnExplicitNoEffectRetry() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void issuingCannotRestartWithoutAnExplicitNoEffectRetry() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var journal = prepared(planned);
         journal.issue(planned.started());
         var issued = journal.snapshot();
@@ -65,8 +176,9 @@ class RewardDeliveryJournalTest {
         assertEquals(issued, journal.snapshot());
     }
 
-    @Test void missingAndUnstartedReceiptsCannotIssueAndUnconfirmedCannotRemove() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void missingAndUnstartedReceiptsCannotIssueAndUnconfirmedCannotRemove() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var journal = RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
         assertThrows(IllegalStateException.class, () -> journal.issue(planned.started()));
         assertThrows(IllegalStateException.class, () -> journal.issue(planned));
@@ -74,17 +186,18 @@ class RewardDeliveryJournalTest {
         assertEquals(journalEmptySnapshot(), journal.snapshot());
     }
 
-    @Test void matchingIdCannotChangeCountParentPayloadOrTarget() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void matchingIdCannotChangeCountParentPayloadOrTarget() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var journal = prepared(planned);
         var original = journal.snapshot();
         var changedParent = new RewardEventKey(PLAYER, id("other_research"), 2, id("group"), id("child"));
         var changedStack = planned.taggedStackNbt();
         changedStack.getCompoundTag("tag").setString("business", "changed");
-        var payload = new RewardFragment(LEAF, PARENT, ITEM, 2, changedStack, planned.target(), Optional.empty(), RewardFragment.Status.PLANNED);
-        for (var conflict : new RewardFragment[] {
+        var payload = new ItemDeliveryFragment(LEAF, PARENT, ITEM, 2, changedStack, planned.target(), Optional.empty(), ItemDeliveryFragment.Status.PLANNED);
+        for (var conflict : new ItemDeliveryFragment[]{
             fragment(LEAF, PARENT, 3, planned.target()), fragment(LEAF, changedParent, 2, planned.target()), payload,
-            fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(8))
+            fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(8))
         }) {
             assertThrows(IllegalStateException.class, () -> journal.prepare(conflict));
             assertThrows(IllegalStateException.class, () -> journal.issue(conflict.started()));
@@ -94,8 +207,9 @@ class RewardDeliveryJournalTest {
         }
     }
 
-    @Test void dropReceiptsKeepTheirExactDimensionChunkAndPosition() {
-        var target = new RewardFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5);
+    @Test
+    void dropReceiptsKeepTheirExactDimensionChunkAndPosition() {
+        var target = new ItemDeliveryFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5);
         var planned = fragment(LEAF, PARENT, 2, target);
         var data = new NBTTagCompound();
         var journal = prepared(planned);
@@ -104,13 +218,14 @@ class RewardDeliveryJournalTest {
         var restored = RewardDeliveryJournal.read(data, PLAYER);
         assertTrue(restored.contains(planned, RewardDeliveryJournal.State.ISSUING));
         assertThrows(IllegalStateException.class, () -> restored.contains(
-            fragment(LEAF, PARENT, 2, new RewardFragment.WorldDrop(-1, -1, 2, -1.25, 81.5, 33.5)), RewardDeliveryJournal.State.ISSUING));
+            fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.WorldDrop(-1, -1, 2, -1.25, 81.5, 33.5)), RewardDeliveryJournal.State.ISSUING));
         assertTrue(restored.remove(planned.started().confirmed(LEAF)));
     }
 
-    @Test void multipleReceiptsKeepTheirOrderAndRemovalDoesNotEraseAnother() {
-        var first = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
-        var second = fragment(new UUID(0, 4), PARENT, 1, new RewardFragment.Inventory(8));
+    @Test
+    void multipleReceiptsKeepTheirOrderAndRemovalDoesNotEraseAnother() {
+        var first = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
+        var second = fragment(new UUID(0, 4), PARENT, 1, new ItemDeliveryFragment.Inventory(8));
         var journal = prepared(first);
         journal.prepare(second);
         journal.issue(first.started());
@@ -123,7 +238,8 @@ class RewardDeliveryJournalTest {
         assertEquals(1, journal.snapshot().getTagList("receipts", 10).tagCount());
     }
 
-    @Test void writesPreserveCurrentManualReceiptsAndOtherNamespaces() {
+    @Test
+    void writesPreserveCurrentManualReceiptsAndOtherNamespaces() {
         var data = new NBTTagCompound();
         var persisted = new NBTTagCompound();
         var namespace = new NBTTagCompound();
@@ -134,7 +250,7 @@ class RewardDeliveryJournalTest {
         persisted.setString("other_mod", "retained");
         data.setTag(EntityPlayer.PERSISTED_NBT_TAG, persisted);
         data.setString("outside_persisted", "retained");
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var journal = RewardDeliveryJournal.read(data, PLAYER);
         journal.prepare(planned);
         // A different owner may update its own data after this journal snapshot was read.
@@ -151,8 +267,9 @@ class RewardDeliveryJournalTest {
         assertEquals(manual, cleaned.getCompoundTag("prototype_eng").getCompoundTag("manual_material_receipts"));
     }
 
-    @Test void decodingAndSnapshotsDoNotRetainBorrowedNbt() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void decodingAndSnapshotsDoNotRetainBorrowedNbt() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var data = new NBTTagCompound();
         prepared(planned).writeTo(data);
         var restored = RewardDeliveryJournal.read(data, PLAYER);
@@ -166,24 +283,26 @@ class RewardDeliveryJournalTest {
         assertEquals(expected, RewardDeliveryJournal.read(data, PLAYER).snapshot());
     }
 
-    @Test void wrongPlayersAndDuplicateIdsFailDuringReload() {
-        var data = saved(fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7)));
+    @Test
+    void wrongPlayersAndDuplicateIdsFailDuringReload() {
+        var data = saved(fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7)));
         assertThrows(IllegalArgumentException.class, () -> RewardDeliveryJournal.read(data, OTHER_PLAYER));
         var list = store(data).getTagList("receipts", 10);
         list.appendTag(list.getCompoundTagAt(0).copy());
         assertThrows(IllegalArgumentException.class, () -> RewardDeliveryJournal.read(data, PLAYER));
         var other = new RewardEventKey(OTHER_PLAYER, id("research"), 2, id("group"), id("child"));
         var empty = RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
-        assertThrows(IllegalArgumentException.class, () -> empty.prepare(fragment(LEAF, other, 2, new RewardFragment.Inventory(7))));
+        assertThrows(IllegalArgumentException.class, () -> empty.prepare(fragment(LEAF, other, 2, new ItemDeliveryFragment.Inventory(7))));
         assertEquals(journalEmptySnapshot(), empty.snapshot());
     }
 
-    @Test void nestedWrongTypesVersionsAndUnknownFieldsFailBeforeAnyPublication() {
-        var data = saved(fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7)));
+    @Test
+    void nestedWrongTypesVersionsAndUnknownFieldsFailBeforeAnyPublication() {
+        var data = saved(fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7)));
         rejectsMutation(data, tag -> tag.setString(EntityPlayer.PERSISTED_NBT_TAG, "wrong type"));
         rejectsMutation(data, tag -> tag.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG).setInteger("prototype_eng", 1));
         rejectsMutation(data, tag -> store(tag).setByte("version", (byte) 1));
-        rejectsMutation(data, tag -> store(tag).setInteger("version", 2));
+        rejectsMutation(data, tag -> store(tag).setInteger("version", 3));
         rejectsMutation(data, tag -> store(tag).setBoolean("unknown", true));
         rejectsMutation(data, tag -> firstReceipt(tag).setLong("count", 2));
         rejectsMutation(data, tag -> firstReceipt(tag).setString("state", "CONFIRMED"));
@@ -195,19 +314,21 @@ class RewardDeliveryJournalTest {
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("target").setString("runtimeWorld", "ignored"));
     }
 
-    @Test void inconsistentCountsAndEmbeddedIdentitiesCannotCreateAbsenceEvidence() {
-        var data = saved(fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7)));
+    @Test
+    void inconsistentCountsAndEmbeddedIdentitiesCannotCreateAbsenceEvidence() {
+        var data = saved(fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7)));
         rejectsMutation(data, tag -> firstReceipt(tag).setInteger("count", 0));
         rejectsMutation(data, tag -> firstReceipt(tag).setInteger("count", 128));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").setByte("Count", (byte) 3));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").getCompoundTag("tag").removeTag(RewardItemProtection.DELIVERY_TAG));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").getCompoundTag("tag")
-            .getCompoundTag(RewardItemProtection.DELIVERY_TAG).setString("Player", OTHER_PLAYER.toString()));
+                                                      .getCompoundTag(RewardItemProtection.DELIVERY_TAG).setString("Player", OTHER_PLAYER.toString()));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").setString("id", "stone"));
     }
 
-    @Test void malformedDropCoordinatesAndListElementsCannotReload() {
-        var data = saved(fragment(LEAF, PARENT, 2, new RewardFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5)));
+    @Test
+    void malformedDropCoordinatesAndListElementsCannotReload() {
+        var data = saved(fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5)));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("target").setDouble("x", Double.NaN));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("target").setInteger("chunkX", 0));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("target").setFloat("y", 80.5f));
@@ -216,24 +337,26 @@ class RewardDeliveryJournalTest {
         rejectsMutation(data, tag -> store(tag).setTag("receipts", strings));
     }
 
-    @Test void receiptLimitAppliesToBothReloadAndNewPreparation() {
+    @Test
+    void receiptLimitAppliesToBothReloadAndNewPreparation() {
         var journal = RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
         for (int index = 0; index < RewardDeliveryJournal.MAX_RECEIPTS; index++) {
-            journal.prepare(fragment(new UUID(1, index), PARENT, 1, new RewardFragment.Inventory(0)));
+            journal.prepare(fragment(new UUID(1, index), PARENT, 1, new ItemDeliveryFragment.Inventory(0)));
         }
-        assertThrows(IllegalStateException.class, () -> journal.prepare(fragment(LEAF, PARENT, 1, new RewardFragment.Inventory(1))));
+        assertThrows(IllegalStateException.class, () -> journal.prepare(fragment(LEAF, PARENT, 1, new ItemDeliveryFragment.Inventory(1))));
         var data = new NBTTagCompound();
         journal.writeTo(data);
         assertEquals(journal.snapshot(), RewardDeliveryJournal.read(data, PLAYER).snapshot());
-        var another = prepared(fragment(LEAF, PARENT, 1, new RewardFragment.Inventory(1)));
+        var another = prepared(fragment(LEAF, PARENT, 1, new ItemDeliveryFragment.Inventory(1)));
         assertThrows(IllegalStateException.class, () -> RewardDeliveryJournal.reconcile(journal, another, null));
         var list = store(data).getTagList("receipts", 10);
         list.appendTag(list.getCompoundTagAt(0).copy());
         assertThrows(IllegalArgumentException.class, () -> RewardDeliveryJournal.read(data, PLAYER));
     }
 
-    @Test void reconcileRetainsPreparedOnlyWhenEveryRequiredSourceAgrees() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void reconcileRetainsPreparedOnlyWhenEveryRequiredSourceAgrees() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var loaded = prepared(planned);
         var saved = prepared(planned);
         var host = prepared(planned);
@@ -241,8 +364,9 @@ class RewardDeliveryJournalTest {
         assertEquals(loaded.snapshot(), RewardDeliveryJournal.reconcile(loaded, saved, null).snapshot());
     }
 
-    @Test void reconcileMakesIssuingWinRegardlessOfItsAuthoritativeSource() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void reconcileMakesIssuingWinRegardlessOfItsAuthoritativeSource() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var ready = prepared(planned);
         var issuing = prepared(planned);
         issuing.issue(planned.started());
@@ -252,11 +376,12 @@ class RewardDeliveryJournalTest {
         assertTrue(RewardDeliveryJournal.reconcile(ready, issuing, null).contains(planned, RewardDeliveryJournal.State.ISSUING));
     }
 
-    @Test void reconcilePromotesMissingSourcesAndDoesNotManufactureAbsenceAfterSaving() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void reconcilePromotesMissingSourcesAndDoesNotManufactureAbsenceAfterSaving() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var ready = prepared(planned);
         var empty = RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
-        for (var recovered : new RewardDeliveryJournal[] {
+        for (var recovered : new RewardDeliveryJournal[]{
             RewardDeliveryJournal.reconcile(empty, ready, ready), RewardDeliveryJournal.reconcile(ready, empty, ready),
             RewardDeliveryJournal.reconcile(ready, ready, empty), RewardDeliveryJournal.reconcile(empty, ready, null),
             RewardDeliveryJournal.reconcile(ready, empty, null), RewardDeliveryJournal.reconcile(empty, empty, ready)
@@ -271,10 +396,11 @@ class RewardDeliveryJournalTest {
         }
     }
 
-    @Test void reconcileUnionsAllSourcesInOrderWithoutMutatingOrAliasingThem() {
-        var first = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
-        var second = fragment(new UUID(0, 4), PARENT, 1, new RewardFragment.Inventory(8));
-        var third = fragment(new UUID(0, 5), PARENT, 1, new RewardFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5));
+    @Test
+    void reconcileUnionsAllSourcesInOrderWithoutMutatingOrAliasingThem() {
+        var first = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
+        var second = fragment(new UUID(0, 4), PARENT, 1, new ItemDeliveryFragment.Inventory(8));
+        var third = fragment(new UUID(0, 5), PARENT, 1, new ItemDeliveryFragment.WorldDrop(-1, -1, 2, -1.25, 80.5, 33.5));
         var loaded = prepared(first);
         var saved = prepared(second);
         var host = prepared(third);
@@ -300,10 +426,11 @@ class RewardDeliveryJournalTest {
         assertEquals(loadedBefore, loaded.snapshot());
     }
 
-    @Test void reconcileRejectsIdentityConflictsAndForeignEmptySourcesBeforeChangingAnything() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void reconcileRejectsIdentityConflictsAndForeignEmptySourcesBeforeChangingAnything() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var loaded = prepared(planned);
-        var saved = prepared(fragment(new UUID(0, 4), PARENT, 1, new RewardFragment.Inventory(8)));
+        var saved = prepared(fragment(new UUID(0, 4), PARENT, 1, new ItemDeliveryFragment.Inventory(8)));
         saved.prepare(fragment(LEAF, PARENT, 3, planned.target()));
         var originalLoaded = loaded.snapshot();
         var originalSaved = saved.snapshot();
@@ -316,8 +443,9 @@ class RewardDeliveryJournalTest {
         assertEquals(originalLoaded, loaded.snapshot());
     }
 
-    @Test void reconciledUncertaintyCanRestartOnlyThroughLaterExplicitRetryEvidence() {
-        var planned = fragment(LEAF, PARENT, 2, new RewardFragment.Inventory(7));
+    @Test
+    void reconciledUncertaintyCanRestartOnlyThroughLaterExplicitRetryEvidence() {
+        var planned = fragment(LEAF, PARENT, 2, new ItemDeliveryFragment.Inventory(7));
         var staleHost = prepared(planned);
         var newerPlayerFile = prepared(planned);
         newerPlayerFile.issue(planned.started());
@@ -332,60 +460,4 @@ class RewardDeliveryJournalTest {
         retry.issue(planned.started());
         assertTrue(retry.contains(planned, RewardDeliveryJournal.State.ISSUING));
     }
-
-    private static void rejectsMutation(NBTTagCompound original, Consumer<NBTTagCompound> mutation) {
-        var changed = original.copy();
-        mutation.accept(changed);
-        // NBTTagDouble.equals uses primitive ==, so a NaN does not equal even its own deep copy.
-        var before = assertDoesNotThrow(() -> nbtBytes(changed));
-        assertThrows(IllegalArgumentException.class, () -> RewardDeliveryJournal.read(changed, PLAYER));
-        assertArrayEquals(before, assertDoesNotThrow(() -> nbtBytes(changed)));
-    }
-
-    private static byte[] nbtBytes(NBTTagCompound tag) throws IOException {
-        var bytes = new ByteArrayOutputStream();
-        try (var output = new DataOutputStream(bytes)) { CompressedStreamTools.write(tag, output); }
-        return bytes.toByteArray();
-    }
-
-    private static RewardDeliveryJournal prepared(RewardFragment fragment) {
-        var journal = RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER);
-        journal.prepare(fragment);
-        return journal;
-    }
-
-    private static NBTTagCompound saved(RewardFragment fragment) {
-        var data = new NBTTagCompound();
-        prepared(fragment).writeTo(data);
-        return data;
-    }
-
-    private static NBTTagCompound journalEmptySnapshot() { return RewardDeliveryJournal.read(new NBTTagCompound(), PLAYER).snapshot(); }
-
-    private static NBTTagCompound store(NBTTagCompound data) {
-        return data.getCompoundTag(EntityPlayer.PERSISTED_NBT_TAG).getCompoundTag("prototype_eng").getCompoundTag("reward_delivery_receipts");
-    }
-
-    private static NBTTagCompound firstReceipt(NBTTagCompound data) { return store(data).getTagList("receipts", 10).getCompoundTagAt(0); }
-
-    private static RewardFragment fragment(UUID id, RewardEventKey parent, int count, RewardFragment.Target target) {
-        var identity = new NBTTagCompound();
-        identity.setString("Player", parent.playerUuid().toString());
-        identity.setString("Research", parent.researchId().toString());
-        identity.setInteger("Level", parent.level());
-        identity.setString("Group", parent.groupId().toString());
-        identity.setString("Child", parent.childId().toString());
-        identity.setString("Fragment", id.toString());
-        var tag = new NBTTagCompound();
-        tag.setTag(RewardItemProtection.DELIVERY_TAG, identity);
-        tag.setString("business", "retained");
-        var stack = new NBTTagCompound();
-        stack.setString("id", "minecraft:stone");
-        stack.setByte("Count", (byte) count);
-        stack.setShort("Damage", (short) 0);
-        stack.setTag("tag", tag);
-        return new RewardFragment(id, parent, ITEM, count, stack, target, Optional.empty(), RewardFragment.Status.PLANNED);
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("prototype_eng", path); }
 }
