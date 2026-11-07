@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.recipe.requirement;
 
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 
 import java.util.List;
 
@@ -14,7 +15,7 @@ import java.util.List;
  * transaction. The stage coordinator alone applies, completes and rolls back supplied reservations;
  * business callbacks must not resolve those tokens themselves.
  */
-public interface RequirementTransaction {
+public interface RequirementTransaction extends ReversibleTransaction {
     RequirementTransaction SUCCESS = new RequirementTransaction() {
         @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
         @Override public void commit() {}
@@ -28,11 +29,11 @@ public interface RequirementTransaction {
         return List.of();
     }
 
-    void commit();
+    @Override void commit();
 
     /** Release business undo information after all commits succeed. Must not reject or throw. */
-    default void complete() {
+    @Override default void complete() {
     }
 
-    void rollback();
+    @Override void rollback();
 }

@@ -26,11 +26,11 @@ rollback 先在 owner scope 撤销业务，再将准确 source tokens 沿原 lan
 
 ResourceReservation.resolution 是可选的准确恢复证明；默认 UNKNOWN。内置资源和 FE reservation 在共享锁下报告 RESERVED/APPLIED/COMPLETED/ROLLED_BACK。终态回调抛错后，批次查询准确 token：已经到目标终态就确认且不重放；仍在可重试的准确状态才允许后续重试；UNKNOWN 保留 CONFIRMATION_PENDING，不能被当成仍在执行，也不能盲目重放。一次 resolve 即使有错误也尝试其余 tokens，最后聚合抛出真实错误。
 
-目前三个业务 Runnable 沿用同步事务契约，没有错误后的精确 query 能力。业务 rollback/complete 抛错只尝试一次，保留未确认状态和 fence，禁止保存/假完成；后续真实阶段适配需要按 requirement callback 维护 query/确认职责。现有 RecipeProcess.ScopedRequirement 在失败后立即关闭的行为还不能直接用于 planned pending 重试。
+业务现可传入逐个ReversibleTransaction，RequirementTransaction直接扩展该职责。resolveBusiness查询每个失败项，准确REVERSIBLE才重试，准确终态只确认；原三个Runnable重载仍默认UNKNOWN。ScopedRequirement已经保留原路径/冻结Tick并在准确终态后关闭，检查点/选择器亦按子事务与自身动作确认，详见[事务恢复](transaction-recovery.md)。
 
 失效当前沿普通 context.lock：其他线程等待 fence，owner 必须在本批 scope 内执行 invalidate；失效不释放准确 token，rollback 仍可退款。正式退休/卸载接线需要将取消决策、实际退出、scope 内失效与最终清理按顺序连接，不能在 owner scope 外直接调用并等待自身。
 
-源码审计另发现旧 revision 算术边界：reserve/apply/release 每步只检查 revision 未到 MAX，未预留后续终态清理的递增额度。接正式 planned 前需为已获得的补偿权保证额度，不能由普通修改或失效耗尽。当前批次会保留失败而不提前释放 fence，但这不等于已经解决耗尽后的恢复。
+原revision耗尽问题已修复：context为token的apply/终态和独立invalidate预留额度，普通mutation不侵占；pending rollback归还未用apply额度。内置资源/FE均使用该协议，扩展需遵守新的额度契约，详见[事务恢复](transaction-recovery.md)。
 
 后续实际配方按当前阶段组成 round batch，每 process 每轮至多一个阶段；整批 complete 后再获取同 tick 后继 START/TICK/END，保留 selection、modifier、overlay、概率和检查点依赖。组件 pre/tick/post 没有 undo 契约，需要一次性 tick session 保留回调义务；不能把任意回调声称为整批可逆。阶段 lease/version、工位批次驱动、owner/team/epoch/WorkPermit 与预算许可仍须一起接线。
 

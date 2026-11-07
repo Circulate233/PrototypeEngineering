@@ -4,11 +4,12 @@
 
 ## 当前检查点
 
-- 本阶段完成跨 source lane 的独占与资源批次结算基础：StorageFence 短锁作用域、普通访问隔离、ResourceBatch 延迟完成/整批补偿和准确 token 确认。上一阶段执行屏障为 `c7c5c07`。正式 coordinator、真实配方/业务 pending 查询与预算消费仍未接入，PLANNED_PARALLEL 继续明确拒绝。阶段本地提交、不推送；最新提交号以 Git 日志为准，原 23 份格式/注解修改保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 495 项测试（78 suites，无失败/错误/跳过）；IDEA MCP 对 319 个 src Java 和 Tags 共 320 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/deferred-resource-batches-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 本阶段补齐业务事务准确确认与revision终态额度：ReversibleTransaction/逐回调恢复、ScopedRequirement保留路径和冻结Tick至准确关闭、真实checkpoint/selector逐子确认，以及资源/FE预留后必备的apply/清理/失效额度。上一阶段跨lane资源批次为 `b0ea0f7`。正式coordinator、阶段handle/tick session/工位批次与预算消费仍未接入，PLANNED_PARALLEL继续明确拒绝。阶段本地提交、不推送，原23份格式/注解修改保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 513 项测试（81 suites，无失败/错误/跳过）；IDEA MCP 对 324 个 src Java 和 Tags 共 325 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/transaction-recovery-final.json`。实际 Forge/GUI/模型交互未运行验证。
 - 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
 - planned：借用 worker/serial source lanes；接受、实际开始及发布结果均检查共同 deadline。NEW/QUEUED 停止后不执行，RUNNING 为不确定结果；保留已发布结果，迟到返回不覆盖。Batch 退出证明独立于结果屏障，中断等待也必须等实际退出。旧 PM planned 工位 process 始终为空，PN commit 仅计算 receipt；下一步必须接既有 RecipeProcess 当前阶段，不能按整张配方重复投料。审计与边界见 planned-execution.md、planned-migration-audit.md。
-- 资源批次：全部context一次try-claim，source单域/owner全域scope自动短锁，跨屏障保留逻辑独占；ordinary多域先退锁再等。source实际退出后owner业务commit前后重验授权，成功先决定COMPLETE再完成；rollback先业务后原lane tokens。UNKNOWN为确认待定，准确resolution才允许重试，成功token不重放。所有终态确认后释放fence并由owner发布已捕获通知。业务Runnable失败尚无query，保持pending；owner invalidate需scope，revision清理额度仍待修复，见deferred-resource-batches.md。
+- 资源批次：全部context一次try-claim，source单域/owner全域scope自动短锁，跨屏障保留逻辑独占；ordinary多域先退锁再等。source实际退出后owner业务commit前后重验授权，成功先决定COMPLETE再完成；rollback先业务后原lane tokens。业务与token均按准确实例query，UNKNOWN不重试，成功项不重放。全部确认后owner释放fence并发布捕获通知；owner invalidate需scope。普通修改不侵占token apply/终态及独立失效额度，见deferred-resource-batches.md、transaction-recovery.md。
+- 需求恢复：ScopedRequirement查询/清理均保留原路径与冻结Tick；成功返回或准确terminal才减少acquired计数，禁止commit重放及terminal/query重入。确认后仍保留原persistenceFailure，不自动恢复健康。checkpoint/selector逐子与自身效果确认，自有cleanup无query仍UNKNOWN且不覆盖其他writer。正式阶段session仍待接。
 - 计算声明：NetworkResourceRegistrationEvent 早于配方/机器runtime解析，冻结表含标准 thread/compute/qubit；同名完整metadata须一致，相等record无需对象身份相同。捕获检查设备/flat/ppm/参与者全部键，失败撤旧许可。maxPerTickValue限制组件单物品供给和研究segment grant，不限制设备/全队。旧预算与lease审计见network-resources.md。
 - 网络运行时：MachineNetworkDevice 显式声明且 recreated，ownership 先load；capture owner-only，精确identity/loadOrder/formed及宿主证明校验后整批发布。每次MAIN action前与CON捕获前refresh，tick退出revoke；失败无旧许可回退。registry revision拒副本来去后的旧批次；旧卸载不撤新代。只暂停配方，普通组件仍运行，恢复不重START。
 - 网络规划：OwnerTeamResolver 是扩展接口，FTB 使用真实 server/Universe 持久玩家，离线允许。capture 每 owner 一次查询、拒重复/过期/成员矛盾与同 ID 不同资源元数据；worker plan 只读。中心按等级/加载顺序，数据中心再比已有研究；满库可选。中心+合格电脑+同队参与者合计后一次 exact flat/ppm，不把 maxPerTickValue 当全队上限。
@@ -22,7 +23,7 @@
 
 ## 下一步
 
-1. 正式 planned：StorageFence/ResourceBatch存储边界已就绪，先解决revision清理额度与真实requirement业务pending/query，再为RecipeProcess补阶段handle、lease/version、一次tick session和工位批次入口；不能直接复用失败就closed的ScopedRequirement。按阶段round完成后再进入同tick后继阶段，组件pre/tick/post各一次且不假装可回滚。随后接PM discover/plan/reserve、prepare/resolve两次结果屏障、owner提交、原lane补偿/确认和真实退休join，结合PN owner/team/epoch/向量预算。输入在owner冻结；旧epoch/lease/ready不从存档恢复为权限。
+1. 正式 planned：存储独占/批次、revision额度及业务query基础已就绪。接下来从RecipeStageExecutor抽出真实acquired-stage handle，为RecipeProcess补stage lease/version、一次tick session和工位批次入口。按阶段round完成后再进入同tick后继阶段，组件pre/tick/post各一次且不假装可回滚。随后接PM discover/plan/reserve、prepare/resolve两次结果屏障、owner提交、原lane补偿/确认和真实退休join，结合PN owner/team/epoch/向量预算。输入在owner冻结；旧epoch/lease/ready不从存档恢复为权限。
 2. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
 3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
@@ -58,6 +59,7 @@
 | 普通调度/服务器边界 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |
 | planned 屏障/取消/实际退出与后续接线 | [planned-execution.md](planned-execution.md)、[planned-migration-audit.md](planned-migration-audit.md)，api/scheduler/planned、scheduler/planned |
 | 跨lane资源独占/批次结算/准确token恢复 | [deferred-resource-batches.md](deferred-resource-batches.md)，StorageFence、ResourceBatch、ResourceReservation |
+| 业务query/需求作用域/复合事务/revision额度 | [transaction-recovery.md](transaction-recovery.md)，ReversibleTransaction、ScopedRequirement、TransactionGroup、StorageContext |
 | 结构匹配/快照/发布 | [structures.md](structures.md)、[structure-migration-audit.md](structure-migration-audit.md) |
 | 存储/预留/FE | [storage-redesign.md](storage-redesign.md)，api/storage、api/energy |
 | 仓室/美术来源 | [hatches.md](hatches.md)、[assets.md](assets.md)、[controller-assets.md](controller-assets.md) |

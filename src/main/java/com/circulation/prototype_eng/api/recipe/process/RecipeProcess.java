@@ -206,43 +206,99 @@ public final class RecipeProcess {
         private final RecipeProcess process;
         private final RequirementPath path;
         private final RequirementTransaction delegate;
+        @Nullable private final Tick tick;
+        @Nullable private Resolution intendedTerminal;
+        private Resolution terminal = Resolution.UNKNOWN;
+        private boolean commitAttempted;
+        private boolean terminalExecuting;
+        private boolean queryExecuting;
+        private boolean uncertain;
         private boolean closed;
 
         private ScopedRequirement(RecipeProcess process, RequirementPath path, RequirementTransaction delegate) {
             this.process = process;
             this.path = path;
             this.delegate = delegate;
+            tick = process.activeTick;
         }
 
-        @Override public ProcessResult result() { return process.withRequirementPath(path, delegate::result); }
+        @Override public ProcessResult result() { return scoped(delegate::result); }
         @Override public List<? extends ResourceReservation> reservations() {
-            return process.withRequirementPath(path, delegate::reservations);
+            return scoped(delegate::reservations);
         }
         @Override public void commit() {
-            if (closed) { throw new IllegalStateException("Cannot commit a closed requirement transaction"); }
-            scoped(delegate::commit);
+            if (closed || intendedTerminal != null || commitAttempted || queryExecuting) {
+                throw new IllegalStateException("Cannot replay or commit a resolving requirement transaction");
+            }
+            commitAttempted = true;
+            try { scoped(delegate::commit); }
+            catch (RuntimeException | Error failure) { process.persistenceFailure = true; throw failure; }
         }
-        @Override public void complete() { close(delegate::complete); }
-        @Override public void rollback() { close(delegate::rollback); }
+        @Override public void complete() { close(Resolution.COMPLETED, delegate::complete); }
+        @Override public void rollback() { close(Resolution.ROLLED_BACK, delegate::rollback); }
 
-        private void close(Runnable action) {
-            if (closed) { return; }
+        @Override public Resolution resolution() {
+            if (terminalExecuting || queryExecuting) { throw new IllegalStateException("Cannot reenter a requirement recovery callback"); }
+            if (closed) { return terminal; }
+            queryExecuting = true;
             try {
-                scoped(action);
+                var actual = Objects.requireNonNull(scoped(delegate::resolution));
+                if (uncertain && actual == intendedTerminal) { confirmTerminal(actual); }
+                return actual;
+            } finally { queryExecuting = false; }
+        }
+
+        private void close(Resolution expected, Runnable action) {
+            if (terminalExecuting || queryExecuting) { throw new IllegalStateException("Cannot reenter a requirement terminal callback"); }
+            if (closed) {
+                if (terminal != expected) { throw new IllegalStateException("Requirement already resolved in the opposite direction"); }
+                return;
+            }
+            if (intendedTerminal != null && intendedTerminal != expected) {
+                throw new IllegalStateException("Cannot change a requirement's terminal decision");
+            }
+            if (uncertain) {
+                var actual = resolution();
+                if (closed) { return; }
+                if (actual != Resolution.REVERSIBLE) {
+                    throw new IllegalStateException("Cannot retry a requirement without an exact recovery proof");
+                }
+            }
+            intendedTerminal = expected;
+            try {
+                terminalExecuting = true;
+                try { scoped(action); }
+                finally { terminalExecuting = false; }
+                confirmTerminal(expected);
             } catch (RuntimeException | Error failure) {
+                uncertain = true;
                 process.persistenceFailure = true;
+                try { resolution(); }
+                catch (RuntimeException | Error query) { if (query != failure) { failure.addSuppressed(query); } }
                 throw failure;
-            } finally {
-                closed = true;
-                process.acquiredTransactions--;
             }
         }
 
+        private void confirmTerminal(Resolution actual) {
+            if (closed) { return; }
+            terminal = actual;
+            closed = true;
+            uncertain = false;
+            process.acquiredTransactions--;
+        }
+
         private void scoped(Runnable action) {
-            process.withRequirementPath(path, () -> {
+            scoped(() -> {
                 action.run();
                 return null;
             });
+        }
+
+        private <T> T scoped(Supplier<T> action) {
+            Tick previous = process.activeTick;
+            process.activeTick = tick;
+            try { return process.withRequirementPath(path, action); }
+            finally { process.activeTick = previous; }
         }
     }
 

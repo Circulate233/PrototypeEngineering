@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.storage;
 
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -22,9 +23,9 @@ public final class ResourceBatch {
     private final Object lock = new Object();
     private final StorageFence fence;
     private final ObjectList<Source> sources;
-    private final Runnable businessCommit;
-    private final Runnable businessComplete;
-    private final Runnable businessRollback;
+    private final ObjectList<ReversibleTransaction> transactions;
+    private final boolean[] businessTerminal;
+    private final boolean[] businessUncertain;
     private Decision decision = Decision.OPEN;
     private Business business = Business.ACQUIRED;
     private int runningSources;
@@ -33,11 +34,11 @@ public final class ResourceBatch {
 
     private ResourceBatch(StorageFence fence,
                           Reference2ObjectLinkedOpenHashMap<StorageContext, ObjectArrayList<ResourceReservation>> grouped,
-                          Runnable commit, Runnable complete, Runnable rollback) {
+                          ObjectList<ReversibleTransaction> transactions) {
         this.fence = fence;
-        businessCommit = commit;
-        businessComplete = complete;
-        businessRollback = rollback;
+        this.transactions = transactions;
+        businessTerminal = new boolean[transactions.size()];
+        businessUncertain = new boolean[transactions.size()];
         var ordered = new ObjectArrayList<Source>(grouped.size());
         for (var entry : grouped.reference2ObjectEntrySet()) { ordered.add(new Source(entry.getKey(), entry.getValue())); }
         sources = ObjectLists.unmodifiable(ordered);
@@ -54,6 +55,20 @@ public final class ResourceBatch {
         Objects.requireNonNull(commit);
         Objects.requireNonNull(complete);
         Objects.requireNonNull(rollback);
+        return tryAcquire(reservations, List.of(new CallbackTransaction(commit, complete, rollback)));
+    }
+
+    /** Each acquired business transaction appears once; failure recovery keeps its exact instance. */
+    @Nullable
+    public static ResourceBatch tryAcquire(List<? extends ResourceReservation> reservations,
+                                           List<? extends ReversibleTransaction> transactions) {
+        var businessTransactions = new ObjectArrayList<ReversibleTransaction>(transactions);
+        var businessIdentities = new ReferenceOpenHashSet<ReversibleTransaction>();
+        for (var transaction : businessTransactions) {
+            if (!businessIdentities.add(Objects.requireNonNull(transaction))) {
+                throw new IllegalArgumentException("Repeated business transaction");
+            }
+        }
         var unique = new ReferenceOpenHashSet<ResourceReservation>();
         var grouped = new Reference2ObjectLinkedOpenHashMap<StorageContext, ObjectArrayList<ResourceReservation>>();
         for (var reservation : new ObjectArrayList<>(reservations)) {
@@ -63,7 +78,7 @@ public final class ResourceBatch {
             grouped.computeIfAbsent(context, _ -> new ObjectArrayList<>()).add(reservation);
         }
         var fence = StorageFence.tryAcquire(grouped.keySet());
-        return fence == null ? null : new ResourceBatch(fence, grouped, commit, complete, rollback);
+        return fence == null ? null : new ResourceBatch(fence, grouped, businessTransactions);
     }
 
     public ObjectList<Source> sources() { return sources; }
@@ -74,7 +89,7 @@ public final class ResourceBatch {
      * All source actions must have exited successfully. Authorization and domain validity are checked
      * before and after reversible business commit, under the full fence scope. False decides rollback;
      * a throwing commit also decides rollback. Success irrevocably decides completion BEFORE invoking
-     * businessComplete. A completion failure may never be converted into rollback.
+     * business completion. A completion failure may never be converted into rollback.
      */
     public boolean commit(BooleanSupplier authorization) {
         requireOwnerBoundary();
@@ -90,13 +105,10 @@ public final class ResourceBatch {
         try {
             return fence.access(() -> {
                 if (!authorized(authorization)) { decide(Decision.ROLLBACK); return false; }
-                businessCommit.run();
+                for (var transaction : transactions) { transaction.commit(); }
                 if (!authorized(authorization)) { decide(Decision.ROLLBACK); return false; }
                 decide(Decision.COMPLETE);
-                business = Business.COMPLETION_PENDING;
-                businessComplete.run();
-                business = Business.COMPLETED;
-                return true;
+                return settleBusiness(Decision.COMPLETE);
             });
         } catch (RuntimeException | Error failure) {
             synchronized (lock) {
@@ -111,7 +123,7 @@ public final class ResourceBatch {
     /**
      * Stops new source application immediately. Returns false while already entered actions still
      * run, or after a failed business cleanup whose outcome is unknown. Retry after actual exit;
-     * the business rollback callback is attempted only once, never blindly replayed after failure.
+     * only an exact transaction resolution permits retrying a failed business callback.
      */
     public boolean rollback() {
         requireOwnerBoundary();
@@ -120,20 +132,69 @@ public final class ResourceBatch {
                 throw new IllegalStateException("Batch cannot decide rollback at this boundary");
             }
             decision = Decision.ROLLBACK;
-            if (runningSources != 0 || business == Business.ROLLBACK_PENDING) { return false; }
+            if (runningSources != 0) { return false; }
             if (business == Business.ROLLED_BACK) { return true; }
             ownerAction = true;
         }
         try {
-            fence.access(() -> {
-                synchronized (lock) { business = Business.ROLLBACK_PENDING; }
-                businessRollback.run();
-            });
-            synchronized (lock) { business = Business.ROLLED_BACK; }
-            return true;
+            return fence.access(() -> settleBusiness(Decision.ROLLBACK));
         } finally {
             synchronized (lock) { ownerAction = false; }
         }
+    }
+
+    /** Queries pending business confirmations and retries only proven-safe terminal transitions. */
+    public boolean resolveBusiness() {
+        requireOwnerBoundary();
+        Decision settling;
+        synchronized (lock) {
+            if (closed || ownerAction || decision == Decision.OPEN) {
+                throw new IllegalStateException("Business settlement has not been decided or is executing");
+            }
+            if (runningSources != 0) { return false; }
+            ownerAction = true;
+            settling = decision;
+        }
+        try { return fence.access(() -> settleBusiness(settling)); }
+        finally { synchronized (lock) { ownerAction = false; } }
+    }
+
+    private boolean settleBusiness(Decision settling) {
+        business = settling == Decision.COMPLETE ? Business.COMPLETION_PENDING : Business.ROLLBACK_PENDING;
+        Throwable failure = null;
+        for (int offset = 0; offset < transactions.size(); offset++) {
+            int index = settling == Decision.COMPLETE ? offset : transactions.size() - 1 - offset;
+            if (businessTerminal[index]) { continue; }
+            var transaction = transactions.get(index);
+            try {
+                if (businessUncertain[index] && !confirmBusinessOrRetry(index, transaction, settling)) { continue; }
+                if (businessTerminal[index]) { continue; }
+                if (settling == Decision.COMPLETE) { transaction.complete(); }
+                else { transaction.rollback(); }
+                businessTerminal[index] = true;
+                businessUncertain[index] = false;
+            } catch (RuntimeException | Error cleanup) {
+                businessUncertain[index] = true;
+                failure = accumulate(failure, cleanup);
+                try { confirmBusinessOrRetry(index, transaction, settling); }
+                catch (RuntimeException | Error query) { failure = accumulate(failure, query); }
+            }
+        }
+        boolean done = true;
+        for (boolean terminal : businessTerminal) { done &= terminal; }
+        if (done) { business = settling == Decision.COMPLETE ? Business.COMPLETED : Business.ROLLED_BACK; }
+        rethrow(failure);
+        return done;
+    }
+
+    private boolean confirmBusinessOrRetry(int index, ReversibleTransaction transaction, Decision settling) {
+        var resolution = Objects.requireNonNull(transaction.resolution());
+        if (resolution == ReversibleTransaction.Resolution.UNKNOWN) { return false; }
+        var expected = settling == Decision.COMPLETE ? ReversibleTransaction.Resolution.COMPLETED
+            : ReversibleTransaction.Resolution.ROLLED_BACK;
+        if (resolution == expected) { businessTerminal[index] = true; businessUncertain[index] = false; return false; }
+        if (resolution == ReversibleTransaction.Resolution.REVERSIBLE) { return true; }
+        throw new IllegalStateException("Business recovery contradicts the batch decision: " + resolution);
     }
 
     /**
@@ -181,6 +242,13 @@ public final class ResourceBatch {
         RESERVED, APPLYING, APPLIED, REJECTED, APPLY_FAILED, RESOLVING, CONFIRMATION_PENDING, COMPLETED, ROLLED_BACK
     }
     private enum Business { ACQUIRED, COMPLETION_PENDING, COMPLETED, ROLLBACK_PENDING, ROLLED_BACK }
+
+    private record CallbackTransaction(Runnable commitAction, Runnable completeAction, Runnable rollbackAction)
+        implements ReversibleTransaction {
+        @Override public void commit() { commitAction.run(); }
+        @Override public void complete() { completeAction.run(); }
+        @Override public void rollback() { rollbackAction.run(); }
+    }
 
     /** One physical domain, shared by all aliases and stable across batches on that domain. */
     public final class Source {

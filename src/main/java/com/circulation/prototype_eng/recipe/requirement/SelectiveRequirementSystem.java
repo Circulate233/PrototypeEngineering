@@ -30,6 +30,7 @@ import java.util.Objects;
  * parent stage. Modifier additions are local, tracked, and removed by START undo, END or abort.
  */
 public final class SelectiveRequirementSystem implements RecipeRequirementSystem<SelectiveRequirement> {
+    private static final Runnable NO_OP = () -> { };
     private static final CapturedTransaction EMPTY = new CapturedTransaction(ProcessResult.SUCCESS, ObjectLists.emptyList(), RequirementTransaction.SUCCESS);
 
     @Override
@@ -136,11 +137,6 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
     }
 
-    private static Throwable accumulate(Throwable primary, Throwable cleanup) {
-        if (primary != cleanup) { primary.addSuppressed(cleanup); }
-        return primary;
-    }
-
     private record CapturedTransaction(ProcessResult result, List<ResourceReservation> reservations,
                                        RequirementTransaction child) implements RequirementTransaction {
         private CapturedTransaction {
@@ -149,17 +145,34 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         @Override public void commit() { child.commit(); }
         @Override public void complete() { child.complete(); }
         @Override public void rollback() { child.rollback(); }
+        @Override public Resolution resolution() { return child.resolution(); }
     }
 
-    private record StartTransaction(RecipeProcess process, RequirementPath path, SelectiveState state,
-                                   SelectiveState.Selection selection, CapturedTransaction child,
-                                   List<SelectiveModifierDescriptor> modifiers) implements RequirementTransaction {
+    private static final class StartTransaction implements RequirementTransaction {
+        private final CapturedTransaction child;
+        private final TransactionGroup group;
+
+        private StartTransaction(RecipeProcess process, RequirementPath path, SelectiveState state,
+                                 SelectiveState.Selection selection, CapturedTransaction child,
+                                 List<SelectiveModifierDescriptor> modifiers) {
+            this.child = child;
+            // Reverse rollback cleans exact effects, then the child, and finally discards our choice.
+            group = new TransactionGroup(List.of(
+                TransactionGroup.callbacks(NO_OP, NO_OP, () -> state.discard(path, selection)),
+                child,
+                TransactionGroup.callbacks(() -> applyModifiers(process, path, selection, modifiers),
+                    selection::completeStart, selection::cleanupEffects)));
+        }
+
         @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
         @Override public List<ResourceReservation> reservations() { return child.reservations(); }
+        @Override public void commit() { group.commit(); }
+        @Override public void complete() { group.complete(); }
+        @Override public void rollback() { group.rollback(); }
+        @Override public Resolution resolution() { return group.resolution(); }
 
-        @Override
-        public void commit() {
-            child.commit();
+        private static void applyModifiers(RecipeProcess process, RequirementPath path,
+                                           SelectiveState.Selection selection, List<SelectiveModifierDescriptor> modifiers) {
             for (int ordinal = 0; ordinal < modifiers.size(); ordinal++) {
                 var descriptor = modifiers.get(ordinal);
                 var context = new Context(process, path, selection, descriptor.id(), ordinal);
@@ -171,66 +184,19 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             }
             selection.markCommitted();
         }
-
-        @Override public void complete() {
-            Throwable failure = null;
-            try {
-                child.complete();
-            } catch (RuntimeException | Error cleanup) {
-                failure = cleanup;
-            }
-            try {
-                selection.completeStart();
-            } catch (RuntimeException | Error cleanup) {
-                failure = failure == null ? cleanup : accumulate(failure, cleanup);
-            }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
-        }
-
-        @Override
-        public void rollback() {
-            Throwable failure = null;
-            try {
-                selection.cleanupEffects();
-            } catch (RuntimeException | Error cleanup) {
-                failure = cleanup;
-            }
-            try {
-                child.rollback();
-            } catch (RuntimeException | Error cleanup) {
-                failure = failure == null ? cleanup : accumulate(failure, cleanup);
-            }
-            try {
-                state.discard(path, selection);
-            } catch (RuntimeException | Error cleanup) {
-                failure = failure == null ? cleanup : accumulate(failure, cleanup);
-            }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
-        }
     }
 
-    private record EndTransaction(CapturedTransaction child, SelectiveState.Selection selection) implements RequirementTransaction {
+    private record EndTransaction(CapturedTransaction child, TransactionGroup group) implements RequirementTransaction {
+        private EndTransaction(CapturedTransaction child, SelectiveState.Selection selection) {
+            this(child, new TransactionGroup(List.of(child, TransactionGroup.callbacks(NO_OP, selection::finish, NO_OP))));
+        }
+
         @Override public ProcessResult result() { return child.result(); }
         @Override public List<ResourceReservation> reservations() { return child.reservations(); }
-        @Override public void commit() { child.commit(); }
-        @Override public void complete() {
-            Throwable failure = null;
-            try {
-                child.complete();
-            } catch (RuntimeException | Error cleanup) {
-                failure = cleanup;
-            }
-            try {
-                selection.finish();
-            } catch (RuntimeException | Error cleanup) {
-                failure = failure == null ? cleanup : accumulate(failure, cleanup);
-            }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
-        }
-        @Override public void rollback() { child.rollback(); }
+        @Override public void commit() { group.commit(); }
+        @Override public void complete() { group.complete(); }
+        @Override public void rollback() { group.rollback(); }
+        @Override public Resolution resolution() { return group.resolution(); }
     }
 
     private static final class Context implements SelectiveContext {

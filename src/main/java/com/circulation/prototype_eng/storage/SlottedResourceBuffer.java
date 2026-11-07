@@ -258,7 +258,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (activeReservations == Integer.MAX_VALUE) {
                 throw new IllegalStateException("Too many active storage reservations");
             }
-            requireChange();
+            context.requireChange(2);
             long nextInsertHold = insert ? Math.addExact(insertHolds.getLong(key), amount) : 0;
             long nextExtractHold = insert ? 0 : Math.addExact(extractHolds.getLong(key), amount);
             long[] holds = insert ? reservedInsert : reservedExtract;
@@ -268,6 +268,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                     throw new IllegalStateException("Reserved slot amount exceeds long capacity");
                 }
             }
+            context.reserveChanges(2);
             for (int part = 0; part < allocation.slots.length; part++) {
                 int slot = allocation.slots[part];
                 keys[slot] = key;
@@ -545,10 +546,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     }
 
     private void requireChange() {
-        context.requireLock();
-        if (context.revision() == Long.MAX_VALUE) {
-            throw new IllegalStateException("Storage revision exhausted");
-        }
+        context.requireChange();
     }
 
     private static void checkRequest(AEKey key, long amount, Actionable mode) {
@@ -583,6 +581,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         private final Allocation allocation;
         private final boolean insert;
         private State state = State.PENDING;
+        private byte revisionChanges = 2;
 
         private Reservation(AEKey key, Allocation allocation, boolean insert) {
             this.key = key;
@@ -620,7 +619,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (!context.isValid()) {
                 throw new IllegalStateException("Cannot apply an invalid storage reservation");
             }
-            requireChange();
+            context.requireReservedChange(revisionChanges);
             long totalDelta = insert ? allocation.total : -allocation.total;
             long nextTotal = Math.addExact(totals.getLong(key), totalDelta);
             long nextInsertHold = Math.subtractExact(insertHolds.getLong(key), totalDelta);
@@ -651,7 +650,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             addAmount(insertHolds, key, -totalDelta, nextInsertHold);
             addAmount(extractHolds, key, totalDelta, nextExtractHold);
             state = State.APPLIED;
-            context.changed();
+            context.reservedChanged(revisionChanges, false);
+            revisionChanges--;
         }
 
         @Override
@@ -673,7 +673,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         }
 
         private void release(boolean restore) {
-            requireChange();
+            context.requireReservedChange(revisionChanges);
             if (activeReservations <= 0) {
                 throw new IllegalStateException("Reservation count is inconsistent");
             }
@@ -708,7 +708,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             addAmount(insertHolds, key, holdsInsert ? -allocation.total : 0, nextInsertHold);
             addAmount(extractHolds, key, holdsInsert ? 0 : -allocation.total, nextExtractHold);
             activeReservations--;
-            context.changed();
+            context.reservedChanged(revisionChanges, true);
+            revisionChanges = 0;
         }
 
         private void requireState(State expected) {

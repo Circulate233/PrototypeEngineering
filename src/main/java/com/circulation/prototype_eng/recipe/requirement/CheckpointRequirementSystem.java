@@ -38,28 +38,6 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
         return acquireLifecycle(process, checkpoint.requirement(), tick);
     }
 
-    /** Child completion is terminal; finish every child before exposing an aggregated failure. */
-    private static void completeAll(List<RequirementTransaction> transactions) {
-        Throwable failure = null;
-        for (var transaction : transactions) {
-            try {
-                transaction.complete();
-            } catch (RuntimeException | Error completion) {
-                if (failure == null) {
-                    failure = completion;
-                } else if (failure != completion) {
-                    failure.addSuppressed(completion);
-                }
-            }
-        }
-        if (failure instanceof RuntimeException runtime) {
-            throw runtime;
-        }
-        if (failure instanceof Error error) {
-            throw error;
-        }
-    }
-
     @Override
     public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<CheckpointRequirement> requirement) {
         var checkpoint = requirement.payload();
@@ -127,29 +105,29 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
         }
     }
 
-    private record LifecycleTransaction(ProcessResult result, List<RequirementTransaction> transactions,
-                                        List<ResourceReservation> reservations) implements RequirementTransaction {
-        private LifecycleTransaction {
-            transactions = ObjectLists.unmodifiable(new ObjectArrayList<>(transactions));
-            reservations = ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
+    private record LifecycleTransaction(ProcessResult result, List<ResourceReservation> reservations,
+                                        TransactionGroup group) implements RequirementTransaction {
+        private LifecycleTransaction(ProcessResult result, List<RequirementTransaction> transactions,
+                                     List<ResourceReservation> reservations) {
+            this(result, ObjectLists.unmodifiable(new ObjectArrayList<>(reservations)), new TransactionGroup(transactions));
         }
 
         @Override
         public void commit() {
-            for (var transaction : transactions) {
-                transaction.commit();
-            }
+            group.commit();
         }
 
         @Override
         public void complete() {
-            completeAll(transactions);
+            group.complete();
         }
 
         @Override
         public void rollback() {
-            rollbackAll(transactions, null);
+            group.rollback();
         }
+
+        @Override public Resolution resolution() { return group.resolution(); }
     }
 
     /** The child TICK keeps its captured timeline during acquisition and every business callback. */
@@ -179,6 +157,8 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
         public void rollback() {
             scopedRun(delegate::rollback);
         }
+
+        @Override public Resolution resolution() { return scoped(delegate::resolution); }
 
         private <T> T scoped(Supplier<T> action) {
             return tick == null ? action.get() : process.withTickContext(tick, action);

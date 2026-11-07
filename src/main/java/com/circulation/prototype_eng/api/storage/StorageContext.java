@@ -32,6 +32,8 @@ public final class StorageContext {
     @SuppressWarnings("unused") // Mutated through DIRTY to coalesce cross-thread notifications.
     private boolean dirty;
     private long revision;
+    // Credits promised to exact tokens, separate from the one lifetime invalidation change.
+    private long reservedChanges;
     @Nullable private volatile StorageFence fence;
 
     public StorageContext(Runnable onChanged) {
@@ -158,10 +160,54 @@ public final class StorageContext {
         return revision;
     }
 
-    /** Called under the shared lock for a committed quantity or availability change. */
-    public void changed() {
+    /** Preflight an ordinary mutation without spending token cleanup or lifetime invalidation credits. */
+    public void requireChange() { requireChange(0); }
+
+    /** Preflight one ordinary mutation that also promises additional future token changes. */
+    public void requireChange(int additionalReservedChanges) {
         requireLock();
-        revision = Math.incrementExact(revision);
+        if (additionalReservedChanges < 0) {
+            throw new IllegalArgumentException("Negative reserved revision changes");
+        }
+        long available = Long.MAX_VALUE - revision - reservedChanges - (valid ? 1 : 0);
+        if (available <= additionalReservedChanges) {
+            throw new IllegalStateException("Storage revision has no unreserved change capacity");
+        }
+    }
+
+    /** Retain future changes before recording the reservation's own ordinary availability change. */
+    public void reserveChanges(int changes) {
+        if (changes <= 0) { throw new IllegalArgumentException("A revision reservation must be positive"); }
+        requireChange(changes);
+        reservedChanges += changes;
+    }
+
+    /** Preflight a token mutation. The token retains its own remaining credit count until terminal. */
+    public void requireReservedChange(int remainingChanges) {
+        requireLock();
+        if (remainingChanges <= 0 || reservedChanges < remainingChanges || revision == Long.MAX_VALUE) {
+            throw new IllegalStateException("Storage token lost its reserved revision changes");
+        }
+    }
+
+    /**
+     * Record one token mutation using its promised credit. Terminal cleanup also returns any unused
+     * apply credit; ordinary mutations cannot spend these credits, including after invalidation.
+     */
+    public void reservedChanged(int remainingChanges, boolean terminal) {
+        requireReservedChange(remainingChanges);
+        reservedChanges -= terminal ? remainingChanges : 1;
+        recordChange();
+    }
+
+    /** Called after ordinary quantity/availability preflight, while the same shared lock remains held. */
+    public void changed() {
+        requireChange();
+        recordChange();
+    }
+
+    private void recordChange() {
+        revision++;
         DIRTY.setRelease(this, true);
     }
 
@@ -188,12 +234,31 @@ public final class StorageContext {
         lock();
         try {
             if (valid) {
+                // Ordinary mutations always preserve this independent lifetime credit.
+                if (Long.MAX_VALUE - revision <= reservedChanges) {
+                    throw new IllegalStateException("Storage lost its lifetime invalidation revision credit");
+                }
                 valid = false;
-                changed();
+                recordChange();
             }
         } finally {
             unlock();
         }
+    }
+
+    /**
+     * Package-local boundary fixture for testing exhaustion with real buffers, without reflection.
+     * Only a wholly unused context may be initialized; this is neither public configuration nor a
+     * persistence restoration API. Ordinary construction always starts at revision zero.
+     */
+    void initializeRevision(long initialRevision) {
+        requireLock();
+        StorageFence.requireOutsideAccess();
+        if (initialRevision < 0 || initialRevision == Long.MAX_VALUE || !valid || revision != 0
+            || reservedChanges != 0 || fence != null || dirty) {
+            throw new IllegalStateException("Revision initialization requires an unused storage context");
+        }
+        revision = initialRevision;
     }
 
     static void requireNoLocks() {

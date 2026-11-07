@@ -151,12 +151,11 @@ public final class EnergyBuffer implements EnergyHatch {
             if (activeReservations == Integer.MAX_VALUE) {
                 throw new IllegalStateException("Too many active energy reservations");
             }
-            requireChange();
-            if (receive) {
-                reservedReceive = Math.addExact(reservedReceive, amount);
-            } else {
-                reservedExtract = Math.addExact(reservedExtract, amount);
-            }
+            long nextReceive = receive ? Math.addExact(reservedReceive, amount) : reservedReceive;
+            long nextExtract = receive ? reservedExtract : Math.addExact(reservedExtract, amount);
+            context.reserveChanges(2);
+            reservedReceive = nextReceive;
+            reservedExtract = nextExtract;
             activeReservations++;
             context.changed();
             return new ReservationResult(ReservationResult.Status.ACCEPTED, new Reservation(amount, receive));
@@ -205,10 +204,7 @@ public final class EnergyBuffer implements EnergyHatch {
     }
 
     private void requireChange() {
-        context.requireLock();
-        if (context.revision() == Long.MAX_VALUE) {
-            throw new IllegalStateException("Energy storage revision exhausted");
-        }
+        context.requireChange();
     }
 
     private static void checkLimits(long maxReceive, long maxExtract) {
@@ -234,6 +230,7 @@ public final class EnergyBuffer implements EnergyHatch {
         private final long amount;
         private final boolean receive;
         private State state = State.PENDING;
+        private byte revisionChanges = 2;
 
         private Reservation(long amount, boolean receive) {
             this.amount = amount;
@@ -270,7 +267,7 @@ public final class EnergyBuffer implements EnergyHatch {
             if (!canApply()) {
                 throw new IllegalStateException("Energy reservation cannot apply under current limits or lifetime");
             }
-            requireChange();
+            context.requireReservedChange(revisionChanges);
             long nextStored = receive ? Math.addExact(stored, amount) : Math.subtractExact(stored, amount);
             long nextExtract = receive ? Math.addExact(reservedExtract, amount) : Math.subtractExact(reservedExtract, amount);
             long nextReceive = receive ? Math.subtractExact(reservedReceive, amount) : Math.addExact(reservedReceive, amount);
@@ -279,7 +276,8 @@ public final class EnergyBuffer implements EnergyHatch {
             reservedExtract = nextExtract;
             reservedReceive = nextReceive;
             state = State.APPLIED;
-            context.changed();
+            context.reservedChanged(revisionChanges, false);
+            revisionChanges--;
         }
 
         @Override
@@ -301,7 +299,7 @@ public final class EnergyBuffer implements EnergyHatch {
         }
 
         private void release(boolean restore) {
-            requireChange();
+            context.requireReservedChange(revisionChanges);
             if (activeReservations <= 0) {
                 throw new IllegalStateException("Energy reservation count is inconsistent");
             }
@@ -318,7 +316,8 @@ public final class EnergyBuffer implements EnergyHatch {
             reservedExtract = nextExtract;
             reservedReceive = nextReceive;
             activeReservations--;
-            context.changed();
+            context.reservedChanged(revisionChanges, true);
+            revisionChanges = 0;
         }
 
         private void requireState(State expected) {

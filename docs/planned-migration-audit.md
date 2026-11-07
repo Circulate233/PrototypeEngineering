@@ -41,4 +41,4 @@ PM `RegistryBackedMachinePlannedExecution.kt:243` 的 PlannedWorkSlot.process �
 
 同样，单 operation 调完整 RecipeStageExecutor.execute 会提前 complete，后续 operation 失败时无法整批补偿。必须补可延迟 complete 的阶段/批次边界。NetworkRuntime.WorkPermit 的预算 receipt 可参与现有业务事务，但 commit=false 必须拒绝并补偿；machine/process/stage/version、team/tick/epoch/source 和工作序号也必须一起验证。仅 worker current() 不够。
 
-上述存储锁归属、跨lane隔离及延迟complete已由[资源批次基础](deferred-resource-batches.md)实现；正式coordinator、真实阶段与业务pending仍是后续要求，不能由基础通过测试来替代。新增审计确认：ScopedRequirement在rollback/complete抛错后仍关闭，不能直接承担pending重试；组件pre/tick/post无undo契约；START与后继阶段存在selection/overlay依赖，应按当前阶段round结算。另原buffer未为预留后的终态清理保留revision递增额度，须在正式接线前修复。整体范围继续包括正式planned、实际配方与研究消费、完整参与者及source补偿协议。
+上述存储锁归属、跨lane隔离及延迟complete已由[资源批次基础](deferred-resource-batches.md)实现；业务准确query、ScopedRequirement确认后关闭、checkpoint/selector逐子终态及revision清理额度已由[事务恢复](transaction-recovery.md)补齐。自身清理缺乏准确query的扩展失败仍保留UNKNOWN，不伪造恢复。正式coordinator与阶段session仍是后续要求，不能由基础通过测试来替代；组件pre/tick/post无undo契约，START与后继阶段存在selection/overlay依赖，须按当前阶段round结算。整体范围继续包括正式planned、实际配方与研究消费、完整参与者及source补偿协议。
