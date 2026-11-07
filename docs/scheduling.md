@@ -38,6 +38,8 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 ## 验证与后续
 
+真实接线前的持续机器gate与逐normal组件cursor已实现，见[机器tick边界](machine-tick-boundaries.md)。调度仍须先恢复旧pending再派任何新业务，避免普通worker等StorageFence而owner在join导致死锁；close须在source lanes存活时完成清理。当前正常pending尚未纳入控制器STOPPING与scheduler边界，不能直接解除mode拒绝。
+
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
 机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。仍需正式 coordinator/source 结算、真实配方与研究的预算消费、工作量限制、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。

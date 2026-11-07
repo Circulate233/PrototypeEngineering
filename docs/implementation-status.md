@@ -6,6 +6,8 @@
 
 ## 当前状态
 
+- 可暂停机器边界已实现：ComponentMap.captureDispatch在无回调时冻结同一图，begin全pre、advance逐normal、finish全post且首错停止，失败/重入/跨线程不重放；原普通tick与process post语义不变。MachineLifecycle.beginScheduled的准确句柄跨暂停持RUNNING，前进/清理分开，全部已观察工作槽quiescent才释放；替换组件不隐藏原义务，正常pending返回false，故障不复活。新增MachineWorkSlots.quiescent事实查询。尚未接真实MachineInstance处理器拦截、跨机器scope、TaskScheduler或服务器，PLANNED_PARALLEL仍拒绝；先清旧pending以防fence/join死锁、清理后关闭lane与PN授权缺口已记录，详见[机器tick边界](machine-tick-boundaries.md)。
+
 - 真实跨宿主阶段协调已接入：TickGroup先验证/捕获全部host，begin后共享callbackProcess防跨host重入，子batch完成仍持lease至全组关闭。PlannedRecipeCoordinator保留真实current Stage与partial，正常拒绝先单阶段原lane补偿再获取后槽；成功预留合批source apply、owner授权前后重验/业务提交、原lane终态确认后release/ack。不可逆COMPLETE不被通知故障回滚；UNKNOWN/仍running保持pending，awaitSourceExit独立证明实际退出；forward期限不续，cleanup续期只恢复确认。runner新增beforeDispatch准确句柄交付，直接派发/时钟故障完整stop/freeze且wrapper不漏退出计数。阶段内部可显式调用；真实TaskScheduler/服务器、纯prepare扩展、预算消费与退休接线仍待完成，见[真实配方协调](planned-recipe-coordinator.md)。
 
 - 工位批次入口已接入：MachineWorkSlots.TickBatch捕获真实slot/process并在pre前持宿主lease，begin顺序运行实际回调、nextRound每进程一个当前Stage、currentStages保留partial。tryFinish等当前轮完全结算，post逐个尝试且不重放，健康终态detach；未知局部事务保留pending，故障进程留槽。宿主与process边界共同拒绝批次期间save/admission/普通tick/转移/取消/提前post；默认RecipeExecutor显式批次，自定义同步executor执行前拒绝批次替换。PN receipt提交后错误要求RESERVED的旧probe缺陷已记入审计。正式coordinator/预算与退休join仍待接，详见[工位批次](work-slot-batches.md)。
@@ -63,6 +65,9 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（机器 tick 边界）：`gradlew.bat spotlessApply build --console=plain` 成功，585 tests / 90 suites，failure/error/skipped 全为 0。新增 4 项组件游标与 7 项持续生命周期行为测试，包含已观察 replacement 被再次移除后不能提前释放 gate 的回归。IDEA 本机 MCP 对 334 个 src Java 加 Tags 共 335 文件逐个 `get_file_problems(errorsOnly:false)`；最终文件集合无遗漏/重复、零错误/警告/弱警告且无超时，最终修改两文件重新检查。MCP `build_project` 成功且 problems 为空。报告 `build/reports/idea/machine-tick-boundaries-final.json`。未操作桌面 IDE，未启动游戏/服务端/Bootstrap/FML。原 23 份文件逐字内容和 diff 与阶段基线一致，继续未暂存；本阶段本地提交，不推送。
+
 
 - 2026-11-07（真实多宿主阶段协调）：`gradlew.bat spotlessApply build --console=plain`通过574项测试（88 suites，无失败/错误/跳过）。新增TickGroup 9项、runner异常边界4项、真实协调器11项行为测试，覆盖整组capture原子性/跨host作用域/统一释放、派发前句柄与直接/clock异常实际退出、真实FE START/TICK/END与0speed、拒绝先退hold、整批逆补偿、partial/pre故障、UNKNOWN恢复及过期cleanup期限、inflight取消、通知异常不重放。IDEA MCP对332个src Java加Tags共333文件逐个errorsOnly:false，零错误/警告/弱警告，无超时；MCP build_project成功。报告`build/reports/idea/planned-recipe-coordinator-final.json`。原23份修改逐diff核对一致并保持未暂存，未启动游戏/服务端。
 - 当前验证边界：协调器可显式执行真实多宿主阶段与source lane结算；TaskScheduler/服务器调用、独立纯prepare扩展/内部工作预算、PN实际budget receipt及取消/退休接线仍未完成，PLANNED_PARALLEL尚未开放。

@@ -29,6 +29,8 @@
 
 ## 失败、并发与保存
 
+`beginScheduled` 现提供跨异步阶段保留 RUNNING gate 的准确句柄，`run` 与 `cleanup` 区分新前进和已有清理；`tryFinish` 对全部已观察工位确认后才释放，正常 pending 返回 false。该入口尚未接入服务器调度，组件暂停及调用方义务见[机器 tick 边界](machine-tick-boundaries.md)。普通 `runScheduled` 保持原同步行为。
+
 `retire()` 以单向 volatile 标志撤销新执行，允许 worker 请求而不在 worker 清理；它不等待线程、不持久化、也不能复活。`MachineController` 在合法调度边界请求被接受后立即退休实例，当前 MAIN 回调返回或全部 accepted worker join 后再 unload/broken。新配方阶段、后续工位、扫描探测和 admission 停止，已进入事务及回滚完整结束；健康实例仍可保存，结构清空仍允许，迟到形成拒绝。完整时序见[控制器运行时](machine-controller.md)。
 
 `MachineInstance.onSchedule` 对已绑定宿主经过 `MachineLifecycle`；未绑定实例用于独立库逻辑，不携带世界许可。已卸载实例不再执行组件。实际 tick/callback 异常使绑定实例不可继续执行或保存；普通配方 Blocked 仍可在合法状态重试。

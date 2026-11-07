@@ -683,13 +683,23 @@ public final class MachineWorkSlots {
 
     /** World cleanup can observe faulted slots, but cannot detach a live transaction or execution. */
     public void requireQuiescent() {
-        if (executing || activeBatch != null) { throw new IllegalStateException("Work slots are executing"); }
+        if (!quiescent()) { throw new IllegalStateException("Work slots retain execution or unsettled processes"); }
+    }
+
+    /**
+     * Owner-boundary query: pending execution or cleanup returns false without faulting the host.
+     * This does not acquire ownership, release a captured batch, or grant persistence permission.
+     */
+    public boolean quiescent() {
+        if (executing || activeBatch != null) { return false; }
+        boolean quiescent = true;
         for (var slot : slots) {
             var process = slot.process();
             if (process == null) { continue; }
             if (process.host() != this) { throw new IllegalStateException("Work slot lost its process ownership"); }
-            process.requireQuiescent();
+            quiescent &= process.quiescent();
         }
+        return quiescent;
     }
 
     /**

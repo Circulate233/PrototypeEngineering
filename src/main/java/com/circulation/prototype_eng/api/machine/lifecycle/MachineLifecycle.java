@@ -53,6 +53,7 @@ public final class MachineLifecycle {
     private volatile boolean retired;
     @Nullable private volatile StructureMatch structureMatch;
     @Nullable private Captured lastCaptured;
+    @Nullable private ScheduledExecution scheduledExecution;
     private boolean assemblyStarted;
 
     @SuppressWarnings("unused") // Public controller entry using the shared lifecycle registry.
@@ -290,6 +291,122 @@ public final class MachineLifecycle {
             catch (RuntimeException | Error failure) { faulted = true; throw failure; }
         } finally {
             leave();
+        }
+    }
+
+    /**
+     * Captures deferred owner execution without running callbacks. The returned handle retains the
+     * RUNNING gate until its original and current work slots are quiescent. Unloaded, broken or
+     * retired machines decline new work; a runtime fault retains the ordinary fatal boundary.
+     */
+    @Nullable
+    public ScheduledExecution beginScheduled() {
+        host.requireServerThread();
+        enter(RUNNING);
+        boolean retained = false;
+        try {
+            requireHealthy();
+            if (state != State.LOADED || broken || retired) { return null; }
+            try {
+                var execution = new ScheduledExecution(this, capture().workSlots());
+                scheduledExecution = execution;
+                retained = true;
+                return execution;
+            } catch (RuntimeException | Error failure) {
+                faulted = true;
+                throw failure;
+            }
+        } finally { if (!retained) { leave(); } }
+    }
+
+    /**
+     * One deferred lifecycle ownership transfer, controlled only by its creating server thread.
+     * This handle does not dispatch or join workers. Callers retain it through source exit and exact
+     * compensation, using cleanup after retirement or faults before trying to release ownership.
+     */
+    public static final class ScheduledExecution {
+        private final MachineLifecycle lifecycle;
+        private final Thread owner = Thread.currentThread();
+        private final ObjectArrayList<MachineWorkSlots> observedSlots = new ObjectArrayList<>();
+        private final ReferenceOpenHashSet<MachineWorkSlots> observedSlotIdentities = new ReferenceOpenHashSet<>();
+        private boolean executing;
+        private boolean finished;
+        @Nullable private Throwable failure;
+
+        private ScheduledExecution(MachineLifecycle lifecycle, List<MachineWorkSlots> capturedSlots) {
+            this.lifecycle = lifecycle;
+            observe(capturedSlots);
+        }
+
+        private void observe(List<MachineWorkSlots> slots) {
+            for (var candidate : slots) {
+                if (observedSlotIdentities.add(candidate)) { observedSlots.add(candidate); }
+            }
+        }
+
+        /** Returns false without calling the body once retirement or a fault revokes forward work. */
+        public boolean run(Runnable execution) {
+            Objects.requireNonNull(execution);
+            requireOwner();
+            if (!lifecycle.schedulingAllowed()) { return false; }
+            invoke(execution);
+            return true;
+        }
+
+        /** Mandatory confirmation/compensation remains callable after retirement or a runtime fault. */
+        public void cleanup(Runnable cleanup) {
+            Objects.requireNonNull(cleanup);
+            requireOwner();
+            invoke(cleanup);
+        }
+
+        private void invoke(Runnable execution) {
+            executing = true;
+            try { execution.run(); }
+            catch (RuntimeException | Error observed) { record(observed); throw observed; }
+            finally { executing = false; }
+        }
+
+        /** Records an actual worker or business failure without releasing its cleanup obligation. */
+        public void recordFailure(Throwable observed) {
+            requireOwner();
+            record(Objects.requireNonNull(observed));
+        }
+
+        private void record(Throwable observed) {
+            failure = append(failure, observed);
+            lifecycle.faulted = true;
+        }
+
+        /**
+         * Pending work is an ordinary false result and retains this exact handle and RUNNING gate.
+         * Removed or replaced work slots cannot hide any obligations observed by this handle.
+         */
+        public boolean tryFinish() {
+            requireOwner();
+            executing = true;
+            try {
+                observe(lifecycle.capture().workSlots());
+                boolean quiescent = true;
+                for (var slots : observedSlots) { quiescent &= slots.quiescent(); }
+                if (!quiescent) { return false; }
+                finished = true;
+                lifecycle.scheduledExecution = null;
+                lifecycle.leave();
+                return true;
+            } catch (RuntimeException | Error observed) { record(observed); throw observed; }
+            finally { executing = false; }
+        }
+
+        public boolean finished() { return finished; }
+        @Nullable public Throwable failure() { return failure; }
+
+        private void requireOwner() {
+            if (Thread.currentThread() != owner || executing || finished || lifecycle.scheduledExecution != this
+                || (int) GATE.getAcquire(lifecycle) != RUNNING) {
+                throw new IllegalStateException("Scheduled execution requires its idle captured owner");
+            }
+            lifecycle.host.requireServerThread();
         }
     }
 

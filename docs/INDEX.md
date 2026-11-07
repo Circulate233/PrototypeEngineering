@@ -4,8 +4,9 @@
 
 ## 当前检查点
 
-- 本阶段接入真实多宿主阶段协调器：TickGroup先整体捕获/持lease、共享callback作用域并统一释放；PlannedRecipeCoordinator按真实current-stage获取/拒绝补偿/成功批次source apply→owner提交→原lane确认→release/ack推进，保留pending与实际退出。runner派发前交付Batch、直接异常完整stop/freeze。服务器调度、纯prepare扩展及PN预算仍未接入，PLANNED_PARALLEL继续拒绝。阶段本地提交、不推送，原23份修改保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 574 项测试（88 suites，无失败/错误/跳过）；IDEA MCP 对 332 个 src Java 和 Tags 共 333 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/planned-recipe-coordinator-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 本阶段补齐机器暂停边界：ComponentMap.captureDispatch固定同一dispatch，normal逐项推进并保持机器fail-fast；MachineLifecycle.beginScheduled持RUNNING至全部已观察工作槽确认quiescent，retire/fault后只清理。基础API已测试，尚未接MachineInstance拦截、跨机器scope与TaskScheduler；下一步先处理pending优先清理、源lane关闭顺序和真实组件接线，详见machine-tick-boundaries.md。
+- 上一阶段已接入真实多宿主阶段协调器：TickGroup先整体捕获/持lease、共享callback作用域并统一释放；PlannedRecipeCoordinator按真实current-stage获取/拒绝补偿/成功批次source apply→owner提交→原lane确认→release/ack推进，保留pending与实际退出。runner派发前交付Batch、直接异常完整stop/freeze。服务器调度、纯prepare扩展及PN预算仍未接入，PLANNED_PARALLEL继续拒绝。阶段本地提交、不推送，原23份修改保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 585 项测试（90 suites，无失败/错误/跳过）；IDEA MCP 对 334 个 src Java 和 Tags 共 335 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/machine-tick-boundaries-final.json`。实际 Forge/GUI/模型交互未运行验证。
 - 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
 - planned：借用 worker/serial source lanes；接受、实际开始及发布结果均检查共同 deadline。NEW/QUEUED 停止后不执行，RUNNING 为不确定结果；保留已发布结果，迟到返回不覆盖。Batch 退出证明独立于结果屏障，中断等待也必须等实际退出。旧 PM planned 工位 process 始终为空，PN commit 仅计算 receipt；当前协调器已复用真实 RecipeProcess 当前阶段；纯prepare/服务器接线待续，不能按整张配方重复投料。审计与边界见 planned-execution.md、planned-migration-audit.md。
 - 资源批次：全部context一次try-claim，source单域/owner全域scope自动短锁，跨屏障保留逻辑独占；ordinary多域先退锁再等。source实际退出后owner业务commit前后重验授权，成功先决定COMPLETE再完成；rollback先业务后原lane tokens。业务与token均按准确实例query，UNKNOWN不重试，成功项不重放。全部确认后owner释放fence并发布捕获通知；owner invalidate需scope。普通修改不侵占token apply/终态及独立失效额度，见deferred-resource-batches.md、transaction-recovery.md。
@@ -23,7 +24,7 @@
 
 ## 下一步
 
-1. 正式 planned：真实多宿主阶段/source协调器已可显式调用（planned-recipe-coordinator.md），覆盖拒绝先退hold、整批业务/源补偿、原lane确认、异常/取消pending和派发句柄保留。下一步接TaskScheduler/服务器生命周期的实际任务捕获、普通机器组件边界与取消/退休join，并迁移独立纯prepare/frozen input/result扩展及内部工作预算，结合PN owner/team/epoch/向量预算receipt。当前source apply/terminal确认两个屏障不冒充旧纯prepare。普通RecipeExecutor仍须返回前完成，旧epoch/lease/ready不从存档恢复权限。
+1. 正式 planned：真实多宿主阶段/source协调器及可暂停组件cursor/持续生命周期句柄已可显式调用。下一步接TaskScheduler持有的准确pending、取消/退休join和MachineInstance真实处理器暂停；旧pending必须在任何新业务前清理，避免普通worker等fence与owner join死锁；close须先在原lane清理再关闭线程池，UNKNOWN保留session。跨机器预捕获与低层工位scope仍待接。随后迁移独立纯prepare/frozen input/result、内部工作预算和PN owner/team/epoch/向量receipt，current()不能代替owner全量授权。当前source apply/terminal两个屏障不冒充旧纯prepare，mode仍拒绝。见machine-tick-boundaries.md、planned-recipe-coordinator.md。
 2. 继续计算组件单物品供给/研究阶段限额、普通配方及研究预算消费、研究/数据中心真实存储、完整参与者（ACTIVE、epoch/version/来源/工位/提交校验）。canonical注册、真实tick账本和owner凭据已接，详见network-budgets.md；消费者不能只检查网络gate或worker current()就跳过预算/提交校验。研究和普通numeric独立、lease共享；参与者补偿失败不能伪装成功。异常loader同TE复用且旧卸载晚到仍需准确卸载代证明。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
 3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
@@ -54,6 +55,7 @@
 | 实际tick预算/lease/当前代工作凭据/原代补偿 | [network-budgets.md](network-budgets.md)，NetworkTeamBudget/NetworkRuntime.WorkPermit |
 | 网络角色/服务器发布/共同配方门限 | [network-runtime.md](network-runtime.md)，MachineNetworkDevice/NetworkRuntime/ServerNetworkRuntime |
 | 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle |
+| 可暂停机器组件/持续执行gate/调度接线风险 | [machine-tick-boundaries.md](machine-tick-boundaries.md)，ComponentMap.TickDispatch、MachineLifecycle.ScheduledExecution |
 | 控制器运行时/退休 | [machine-controller.md](machine-controller.md)，MachineController |
 | 真实 TE/朝向/结构接线 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity/ControllerStructureUpdates |
 | 普通调度/服务器边界 | [scheduling.md](scheduling.md)，api/scheduler、scheduler |

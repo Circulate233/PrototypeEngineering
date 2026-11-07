@@ -177,6 +177,97 @@ public final class ComponentMap<E> {
     }
 
     /**
+     * Captures the plain tick's exact dispatch without running callbacks. A scheduler may advance
+     * one normal callback at a time, retaining this cursor while that callback's deferred work is
+     * settled. It must not advance or finish until that work is confirmed. This cursor preserves
+     * the plain tick's fail-fast post policy; process-body cleanup uses {@link #beginTick} instead.
+     * The caller supplies execution ownership for the entity throughout every suspended interval.
+     */
+    public TickDispatch<E> captureDispatch(E owner) {
+        return new TickDispatch<>(owner, orderedTickEntries());
+    }
+
+    /** One captured, owner-thread plain dispatch, including intervals between callbacks. */
+    public static final class TickDispatch<E> {
+        private final Thread creator = Thread.currentThread();
+        private final E owner;
+        private final List<TickEntry<E, ?>> entries;
+        private Phase phase = Phase.PREPARED;
+        private int cursor;
+        private boolean executing;
+
+        private TickDispatch(E owner, List<TickEntry<E, ?>> entries) {
+            this.owner = owner;
+            this.entries = entries;
+        }
+
+        /** Runs all captured pre callbacks once. A failure aborts every later phase. */
+        public void begin() {
+            requireBoundary();
+            if (phase != Phase.PREPARED) { throw new IllegalStateException("Component dispatch has already begun"); }
+            executing = true;
+            try {
+                for (var entry : entries) { entry.pre(owner); }
+                phase = Phase.NORMAL;
+            } catch (RuntimeException | Error failure) {
+                phase = Phase.ABORTED;
+                throw failure;
+            } finally { executing = false; }
+        }
+
+        /**
+         * Invokes exactly the next normal callback, returning false only when none remain. The
+         * callback is consumed before entry; neither failure nor a later resume can replay it.
+         */
+        public boolean advance() {
+            requireBoundary();
+            if (phase != Phase.NORMAL) { throw new IllegalStateException("Component dispatch is not in its normal phase"); }
+            if (cursor == entries.size()) { return false; }
+            executing = true;
+            try {
+                entries.get(cursor++).tick(owner);
+                return true;
+            } catch (RuntimeException | Error failure) {
+                phase = Phase.ABORTED;
+                throw failure;
+            } finally { executing = false; }
+        }
+
+        /**
+         * Runs post only after all normal callbacks and their caller-owned deferred work. Like
+         * plain tick, the first post failure stops later post callbacks and cannot be replayed.
+         */
+        public void finish() {
+            requireBoundary();
+            if (phase != Phase.NORMAL || cursor != entries.size()) {
+                throw new IllegalStateException("Component dispatch still has unfinished normal callbacks");
+            }
+            phase = Phase.FINISHED;
+            executing = true;
+            try { for (var entry : entries) { entry.post(owner); } }
+            finally { executing = false; }
+        }
+
+        /**
+         * Stops an unstarted or suspended dispatch without post, for example when deferred normal
+         * work failed. The caller must still retain and settle that work before releasing ownership.
+         */
+        public void abort() {
+            requireBoundary();
+            if (phase == Phase.FINISHED) { throw new IllegalStateException("Component dispatch already finished"); }
+            phase = Phase.ABORTED;
+        }
+
+        private void requireBoundary() {
+            if (Thread.currentThread() != creator || executing) {
+                throw new IllegalStateException("Component dispatch requires its owner outside callbacks");
+            }
+        }
+
+        private enum Phase { PREPARED, NORMAL, ABORTED, FINISHED }
+    }
+
+    /**
      * Captures one dispatch for pre, tick, body and post. Pre/tick faults abort before body and post,
      * preserving PM's process callback boundary and the plain tick's fail-fast behavior. Once body
      * starts, every captured post callback runs in order, even after a body or earlier post fault.
