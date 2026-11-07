@@ -1,6 +1,6 @@
 # 研究站材料与推进
 
-2026-11-07。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权及世界会话保存恢复。正 tier 玩家 Java 入队已通过 ServerResearch.requestStart 接入；界面/packet、领取和下载入口仍待完成；库不注册正式研究内容。
+2026-11-07。研究站已接入 `ResearchWorld` / `ServerResearch` 自动推进、原 pending 所有权及世界会话保存恢复。正 tier 玩家 Java 入队已通过 ServerResearch.requestStart 接入；研究界面/packet 与领取入口已接，下载入口仍待完成；库不注册正式研究内容。
 
 ## 对齐旧实现与 R29
 

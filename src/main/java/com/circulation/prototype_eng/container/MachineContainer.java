@@ -51,5 +51,16 @@ public final class MachineContainer extends AEBaseContainer {
     }
 
     /** AE2's Gson client-action codec reads these values; they grant no machine mutation permissions. */
-    public record View(int offset, int rows) { }
+    public static final class View {
+        int offset;
+        int rows;
+
+        @SuppressWarnings("unused") // AE2's default Gson codec constructs and fills this wire DTO.
+        public View() { }
+
+        public View(int offset, int rows) {
+            this.offset = offset;
+            this.rows = rows;
+        }
+    }
 }

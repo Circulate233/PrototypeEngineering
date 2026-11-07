@@ -6,6 +6,9 @@
 
 ## 当前状态
 
+- 研究客户端已接入：ResearchWorld.project 按当前成员和权限产生只读视图，不创建来源/保存/执行开始条件；默认 ResearchGui 直接继承 AEBaseGui，ResearchContainer 复用 AE2 GuiSync/窗口动作，提供目录、队列、奖励、文案和图标，以及开始/接管/黑名单/领取。原队伍与准确 queue entry、窗口和玩家实例参与校验；本人历史奖励不依赖当前队伍。主列表/详情各 6 行分页，完整选择组可达。MC 同步先于输入的时序通过最后绘制身份与目标值绑定处理；旧 Gson 不支持 record 动作参数的问题已在研究与原机器分页 DTO 一并修正。详情见[研究界面](research-gui.md)。
+- 研究视图与 GUI 阶段新增 40 项行为测试：只读投影的权限/成员/重入/保存边界、分页与实际进度/材料映射、完整奖励组浏览、严格 packet、文案文件/schema，以及实际 Gson 动作编解码。完整构建 1049 tests / 138 suites 全通过；20 个 src Java 加 Tags 共 21 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。证据 build/reports/idea/research-gui-final.json。没有启动游戏，原 23 份修改保留。
+
 - PN 普通配方消费者已接通：NetworkRecipeExtensions 在真实注册事件中有序发布；NetworkRecipeWork 合并机器默认与逐配方研究/数值需求，真实 START/TICK/END 检查选中物理数据中心、按并行量占用 numeric，并按整机 UUID 共享一份 THREAD。扫描不占额度；授权失效与物料/FE/业务同阶段补偿，历史完成 tick 不重扣或退款。
 - 物理数据中心已有外部 DataCenterStorage 接口、MachineDataCenterStorage 组件及严格 NBT；保留下载/磁盘写入/循环升级规则，修复旧同步能产生互斥内容而无法恢复的问题。服务器下载授权、物品消费及自动云同步仍待接入，不能把存储 API 当完整下载链。
 - 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
@@ -14,15 +17,19 @@
 - 检查点与候选局部回退已接真实执行：RequirementAlternatives 在候选开始前建立 ResourceBatch.Savepoint，Blocked/Failure 后只撤销候选及完整嵌套后缀，确认后按声明顺序改选。同步和 PlannedRecipeCoordinator 共用原 fence/来源 lanes；跨工位成功前缀保留，普通 continuation 仍可跨来源并行。UNKNOWN、超时及未退出回调保留原 Stage 和补偿义务，取消扩大为整批回退且不重放，见[检查点审计](checkpoint-execution-audit.md)。
 - 奖励效果前凭据阶段新增 27 项行为测试，覆盖 prepare/世界检查点顺序、保存失败与失权、完整 NBT 凭据、双文件未发出证明及加载合并后普通保存不降级。完整构建 1009 tests / 134 suites 全通过；11 个 src Java 加 Tags 共 12 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。实际玩家加载时序与生产 Jar 的 readEntityFromNBT 映射已核对；未启动游戏。证据 build/reports/idea/research-reward-receipts-final.json。原 23 份修改保留。
 - 研究站自动服务器阶段已接：ResearchWorld 每队持有材料消费者，调度器在普通工作之前持有 PlannedExecution；来源未退出或 UNKNOWN 阻止新捕获，结清后保存。Version 2 世界存档绑定准确队头/原站/完整材料；失权后的 stored 会话凭真实原站只做取消，异常保留原进程不重放。已结清异常释放执行所有权并令世界 faulted，正常业务 Failure 清理后保留队列以供后续工作。
-- 正 tier 玩家 Java 入队已接：ServerResearch.requestStart 复用 MAIN 提交与已有刷新，执行时重查玩家/FTB/原publication；ResearchStations.admission 只读实际设备等级与当前可用 numeric，不抢 THREAD、不扣材料。客户端界面和 packet 仍待实现。
+- 正 tier 玩家 Java 入队已接：ServerResearch.requestStart 复用 MAIN 提交与已有刷新，执行时重查玩家/FTB/原publication；ResearchStations.admission 只读实际设备等级与当前可用 numeric，不抢 THREAD、不扣材料。客户端界面和 packet 已接入，见[研究界面](research-gui.md)。
 - 服务器奖励 Java 领取已接：ResearchWorld 持有准确 RewardSession，逐次完整世界检查点仅放行自己的玩家写入；旧 pending 先重写，组/片段不重放。ServerResearch.requestReward 走 MAIN 并重验实际玩家会话；确认落盘后清交付标签，登录及掉落后续加载补清已确认片段。平台文件证据与剩余恢复保护见[服务器奖励](research-rewards.md)。
 - 奖励明确未调用/零效果的尝试保存 RETRY_PLANNED，重试保持原计划。原生交互保护已接：必要 Mixin 在原 MAIN 方法阻止物品操作，保留死亡奖励并在 Clone 前移交，保护光标关闭/存档、装备损耗、掉落更新及漏斗提取；不取消玩家死亡。共享查询位于独立 API 包，第三方直接改栈仍须遵守该契约。确认清理先重写原 pending，不能根据只读内存快照提前清标签。
 - 奖励效果前持久凭据已接：prepare 保存玩家 PREPARED，世界保存 DELIVERING 后先持久 ISSUING 再操作物品；准确未发出恢复先保存 RETRY_PLANNED。玩家加载时合并 live/UUID.dat/单人 Data.Player，任一 ISSUING 或缺失源保留未知，防普通保存覆盖强证据；确认后仅删除准确自身凭据。
-- 仍待研究界面/packet、下载、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
+- 仍待下载、个人遗忘/管理员操作、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
+
+- 2026-11-07（研究视图与 GUI）：研究客户端已接入：ResearchWorld.project 按当前成员和权限产生只读视图，不创建来源/保存/执行开始条件；默认 ResearchGui 直接继承 AEBaseGui，ResearchContainer 复用 AE2 GuiSync/窗口动作，提供目录、队列、奖励、文案和图标，以及开始/接管/黑名单/领取。原队伍与准确 queue entry、窗口和玩家实例参与校验；本人历史奖励不依赖当前队伍。主列表/详情各 6 行分页，完整选择组可达。MC 同步先于输入的时序通过最后绘制身份与目标值绑定处理；旧 Gson 不支持 record 动作参数的问题已在研究与原机器分页 DTO 一并修正。详情见[研究界面](research-gui.md)。
+- 研究视图与 GUI 阶段新增 40 项行为测试：只读投影的权限/成员/重入/保存边界、分页与实际进度/材料映射、完整奖励组浏览、严格 packet、文案文件/schema，以及实际 Gson 动作编解码。完整构建 1049 tests / 138 suites 全通过；20 个 src Java 加 Tags 共 21 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。证据 build/reports/idea/research-gui-final.json。没有启动游戏，原 23 份修改保留。
+- 复用前检查了旧 PN 实际响应处理及 content/reward 元数据，确认没有现成研究 GUI；读取 AE2 窗口动作/自定义同步实现与 MC 输入顺序。测试实际发现并修正 Gson 旧版本缺少 parseReader/keySet，旧 record 参数的默认解码也经实际 class+Gson 2.8.0 取证失败后修正。准确接管 entryId 分支及平台窗口/角色证明通过静态审查；不为这条分支强造游戏 fixture。个人遗忘/管理员操作、下载/磁盘/自动同步和永久破坏会话继续保留欠项。
 
 - 奖励效果前凭据阶段新增 27 项行为测试，覆盖 prepare/世界检查点顺序、保存失败与失权、完整 NBT 凭据、双文件未发出证明及加载合并后普通保存不降级。完整构建 1009 tests / 134 suites 全通过；11 个 src Java 加 Tags 共 12 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，build_project 成功。实际玩家加载时序与生产 Jar 的 readEntityFromNBT 映射已核对；未启动游戏。证据 build/reports/idea/research-reward-receipts-final.json。原 23 份修改保留。
 

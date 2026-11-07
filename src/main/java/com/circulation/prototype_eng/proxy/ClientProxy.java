@@ -6,6 +6,8 @@ import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.block.HatchBlocks;
 import com.circulation.prototype_eng.client.gui.EnergyHatchGui;
 import com.circulation.prototype_eng.client.gui.ResourceHatchGui;
+import com.circulation.prototype_eng.client.gui.ResearchGui;
+import com.circulation.prototype_eng.container.ResearchContainer;
 import com.circulation.prototype_eng.client.MachineControllerModels;
 import com.circulation.prototype_eng.client.OrientationToolModels;
 import com.circulation.prototype_eng.container.EnergyHatchContainer;
@@ -42,6 +44,7 @@ public class ClientProxy extends CommonProxy {
     @Override
     public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         return switch (getServerGuiElement(id, player, world, x, y, z)) {
+            case ResearchContainer research -> new ResearchGui(research, player.inventory);
             case ResourceHatchContainer resource -> new ResourceHatchGui(resource, player.inventory);
             case EnergyHatchContainer energy -> new EnergyHatchGui(energy, player.inventory);
             case AEBaseContainer container when container.getTarget() instanceof MachineControllerBlockEntity machine ->

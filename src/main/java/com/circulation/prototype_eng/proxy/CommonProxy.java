@@ -28,6 +28,8 @@ import net.minecraftforge.fml.common.event.FMLServerAboutToStartEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import com.circulation.prototype_eng.container.EnergyHatchContainer;
 import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
+import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
+import com.circulation.prototype_eng.container.ResearchContainer;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.container.ResourceHatchContainer;
 import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
@@ -97,6 +99,7 @@ public class CommonProxy implements IGuiHandler {
 
     @Override
     public Object getServerGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
+        if (id == ResearchGuiAccess.GUI_ID) { return new ResearchContainer(player.inventory); }
         if (id != 0 || !world.isBlockLoaded(new BlockPos(x, y, z))) { return null; }
         return switch (world.getTileEntity(new BlockPos(x, y, z))) {
             case MachineControllerBlockEntity machine -> MachineGuiRegistry.create(player.inventory, machine);
