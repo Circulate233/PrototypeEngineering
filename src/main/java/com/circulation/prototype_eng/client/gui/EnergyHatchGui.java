@@ -6,7 +6,6 @@ import ae2.util.ReadableNumberConverter;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.EnergyHatchContainer;
-import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.localization.GuiText;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiTextField;
@@ -32,9 +31,8 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         super(container, player);
         xSize = 176;
         ySize = PLAYER_TOP + 82;
-        var tile = (EnergyHatchBlockEntity) container.getTarget();
         String texture = container.mode() == HatchMode.MIXED ? "gui_energy_io_hatch_" : "gui_energy_hatch_";
-        barTexture = new ResourceLocation(Tags.MOD_ID, "textures/gui/gui_energy_hatch/" + texture + tile.tier().level() + ".png");
+        barTexture = new ResourceLocation(Tags.MOD_ID, "textures/gui/gui_energy_hatch/" + texture + container.tier().level() + ".png");
     }
 
     @Override

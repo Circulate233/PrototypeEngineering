@@ -7,9 +7,7 @@ import com.circulation.prototype_eng.api.storage.HatchTier;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.ITickable;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.energy.CapabilityEnergy;
 import org.jetbrains.annotations.NotNull;
@@ -19,8 +17,11 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Objects;
 
+import ae2.tile.AEBaseTile;
+import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
+
 /** PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions. */
-public final class EnergyHatchBlockEntity extends TileEntity implements ITickable {
+public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGuiHost {
     private static final VarHandle STORAGE_DIRTY;
 
     static {
@@ -52,6 +53,16 @@ public final class EnergyHatchBlockEntity extends TileEntity implements ITickabl
         createStorage();
     }
 
+    @Override
+    public AEBaseTile blockEntity() {
+        return this;
+    }
+
+    @Override
+    public boolean canBeRotated() {
+        return false;
+    }
+
     private void createStorage() {
         // Physical directions are enforced by capability routing, not by disabling the
         // reverse machine operation on the shared balance as PM's backend did.
@@ -65,6 +76,7 @@ public final class EnergyHatchBlockEntity extends TileEntity implements ITickabl
 
     @Override
     public void update() {
+        super.update();
         flushStorageChanges();
     }
 
@@ -101,10 +113,7 @@ public final class EnergyHatchBlockEntity extends TileEntity implements ITickabl
 
     private void settingsChanged() {
         markDirty();
-        if (world != null && !world.isRemote) {
-            var state = world.getBlockState(pos);
-            world.notifyBlockUpdate(pos, state, state, 3);
-        }
+        // GuiSync sends settings to every viewer without replacing their live storage views.
     }
 
     @Override
@@ -127,8 +136,8 @@ public final class EnergyHatchBlockEntity extends TileEntity implements ITickabl
     }
 
     @Override
-    public @NotNull NBTTagCompound writeToNBT(@NotNull NBTTagCompound tag) {
-        super.writeToNBT(tag);
+    public void saveAdditional(@NotNull NBTTagCompound tag) {
+        super.saveAdditional(tag);
         tag.setInteger("Tier", tier.level());
         tag.setString("Mode", mode.name());
         tag.setLong("Energy", buffer.savedEnergy());
@@ -136,12 +145,11 @@ public final class EnergyHatchBlockEntity extends TileEntity implements ITickabl
         tag.setLong("MaxOutRate", maxOutputRate);
         tag.setBoolean("AutoInput", autoInput);
         tag.setBoolean("AutoOutput", autoOutput);
-        return tag;
     }
 
     @Override
-    public void readFromNBT(@NotNull NBTTagCompound tag) {
-        super.readFromNBT(tag);
+    public void loadTag(@NotNull NBTTagCompound tag) {
+        super.loadTag(tag);
         buffer.invalidate();
         tier = tag.hasKey("Tier", 3) ? HatchTier.of(tag.getInteger("Tier")) : tier;
         mode = tag.hasKey("Mode", 8) ? HatchMode.valueOf(tag.getString("Mode")) : mode;
@@ -152,14 +160,33 @@ public final class EnergyHatchBlockEntity extends TileEntity implements ITickabl
         createStorage();
         // PM reloads the current tier config, then clamps the saved balance if capacity was reduced.
         buffer.restore(Math.clamp(tag.getLong("Energy"), 0, buffer.capacity()));
-        if (isInvalid()) { buffer.invalidate(); }
+        if (isInvalid()) {
+            buffer.invalidate();
+        }
     }
 
-    @Override public void invalidate() { buffer.invalidate(); flushStorageChanges(); super.invalidate(); }
-    @Override public void onChunkUnload() { buffer.invalidate(); flushStorageChanges(); super.onChunkUnload(); }
-    @Override public void validate() {
-        super.validate();
-        if (!buffer.isValid()) { readFromNBT(writeToNBT(new NBTTagCompound())); }
+    @Override
+    protected void setRemoved() {
+        buffer.invalidate();
+        flushStorageChanges();
+        super.setRemoved();
+    }
+
+    @Override
+    protected void onChunkUnloaded() {
+        buffer.invalidate();
+        flushStorageChanges();
+        super.onChunkUnloaded();
+    }
+
+    @Override
+    protected void clearRemoved() {
+        super.clearRemoved();
+        if (!buffer.isValid()) {
+            long saved = buffer.savedEnergy();
+            createStorage();
+            buffer.restore(Math.clamp(saved, 0, buffer.capacity()));
+        }
     }
     @Override public @NotNull NBTTagCompound getUpdateTag() { return writeToNBT(new NBTTagCompound()); }
     @Override public SPacketUpdateTileEntity getUpdatePacket() { return new SPacketUpdateTileEntity(pos, 0, getUpdateTag()); }

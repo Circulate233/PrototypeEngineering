@@ -17,6 +17,8 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
+import com.circulation.prototype_eng.api.structure.StructureComponents;
+
 /**
  * Server-side machine boundaries migrated from PM. Attach once, after world attachment and before
  * scheduling. Restore all component NBT before load(RESTORED); register scheduling only after load
@@ -48,6 +50,7 @@ public final class MachineLifecycle {
     private volatile int gate = IDLE;
     private volatile State state = State.CREATED;
     private volatile boolean formed;
+    private long formationGeneration;
     private volatile boolean broken;
     private volatile boolean faulted;
     private volatile boolean retired;
@@ -78,6 +81,20 @@ public final class MachineLifecycle {
     public MachineLifecycleHost host() { return host; }
     public State state() { return state; }
     public boolean formed() { return formed; }
+
+    /** Persistent count of successful false-to-true formations; refresh within a formation keeps it. */
+    public long formationGeneration() {
+        return formationGeneration;
+    }
+
+    /** Restore only during unpublished assembly; ports and formed authority are rebuilt afterward. */
+    public void restoreFormationGeneration(long generation) {
+        host.requireServerThread();
+        if (state != State.CREATED || (int) GATE.getAcquire(this) != ASSEMBLING || generation < 0) {
+            throw new IllegalStateException("Formation generation restore requires unpublished assembly and a nonnegative value");
+        }
+        formationGeneration = generation;
+    }
     /** Revokes new execution immediately; owner cleanup still waits for the scheduler's real join. */
     public void retire() { retired = true; }
     public boolean retired() { return retired; }
@@ -169,10 +186,12 @@ public final class MachineLifecycle {
         enterTransition();
         try {
             requireLoaded();
-            if (retired && hatches != null) { throw new IllegalStateException("A retired machine cannot form"); }
+            if (retired && hatches != null) {
+                throw new IllegalStateException("A retired machine cannot form");
+            }
             var captured = capture();
             requireQuiescent(captured);
-            installStructure(hatches, null, captured);
+            installStructure(hatches, null, StructureComponents.EMPTY, captured);
         } finally {
             leave();
         }
@@ -190,23 +209,34 @@ public final class MachineLifecycle {
         Objects.requireNonNull(prepare);
         enterTransition();
         try {
-            if (state != State.LOADED || broken || retired) { return false; }
+            if (state != State.LOADED || broken || retired) {
+                return false;
+            }
             requireHealthy();
-            if (!applicable.getAsBoolean() || retired) { return false; }
+            if (!applicable.getAsBoolean() || retired) {
+                return false;
+            }
             var captured = capture();
             requireQuiescent(captured);
             try {
                 var assembly = prepare.get();
-                if (assembly == null || !applicable.getAsBoolean() || retired) { return false; }
-                installStructure(assembly.hatches(), assembly.match(), captured);
+                if (assembly == null || !applicable.getAsBoolean() || retired) {
+                    return false;
+                }
+                installStructure(assembly.hatches(), assembly.match(), assembly.components(), captured);
                 return true;
             } catch (RuntimeException | Error failure) {
                 // A failed obsolete attempt still reports its exception, but cannot poison the
                 // replacement generation. Failure to determine authority is itself unrecoverable.
-                try { if (applicable.getAsBoolean()) { faulted = true; } }
-                catch (RuntimeException | Error authorityFailure) {
+                try {
+                    if (applicable.getAsBoolean()) {
+                        faulted = true;
+                    }
+                } catch (RuntimeException | Error authorityFailure) {
                     faulted = true;
-                    if (failure != authorityFailure) { failure.addSuppressed(authorityFailure); }
+                    if (failure != authorityFailure) {
+                        failure.addSuppressed(authorityFailure);
+                    }
                 }
                 throw failure;
             }
@@ -215,10 +245,23 @@ public final class MachineLifecycle {
         }
     }
 
-    private void installStructure(@Nullable MachineHatches hatches, @Nullable StructureMatch match, Captured captured) {
+    private void installStructure(@Nullable MachineHatches hatches, @Nullable StructureMatch match,
+                                  StructureComponents ports, Captured captured) {
         boolean previous = formed;
-        if (hatches == null) { machine.components().remove(MachineHatches.TYPE); }
-        else { machine.components().put(MachineHatches.TYPE, hatches); }
+        long generation = hatches != null && !previous ? Math.incrementExact(formationGeneration) : formationGeneration;
+        for (var binding : ports.bindings()) {
+            if (binding.context().machine() != machine || binding.context().formationGeneration() != generation) {
+                throw new IllegalArgumentException("Structure ports belong to a different machine or formation generation");
+            }
+        }
+        if (hatches == null) {
+            machine.components().remove(MachineHatches.TYPE);
+            machine.components().remove(StructureComponents.TYPE);
+        } else {
+            machine.components().put(MachineHatches.TYPE, hatches);
+            machine.components().put(StructureComponents.TYPE, ports);
+        }
+        formationGeneration = generation;
         structureMatch = match;
         formed = hatches != null;
         if (previous != formed) {
@@ -548,7 +591,13 @@ public final class MachineLifecycle {
     private Throwable unloadCaptured(MachineLifecycleEvent.UnloadReason reason, Captured captured, @Nullable Throwable failure) {
         state = State.UNLOADED;
         failure = publishAll(new MachineLifecycleEvent.Unloaded(context(), reason), captured.listeners(), failure);
-        if (failure != null) { faulted = true; }
+        machine.components().remove(MachineHatches.TYPE);
+        machine.components().remove(StructureComponents.TYPE);
+        structureMatch = null;
+        formed = false;
+        if (failure != null) {
+            faulted = true;
+        }
         return failure;
     }
 

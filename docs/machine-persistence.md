@@ -12,7 +12,7 @@
 
 ## 保存内容与恢复顺序
 
-机器 NBT Version 1 保存 `Type`、`Revision`、`Attributes`、`Components`、`PendingDependencies`。组件条目保存描述符 ID、实际动态依赖与独立 `Data`。未知或重复条目、错误字段类型、坏修订/ID、循环组件/系统依赖都拒绝，不能跳过坏项加载半台机器。
+机器 NBT Version 2 保存 `Type`、`Revision`、`Attributes`、`Components`、`PendingDependencies` 和 exact-long 非负 `FormationGeneration`。形成次数保留端口身份的代号，恢复后仍需重新匹配和成型，不恢复授权。组件条目保存描述符 ID、实际动态依赖与独立 `Data`。未知或重复条目、错误字段类型、坏修订/ID、循环组件/系统依赖都拒绝，不能跳过坏项加载半台机器。
 
 恢复先解析并验证完整保存图，再创建所有已保存组件；随后按组件依赖顺序恢复数据，最后完整校验。保存的实际图优先于类型默认图：已删除的声明组件不被重新添加，运行时新增组件必须已有显式绑定，尚未安装 dependent 的 pending 约束保留。`ComponentMap.validateGraph` 与实际 dispatch 复用同一系统排序逻辑，预检不调用工厂。
 
@@ -22,7 +22,7 @@
 
 `MachineScheduling` 使用内置 codec 保存实例模式，未保存权限代或执行状态；fresh 只在缺席时补入类型默认模式。它不会自动给所有机器增加工位或 scanner。工位 codec 继续保存完整进程状态，普通卸载保存后恢复不重跑 START，重新成型后才能继续配方。
 
-`MachineHatches` 只来自当前结构发布，不作为组件条目保存/恢复，也不能绑定 codec 或声明为待装配组件；其他组件仍可保留指向其规范 TYPE 的软依赖。形成状态、结构绑定、配置代、epoch、lease 和 ready 都不会从机器 NBT 恢复。显式声明的 `MachineOwnership` 使用内置 codec 保存 machine/owner UUID，恢复不采用新放置者；普通机器不自动安装身份组件。具体规则见[持久身份](machine-identity.md)。
+`MachineHatches` 与 `StructureComponents` 只来自当前结构发布，不作为组件条目保存/恢复，也不能绑定 codec 或声明为待装配组件；其他组件仍可保留指向其规范 TYPE 的软依赖。形成次数由根 NBT 保存；形成状态、结构绑定、配置代、epoch、lease 和 ready 都不会从机器 NBT 恢复。显式声明的 `MachineOwnership` 使用内置 codec 保存 machine/owner UUID，恢复不采用新放置者；普通机器不自动安装身份组件。具体规则见[持久身份](machine-identity.md)。
 
 ## 生命周期门限
 

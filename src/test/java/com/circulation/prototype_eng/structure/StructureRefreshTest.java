@@ -36,7 +36,25 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
-import static org.junit.jupiter.api.Assertions.*;
+
+import com.circulation.prototype_eng.api.component.ComponentType;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
+import com.circulation.prototype_eng.api.machine.component.MachineSystem;
+import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
+import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
+import com.circulation.prototype_eng.localization.RecipeText;
+import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class StructureRefreshTest {
     private static final BlockPos FIRST = new BlockPos(1, 0, 0);
@@ -253,6 +271,207 @@ class StructureRefreshTest {
         assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
     }
 
+    private static final ComponentType<MachineInstance, ExternalPort> PORT = new ComponentType<>(id("port"),
+        _ -> fail("Structure port discovery must not invoke component factories"), List.of(new MachineSystem<>() {
+            @Override
+            public ResourceLocation id() {
+                return StructureRefreshTest.id("port_system");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, ExternalPort component) {
+                fail("Lightweight structure ports must not tick their component type systems");
+            }
+        }));
+
+    private static StructureComponentProvider.Entry<ExternalPort> entry(String portId, ExternalPort port) {
+        return new StructureComponentProvider.Entry<>(PORT, portId, port);
+    }
+
+    @Test
+    void everyMatchedProviderCreatesTypedPortsOnTheOwnerBeforeTheFormedEventAndPortsNeverTick() {
+        var fixture = new Fixture();
+        fixture.host.values.put(SECOND, "body");
+        var first = new ExternalPort("first");
+        var extra = new ExternalPort("extra");
+        var second = new ExternalPort("second");
+        var contexts = new ObjectArrayList<StructureComponentProvider.Context>();
+        fixture.host.providers.put(FIRST, context -> {
+            fixture.host.requireServerThread();
+            contexts.add(context);
+            return List.of(entry("main", first), entry("extra", extra));
+        });
+        fixture.host.providers.put(SECOND, context -> {
+            fixture.host.requireServerThread();
+            contexts.add(context);
+            return List.of(entry("main", second));
+        });
+        try (var ignored = fixture.registry.register(new MachineLifecycleListener() {
+            @Override
+            public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
+                assertEquals(List.of(first, extra, second), fixture.machine.structureComponents().get(PORT).stream()
+                    .map(binding -> binding.entry().component()).toList());
+            }
+        })) {
+            var request = fixture.request();
+            var result = CompletableFuture.supplyAsync(request::evaluate).join();
+            assertTrue(contexts.isEmpty());
+            assertTrue(fixture.refresh.publish(result));
+        }
+        assertEquals(List.of(FIRST, SECOND), contexts.stream().map(StructureComponentProvider.Context::providerPos).toList());
+        contexts.forEach(context -> {
+            assertSame(fixture.machine, context.machine());
+            assertEquals(1, context.formationGeneration());
+        });
+        assertSame(extra, fixture.machine.structureComponents().find(PORT, FIRST, "extra"));
+        fixture.machine.onSchedule();
+    }
+
+    @Test
+    void everyAcceptedRefreshReplacesPortsWithinOneGenerationAndRemovalOrReformationClearsTheOldBindings() {
+        var fixture = new Fixture();
+        var first = new ExternalPort("old");
+        fixture.host.providers.put(FIRST, _ -> List.of(entry("main", first)));
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        var captured = fixture.machine.structureComponents();
+        var replacement = new ExternalPort("replacement");
+        fixture.host.providers.put(FIRST, _ -> List.of(entry("main", replacement)));
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        assertSame(replacement, fixture.machine.structureComponents().find(PORT, FIRST, "main"));
+        assertSame(first, captured.find(PORT, FIRST, "main"));
+        assertEquals(1, fixture.lifecycle.formationGeneration());
+        fixture.host.providers.clear();
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        assertTrue(fixture.lifecycle.formed());
+        assertTrue(fixture.machine.structureComponents().bindings().isEmpty());
+        fixture.host.providers.put(FIRST, _ -> List.of(entry("main", replacement)));
+        fixture.refresh.invalidate();
+        assertTrue(fixture.machine.structureComponents().bindings().isEmpty());
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        assertEquals(2, fixture.machine.structureComponents().get(PORT).getFirst().context().formationGeneration());
+        fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+        assertTrue(fixture.machine.structureComponents().bindings().isEmpty());
+        assertNull(fixture.lifecycle.structureMatch());
+        assertFalse(fixture.lifecycle.formed());
+    }
+
+    @Test
+    void providerIdentityChangesAfterCreationRejectTheWholeCandidateAndRetryRebuildsTheReplacement() {
+        var fixture = new Fixture();
+        var existing = new ExternalPort("existing");
+        fixture.host.providers.put(FIRST, _ -> List.of(entry("main", existing)));
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        var old = fixture.machine.structureComponents();
+        var replacement = new ExternalPort("replacement");
+        StructureComponentProvider current = _ -> List.of(entry("main", replacement));
+        fixture.host.providers.put(FIRST, _ -> {
+            fixture.host.providers.put(FIRST, current);
+            return List.of(entry("main", new ExternalPort("obsolete")));
+        });
+        var result = fixture.result();
+        assertFalse(fixture.refresh.publish(result));
+        assertSame(old, fixture.machine.structureComponents());
+        assertEquals(1, fixture.lifecycle.formationGeneration());
+        assertTrue(fixture.refresh.publish(result));
+        assertSame(replacement, fixture.machine.structureComponents().find(PORT, FIRST, "main"));
+    }
+
+    @Test
+    void invalidProviderResultsNeverInstallAPartialCollectionAndStillPermitUnloadCleanup() {
+        var repeated = new ExternalPort("same");
+        List<StructureComponentProvider> invalid = List.of(
+            _ -> null,
+            _ -> Collections.singletonList(null),
+            _ -> List.of(entry("same", new ExternalPort("left")), entry("same", new ExternalPort("right"))),
+            _ -> List.of(entry("first", repeated), entry("second", repeated)),
+            _ -> { throw new IllegalArgumentException("provider failed"); });
+        for (var provider : invalid) {
+            var fixture = new Fixture();
+            var initial = new ExternalPort("initial");
+            fixture.host.providers.put(FIRST, _ -> List.of(entry("main", initial)));
+            assertTrue(fixture.refresh.publish(fixture.result()));
+            var accepted = fixture.machine.structureComponents();
+            fixture.host.providers.put(FIRST, provider);
+            assertThrows(RuntimeException.class, () -> fixture.refresh.publish(fixture.result()));
+            assertSame(accepted, fixture.machine.structureComponents());
+            assertFalse(fixture.machine.canProcessRecipes());
+            assertTrue(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED));
+            assertTrue(fixture.machine.structureComponents().bindings().isEmpty());
+        }
+    }
+
+    @Test
+    void formationCountSurvivesMachinePersistenceButPortsAndFormationAuthorityAreRecreated() {
+        var host = new Host();
+        var type = MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape")).build();
+        var assembly = MachineAssembly.builder(type, "ports_v1").build();
+        var machine = assembly.create(host, new MachineLifecycleRegistry());
+        var lifecycle = Objects.requireNonNull(machine.lifecycle());
+        var refresh = new StructureRefresh(lifecycle, host);
+        host.providers.put(FIRST, context -> List.of(entry("main", new ExternalPort("generation:" + context.formationGeneration()))));
+        assertTrue(refresh.publish(Objects.requireNonNull(refresh.prepare()).evaluate()));
+        refresh.invalidate();
+        assertTrue(refresh.publish(Objects.requireNonNull(refresh.prepare()).evaluate()));
+        var saved = assembly.encode(machine);
+        assertEquals(2, saved.getLong("FormationGeneration"));
+        assertTrue(lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
+        var restored = assembly.restore(host, saved, new MachineLifecycleRegistry());
+        var restoredLifecycle = Objects.requireNonNull(restored.lifecycle());
+        assertFalse(restoredLifecycle.formed());
+        assertTrue(restored.structureComponents().bindings().isEmpty());
+        var restoredRefresh = new StructureRefresh(restoredLifecycle, host);
+        assertTrue(restoredRefresh.publish(Objects.requireNonNull(restoredRefresh.prepare()).evaluate()));
+        assertEquals(3, restored.structureComponents().get(PORT).getFirst().context().formationGeneration());
+
+    }
+
+    private record ExternalPort(String name) implements AffinityKeyProvider {
+        @Override
+        public Set<?> affinityKeys() {
+            return Set.of(name);
+        }
+    }
+
+    @Test
+    void sharedExternalStructurePortsParticipateInTheRealMachineSchedulerLanes() {
+        var first = new Fixture();
+        var second = new Fixture();
+        first.host.providers.put(FIRST, _ -> List.of(entry("main", new ExternalPort("shared:port"))));
+        second.host.providers.put(FIRST, _ -> List.of(entry("main", new ExternalPort("shared:port"))));
+        assertTrue(first.refresh.publish(first.result()));
+        assertTrue(second.refresh.publish(second.result()));
+        var log = new ConcurrentLinkedQueue<String>();
+        var threads = new ConcurrentLinkedQueue<Thread>();
+        var work = new ComponentType<MachineInstance, Runnable>(id("port_work"), _ -> fail("Explicit fixture work"),
+            List.of(new MachineSystem<>() {
+                @Override
+                public ResourceLocation id() {
+                    return StructureRefreshTest.id("port_consumer");
+                }
+
+                @Override
+                public void onTick(MachineInstance owner, Runnable component) {
+                    assertEquals("shared:port", owner.structureComponents().get(PORT).getFirst().entry().component().name());
+                    component.run();
+                }
+            }));
+        first.machine.components().put(work, () -> {
+            log.add("first");
+            threads.add(Thread.currentThread());
+        });
+        second.machine.components().put(work, () -> {
+            log.add("second");
+            threads.add(Thread.currentThread());
+        });
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 2)) {
+            scheduler.register(first.machine);
+            scheduler.register(second.machine);
+            scheduler.tick();
+            assertEquals(List.of("first", "second"), List.copyOf(log));
+            assertEquals(1, Set.copyOf(threads).size());
+        }
+    }
+
     private static StructureHatchBinding binding(ResourceHatch hatch) { return new StructureHatchBinding(new Object(), hatch, null, null); }
     private static ResourceLocation id(String path) { return new ResourceLocation("structure_refresh_test", path); }
 
@@ -279,6 +498,7 @@ class StructureRefreshTest {
         private final Thread serverThread = Thread.currentThread();
         private final Map<BlockPos, String> values = new Object2ObjectOpenHashMap<>();
         private final Map<BlockPos, StructureHatchBinding> bindings = new Object2ObjectOpenHashMap<>();
+        private final Map<BlockPos, StructureComponentProvider> providers = new Object2ObjectOpenHashMap<>();
         private StructureConfiguration configuration = new StructureConfiguration(
             new SliceStructure(id("shape"), BlockOrientation.NORTH_UP, FIRST, false,
                 new StructurePattern(Map.of(BlockPos.ORIGIN, StructurePredicates.test(MARKER, "body"::equals))),
@@ -309,6 +529,13 @@ class StructureRefreshTest {
             var found = bindings.getOrDefault(position, StructureHatchBinding.EMPTY);
             onDiscovery.accept(position);
             return found;
+        }
+
+        @Override
+        @Nullable
+        public StructureComponentProvider structureComponentsAt(BlockPos position) {
+            requireServerThread();
+            return providers.get(position);
         }
     }
 }

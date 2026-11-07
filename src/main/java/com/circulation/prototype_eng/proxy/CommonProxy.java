@@ -32,14 +32,15 @@ import com.circulation.prototype_eng.container.EnergyHatchContainer;
 import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
 import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import com.circulation.prototype_eng.container.ResearchContainer;
-import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.container.ResourceHatchContainer;
-import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
-import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.common.network.IGuiHandler;
+
+import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
+import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 
 /** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
 public class CommonProxy implements IGuiHandler {
@@ -106,9 +107,9 @@ public class CommonProxy implements IGuiHandler {
         if (id == ResearchGuiAccess.GUI_ID) { return new ResearchContainer(player.inventory); }
         if (id != 0 || !world.isBlockLoaded(new BlockPos(x, y, z))) { return null; }
         return switch (world.getTileEntity(new BlockPos(x, y, z))) {
-            case MachineControllerBlockEntity machine -> MachineGuiRegistry.create(player.inventory, machine);
-            case ResourceHatchBlockEntity resource -> new ResourceHatchContainer(player.inventory, resource);
-            case EnergyHatchBlockEntity energy -> new EnergyHatchContainer(player.inventory, energy);
+            case MachineControllerHost machine -> MachineGuiRegistry.create(player.inventory, machine);
+            case ResourceHatchGuiHost resource -> new ResourceHatchContainer(player.inventory, resource);
+            case EnergyHatchGuiHost energy -> new EnergyHatchContainer(player.inventory, energy);
             case null, default -> null;
         };
     }

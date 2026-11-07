@@ -30,6 +30,10 @@
 
 ## 外部实现
 
+R31 的物理扩展边界已接：`HatchBlock` 继承 `AEBaseTileBlock<AEBaseTile>`，构造接受完整 `ResourceLocation` 和 `Supplier<? extends AEBaseTile>`，允许下游命名空间及自定义实体；`createItem()` 提供 AE2S 的 `AEBaseBlockItem` 并可覆写。默认资源/FE 实体继承 `AEBaseTile`，已移除公开物理类的 `final` 限制。NBT 使用 `loadTag/saveAdditional`，失效、重新挂载和区块卸载使用 `setRemoved/clearRemoved/onChunkUnloaded`，保留原缓存失效和服务端脏信号冲刷。没有新增第二套实体基类。
+
+原 `ResourceHatch` / `EnergyInput` / `EnergyOutput` 仍用于能力发现、结构捕获和机器配方消费。需要共享槽位适配器的外部实现可实现 `SlottedResourceHatch`，其双侧返回 `SlottedResourceStorage`；`HatchInventoryPort` 和 `HatchFluidHandler` 接受该接口，不再要求 `BufferedResourceHatch`。默认容器通过 `ResourceHatchGuiHost` / `EnergyHatchGuiHost` 取得准确 AEBaseTile、模式、等级和真实存储；FE 用户设置独立为 `EnergyHatchSettings`。这些 GUI 职责是可选接入能力，不成为所有机器侧仓室的额外要求。
+
 外部 TileEntity 可以在 `getCapability` 中暴露 `api.HatchCapabilities.RESOURCE`、`ENERGY_INPUT` 或 `ENERGY_OUTPUT`，不需要继承内置 TileEntity。机器通过 `findResource` / `findEnergyInput` / `findEnergyOutput` 获取仍有效的契约；接口实例与存档均由宿主管理，能力注册不提供脱离宿主的默认实例或通用 NBT 格式。能力入口已经声明，外部宿主参与完整机器运行的验收仍待后续集成。
 
 外部资源仓后端实现本库 `ResourceStorage`，有槽位时可实现 `SlottedResourceStorage`，不需要实现或继承 MEStorage / GenericStackInv。实现必须提供一致的 context、快照、预留、实际转移数量、补偿及失效行为；不能通过另一个入口绕过预留。`inputStorageIdentity()` / `outputStorageIdentity()` 默认返回对应存储的 context，适配别名必须共享同一底层 context。机器据此避免把同一份库存的多个视图重复预算；输入与输出独立时身份也必须独立。
@@ -44,7 +48,13 @@
 
 能源实体按模式暴露公开 EnergyInput/EnergyOutput，并使用 ForgeEnergyPort 暴露 Forge ENERGY。卸载/失效使已取得的转移引用失效；重新挂载时创建新视图，旧引用不会重新激活。保存仍可读取失效核心的实际内容；三方向、动态限额、重载和旧引用失效已由能源逻辑用例验证。
 
-方块掉落以 BlockEntityTag 携带缓存、方向、槽位和容量；挖掘路径保留实体至生成掉落之后，再移除方块。重新放置使用 ItemBlock 的标准 NBT 恢复路径。丝触走同样的内容掉落规则。当前没有新增可丢弃内容的清空按钮。
+方块掉落以 BlockEntityTag 携带缓存、方向、槽位和容量；挖掘路径保留实体至生成掉落之后，再移除方块。重新放置使用 AEBaseBlockItem 的标准 NBT 恢复路径。丝触走同样的内容掉落规则。
+
+PM `FluidHatchBlockEntity` 与混合 `FluidIOHatchBlockEntity` 的真实每次 fill/drain 限额已恢复到可选 `FluidHatchSettings`：输入/输出分别为非负 long，0 不限，正数限制每次操作的 mB 数量。`HatchFluidHandler` 对整个模拟或实际请求先裁剪，混合两侧仍分别访问；`ResourceHatchContainer` 的手持容器填充/倒入也仅对 AEFluidKey 应用对应限额，失败填充的完整补偿不受限额裁剪。配方直接访问 ResourceStorage 不受自动化限额影响，物品及其它 key 保持原转移语义；没有把每次操作限额改成累计 tick 预算。设置保存为 `MaxFluidInRate/MaxFluidOutRate`，GUI 使用 GuiSync 同步，不为每次设置替换客户端正在使用的存储视图。
+
+PM 单侧/混合流体 GUI 原有清空效果已恢复为资源 GUI 的“清空流体”：服务器检查原玩家、openContainer、准确有效实体、当前存储身份、距离、服务器线程和方块操作权限后，分别在两侧 context 锁内按 AEKeyType.fluids() 抽取可用数量。物品、其它 key、设置、槽位布局不清除，也不产生退款物品。被输入预留或待结算输出持有的数量保留，已应用输入的退款容量和输出的补偿权不受破坏；没有复制旧 storage.clear() 绕过当前事务合同。公开 `HatchSlotActions.clearAvailable(storage, type)` 提供同一受预留保护的存储行为，调用方仍须授权其 owner/玩家动作。
+
+清空先使用现有 `StorageContext.tryOrdinaryLock` 的非阻塞普通动作入口；当前正在保留的 StorageFence、fence scope 或繁忙物理锁直接拒绝本次动作，不让 GUI 等待自己拥有的 pending 事务，也不跨入它的源 scope。未锁定成功前不读真实内容。该新增边界已落盘，新增 retained-fence 用例及最新逐文件检查随主线最终验证，不能用前一轮通过结果替代。
 
 ## Java 界面
 
@@ -52,7 +62,7 @@ ResourceHatchGui 和 EnergyHatchGui 直接继承 AEBaseGui，复用 AE2 背景�
 
 `localization.GuiText` 实现 AE2S 的 `LocalizationEnum`，客户端标签调用 `getLocal()`，容器标题使用 `text(...)` 组件。GUI 不拼接翻译键，也不直接传裸翻译键调用翻译函数。
 
-资源输入/输出区域各有独立的 AE2 ScrollBar，最多显示 5 行并随分辨率压缩。滚动保留原始槽位索引，隐藏槽禁用，避免界面位置变化造成操作对象混淆。能源界面为 176×214，使用 PM 原 16×66 纵向能量条，支持输入/输出限额与自动标志设置、Enter 提交及完整 long 数值 tooltip；实际 GUI 交互与不同分辨率显示尚待游戏内验证。
+资源输入/输出区域各有独立的 AE2 ScrollBar，最多显示 5 行并随分辨率压缩；默认布局读取各侧实际槽数，允许外部非对称槽位仓室。滚动保留原始槽位索引，隐藏槽禁用，避免界面位置变化造成操作对象混淆。网格后保留流体限额/清空区域，限额可 Enter 或“应用”提交。能源界面为 176×214，使用 PM 原 16×66 纵向能量条，支持输入/输出限额与自动标志设置、Enter 提交及完整 long 数值 tooltip；纹理等级从容器的公开宿主契约读取，不强转内置实体。实际 GUI 交互与不同分辨率显示尚待游戏内验证。
 
 AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv，不能直接接收 GenericInternalInventory。这里使用薄适配器 `HatchGuiInventory` 实现 InternalInventory 和 GenericStackDisplayInventory：服务端直接读取 SlottedResourceStorage 的已提交内容，客户端只缓存收到的同步 ItemStack。它不持有服务器余额，服务端 setItemDirect 明确拒绝，所有玩家写入由容器授权动作完成。GUI 显示完整已提交量，自动化视图则只显示可转移量，两者用途不同。
 
@@ -86,6 +96,8 @@ AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv�
 资源仓使用 PM `item_hatch`，能源使用 `energy_hatch` 的十阶三方向原模型和依赖纹理，保留原模型 `credit`、`bloom_*` 元素及 CTM/Bloom/动画元数据，资源命名空间改为 `prototype_eng`。原仓室走标准 Forge 模型和纹理元数据，不依赖机器 Gecko/TESR；发光后处理需要兼容的 CTM 与 BLOOM 层提供者，实际组合未验证。来源及原作者署名见 [美术来源](assets.md)。
 
 ## 验证范围
+
+本轮 R31/流体效果新增 5 项行为用例：外部非对称 SlottedResourceHatch 的共享适配及目标类型清空、输入预留/输出待结算/退款权保留、失效旧引用拒绝转移、下游 FE 实体 NBT 与重新挂载、下游控制器 NBT 与无 World 生命周期。合并定向 141 项初次运行仅新测试失效余额读取断言错误，其余 140 项无失败；修正为读取保存槽量后，该 3 项外部仓室 suite 重跑全通过。逐文件 IDEA MCP 和最终补查状态见[实施进度](implementation-status.md)及 `build/reports/idea/ae-physical-extension-final.json`，输出摘录和修正后 XML 见 `build/reports/tests/ae-physical-extension/`。没有把 native Forge 流体/GUI 运行记为通过。
 
 上一轮仓室与能源实现的构建、逻辑用例及逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)，覆盖多类型双缓存流转、失效、方向/key 限制、鼠标转移守恒，以及能源三方向、动态操作限额和重载裁剪等行为。它们不能替代本轮独立存储后端的验证。本轮适配层编译和逐文件 IDEA MCP 检查已完成，完整逻辑测试与全量检查仍在进行，最终结果以实施进度记录为准。
 

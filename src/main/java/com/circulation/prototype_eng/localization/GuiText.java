@@ -23,7 +23,10 @@ public enum GuiText implements LocalizationEnum {
     AutoOutput,
     On,
     Off,
-    Apply;
+    Apply,
+    FluidInputRate,
+    FluidOutputRate,
+    ClearFluids;
 
     private final String translationKey = "gui." + Tags.MOD_ID + "." + name();
 

@@ -1,6 +1,6 @@
 # 结构迁移源码审计
 
-本文是 2026-11-07 对 PM 本地源码及新项目已有仓室契约的审计，记录旧行为、缺陷和迁移约束。**这不是新结构实现完成报告；真实世界快照、完整结构匹配与控制器宿主接线仍须实现和验证。** 本次审计没有修改旧项目，没有启动 Minecraft，也没有真实 World/TileEntity 运行证据。
+本文是 2026-11-07 对 PM 本地源码及新项目已有仓室契约的审计，记录旧行为、缺陷和迁移约束。后续已经接入结构快照、模板/切片匹配和控制器宿主调用；当前能力边界见[结构实现](structures.md)、[控制器集成](controller-integration.md)和[组件扩展](component-extension-migration.md)。本次审计没有修改旧项目，没有启动 Minecraft，也没有真实 World/TileEntity 运行证据。
 
 需求依据是当前用户指示及 [development-spec.md](development-spec.md)：保留 24 向、模板/切片、子结构、JSON 加载、投影/预览和复杂渲染效果；后台计算只能读取受控快照。新格式可以不兼容，已确认的旧缺陷可以修正，不能将完整结构能力简化成固定模板。
 
@@ -120,4 +120,4 @@ JSON 转换又无条件删除 `offset=(0,0,0)` 且 `pattern.pos=(0,0,0)` 的元�
 
 实际读取追踪包含失败切片探测和验证器，省略未访问潜在分支；StructureQuery 显式指定事实等价。证明变化时重新捕获并重新匹配，避免 WORLD_TIME 每 tick 改变导致长期拒绝，也允许新短路分支跳过旧访问位置上的错误。最终事实与 provider/公开能力再次复核；发现失稳请求重试而不是伪造失配。观察性 reader/能力回调及服务端串行仍是前提，不能用无限重复检查支持任意第三方查询副作用。
 
-已补 prepare/publish 回调重入拒绝、配置失权后的失败不故障替代配置，以及失败 worker 的服务端收束。16 项逻辑测试与本机 MCP 证据记录在[实施进度](implementation-status.md)。真实控制器 TileEntity、调度注册/join/预算、PN 权限代的实际调用及 NBT/capability 世界验证仍未完成，不能把逻辑 fixture 当作实机证据。
+已补 prepare/publish 回调重入拒绝、配置失权后的失败不故障替代配置，以及失败 worker 的服务端收束。真实控制器与调度注册/join/预算调用后续已接，见[控制器集成](controller-integration.md)。任意轻量结构端口现也由公开 provider 在 owner 边界发现、验证及整批装卸，同方向每次刷新重新创建，按已有 ComponentType 查询，见[组件扩展](component-extension-migration.md)。逻辑测试与本机 MCP 证据以[实施进度](implementation-status.md)当前检查点为准；尚无启动实机验证，不能把逻辑 fixture 当作真实 World/TileEntity 运行证据。

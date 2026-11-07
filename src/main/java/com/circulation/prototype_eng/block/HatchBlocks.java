@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.energy.EnergyHatchBlockEntity;
 import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
 import net.minecraft.block.Block;
 import net.minecraft.item.Item;
-import net.minecraft.item.ItemBlock;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -53,7 +52,7 @@ public final class HatchBlocks {
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
         for (HatchBlock block : all()) {
-            event.getRegistry().register(new ItemBlock(block).setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+            event.getRegistry().register(block.createItem().setRegistryName(Objects.requireNonNull(block.getRegistryName())));
         }
     }
 }

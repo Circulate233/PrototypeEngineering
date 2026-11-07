@@ -6,6 +6,10 @@
 
 Forge 方块注册时，`MachineControllerBlocks` 发布 `MachineTypeRegistrationEvent`，监听者通过 `event.registry().register/registerAll` 提交不可变 `MachineType`。事件返回后 freeze，按声明顺序生成各类型的 `<namespace>:<path>_controller` 方块和物品。无声明时仍注册通用 `prototype_eng:machine_controller` TileEntity，保证库的类型映射不依赖正式内容。
 
+R31 修正：`MachineControllerBlock` / `MachineControllerItem` / `MachineControllerBlockEntity` 开放继承并分别使用当前 AE2S 的 `AEBaseTileBlock` / `AEBaseBlockItem` / `AEBaseTile`。同一声明事件可调用 `controllerFactory(typeId, MyControllerBlock::new)`，注册链实际消费此工厂；方块构造接受独立注册 ID 和实体工厂，`createItem()` 可覆写自定义 AE2S 物品。自定义实体类型仍由使用方注册自己的 Forge NBT ID。旧 PM 的 `MachineBlock` 是 public open，但旧 `BlockRegisterer` 固定 new、`ItemRegisterer` 固定原版 ItemBlock；本轮恢复继承并打通工厂，不能将 PM 旧代码描述为已具完整外部工厂。
+
+物理交互、方向工具及默认/自定义 GUI 通过 `MachineControllerHost` 使用准确实体、规范类型、运行时、完整朝向和 owner 边界；默认实体通过 `MachineControllerBlockHost` 识别承载方块。外部 AEBaseTile/AEBaseTileBlock 可独立实现这些职责，不必继承默认物理类。它们仍负责原有准确附着、权限、卸载及同步合同。
+
 PostInit 在现有配方事件完成且配方注册表冻结后发布 `MachineRuntimeRegistrationEvent`。同步监听者用 `structure(definition)` 和 `assembly(assembly)` 收集绑定。事件结束后调用 `resolveRuntime`，整批校验结构引用、重复 ID、装配完整覆盖及规范类型对象身份，再同时发布结构与装配；失败不发布一半，不调用组件 factory。事件快照不可修改，后续收集不会改写已取得的快照。注册事件只在其同步发布期间用于声明，不是运行中追加入口。
 
 单独的 `resolveStructures` API 仍可用于独立库场景，但完成后不能再升级为完整 runtime 发布。游戏全局实例使用 `resolveRuntime`。结构/装配解析成功仍不代表 PN owner/team/研究/epoch 或 planned ready。
@@ -13,6 +17,8 @@ PostInit 在现有配方事件完成且配方注册表冻结后发布 `MachineRu
 ## 附着、NBT 与替换
 
 `MachineControllerBlockEntity` 无参构造不访问 World、不创建组件。方块 factory 仅给类型和朝向提示；`readFromNBT` 只解码复制的 `ControllerData`。保存外层保留 vanilla/Forge 的基本数据，`Machine` 子标签包含版本、规范类型、完整 AE 朝向及可选 runtime。物品数据不能把一种控制器变成另一种，附着后也不能通过 NBT 改位置。
+
+AE2S 的 `readFromNBT/writeToNBT/invalidate/validate/onChunkUnload` 是 final，控制器实现使用 `loadTag/saveAdditional/setRemoved/clearRemoved/onChunkUnloaded` 钩子，并调用父钩子。父类 read 在 loadTag 之前更新 vanilla 坐标，因此控制器用仍拥有该 TE 的原 attachmentPosition 拒绝并恢复非法移动；原本的延迟装配、NBT 替换退休、显示包隔离及精确卸载仍保留。AE2 朝向查询与状态更新从 ControllerData 的同一朝向获取。
 
 当前实际依赖 `build/moddev/artifacts/cleanroom-0.6.13-alpha-sources.jar` 的调用顺序已复核：
 
@@ -52,6 +58,6 @@ Cleanroom 的正常 dormant 缓存会在 `ForgeChunkManager.storeChunkNBT` 保�
 
 ## 验证与继续范围
 
-新增逻辑测试覆盖注册原子性/坏引用/重入/快照，真实刷新 worker join、失稳重试和旧请求隔离，保存标签隔离、24 向组合与显示重放拒绝。没有直接 new TileEntity：其父构造会触发 AttachCapabilitiesEvent 和 Forge 初始化，违反当前测试约束。真实 ItemBlock/BlockSnapshot/Template/World 调用由依赖源码审查、编译与 IDEA MCP 检查覆盖，未宣称实机通过。完整计数和逐文件记录见[实施进度](implementation-status.md)。
+已有逻辑测试覆盖注册原子性/坏引用/重入/快照，真实刷新 worker join、失稳重试和旧请求隔离，保存标签隔离、24 向组合与显示重放拒绝。本轮对公开 AEBaseTile hooks 增加下游实体的无 World 用例：额外 NBT 与原 runtime/完整方向保留，validate/onLoad/update/unload 不提前装配；FE 用例验证重新挂载不复活旧转移引用。用例不启动游戏，也不引导 Bootstrap/FML；保存 hook 不依赖 Forge NBT 类型注册。真实 ItemBlock/BlockSnapshot/Template/World 调用由依赖源码审查、编译与 IDEA MCP 检查覆盖，未宣称实机通过。完整计数和逐文件记录见[实施进度](implementation-status.md)。
 
 持久 machine/owner 身份、搬运保留与复制冲突已接；仍须完成 PN 当前队伍/工作权限/研究/计算与正式 planned，严格 JSON 阶段与注册、结构预览/投影/切片/BOM、复杂渲染与隐藏缓存、JEI 和最后 CraftTweaker。默认及自定义 Java GUI、自动 scanner 和方向工具已接，真实交互与渲染尚无实机证据；最新构建及逐文件 MCP 记录见[实施进度](implementation-status.md)。缺少剩余能力的声明仍不会被当成正式完整机器；Applied-Flux 继续暂缓。

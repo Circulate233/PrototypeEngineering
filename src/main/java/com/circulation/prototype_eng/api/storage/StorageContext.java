@@ -121,8 +121,17 @@ public final class StorageContext {
         }
     }
 
-    private boolean tryOrdinaryLock() {
-        if (!lock.tryLock()) { return false; }
+    /**
+     * Nonblocking admission for an ordinary owner/player action. Refuses retained fences and fence
+     * scopes, even on their creating thread; success must be paired with unlock or unlockDeferred.
+     */
+    public boolean tryOrdinaryLock() {
+        if (StorageFence.hasAccess()) {
+            return false;
+        }
+        if (!lock.tryLock()) {
+            return false;
+        }
         if (fence != null) {
             lock.unlock();
             return false;

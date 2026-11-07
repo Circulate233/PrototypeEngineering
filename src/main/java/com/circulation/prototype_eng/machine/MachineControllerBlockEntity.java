@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineController;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.block.MachineControllerBlock;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import net.minecraft.block.state.IBlockState;
@@ -16,8 +15,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.ITickable;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.Mirror;
 import net.minecraft.util.ResourceLocation;
@@ -32,12 +29,17 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 
+import ae2.api.orientation.RelativeSide;
+import ae2.tile.AEBaseTile;
+import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+
 /**
  * Empty construction/read never assembles. The next server update observes the final placement/NBT
  * after Forge's cancellation window. A reattached dormant tile owns a new controller generation.
  */
 @SuppressWarnings("resource") // FML owns the shared server scheduler, never an individual tile.
-public final class MachineControllerBlockEntity extends TileEntity implements ITickable {
+public class MachineControllerBlockEntity extends AEBaseTile implements MachineControllerHost {
     @Nullable private ControllerData data;
     @Nullable private MachineController controller;
     @Nullable private ControllerLifecycleHost host;
@@ -53,11 +55,43 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
     private long lastTick;
     private long displayGeneration;
     private long displaySequence;
+    @Nullable
+    private BlockPos attachmentPosition;
 
     @SuppressWarnings("unused") // Forge's registered TileEntity factory invokes the public no-arg constructor.
     public MachineControllerBlockEntity() { }
     public MachineControllerBlockEntity(ResourceLocation type, BlockOrientation orientation) {
         data = new ControllerData(type, orientation, null);
+    }
+
+    @Override
+    public AEBaseTile blockEntity() {
+        return this;
+    }
+
+    @Override
+    public EnumFacing getForward() {
+        return orientation().getSide(RelativeSide.FRONT);
+    }
+
+    @Override
+    public EnumFacing getUp() {
+        return orientation().getSide(RelativeSide.TOP);
+    }
+
+    @Override
+    public BlockOrientation getOrientation() {
+        return orientation();
+    }
+
+    @Override
+    public IBlockState applyOrientationToBlockState(IBlockState state) {
+        return state.getBlock() instanceof MachineControllerBlockHost block ? block.state(state, orientation()) : state;
+    }
+
+    @Override
+    public void setOrientation(EnumFacing forward, EnumFacing up) {
+        orient(BlockOrientation.get(forward, up));
     }
 
     @Nullable public MachineInstance machine() { return controller == null ? null : controller.machine(); }
@@ -73,14 +107,34 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
         return machine != null && Objects.requireNonNull(machine.lifecycle()).formed();
     }
 
-    @Override public void validate() { super.validate(); wantsLoad = true; }
-    @Override public void onLoad() { super.onLoad(); wantsLoad = true; updated = false; }
+    @Override
+    protected void clearRemoved() {
+        super.clearRemoved();
+        if (world != null) {
+            attachmentPosition = pos.toImmutable();
+        }
+        wantsLoad = true;
+    }
 
-    @Override public void update() {
-        if (world == null || world.isRemote || !wantsLoad || !isAttached()) { return; }
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        attachmentPosition = pos.toImmutable();
+        wantsLoad = true;
+        updated = false;
+    }
+
+    @Override
+    public void update() {
+        super.update();
+        if (world == null || world.isRemote || !wantsLoad || !isAttached()) {
+            return;
+        }
         requireServer();
         long now = world.getTotalWorldTime();
-        if (updated && lastTick == now) { return; }
+        if (updated && lastTick == now) {
+            return;
+        }
         updated = true;
         lastTick = now;
         var machine = machine();
@@ -91,7 +145,9 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
             }
         }
         machine = machine();
-        if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) { structures.tick(now); }
+        if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
+            structures.tick(now);
+        }
         // Components may mutate on scheduler workers; a server-side save mark covers their next pass.
         markDirty();
     }
@@ -206,19 +262,28 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
         } finally { changingState = false; }
     }
 
-    @Override public boolean shouldRefresh(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState oldState, @NotNull IBlockState newState) {
-        if (oldState.getBlock() != newState.getBlock()) { return true; }
-        if (!world.isRemote && !changingState && newState.getBlock() instanceof MachineControllerBlock block) {
+    @Override
+    public boolean shouldRefresh(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState oldState, @NotNull IBlockState newState) {
+        if (oldState.getBlock() != newState.getBlock()) {
+            return true;
+        }
+        if (!world.isRemote && !changingState && newState.getBlock() instanceof MachineControllerBlockHost block) {
             var orientation = block.getOrientation(newState);
             // Record every state transition. Pending A -> original changes must not disappear just
             // because the first request has not updated tile data yet. FIFO actions update both sides.
-            if (orientation != block.getOrientation(oldState)) { orient(orientation); }
+            if (orientation != block.getOrientation(oldState)) {
+                orient(orientation);
+            }
         }
         return false;
     }
     @Override public void rotate(@NotNull Rotation rotation) { transformOrientation(current -> ControllerOrientation.rotate(current, rotation)); }
     @Override public void mirror(@NotNull Mirror mirror) { transformOrientation(current -> ControllerOrientation.mirror(current, mirror)); }
-    public void rotateAround(EnumFacing axis) { transformOrientation(current -> current.rotateClockwiseAround(axis)); }
+
+    @SuppressWarnings("unused") // Public downstream convenience entry point.
+    public void rotateAround(EnumFacing axis) {
+        transformOrientation(current -> current.rotateClockwiseAround(axis));
+    }
 
     public void controllerBroken() {
         wantsLoad = false;
@@ -231,18 +296,42 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
         if (controller != null) { placement = null; controller.unload(reason); attachmentEpoch = new Object(); }
         else if (!isAttached()) { placement = null; }
     }
-    @Override public void invalidate() {
-        try { if (world != null && !world.isRemote) { stop(MachineLifecycleEvent.UnloadReason.INVALIDATED); } }
-        finally { super.invalidate(); }
-    }
-    @Override public void onChunkUnload() {
-        try { if (world != null && !world.isRemote) { stop(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); } }
-        finally { super.onChunkUnload(); }
+
+    @Override
+    protected void setRemoved() {
+        try {
+            if (world != null && !world.isRemote) {
+                stop(MachineLifecycleEvent.UnloadReason.INVALIDATED);
+            }
+        } finally {
+            super.setRemoved();
+        }
     }
 
-    @Override public void readFromNBT(@NotNull NBTTagCompound tag) {
+    @Override
+    protected void onChunkUnloaded() {
+        try {
+            if (world != null && !world.isRemote) {
+                stop(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            }
+        } finally {
+            super.onChunkUnloaded();
+        }
+    }
+
+    @Override
+    public void loadTag(@NotNull NBTTagCompound tag) {
+        // AEBaseTile's final read updates vanilla coordinates before calling this hook.
+        // Compare the original attachment while it still owns this tile, then restore on rejection.
+        if (world != null && !isInvalid() && attachmentPosition != null && world.isBlockLoaded(attachmentPosition, false)
+            && world.getTileEntity(attachmentPosition) == this && !attachmentPosition.equals(pos)) {
+            pos = attachmentPosition;
+            throw new IllegalArgumentException("Cannot move an attached controller through NBT");
+        }
         var decoded = ControllerData.decode(StrictNbt.requireCompound(tag, "Machine"));
-        if (data != null && !data.type().equals(decoded.type())) { throw new IllegalArgumentException("Controller item/save type mismatch"); }
+        if (data != null && !data.type().equals(decoded.type())) {
+            throw new IllegalArgumentException("Controller item/save type mismatch");
+        }
         if (world != null && isAttached()) {
             requireType(requireBlock().type(), decoded.type());
             if (StrictNbt.requireInt(tag, "x") != pos.getX() || StrictNbt.requireInt(tag, "y") != pos.getY() || StrictNbt.requireInt(tag, "z") != pos.getZ()) {
@@ -259,16 +348,19 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
             placement = null;
             updated = false;
         }
-        super.readFromNBT(tag);
+        super.loadTag(tag);
         replacementData = controller != null;
         data = decoded;
     }
-    @Override public @NotNull NBTTagCompound writeToNBT(@NotNull NBTTagCompound tag) {
+
+    @Override
+    public void saveAdditional(@NotNull NBTTagCompound tag) {
         var saved = Objects.requireNonNull(data, "Controller has no type or pending data");
-        if (controller != null && !replacementData) { saved = new ControllerData(saved.type(), orientation(), controller.save()); }
-        var result = super.writeToNBT(tag);
-        result.setTag("Machine", saved.encode());
-        return result;
+        if (controller != null && !replacementData) {
+            saved = new ControllerData(saved.type(), orientation(), controller.save());
+        }
+        super.saveAdditional(tag);
+        tag.setTag("Machine", saved.encode());
     }
 
     private void changed() {
@@ -305,10 +397,13 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
 
     private boolean isAttached() {
         return world != null && !isInvalid() && world.isBlockLoaded(pos, false) && world.getTileEntity(pos) == this
-            && world.getBlockState(pos).getBlock() instanceof MachineControllerBlock;
+            && world.getBlockState(pos).getBlock() instanceof MachineControllerBlockHost;
     }
-    private MachineControllerBlock requireBlock() {
-        if (!(world.getBlockState(pos).getBlock() instanceof MachineControllerBlock block)) { throw new IllegalStateException("Controller tile has no controller block"); }
+
+    private MachineControllerBlockHost requireBlock() {
+        if (!(world.getBlockState(pos).getBlock() instanceof MachineControllerBlockHost block)) {
+            throw new IllegalStateException("Controller tile has no controller block");
+        }
         return block;
     }
     private void requireServer() {

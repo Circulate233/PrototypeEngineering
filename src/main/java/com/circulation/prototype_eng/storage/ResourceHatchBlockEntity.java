@@ -14,10 +14,8 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.ITickable;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import org.jetbrains.annotations.NotNull;
@@ -26,7 +24,11 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 
-public final class ResourceHatchBlockEntity extends TileEntity implements ITickable {
+import ae2.tile.AEBaseTile;
+import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
+import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
+
+public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings {
     private static final VarHandle STORAGE_DIRTY;
 
     static {
@@ -47,6 +49,8 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
     private BufferedResourceHatch hatch;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
+    private volatile long maxFluidInputRate;
+    private volatile long maxFluidOutputRate;
 
     public ResourceHatchBlockEntity() {
         this(HatchMode.INPUT);
@@ -62,6 +66,16 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
         slots = HatchConfig.slotsPerSide(tier, mode);
     }
 
+    @Override
+    public AEBaseTile blockEntity() {
+        return this;
+    }
+
+    @Override
+    public boolean canBeRotated() {
+        return false;
+    }
+
     /**
      * Resolve registered key types only once the tile actually enters the world.
      */
@@ -70,7 +84,7 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
             capacities = capacities == null ? HatchConfig.resourceCapacities(tier) : capacities;
             hatch = new BufferedResourceHatch(mode, slots, capacities, this::requestStorageSave);
             port = new HatchInventoryPort(hatch, true, true);
-            fluids = new HatchFluidHandler(hatch);
+            fluids = new HatchFluidHandler(hatch, this);
             if (isInvalid()) {
                 hatch.invalidate();
             }
@@ -84,6 +98,7 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
 
     @Override
     public void update() {
+        super.update();
         flushStorageChanges();
     }
 
@@ -99,8 +114,37 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
 
     public HatchTier tier() { return tier; }
 
+    @SuppressWarnings("unused") // Public downstream layout query; the default GUI reads each side's actual size.
     public int slotsPerSide() {
         return slots;
+    }
+
+    @Override
+    public long maxFluidInputRate() {
+        return maxFluidInputRate;
+    }
+
+    @Override
+    public long maxFluidOutputRate() {
+        return maxFluidOutputRate;
+    }
+
+    @Override
+    public void setMaxFluidInputRate(long value) {
+        long next = Math.max(0, value);
+        if (next != maxFluidInputRate) {
+            maxFluidInputRate = next;
+            markDirty();
+        }
+    }
+
+    @Override
+    public void setMaxFluidOutputRate(long value) {
+        long next = Math.max(0, value);
+        if (next != maxFluidOutputRate) {
+            maxFluidOutputRate = next;
+            markDirty();
+        }
     }
 
     @Override
@@ -147,21 +191,24 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
     }
 
     @Override
-    public @NotNull NBTTagCompound writeToNBT(@NotNull NBTTagCompound tag) {
-        super.writeToNBT(tag);
+    public void saveAdditional(@NotNull NBTTagCompound tag) {
+        super.saveAdditional(tag);
         tag.setString("Mode", mode.name());
         tag.setInteger("Tier", tier.level());
         tag.setInteger("Slots", slots);
+        tag.setLong("MaxFluidInRate", maxFluidInputRate);
+        tag.setLong("MaxFluidOutRate", maxFluidOutputRate);
         storage().save(tag);
         var limits = new NBTTagCompound();
         capacities.forEach((type, capacity) -> limits.setLong(type.getId().toString(), capacity));
         tag.setTag("Capacities", limits);
-        return tag;
     }
 
     @Override
-    public void readFromNBT(@NotNull NBTTagCompound tag) {
-        super.readFromNBT(tag);
+    public void loadTag(@NotNull NBTTagCompound tag) {
+        super.loadTag(tag);
+        maxFluidInputRate = Math.max(0, tag.getLong("MaxFluidInRate"));
+        maxFluidOutputRate = Math.max(0, tag.getLong("MaxFluidOutRate"));
         if (hatch != null) {
             hatch.invalidate();
         }
@@ -194,31 +241,33 @@ public final class ResourceHatchBlockEntity extends TileEntity implements ITicka
     }
 
     @Override
-    public void invalidate() {
+    protected void setRemoved() {
         if (hatch != null) {
             hatch.invalidate();
         }
         flushStorageChanges();
         adapters.clear();
-        super.invalidate();
+        super.setRemoved();
     }
 
     @Override
-    public void onChunkUnload() {
+    protected void onChunkUnloaded() {
         if (hatch != null) {
             hatch.invalidate();
         }
         flushStorageChanges();
         adapters.clear();
-        super.onChunkUnload();
+        super.onChunkUnloaded();
     }
 
     @Override
-    public void validate() {
-        super.validate();
+    protected void clearRemoved() {
+        super.clearRemoved();
         if (hatch != null && !hatch.isValid()) {
             // A reattached tile gets new views; previously returned capability references stay invalid.
-            readFromNBT(writeToNBT(new NBTTagCompound()));
+            var saved = new NBTTagCompound();
+            saveAdditional(saved);
+            loadTag(saved);
         }
     }
 

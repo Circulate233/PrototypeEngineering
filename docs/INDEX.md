@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-07 扩展阶段完成实现与最终验证：AE2S 物理继承/开放扩展、仓室接口和 GUI、流体每次 fill/drain 转移限额与 clear/source fence、组件亲和及任意轻量结构端口；MachineAssembly Schema 2 保存成型次数，同代 refresh 不增、恢复不带形成授权。完整 build 1179 tests / 153 suites，零失败/错误/跳过；79 Java 的 IDEA errorsOnly:false 全级零诊断（40 格式改动复检、39 原 SHA 未变复用），Document/磁盘一致、构建前后 SHA 无漂移，MCP build_project 成功。原 IDE Git 新文件确认对话框阻塞已解除；验证及准确暂存证据见 `build/staging/component-extension/full-build-final-result.json`、`build/reports/idea/component-extension-inspections-79-final.json` 和同目录 `exact-index-manifest.json`。见[组件扩展](component-extension-migration.md)、[仓室](hatches.md)、[控制器集成](controller-integration.md)。下载已提交 `f180bfc`，扩展阶段已本地提交；未推送、未启动游戏或服务端。
+
 - 2026-11-07 普通物品转换已真实接线：材料 createOutput 注册、准确单槽扣料、冻结成员/直属费用、唯一 World Schema 3、原生输出交付及 nonce 恢复均已接通。R30 分级盘核心及编码事件已存在，研究门槛阶级 ≤ 磁盘阶级 ≤ 导入数据库阶级，完成等级独立；默认盘物品与实际导入共同持久事务仍缺。见[物品化下载](research-downloads.md)。
 
 - 2026-11-07 用户确认并要求实施 R31：控制器方块可继承；控制器 Block/ItemBlock 与仓室 Block 等按 PM 真实扩展方式核查并修正，消除公开扩展点的 final 限制，方块、方块实体和物品继承当前 AE2S 对应基类，仓室公开接口便于外部特殊实现接入。实施入口见[控制器迁移审计](machine-controller-migration-audit.md)和[仓室](hatches.md)。
@@ -23,6 +25,8 @@
 - 控制器、结构捕获/匹配、三方向十阶通用资源/独立 FE 仓、普通调度、扫描、默认/自定义 Java GUI 与方向工具已接入。GUI 直接 AEBaseGui，资源数量使用 AEKey2LongMap；实际边界按专题及实施进度核对。
 
 ## 下一步
+
+0. 扩展阶段实现、最终验证与准确 57 文件本地提交已完成；原 23 文件、背景修改及 `docs/INDEX.md~` 保留，继续推进 R30 盘物品与共同导入事务。
 
 1. 研究视图、领取、普通数据库下载及普通物品转换均已接；未知结果继续保留准确义务、不补发。下一步按[配方功能核对](recipe-feature-parity.md)完成 R30 默认盘物品、真实特殊磁盘消费与数据库共同持久恢复，再处理永久破坏后的材料会话；Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。

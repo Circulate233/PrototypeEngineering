@@ -24,12 +24,12 @@
 
 ## 默认与自定义注册
 
-common 入口 [MachineGuiRegistry](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/gui/MachineGuiRegistry.java) 按机器类型 ID 注册 `BiFunction<InventoryPlayer, MachineControllerBlockEntity, ? extends AEBaseContainer>`。两侧 mod 初始化时安装相同容器绑定；重复 ID、null 结果或容器目标不是传入 TE 都拒绝。没有绑定时创建默认容器。
+common 入口 [MachineGuiRegistry](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/gui/MachineGuiRegistry.java) 按机器类型 ID 注册 `BiFunction<InventoryPlayer, MachineControllerHost, ? extends AEBaseContainer>`。两侧 mod 初始化时安装相同容器绑定；重复 ID、null 结果或容器目标不是宿主的准确 `blockEntity()` 都拒绝。没有绑定时创建默认容器。外部实体可独立实现宿主接口，无需继承默认控制器实体。
 
 客户端入口 [MachineScreenRegistry](F:/new/PrototypeEngineering/src/main/java/com/circulation/prototype_eng/api/client/gui/MachineScreenRegistry.java) 只在 client 初始化使用，以明确容器类和有类型的 factory 注册：
 
 ```java
-// common 初始化：MyContainer 直接继承 AEBaseContainer，构造调用 super(player, tile)。
+// common 初始化：MyContainer 直接继承 AEBaseContainer，构造调用 super(player, host.blockEntity())。
 MachineGuiRegistry.register(typeId, MyContainer::new);
 
 // client 初始化：MyGui 直接继承 AEBaseGui<MyContainer>。

@@ -80,6 +80,9 @@ gui.prototype_eng.AutoOutput=Auto output: %s
 gui.prototype_eng.On=ON
 gui.prototype_eng.Off=OFF
 gui.prototype_eng.Apply=Apply
+gui.prototype_eng.FluidInputRate=Fluid input (0 = unlimited)
+gui.prototype_eng.FluidOutputRate=Fluid output (0 = unlimited)
+gui.prototype_eng.ClearFluids=Clear fluids
 recipe.prototype_eng.StorageChanged=Storage changed; retrying this recipe stage
 recipe.prototype_eng.NoResourceInput=No resource input for requirement %s
 recipe.prototype_eng.NoResourceOutput=No resource output for requirement %s

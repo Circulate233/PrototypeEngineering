@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.item;
 import com.circulation.prototype_eng.OrientationToolConfig;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.localization.OrientationToolText;
-import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -21,7 +20,6 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.init.Items;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.EntityEquipmentSlot;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ActionResult;
@@ -40,8 +38,11 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Set;
 
+import ae2.items.AEBaseItem;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+
 /** PM's switchable controller wrench, weapon and iron pickaxe/axe/shovel hybrid. */
-public final class ControllerOrientationTool extends Item {
+public class ControllerOrientationTool extends AEBaseItem {
     private static final String NBT_ENABLED = "enabled";
     private static final Set<String> TOOL_CLASSES = Set.of("pickaxe", "axe", "shovel");
 
@@ -81,11 +82,16 @@ public final class ControllerOrientationTool extends Item {
         return new ActionResult<>(EnumActionResult.SUCCESS, stack);
     }
 
-    @Override public @NotNull EnumActionResult onItemUse(@NotNull EntityPlayer player, @NotNull World world, @NotNull BlockPos pos,
-            @NotNull EnumHand hand, @NotNull EnumFacing side, float hitX, float hitY, float hitZ) {
+    @Override
+    public @NotNull EnumActionResult onItemUse(@NotNull EntityPlayer player, @NotNull World world, @NotNull BlockPos pos,
+                                               @NotNull EnumHand hand, @NotNull EnumFacing side, float hitX, float hitY, float hitZ) {
         var stack = player.getHeldItem(hand);
-        if (!isEnabled(stack) || !(world.getTileEntity(pos) instanceof MachineControllerBlockEntity tile)) { return EnumActionResult.PASS; }
-        if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) { return EnumActionResult.FAIL; }
+        if (!isEnabled(stack) || !(world.getTileEntity(pos) instanceof MachineControllerHost tile)) {
+            return EnumActionResult.PASS;
+        }
+        if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) {
+            return EnumActionResult.FAIL;
+        }
         if (!world.isRemote) {
             boolean sneaking = player.isSneaking();
             // Read current orientation only when this relative request reaches its owner FIFO boundary.
@@ -149,11 +155,12 @@ public final class ControllerOrientationTool extends Item {
     @Override @SideOnly(Side.CLIENT)
     public boolean hasEffect(@NotNull ItemStack stack) { return isEnabled(stack) || super.hasEffect(stack); }
 
-    @Override @SideOnly(Side.CLIENT)
-    public void addInformation(@NotNull ItemStack stack, @Nullable World world, @NotNull List<String> tooltip, @NotNull ITooltipFlag flag) {
+    @Override
+    @SideOnly(Side.CLIENT)
+    public void addCheckedInformation(@NotNull ItemStack stack, @Nullable World world, @NotNull List<String> tooltip, @NotNull ITooltipFlag flag) {
         tooltip.add(OrientationToolText.State.getLocal((isEnabled(stack) ? OrientationToolText.StateOn : OrientationToolText.StateOff).getLocal()));
         tooltip.add(OrientationToolText.ToggleHint.getLocal());
-        super.addInformation(stack, world, tooltip, flag);
+        super.addCheckedInformation(stack, world, tooltip, flag);
     }
 
     @Override public @NotNull Multimap<String, AttributeModifier> getAttributeModifiers(@NotNull EntityEquipmentSlot slot, @NotNull ItemStack stack) {

@@ -5,11 +5,36 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import org.jetbrains.annotations.Nullable;
 
+import ae2.api.stacks.AEKeyType;
+
 /**
  * Cursor transactions against real quantities, never against an ItemStack used only for display.
  */
 public final class HatchSlotActions {
     private HatchSlotActions() {
+    }
+
+    /** Caller authorizes the owner/player action; only unreserved contents of this exact type are discarded. */
+    public static boolean clearAvailable(SlottedResourceStorage inventory, AEKeyType type) {
+        if (!inventory.context().tryOrdinaryLock()) {
+            return false;
+        }
+        try {
+            if (!inventory.isValid()) {
+                return false;
+            }
+            boolean changed = false;
+            for (int slot = 0; slot < inventory.size(); slot++) {
+                var stack = inventory.getStack(slot);
+                if (stack != null && stack.what().getType() == type) {
+                    long available = inventory.availableAmount(slot);
+                    changed |= available > 0 && inventory.extract(slot, stack.what(), available, Actionable.MODULATE) > 0;
+                }
+            }
+            return changed;
+        } finally {
+            inventory.context().unlock();
+        }
     }
 
     @Nullable

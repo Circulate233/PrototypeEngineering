@@ -12,6 +12,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.List;
 
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
+
 /** Slot view for automation. A slot retains its input/output role even in mixed hatches. */
 public final class HatchInventoryPort implements GenericInternalInventory {
     @Nullable private final SlottedResourceStorage input;
@@ -19,7 +21,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
     private final List<StorageContext> contexts;
     private final ThreadLocal<Boolean> batching = new ThreadLocal<>();
 
-    public HatchInventoryPort(BufferedResourceHatch hatch, boolean includeInput, boolean includeOutput) {
+    public HatchInventoryPort(SlottedResourceHatch hatch, boolean includeInput, boolean includeOutput) {
         Objects.requireNonNull(hatch);
         input = includeInput ? hatch.input() : null;
         output = includeOutput ? hatch.output() : null;

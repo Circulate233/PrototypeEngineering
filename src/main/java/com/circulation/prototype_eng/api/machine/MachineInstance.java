@@ -16,6 +16,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
+import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
+import com.circulation.prototype_eng.api.structure.StructureComponents;
+
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
  * ownership; it may transfer that ownership between threads at a join boundary. A world host attaches
@@ -89,18 +92,36 @@ public final class MachineInstance implements ScheduledTask {
         return scheduling != null ? scheduling.mode() : type != null ? type.executionMode() : ExecutionMode.CONCURRENT;
     }
 
-    /** Captured by the scheduler on the owner thread; actual balance aliases share affinity keys. */
-    @Override public Set<?> affinityKeys() {
+    /**
+     * Captured by the scheduler on the owner thread; actual balance aliases share affinity keys.
+     */
+    @Override
+    public Set<?> affinityKeys() {
         var keys = new ObjectLinkedOpenHashSet<>();
         var hatches = MachineHatches.get(this);
         for (var hatch : hatches.resources()) {
             var input = hatch.inputStorageIdentity();
             var output = hatch.outputStorageIdentity();
-            if (input != null) { keys.add(input); }
-            if (output != null) { keys.add(output); }
+            if (input != null) {
+                keys.add(input);
+            }
+            if (output != null) {
+                keys.add(output);
+            }
         }
-        for (var input : hatches.energyInputs()) { keys.add(Objects.requireNonNull(input.storageIdentity())); }
-        for (var output : hatches.energyOutputs()) { keys.add(Objects.requireNonNull(output.storageIdentity())); }
+        for (var input : hatches.energyInputs()) {
+            keys.add(Objects.requireNonNull(input.storageIdentity()));
+        }
+        for (var output : hatches.energyOutputs()) {
+            keys.add(Objects.requireNonNull(output.storageIdentity()));
+        }
+        for (var binding : components.assemblyBindings()) {
+            if (binding.component() instanceof AffinityKeyProvider provider) {
+                for (var key : Objects.requireNonNull(provider.affinityKeys())) {
+                    keys.add(Objects.requireNonNull(key));
+                }
+            }
+        }
         return ObjectSets.unmodifiable(keys);
     }
 
@@ -115,6 +136,12 @@ public final class MachineInstance implements ScheduledTask {
     }
 
     public ComponentMap<MachineInstance> components() { return components; }
+
+    /** Structure-derived ports are replaced together at each joined refresh and are never persisted. */
+    public StructureComponents structureComponents() {
+        var ports = components.get(StructureComponents.TYPE);
+        return ports == null ? StructureComponents.EMPTY : ports;
+    }
 
     /** Runs all pre callbacks, all normal callbacks, then all post callbacks. Never swallows errors. */
     @Override

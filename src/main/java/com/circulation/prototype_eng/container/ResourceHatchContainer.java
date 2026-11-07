@@ -11,10 +11,8 @@ import ae2.helpers.InventoryAction;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.localization.GuiText;
-import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.storage.HatchGuiInventory;
 import com.circulation.prototype_eng.storage.HatchSlotActions;
-import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -26,36 +24,124 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
+import ae2.api.stacks.AEFluidKey;
+import ae2.api.stacks.AEKeyType;
+import ae2.container.guisync.GuiSync;
+import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
+import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
+
 public final class ResourceHatchContainer extends AEBaseContainer {
+    private static final String FLUID_INPUT_RATE = "fluidInputRate";
+    private static final String FLUID_OUTPUT_RATE = "fluidOutputRate";
+    private static final String CLEAR_FLUIDS = "clearFluids";
     public final int columns;
     public final int guiWidth;
     public final int playerTop;
     public final int rows;
     public final int outputLeft;
-    private final ResourceHatchBlockEntity tile;
-    private final BufferedResourceHatch hatch;
+    private final ResourceHatchGuiHost tile;
+    private final SlottedResourceHatch hatch;
     private final int inputSlots;
     private final int resourceSlots;
+    @Nullable
+    private final FluidHatchSettings fluidSettings;
+    @GuiSync(0)
+    public long fluidInputRate;
+    @GuiSync(1)
+    public long fluidOutputRate;
 
-    public ResourceHatchContainer(InventoryPlayer player, ResourceHatchBlockEntity tile) {
-        super(player, tile);
+    public ResourceHatchContainer(InventoryPlayer player, ResourceHatchGuiHost tile) {
+        super(player, tile.blockEntity());
         this.tile = tile;
+        fluidSettings = tile instanceof FluidHatchSettings settings ? settings : null;
         hatch = tile.storage();
         SlottedResourceStorage input = hatch.input();
         SlottedResourceStorage output = hatch.output();
         inputSlots = input == null ? 0 : input.size();
         resourceSlots = inputSlots + (output == null ? 0 : output.size());
         boolean mixed = tile.mode() == HatchMode.MIXED;
-        columns = mixed ? (tile.slotsPerSide() <= 9 ? 3 : 6) : 9;
+        int slotsPerSide = Math.max(inputSlots, output == null ? 0 : output.size());
+        columns = mixed ? (slotsPerSide <= 9 ? 3 : 6) : 9;
         // Reserve a thin AE2 scrollbar beside each resource grid.
         guiWidth = mixed ? (columns == 6 ? 258 : 176) : 188;
-        rows = (tile.slotsPerSide() + columns - 1) / columns;
-        playerTop = 50 + Math.min(rows, 5) * 18;
+        rows = (slotsPerSide + columns - 1) / columns;
+        playerTop = 50 + Math.min(rows, 5) * 18 + controlsHeight();
         outputLeft = mixed ? guiWidth - 18 - columns * 18 : 8;
         addBuffer(input, true, 8);
         addBuffer(output, false, outputLeft);
         addPlayerInventorySlots((guiWidth - 162) / 2, playerTop);
         setGuiTitle(GuiText.resourceHatch(tile.mode()).text(tile.tier().level()));
+        syncFluidSettings();
+        registerClientAction(FLUID_INPUT_RATE, Long.class, 20, value -> {
+            if (value != null && canChangeFluids() && fluidSettings != null && tile.mode().hasInput()) {
+                fluidSettings.setMaxFluidInputRate(value);
+            }
+        });
+        registerClientAction(FLUID_OUTPUT_RATE, Long.class, 20, value -> {
+            if (value != null && canChangeFluids() && fluidSettings != null && tile.mode().hasOutput()) {
+                fluidSettings.setMaxFluidOutputRate(value);
+            }
+        });
+        registerClientAction(CLEAR_FLUIDS, () -> {
+            if (canChangeFluids()) {
+                var inputStorage = hatch.input();
+                var outputStorage = hatch.output();
+                boolean changed = false;
+                if (inputStorage != null) {
+                    changed = HatchSlotActions.clearAvailable(inputStorage, AEKeyType.fluids());
+                }
+                if (outputStorage != null) {
+                    changed |= HatchSlotActions.clearAvailable(outputStorage, AEKeyType.fluids());
+                }
+                if (changed) {
+                    sync(getPlayer());
+                }
+            }
+        });
+    }
+
+    public boolean hasFluidSettings() {
+        return fluidSettings != null;
+    }
+
+    public int controlsHeight() {
+        return hasFluidSettings() ? 80 : 24;
+    }
+
+    public void setFluidInputRate(long value) {
+        sendClientAction(FLUID_INPUT_RATE, value);
+    }
+
+    public void setFluidOutputRate(long value) {
+        sendClientAction(FLUID_OUTPUT_RATE, value);
+    }
+
+    public void clearFluids() {
+        sendClientAction(CLEAR_FLUIDS);
+    }
+
+    private boolean canChangeFluids() {
+        var player = getPlayer();
+        var server = player.world.getMinecraftServer();
+        return isServerSide() && server != null && server.isCallingFromMinecraftThread()
+            && player.openContainer == this && canInteractWith(player)
+            && player.world.isBlockModifiable(player, tile.blockEntity().getPos());
+    }
+
+    private void syncFluidSettings() {
+        if (fluidSettings != null) {
+            fluidInputRate = fluidSettings.maxFluidInputRate();
+            fluidOutputRate = fluidSettings.maxFluidOutputRate();
+        }
+    }
+
+    @Override
+    public void broadcastChanges() {
+        if (isServerSide()) {
+            syncFluidSettings();
+        }
+        super.broadcastChanges();
     }
 
     private static ItemStack clickItem(SlottedResourceStorage inventory, int slot, ItemStack carried, boolean input, boolean right) {
@@ -141,7 +227,10 @@ public final class ResourceHatchContainer extends AEBaseContainer {
 
     @Override
     public boolean canInteractWith(EntityPlayer player) {
-        return hatch.isValid() && tile.storage() == hatch && super.canInteractWith(player);
+        var entity = tile.blockEntity();
+        return entity == getTarget() && !entity.isInvalid() && player.world == entity.getWorld()
+            && player.world.isBlockLoaded(entity.getPos(), false) && player.world.getTileEntity(entity.getPos()) == entity
+            && hatch.isValid() && tile.storage() == hatch && super.canInteractWith(player);
     }
 
     @Override
@@ -315,17 +404,24 @@ public final class ResourceHatchContainer extends AEBaseContainer {
                     handleFillingHeldItem(new FillingSource() {
                         @Override
                         public long extract(long amount, Actionable mode) {
-                            return inventory.extract(slot, key, amount, mode);
+                            long limited = key instanceof AEFluidKey && fluidSettings != null
+                                ? fluidSettings.limitFluidOutput(amount) : amount;
+                            return inventory.extract(slot, key, limited, mode);
                         }
 
                         @Override
                         public long insert(AEKey what, long amount, Actionable mode) {
+                            // Exact failed-fill compensation is never clipped by an automation limit.
                             return inventory.insert(slot, what, amount, mode);
                         }
                     }, key, action == InventoryAction.FILL_ENTIRE_ITEM);
                 }
             } else {
-                handleEmptyHeldItem((what, amount, mode) -> inventory.insert(slot, what, amount, mode),
+                handleEmptyHeldItem((what, amount, mode) -> {
+                    long limited = what instanceof AEFluidKey && fluidSettings != null
+                        ? fluidSettings.limitFluidInput(amount) : amount;
+                    return inventory.insert(slot, what, limited, mode);
+                },
                     action == InventoryAction.EMPTY_ENTIRE_ITEM);
             }
         } finally {

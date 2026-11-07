@@ -20,6 +20,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
+
 /** Binds an already attached server-side controller without registering a block or a scheduler. */
 @SuppressWarnings("unused") // Public adapter for downstream controller tile entities.
 public final class ControllerLifecycleHost implements MachineStructureHost {
@@ -104,5 +106,17 @@ public final class ControllerLifecycleHost implements MachineStructureHost {
         TileEntity provider = world.getTileEntity(immutablePosition);
         return new StructureHatchBinding(provider, HatchCapabilities.findResource(provider, null),
             HatchCapabilities.findEnergyInput(provider, null), HatchCapabilities.findEnergyOutput(provider, null));
+    }
+
+    @Override
+    @Nullable
+    public StructureComponentProvider structureComponentsAt(BlockPos position) {
+        requireServerThread();
+        BlockPos immutablePosition = Objects.requireNonNull(position).toImmutable();
+        if (!world.isAreaLoaded(immutablePosition, immutablePosition, false)) {
+            throw new IllegalStateException("Cannot discover structure ports at an unloaded position: " + immutablePosition);
+        }
+        TileEntity provider = world.getTileEntity(immutablePosition);
+        return provider != null && !provider.isInvalid() && provider instanceof StructureComponentProvider ports ? ports : null;
     }
 }

@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.block;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
-import net.minecraft.block.Block;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
@@ -23,22 +22,38 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
 
+import ae2.block.AEBaseBlockItem;
+import ae2.block.AEBaseTileBlock;
+import ae2.tile.AEBaseTile;
+import java.util.Objects;
+import net.minecraft.util.ResourceLocation;
+
 /**
  * Physical shell shared by tiered resource and energy hatches. Storage belongs to the tile.
  */
-public final class HatchBlock extends Block {
-    private final Supplier<? extends TileEntity> factory;
+public class HatchBlock extends AEBaseTileBlock<AEBaseTile> {
+    private final Supplier<? extends AEBaseTile> factory;
 
-    public HatchBlock(String name, Supplier<? extends TileEntity> factory, float hardness) {
+    public HatchBlock(String name, Supplier<? extends AEBaseTile> factory, float hardness) {
+        this(new ResourceLocation(Tags.MOD_ID, name), factory, hardness);
+    }
+
+    public HatchBlock(ResourceLocation id, Supplier<? extends AEBaseTile> factory, float hardness) {
         super(Material.IRON);
-        this.factory = factory;
-        setRegistryName(Tags.MOD_ID, name);
-        setTranslationKey(Tags.MOD_ID + "." + name);
+        this.factory = Objects.requireNonNull(factory);
+        setTileEntity(AEBaseTile.class);
+        setRegistryName(Objects.requireNonNull(id));
+        setTranslationKey(id.getNamespace() + "." + id.getPath());
         setCreativeTab(CreativeTabs.REDSTONE);
         setHardness(hardness);
         setResistance(10.0F);
         setSoundType(SoundType.METAL);
         setHarvestLevel("pickaxe", 1);
+    }
+
+    /** Override to customize the registered item while retaining AE2S block item behavior. */
+    public AEBaseBlockItem createItem() {
+        return new AEBaseBlockItem(this);
     }
 
     @Override
@@ -47,8 +62,8 @@ public final class HatchBlock extends Block {
     }
 
     @Override
-    public TileEntity createTileEntity(@NotNull World world, @NotNull IBlockState state) {
-        return factory.get();
+    public AEBaseTile createTileEntity(@NotNull World world, @NotNull IBlockState state) {
+        return Objects.requireNonNull(factory.get(), "Hatch factory returned null");
     }
 
     @Override

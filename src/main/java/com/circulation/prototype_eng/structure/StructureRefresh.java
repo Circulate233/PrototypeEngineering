@@ -22,6 +22,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
+import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
+import com.circulation.prototype_eng.api.structure.StructureComponents;
+
 /**
  * PM's capture/worker/apply flow, with current-world validation and public hatch discovery.
  * One coordinator belongs to one loaded lifecycle; prepare/publish/invalidate are server-only.
@@ -121,11 +124,16 @@ public final class StructureRefresh {
     @Nullable
     private StructureAssembly assemble(StructureEvaluation evaluation) {
         var match = evaluation.match();
-        if (match == null) { return StructureAssembly.UNFORMED; }
+        if (match == null) {
+            return StructureAssembly.UNFORMED;
+        }
         var positions = new ObjectArrayList<>(match.allBlocks());
         positions.remove(host.identity().controllerPos());
         positions.sort(Comparator.comparingInt(BlockPos::getX).thenComparingInt(BlockPos::getY).thenComparingInt(BlockPos::getZ));
         var bindings = new ObjectArrayList<StructureHatchBinding>(positions.size());
+        var providers = new ObjectArrayList<StructureComponentProvider>(positions.size());
+        var ports = new ObjectArrayList<StructureComponents.Binding<?>>();
+        long generation = lifecycle.formed() ? lifecycle.formationGeneration() : Math.incrementExact(lifecycle.formationGeneration());
         var resources = new ObjectArrayList<ResourceHatch>();
         var inputs = new ObjectArrayList<EnergyInput>();
         var outputs = new ObjectArrayList<EnergyOutput>();
@@ -134,24 +142,45 @@ public final class StructureRefresh {
         var seenOutputs = new ReferenceOpenHashSet<EnergyOutput>();
         for (var position : positions) {
             // External shapes also need a loaded, currently present discovery position.
-            if (!host.isAreaLoaded(StructureBounds.at(position))) { return null; }
+            if (!host.isAreaLoaded(StructureBounds.at(position))) {
+                return null;
+            }
             var binding = Objects.requireNonNull(host.hatchesAt(position));
             bindings.add(binding);
-            if (binding.resource() != null && seenResources.add(binding.resource())) { resources.add(binding.resource()); }
-            if (binding.energyInput() != null && seenInputs.add(binding.energyInput())) { inputs.add(binding.energyInput()); }
-            if (binding.energyOutput() != null && seenOutputs.add(binding.energyOutput())) { outputs.add(binding.energyOutput()); }
+            var provider = host.structureComponentsAt(position);
+            providers.add(provider);
+            if (provider != null) {
+                var context = new StructureComponentProvider.Context(lifecycle.machine(), position, generation);
+                for (var entry : Objects.requireNonNull(provider.createStructureComponents(context))) {
+                    ports.add(new StructureComponents.Binding<>(context, Objects.requireNonNull(entry)));
+                }
+            }
+            if (binding.resource() != null && seenResources.add(binding.resource())) {
+                resources.add(binding.resource());
+            }
+            if (binding.energyInput() != null && seenInputs.add(binding.energyInput())) {
+                inputs.add(binding.energyInput());
+            }
+            if (binding.energyOutput() != null && seenOutputs.add(binding.energyOutput())) {
+                outputs.add(binding.energyOutput());
+            }
         }
         var verified = evaluation.refresh(host);
         diagnostics = verified.failures();
-        if (verified != evaluation) { return null; }
+        if (verified != evaluation) {
+            return null;
+        }
         // Capabilities are external callbacks. A provider swap/invalidated contract cannot leave a
         // partial candidate; recheck absent providers as well as the hatches that were discovered.
         for (int index = 0; index < positions.size(); index++) {
             var position = positions.get(index);
             if (!host.isAreaLoaded(StructureBounds.at(position))
-                || !bindings.get(index).isCurrent(host.hatchesAt(position))) { return null; }
+                || !bindings.get(index).isCurrent(host.hatchesAt(position))
+                || providers.get(index) != host.structureComponentsAt(position)) {
+                return null;
+            }
         }
-        return new StructureAssembly(match, new MachineHatches(resources, inputs, outputs));
+        return new StructureAssembly(match, new MachineHatches(resources, inputs, outputs), new StructureComponents(ports));
     }
 
     /** This task contains no host, World, TileEntity, lifecycle or active hatch contract. */

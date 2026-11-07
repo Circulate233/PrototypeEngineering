@@ -9,14 +9,24 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 
+import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
+
 /** Keeps the input fluid from masking a different, drainable output fluid. */
 public final class HatchFluidHandler implements IFluidHandler {
     private final GenericStackFluidStorage input;
     private final GenericStackFluidStorage output;
     @Nullable private final SlottedResourceStorage inputStorage;
     @Nullable private final SlottedResourceStorage outputStorage;
+    @Nullable
+    private final FluidHatchSettings settings;
 
-    public HatchFluidHandler(BufferedResourceHatch hatch) {
+    public HatchFluidHandler(SlottedResourceHatch hatch) {
+        this(hatch, null);
+    }
+
+    public HatchFluidHandler(SlottedResourceHatch hatch, @Nullable FluidHatchSettings settings) {
+        this.settings = settings;
         inputStorage = hatch.input();
         outputStorage = hatch.output();
         input = new GenericStackFluidStorage(new HatchInventoryPort(hatch, true, false));
@@ -34,12 +44,15 @@ public final class HatchFluidHandler implements IFluidHandler {
 
     @Override
     public int fill(FluidStack resource, boolean doFill) {
-        if (inputStorage == null) {
+        if (inputStorage == null || resource == null || resource.amount <= 0) {
             return 0;
         }
         inputStorage.context().lock();
         try {
-            return input.fill(resource, doFill);
+            int amount = settings == null ? resource.amount : (int) settings.limitFluidInput(resource.amount);
+            var limited = resource.copy();
+            limited.amount = amount;
+            return input.fill(limited, doFill);
         } finally {
             inputStorage.context().unlock();
         }
@@ -48,12 +61,14 @@ public final class HatchFluidHandler implements IFluidHandler {
     @Override
     @Nullable
     public FluidStack drain(FluidStack resource, boolean doDrain) {
-        if (outputStorage == null) {
+        if (outputStorage == null || resource == null || resource.amount <= 0) {
             return null;
         }
         outputStorage.context().lock();
         try {
-            return output.drain(resource, doDrain);
+            var limited = resource.copy();
+            limited.amount = settings == null ? resource.amount : (int) settings.limitFluidOutput(resource.amount);
+            return output.drain(limited, doDrain);
         } finally {
             outputStorage.context().unlock();
         }
@@ -62,12 +77,13 @@ public final class HatchFluidHandler implements IFluidHandler {
     @Override
     @Nullable
     public FluidStack drain(int maxDrain, boolean doDrain) {
-        if (outputStorage == null) {
+        if (outputStorage == null || maxDrain <= 0) {
             return null;
         }
         outputStorage.context().lock();
         try {
-            return output.drain(maxDrain, doDrain);
+            int amount = settings == null ? maxDrain : (int) settings.limitFluidOutput(maxDrain);
+            return output.drain(amount, doDrain);
         } finally {
             outputStorage.context().unlock();
         }

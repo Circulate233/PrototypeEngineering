@@ -2,21 +2,21 @@ package com.circulation.prototype_eng.container;
 
 import ae2.container.AEBaseContainer;
 import ae2.container.guisync.GuiSync;
-import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
+
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 
 /** Default real player inventory and a read-only machine page, synchronized through AE2. */
 public final class MachineContainer extends AEBaseContainer {
     private static final String VIEW = "view";
-    private final MachineControllerBlockEntity tile;
+    private final MachineControllerHost tile;
     private int requestedOffset;
     private int visibleRows = MachineGuiSnapshot.MAX_ROWS;
     private boolean captureQueued;
-    @GuiSync(0) public MachineGuiSnapshot snapshot = MachineGuiSnapshot.EMPTY;
 
-    public MachineContainer(InventoryPlayer player, MachineControllerBlockEntity tile) {
-        super(player, tile);
+    public MachineContainer(InventoryPlayer player, MachineControllerHost tile) {
+        super(player, tile.blockEntity());
         this.tile = tile;
         setGuiTitle(tile.type().displayName().text());
         addPlayerInventorySlots(214, 204);
@@ -27,12 +27,15 @@ public final class MachineContainer extends AEBaseContainer {
             }
         });
     }
+    @GuiSync(0) public MachineGuiSnapshot snapshot = MachineGuiSnapshot.EMPTY;
 
     public void requestView(int offset, int rows) { sendClientAction(VIEW, new View(offset, rows)); }
 
-    @Override public boolean canInteractWith(EntityPlayer player) {
-        return !tile.isInvalid() && player.world == tile.getWorld() && player.world.isBlockLoaded(tile.getPos(), false)
-            && player.world.getTileEntity(tile.getPos()) == tile && super.canInteractWith(player);
+    @Override
+    public boolean canInteractWith(EntityPlayer player) {
+        var entity = tile.blockEntity();
+        return !entity.isInvalid() && player.world == entity.getWorld() && player.world.isBlockLoaded(entity.getPos(), false)
+            && player.world.getTileEntity(entity.getPos()) == entity && super.canInteractWith(player);
     }
 
     @Override public void broadcastChanges() {

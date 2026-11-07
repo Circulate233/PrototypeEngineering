@@ -21,11 +21,19 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
+import java.io.IOException;
+import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.gui.GuiTextField;
+import org.lwjgl.input.Keyboard;
+
 public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
     private final Scrollbar inputScrollbar;
     private final Scrollbar outputScrollbar;
     private int visibleRows;
     private int playerTop;
+    private int controlsTop;
+    private GuiTextField inputRate;
+    private GuiTextField outputRate;
 
     public ResourceHatchGui(ResourceHatchContainer container, InventoryPlayer player) {
         super(container, player);
@@ -55,12 +63,27 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
 
     @Override
     public void initGui() {
-        visibleRows = Math.min(container.rows, Math.clamp((height - 140) / 18, 1, 5));
-        playerTop = 50 + visibleRows * 18;
+        visibleRows = Math.min(container.rows, Math.clamp((height - 140 - container.controlsHeight()) / 18, 1, 5));
+        playerTop = 50 + visibleRows * 18 + container.controlsHeight();
+        controlsTop = 36 + visibleRows * 18;
         ySize = playerTop + 82;
         configureScrollbar(inputScrollbar, 8, container.mode().hasInput());
         configureScrollbar(outputScrollbar, container.outputLeft, container.mode().hasOutput());
         super.initGui();
+        if (container.hasFluidSettings()) {
+            inputRate = createRateField(0, controlsTop + 11, container.fluidInputRate);
+            outputRate = createRateField(1, controlsTop + 41, container.fluidOutputRate);
+            inputRate.setVisible(container.mode().hasInput());
+            outputRate.setVisible(container.mode().hasOutput());
+            if (container.mode().hasInput()) {
+                addButton(new GuiButton(100, guiLeft + 111, guiTop + controlsTop + 10, 32, 16, GuiText.Apply.getLocal()));
+            }
+            if (container.mode().hasOutput()) {
+                addButton(new GuiButton(101, guiLeft + 111, guiTop + controlsTop + 40, 32, 16, GuiText.Apply.getLocal()));
+            }
+        }
+        addButton(new GuiButton(102, guiLeft + xSize - 96, guiTop + controlsTop + (container.hasFluidSettings() ? 60 : 0),
+            88, 18, GuiText.ClearFluids.getLocal()));
         for (Slot slot : container.inventorySlots) {
             if (!container.isResourceSlot(slot.slotNumber)) {
                 int index = slot.getSlotIndex();
@@ -68,6 +91,89 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
             }
         }
         updateResourceSlots();
+    }
+
+    private GuiTextField createRateField(int id, int top, long value) {
+        var field = new GuiTextField(id, fontRenderer, guiLeft + 8, guiTop + top, 100, 14);
+        field.setMaxStringLength(19);
+        field.setValidator(text -> text != null && text.matches("[0-9]{0,19}")
+            && (text.length() < 19 || text.compareTo(Long.toString(Long.MAX_VALUE)) <= 0));
+        field.setText(Long.toString(value));
+        return field;
+    }
+
+    private static long rate(GuiTextField field) {
+        return field.getText().isEmpty() ? 0 : Long.parseLong(field.getText());
+    }
+
+    @Override
+    protected void actionPerformed(GuiButton button) throws IOException {
+        switch (button.id) {
+            case 100 -> container.setFluidInputRate(rate(inputRate));
+            case 101 -> container.setFluidOutputRate(rate(outputRate));
+            case 102 -> container.clearFluids();
+            default -> super.actionPerformed(button);
+        }
+    }
+
+    @Override
+    protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
+        if (inputRate != null && inputRate.getVisible()) {
+            inputRate.mouseClicked(mouseX, mouseY, button);
+        }
+        if (outputRate != null && outputRate.getVisible()) {
+            outputRate.mouseClicked(mouseX, mouseY, button);
+        }
+        super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    protected void keyTyped(char typedChar, int keyCode) throws IOException {
+        if (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER) {
+            if (inputRate != null && inputRate.isFocused()) {
+                container.setFluidInputRate(rate(inputRate));
+                inputRate.setFocused(false);
+                return;
+            }
+            if (outputRate != null && outputRate.isFocused()) {
+                container.setFluidOutputRate(rate(outputRate));
+                outputRate.setFocused(false);
+                return;
+            }
+        }
+        if (inputRate != null && inputRate.textboxKeyTyped(typedChar, keyCode)
+            || outputRate != null && outputRate.textboxKeyTyped(typedChar, keyCode)) {
+            return;
+        }
+        super.keyTyped(typedChar, keyCode);
+    }
+
+    @Override
+    public void updateScreen() {
+        super.updateScreen();
+        if (inputRate != null) {
+            inputRate.updateCursorCounter();
+        }
+        if (outputRate != null) {
+            outputRate.updateCursorCounter();
+        }
+    }
+
+    @Override
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        if (inputRate != null && !inputRate.isFocused()) {
+            inputRate.setText(Long.toString(container.fluidInputRate));
+        }
+        if (outputRate != null && !outputRate.isFocused()) {
+            outputRate.setText(Long.toString(container.fluidOutputRate));
+        }
+        super.drawScreen(mouseX, mouseY, partialTicks);
+        if (inputRate != null) {
+            inputRate.drawTextBox();
+        }
+        if (outputRate != null) {
+            outputRate.drawTextBox();
+        }
     }
 
     private void configureScrollbar(Scrollbar scrollbar, int left, boolean visible) {
@@ -131,6 +237,12 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         }
         if (container.mode().hasOutput()) {
             fontRenderer.drawString(GuiText.Output.getLocal(), container.outputLeft, 20, 0x674226);
+        }
+        if (container.hasFluidSettings() && container.mode().hasInput()) {
+            fontRenderer.drawString(GuiText.FluidInputRate.getLocal(), 8, controlsTop, 0x404040);
+        }
+        if (container.hasFluidSettings() && container.mode().hasOutput()) {
+            fontRenderer.drawString(GuiText.FluidOutputRate.getLocal(), 8, controlsTop + 30, 0x404040);
         }
         fontRenderer.drawString(playerInventory.getDisplayName().getUnformattedText(), (xSize - 162) / 2, playerTop - 11, 0x404040);
     }

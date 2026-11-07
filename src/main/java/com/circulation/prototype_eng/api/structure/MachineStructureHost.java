@@ -20,4 +20,11 @@ public interface MachineStructureHost extends MachineLifecycleHost, StructureRea
      * Built-in discovery uses the unsided capability. A specialized host may choose a defined side.
      */
     StructureHatchBinding hatchesAt(BlockPos position);
+
+    /** Current optional provider identity at a loaded position, stable throughout discovery. */
+    @Nullable
+    default StructureComponentProvider structureComponentsAt(BlockPos position) {
+        requireServerThread();
+        return null;
+    }
 }

@@ -8,7 +8,6 @@ import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.KeyCounter;
 import ae2.api.storage.MEStorage;
 import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.GuiText;
@@ -22,10 +21,12 @@ import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
+
 /**
  * Owns buffers independently of their block entity or GUI.
  */
-public final class BufferedResourceHatch implements ResourceHatch {
+public final class BufferedResourceHatch implements SlottedResourceHatch {
     private final SlottedResourceBuffer input;
     private final SlottedResourceBuffer output;
     private final MEStorage automation = new AutomationPort();

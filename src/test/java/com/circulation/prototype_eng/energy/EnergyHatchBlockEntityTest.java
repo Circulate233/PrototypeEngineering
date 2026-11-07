@@ -10,7 +10,38 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import org.jetbrains.annotations.NotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+
 class EnergyHatchBlockEntityTest {
+    @Test
+    void externalNbtHooksAndReattachmentRetainSettingsWithoutRevivingOldTransfers() {
+        var tile = new DownstreamEnergyHatch();
+        tile.setMaxInputRate(11);
+        tile.storage().receiveEnergy(11, Actionable.MODULATE);
+        tile.routeLimit = 4;
+        var saved = new NBTTagCompound();
+        tile.saveAdditional(saved);
+        var old = tile.storage();
+        tile.loadTag(saved);
+        assertEquals(0, old.extractEnergy(100, Actionable.MODULATE));
+        assertEquals(4, tile.storage().extractEnergy(100, Actionable.MODULATE));
+
+        var unloaded = tile.storage();
+        tile.onChunkUnload();
+        tile.validate();
+        assertNotSame(unloaded, tile.storage());
+        assertEquals(0, unloaded.receiveEnergy(100, Actionable.MODULATE));
+        assertEquals(0, unloaded.extractEnergy(100, Actionable.MODULATE));
+        assertEquals(11, tile.storage().receiveEnergy(100, Actionable.MODULATE));
+        assertEquals(4, tile.storage().extractEnergy(100, Actionable.MODULATE));
+
+        var invalidated = tile.storage();
+        tile.invalidate();
+        tile.validate();
+        assertEquals(0, invalidated.extractEnergy(100, Actionable.MODULATE));
+        assertEquals(4, tile.storage().extractEnergy(100, Actionable.MODULATE));
+    }
     @Test
     void changingRatesUpdatesMachineTransfersAndZeroRestoresTheConfiguredDefault() {
         var tile = new EnergyHatchBlockEntity(HatchMode.MIXED, HatchTier.LV1);
@@ -58,5 +89,26 @@ class EnergyHatchBlockEntityTest {
         tile.readFromNBT(tag);
         assertEquals(0, tile.storage().extractEnergy(100, Actionable.MODULATE));
         assertEquals(20, tile.storage().savedEnergy());
+    }
+
+    private static final class DownstreamEnergyHatch extends EnergyHatchBlockEntity {
+        private long routeLimit;
+
+        private DownstreamEnergyHatch() {
+            super(HatchMode.MIXED, HatchTier.LV1);
+        }
+
+        @Override
+        public void saveAdditional(@NotNull NBTTagCompound tag) {
+            super.saveAdditional(tag);
+            tag.setLong("RouteLimit", routeLimit);
+        }
+
+        @Override
+        public void loadTag(@NotNull NBTTagCompound tag) {
+            super.loadTag(tag);
+            routeLimit = tag.getLong("RouteLimit");
+            setMaxOutputRate(routeLimit);
+        }
     }
 }
