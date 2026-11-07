@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 
 /**
  * Greedy consecutive slices. Validators run once at the base; children run once at the last matched
@@ -24,7 +25,7 @@ import java.util.Objects;
  * retry a shorter length. An unavailable attempted slice fails the whole structure.
  */
 @SuppressWarnings({"unused", "ClassCanBeRecord"}) // Definitions use identity, not recursive structural equality.
-public final class SliceStructure implements MachineStructure {
+public class SliceStructure implements MachineStructure, StructurePreviewProvider {
     private final ResourceLocation id;
     private final BlockOrientation orientation;
     private final BlockPos offset;
@@ -63,7 +64,12 @@ public final class SliceStructure implements MachineStructure {
     public int maxCount() { return maxCount; }
     public BlockPos sliceOffset() { return sliceOffset; }
     public List<StructurePredicate> validators() { return validators; }
-    public List<MachineStructure> children() { return children; }
+    public List<MachineStructure> children() { return children;
+    }
+
+    @Override public Geometry previewGeometry() {
+        return new Geometry(Kind.SLICE, offset, minCount, maxCount, sliceOffset,
+            new ObjectArrayList<>(pattern.blocks().keySet()), children); }
 
     @Override
     public SliceStructure transform(StructureTransform rotation) {

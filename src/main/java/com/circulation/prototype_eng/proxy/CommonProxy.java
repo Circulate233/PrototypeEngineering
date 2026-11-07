@@ -46,15 +46,26 @@ import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegist
 import com.circulation.prototype_eng.structure.json.BuiltinStructurePredicates;
 import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
 import com.circulation.prototype_eng.structure.json.StructureJsonLoader;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.reload.StructureNetwork;
+import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
+import java.nio.file.Path;
 
 /** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
 public class CommonProxy implements IGuiHandler {
     private StructureJsonLoader structureData = StructureJsonLoader.empty();
+    private Path structureDirectory;
+    private StructureCatalog javaStructures;
+    private StructurePredicateRegistry structureFactories;
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
         OrientationToolConfig.load(event.getModConfigurationDirectory());
-        structureData = StructureJsonLoader.readDirectory(event.getModConfigurationDirectory().toPath().resolve(Tags.MOD_ID).resolve("structures"));
+        structureDirectory = event.getModConfigurationDirectory().toPath().resolve(Tags.MOD_ID).resolve("structures");
+        structureData = StructureJsonLoader.readDirectory(structureDirectory);
+        StructureNetwork.register();
         HatchCapabilityRegistration.register();
         NetworkRegistry.INSTANCE.registerGuiHandler(PrototypeEngineering.instance, this);
         PrototypeEngineering.LOGGER.info("Loading {} {}", Tags.MOD_NAME, Tags.VERSION);
@@ -78,7 +89,9 @@ public class CommonProxy implements IGuiHandler {
         structurePredicates.freeze();
         var machines = new MachineRuntimeRegistrationEvent(MachineTypeRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(machines);
-        var structures = structureData.resolve(machines.structureDefinitions(), structurePredicates, new ForgeStructureBlocks());
+        javaStructures = machines.structureDefinitions();
+        structureFactories = structurePredicates;
+        var structures = structureData.resolve(javaStructures, structurePredicates, new ForgeStructureBlocks());
         MachineTypeRegistry.INSTANCE.resolveRuntime(structures, machines.assemblies());
     }
 
@@ -87,10 +100,12 @@ public class CommonProxy implements IGuiHandler {
         try {
             ServerMachineIdentities.start(event.getServer());
             ServerNetworkRuntime.start(event.getServer());
+            ServerStructureReloads.start(event.getServer(), structureDirectory, javaStructures, structureFactories);
         }
         catch (RuntimeException | Error failure) {
             try {
                 ServerTaskSchedulers.stop();
+                ServerStructureReloads.stop();
                 ServerNetworkRuntime.stop();
                 ServerMachineIdentities.stop();
             }
@@ -101,6 +116,7 @@ public class CommonProxy implements IGuiHandler {
 
     public void serverStarting(FMLServerStartingEvent event) {
         ServerResearch.start(event.getServer());
+        event.registerServerCommand(new StructureReloadCommand());
     }
 
     public void serverStopping() {
@@ -109,9 +125,15 @@ public class CommonProxy implements IGuiHandler {
 
     public void serverStopped() {
         ServerTaskSchedulers.stop();
+        ServerStructureReloads.stop();
         ServerResearch.stop();
         ServerNetworkRuntime.stop();
         ServerMachineIdentities.stop();
+    }
+
+    /** Client override schedules onto the actual client thread; common class loads no client API. */
+    public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
+        throw new IllegalStateException("Server proxy cannot receive a client structure catalog");
     }
 
     @Override

@@ -24,8 +24,43 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import java.util.Objects;
 
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.network.NetHandlerPlayClient;
+import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 
 public class ClientProxy extends CommonProxy {
+    private ClientStructureCatalog structures;
+
+    public ClientStructureCatalog structures() {
+        if (!Minecraft.getMinecraft().isCallingFromMinecraftThread()) throw new IllegalStateException("Structure view requires the client thread");
+        if (structures == null) structures = new ClientStructureCatalog();
+        return structures;
+    }
+
+    @Override public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
+        Minecraft.getMinecraft().addScheduledTask(() -> {
+            var minecraft = Minecraft.getMinecraft();
+            if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+            var manager = handler.getNetworkManager();
+            try { structures().receive(manager, packet); }
+            catch (RuntimeException failure) { PrototypeEngineering.LOGGER.error("Cannot install authoritative structure catalog", failure); }
+        });
+    }
+
+    @SubscribeEvent public void connected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
+        Minecraft.getMinecraft().addScheduledTask(() -> {
+            var current = Minecraft.getMinecraft().getConnection();
+            if (event.getManager().isChannelOpen() && (current == null || current.getNetworkManager() == event.getManager()))
+                structures().connected(event.getManager());
+        });
+    }
+
+    @SubscribeEvent public void disconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
+        Minecraft.getMinecraft().addScheduledTask(() -> structures().disconnected(event.getManager()));
+    }
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);

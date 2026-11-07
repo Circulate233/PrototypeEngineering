@@ -173,6 +173,50 @@ public final class MachineTypeRegistry {
         return runtime.catalog;
     }
 
+    /** Preflight without changing either the complete catalog or canonical assembly bindings. */
+    public synchronized Replacement prepareReplacement(StructureCatalog catalog) {
+        beginMutation();
+        try {
+            requireFrozen();
+            var previous = Objects.requireNonNull(runtime, "Machine runtime has not been resolved");
+            if (previous.assemblies == null) throw new IllegalStateException("Machine runtime has no assemblies");
+            return new Replacement(this, previous, new ResolvedRuntime(Objects.requireNonNull(catalog),
+                resolveStructureReferences(catalog), previous.assemblies));
+        } finally {
+            mutating = false;
+        }
+    }
+
+    /** Called once at the owning scheduler's joined boundary after exact host preflight. */
+    public synchronized void publishReplacement(Replacement replacement) {
+        beginMutation();
+        try {
+            if (!replacementCurrent(replacement)) throw new IllegalStateException("Structure replacement is obsolete");
+            runtime = replacement.next;
+        } finally {
+            mutating = false;
+        }
+    }
+
+    public synchronized boolean replacementCurrent(Replacement replacement) {
+        return replacement != null && replacement.owner == this && runtime == replacement.previous;
+    }
+
+    /** A held replacement has no publication authority beyond its exact previous runtime. */
+    public static final class Replacement {
+        private final MachineTypeRegistry owner;
+        private final ResolvedRuntime previous;
+        private final ResolvedRuntime next;
+
+        private Replacement(MachineTypeRegistry owner, ResolvedRuntime previous, ResolvedRuntime next) {
+            this.owner = owner;
+            this.previous = previous;
+            this.next = next;
+        }
+
+        public StructureCatalog catalog() { return next.catalog; }
+    }
+
     private record ResolvedRuntime(StructureCatalog catalog, Map<ResourceLocation, MachineStructure> structures,
                                    @Nullable Map<ResourceLocation, MachineAssembly> assemblies) {}
 

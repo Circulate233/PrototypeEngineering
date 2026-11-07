@@ -1,6 +1,6 @@
 # 结构定义、快照与匹配
 
-已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核、公开仓室发现、实际控制器和调度器。2026-11-08 已补齐 A：启动期严格两阶段 JSON 与共享目录/机器装配原子发布。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)；库不内置正式机器或配方。
+已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核、公开仓室发现、实际控制器和调度器。2026-11-08 已补齐 A 启动期严格两阶段 JSON 与共享目录/机器装配原子发布，以及 B 运行中重载、准确宿主配置代撤销/刷新和客户端权威目录/缓存同步。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)；库不内置正式机器或配方。
 
 ## 朝向与定义
 
@@ -8,7 +8,7 @@
 
 PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAround(UP)` 实际把 NORTH 变为 WEST，因此没有拿这个方法直接替代 PM 旋转；目标朝向通过 AE2 的前/上方向表示。
 
-`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端预览运行入口仍待接入。
+`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存入口已接，预览渲染仍待接入。
 
 `StructurePlan` 将定义从它的基础朝向转换到请求朝向，保留一个固定控制器坐标并收集读取。每次 `match` 返回独立 `StructureMatch` 树或 null，前一次成功不会污染下一次失败。结果保存每个 occurrence 的重复数、实际本层方块位置及子树；位置收集按公开结果进行，不按具体模板/切片类判断，也不按 ID 扁平覆盖计数。
 
@@ -32,7 +32,17 @@ PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAro
 
 A 新增 21 项行为测试，受影响正常 Gradle 测试 112 tests / 14 suites，完整 `gradlew.bat build --console=plain` 1285 tests / 161 suites，均零失败/错误/跳过。18 Java 的 IDEA MCP `get_file_problems(errorsOnly:false)` 零错误/警告/弱警告，完整 `read_file` 项目文件文本与磁盘一致，MCP build_project 成功；18 Java 构建前后与 MCP 检查 SHA 一致。精确写前/最终清单、快照和原始证据见 `build/staging/structure-json/`，不将文件读回称为未保存 Document 证明。
 
-B 仍必须继续：运行中重载、既有控制器及外部宿主的配置代撤销/刷新、客户端目录和预览同步。A 没有运行中替换入口或客户端同步协议；不可变目录只是后续整代替换的基础。结构预览/投影/切片/BOM、display override 消费、模型隐藏与复杂渲染也继续保留。
+## B：运行中重载与权威客户端目录
+
+实际 permission-2 `/pe_structures reload` 在原 TaskScheduler 的 joined owner boundary 中重新读取同一目录，沿 A 严格 DTO/完整 JSON+冻结 Java resolver 构造候选。所有机器引用、精确 loaded host、展示图与有界传输数据均通过预检后，才 callback-free 撤销整批旧 StructureConfiguration，再逐宿主暂停原绑定、原子发布 registry、安装新的 canonical 配置并立即重匹配。canonical 装配对象保持；同朝向仍更换配置代并重建仓室/结构组件。旧 worker 成功与失败均无权改变新配置；原 scheduler pending 的实际 source 退出/未完成确认义务会继续阻止 reload 边界，不能强制解约或恢复旧授权。
+
+GLOBAL 实际 Loaded 只记录 machine/host/lifecycle 身份，离开 load gate 后才自动登记独立宿主；显式更新器不重复构造或被 service 代 tick。ReloadableStructureHost 负责只赋值的 installStructureConfiguration 与永久精确 structureLifecycleCurrent；外部宿主无须继承 TE，自定义 lifecycle registry 可交付实际 Loaded。live server session 参与重载/自动管理必须使用该会话原 scheduler；公开构造器显式拒绝 foreign scheduler，拒绝在任何登记/配置改变前完成。无 Session 的独立逻辑 owner 保持原能力。
+
+解析/候选预检失败保留旧 registry/config/client sequence。整批配置撤销先于生命周期 pause 回调，所有 pause 均尝试；pause 失败保留旧目录和序号、旧配置为 null、旧绑定暂停/故障，不安装新代或恢复旧 worker 权限。成功提交目录后，即使个别安装/刷新回调失败，客户端仍收到已提交代，原异常继续报告。
+
+StructureCatalogView 只捕获原 Template/Slice 相对几何、child shape 身份 DAG、translationKey 与独立 display；不传 matcher/factory。外部形状通过 StructurePreviewProvider 提供几何，否则显式 OPAQUE。实际 Forge S2C 通道以 session UUID/成功 sequence 同步，严格 UTF-8 codec 限总 8 MiB、集合及字符串字节 65,536，分为 16 KiB 消息；登录发送当前目录。客户端在实际 client thread/准确 NetHandler manager 上收件，永不重读本地 config。完整合法新代到齐才一次替换 view 并清代缓存；部分、旧代、错连接、冲突或畸形数据保留旧完成目录。断连清 view/cache，旧断连不清替代连接；重复同 manager 通知保持目录。StructurePreviewCache 按权威 view 身份与设置缓存，跨代 builder 无权发布旧结果，订阅 handles 各自保留对象身份。
+
+B 新增 23 项行为（3 suites），最终受影响正常 Gradle 187 tests / 24 suites、一次完整 build 1308 tests / 164 suites 均零失败/错误/跳过。24 Java 本机 IDEA MCP errorsOnly:false 全级零、完整项目文件读回/磁盘一致，MCP build_project 成功；26 源码资源构建前后与 24 Java MCP SHA 稳定。独立 max 审计的 foreign scheduler P2 以最小入口拒绝/无残留纯行为及实际构造转发复核闭环；准确正式写前、只读候选/修正、统一最终清单/快照与真实证据见 `build/staging/structure-reload/`。未启动游戏或 native Session/Bootstrap/FML 测试初始化；同步展示数据不表示预览/投影渲染、切片/BOM/display override 消费、模型隐藏或复杂渲染完成。
 
 ## 模板、切片与修正
 
@@ -58,7 +68,7 @@ B 仍必须继续：运行中重载、既有控制器及外部宿主的配置代
 
 快照区分三种情况：已捕获的缺失值（如无 TE 的 null）、未加载区域、捕获异常。普通未加载的所需谓词为不匹配；直接读取未声明/不可用位置是调用错误。潜在分支上的 RuntimeException 保留为诊断事实，若实际访问该事实则抛出，绝不转换为空气/null/false；未访问的分支不因此改变结果。JVM Error 立即中断捕获。该错误处理不表示调用者可忽略 `failures()` 诊断或继续使用已失败的真实运行宿主。
 
-快照只解决读取线程和对象隔离，不授予后续发布权限。以下发布入口复核世界事实、配置代与实际仓室；真实调度 join、PN owner/epoch 到配置代的接线仍待完成。外部 reader 和能力发现必须遵守观察性读取契约，不得修改世界、配置或递归调用刷新入口。
+快照只解决读取线程和对象隔离，不授予后续发布权限。以下发布入口复核世界事实、配置代与实际仓室；B 重载经原调度 joined boundary 与准确 active lifecycle/配置代撤销，原 source 退出/确认义务保持。外部 reader 和能力发现必须遵守观察性读取契约，不得修改世界、配置或递归调用刷新入口。
 
 ## 谓词与内置事实
 
@@ -89,7 +99,7 @@ B 仍必须继续：运行中重载、既有控制器及外部宿主的配置代
 
 `ControllerLifecycleHost` 同时实现公开的 `MachineStructureHost`，固定绑定 World，在结构入口检查确切 controller 的 World、位置、invalid、区域已加载及当前位置 TE 身份。清理的线程校验与活控制器检查分开，控制器已移除也能执行 broken/unload。configure/revoke 的调用方必须先 join 并 `StructureRefresh.invalidate` 旧绑定。默认发现使用 unsided 能力；专用外部宿主可明确定义侧面，不扫描六面后任意挑代理。
 
-仓室本身仍是活动存储契约。替换/卸载 provider 必须使旧 StorageContext 失效；结构证明不能代替余额锁、预留或配方提交时的有效性检查。主线程串行和观察性回调是上述复核的前提，不能支持任意第三方在最后一次检查中继续修改世界。真实控制器配置变更、PN 权限轮换和调度停止/重试仍须落实到后续实现。
+仓室本身仍是活动存储契约。替换/卸载 provider 必须使旧 StorageContext 失效；结构证明不能代替余额锁、预留或配方提交时的有效性检查。主线程串行和观察性回调是上述复核的前提，不能支持任意第三方在最后一次检查中继续修改世界。B 的实际目录/宿主重载和原 scheduler 停止/待确认边界已接，其他授权仍由各自真实生命周期和资源提交证明控制。
 
 ## 验证与后续
 
@@ -97,4 +107,4 @@ B 仍必须继续：运行中重载、既有控制器及外部宿主的配置代
 
 新增测试覆盖真实 worker 消费快照、读取证明/时间刷新、切片增长、同方向换仓、过期成功/失败/失配、配置 ABA、卸载、发现失稳重试、故障隔离、跨线程/执行重叠及重入。逻辑 fixture 实现公开宿主接口，没有伪造 Forge 注册环境。
 
-实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布本阶段实现与验证已完成。下一步必须继续 B 运行中重载、既有及外部宿主刷新和客户端预览同步，再接预览/投影/切片/BOM/display override、模型隐藏/复杂渲染及结构准备工作预算；当前启动目录与宿主发布契约不代表这些能力已完成，也没有缩减其迁移范围。
+实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。下一步接预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染及结构准备工作预算；当前目录同步与宿主发布契约不代表这些能力已完成，也没有缩减其迁移范围。游戏内集成未验收；本阶段实现与验证已完成。

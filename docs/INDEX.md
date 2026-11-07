@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-08 结构 A 启动期严格两阶段 JSON/共享发布本阶段实现与验证已完成：PreInit 只冻结 DTO，PostInit 冻结内置/外部谓词工厂并解析全部 JSON/Java DAG，完整目录、机器结构引用与装配经一个私有不可变快照原子发布；未被机器引用的定义也保留，translationKey/display 与 matcher 分离，昼夜使用实际 DAYTIME。新增 21 项行为，受影响 112 tests / 14 suites、完整 build 1285 tests / 161 suites 全通过；18 Java IDEA MCP errorsOnly:false 全级零、完整 read_file 项目文件文本/磁盘一致、MCP build_project 成功，18 Java 构建前后与 MCP 检查 SHA 稳定。见[结构定义](structures.md)及 `build/staging/structure-json/` 的准确写前/最终快照与证据。B 运行中重载、既有及外部宿主配置代撤销/刷新、客户端目录/预览同步仍必须继续；投影/切片/BOM/display override 消费与复杂渲染未计完成。未推送，未启动游戏或服务端。
+- 2026-11-08 结构 B 运行中重载、准确既有/独立宿主配置代撤销与客户端权威目录/缓存同步已实现并验证：实际 `/pe_structures reload` 经原 scheduler join/待确认义务边界，复用 A 完整解析与原子目录替换；整批旧配置先撤销，再暂停/安装新代并重建同朝向绑定，旧 worker 无权发布。实际 Loaded 记录后自动登记独立宿主，显式 owner 保留原 cadence；live session 的 foreign scheduler 构造显式拒绝且无登记残留。服务端会话/序号+16 KiB 分块同步完整几何/name/display DAG，部分数据保留旧 view/cache，完成后一次替换，断连清理。23 项 B 行为、受影响 187 tests / 24 suites、完整 build 1308 tests / 164 suites 全通过；24 Java 本机 IDEA MCP errorsOnly:false 全级零、完整项目文件读回/磁盘一致、MCP build_project 成功，26 源码资源构建前后及 24 Java MCP SHA 稳定，独立 max 审计闭环。见[结构定义](structures.md)，准确 formal-before/冻结候选/修正 delta/最终统一清单与验证证据 `build/staging/structure-reload/`。预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染及实机验收仍待继续；本阶段实现与验证已完成，未推送、未启动游戏或服务端。
+
+- 2026-11-08 结构 A 启动期严格两阶段 JSON/共享发布本阶段实现与验证已完成：PreInit 只冻结 DTO，PostInit 冻结内置/外部谓词工厂并解析全部 JSON/Java DAG，完整目录、机器结构引用与装配经一个私有不可变快照原子发布；未被机器引用的定义也保留，translationKey/display 与 matcher 分离，昼夜使用实际 DAYTIME。新增 21 项行为，受影响 112 tests / 14 suites、完整 build 1285 tests / 161 suites 全通过；18 Java IDEA MCP errorsOnly:false 全级零、完整 read_file 项目文件文本/磁盘一致、MCP build_project 成功，18 Java 构建前后与 MCP 检查 SHA 稳定。见[结构定义](structures.md)及 `build/staging/structure-json/` 的准确写前/最终快照与证据。后续 B 的实际结果见上方检查点；投影/切片/BOM/display override 消费与复杂渲染未计完成。A 已本地提交 `63247b8b5c2652c7909835b023a2f94d5e2584f9`，未推送，未启动游戏或服务端。
 
 - 2026-11-08 块二 A 正式 PLANNED_PARALLEL 与独立机器宿主已接通并验证：公开 PlannedMachineTask 交付真实 MachineInstance，Controller/Instance/外部 wrapper 共用原生命周期、组件游标、工位 coordinator 和来源 lanes；公共三参 scheduler 默认接正式机器，服务器仅为 CONCURRENT 网络机器追加 admission/refresh。捕获登记、active、宿主及底层 mode、原机器/lifecycle，owner prepare 返回后重验 current，旧 pending 不续权；MAIN → CONCURRENT join → planned 顺序保持。正常完整 build 1264 tests / 160 suites、受影响 170 tests / 20 suites 全通过，12 Java IDEA MCP errorsOnly:false 全级零、完整 read_file 项目文本/磁盘一致，12 源码构建前后 SHA 稳定。见[正式执行](planned-execution.md)、[调度](scheduling.md)和[网络消费者](network-recipes.md)，准确写前基线/最终快照/证据入口 `build/staging/planned-mode-hosts/`。扫描内部工作预算属于 2B；本阶段实现与验证已完成，未推送、未启动游戏或服务端。
 
@@ -41,7 +43,7 @@
 1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；2A 正式 PLANNED_PARALLEL 与独立宿主已验证；下一步按[配方功能核对](recipe-feature-parity.md)接 2B 扫描内部工作预算。Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
 3. 2B 复用已验证的纯 kernel、实际预算游标、机器生命周期与 source lanes，接扫描内部预算；外部合作回调不冒充可抢占实现。整体重开发仍在进行。
-4. 结构 A 启动期严格两阶段 JSON/共享注册已完成；必须继续 B 运行中重载、既有及外部宿主撤销/刷新和客户端目录/预览同步，再接结构预览/投影/切片/BOM/display override 消费、复杂渲染、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
+4. 结构 A 启动期严格两阶段 JSON/共享注册及 B 运行中重载、准确宿主撤销/刷新与客户端权威目录/缓存同步已实现验证；B 实现与验证已完成。继续结构预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染、结构准备工作预算、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
 ## 必须遵守
 

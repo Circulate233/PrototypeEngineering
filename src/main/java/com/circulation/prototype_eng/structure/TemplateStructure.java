@@ -16,10 +16,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 
 /** Immutable fixed pattern, followed by base validators and children anchored at its offset origin. */
 @SuppressWarnings({"unused", "ClassCanBeRecord"}) // Definitions use identity, not recursive structural equality.
-public final class TemplateStructure implements MachineStructure {
+public class TemplateStructure implements MachineStructure, StructurePreviewProvider {
     private final ResourceLocation id;
     private final BlockOrientation orientation;
     private final BlockPos offset;
@@ -46,7 +47,12 @@ public final class TemplateStructure implements MachineStructure {
     @Override public boolean hideWorldBlocks() { return hideWorldBlocks; }
     public StructurePattern pattern() { return pattern; }
     public List<StructurePredicate> validators() { return validators; }
-    public List<MachineStructure> children() { return children; }
+    public List<MachineStructure> children() { return children;
+    }
+
+    @Override public Geometry previewGeometry() {
+        return new Geometry(Kind.TEMPLATE, offset, 1, 1, BlockPos.ORIGIN,
+            new ObjectArrayList<>(pattern.blocks().keySet()), children); }
 
     @Override
     public TemplateStructure transform(StructureTransform rotation) {

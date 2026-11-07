@@ -273,3 +273,7 @@ jei.prototype_eng.Page=%s / %s
 jei.prototype_eng.Previous=上一资源/说明分页（也可滚轮切换）
 jei.prototype_eng.Next=下一资源/说明分页（也可滚轮切换）
 jei.prototype_eng.More=…
+structure.prototype_eng.ReloadUsage=/pe_structures reload
+structure.prototype_eng.Reloaded=结构目录第 %s 代已发布。
+structure.prototype_eng.ReloadFailed=结构重载已拒绝，保留第 %s 代。详情见服务器日志。
+structure.prototype_eng.ReloadRefreshFailed=结构目录第 %s 代已发布，个别宿主刷新或同步发送失败。详情见服务器日志。

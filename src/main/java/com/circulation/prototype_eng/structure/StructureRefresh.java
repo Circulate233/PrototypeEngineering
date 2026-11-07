@@ -24,6 +24,7 @@ import java.util.Objects;
 
 import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
+import java.util.function.BooleanSupplier;
 
 /**
  * PM's capture/worker/apply flow, with current-world validation and public hatch discovery.
@@ -34,15 +35,23 @@ import com.circulation.prototype_eng.api.structure.StructureComponents;
 public final class StructureRefresh {
     private final MachineLifecycle lifecycle;
     private final MachineStructureHost host;
+    private final BooleanSupplier attachmentCurrent;
     @Nullable private Request pending;
     private boolean active;
     private List<StructureSnapshot.Failure> diagnostics = List.of();
 
     public StructureRefresh(MachineLifecycle lifecycle, MachineStructureHost host) {
+        this(lifecycle, host, () -> true); }
+
+    /** Independent external attachment/owner checks remain owner-only and never enter a Request. */
+    public StructureRefresh(MachineLifecycle lifecycle, MachineStructureHost host, BooleanSupplier attachmentCurrent) {
         this.lifecycle = Objects.requireNonNull(lifecycle);
         this.host = Objects.requireNonNull(host);
+        this.attachmentCurrent = Objects.requireNonNull(attachmentCurrent);
         host.requireServerThread();
-        if (lifecycle.host() != host) { throw new IllegalArgumentException("Structure and lifecycle hosts must be identical"); }
+        if (lifecycle.host() != host) {
+            throw new IllegalArgumentException("Structure and lifecycle hosts must be identical");
+        }
     }
 
     /** Captures one detached request. Starting a newer attempt permanently retires older results. */
@@ -52,12 +61,12 @@ public final class StructureRefresh {
         try {
             pending = null;
             var configuration = host.structureConfiguration();
-            if (lifecycle.state() != MachineLifecycle.State.LOADED || configuration == null) { return null; }
+            if (lifecycle.state() != MachineLifecycle.State.LOADED || configuration == null || !attachmentCurrent.getAsBoolean()) { return null; }
             var plan = new StructurePlan(configuration.definition(), host.identity().controllerPos(), configuration.orientation());
             var snapshot = StructureSnapshot.capture(plan.reads(), host);
             diagnostics = snapshot.failures();
             // Observational external readers must not change configuration, but do not publish if they do.
-            if (host.structureConfiguration() != configuration) { return null; }
+            if (!configurationCurrent(configuration)) { return null; }
             var request = new Request(configuration, plan, snapshot);
             pending = request;
             return request;
@@ -83,7 +92,7 @@ public final class StructureRefresh {
         enter();
         try {
             boolean applied = lifecycle.refreshStructure(
-                () -> pending == result.request && host.structureConfiguration() == result.request.configuration,
+                () -> pending == result.request && configurationCurrent(result.request.configuration),
                 () -> {
                     var current = result.evaluation.refresh(host);
                     diagnostics = current.failures();
@@ -107,7 +116,7 @@ public final class StructureRefresh {
         Objects.requireNonNull(failure);
         enter();
         try {
-            lifecycle.refreshStructure(() -> pending == request && host.structureConfiguration() == request.configuration, () -> {
+            lifecycle.refreshStructure(() -> pending == request && configurationCurrent(request.configuration), () -> {
                 if (failure instanceof RuntimeException runtime) { throw runtime; }
                 if (failure instanceof Error error) { throw error; }
                 throw new IllegalStateException("Structure worker failed", failure);
@@ -119,6 +128,10 @@ public final class StructureRefresh {
         host.requireServerThread();
         if (active) { throw new IllegalStateException("Reentrant structure refresh"); }
         active = true;
+    }
+
+    private boolean configurationCurrent(StructureConfiguration configuration) {
+        return attachmentCurrent.getAsBoolean() && host.structureConfiguration() == configuration;
     }
 
     @Nullable

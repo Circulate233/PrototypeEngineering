@@ -4,7 +4,6 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
-import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
 import com.circulation.prototype_eng.api.structure.StructureHatchBinding;
@@ -21,10 +20,14 @@ import java.util.Objects;
 import java.util.UUID;
 
 import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
 
 /** Binds an already attached server-side controller without registering a block or a scheduler. */
 @SuppressWarnings("unused") // Public adapter for downstream controller tile entities.
-public final class ControllerLifecycleHost implements MachineStructureHost {
+public class ControllerLifecycleHost implements ReloadableStructureHost {
     private final TileEntity controller;
     private final World world;
     private final MachineIdentity identity;
@@ -82,6 +85,23 @@ public final class ControllerLifecycleHost implements MachineStructureHost {
     public void configureStructure(MachineStructure definition, BlockOrientation orientation) {
         requireServerThread();
         configuration = new StructureConfiguration(definition, orientation);
+    }
+
+    public void configureStructure(StructureCatalog catalog, MachineStructure definition, BlockOrientation orientation) {
+        installStructureConfiguration(new StructureConfiguration(catalog, definition, orientation));
+    }
+
+    @Override
+    public void installStructureConfiguration(@Nullable StructureConfiguration next) {
+        requireServerThread();
+        configuration = next;
+    }
+
+    @Override public boolean structureLifecycleCurrent(MachineLifecycle lifecycle) {
+        requireServerThread();
+        if (!(controller instanceof MachineControllerHost current)) return false;
+        var machine = current.machine();
+        return machine != null && machine.lifecycle() == lifecycle && lifecycle.host() == this;
     }
 
     /**
