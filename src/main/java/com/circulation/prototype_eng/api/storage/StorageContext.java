@@ -11,6 +11,7 @@ import org.jetbrains.annotations.Nullable;
 public final class StorageContext {
     private static final VarHandle NEXT_ORDER;
     private static final VarHandle DIRTY;
+    private static final VarHandle REVISION;
     private static final ThreadLocal<HeldLocks> HELD_LOCKS = ThreadLocal.withInitial(HeldLocks::new);
     @SuppressWarnings("unused") // Mutated through NEXT_ORDER, shared by all contexts.
     private static long nextOrder;
@@ -20,6 +21,7 @@ public final class StorageContext {
             var lookup = MethodHandles.lookup();
             NEXT_ORDER = lookup.findStaticVarHandle(StorageContext.class, "nextOrder", long.class);
             DIRTY = lookup.findVarHandle(StorageContext.class, "dirty", boolean.class);
+            REVISION = lookup.findVarHandle(StorageContext.class, "revision", long.class);
         } catch (ReflectiveOperationException failure) {
             throw new ExceptionInInitializerError(failure);
         }
@@ -160,6 +162,15 @@ public final class StorageContext {
         return revision;
     }
 
+    /**
+     * Read-only proof for contents previously captured under this context's lock. This samples a
+     * published version without entering another storage domain, including from an unrelated
+     * transaction's fence. It neither reads balances nor reserves future access to this context.
+     */
+    public boolean current(long expectedRevision) {
+        return valid && (long) REVISION.getAcquire(this) == expectedRevision;
+    }
+
     /** Preflight an ordinary mutation without spending token cleanup or lifetime invalidation credits. */
     public void requireChange() { requireChange(0); }
 
@@ -207,7 +218,7 @@ public final class StorageContext {
     }
 
     private void recordChange() {
-        revision++;
+        REVISION.setRelease(this, revision + 1);
         DIRTY.setRelease(this, true);
     }
 

@@ -15,6 +15,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegis
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
+import com.circulation.prototype_eng.api.network.MachineComputerComponents;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
@@ -26,6 +27,10 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifie
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
+import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
+import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -53,6 +58,7 @@ import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import com.circulation.prototype_eng.research.ResearchEligibility;
@@ -207,7 +213,7 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void anExceptionalLateCommitPreservesItsCauseAndCompensatesOnlyItsIssuingBookAfterANewTickPublishes() {
+    @Test void anExceptionalLateCommitPreservesItsCauseAndCompensatesItsIssuingBookAfterTheOldTickCloses() {
         try (var fixture = new Fixture(1, 100, false)) {
             var machine = fixture.worker();
             fixture.refresh();
@@ -216,9 +222,10 @@ class NetworkRecipeWorkTest {
             fixture.nextTick();
             var original = fixture.permit(machine);
             var failure = new IllegalStateException("external requirement failed after network preparation");
-            fixture.hooks.onTickCommit = () -> { fixture.nextTick(); throw failure; };
+            fixture.hooks.onTickCommit = () -> { fixture.advanceTickWithoutCapture(); throw failure; };
             assertSame(failure, assertThrows(IllegalStateException.class, process::tick));
             assertEquals(100, original.availableResources().getLong(NetworkResources.COMPUTE));
+            fixture.refresh();
             assertEquals(100, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE), "Old compensation never enters the newly published book");
             assertEquals(99, machine.input.storedEnergy());
             assertEquals(1, process.state().successfulTicks());
@@ -347,10 +354,28 @@ class NetworkRecipeWorkTest {
             network.beginTick(tick);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership,
                 (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                    Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var centerType = type("center").component(ownership).component(centerRole).build();
             var centerAssembly = MachineAssembly.builder(centerType, "center-v1").component(ownership, MachineOwnership.CODEC).recreated(centerRole).build();
             attach(centerAssembly.create(host(centerType.id()), new MachineLifecycleRegistry()));
+            var card = ComputerSupplyFixtures.key("compute_card");
+            var components = new NetworkComputerComponentRegistry();
+            ComputerSupplyFixtures.register(components, card, _ -> {
+                var captured = NetworkResourceModifier.copyResources(supply);
+                return new NetworkComputerComponent.Capture(captured, () -> captured.equals(supply));
+            });
+            components.freeze(resources);
+            var installed = MachineComputerComponents.component(id("computer_supply"), components);
+            var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
+                (owner, identity) -> Objects.requireNonNull(owner.components().get(installed)).networkCapture(identity, 1,
+                    Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+            var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
+            var computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
+                .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> { });
+            assertEquals(1, Objects.requireNonNull(warehouse.input()).insert(card, 1, Actionable.MODULATE));
+            Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(), List.of()));
+            machines.add(computer);
             primaryDataCenter = dataCenter();
         }
 
@@ -377,7 +402,8 @@ class NetworkRecipeWorkTest {
         }
         private Host host(ResourceLocation type) { return new Host(world, type, new BlockPos(positions++, 0, 0), player.playerUuid()); }
         private void refresh() { assertTrue(network.refresh()); }
-        private void nextTick() { network.endTick(); network.beginTick(++tick); refresh(); }
+        private void advanceTickWithoutCapture() { network.endTick(); network.beginTick(++tick); }
+        private void nextTick() { advanceTickWithoutCapture(); refresh(); }
         private void requireOwner() {
             if (Thread.currentThread() != ownerThread) { throw new IllegalStateException("Not the test server owner"); }
         }

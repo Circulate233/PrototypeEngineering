@@ -22,6 +22,7 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
+import com.circulation.prototype_eng.api.network.MachineComputerComponents;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
@@ -32,6 +33,10 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifie
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
+import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
+import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
@@ -69,6 +74,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -322,6 +328,7 @@ class NetworkRecipeExecutionTest {
         private final MachineRecipe recipe;
         private final RecipeCatalog catalog;
         private final MachineInstance center;
+        private final MachineInstance computer;
         private long tick;
         private boolean tickOpen;
         private boolean tickExecuted;
@@ -374,11 +381,29 @@ class NetworkRecipeExecutionTest {
             supply.put(NetworkResources.COMPUTE, compute);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var type = type("center").component(ownership).component(centerRole).build();
             center = MachineAssembly.builder(type, "center-v1").component(ownership, MachineOwnership.CODEC)
                 .recreated(centerRole).build().create(host(type.id()), new MachineLifecycleRegistry());
             Objects.requireNonNull(center.lifecycle()).form(new MachineHatches(List.of(), List.of(), List.of()));
+            var components = new NetworkComputerComponentRegistry();
+            var computeCard = ComputerSupplyFixtures.key("compute_card");
+            var threadCard = ComputerSupplyFixtures.key("thread_card");
+            ComputerSupplyFixtures.fixed(components, computeCard, Object2LongMaps.singleton(NetworkResources.COMPUTE, supply.getLong(NetworkResources.COMPUTE)));
+            ComputerSupplyFixtures.fixed(components, threadCard, Object2LongMaps.singleton(NetworkResources.THREAD, 1));
+            components.freeze(resources);
+            var installed = MachineComputerComponents.component(id("computer_supply"), components);
+            var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
+                (machine, identity) -> Objects.requireNonNull(machine.components().get(installed)).networkCapture(identity, 1,
+                    Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+            var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
+            computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
+                .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Map.of(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> { });
+            var inventory = Objects.requireNonNull(warehouse.input());
+            assertEquals(1, inventory.insert(computeCard, 1, Actionable.MODULATE));
+            assertEquals(threads, inventory.insert(threadCard, threads, Actionable.MODULATE));
+            Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(), List.of()));
         }
 
         private List<TaskScheduler.PlannedCandidate> candidates() { return scheduler.plannedCandidates(); }
@@ -492,6 +517,7 @@ class NetworkRecipeExecutionTest {
             for (var worker : orderedWorkers) { worker.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
             scheduler.close();
             Objects.requireNonNull(center.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            Objects.requireNonNull(computer.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             network.close();
             identities.close();
         }

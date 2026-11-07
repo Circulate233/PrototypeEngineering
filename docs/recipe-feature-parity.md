@@ -19,7 +19,7 @@
 | PN 研究启动条件、队列、阶段推进及完成 | 手动服务器链已接；研究站未接 | ResearchRegistry 注册、权限/真实 startCondition 入队、队列/逐项投料/回执恢复/冻结完成已执行。ResearchWorld/ServerResearch 已绑定单一世界存档、FTB 成员核对、既有 tick 边界及登录退出，并提供 Java 开始/接管入口。正 tier 研究站材料/计算提交仍缺。 |
 | PN 研究奖励及事件奖励 | Java 领取/恢复核心已有执行；服务器入口未接 | ResearchRewardClaimer 在实际领取时调用 RewardEventAction.deliver，保留选择、片段和checkpoint；Minecraft物品adapter可调用。权威世界存档已有，但领取 packet/UI、领取事务与存档绑定及完整物品交互冻结尚未接入，默认未知交付不盲目重发。 |
 | PN 研究物品下载事件 | 未迁移 | 旧 ResearchItemDownloadEvent.createOutput 按材料注册，由 ResearchItemDownloadEvaluation 调用，再进入权威下载事务；当前没有对应 download 模块。 |
-| PN 计算组件的实际物品供给 | 仅快照/规划/账本底座 | 旧 DeviceRuntimeRegistry→ComponentInventory→ContributionCalculator 有真实 ItemStack 组件注册、读取和供给计算；当前 resourcesPerTick 数据快照与账本不能代替这条组件执行链。 |
+| PN 计算组件的实际物品供给 | Java 生产链已接 | AEItemKey 精确注册、公开 committed 仓槽读取、每物品上限后按 long 数量累加并合并 declared vector；准确版本证明进入真实同步/planned 配方许可。真实仓负责恢复，未知普通物品不供给。原生 ItemStack 适配仅静态核对，未启动游戏。 |
 | CraftTweaker 接口及脚本数据适配 | 按用户要求最后处理 | PM ZenRecipeBuilder 通过 addRequirement/register 声明配方，Zen 参数转换、工厂和 ZSData 脚本数据组件尚未迁移；未发现该 builder 额外提供一套每配方 onStart/onFinish 事件 DSL。Java 功能完整之后再实现 CT，不能以 CT 延后为理由延后其底层 Java 功能。 |
 
 上表的“已迁”指源码中的真实执行职责与已有逻辑测试，不代表游戏中 GUI、世界交互及最终所有兼容链均已验收。旧需求系统里的方法名是阶段钩子，不应混同 Forge 配方注册事件；PN 的 PostInit 配方扩展监听器也不应混同每 tick 事件。机器 tick、加载、成型变化、卸载和破坏归属机器生命周期，不计入配方事件清单。
@@ -28,7 +28,7 @@
 
 ## 后续工作顺序
 
-1. PN 普通配方研究/计算条件已接通，继续迁移研究站完整材料/计算提交、真实计算物品供给和下载交互：先核对旧定义、状态及执行入口，复用可用逻辑，改写 Kotlin 与不必要的桥接层。新接口放在本项目真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
+1. PN 普通配方研究/计算条件已接通，继续迁移研究站完整材料/计算提交和下载交互：先核对旧定义、状态及执行入口，复用可用逻辑，改写 Kotlin 与不必要的桥接层。新接口放在本项目真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
 2. 研究启动、队列/阶段推进、完成、奖励与下载事件逐项接到真实注册、运行和持久化入口。状态说明按“定义、执行、存档、外部扩展”分别给出，不以仅有模型或预算底座冒充完整功能。
 3. 在具体功能需要的地方使用已有事务和调度能力；服务器网络机器游标与来源 lanes 已接，纯 prepare、内部工作预算与其他 PN 消费者仍须完成，但不继续脱离功能主线反复细化底座。
 4. 继续已确认的结构投影/复杂渲染/每池默认与自定义 JEI 等功能，CraftTweaker 最后。保持纯库定位，不迁入旧开发示例的正式机器、配方或玩法数值。

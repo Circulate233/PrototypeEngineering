@@ -10,6 +10,8 @@ import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
@@ -49,6 +51,8 @@ public class CommonProxy implements IGuiHandler {
     public void postInit() {
         MinecraftForge.EVENT_BUS.post(new NetworkResourceRegistrationEvent(NetworkResourceRegistry.INSTANCE));
         NetworkResourceRegistry.INSTANCE.freeze();
+        MinecraftForge.EVENT_BUS.post(new NetworkComputerComponentRegistrationEvent(NetworkComputerComponentRegistry.INSTANCE));
+        NetworkComputerComponentRegistry.INSTANCE.freeze(NetworkResourceRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new ResearchRegistrationEvent(ResearchRegistry.INSTANCE));
         ResearchRegistry.INSTANCE.freeze(NetworkResourceRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE));
