@@ -1,6 +1,6 @@
 # 研究定义、资格、完成与奖励执行
 
-本阶段直接迁移 PN 的研究定义、资格计算、完成传播和奖励领取逻辑。它们已经有可调用的 Java 执行入口，尚未形成完整的服务器研究流程；队列、手动研究、研究站、下载和存档服务接线仍须继续完成。
+已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、完成传播和奖励领取逻辑。它们有实际可调用的 Java 执行入口，尚未形成完整的服务器研究流程；手动 session、研究站材料/计算提交、下载和存档服务接线仍须继续完成。
 
 ## 定义与注册
 
@@ -27,6 +27,18 @@
 
 沿 `TeamResearchViewCalculatorImpl` 的算法，把旧逐等级回退改为逐阶段回退。这里消费调用方捕获的队伍和资源事实；尚未自动绑定 FTB 成员变化、中心状态或研究队列。
 
+## 实际入队与研究队列
+
+`ResearchPermissionPolicy` 提供真实扩展接口，默认策略沿 PN：同队成员可开始研究，队长/管理员可维护本队黑名单，服务器操作员可执行管理操作。`ResearchPermissionContext` 由服务器捕获身份与角色，不能接受客户端自报权限。
+
+`TeamResearchStart.start` 先检查当前队伍/定义、权限与结构资格；正tier要求活动中心、足够等级的数据中心及研究站。实际startCondition收到真实请求者与资源，即使匿名预览拒绝，也按这次实际请求重算。回调前后重查current证明与队列epoch，拒绝重入；重复/满队/忙不执行无意义的开始条件，也不消耗材料。tier0入队后仍需手动session消费者接管。
+
+`TeamResearchQueue` 保留容量5和稳定entryId，只规划队头。numeric按每种资源独立累计，单段授予为 `min(available,每站limit×参与站数,剩余需求)`，logical lease由真实站点消费者另行申请；plan不授予网络或库存权限。GrantMutation与PruneMutation实现已有ReversibleTransaction，持准确队列写入权，提交/补偿完成前不允许保存或其他写入。回滚恢复业务内容但递增epoch，旧plan不会重新有效。
+
+成员变化的prune只重查next-level、前置、互斥和黑名单；不能根据包含startCondition的预览缓存取消已入队目标。队列、结果与mutation都限创建/restore的owner线程，快照供异步处理。ResearchQueueNbt保存顺序、进度、nextEntryId、epoch和授予时间；恢复不恢复旧plan。时间参数使用统一且可持久恢复的服务器时间线，例如主世界totalWorldTime，不能混用维度时间或重启归零tickCounter。
+
+实际规则和旧材料投影缺陷见[执行审计](pn-research-execution-audit.md)。队列目前尚未与完整材料需求、逻辑lease、站点选择及完成传播接成同一个服务器工作提交。
+
 ## 完成传播与持久数据
 
 `TeamResearchCompletion.prepare/prepareFrozen` 复用 PN `TeamResearchCompletionImpl` 的双来源传播与恢复基线规则：
@@ -49,8 +61,8 @@
 - 默认只把实际观察视为已交付；加载中的背包/实体扫描不能证明全局缺失。缺失证明扩展默认返回 false，完整交互冻结和权威存储恢复仍待接入。
 - 未运行 Minecraft 或服务端，游戏交互、标签移动及掉落恢复尚未做实机验证。
 
-来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。下载事件、特殊磁盘、研究队列与实际配方研究/计算条件仍未完成；CraftTweaker 按用户要求最后实现。
+来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。下载事件、特殊磁盘、队列服务器接线与实际配方研究/计算条件仍未完成；CraftTweaker 按用户要求最后实现。
 
 ## 验证
 
-33 项新研究行为测试覆盖：公式/阶段/冻结引用，双来源/前置回退/真实开始条件，奖励 checkpoint 失败恢复和精确片段，双策略完成/补偿/稀疏无限等级/存档校验。最终构建和 IDEA MCP 结果记入实施进度；不以这些测试代替尚未接入的服务器流程。
+累计 54 项研究行为测试覆盖权限/真实入队/队列进度与恢复，以及：公式/阶段/冻结引用，双来源/前置回退/真实开始条件，奖励 checkpoint 失败恢复和精确片段，双策略完成/补偿/稀疏无限等级/存档校验。最终构建和 IDEA MCP 结果记入实施进度；不以这些测试代替尚未接入的服务器流程。

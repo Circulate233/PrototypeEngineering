@@ -6,6 +6,12 @@
 
 ## 当前状态
 
+- 研究启动/队列阶段已实现：ResearchPermissionPolicy保留PN默认同队/管理角色规则；TeamResearchStart在当前证明下校验权限、设备等级、结构资格与真实actor/resources条件后入队，不扣物料或numeric，重复/满队/忙返回业务结果。回调后重验authority及queue epoch，异常原样传播。TeamResearchQueue保留容量5、稳定entryId、多站numeric独立授予、同entry/time去重、grant/prune可逆提交及严格NBT。prune不用匿名startable缓存；队列及mutation强制准确owner线程，回滚递增epoch防旧plan复活。材料/逻辑lease/真实站点/手动session及服务器存档服务尚未接入，不能据此称完整研究流程完成。
+
+- 本阶段验证：`gradlew.bat spotlessApply build --console=plain`通过647项测试、97 suites，零失败/错误/跳过；新增14项queue和7项启动行为测试。本机IDEA MCP对本阶段涉及的30个src Java及Tags共31文件逐个errorsOnly:false，零错误/警告/弱警告、无超时；build_project成功。证据`build/reports/idea/research-queue-start-final.json`。原23份工作区修改逐文件与阶段基线完全相同。
+
+- PN工作单元审计见[pn-research-execution-audit.md](pn-research-execution-audit.md)：旧计费仅绑定每tick候选operation，planned process为空，普通路径无逐配方研究/计算消费者。新实现需要明确计费阶段/并行语义，已向用户核对；不能复制旧反复投START材料的缺口。
+
 - 功能优先。独立复审确认PM配方有需求阶段、选择提交回调、动态匹配条件/脚本、检查点/属性效果、进程组件钩子；这些Java调用已迁，CT尚缺。此前将“没有顶层events字段”泛化为“没有运行时配方回调/DSL”的说法已修正，具体源码证据见[PM配方事件复审](pm-recipe-events-audit.md)。
 
 - 研究功能本阶段已实现：公开定义/阶段/公式/冻结注册；双来源资格与真实startCondition；TeamResearchCompletion按个人/直属队伍策略创建等级及UNCLAIMED资格、准确事务补偿；ResearchRewardClaimer按固定选择执行事件与物品片段并恢复；玩家/队伍NBT。外部callback/checkpoint异常保留准确状态后原样传播，显式RETRY_LATER才作为业务暂停。尚未接完整研究队列/手动与研究站推进/逐配方研究计算消费者/服务器存档/领取packet和UI/下载/物品交互冻结，见[研究功能](research-features.md)。
