@@ -1,0 +1,50 @@
+package com.circulation.prototype_eng.api.client.jei;
+
+import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.localization.RecipePoolTitle;
+import mezz.jei.api.recipe.IRecipeCategory;
+import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
+
+import javax.annotation.ParametersAreNonnullByDefault;
+
+import mcp.MethodsReturnNonnullByDefault;
+
+/**
+ * One native JEI category per canonical pool. Custom pages need not extend the default page.
+ */
+@SideOnly(Side.CLIENT)
+@ParametersAreNonnullByDefault
+@MethodsReturnNonnullByDefault
+public interface RecipePoolJeiPage extends IRecipeCategory<RecipePoolJeiRecipe> {
+    RecipePool pool();
+
+    static String uid(ResourceLocation poolId) {
+        return new ResourceLocation(Tags.MOD_ID, "pool/" + poolId.getNamespace() + "/" + poolId.getPath()).toString();
+    }
+
+    @Override
+    default String getUid() {
+        return uid(pool().id());
+    }
+
+    @Override
+    default String getTitle() {
+        return new RecipePoolTitle(pool().translationKey()).getLocal();
+    }
+
+    @Override
+    default String getModName() {
+        return Tags.MOD_NAME;
+    }
+
+    /**
+     * Override with a wrapper subclass for native per-recipe drawing, tooltip, click, scroll and drag.
+     */
+    default RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
+        return new RecipePoolJeiRecipe(this, recipe, display, ingredients);
+    }
+}

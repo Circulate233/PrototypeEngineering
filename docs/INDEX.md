@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-08 块一真实 pure prepare 与内置工作预算已实现、验证并补齐文档：CONCURRENT 网络及研究材料消费者经既有 runPrepare 派发纯 kernel，owner 实际捕获/选择/预检/预留按预算续办；原 deadline/current attempt 内 work yield 不续权，跨 tick 仅复用无授权纯事实，overlay 复用规范化冻结列表，旧同步 acquisition 的后续子段模式保持。完整 build 1247 tests / 157 suites 全通过，33 Java IDEA MCP errorsOnly:false 全级零诊断、Document/磁盘一致、MCP build_project 成功，34 源码/资源文件构建前后 SHA 一致。外部 snapshot/matcher/comparator/opaque callback 是合作回调边界；正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算归块二。见[执行边界](planned-execution.md)、[配方](recipes.md)、[网络消费者](network-recipes.md)及[功能核对](recipe-feature-parity.md)，精确基线/统一最终清单与快照入口 `build/staging/recipe-pure-prepare/`。未推送，未启动游戏或服务端。
+- 2026-11-08 JEI 每池默认/独立自定义页面已实现并验证：客户端以稳定池 ID 绑定一个生效分类实例，默认按 IO 最大槽数生成并分页，自定义直接实现原生页面接口；AEKey/long、独立 FE、条件与原生交互保持。全池及当前全部 registered ingredient 在任何 wrapper/index 发布前按原生 helper UID 统一捕获，已知冲突 key 全部降级并提示，正常查询沿原生 helper 语义；不证明未知后续 NBT 全域精确查询。两 suite 12 行为及完整 build 1259 tests / 159 suites 全通过，17 Java IDEA MCP errorsOnly:false 全级零诊断、完整 MCP 项目文件读回/磁盘一致，19 源码资源构建前后 SHA 稳定，17 Java 在 MCP 验证后无变化，MCP build_project 成功。见[JEI 页面](jei.md)，准确基线/最终快照/证据入口 `build/staging/jei-pool-migration/`。额外转移/书签/结构预览/历史 decorator 资产不计完成，客户端实机未验收；等待精确本地提交，未推送、未启动游戏或服务端。
+
+- 2026-11-08 块一真实 pure prepare 与内置工作预算已实现、验证并补齐文档：CONCURRENT 网络及研究材料消费者经既有 runPrepare 派发纯 kernel，owner 实际捕获/选择/预检/预留按预算续办；原 deadline/current attempt 内 work yield 不续权，跨 tick 仅复用无授权纯事实，overlay 复用规范化冻结列表，旧同步 acquisition 的后续子段模式保持。完整 build 1247 tests / 157 suites 全通过，33 Java IDEA MCP errorsOnly:false 全级零诊断、MCP项目文件读回与磁盘一致、MCP build_project 成功，34 源码/资源文件构建前后 SHA 一致。外部 snapshot/matcher/comparator/opaque callback 是合作回调边界；正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算归块二。见[执行边界](planned-execution.md)、[配方](recipes.md)、[网络消费者](network-recipes.md)及[功能核对](recipe-feature-parity.md)，精确基线/统一最终清单与快照入口 `build/staging/recipe-pure-prepare/`。未推送，未启动游戏或服务端。
 
 - 2026-11-07 永久破坏材料会话已接并完整验证：真实 broken/未装配 raw 通知、同服原 owner cancel、cold 局部终结及重启后已加载原位置核验；Schema 5 保存可选原物理方块凭据，外部未知宿主不判毁。新增 10 项 World 行为，完整 build 1224 tests / 156 suites 全通过，18 Java IDEA errorsOnly:false 全级零诊断、23 文件构建前后 SHA 一致；独立审计闭环。精确阶段快照/证据 `build/staging/research-station-destruction/`，见[研究站执行](research-stations.md)。本阶段已精确本地提交，未推送，未启动游戏或服务端。
 
@@ -35,7 +37,7 @@
 1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；下一步按[配方功能核对](recipe-feature-parity.md)接块二正式 PLANNED_PARALLEL、独立宿主自动接线及扫描预算。Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
 3. 块二复用已验证的纯 kernel、实际预算游标、机器生命周期与 source lanes，接正式模式、独立宿主及扫描预算；外部合作回调不冒充可抢占实现。整体重开发仍在进行。
-4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义 JEI 及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
+4. 完成严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
 ## 必须遵守
 
@@ -64,6 +66,7 @@
 | 服务器奖励领取/准确会话/物品确认与证据清理 | [research-rewards.md](research-rewards.md)，ResearchWorld.claimReward、ServerResearch.requestReward |
 | 手动研究逐项投料/玩家回执/九状态恢复/暂停接管 | [manual-research.md](manual-research.md)，api/research/manual、research/manual |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md)，api/recipe、api/machine/workslot |
+| 配方池 JEI 默认/独立自定义页面、已知查询身份边界 | [jei.md](jei.md)，api/client/jei、integration/jei |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md)，api/gui、api/client/gui、container/MachineContainer |
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md)，item、OrientationToolConfig |
 | 机器声明/整批绑定 | [machine-types.md](machine-types.md)，MachineType/Registry |
