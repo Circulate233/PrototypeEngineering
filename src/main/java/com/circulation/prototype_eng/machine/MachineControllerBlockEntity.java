@@ -24,6 +24,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.Rotation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.common.util.FakePlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -160,7 +161,9 @@ public final class MachineControllerBlockEntity extends TileEntity implements IT
         var type = requireBlock().type();
         if (data != null) { requireType(type, data.type()); }
         if (placement != null) { throw new IllegalStateException("Controller placement was already recorded"); }
-        if (placer instanceof EntityPlayer player) { placement = new Placement(world, pos.toImmutable(), type, player.getUniqueID()); }
+        if (placer instanceof EntityPlayer player && !(player instanceof FakePlayer)) {
+            placement = new Placement(world, pos.toImmutable(), type, player.getUniqueID());
+        }
     }
 
     public void orient(BlockOrientation orientation) {

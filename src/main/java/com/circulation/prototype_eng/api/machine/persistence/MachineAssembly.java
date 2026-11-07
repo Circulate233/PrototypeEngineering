@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
@@ -68,6 +69,7 @@ public final class MachineAssembly {
         validators = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.validators));
         var copy = new Object2ObjectLinkedOpenHashMap<>(builder.bindings);
         add(copy, new Binding<>(MachineScheduling.TYPE, SCHEDULING));
+        add(copy, new Binding<>(MachineOwnership.TYPE, MachineOwnership.CODEC));
         bindings = Object2ObjectMaps.unmodifiable(copy);
         for (var declared : type.componentTypes()) {
             if (isHatches(declared)) {

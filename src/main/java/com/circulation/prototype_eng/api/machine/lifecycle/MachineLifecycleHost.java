@@ -15,7 +15,10 @@ public interface MachineLifecycleHost {
     MachineIdentity identity();
     World world();
 
-    /** Actual placement actor, including a placed serialized item; absent for non-player loading. */
+    /** Stable world-object identity for registries; custom non-Forge hosts provide an equivalent token. */
+    default Object worldIdentity() { return world(); }
+
+    /** Trusted real placement player, including a serialized item; absent for FakePlayer/non-player loading. */
     @SuppressWarnings("unused") // Downstream lifecycle listeners consume the bound placement actor.
     @Nullable default UUID placementPlayer() { return null; }
 

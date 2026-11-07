@@ -36,7 +36,7 @@ Cleanroom 的正常 dormant 缓存会在 `ForgeChunkManager.storeChunkNBT` 保�
 
 ## 放置者与显示
 
-`onBlockPlacedBy` 只记录实际 EntityPlayer 的 UUID，并在本 TE 保存 World、位置和规范类型，附着完成后消费一次。`MachineLifecycleHost.placementPlayer()` 公开此代的实际放置者；非玩家或磁盘加载为空，不根据普通方块事件补 owner。带数据物品也可有真实放置者，具体持久 machine UUID/owner 搬运规则仍须 PN 身份集成完成，当前字段不授予任何权限。
+`onBlockPlacedBy` 只记录真实 EntityPlayer 的 UUID，排除 FakePlayer，并在本 TE 保存 World、位置和规范类型，附着完成后消费一次。`MachineLifecycleHost.placementPlayer()` 公开此代的实际放置者；非玩家或磁盘加载为空，不根据普通方块事件补 owner。显式声明的 MachineOwnership 在 FRESH 使用真实放置者建立身份，RESTORED 保留存档的 machine UUID/owner；带数据物品的新放置者不覆盖旧 owner。准确登记句柄处理复制冲突与旧卸载，详见[持久身份](machine-identity.md)；身份和放置字段都不授予工作权限。
 
 客户端只收 `ControllerDisplayData`：类型、朝向、formed、单调显示代和序号；不发完整机器 NBT、工位或 Forge capability 内容。两个更新通道都显式走此格式，先过滤位置和类型，再拒绝旧代/重放。新 TE 的空视图接受当前服务器快照，客户端 world 自身限定连接上下文；显示代不持久化，不是 machine/owner 标识。符合当前类型却格式损坏的数据仍严格报错，不使用异常控制流掩盖协议错误。
 
@@ -54,4 +54,4 @@ Cleanroom 的正常 dormant 缓存会在 `ForgeChunkManager.storeChunkNBT` 保�
 
 新增逻辑测试覆盖注册原子性/坏引用/重入/快照，真实刷新 worker join、失稳重试和旧请求隔离，保存标签隔离、24 向组合与显示重放拒绝。没有直接 new TileEntity：其父构造会触发 AttachCapabilitiesEvent 和 Forge 初始化，违反当前测试约束。真实 ItemBlock/BlockSnapshot/Template/World 调用由依赖源码审查、编译与 IDEA MCP 检查覆盖，未宣称实机通过。完整计数和逐文件记录见[实施进度](implementation-status.md)。
 
-仍须完成 PN 身份/搬运冲突/owner/研究/队伍/计算与正式 planned，严格 JSON 阶段与注册、结构预览/投影/切片/BOM、复杂渲染与隐藏缓存、JEI 和最后 CraftTweaker。默认及自定义 Java GUI、自动 scanner 和方向工具已接，真实交互与渲染尚无实机证据；最新构建及逐文件 MCP 记录见[实施进度](implementation-status.md)。缺少剩余能力的声明仍不会被当成正式完整机器；Applied-Flux 继续暂缓。
+持久 machine/owner 身份、搬运保留与复制冲突已接；仍须完成 PN 当前队伍/工作权限/研究/计算与正式 planned，严格 JSON 阶段与注册、结构预览/投影/切片/BOM、复杂渲染与隐藏缓存、JEI 和最后 CraftTweaker。默认及自定义 Java GUI、自动 scanner 和方向工具已接，真实交互与渲染尚无实机证据；最新构建及逐文件 MCP 记录见[实施进度](implementation-status.md)。缺少剩余能力的声明仍不会被当成正式完整机器；Applied-Flux 继续暂缓。

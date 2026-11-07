@@ -4,8 +4,9 @@
 
 ## 当前检查点
 
-- 已完成本阶段：自动扫描/处理接线、空配方组全局语义、默认与自定义机器 GUI、原方向工具，以及 AEKey2LongMap 数量表改造。阶段本地提交，不推送；提交号以 Git 日志为准。原 23 份格式/注解修改仍保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 419 项测试；IDEA MCP 对 276 个 src Java 和 Tags 共 277 文件逐个 `errorsOnly:false`，修改后复查 59 份，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/machine-gui-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 已完成本阶段：PN 持久 machine/owner 身份、显式 MachineOwnership 组件、复制冲突和准确运行实例登记；队伍/网络中心/工作授权仍未接入。阶段本地提交，不推送；提交号以 Git 日志为准。原 23 份格式/注解修改仍保留未暂存。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 433 项测试；IDEA MCP 对 283 个 src Java 和 Tags 共 284 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/machine-identity-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 身份：FRESH 只接受真实放置玩家，RESTORED 保留 machine/owner；不自动安装到普通机器。位置按 World 引用 + pos，同位置新代撤旧登记，旧 close 不删新代；同 UUID 多个活副本全不唯一，剩一个恢复。登记绑定准确 MachineInstance，不等于 team/epoch/recipe-work 许可。
 - 自动配方：显式声明 MachineWorkSlots 后再声明 RecipeScanning，工位走既有 codec、scanner recreated；系统 runBefore 保证同 tick 先扫描后处理。注册表整批发布共享 catalog。空 groups 在 catalog/index/scanner/admission/restore 一致表示全局，包含无组配方；显式组仍过滤。候选/probe 有限额，内部工作预算仍待接。
 - GUI：具体类直接继承 AEBaseGui/AEBaseContainer，公开两侧 Java factory。join 后重查窗口/TE 身份，仅同步最多七行不可变快照，保留进度和真实背包；PM 临时 4×4 库存、固定 Idle 和空扩展页是占位。方向工具保留两模式、PM 24 向数学、武器/采掘/耐久/附魔、配置/模型/成就。
 - 存储：独立 ResourceStorage/FE 契约和事务不变；AEKey 数量用 AEKey2LongMap 和 addTo，保留必要的溢出预检/零清理/顺序/别名去重，快照通过专用不可变包装器保护。
@@ -15,7 +16,7 @@
 
 ## 下一步
 
-1. 迁入 PN 持久身份、搬运/复制冲突、owner/team 当前代权限；placementPlayer 和显示代不能作为权限。异常 loader 复用同一 TE 且旧卸载晚到的问题需准确卸载代证明，不添加宽泛复活。
+1. 继续 PN 当前队伍 provider/FTB 适配、网络中心与工作许可整批发布，共用门限约束新扫描和已有工位；临时失权不退休整机。持久身份/准确登记已接，不能代替许可；离线 owner 仍查询持久队伍。旧代清理/去重缺口见 PN 审计。异常 loader 复用同一 TE 且旧卸载晚到的问题需准确卸载代证明，不添加宽泛复活。
 2. 正式 planned：复用 PM prepare/resolve 两次 join、稳定 source lane，接入 PN owner/team/epoch/向量预算、迟到隔离和补偿。旧 epoch/lease/ready 不从存档恢复为权限。结构/目录/index/factory/动态排序/NBT/随机逐次抽样等内部工作预算、性能统计/命令/后端继续迁移。
 3. 严格两阶段 JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、研究/队伍/计算、每池默认/自定义 JEI，最后 CraftTweaker。Applied-Flux 按用户要求暂缓，后续保留 `v1.0.0:dev` 的 v。
 
@@ -40,6 +41,7 @@
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md)，item、OrientationToolConfig |
 | 机器声明/整批绑定 | [machine-types.md](machine-types.md)，MachineType/Registry |
 | 装配/NBT/稳定边界 | [machine-persistence.md](machine-persistence.md)，MachineAssembly |
+| PN 持久身份/准确登记/后续授权 | [machine-identity.md](machine-identity.md)、[pn-identity-migration-audit.md](pn-identity-migration-audit.md)，api/machine/identity |
 | 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md)，api/machine/lifecycle |
 | 控制器运行时/退休 | [machine-controller.md](machine-controller.md)，MachineController |
 | 真实 TE/朝向/结构接线 | [controller-integration.md](controller-integration.md)，MachineControllerBlockEntity/ControllerStructureUpdates |

@@ -22,7 +22,7 @@
 
 `MachineScheduling` 使用内置 codec 保存实例模式，未保存权限代或执行状态；fresh 只在缺席时补入类型默认模式。它不会自动给所有机器增加工位或 scanner。工位 codec 继续保存完整进程状态，普通卸载保存后恢复不重跑 START，重新成型后才能继续配方。
 
-`MachineHatches` 只来自当前结构发布，不作为组件条目保存/恢复，也不能绑定 codec 或声明为待装配组件；其他组件仍可保留指向其规范 TYPE 的软依赖。形成状态、结构绑定、配置代、epoch、lease 和 ready 都不会从机器 NBT 恢复。合法持久设备身份仍由后续 PN 组件 codec 保存，不能临时编造 owner。
+`MachineHatches` 只来自当前结构发布，不作为组件条目保存/恢复，也不能绑定 codec 或声明为待装配组件；其他组件仍可保留指向其规范 TYPE 的软依赖。形成状态、结构绑定、配置代、epoch、lease 和 ready 都不会从机器 NBT 恢复。显式声明的 `MachineOwnership` 使用内置 codec 保存 machine/owner UUID，恢复不采用新放置者；普通机器不自动安装身份组件。具体规则见[持久身份](machine-identity.md)。
 
 ## 生命周期门限
 
@@ -36,4 +36,4 @@
 
 逻辑测试覆盖恢复/创建顺序、默认补缺、组件和标签隔离、动态图与不可变替换、失败不发布、保存故障、已提交进程恢复，以及实际线程上的边界拒绝。最终数量与逐文件 IDEA MCP 证据见[实施进度](implementation-status.md)。未创建真实 World 或启动游戏。
 
-`MachineController` 已接 load 后登记、登记失败清理、延后卸载和未装配原 NBT 保存，见[控制器运行时](machine-controller.md)。实际 TE 暂存/恢复、Forge 调用、方向、放置者与客户端显示现已接入，见[控制器集成](controller-integration.md)。下一步仍是完整身份/搬运规则、GUI及正式 planned/PN 权限预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。
+`MachineController` 已接 load 后登记、登记失败清理、延后卸载和未装配原 NBT 保存，见[控制器运行时](machine-controller.md)。实际 TE 暂存/恢复、Forge 调用、方向、放置者与客户端显示现已接入，见[控制器集成](controller-integration.md)。持久身份/复制冲突与 Java GUI 已接，下一步仍是当前队伍和工作许可、正式 planned/PN 预算。尚未装配的 TE 必须保存原暂存数据，不能用空运行状态覆盖；二次 readFromNBT 也不能直接覆盖已加载实例。完整控制器规则继续见[迁移审查](machine-controller-migration-audit.md)。

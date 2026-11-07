@@ -7,6 +7,7 @@
 ## 当前状态
 
 - 文档恢复入口：先读 [INDEX.md](INDEX.md)，再按任务定位章节；根 AGENTS.md 和 README 已链接该入口。索引维护当前检查点与下一步，本文件维护详细状态和证据。
+- PN 持久身份已接入：MachineOwnership 为显式组件，复用 MachineAssembly 内置 codec 和生命周期；FRESH 由真实放置者创建 machine/owner UUID，RESTORED 保留旧身份，FakePlayer 不授 owner。MachineIdentityRegistry 绑定服务器会话与准确 MachineInstance，World 引用 + pos 定位，不含类型；同位置替换撤旧句柄，旧卸载不删新代，重复 UUID 全部失去唯一性且剩一个可恢复。所有变更/枚举限定 owner 线程，关闭会话永久撤销；身份不保存 team/epoch/lease/ready，也不授权工作。当前队伍、中心、预算、研究与统一配方许可仍待接，详见[身份说明](machine-identity.md)及[PN 审计](pn-identity-migration-audit.md)。
 - 已完成：工程标识、Java 25 模板、需求基线；固定 AE2S `v1.1.0:dev` 与 HEI `4.35.1`；移除模板示例 Mixin；开发包和生产重混淆构建。
 - 独立资源后端已完成：ResourceHatch 返回 ResourceStorage，槽位扩展由 SlottedResourceStorage 表达；SlottedResourceBuffer 独立持有 AEKey/long 余额、可用量、输入数量预留及输出容量预留。MEStorage、GenericInternalInventory 与 GUI 均为共享同一 context 的适配层，不再依赖 GenericStackInv 持有核心状态。外部仓室仍通过公开接口扩展，不依赖内置 TileEntity。FE 独立 long 存储已用同一无 AEKey 字段的预留生命周期参与并发批结算。
 - P1 已接入：资源/能源各输入、输出、混合三方向十阶，共 60 个方块及物品注册；方块实体保存和能力暴露、挖掘保留内容、Java 容器和直接继承 AEBaseGui 的资源/能源界面。十阶默认值来自 PM ItemHatchConfig/ItemIOHatchConfig、FluidHatchConfig 与 EnergyHatchConfig，均可配置。资源输入/输出独立滚动，最多 5 行并随分辨率压缩，隐藏槽禁用且索引保持；能源 GUI 为 176×214，使用原 16×66 纵向条，支持速率/自动标志、Enter 提交和完整 long tooltip。实际 GUI/游戏交互未运行验证。
@@ -49,6 +50,10 @@
 - 机器和服务器普通接线已接入：MachineInstance实现ScheduledTask，MachineScheduling选择模式并保持默认CONCURRENT，公开资源/能源storageIdentity形成真实共享affinity；未成型仍运行普通组件，卸载/破坏/故障不调度。FMLServerAboutToStart创建确切server会话，ServerTick.END推进并join，FMLServerStopped关闭；普通workers/lanes沿用PM配置默认。没有注册正式机器。PLANNED当前明确拒绝，没有降级；两join、PN权限预算、补偿、性能统计/后端与实际控制器仍须后续完成。详见[调度说明](scheduling.md)与[控制器审查](machine-controller-migration-audit.md)。
 
 ## 验证记录
+
+- 2026-11-07（PN 持久身份）：`gradlew.bat spotlessApply build --console=plain` 成功，433 项逻辑测试全部通过，无失败、错误或跳过。新增 14 项覆盖多副本冲突及恢复、同位置不同类型替换、迟到卸载不删新代、引用身份/线程/会话边界、严格 NBT，以及真实 assembly/lifecycle 搬运与部分加载失败清理。没有游戏初始化、反射、哈希或 getter 专用测试。
+- 2026-11-07（PN 持久身份）：本机 IDEA MCP 对 283 个 src Java 和生成 Tags 共 284 文件逐个 `errorsOnly:false`，清理诊断并复查后最终零错误、警告、弱警告及超时；MCP `build_project` 返回 `isSuccess:true`、`problems:[]`。报告 [machine-identity-final.json](../build/reports/idea/machine-identity-final.json)。registry 借用句柄更新使用局部 resource 标注并说明不能关闭的原因，测试夹具明确关闭。只使用 MCP，未操作桌面或启动游戏。
+- 2026-11-07（PN 源码复核）：保留 UUID/owner 持久化、所有重复 UUID 拒绝及加载顺序；修正按位置无条件卸载、位置键包含类型和 runtime 可变身份问题。旧 pending/planned/station 清理、planner 延迟去重、快照异常绕过撤权与 world 清理聚合仍须随下阶段接线修正。FTBLib 持久玩家支持离线 owner、PLAYER/SERVER 和无队长服务器队伍；尚未加入 FTB 依赖或把身份唯一性冒充许可，详见[PN 审计](pn-identity-migration-audit.md)。
 
 - 2026-11-07（自动配方/机器界面/工具）：RecipeScanning 显式组件声明复用旧工位与事件驱动处理；工位先创建、scanner 恢复时重建，runBefore 保证同 tick 扫描后处理，恢复不重跑 START。RecipeRegistry 完整构造池和共享 catalog 后单次 volatile 发布。空 groups 在 catalog/index/扫描/直接 admission/restore 一致表示全局，包含无组配方，混合显式/wildcard 工位按各自规则接收。详见[配方](recipes.md)。
 - 2026-11-07（GUI/方向工具）：默认 MachineGui/MachineContainer 直接继承 AE2 基类，公开两侧 Java factory 注册；自定义容器必须绑定实际 TE，客户端匹配类型。owner FIFO join 后重验窗口和 TE，只同步可见最多七行不可变快照，保留进度、阻塞/失败原因和真实背包；修复 AE2 Scrollbar 直接调用缺命中检查吞掉背包左键的问题。PM 临时库存/固定 Idle/空扩展页不作为真实机器功能。方向工具保留原两模式、24 向及 DOWN top=SOUTH、采掘/武器/附魔/耐久、十项配置、模型和成就，手持时控制器让出右键。详见[机器 GUI](machine-gui.md)、[方向工具](orientation-tool.md)。

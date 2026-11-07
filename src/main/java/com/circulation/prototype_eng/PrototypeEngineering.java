@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
+import com.circulation.prototype_eng.machine.ServerMachineIdentities;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
@@ -52,11 +53,18 @@ public class PrototypeEngineering {
     @Mod.EventHandler
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {
         ServerTaskSchedulers.start(event.getServer());
+        try { ServerMachineIdentities.start(event.getServer()); }
+        catch (RuntimeException | Error failure) {
+            try { ServerTaskSchedulers.stop(); }
+            catch (RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
+            throw failure;
+        }
     }
 
     @Mod.EventHandler
     public void serverStopped(FMLServerStoppedEvent event) {
         ServerTaskSchedulers.stop();
+        ServerMachineIdentities.stop();
     }
 
 }
