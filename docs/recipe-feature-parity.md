@@ -19,7 +19,7 @@
 | PN 研究启动条件、队列、阶段推进及完成 | 手动及研究站服务器执行、世界会话已接 | ResearchRegistry 注册、权限/真实 startCondition 入队、队列/逐项投料/回执恢复/冻结完成已执行。ResearchWorld/ServerResearch 已绑定单一世界存档、FTB 成员核对、既有 tick 边界及登录退出，并提供 Java 开始/接管入口。ResearchStations/ResearchStationWork 已使用真实站点、共享 lease、完整材料周期与 END grant/completion；原来源 lanes 和 UNKNOWN 恢复共用。研究站自动调度与世界会话保存已接；正 tier 玩家 Java 入队已接；界面/packet、普通数据库下载及普通物品转换入口均已接；奖励领取见下一行，见[研究站执行](research-stations.md)。 |
 | PN 研究奖励及事件奖励 | 服务器 Java 领取、世界检查点、明确零效果重试与原生物品保护已接；效果前持久凭据与加载恢复已接；packet/UI 已接 | ResearchWorld.claimReward/ServerResearch.requestReward 调用原 ResearchRewardClaimer 和 RewardEventAction，持有准确玩家会话，按选择/DELIVERING/CONFIRMED/最终状态保存完整世界。未调用或明确零效果可保存 RETRY_PLANNED 后沿原目标续发。Minecraft物品实际交付后核对文件证据，确认后清交付标签。原生交互、死亡重生、光标、装备与漏斗保护已接；第三方直接修改遵守公开查询，效果前 PREPARED/ISSUING 与加载时多来源合并已接；领取 packet/UI 已接，默认未知交付不盲目重发，见[服务器奖励](research-rewards.md)。 |
 | PN 研究物品下载事件 | 普通转换已接真实注册、服务器/GUI、材料/来源与完整原生产物恢复 | ResearchItemDownloadRegistry 调用真实 actor context 的 createOutput，ResearchWorld 唯一 Schema 3 保存 frozen intent、armed 材料、原成员/直属费用及完整交付片段；ServerResearch 与默认 GUI 已接，保存失败/未知凭据不补扣或补发，相同 nonce 不重跑事件。见[物品化下载](research-downloads.md)。 |
-| 分级研究存盘 | 分级盘核心与 addon 编码事件已存在，默认盘物品及实际导入共同事务未接 | 旧 PN 没有内置研究编码成盘流程。R30 核心 ResearchDiskData/codec/EncodingEvent 已实现 researchTierForLevel ≤ diskTier 及 diskTier ≤ 导入数据库 tier，完成等级独立。addon 可把自己的材料/产物接入已完成的普通物品下载；不能将核心规则称为实际默认盘或扣盘/数据库共同恢复。 |
+| 分级研究存盘 | 接口式用户盘注册及实际编码/导入共同持久事务已接，完整构建/全级检查通过 | R30 使用方正常注册自己的 Item/物理 tier/布局，Carrier 与现 ResearchDiskEncodingEvent.register 接入普通转换，库不内置盘/等级表；统一 RightClickBlock hook 在方块 GUI 前尊重已有取消/拒绝后接实际导入；编码只检查 researchTierForLevel ≤ diskTier，导入目标再检查 diskTier ≤ databaseTier，完成等级独立。World Schema 4/玩家准确单槽/数据库内容+receipt 共同恢复，真实落盘回读后才扣盘，最小 databaseArmed 区分取消、明确拒绝及未知义务；原物理目标恢复、登录/tick 与共享物品保护已接。见[物品化下载](research-downloads.md)。 |
 | PN 计算组件的实际物品供给 | Java 生产链已接 | AEItemKey 精确注册、公开 committed 仓槽读取、每物品上限后按 long 数量累加并合并 declared vector；准确版本证明进入真实同步/planned 配方许可。真实仓负责恢复，未知普通物品不供给。原生 ItemStack 适配仅静态核对，未启动游戏。 |
 | CraftTweaker 接口及脚本数据适配 | 按用户要求最后处理 | PM ZenRecipeBuilder 通过 addRequirement/register 声明配方，Zen 参数转换、工厂和 ZSData 脚本数据组件尚未迁移；未发现该 builder 额外提供一套每配方 onStart/onFinish 事件 DSL。Java 功能完整之后再实现 CT，不能以 CT 延后为理由延后其底层 Java 功能。 |
 
@@ -29,7 +29,7 @@
 
 ## 后续工作顺序
 
-1. PN 普通配方研究/计算条件、研究界面/packet 与领取、普通数据库下载/自动同步和普通物品转换均已接通。下一步接默认分级盘物品和真实特殊磁盘导入共同持久事务，并处理永久破坏后的材料会话边界；新接口继续放在真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
+1. PN 普通配方研究/计算条件、研究界面/packet 与领取、普通数据库下载/自动同步和普通物品转换均已接通。接口式使用方盘和真实特殊磁盘导入共同事务已通过完整构建及全级检查，下一步处理永久破坏后的材料会话边界；新接口继续放在真实职责包内，不照搬 api.pm 或 XxxImpl 镜像。
 2. 研究启动、队列/阶段推进、完成、奖励与下载事件逐项接到真实注册、运行和持久化入口。状态说明按“定义、执行、存档、外部扩展”分别给出，不以仅有模型或预算底座冒充完整功能。
 3. 在具体功能需要的地方使用已有事务和调度能力；服务器网络机器游标与来源 lanes 已接，纯 prepare、内部工作预算与其他 PN 消费者仍须完成，但不继续脱离功能主线反复细化底座。
 4. 继续已确认的结构投影/复杂渲染/每池默认与自定义 JEI 等功能，CraftTweaker 最后。保持纯库定位，不迁入旧开发示例的正式机器、配方或玩法数值。

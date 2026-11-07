@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
@@ -36,9 +37,26 @@ public enum ResearchGuiText implements LocalizationEnum {
     DatabaseCapacityFull, DatabaseMutexBlocked, DatabaseIdentity, DatabaseTeam,
     ItemDownload, ItemDownloaded, ItemDownloadAborted, ItemDownloadPending, ItemDownloadSourceRejected,
     ItemDownloadNoEvent, ItemDownloadEventRejected, ItemDownloadNonceConflict,
-    ItemDownloadMaterial, ItemDownloadPersonalCost, ItemDownloadTeamCost;
+    ItemDownloadMaterial, ItemDownloadPersonalCost, ItemDownloadTeamCost,
+    DiskImportCompleted, DiskImportAborted, DiskImportUnsupportedStorage, DiskImportRejected, DiskImportNonceConflict, InvalidDisk;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".research." + name();
+
+    public static ResearchGuiText diskImport(ResearchDiskImportResult.Status status) {
+        return switch (status) {
+            case COMPLETED -> DiskImportCompleted;
+            case ABORTED -> DiskImportAborted;
+            case PENDING -> RecoveryPending;
+            case BUSY -> Busy;
+            case STALE_CONTEXT -> Stale;
+            case PERMISSION_DENIED -> Forbidden;
+            case MISSING_DISK -> InvalidDisk;
+            case UNSUPPORTED_STORAGE -> DiskImportUnsupportedStorage;
+            case DISK_REJECTED -> DiskImportRejected;
+            case NONCE_CONFLICT -> DiskImportNonceConflict;
+            case RECOVERY_ERROR -> RecoveryError;
+        };
+    }
 
     public static ResearchGuiText start(TeamResearchStart.Status status) {
         return switch (status) {

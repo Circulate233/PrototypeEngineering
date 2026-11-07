@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.research.disk;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadContext;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadEvent;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.minecraft.item.ItemStack;
 
@@ -30,6 +31,17 @@ public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEven
         }
         this.diskTier = diskTier;
         this.outputTemplate = ResearchDiskNbtCodec.copyStack(outputTemplate);
+    }
+
+    /** Bind a consumer-registered material and disk template in the existing item-download event. */
+    @SuppressWarnings("unused") // Consumer registration through the existing Java item-download event.
+    public static void register(ResearchItemDownloadRegistry downloads, ResearchRegistry research, ItemStack material,
+                                ItemStack outputTemplate) {
+        if (!(Objects.requireNonNull(outputTemplate).getItem() instanceof ResearchDiskCarrier carrier)) {
+            throw new IllegalArgumentException("Research disk template must expose its physical tier");
+        }
+        Objects.requireNonNull(downloads).register(material,
+            new ResearchDiskEncodingEvent(research, carrier.researchDiskTier(outputTemplate), outputTemplate));
     }
 
     @Override

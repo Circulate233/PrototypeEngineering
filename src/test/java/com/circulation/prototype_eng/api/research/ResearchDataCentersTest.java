@@ -191,6 +191,52 @@ class ResearchDataCentersTest {
         }
     }
 
+    @Test
+    void originalPhysicalBindingSurvivesItsWriteAndRecoversAfterSelectionAndTeamChanges() {
+        try (var fixture = new Fixture()) {
+            var first = fixture.dataCenter();
+            var second = fixture.dataCenter();
+            fixture.refresh();
+            var original = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(first)));
+            var target = original.target();
+            original.storage().downloadResearch(FIRST, 1, fixture.cloud(), original::current);
+            assertFalse(original.current());
+            assertTrue(original.physicalCurrent());
+            fixture.storage(second).downloadResearch(FIRST, 1, fixture.cloud());
+            fixture.storage(second).downloadResearch(SECOND, 1, fixture.cloud());
+            fixture.refresh();
+            fixture.teamId = "new";
+            fixture.refresh();
+            assertNull(fixture.selector.capture("team", fixture.machineId(first)));
+            var recovery = Objects.requireNonNull(fixture.selector.captureOriginal(target));
+            assertSame(original.storage(), recovery.storage());
+            assertTrue(recovery.current());
+            first.components().remove(fixture.dataRole);
+            assertNull(fixture.selector.capture("new", fixture.machineId(first)));
+            assertTrue(Objects.requireNonNull(fixture.selector.captureOriginal(target)).current());
+            fixture.unload(first);
+            assertFalse(original.physicalCurrent());
+            assertFalse(recovery.current());
+            assertNull(fixture.selector.captureOriginal(target));
+        }
+    }
+
+    @Test
+    void duplicateIdentityAndMovedCopiesCannotResumeTheOriginalPhysicalTarget() {
+        try (var fixture = new Fixture()) {
+            var original = fixture.dataCenter();
+            fixture.refresh();
+            var capture = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(original)));
+            var target = capture.target();
+            var saved = fixture.dataAssembly.encode(original);
+            fixture.attach(fixture.dataAssembly.restore(fixture.host(fixture.dataType.id()), saved, new MachineLifecycleRegistry()));
+            assertFalse(capture.physicalCurrent());
+            assertNull(fixture.selector.captureOriginal(target));
+            fixture.unload(original);
+            assertNull(fixture.selector.captureOriginal(target));
+        }
+    }
+
     @Test void advertisedContentsMustBelongToTheActualInterfaceBackend() {
         try (var fixture = new Fixture()) {
             var machine = fixture.dataCenter(); fixture.advertiseDifferentContents = true; fixture.refresh();

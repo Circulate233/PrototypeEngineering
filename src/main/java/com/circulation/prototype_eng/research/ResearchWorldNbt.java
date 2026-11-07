@@ -11,6 +11,8 @@ import com.circulation.prototype_eng.api.research.PlayerResearchStateNbt;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchWorldSnapshot;
 import com.circulation.prototype_eng.api.research.TeamOwnedResearch;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperationNbt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadNbt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadReceipt;
@@ -122,7 +124,7 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     public NBTTagCompound encode(ResearchWorldSnapshot value) {
         Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 3);
+        tag.setInteger("Version", 4);
         tag.setLong("ServerTime", value.serverTime());
         var savedPlayers = new NBTTagList();
         for (var player : value.players()) {
@@ -140,13 +142,16 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         var receipts = new NBTTagList();
         for (var receipt : value.downloadReceipts()) receipts.appendTag(downloads.encode(receipt));
         tag.setTag("DownloadReceipts", receipts);
+        var disks = new NBTTagList();
+        for (var operation : value.diskImports()) disks.appendTag(ResearchDiskOperationNbt.encode(operation));
+        tag.setTag("DiskImports", disks);
         return tag;
     }
 
     @Override
     public ResearchWorldSnapshot decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "ServerTime", "Players", "Teams", "Downloads", "DownloadReceipts");
-        if (StrictNbt.requireInt(tag, "Version") != 3) {
+        StrictNbt.requireKeys(tag, "Version", "ServerTime", "Players", "Teams", "Downloads", "DownloadReceipts", "DiskImports");
+        if (StrictNbt.requireInt(tag, "Version") != 4) {
             throw new IllegalArgumentException("Unknown research world version");
         }
         var playerList = new ObjectArrayList<PlayerResearchState.Snapshot>();
@@ -167,7 +172,11 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         var savedReceipts = StrictNbt.requireList(tag, "DownloadReceipts", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < savedReceipts.tagCount(); index++)
             receiptList.add(downloads.decodeReceipt(savedReceipts.getCompoundTagAt(index)));
-        return new ResearchWorldSnapshot(StrictNbt.requireLong(tag, "ServerTime"), playerList, teamList, operationList, receiptList);
+        var diskList = new ObjectArrayList<ResearchDiskOperation>();
+        var disks = StrictNbt.requireList(tag, "DiskImports", Constants.NBT.TAG_COMPOUND);
+        for (int index = 0; index < disks.tagCount(); index++)
+            diskList.add(ResearchDiskOperationNbt.decode(disks.getCompoundTagAt(index), registry));
+        return new ResearchWorldSnapshot(StrictNbt.requireLong(tag, "ServerTime"), playerList, teamList, operationList, receiptList, diskList);
     }
 
     private NBTTagCompound encodeTeam(ResearchWorldSnapshot.Team value) {

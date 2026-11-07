@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
 
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
+
 /** Owner-side access to the exact physical database selected by an existing network publication. */
 public final class ResearchDataCenters {
     private final MachineIdentityRegistry identities;
@@ -49,6 +51,96 @@ public final class ResearchDataCenters {
         return null;
     }
 
+
+    /** Saved physical target. It identifies a recovery obligation and never grants team permission. */
+    public record Target(UUID dataCenterId, UUID ownerId, MachineIdentity location) {
+        public Target {
+            Objects.requireNonNull(dataCenterId);
+            Objects.requireNonNull(ownerId);
+            Objects.requireNonNull(location);
+        }
+    }
+
+    /**
+     * Recover only the original physical storage. No current team, selected database, network role,
+     * or old content authorization is borrowed here. New imports must use capture(team, id).
+     */
+    @Nullable
+    public PhysicalCapture captureOriginal(Target target) {
+        ownerCheck.run();
+        Objects.requireNonNull(target);
+        long revision = identities.revision();
+        for (var identity : identities.uniqueRegistrations()) {
+            if (!identity.identity().machineId().equals(target.dataCenterId())
+                || !identity.identity().ownerId().equals(target.ownerId()) || !identity.location().equals(target.location())
+                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) continue;
+            var binding = storageBinding(machine);
+            if (binding == null) return null;
+            var result = new PhysicalCapture(this, revision, identity, machine, binding);
+            return result.current() ? result : null;
+        }
+        return null;
+    }
+
+    @Nullable
+    private static StorageBinding storageBinding(MachineInstance machine) {
+        StorageBinding result = null;
+        for (var binding : machine.components().assemblyBindings()) {
+            if (binding.component() instanceof DataCenterStorage candidate) {
+                if (result != null) throw new IllegalStateException("Data-center machine has multiple storage component bindings");
+                result = new StorageBinding(binding.type(), candidate);
+            }
+        }
+        return result;
+    }
+
+    private record StorageBinding(ComponentType<MachineInstance, ?> type, DataCenterStorage storage) {
+    }
+
+    /** Independent original binding proof that survives an import's own content publication. */
+    public static final class PhysicalCapture {
+        private final ResearchDataCenters selector;
+        private final long revision;
+        private final MachineIdentityRegistry.Registration identity;
+        private final MachineInstance machine;
+        private final StorageBinding binding;
+
+        private PhysicalCapture(ResearchDataCenters selector, long revision, MachineIdentityRegistry.Registration identity,
+                                MachineInstance machine, StorageBinding binding) {
+            this.selector = selector;
+            this.revision = revision;
+            this.identity = identity;
+            this.machine = machine;
+            this.binding = binding;
+        }
+
+        public Target target() {
+            return new Target(identity.identity().machineId(), identity.identity().ownerId(), identity.location());
+        }
+
+        public DataCenterStorage storage() {
+            return binding.storage();
+        }
+
+        public DataCenterResearchSnapshot snapshot() {
+            selector.ownerCheck.run();
+            return binding.storage().snapshot();
+        }
+
+        public boolean current() {
+            selector.ownerCheck.run();
+            var lifecycle = machine.lifecycle();
+            if (selector.identities.revision() != revision || !identity.unique() || identity.runtimeIdentity() != machine
+                || lifecycle == null || lifecycle.state() != MachineLifecycle.State.LOADED || !lifecycle.schedulingAllowed()
+                || lifecycle.host().worldIdentity() != identity.worldIdentity() || !lifecycle.host().identity().equals(identity.location())) {
+                return false;
+            }
+            var current = storageBinding(machine);
+            return current != null && current.type() == binding.type() && current.storage() == binding.storage()
+                && binding.storage().snapshot().dataCenterId().equals(identity.identity().machineId());
+        }
+    }
+
     @Nullable private static Bindings bindings(MachineInstance machine) {
         ComponentType<MachineInstance, ?> roleType = null;
         ComponentType<MachineInstance, ?> storageType = null;
@@ -82,9 +174,10 @@ public final class ResearchDataCenters {
         private final Bindings bindings;
         private final NetworkRuntime.WorkPermit permit;
         private final DataCenterStorage.Capture backend;
+        private final PhysicalCapture physical;
 
         private Capture(ResearchDataCenters selector, long revision, MachineIdentityRegistry.Registration identity,
-                         MachineInstance machine, Bindings bindings, NetworkRuntime.WorkPermit permit, DataCenterStorage.Capture backend) {
+                        MachineInstance machine, Bindings bindings, NetworkRuntime.WorkPermit permit, DataCenterStorage.Capture backend) {
             this.selector = selector;
             this.revision = revision;
             this.identity = identity;
@@ -92,10 +185,20 @@ public final class ResearchDataCenters {
             this.bindings = bindings;
             this.permit = permit;
             this.backend = backend;
+            physical = new PhysicalCapture(selector, revision, identity, machine, new StorageBinding(bindings.storageType(), bindings.storage()));
         }
 
         public DataCenterResearchSnapshot snapshot() { return backend.snapshot(); }
         public DataCenterStorage storage() { return bindings.storage(); }
+
+        public Target target() {
+            return physical.target();
+        }
+
+        /** Keep this proof for persistence after the import has invalidated its old contents. */
+        public boolean physicalCurrent() {
+            return physical.current();
+        }
         public UUID ownerId() { return identity.identity().ownerId(); }
 
         /** Revalidate before publishing a write; a successful content update invalidates this capture. */

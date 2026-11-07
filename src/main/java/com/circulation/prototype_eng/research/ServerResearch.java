@@ -1,9 +1,12 @@
 package com.circulation.prototype_eng.research;
 
+import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
@@ -14,6 +17,13 @@ import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskCarrier;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskInteractions;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskRecovery;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadContext;
@@ -46,14 +56,22 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.EnumActionResult;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.eventhandler.Event;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import org.jetbrains.annotations.Nullable;
 
@@ -76,6 +94,18 @@ public final class ServerResearch {
     private static volatile Session session;
 
     private ServerResearch() {
+    }
+
+    /** Carrier items are handled before a controller's normal right-click GUI activation. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onResearchDiskInteraction(PlayerInteractEvent.RightClickBlock event) {
+        if (event.isCanceled() || event.getUseItem() == Event.Result.DENY) return;
+        var face = event.getFace();
+        if (face == null) return;
+        var result = ResearchDiskInteractions.use(event.getEntityPlayer(), event.getWorld(), event.getPos(), event.getHand(), face);
+        if (result == EnumActionResult.PASS) return;
+        event.setCancellationResult(result);
+        event.setCanceled(true);
     }
 
     /**
@@ -290,6 +320,181 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
+    /** Physical right-click entry; captures the original tile, held slot and item identity before queueing. */
+    @SuppressWarnings("resource")
+    public static void requestDiskImport(EntityPlayerMP actor, BlockPos pos, EnumHand hand, EnumFacing facing,
+                                          Consumer<ResearchDiskImportResult> result) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(result);
+        var position = Objects.requireNonNull(pos).toImmutable();
+        var actorWorld = actor.getServerWorld();
+        var tile = actorWorld.getTileEntity(position);
+        int slot = Objects.requireNonNull(hand) == EnumHand.MAIN_HAND ? actor.inventory.currentItem : 40;
+        var key = AEItemKey.of(actor.inventory.getStackInSlot(slot));
+        if (!(tile instanceof MachineControllerHost) || key == null) {
+            result.accept(staleDiskImport());
+            return;
+        }
+        var nonce = UUID.randomUUID();
+        BooleanSupplier ownerCurrent = () -> currentActor(current, actor) && actor.getServerWorld() == actorWorld
+            && actorWorld.isBlockLoaded(position) && actorWorld.getTileEntity(position) == tile
+            && key.equals(AEItemKey.of(actor.inventory.getStackInSlot(slot)))
+            && actorWorld.isBlockModifiable(actor, position) && actor.canPlayerEdit(position, facing, actor.inventory.getStackInSlot(slot));
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!ownerCurrent.getAsBoolean() || !(tile instanceof MachineControllerHost host)) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            var machine = host.machine();
+            if (machine == null) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            DataCenterStorage clickedStorage = null;
+            for (var binding : machine.components().assemblyBindings()) {
+                if (!(binding.component() instanceof DataCenterStorage storage)) continue;
+                if (clickedStorage != null) throw new IllegalStateException("Clicked machine has multiple data-center storage bindings");
+                clickedStorage = storage;
+            }
+            if (clickedStorage == null) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            var captures = capture(current, Set.of(actor.getUniqueID()));
+            if (unavailable(captures)) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+            if (!membership.accepted()) {
+                result.accept(new ResearchDiskImportResult(ResearchDiskImportResult.Status.PERMISSION_DENIED, null, null));
+                return;
+            }
+            performDiskImport(current, actor, membership.teamId(), clickedStorage.snapshot().dataCenterId(), slot, nonce,
+                ownerCurrent, result);
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    /** Java hosts name their exact expected team, physical database and single native inventory slot. */
+    @SuppressWarnings({"resource", "unused"}) // Public Java request for external item/host integrations.
+    public static void requestDiskImport(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId, int slot,
+                                          UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(expectedTeam);
+        Objects.requireNonNull(expectedDataCenterId);
+        Objects.requireNonNull(nonce);
+        Objects.requireNonNull(ownerCurrent);
+        Objects.requireNonNull(result);
+        ServerTaskSchedulers.forServer(current.server).submit(() ->
+            performDiskImport(current, actor, expectedTeam, expectedDataCenterId, slot, nonce, ownerCurrent, result), ExecutionMode.MAIN_THREAD);
+    }
+
+    private static void performDiskImport(Session current, EntityPlayerMP actor, String expectedTeam, UUID databaseId,
+                                           int slot, UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
+        if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
+            result.accept(staleDiskImport());
+            return;
+        }
+        var online = onlinePlayers(current);
+        var captures = capture(current, Set.of(actor.getUniqueID()));
+        if (unavailable(captures)) {
+            result.accept(staleDiskImport());
+            return;
+        }
+        var membership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+        if (!membership.accepted() || !expectedTeam.equals(membership.teamId())) {
+            result.accept(staleDiskImport());
+            return;
+        }
+        var permission = permission(current, actor, membership);
+        var physical = current.dataCenters.capture(expectedTeam, databaseId);
+        if (permission == null || physical == null || !membership.members().contains(physical.ownerId())) {
+            result.accept(staleDiskImport());
+            return;
+        }
+        var authority = proof(current, captures, online);
+        var intent = new ResearchDiskOperation.Intent(actor.getUniqueID(), nonce, databaseId, expectedTeam, slot);
+        result.accept(current.world.requestDiskImport(intent, membership, permission, physical.target(), physical.storage(),
+            new MinecraftResearchDownloadInventory(actor), material -> readDisk(material.material()), operationTime(current),
+            () -> authority.getAsBoolean() && physical.current() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+                && permission.equals(permission(current, actor, membership)), physical::physicalCurrent, () -> currentActor(current, actor)));
+    }
+
+    private static @Nullable ResearchDiskData readDisk(NBTTagCompound material) {
+        var stack = new ItemStack(material);
+        if (!(stack.getItem() instanceof ResearchDiskCarrier carrier)) return null;
+        // Strict external NBT is an input boundary. A malformed disk is rejected before a world operation exists.
+        try {
+            var data = carrier.readResearchDisk(stack, ResearchRegistry.INSTANCE);
+            if (data != null && data.tier() != carrier.researchDiskTier(stack)) return null;
+            return data;
+        } catch (IllegalArgumentException invalidDisk) {
+            return null;
+        }
+    }
+
+    private static ResearchDiskImportResult staleDiskImport() {
+        return new ResearchDiskImportResult(ResearchDiskImportResult.Status.STALE_CONTEXT, null, null);
+    }
+
+    /** Explicit cancellation remains available after team changes while the world proves no database attempt. */
+    @SuppressWarnings({"resource", "unused"}) // Public Java cancellation for an original pending operation.
+    public static void requestDiskImportCancel(EntityPlayerMP actor, UUID operationId, Consumer<ResearchDiskImportResult> result) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(operationId);
+        Objects.requireNonNull(result);
+        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+            if (!currentActor(current, actor)) {
+                result.accept(staleDiskImport());
+                return;
+            }
+            result.accept(current.world.abortDiskImport(actor.getUniqueID(), operationId, new MinecraftResearchDownloadInventory(actor), operationTime(current)));
+        }, ExecutionMode.MAIN_THREAD);
+    }
+
+    private static void recoverDiskImports(Session current, EntityPlayerMP actor) {
+        if (!currentActor(current, actor)) return;
+        for (var operation : current.world.pendingDiskImports(actor.getUniqueID())) {
+            if (!currentActor(current, actor)) return;
+            var inventory = new MinecraftResearchDownloadInventory(actor);
+            if (operation.status() == ResearchDiskOperation.Status.ABORTING) {
+                current.world.abortDiskImport(actor.getUniqueID(), operation.id(), inventory, operationTime(current));
+                continue;
+            }
+            var original = current.dataCenters.captureOriginal(operation.target());
+            if (original == null || !(original.storage() instanceof ResearchDiskStorage storage)) continue;
+            OwnerTeamResolution membership = null;
+            ResearchPermissionContext permission = null;
+            BooleanSupplier authorized = () -> false;
+            if (operation.status() == ResearchDiskOperation.Status.PREPARED && storage.receipt(operation.id()) == null) {
+                var online = onlinePlayers(current);
+                var captures = capture(current, Set.of(actor.getUniqueID()));
+                if (!unavailable(captures)) {
+                    var capturedMembership = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+                    if (capturedMembership.accepted() && operation.intent().teamId().equals(capturedMembership.teamId())) {
+                        var capturedPermission = permission(current, actor, capturedMembership);
+                        var selected = current.dataCenters.capture(operation.intent().teamId(), operation.intent().databaseId());
+                        if (capturedPermission != null && selected != null && operation.target().equals(selected.target())
+                            && capturedMembership.members().contains(operation.target().ownerId())) {
+                            membership = capturedMembership;
+                            permission = capturedPermission;
+                            var authority = proof(current, captures, online);
+                            authorized = () -> authority.getAsBoolean() && selected.current() && currentActor(current, actor)
+                                && capturedPermission.equals(permission(current, actor, capturedMembership));
+                        }
+                    } else if (capturedMembership.accepted() && !operation.databaseArmed()) {
+                        current.world.abortDiskImport(actor.getUniqueID(), operation.id(), inventory, operationTime(current));
+                        continue;
+                    }
+                }
+            }
+            current.world.recoverDiskImport(actor.getUniqueID(), operation.id(), inventory,
+                new ResearchDiskRecovery(storage, original.target(), original::current, membership, permission, authorized), operationTime(current),
+                () -> currentActor(current, actor));
+        }
+    }
+
+
     private static ResearchDownloadResult staleItemDownload() {
         return new ResearchDownloadResult(ResearchDownloadResult.Status.STALE_CONTEXT, null, null);
     }
@@ -300,6 +505,7 @@ public final class ServerResearch {
     private static void recoverDownloads(Session current) {
         for (var actor : onlinePlayers(current).values()) {
             if (current.world.pendingDownloadOperations(actor.getUniqueID()).isEmpty()
+                && current.world.pendingDiskImports(actor.getUniqueID()).isEmpty()
                 && !MinecraftResearchDownloadInventory.hasPending(actor)) continue;
             recoverDownloads(current, actor);
         }
@@ -307,6 +513,7 @@ public final class ServerResearch {
 
     private static void recoverDownloads(Session current, EntityPlayerMP actor) {
         if (!currentActor(current, actor)) return;
+        recoverDiskImports(current, actor);
         current.world.recoverItemDownloads(actor.getUniqueID(), new MinecraftResearchDownloadInventory(actor),
             new MinecraftItemDeliveryAdapter(actor), operationTime(current), () -> currentActor(current, actor),
             operation -> downloadAuthorized(current, actor, operation));

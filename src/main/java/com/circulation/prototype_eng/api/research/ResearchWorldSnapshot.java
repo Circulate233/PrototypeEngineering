@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadOperation;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadReceipt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
@@ -24,9 +25,15 @@ import java.util.UUID;
 public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players,
                                     ObjectList<Team> teams,
                                     ObjectList<ResearchDownloadOperation> downloads,
-                                    ObjectList<ResearchDownloadReceipt> downloadReceipts) {
+                                    ObjectList<ResearchDownloadReceipt> downloadReceipts, ObjectList<ResearchDiskOperation> diskImports) {
     public ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams) {
-        this(serverTime, players, teams, ObjectList.of(), ObjectList.of());
+        this(serverTime, players, teams, ObjectList.of(), ObjectList.of(), ObjectList.of());
+    }
+
+    /** Host checkpoint without disk obligations. */
+    public ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams,
+                                 ObjectList<ResearchDownloadOperation> downloads, ObjectList<ResearchDownloadReceipt> downloadReceipts) {
+        this(serverTime, players, teams, downloads, downloadReceipts, ObjectList.of());
     }
 
     public ResearchWorldSnapshot {
@@ -37,6 +44,7 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
         teams = frozenList(teams);
         downloads = frozenList(downloads);
         downloadReceipts = frozenList(downloadReceipts);
+        diskImports = frozenList(diskImports);
         var playerIds = new ObjectOpenHashSet<UUID>();
         for (var player : players) {
             if (!playerIds.add(player.playerUuid())) {
@@ -112,6 +120,17 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
             if (!teamIds.contains(receipt.sources().teamId()))
                 throw new IllegalArgumentException("Terminal download lost its original team source");
             for (var member : receipt.sources().members()) requirePlayer(playerIds, member);
+        }
+        var diskNonces = new ObjectOpenHashSet<RequestNonce>();
+        var diskPlayers = new ObjectOpenHashSet<UUID>();
+        for (var operation : diskImports) {
+            if (operation.createdAt() > serverTime || !operations.add(operation.id())
+                || !diskNonces.add(new RequestNonce(operation.intent().playerId(), operation.intent().nonce()))
+                || !operation.terminal() && !diskPlayers.add(operation.intent().playerId()))
+                throw new IllegalArgumentException("Duplicate or future world disk operation");
+            requirePlayer(playerIds, operation.intent().playerId());
+            requirePlayer(playerIds, operation.target().ownerId());
+            if (!teamIds.contains(operation.intent().teamId())) throw new IllegalArgumentException("Disk import lost its original team");
         }
     }
 

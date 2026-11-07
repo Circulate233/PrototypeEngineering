@@ -189,18 +189,20 @@ class ResearchWorldStationPersistenceTest {
     }
 
     @Test
-    void versionThreeRequiresExplicitStationEnvelopeAndNeverFallsBackToMissingOrOldFields() {
+    void versionFourRequiresExplicitStationAndDiskEnvelopesWithoutOldVersionFallback() {
         var fixture = new Fixture();
         var oldHost = new ResearchWorldSnapshot.Team("team", members(), new ObjectOpenHashSet<>(), fixture.research.snapshot(),
             fixture.queue.snapshot(), fixture.sessions());
         assertEquals(new ResearchStationWork.Saved(-1, null), oldHost.stationWork());
         var empty = new ResearchWorldSnapshot(10, ObjectList.of(fixture.player.snapshot()), ObjectList.of(oldHost));
         var encoded = fixture.codec.encode(empty);
-        assertEquals(3, encoded.getInteger("Version"));
+        assertEquals(4, encoded.getInteger("Version"));
         assertFalse(stationWork(encoded).getBoolean("HasSegment"));
         assertEquals(empty, fixture.codec.decode(encoded));
         List<Consumer<NBTTagCompound>> corruptions = List.of(
             tag -> tag.setInteger("Version", 1),
+            tag -> tag.setInteger("Version", 3),
+            tag -> tag.removeTag("DiskImports"),
             tag -> tag.getTagList("Teams", 10).getCompoundTagAt(0).removeTag("StationWork"),
             tag -> tag.getTagList("Teams", 10).getCompoundTagAt(0).setTag("StationWork", new NBTTagString("wrong type")),
             tag -> stationWork(tag).setInteger("HasSegment", 1),

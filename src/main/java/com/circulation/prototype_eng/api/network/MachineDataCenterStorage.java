@@ -10,7 +10,6 @@ import com.circulation.prototype_eng.api.machine.persistence.MachineComponentCod
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
-import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.research.DataCenterStorageNbt;
@@ -26,28 +25,41 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.BooleanSupplier;
 
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskCommit;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
+import com.circulation.prototype_eng.research.disk.MinecraftDataCenterPersistence;
+import java.util.UUID;
+
 /** Persistent physical database attachment. Its version proof also requires the exact live component binding. */
-public final class MachineDataCenterStorage implements DataCenterStorage, MachineLifecycleListener {
+public final class MachineDataCenterStorage implements ResearchDiskStorage, MachineLifecycleListener {
     public static final MachineComponentCodec<MachineDataCenterStorage> CODEC = new MachineComponentCodec<>() {
-        @Override public NBTTagCompound encode(MachineInstance owner, MachineDataCenterStorage component) {
+        @Override
+        public NBTTagCompound encode(MachineInstance owner, MachineDataCenterStorage component) {
             component.requireOwner(owner);
             owner.requirePersistenceBoundary();
-            return DataCenterStorageNbt.encode(component.snapshot());
+            return DataCenterStorageNbt.encodeState(Objects.requireNonNull(component.state).persistentState());
         }
 
-        @Override public MachineDataCenterStorage restore(MachineInstance owner, MachineDataCenterStorage component, NBTTagCompound saved) {
+        @Override
+        public MachineDataCenterStorage restore(MachineInstance owner, MachineDataCenterStorage component, NBTTagCompound saved) {
             component.requireOwner(owner);
             owner.requirePersistenceBoundary();
-            if (component.loadAttempted || component.state != null) { throw new IllegalStateException("Data-center restore requires a fresh attachment"); }
-            var snapshot = DataCenterStorageNbt.decode(saved, component.registry);
+            if (component.loadAttempted || component.state != null) {
+                throw new IllegalStateException("Data-center restore requires a fresh attachment");
+            }
+            var savedState = DataCenterStorageNbt.decodeState(saved, component.registry);
+            var snapshot = savedState.contents();
             if (snapshot.level() != component.level || snapshot.capacity() != component.capacity) {
                 throw new IllegalArgumentException("Saved data-center metadata differs from its declaration");
             }
-            component.state = ResearchDataCenter.restore(snapshot, component.registry, component::requireThread, component::changed);
+            component.state = ResearchDataCenter.restore(savedState, component.registry, component::requireThread, component::changed);
             return component;
         }
 
-        @Override public void validate(MachineInstance owner, MachineDataCenterStorage component) { component.requireOwner(owner); }
+        @Override
+        public void validate(MachineInstance owner, MachineDataCenterStorage component) {
+            component.requireOwner(owner);
+        }
     };
 
     private final MachineInstance owner;
@@ -56,9 +68,22 @@ public final class MachineDataCenterStorage implements DataCenterStorage, Machin
     private final int capacity;
     private final ResearchRegistry registry;
     private final Consumer<MachineInstance> dirty;
+    private final MachineDataCenterPersistence persistence;
     @Nullable private ComponentType<MachineInstance, ?> boundType;
     @Nullable private ResearchDataCenter state;
     private boolean loadAttempted;
+
+    private MachineDataCenterStorage(MachineInstance owner, ComponentType<MachineInstance, MachineOwnership> ownership,
+                                     int level, int capacity, ResearchRegistry registry, Consumer<MachineInstance> dirty,
+                                     MachineDataCenterPersistence persistence) {
+        this.owner = owner;
+        ownershipType = ownership;
+        this.level = level;
+        this.capacity = capacity;
+        this.registry = registry;
+        this.dirty = dirty;
+        this.persistence = persistence;
+    }
 
     /** The host supplies its real persistence dirty callback; declare this component before its network role. */
     public static ComponentType<MachineInstance, MachineDataCenterStorage> component(ResourceLocation id, int level, int capacity,
@@ -67,24 +92,31 @@ public final class MachineDataCenterStorage implements DataCenterStorage, Machin
     }
 
     public static ComponentType<MachineInstance, MachineDataCenterStorage> component(ResourceLocation id,
-            ComponentType<MachineInstance, MachineOwnership> ownership, int level, int capacity,
-            ResearchRegistry registry, Consumer<MachineInstance> dirty) {
-        if (level < 0 || capacity < 1) { throw new IllegalArgumentException("Invalid physical data-center metadata"); }
+                                                                                     ComponentType<MachineInstance, MachineOwnership> ownership, int level, int capacity,
+                                                                                     ResearchRegistry registry, Consumer<MachineInstance> dirty) {
+        return component(id, ownership, level, capacity, registry, dirty, MinecraftDataCenterPersistence.INSTANCE);
+    }
+
+    /** External hosts may supply their real writer and authoritative database readback. */
+    public static ComponentType<MachineInstance, MachineDataCenterStorage> component(ResourceLocation id, int level, int capacity,
+                                                                                    ResearchRegistry registry, Consumer<MachineInstance> dirty,
+                                                                                    MachineDataCenterPersistence persistence) {
+        return component(id, MachineOwnership.TYPE, level, capacity, registry, dirty, persistence);
+    }
+
+    public static ComponentType<MachineInstance, MachineDataCenterStorage> component(ResourceLocation id,
+                                                                                    ComponentType<MachineInstance, MachineOwnership> ownership,
+                                                                                    int level, int capacity, ResearchRegistry registry,
+                                                                                    Consumer<MachineInstance> dirty, MachineDataCenterPersistence persistence) {
+        if (level < 0 || capacity < 1) {
+            throw new IllegalArgumentException("Invalid physical data-center metadata");
+        }
         Objects.requireNonNull(registry);
         Objects.requireNonNull(dirty);
         Objects.requireNonNull(ownership);
-        return new ComponentType<>(id, owner -> new MachineDataCenterStorage(owner, ownership, level, capacity, registry, dirty),
+        Objects.requireNonNull(persistence);
+        return new ComponentType<>(id, owner -> new MachineDataCenterStorage(owner, ownership, level, capacity, registry, dirty, persistence),
             List.of(), List.of(ownership));
-    }
-
-    private MachineDataCenterStorage(MachineInstance owner, ComponentType<MachineInstance, MachineOwnership> ownership,
-            int level, int capacity, ResearchRegistry registry, Consumer<MachineInstance> dirty) {
-        this.owner = owner;
-        ownershipType = ownership;
-        this.level = level;
-        this.capacity = capacity;
-        this.registry = registry;
-        this.dirty = dirty;
     }
 
     @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
@@ -126,6 +158,56 @@ public final class MachineDataCenterStorage implements DataCenterStorage, Machin
     @Override public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
         requireLive();
         return Objects.requireNonNull(state).synchronizeLoopingResearch(cloud, () -> current.getAsBoolean() && live());
+    }
+
+
+    @Override
+    public boolean diskPersistenceAvailable() {
+        requireLive();
+        return persistence != MinecraftDataCenterPersistence.INSTANCE || MinecraftDataCenterPersistence.available(owner);
+    }
+
+    @Override
+    public Result commitDisk(ResearchDiskCommit commit, TeamResearchView cloud, BooleanSupplier current) {
+        requireLive();
+        if (!diskPersistenceAvailable()) throw new IllegalStateException("Data-center disk persistence is unavailable");
+        return Objects.requireNonNull(state).commitDisk(commit, cloud, () -> current.getAsBoolean() && live());
+    }
+
+    @Override
+    @Nullable
+    public ResearchDiskCommit receipt(UUID operationId) {
+        requireLive();
+        return Objects.requireNonNull(state).receipt(operationId);
+    }
+
+    @Override
+    public void persistDisk(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
+        requireLive();
+        if (!commit.equals(Objects.requireNonNull(state).receipt(commit.operationId())))
+            throw new IllegalStateException("Database import receipt is missing or conflicting");
+        persistCurrent(physicalCurrent);
+    }
+
+    @Override
+    public void clearDiskReceipt(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
+        requireLive();
+        Objects.requireNonNull(state).removeDiskReceipt(commit, () -> physicalCurrent.getAsBoolean() && live());
+        persistCurrent(physicalCurrent);
+    }
+
+    private void persistCurrent(BooleanSupplier physicalCurrent) {
+        requireLive();
+        owner.requirePersistenceBoundary();
+        if (!diskPersistenceAvailable() || !Objects.requireNonNull(physicalCurrent).getAsBoolean())
+            throw new IllegalStateException("Original database persistence binding is unavailable");
+        var backend = Objects.requireNonNull(state);
+        var captured = backend.persistentState();
+        var expected = DataCenterStorageNbt.encodeState(captured);
+        BooleanSupplier current = () -> physicalCurrent.getAsBoolean() && live() && backend.persistentState() == captured;
+        persistence.persistAndVerify(owner, Objects.requireNonNull(boundType).id(), ownershipType.id(), expected, current);
+        requireLive();
+        if (!current.getAsBoolean()) throw new IllegalStateException("Database changed during its persistence barrier");
     }
 
     /** Combine with MachineNetworkDevice.capturedComponent so physical and content proofs are both retained. */

@@ -2,6 +2,12 @@ package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskOperation;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskRecovery;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskStorage;
 import com.circulation.prototype_eng.api.research.delivery.DownloadOutputKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDelivery;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
@@ -74,6 +80,7 @@ public final class ResearchWorld {
     private final ResearchDownloadSources downloadSources;
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadOperation> downloads = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadReceipt> downloadReceipts = new Object2ObjectLinkedOpenHashMap<>();
+    private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDiskOperation> diskImports = new Object2ObjectLinkedOpenHashMap<>();
     private Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectLinkedOpenHashMap<>();
     @Nullable
     private ResearchWorldSnapshot pendingSave;
@@ -469,6 +476,7 @@ public final class ResearchWorld {
             teams.putAll(restoredTeams);
             for (var operation : saved.downloads()) downloads.put(operation.id(), operation);
             for (var receipt : saved.downloadReceipts()) downloadReceipts.put(receipt.operationId(), receipt);
+            for (var operation : saved.diskImports()) diskImports.put(operation.id(), operation);
             dirty = true; // ACTIVE sessions were intentionally changed to PAUSED during restore.
             return null;
         });
@@ -503,6 +511,11 @@ public final class ResearchWorld {
         for (var operation : downloads.values()) {
             tracked.add(operation.intent().playerId());
             tracked.addAll(operation.sources().members());
+        }
+        for (var operation : diskImports.values()) {
+            if (operation.terminal()) continue;
+            tracked.add(operation.intent().playerId());
+            tracked.add(operation.target().ownerId());
         }
         return ObjectSets.unmodifiable(tracked);
     }
@@ -585,6 +598,9 @@ public final class ResearchWorld {
             for (var pending : downloads.values())
                 if (pending.intent().playerId().equals(intent.playerId()))
                     return downloadResult(ResearchDownloadResult.Status.BUSY, pending.id());
+            for (var pending : diskImports.values())
+                if (!pending.terminal() && pending.intent().playerId().equals(intent.playerId()))
+                    return downloadResult(ResearchDownloadResult.Status.BUSY, pending.id());
             var team = captureTeam(intent.teamId(), membership.members());
             var definition = registry.require(intent.researchId());
             definition.stageForLevel(intent.level());
@@ -650,7 +666,7 @@ public final class ResearchWorld {
             for (var receipt : downloadReceipts.values())
                 if (receipt.intent().playerId().equals(player)) releaseReceipt(receipt, delivery, actorCurrent);
             for (var material : inventory.operations()) {
-                if (!downloads.containsKey(material.operationId()))
+                if (!downloads.containsKey(material.operationId()) && !diskImports.containsKey(material.operationId()))
                     result.add(downloadResult(ResearchDownloadResult.Status.RECOVERY_ERROR, material.operationId()));
             }
             return ObjectLists.unmodifiable(result);
@@ -811,6 +827,244 @@ public final class ResearchWorld {
                 throw new IllegalStateException("Terminal download retains a source writer: " + status);
         }
     }
+
+    /** The original single-slot and physical database obligations remain visible through cleanup. */
+    public ObjectList<ResearchDiskOperation> pendingDiskImports(UUID player) {
+        requireOwner();
+        var result = new ObjectArrayList<ResearchDiskOperation>();
+        for (var operation : diskImports.values())
+            if (!operation.terminal() && operation.intent().playerId().equals(player)) result.add(operation);
+        return ObjectLists.unmodifiable(result);
+    }
+
+    public ResearchDiskImportResult requestDiskImport(ResearchDiskOperation.Intent intent, OwnerTeamResolution membership,
+                                                       ResearchPermissionContext permission, ResearchDataCenters.Target target,
+                                                       DataCenterStorage storage, ResearchDownloadInventory inventory,
+                                                       Function<ResearchDownloadMaterial, ResearchDiskData> readDisk, long time,
+                                                       BooleanSupplier authorized, BooleanSupplier physicalCurrent,
+                                                       BooleanSupplier actorCurrent) {
+        requireOwner();
+        requireHealthy();
+        Objects.requireNonNull(intent);
+        Objects.requireNonNull(membership);
+        Objects.requireNonNull(permission);
+        Objects.requireNonNull(target);
+        Objects.requireNonNull(storage);
+        Objects.requireNonNull(inventory);
+        Objects.requireNonNull(readDisk);
+        Objects.requireNonNull(authorized);
+        Objects.requireNonNull(physicalCurrent);
+        Objects.requireNonNull(actorCurrent);
+        if (executing || activeTick != null || closing || closed) return diskResult(ResearchDiskImportResult.Status.BUSY, null);
+        if (!intent.playerId().equals(inventory.playerId()) || !intent.databaseId().equals(target.dataCenterId()))
+            throw new IllegalArgumentException("Disk import capability differs from its request");
+        return operate(time, false, () -> {
+            for (var operation : diskImports.values()) {
+                if (!operation.intent().playerId().equals(intent.playerId()) || !operation.intent().nonce().equals(intent.nonce())) continue;
+                if (!operation.intent().equals(intent)) return diskResult(ResearchDiskImportResult.Status.NONCE_CONFLICT, operation.id());
+                if (operation.terminal()) return diskTerminalResult(operation);
+                return diskResult(ResearchDiskImportResult.Status.PENDING, operation.id());
+            }
+            if (!(storage instanceof ResearchDiskStorage disks)) return diskResult(ResearchDiskImportResult.Status.UNSUPPORTED_STORAGE, null);
+            if (!disks.diskPersistenceAvailable()) return diskResult(ResearchDiskImportResult.Status.UNSUPPORTED_STORAGE, null);
+            if (!authorized.getAsBoolean() || !physicalCurrent.getAsBoolean() || !actorCurrent.getAsBoolean())
+                return diskResult(ResearchDiskImportResult.Status.STALE_CONTEXT, null);
+            if (!membership.accepted() || !intent.playerId().equals(membership.ownerId()) || !intent.teamId().equals(membership.teamId())
+                || !membership.members().contains(target.ownerId()) || !intent.playerId().equals(permission.actorId())
+                || !intent.teamId().equals(permission.actorTeamId()) || !intent.teamId().equals(permission.targetTeamId())
+                || permissions.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission) != ResearchPermissionPolicy.Decision.ALLOWED)
+                return diskResult(ResearchDiskImportResult.Status.PERMISSION_DENIED, null);
+            if (!inventory.operations().isEmpty()) return diskResult(ResearchDiskImportResult.Status.BUSY, null);
+            for (var operation : downloads.values())
+                if (operation.intent().playerId().equals(intent.playerId())) return diskResult(ResearchDiskImportResult.Status.BUSY, operation.id());
+            for (var operation : diskImports.values())
+                if (!operation.terminal() && operation.intent().playerId().equals(intent.playerId())) return diskResult(ResearchDiskImportResult.Status.BUSY, operation.id());
+            var team = captureTeam(intent.teamId(), membership.members());
+            if (membersBusy(membership.members()) || team.research.busy() || team.queue.busy())
+                return diskResult(ResearchDiskImportResult.Status.BUSY, null);
+            var id = UUID.randomUUID();
+            var material = inventory.capture(id, intent.slot());
+            if (material == null) return diskResult(ResearchDiskImportResult.Status.MISSING_DISK, null);
+            if (!id.equals(material.operationId()) || !intent.playerId().equals(material.playerId()) || intent.slot() != material.slot()
+                || material.status() != ResearchDownloadMaterial.Status.PREPARED)
+                throw new IllegalArgumentException("Captured disk changed its exact material identity");
+            var data = readDisk.apply(material);
+            if (data == null) return diskResult(ResearchDiskImportResult.Status.MISSING_DISK, null);
+            var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+            for (var member : membership.members()) sources.put(member, Objects.requireNonNull(players.get(member)));
+            var cloud = eligibility.calculateStructural(team.id, membership.members(), sources, team.research.completedLevelsSnapshot(), team.blacklist);
+            var prepared = ResearchDiskImport.prepare(id, intent.playerId(), intent.teamId(), data, disks.snapshot(), cloud);
+            if (prepared.commit() == null) return new ResearchDiskImportResult(ResearchDiskImportResult.Status.DISK_REJECTED, null, prepared.result());
+            if (!authorized.getAsBoolean() || !physicalCurrent.getAsBoolean() || !actorCurrent.getAsBoolean() || !inventory.matches(material.inventoryBefore()))
+                return diskResult(ResearchDiskImportResult.Status.STALE_CONTEXT, null);
+            var operation = new ResearchDiskOperation(intent, target, prepared.commit(), material, time, ResearchDiskOperation.Status.PREPARED, false);
+            diskImports.put(id, operation);
+            dirty = true;
+            persist();
+            return advanceDiskImport(id, inventory, new ResearchDiskRecovery(disks, target, physicalCurrent, membership, permission, authorized), actorCurrent);
+        });
+    }
+
+    /** Authority is optional after the database effect; recovery always uses the frozen physical target. */
+    public ResearchDiskImportResult recoverDiskImport(UUID player, UUID id, ResearchDownloadInventory inventory,
+                                                       ResearchDiskRecovery recovery, long time, BooleanSupplier actorCurrent) {
+        requireOwner();
+        requireHealthy();
+        Objects.requireNonNull(player);
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(inventory);
+        Objects.requireNonNull(recovery);
+        Objects.requireNonNull(actorCurrent);
+        if (!player.equals(inventory.playerId())) throw new IllegalArgumentException("Disk recovery inventory belongs to another player");
+        if (executing || activeTick != null || closing || closed) return diskResult(ResearchDiskImportResult.Status.BUSY, id);
+        return operate(time, false, () -> {
+            var operation = diskImports.get(id);
+            if (operation == null || !operation.intent().playerId().equals(player) || !operation.target().equals(recovery.target())
+                || !operation.commit().before().dataCenterId().equals(recovery.storage().snapshot().dataCenterId()))
+                return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            return advanceDiskImport(id, inventory, recovery, actorCurrent);
+        });
+    }
+
+    private ResearchDiskImportResult advanceDiskImport(UUID id, ResearchDownloadInventory inventory,
+                                                        ResearchDiskRecovery recovery, BooleanSupplier actorCurrent) {
+        var operation = Objects.requireNonNull(diskImports.get(id));
+        if (operation.terminal()) return diskTerminalResult(operation);
+        if (operation.status() == ResearchDiskOperation.Status.ABORTING) return finishDiskAbort(operation, inventory);
+        if (!actorCurrent.getAsBoolean() || !recovery.physicalCurrent().getAsBoolean()) return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+        var material = inventory.find(id);
+        if (material != null && !operation.material().sameOperation(material)) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+        var storage = recovery.storage();
+        if (operation.status() == ResearchDiskOperation.Status.PREPARED) {
+            var receipt = storage.receipt(id);
+            if (receipt != null && !receipt.equals(operation.commit())) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            if (receipt != null && !operation.databaseArmed()) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            if (receipt == null) {
+                if (operation.databaseArmed()) return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+                if (!recovery.authorized().getAsBoolean()) return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+                var cloud = diskImportCloud(operation, recovery);
+                if (cloud == null) return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+                if (material != null && material.status() != ResearchDownloadMaterial.Status.PREPARED
+                    || !inventory.matches(operation.material().inventoryBefore())) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+                inventory.recordPrepared(operation.material());
+                if (!recovery.authorized().getAsBoolean() || !recovery.physicalCurrent().getAsBoolean() || !actorCurrent.getAsBoolean())
+                    return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+                boolean firstAttempt = !operation.databaseArmed();
+                if (firstAttempt) {
+                    operation = operation.armed();
+                    saveDiskImport(operation);
+                }
+                var result = storage.commitDisk(operation.commit(), cloud,
+                    () -> recovery.authorized().getAsBoolean() && recovery.physicalCurrent().getAsBoolean() && actorCurrent.getAsBoolean());
+                if (!result.accepted()) {
+                    if (firstAttempt && storage.receipt(id) == null) {
+                        operation = operation.transition(ResearchDiskOperation.Status.ABORTING);
+                        saveDiskImport(operation);
+                        return finishDiskAbort(operation, inventory);
+                    }
+                    return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+                }
+            } else if (material == null) {
+                return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            }
+            if (!operation.commit().equals(storage.receipt(id))) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            storage.persistDisk(operation.commit(), recovery.physicalCurrent());
+            operation = operation.transition(ResearchDiskOperation.Status.DATABASE_COMMITTED);
+            saveDiskImport(operation);
+        }
+        if (operation.status() == ResearchDiskOperation.Status.DATABASE_COMMITTED) {
+            if (!operation.commit().equals(storage.receipt(id))) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            material = inventory.find(id);
+            if (!operation.material().sameOperation(material)) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            if (!actorCurrent.getAsBoolean()) return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+            if (material.status() == ResearchDownloadMaterial.Status.PREPARED) {
+                if (!inventory.matches(material.inventoryBefore())) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+                if (!inventory.consume(material)) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            }
+            inventory.persistCommitted(id);
+            material = inventory.find(id);
+            if (!operation.material().sameOperation(material) || material.status() != ResearchDownloadMaterial.Status.COMMITTED)
+                return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            operation = operation.transition(ResearchDiskOperation.Status.COMPLETED);
+            saveDiskImport(operation);
+        }
+        if (operation.status() == ResearchDiskOperation.Status.COMPLETED) {
+            // Both effects are durable. Missing cleanup retries save their removal without reapplying either effect.
+            inventory.removeCommitted(id);
+            storage.clearDiskReceipt(operation.commit(), recovery.physicalCurrent());
+            saveDiskImport(operation.transition(ResearchDiskOperation.Status.RELEASED));
+            return diskResult(ResearchDiskImportResult.Status.COMPLETED, id);
+        }
+        return diskResult(ResearchDiskImportResult.Status.PENDING, id);
+    }
+
+    private void saveDiskImport(ResearchDiskOperation operation) {
+        if (!executing || !diskImports.containsKey(operation.id())) throw new IllegalStateException("Disk checkpoint lost its world owner");
+        diskImports.put(operation.id(), operation);
+        dirty = true;
+        persist();
+    }
+
+    /** Cancellation uses the world's durable proof that no database call was armed. */
+    public ResearchDiskImportResult abortDiskImport(UUID player, UUID id, ResearchDownloadInventory inventory, long time) {
+        requireOwner();
+        requireHealthy();
+        Objects.requireNonNull(player);
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(inventory);
+        if (!player.equals(inventory.playerId())) throw new IllegalArgumentException("Disk cancellation belongs to another player");
+        if (executing || activeTick != null || closing || closed) return diskResult(ResearchDiskImportResult.Status.BUSY, id);
+        return operate(time, false, () -> {
+            var operation = diskImports.get(id);
+            if (operation == null || !operation.intent().playerId().equals(player)) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            if (operation.terminal()) return diskTerminalResult(operation);
+            if (operation.status() == ResearchDiskOperation.Status.ABORTING) return finishDiskAbort(operation, inventory);
+            var material = inventory.find(id);
+            if (operation.status() != ResearchDiskOperation.Status.PREPARED || operation.databaseArmed()
+                || material != null && (!operation.material().sameOperation(material) || material.status() != ResearchDownloadMaterial.Status.PREPARED)
+                || !inventory.matches(operation.material().inventoryBefore())) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, id);
+            operation = operation.transition(ResearchDiskOperation.Status.ABORTING);
+            saveDiskImport(operation);
+            return finishDiskAbort(operation, inventory);
+        });
+    }
+
+    private ResearchDiskImportResult finishDiskAbort(ResearchDiskOperation operation, ResearchDownloadInventory inventory) {
+        var material = inventory.find(operation.id());
+        if (material != null && (!operation.material().sameOperation(material) || material.status() != ResearchDownloadMaterial.Status.PREPARED)
+            || !inventory.matches(operation.material().inventoryBefore())) return diskResult(ResearchDiskImportResult.Status.RECOVERY_ERROR, operation.id());
+        inventory.removePrepared(operation.id());
+        var aborted = operation.transition(ResearchDiskOperation.Status.ABORTED);
+        saveDiskImport(aborted);
+        return diskTerminalResult(aborted);
+    }
+
+    private static ResearchDiskImportResult diskTerminalResult(ResearchDiskOperation operation) {
+        return diskResult(operation.status() == ResearchDiskOperation.Status.ABORTED
+            ? ResearchDiskImportResult.Status.ABORTED : ResearchDiskImportResult.Status.COMPLETED, operation.id());
+    }
+
+    private @Nullable TeamResearchView diskImportCloud(ResearchDiskOperation operation, ResearchDiskRecovery recovery) {
+        var membership = recovery.membership();
+        var permission = recovery.permission();
+        var intent = operation.intent();
+        if (membership == null || permission == null || !membership.accepted()
+            || !intent.playerId().equals(membership.ownerId()) || !intent.teamId().equals(membership.teamId())
+            || !membership.members().contains(operation.target().ownerId()) || !intent.playerId().equals(permission.actorId())
+            || !intent.teamId().equals(permission.actorTeamId()) || !intent.teamId().equals(permission.targetTeamId())
+            || permissions.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission) != ResearchPermissionPolicy.Decision.ALLOWED)
+            return null;
+        var team = captureTeam(intent.teamId(), membership.members());
+        if (membersBusy(membership.members()) || team.research.busy() || team.queue.busy()) return null;
+        var sources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+        for (var member : membership.members()) sources.put(member, Objects.requireNonNull(players.get(member)));
+        return eligibility.calculateStructural(team.id, membership.members(), sources, team.research.completedLevelsSnapshot(), team.blacklist);
+    }
+
+    private static ResearchDiskImportResult diskResult(ResearchDiskImportResult.Status status, @Nullable UUID id) {
+        return new ResearchDiskImportResult(status, id, null);
+    }
+
 
     public void playerLogin(UUID player, long time) {
         operate(time, false, () -> {
@@ -1343,7 +1597,7 @@ public final class ResearchWorld {
             teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklist,
                 downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions(), team.station.snapshot()));
         }
-        return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots, new ObjectArrayList<>(downloads.values()), new ObjectArrayList<>(downloadReceipts.values()));
+        return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots, new ObjectArrayList<>(downloads.values()), new ObjectArrayList<>(downloadReceipts.values()), new ObjectArrayList<>(diskImports.values()));
     }
 
     private void persist() {

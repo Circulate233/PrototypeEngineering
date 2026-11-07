@@ -52,6 +52,13 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
+import com.circulation.prototype_eng.research.DataCenterStorageNbt;
+import java.util.function.BooleanSupplier;
+import net.minecraft.nbt.NBTTagCompound;
+import org.jetbrains.annotations.Nullable;
+
 class MachineDataCenterStorageTest {
     @Test void selectionCarriesOnlyTheActualWinnerAndContentChangesInvalidateOldPermitsBeforeRefresh() {
         try (var fixture = new Fixture()) {
@@ -110,6 +117,63 @@ class MachineDataCenterStorageTest {
         }
     }
 
+    @Test
+    void diskPersistenceSavesCurrentAtomicStateAndCodecRestoresItsReceiptAfterAnUnknownSave() {
+        try (var fixture = new Fixture()) {
+            var machine = fixture.dataCenter();
+            var storage = fixture.storage(machine);
+            var data = new ResearchDiskData(fixture.research, 1, Object2IntMaps.singleton(id("loop"), 2));
+            var commit = Objects.requireNonNull(ResearchDiskImport.prepare(new UUID(0, 80), fixture.player.playerUuid(), "team", data,
+                storage.snapshot(), fixture.cloud()).commit());
+            var before = storage.capture();
+            assertEquals(DataCenterStorage.Result.UPDATED, storage.commitDisk(commit, fixture.cloud(), before.current()));
+            assertFalse(before.current().getAsBoolean());
+            fixture.diskFailure = new IllegalStateException("save outcome unknown");
+            assertSame(fixture.diskFailure, assertThrows(IllegalStateException.class, () -> storage.persistDisk(commit, () -> true)));
+            assertEquals(commit, storage.receipt(commit.operationId()));
+            assertEquals(commit, DataCenterStorageNbt.decodeState(Objects.requireNonNull(fixture.diskSaved), fixture.research).receipts().get(commit.operationId()));
+            fixture.diskFailure = null;
+            fixture.player.completeAtLeast(id("loop"), 3);
+            fixture.player.completeAtLeast(id("other"), 1);
+            storage.synchronizeLoopingResearch(fixture.cloud());
+            storage.downloadResearch(id("other"), 1, fixture.cloud());
+            int saves = fixture.diskSaveCalls;
+            assertThrows(IllegalStateException.class, () -> storage.persistDisk(commit, () -> false));
+            assertEquals(saves, fixture.diskSaveCalls);
+            storage.persistDisk(commit, () -> true);
+            var persisted = DataCenterStorageNbt.decodeState(Objects.requireNonNull(fixture.diskSaved), fixture.research);
+            assertEquals(3, persisted.contents().storedResearch().getInt(id("loop")));
+            assertEquals(1, persisted.contents().storedResearch().getInt(id("other")));
+            var saved = fixture.dataAssembly.encode(machine);
+            var restored = fixture.attach(fixture.dataAssembly.restore(fixture.host(fixture.dataType.id()), saved, new MachineLifecycleRegistry()));
+            assertEquals(commit, fixture.storage(restored).receipt(commit.operationId()));
+        }
+    }
+
+    @Test
+    void cleanupResavesMissingReceiptAfterFailureAndKeepsLaterOrdinaryDownloads() {
+        try (var fixture = new Fixture()) {
+            var storage = fixture.storage(fixture.dataCenter());
+            var data = new ResearchDiskData(fixture.research, 1, Object2IntMaps.singleton(id("loop"), 2));
+            var commit = Objects.requireNonNull(ResearchDiskImport.prepare(new UUID(0, 81), fixture.player.playerUuid(), "team", data,
+                storage.snapshot(), fixture.cloud()).commit());
+            storage.commitDisk(commit, fixture.cloud(), () -> true);
+            storage.persistDisk(commit, () -> true);
+            fixture.player.completeAtLeast(id("other"), 1);
+            storage.downloadResearch(id("other"), 1, fixture.cloud());
+            fixture.diskFailure = new IllegalStateException("cleanup save outcome unknown");
+            assertThrows(IllegalStateException.class, () -> storage.clearDiskReceipt(commit, () -> true));
+            assertNull(storage.receipt(commit.operationId()));
+            fixture.diskFailure = null;
+            int saves = fixture.diskSaveCalls;
+            storage.clearDiskReceipt(commit, () -> true);
+            assertEquals(saves + 1, fixture.diskSaveCalls);
+            var persisted = DataCenterStorageNbt.decodeState(Objects.requireNonNull(fixture.diskSaved), fixture.research);
+            assertTrue(persisted.receipts().isEmpty());
+            assertEquals(1, persisted.contents().storedResearch().getInt(id("other")));
+        }
+    }
+
     @Test void convenienceSnapshotSourcesRecheckActualResourceConfigurationBeforeIssuingNewWork() {
         try (var fixture = new Fixture()) {
             assertTrue(fixture.network.refresh());
@@ -128,6 +192,9 @@ class MachineDataCenterStorageTest {
         private final Thread ownerThread = Thread.currentThread();
         private int positions;
         private int dirty;
+        private int diskSaveCalls;
+        @Nullable private NBTTagCompound diskSaved;
+        @Nullable private RuntimeException diskFailure;
         private final Object world = new Object();
         private final List<MachineInstance> machines = new ObjectArrayList<>();
         private final NetworkResourceRegistry resources = resources();
@@ -139,7 +206,7 @@ class MachineDataCenterStorageTest {
         private final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
         private final ComponentType<MachineInstance, MachineDataCenterStorage> storage = MachineDataCenterStorage.component(id("storage"),
-            ownership, 1, 2, research, _ -> dirty++);
+            ownership, 1, 2, research, _ -> dirty++, this::persistDisk);
         private final ComponentType<MachineInstance, MachineNetworkDevice> dataRole = MachineNetworkDevice.capturedComponent(id("data_role"),
             ownership, (owner, identity) -> Objects.requireNonNull(owner.components().get(storage)).networkCapture(identity,
                 Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
@@ -177,6 +244,18 @@ class MachineDataCenterStorageTest {
                 Map.of(player.playerUuid(), player), Object2IntMaps.emptyMap(), Set.of());
         }
         private void unload(MachineInstance machine) { Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
+
+        private void persistDisk(MachineInstance machine, ResourceLocation storageType, ResourceLocation ownershipType,
+                                 NBTTagCompound expected, BooleanSupplier current) {
+            requireOwner();
+            assertEquals(storage.id(), storageType);
+            assertEquals(ownership.id(), ownershipType);
+            assertTrue(current.getAsBoolean());
+            assertEquals(expected, MachineDataCenterStorage.CODEC.encode(machine, storage(machine)));
+            diskSaved = expected.copy();
+            diskSaveCalls++;
+            if (diskFailure != null) throw diskFailure;
+        }
         private void requireOwner() {
             if (Thread.currentThread() != ownerThread) { throw new IllegalStateException("Not the test server owner"); }
         }
