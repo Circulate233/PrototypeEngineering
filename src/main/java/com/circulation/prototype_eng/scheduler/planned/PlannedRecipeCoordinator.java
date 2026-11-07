@@ -326,9 +326,21 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             }
             active.barrier = null;
             if (active.resolving) {
-                if (resources.readyToFinish()) { return finishSettlement(active); }
-                // One confirmation attempt per advance; UNKNOWN or queued cleanup is retained.
-                return false;
+                if (active.rewinding != null && resources.decision() == ResourceBatch.Decision.OPEN) {
+                    if (!forwardAllowed()) { active.rollback = true; }
+                    else {
+                        if (active.rewinding.finishAlternativeRollback(resources)) {
+                            active.rewinding = null;
+                            active.staged = true;
+                            active.applied = true;
+                            return true;
+                        }
+                        return false;
+                    }
+                } else {
+                    if (resources.readyToFinish()) { return finishSettlement(active); }
+                    return false;
+                }
             }
             active.applied = successful;
             if (!successful) { active.rollback = true; }
@@ -339,6 +351,8 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 if (cleanupDeadline.expired(nanoTime.getAsLong())) { return false; }
                 try { resources.rollback(); }
                 catch (RuntimeException | Error rollback) { record(rollback); }
+            } else if (active.rewinding != null || active.entries.stream().anyMatch(entry -> entry.stage.hasRejectedAlternative())) {
+                return rewindAlternative(active, cleanupDeadline);
             } else if (!active.applied) {
                 dispatch(active, false, forwardDeadline);
                 return true;
@@ -346,11 +360,13 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 try {
                     boolean more = active.entries.stream().anyMatch(entry -> entry.stage.hasContinuation());
                     if (more) {
-                        if (resources.stage(this::forwardAllowed)) {
+                        if (active.staged || resources.stage(this::forwardAllowed)) {
+                            active.staged = true;
                             var stages = new ObjectArrayList<RecipeProcess.Stage>(active.entries.size());
                             for (var entry : active.entries) { stages.add(entry.stage); }
                             active.rollback = !RecipeProcess.Stage.acquireNextBatch(stages, resources);
                             active.applied = false;
+                            active.staged = false;
                             return true;
                         }
                     } else { resources.commit(this::forwardAllowed); }
@@ -373,6 +389,33 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             source.state() != ResourceBatch.SourceState.COMPLETED && source.state() != ResourceBatch.SourceState.ROLLED_BACK);
         if (!pendingSources) { return false; }
         dispatch(active, true, cleanupDeadline);
+        return true;
+    }
+
+    private boolean rewindAlternative(Settlement active, PlannedDeadline deadline) {
+        if (deadline.expired(nanoTime.getAsLong())) { return false; }
+        var resources = active.resources;
+        if (active.rewinding == null) {
+            for (var entry : active.entries) {
+                if (entry.stage.hasRejectedAlternative()) { active.rewinding = entry.stage; break; }
+            }
+        }
+        var stage = Objects.requireNonNull(active.rewinding, "No rejected candidate");
+        try {
+            if (!resources.rewinding()) { resources.rollbackTo(stage.rejectedSavepoint()); }
+            else { resources.resolveBusiness(); }
+            if (stage.finishAlternativeRollback(resources)) {
+                active.rewinding = null;
+                active.staged = true;
+                active.applied = true;
+                return true;
+            }
+        } catch (RuntimeException | Error failure) {
+            record(failure);
+            active.rollback = true;
+            return true;
+        }
+        dispatch(active, true, deadline);
         return true;
     }
 
@@ -469,6 +512,8 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         @Nullable private PlannedTaskExecutor.Batch<Boolean> barrier;
         private boolean rollback;
         private boolean applied;
+        private boolean staged;
+        @Nullable private RecipeProcess.Stage rewinding;
         private boolean resolving;
         private Settlement(ResourceBatch resources, List<Entry> entries, boolean rollback) {
             this.resources = resources;

@@ -10,7 +10,7 @@
 | PM 配方进程组件 Pre/Normal/Post | 扩展钩子已有真实派发 | 旧 `RecipeProcessSystem` 继承通用 ComponentSystem，由 `FactoryRecipeProcessorSystem` 对当前进程派发；内置进程 system 的回调为空。新 `RecipeProcess.beginTick` 和会话结束实际调用 `ComponentMap`；外部通过 `RecipeProcessFactory` 给进程安装自己的组件。不能将机器 tick 或空内置回调计成额外的配方预设效果。 |
 | PM 物品/流体需求阶段 | 已迁入 AEKey 通用资源实现 | `ResourceRequirementSystem.start/tick/end` 分别处理初始输入、每刻输入/输出及结束输出；概率、动态/模糊输入、随机输出和数量倍率有具体执行逻辑。 |
 | PM FE 需求阶段 | 已有独立实现 | `EnergyRequirementSystem.start/tick/end` 使用独立 FE 存储与预留，不造 FE 资源类型。 |
-| PM 属性效果与定时检查点 | 分段主体已接；候选局部回退仍缺 | `AttributeRequirementSystem` 在配置阶段安装/撤销属性；`CheckpointRequirementSystem` 跨过目标时间后执行子需求的 START/TICK/END，保留进度、嵌套状态与效果清理；子阶段现逐段获取/source apply/expose/可逆 stage，外层最后共同结算，START 修改器对后继获取可见；selector 的候选本身是 checkpoint 时还需局部回退再改选，见[检查点审计](checkpoint-execution-audit.md)。 |
+| PM 属性效果与定时检查点 | 分段执行与候选局部回退已接 | `AttributeRequirementSystem` 在配置阶段安装/撤销属性；`CheckpointRequirementSystem` 跨过目标时间后执行子需求的 START/TICK/END，保留进度、嵌套状态与效果清理；子阶段现逐段获取/source apply/expose/可逆 stage，外层最后共同结算，START 修改器对后继获取可见；selector 的候选本身是 checkpoint 时，Blocked/Failure 已按原保存点局部回退并确认后改选，嵌套效果及其他工位前缀有集成验证，见[检查点审计](checkpoint-execution-audit.md)。 |
 | PM 选择成功后的配方回调 | Java 回调已接；CT 桥及速度便捷预设未接 | 旧 `SelectiveModifier.apply(ctx)` 在选中子需求 START 提交后调用，CT 提供自定义 lambda 与 `registerProcessSpeedMultiplier`。新 `SelectiveRequirementSystem` 在提交时实际调用 `SelectiveModifierDescriptor.modifier().apply(context)`，可用公开上下文添加属性或 overlay；结束/回滚清理所登记效果。 |
 | PM 动态输入匹配条件 | Java 条件及 EXACT/ITEM_ONLY 预设已接；CT 桥未接 | 旧 ItemRequirementSystem 调用注册的 matcher；新 `DynamicInputCandidates` 调用 `group.matcher().matches` 并由 ResourceInputResolver 锁定候选。这是匹配条件，不是配方完成事件。 |
 | PM 显式 overlay 回调 | Java 显式入口已接 | 旧 `RecipeOverlayModifierPipeline.apply` 按 ID 调用修改器，但旧普通执行链未自动调用；新 `RecipeOverlayPipeline.apply` 可显式执行并撤销。不能将此入口算作自动触发的 START 事件。 |

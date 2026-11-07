@@ -49,6 +49,13 @@ public final class RecipeRequirement<C> {
         return parent == null ? rootPath : new RequirementPath(parent, type.id(), id);
     }
 
+    /** Structural declaration lets alternative owners establish isolation before any child effects. */
+    public boolean usesContinuations() {
+        if (type.system().continuedAcquisition(payload)) { return true; }
+        for (var child : type.system().children(payload)) { if (child.usesContinuations()) { return true; } }
+        return false;
+    }
+
     public RequirementTransaction acquire(RecipeProcess process, RecipeStage stage) {
         return process.acquireRequirement(this, () -> {
             var overlays = process.components().get(RecipeOverlays.TYPE);

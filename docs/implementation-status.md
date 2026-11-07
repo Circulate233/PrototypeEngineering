@@ -11,15 +11,17 @@
 - 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 不自动安装网络工厂，完整 pure prepare 与 PLANNED_PARALLEL 仍待完成。详见[配方消费者](network-recipes.md)。
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
 - 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
-- 检查点主体已接真实执行：RequirementContinuation 逐段获取，ResourceBatch.stage/append 保留共同 undo；同步与 PlannedRecipeCoordinator 共用原 fence/来源 lanes，最后一次 validate 后统一结算。满仓 FE/多资源闭环、跨 checkpoint 产物、外层阻塞退款、历史保留与扫描可逆探测均有集成验证。selector 候选自身含 continuation 的局部回退仍缺，见[检查点审计](checkpoint-execution-audit.md)。
-- 本阶段新增 24 项行为测试；完整构建 927 tests / 128 suites，零失败/错误/跳过。18 个阶段 src Java 加 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/checkpoint-continuation-final.json。原 23 份修改保留，未启动游戏或服务端。
+- 检查点与候选局部回退已接真实执行：RequirementAlternatives 在候选开始前建立 ResourceBatch.Savepoint，Blocked/Failure 后只撤销候选及完整嵌套后缀，确认后按声明顺序改选。同步和 PlannedRecipeCoordinator 共用原 fence/来源 lanes；跨工位成功前缀保留，普通 continuation 仍可跨来源并行。UNKNOWN、超时及未退出回调保留原 Stage 和补偿义务，取消扩大为整批回退且不重放，见[检查点审计](checkpoint-execution-audit.md)。
+- 候选局部回退阶段新增 24 项行为测试；完整构建 951 tests / 130 suites，零失败/错误/跳过。12 个阶段 src Java 加 Tags 共 13 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/checkpoint-alternatives-final.json。原 23 份修改保留，未启动游戏或服务端。
 - 研究站自动服务器阶段已接：ResearchWorld 每队持有材料消费者，调度器在普通工作之前持有 PlannedExecution；来源未退出或 UNKNOWN 阻止新捕获，结清后保存。Version 2 世界存档绑定准确队头/原站/完整材料；失权后的 stored 会话凭真实原站只做取消，异常保留原进程不重放。已结清异常释放执行所有权并令世界 faulted，正常业务 Failure 清理后保留队列以供后续工作。
 - 正 tier 玩家 Java 入队已接：ServerResearch.requestStart 复用 MAIN 提交与已有刷新，执行时重查玩家/FTB/原publication；ResearchStations.admission 只读实际设备等级与当前可用 numeric，不抢 THREAD、不扣材料。客户端界面和 packet 仍待实现。
-- 仍待研究界面/packet、领取与存档事务绑定、下载、永久破坏后的材料会话、selector 嵌套候选局部回退，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
+- 仍待研究界面/packet、领取与存档事务绑定、下载、永久破坏后的材料会话，以及纯 prepare、结构投影/复杂渲染/每池 JEI 和最终 CT。继续按具体业务迁移，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 
 以下按各阶段当时状态记录；当前完成度以上方及索引为准。
+
+- 检查点分段执行阶段：新增 24 项行为测试；完整构建 927 tests / 128 suites 全通过，19 文件 IDEA MCP 全级零诊断，MCP build_project 成功。证据 build/reports/idea/checkpoint-continuation-final.json。
 
 - 顺序存储原语阶段新增 17 项行为测试；完整构建 903 tests / 126 suites 全通过，9 文件 IDEA MCP 全级零诊断，MCP build_project 成功。证据 build/reports/idea/sequential-storage-final.json。
 

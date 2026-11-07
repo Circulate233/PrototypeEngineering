@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.storage;
 
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -37,6 +38,8 @@ public final class ResourceBatch {
     private int stagedTransactions;
     private boolean stagedBoundary;
     private boolean nextAcquired;
+    private final ObjectArrayList<Savepoint> savepoints = new ObjectArrayList<>();
+    @Nullable private Savepoint rewind;
     private Decision decision = Decision.OPEN;
     private Business business = Business.ACQUIRED;
     private int runningSources;
@@ -224,13 +227,13 @@ public final class ResourceBatch {
             businessIdentities.addAll(addedBusiness);
             stagedBoundary = false;
             nextAcquired = false;
-            if (rollbackOnly) { decision = Decision.ROLLBACK; }
+            if (rollbackOnly) { decision = Decision.ROLLBACK; invalidateSavepoints(); }
         }
     }
 
     private void requireAppendBoundary() {
         requireIdleOwner();
-        if (!sequential || !stagedBoundary || decision != Decision.OPEN || business != Business.ACQUIRED) {
+        if (!sequential || !stagedBoundary || decision != Decision.OPEN || business != Business.ACQUIRED || rewind != null) {
             throw new IllegalStateException("Sequential segment is not ready for acquisition or append");
         }
     }
@@ -238,6 +241,116 @@ public final class ResourceBatch {
     public ObjectList<Source> sources() { return sources; }
 
     public Decision decision() { synchronized (lock) { return decision; } }
+
+    /** Exact candidate boundary within this retained sequence; the mark never owns another fence. */
+    public Savepoint savepoint() {
+        requireOwnerBoundary();
+        synchronized (lock) {
+            requireAppendBoundary();
+            if (nextAcquired) { throw new IllegalStateException("Cannot mark an unregistered acquisition"); }
+            var mark = new Savepoint(this, transactions.size());
+            for (var source : sources) { mark.tokenPrefixes.put(source, source.tokens.size()); }
+            savepoints.add(mark);
+            return mark;
+        }
+    }
+
+    /** Accepts one nested candidate without completing any of its reversible participants. */
+    public void releaseSavepoint(Savepoint mark) {
+        requireOwnerBoundary();
+        synchronized (lock) {
+            requireIdleOwner();
+            requireSavepoint(mark);
+            if (decision != Decision.OPEN || rewind != null || nextAcquired || savepoints.getLast() != mark) {
+                throw new IllegalStateException("Savepoints must be released at their nested idle boundary");
+            }
+            savepoints.removeLast();
+            mark.active = false;
+        }
+    }
+
+    /**
+     * Stops forward work and reverses only participants acquired after this mark. Already entered
+     * source work must actually exit; false retains the rewind for later exact business confirmation.
+     * Source compensation remains the enclosing coordinator's original lane responsibility.
+     */
+    public boolean rollbackTo(Savepoint mark) {
+        requireOwnerBoundary();
+        synchronized (lock) {
+            requireSavepoint(mark);
+            if (closed || ownerAction || decision != Decision.OPEN || rewind != null || nextAcquired) {
+                throw new IllegalStateException("Batch cannot begin candidate rollback at this boundary");
+            }
+            rewind = mark;
+            business = Business.ROLLBACK_PENDING;
+            if (runningSources != 0) { return false; }
+            ownerAction = true;
+        }
+        try { return fence.access(() -> settleBusiness(Decision.ROLLBACK)); }
+        finally { synchronized (lock) { ownerAction = false; } }
+    }
+
+    public boolean rewinding() { synchronized (lock) { return rewind != null; } }
+
+    /**
+     * Consumes the target and descendant marks only after every suffix action has exited and reached
+     * a confirmed terminal state. Prefix effects and the original fence remain available to a new
+     * candidate; no callback, source application or business commit is replayed while trimming.
+     */
+    public boolean finishRollbackTo(Savepoint mark) {
+        requireOwnerBoundary();
+        synchronized (lock) {
+            requireSavepoint(mark);
+            if (closed || ownerAction || decision != Decision.OPEN || rewind != mark || nextAcquired) {
+                throw new IllegalStateException("Savepoint does not own the current candidate rollback");
+            }
+            if (runningSources != 0 || !allConfirmed(businessTerminal, mark.businessPrefix)) { return false; }
+            for (var source : sources) {
+                if (!allConfirmed(source.terminal, mark.tokenPrefixes.getInt(source))) { return false; }
+            }
+            for (int index = mark.businessPrefix; index < transactions.size(); index++) {
+                businessIdentities.remove(transactions.get(index));
+            }
+            transactions.subList(mark.businessPrefix, transactions.size()).clear();
+            businessTerminal = Arrays.copyOf(businessTerminal, mark.businessPrefix);
+            businessUncertain = Arrays.copyOf(businessUncertain, mark.businessPrefix);
+            for (var source : sources) { source.trimTo(mark.tokenPrefixes.getInt(source)); }
+            int markIndex = savepoints.indexOf(mark);
+            for (int index = savepoints.size() - 1; index >= markIndex; index--) {
+                savepoints.remove(index).active = false;
+            }
+            rewind = null;
+            business = Business.ACQUIRED;
+            stagedTransactions = transactions.size();
+            stagedBoundary = true;
+            return true;
+        }
+    }
+
+    private void requireSavepoint(Savepoint mark) {
+        Objects.requireNonNull(mark);
+        if (mark.batch != this || !mark.active || !savepoints.contains(mark)) {
+            throw new IllegalStateException("Savepoint is foreign, consumed or stale");
+        }
+    }
+
+    private void invalidateSavepoints() {
+        for (var mark : savepoints) { mark.active = false; }
+        savepoints.clear();
+    }
+
+    /** Opaque nested marker; only its originating batch may inspect or consume its exact prefixes. */
+    public static final class Savepoint {
+        private final ResourceBatch batch;
+        private final int businessPrefix;
+        private final Reference2IntOpenHashMap<Source> tokenPrefixes = new Reference2IntOpenHashMap<>();
+        private boolean active = true;
+
+        private Savepoint(ResourceBatch batch, int businessPrefix) {
+            this.batch = batch;
+            this.businessPrefix = businessPrefix;
+        }
+    }
 
     /** Exact release proof, including when finish threw only while publishing notifications. */
     public boolean finished() { synchronized (lock) { return closed; } }
@@ -248,7 +361,7 @@ public final class ResourceBatch {
     }
 
     private boolean terminalParticipants() {
-        if (nextAcquired) { return false; }
+        if (nextAcquired || rewind != null) { return false; }
         boolean committed = decision == Decision.COMPLETE && business == Business.COMPLETED;
         boolean rolledBack = decision == Decision.ROLLBACK && business == Business.ROLLED_BACK;
         SourceState terminal = committed ? SourceState.COMPLETED : SourceState.ROLLED_BACK;
@@ -270,7 +383,7 @@ public final class ResourceBatch {
         Objects.requireNonNull(authorization);
         synchronized (lock) {
             requireIdleOwner();
-            if (staging && (!sequential || stagedBoundary) || nextAcquired
+            if (staging && (!sequential || stagedBoundary) || nextAcquired || rewind != null
                 || decision != Decision.OPEN || business != Business.ACQUIRED
                 || sources.stream().anyMatch(source -> source.state != SourceState.APPLIED)) {
                 throw new IllegalStateException("Source application is not ready for business commit");
@@ -300,7 +413,7 @@ public final class ResourceBatch {
             });
         } catch (RuntimeException | Error failure) {
             synchronized (lock) {
-                if (decision == Decision.OPEN) { decision = Decision.ROLLBACK; }
+                if (decision == Decision.OPEN) { decision = Decision.ROLLBACK; invalidateSavepoints(); }
             }
             throw failure;
         } finally {
@@ -320,6 +433,15 @@ public final class ResourceBatch {
                 throw new IllegalStateException("Batch cannot decide rollback at this boundary");
             }
             decision = Decision.ROLLBACK;
+            if (rewind != null) {
+                rewind = null;
+                business = Business.ROLLBACK_PENDING;
+                for (var source : sources) {
+                    if (source.state != SourceState.APPLYING && source.state != SourceState.RESOLVING
+                        && !allConfirmed(source.terminal, 0)) { source.state = SourceState.CONFIRMATION_PENDING; }
+                }
+            }
+            invalidateSavepoints();
             if (runningSources != 0) { return false; }
             if (business == Business.ROLLED_BACK) { return true; }
             ownerAction = true;
@@ -336,21 +458,22 @@ public final class ResourceBatch {
         requireOwnerBoundary();
         Decision settling;
         synchronized (lock) {
-            if (closed || ownerAction || decision == Decision.OPEN) {
+            if (closed || ownerAction || decision == Decision.OPEN && rewind == null) {
                 throw new IllegalStateException("Business settlement has not been decided or is executing");
             }
             if (runningSources != 0) { return false; }
             ownerAction = true;
-            settling = decision;
+            settling = rewind == null ? decision : Decision.ROLLBACK;
         }
         try { return fence.access(() -> settleBusiness(settling)); }
         finally { synchronized (lock) { ownerAction = false; } }
     }
 
     private boolean settleBusiness(Decision settling) {
+        int first = rewind == null ? 0 : rewind.businessPrefix;
         business = settling == Decision.COMPLETE ? Business.COMPLETION_PENDING : Business.ROLLBACK_PENDING;
         Throwable failure = null;
-        for (int offset = 0; offset < transactions.size(); offset++) {
+        for (int offset = 0; offset < transactions.size() - first; offset++) {
             int index = settling == Decision.COMPLETE ? offset : transactions.size() - 1 - offset;
             if (businessTerminal[index]) { continue; }
             var transaction = transactions.get(index);
@@ -372,8 +495,7 @@ public final class ResourceBatch {
                 if (sequential && settling == Decision.ROLLBACK && !businessTerminal[index]) { break; }
             }
         }
-        boolean done = true;
-        for (boolean terminal : businessTerminal) { done &= terminal; }
+        boolean done = allConfirmed(businessTerminal, first);
         if (done) { business = settling == Decision.COMPLETE ? Business.COMPLETED : Business.ROLLED_BACK; }
         rethrow(failure);
         return done;
@@ -414,7 +536,9 @@ public final class ResourceBatch {
         return authorization.getAsBoolean();
     }
 
-    private void decide(Decision next) { synchronized (lock) { decision = next; } }
+    private void decide(Decision next) {
+        synchronized (lock) { decision = next; if (next != Decision.OPEN) { invalidateSavepoints(); } }
+    }
 
     private void requireOwnerBoundary() {
         if (Thread.currentThread() != owner) { throw new IllegalStateException("Resource batch requires its owner thread"); }
@@ -464,6 +588,15 @@ public final class ResourceBatch {
             state = SourceState.RESERVED;
         }
 
+        private void trimTo(int first) {
+            for (int index = first; index < tokens.size(); index++) { tokenIdentities.remove(tokens.get(index)); }
+            tokens.subList(first, tokens.size()).clear();
+            terminal = Arrays.copyOf(terminal, first);
+            uncertain = Arrays.copyOf(uncertain, first);
+            appliedTokens = first;
+            state = SourceState.APPLIED;
+        }
+
         public String affinity() { return affinity; }
         public StorageContext context() { return context; }
         public SourceState state() { synchronized (lock) { return state; } }
@@ -476,7 +609,7 @@ public final class ResourceBatch {
                 if (closed || ownerAction || state != SourceState.RESERVED) {
                     throw new IllegalStateException("Source cannot apply at this boundary");
                 }
-                if (decision != Decision.OPEN) { return false; }
+                if (decision != Decision.OPEN || rewind != null) { return false; }
                 state = SourceState.APPLYING;
                 runningSources++;
             }
@@ -510,24 +643,29 @@ public final class ResourceBatch {
             StorageFence.requireOutsideAccess();
             StorageContext.requireNoLocks();
             Decision settling;
+            int first;
             synchronized (lock) {
-                if (closed || ownerAction || decision == Decision.OPEN
+                if (closed || ownerAction || decision == Decision.OPEN && rewind == null
                     || state == SourceState.APPLYING || state == SourceState.RESOLVING
-                    || business == Business.ACQUIRED) {
+                    || business == Business.ACQUIRED && rewind == null) {
                     throw new IllegalStateException("Source cannot resolve at this boundary");
                 }
-                if (sequential && decision == Decision.ROLLBACK && business != Business.ROLLED_BACK) { return false; }
-                settling = decision;
-                if (state == SourceState.COMPLETED || state == SourceState.ROLLED_BACK) { return true; }
+                if ((rewind != null || sequential && decision == Decision.ROLLBACK) && business != Business.ROLLED_BACK) { return false; }
+                settling = rewind == null ? decision : Decision.ROLLBACK;
+                first = rewind == null ? 0 : rewind.tokenPrefixes.getInt(this);
+                if (allConfirmed(terminal, first)) {
+                    if (rewind == null) { state = settling == Decision.COMPLETE ? SourceState.COMPLETED : SourceState.ROLLED_BACK; }
+                    return true;
+                }
                 state = SourceState.RESOLVING;
                 runningSources++;
             }
             try {
-                fence.access(context, () -> resolveTokens(settling));
+                fence.access(context, () -> resolveTokens(settling, first));
             } finally {
                 synchronized (lock) {
-                    boolean done = true;
-                    for (boolean confirmed : terminal) { done &= confirmed; }
+                    int currentFirst = rewind == null ? 0 : rewind.tokenPrefixes.getInt(this);
+                    boolean done = allConfirmed(terminal, currentFirst);
                     state = done ? (settling == Decision.COMPLETE ? SourceState.COMPLETED : SourceState.ROLLED_BACK)
                         : SourceState.CONFIRMATION_PENDING;
                     runningSources--;
@@ -536,9 +674,9 @@ public final class ResourceBatch {
             return state() != SourceState.CONFIRMATION_PENDING;
         }
 
-        private void resolveTokens(Decision settling) {
+        private void resolveTokens(Decision settling, int first) {
             Throwable failure = null;
-            for (int offset = 0; offset < tokens.size(); offset++) {
+            for (int offset = 0; offset < tokens.size() - first; offset++) {
                 int index = settling == Decision.COMPLETE ? offset : tokens.size() - 1 - offset;
                 if (terminal[index]) { continue; }
                 var token = tokens.get(index);
@@ -574,6 +712,11 @@ public final class ResourceBatch {
                 || settling == Decision.ROLLBACK && resolution == ResourceReservation.Resolution.RESERVED) { return true; }
             throw new IllegalStateException("Reservation recovery contradicts the batch decision: " + resolution);
         }
+    }
+
+    private static boolean allConfirmed(boolean[] confirmed, int first) {
+        for (int index = first; index < confirmed.length; index++) { if (!confirmed[index]) { return false; } }
+        return true;
     }
 
     private static Throwable accumulate(@Nullable Throwable first, Throwable next) {

@@ -18,6 +18,9 @@ public interface RecipeRequirementSystem<C> {
     /** Immutable structural children used to bind nested saved state; this does not execute them. */
     default List<RecipeRequirement<?>> children(C payload) { return List.of(); }
 
+    /** Declare before acquisition when this system can return an ordered continuation. */
+    default boolean continuedAcquisition(C payload) { return false; }
+
     /**
      * Additional physical domains this definition or its callbacks may read/write in a staged
      * sequence. Declare a stable superset before acquisition; the process's captured resource/FE

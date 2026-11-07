@@ -16,7 +16,7 @@ TickGroup 使用共享 callbackProcess 作用域。同组任一机器的 pre、a
 
 成功批次沿准确 context 分组，在原 source lane 应用资源；结果返回后仍须证明所有实际动作已退出。owner 在全域 fence scope 下校验授权、提交全部真实业务及末尾进程状态、再次校验授权，再固定 COMPLETE 方向。随后在原 source lane 完成资源终态，全部准确确认后 release fence、发布通知，并由准确 bound batch 确认 Stage。下一轮才能冻结后继阶段。
 
-含 RequirementContinuation 的阶段使用同一 ResourceBatch 多轮 source apply/expose、业务 stage 和下一段获取；每轮只派发 RESERVED 的新 source 工作，旧 token 不重放。直到游标结束才一次 validate/complete，取消/故障仍沿原批次确认清理。selector 候选内部 continuation 的局部回退仍缺，见[检查点审计](checkpoint-execution-audit.md)。
+含 RequirementContinuation 的阶段使用同一 ResourceBatch 多轮 source apply/expose、业务 stage 和下一段获取；每轮只派发 RESERVED 的新 source 工作，旧 token 不重放。直到游标结束才一次 validate/complete，取消/故障仍沿原批次确认清理。候选内部 continuation 的 Blocked/Failure 经 Savepoint 局部回退：owner 撤销业务，原 source lanes 撤销候选 token，实际退出并确认后才继续原选择游标。未确定候选独占连续后缀，防止其他工位使用随后被撤销的产物；普通 continuation 仍成批推进和跨来源并行。清理超时/UNKNOWN 保留原 Stage、Source 与 fence，取消或清理故障扩大为整批回退且跳过已确认补偿。见[检查点审计](checkpoint-execution-audit.md)。
 
 零资源阶段仍保留业务和进程 transition，不因没有 source 而跳过 owner 边界。零速度和零时长沿既有阶段游标，一 tick 不会反复执行 TICK。
 

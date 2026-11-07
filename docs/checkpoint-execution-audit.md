@@ -1,6 +1,6 @@
 # 检查点子阶段执行审计
 
-2026-11-07。对照 PM 实际源码，检查点与研究站材料周期的提交边界不同。普通检查点、嵌套检查点以及检查点内的 selector 已接分段执行；selector 的候选自身包含检查点时仍需补候选局部回退，不能声称任意组合全部完成。
+2026-11-07。对照 PM 实际源码，检查点与研究站材料周期的提交边界不同。普通检查点、嵌套检查点、检查点内的 selector 以及候选自身带 continuation 的选择均已接入原批次分段执行和准确回退。
 
 ## 必须保留的行为
 
@@ -41,14 +41,20 @@ CheckpointRequirementSystem 现返回 RequirementContinuation，由 RecipeStageE
 
 ## 当前验证
 
-本阶段新增 24 项行为测试；完整构建 927 tests / 128 suites，零失败/错误/跳过。18 个阶段 src Java 加 Tags 共 19 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/checkpoint-continuation-final.json。原 23 份修改保留，未启动游戏或服务端。
+候选局部回退阶段新增 24 项行为测试；完整构建 951 tests / 130 suites，零失败/错误/跳过。12 个阶段 src Java 加 Tags 共 13 文件 IDEA MCP errorsOnly:false 零错误/警告/弱警告，MCP build_project 成功。证据 build/reports/idea/checkpoint-alternatives-final.json。原 23 份修改保留，未启动游戏或服务端。
 
-8 项新集成测试覆盖内置资源/FE 闭环、同来源前后检查点、历史消费/父时钟、真实 source lanes、别名去重和扫描后完整退款；另 16 项为 ResourceBatch 分段责任、UNKNOWN 和实际退出测试。旧异常/选择器测试随真实顺序更新，数量变化来自 START overlay 提前对后继获取生效。
+此前分段执行阶段的 8 项集成测试覆盖内置资源/FE 闭环、同来源前后检查点、历史消费/父时钟、真实 source lanes、别名去重和扫描后完整退款；该阶段另 16 项为 ResourceBatch 分段责任、UNKNOWN 和实际退出测试。旧异常/选择器测试随真实顺序更新，数量变化来自 START overlay 提前对后继获取生效。
 
-## 尚未完成的组合
+## 候选局部回退
 
-selector 的候选若自身返回 continuation（例如候选是 time=0 checkpoint），当前 CapturedTransaction.result 只能得到初始 SUCCESS，选择会早于候选完整子生命周期结果。候选后续 Blocked 会撤销整个外层阶段，尚不能局部补偿该候选再试下一个。这是待修复的语义缺口，不能当成正确的候选禁用或可接受的永久阻塞。
+候选可能返回 continuation 时，SelectiveRequirementSystem 使用 RequirementAlternatives 游标。执行器在每个候选开始前保存同一 ResourceBatch 的业务和每个 Source token 前缀。候选完整嵌套 tail 成功后才安装选择及 modifier；候选后续 Blocked/Failure 只撤销保存点之后的参与者，确认后推进同一游标。全部拒绝仍按旧语义禁用 selector，并允许外层继续。
 
-下一步需要在同一批次保留候选保存点，由原 source lanes 撤销候选后缀，确认后才继续下个候选；未知补偿仍保留原 fence，禁止重放已运行回调。多工位同时推进时必须避免把其它工位的依赖混入候选回退。继续补嵌套候选、取消/超时和真实退出的集成验证。
+未确定候选占据连续后缀，只有所属工位可继续获取；其他工位已经成功的前缀不会退款，也不能提前使用该候选尚未确定的产物。没有未确定候选时，普通 continuation 可一起获取并在独立 source lanes 上并行应用。保存点不创建另一 fence 或子批次，不提前 complete，最终外层失败仍能撤销成功候选。
+
+rollbackTo 登记局部方向，业务先按逆序撤销，原 Source.resolve 只补偿各自后缀；finishRollbackTo 等全部终态及真实退出后才裁剪清单。UNKNOWN 保留原保存点、Stage 和 fence，不重放回调；超时、显式取消或清理故障可扩大为整批回退，已确认后缀不会重复退款。缺完整获取清单时仍保留未登记窗口，不能猜测清理对象后释放。
+
+外部系统须在 continuedAcquisition 声明可能的 continuation，结构 children 会递归参与判断；这包含可能由动态 payload/overlay 引入的续段。startsAlternative 只报告下一步是否开始候选，rejectAlternative 只在准确补偿确认后推进游标。声明及这两个回调不能获取资源或产生其他业务效果。
+
+候选集成验证覆盖子 TICK/END 的 Blocked/Failure、全部禁用、modifier 仅一次、外层失败、嵌套同定义路径与产物链、共享来源的其他工位前缀、UNKNOWN 补偿和取消，以及 source 尚未退出时的超时与取消。另有两个真实来源线程会合测试，防止普通 continuation 被退化为串行；不验证或复刻线程映射 hash。完整 pure prepare 与运行期工作预算仍待后续迁移。
 
 源码入口：PM F:/clone/PrototypeMachinery/src/main/kotlin/impl/recipe/requirement/component/system/CheckpointRequirementSystem.kt、SelectiveRequirementSystem.kt、AttributeModifierRequirementSystem.kt；PE recipe/requirement/CheckpointRequirementSystem.java、RecipeStageExecutor、ResourceBatch、StorageFence、SlottedResourceBuffer。

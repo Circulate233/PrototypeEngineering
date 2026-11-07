@@ -46,7 +46,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 这里统一了旧接口注释与执行器对 Blocked 的矛盾，以实际整阶段回滚行为为准。资源不足使用 Blocked，契约错误使用异常；捕获只用于异常清理，不作为常规流程。
 
-统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。同步路径仍整段持锁；真实阶段现可经TickSession/Stage交给跨lane ResourceBatch，获取顺序、延迟post及准确恢复见[阶段会话](recipe-tick-sessions.md)，正式planned coordinator尚未接入。
+统一完成边界已经接好，并覆盖跨需求类型、存储和业务状态的补偿。公开需求系统仍须覆盖部分获取产生的全部效果；业务 commit 失败时必须原子或保有完整撤销信息，默认 no-op complete 不会让旧的不可逆业务自动变成可补偿操作。外部回调只访问已加入批次的存储，不得持锁等待另一执行 lane。同步路径仍整段持锁；真实阶段现可经TickSession/Stage交给跨lane ResourceBatch，获取顺序、延迟post及准确恢复见[阶段会话](recipe-tick-sessions.md)，真实协调及原来源 lanes 接线见[配方协调](planned-recipe-coordinator.md)。
 
 `RecipeProcess` 的单进程生命周期和进度现在作为最后一笔业务事务参与同一资源/FE 阶段：commit 写入新状态，rollback 恢复阶段前状态。资源完成后的通知异常直接暴露，但已提交的开始标记、成功刻数、进度或完成状态不会退回；该进程随后拒绝 tick，不重放已完成阶段。阶段 rollback 成功只证明本次补偿，不使发生异常的原进程恢复执行资格。需求 overlay 已接入同一获取入口，严格进程 codec 已完成此前验证；当前工作槽宿主复用这些稳定边界，整组恢复已通过此前工作槽阶段验证，基础多工位 admission 已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
 
@@ -99,7 +99,7 @@ RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最�
 
 `RecipeRequirements.CHECKPOINT` 绑定 `CheckpointRequirement(time, childRequirement, scaleWithProcess)`。time=0 在 START 执行子需求完整 START/TICK/END，覆盖零时长配方；子 TICK 使用零宽的冻结 Tick 范围，不推进外层时钟。其他检查点在外层 TICK 的 scaled 进度或 unscaled 成功刻数跨过阈值时执行子生命周期。
 
-子生命周期通过 RequirementContinuation 逐段获取；前段在持续 fence 内由原来源线程 apply/expose，业务可逆 stage 后才获取后段。Blocked/Failure 停止后续获取；全部令牌仍上交外层同一阶段统一补偿或完成，子需求不自行结算资源。额外 StorageContext 由系统 storageContexts 预声明。selector 候选自身包含 continuation 的局部回退尚待修，准确边界见[检查点审计](checkpoint-execution-audit.md)。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证；严格进程 codec 恢复该时间线及子选择/解析状态，不保存每个历史触发刻的完整区间，不保存扫描游标；本阶段进程取消终态与回执另见取消章节。
+子生命周期通过 RequirementContinuation 逐段获取；前段在持续 fence 内由原来源线程 apply/expose，业务可逆 stage 后才获取后段。Blocked/Failure 停止后续获取；全部令牌仍上交外层同一阶段统一补偿或完成，子需求不自行结算资源。额外 StorageContext 由系统 storageContexts 预声明。selector 候选自身包含 continuation 时，候选后续 Blocked/Failure 先局部逆补偿再改选；准确边界见[检查点审计](checkpoint-execution-audit.md)。获取抛错时反向清理已返回的子事务和令牌，保留原异常及清理错误。子 TICK 在 acquisition、result、reservations、commit、complete、rollback 的全部回调都保留其冻结上下文，作用域结束恢复外层上下文。一次触发与阻塞重试由外层已提交时间线保证；严格进程 codec 恢复该时间线及子选择/解析状态，不保存每个历史触发刻的完整区间，不保存扫描游标；本阶段进程取消终态与回执另见取消章节。
 
 ## 模糊动态输入、解析锁与选择器
 
@@ -113,7 +113,9 @@ START 解析通过 `ResourceInputResolver` 计算保守 checkTimes，先计入�
 
 解析结果先保持 pending；只有实际资源获取全部成功后才安装逻辑锁，即使实际执行次数为 0 也保留成功选择。后续同阶段失败会同时撤销资源令牌和当前获取新增的锁；rollback 只移除自己安装且仍为预期 key 的项，不恢复整张映射或删除原有选择。snapshot/restore 提供排他生命周期边界的内存状态入口，严格 NBT codec 和跨组件校验已通过此前严格进程阶段验证。
 
-`RecipeRequirements.SELECTIVE` 绑定有序 `SelectiveRequirement`。每个候选 START 返回后捕获业务结果和 token 列表，Blocked/Failure 候选立即回滚其业务与令牌，继续尝试后项，不能对拒绝候选 commit。首个成功候选在 acquisition 中建立可见的 provisional selection，使同一复合生命周期随后 TICK/END 已能看到选择；全部候选不可用时建立 index=-1 的 disabled 成功选择，成功 START 后本次进程固定禁用，不因后来的材料变化重新选择。
+`RecipeRequirements.SELECTIVE` 绑定有序 `SelectiveRequirement`。平铺候选仍在 START 获取时依次捕获业务结果和 token，Blocked/Failure 先退款再改选，成功项建立 provisional selection。候选树可能返回 continuation 时，Selecting 通过公开 RequirementAlternatives 交给外层执行器：候选获取前建立原批次 Savepoint，完整嵌套 tail 成功后才安装选择和 modifier；中途 Blocked/Failure 局部逆补偿并确认后再试后项，不退款外层成功前缀。全部候选不可用时建立 index=-1 的 disabled 成功选择，成功 START 后本次进程固定禁用，不因后来的材料变化重新选择。
+
+外部系统若可能返回 continuation，须用 continuedAcquisition 声明；usesContinuations 同时检查结构 children，使候选边界在任何效果执行前确定。此声明须覆盖动态 payload/overlay 的可能性，不获取资源或修改状态。RequirementAlternatives.startsAlternative 是纯查询，rejectAlternative 只在完整补偿确认后推进原游标，不获取资源或重放回调。故障与 UNKNOWN 保留原清理义务，不能当作普通业务拒绝继续选择。
 
 选择状态按完整路径归进程所有；后续 TICK/END 只派发已选子需求，外层统一结算其令牌。START rollback 撤销本次选择、已获取子业务和该选择自己安装的属性 modifier/需求 overlay 层；START commit 先应用子业务，再按声明顺序调用 SelectiveModifierDescriptor 绑定的真实 SelectiveModifier.apply，并标记提交。SelectiveContext 暴露机器、进程、选择路径、候选索引及 modifier 名称/序号，属性和需求 overlay 效果通过有效 apply 作用域中的 tracked put 记录所有权。内部 modifier/overlay layer ID 长度分帧并包含路径、descriptor 序号和名称，属性包装仍委托外部 AttributeModifier 行为；直接修改其他状态不自动获得该接口的补偿能力。
 

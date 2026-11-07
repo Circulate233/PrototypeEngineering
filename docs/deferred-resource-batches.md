@@ -1,6 +1,6 @@
 # 跨 source lane 的资源批次结算
 
-这是正式 planned 的存储结算基础，尚未接入 TaskScheduler 的 PLANNED_PARALLEL、真实 RecipeProcess 或网络预算消费。它复用现有 ResourceReservation 和资源/FE 缓存；没有新建固定输入输出配方系统。原实现与缺口见 [planned 迁移审计](planned-migration-audit.md)。
+这是 planned 的存储结算基础，已接入真实 RecipeProcess、网络预算消费与服务器 CONCURRENT owner 协调；TaskScheduler 的完整 PLANNED_PARALLEL/pure prepare 仍待接入。它复用现有 ResourceReservation 和资源/FE 缓存；没有新建固定输入输出配方系统。原实现与缺口见 [planned 迁移审计](planned-migration-audit.md)。
 
 ## 独占与物理锁
 
@@ -40,4 +40,10 @@ ResourceReservation.resolution 是可选的准确恢复证明；默认 UNKNOWN�
 
 ## 检查点分段扩展
 
-ResourceBatch.tryAcquireSequential 先捕获声明域；stage 只 prepare/commit 新业务并保持 OPEN，最终 commit 对全部业务 validate 一次。acquireNext 在原 fence 内获取下一段，append 新准确参与者并复用原 Source/affinity；source.apply 只运行新增 token 的 apply/expose。未登记的获取窗口禁止释放，缺顺序能力的新 token 通过 appendForRollback 先登记责任再清理。顺序回滚遇后继 UNKNOWN 不越过其依赖，旧平铺批次行为保留。实际接线和未完候选回退见[检查点审计](checkpoint-execution-audit.md)。
+ResourceBatch.tryAcquireSequential 先捕获声明域；stage 只 prepare/commit 新业务并保持 OPEN，最终 commit 对全部业务 validate 一次。acquireNext 在原 fence 内获取下一段，append 新准确参与者并复用原 Source/affinity；source.apply 只运行新增 token 的 apply/expose。未登记的获取窗口禁止释放，缺顺序能力的新 token 通过 appendForRollback 先登记责任再清理。顺序回滚遇后继 UNKNOWN 不越过其依赖，旧平铺批次行为保留。实际分段及候选局部回退接线见[检查点审计](checkpoint-execution-audit.md)。
+
+## 同批次候选保存点
+
+Savepoint 只记录原批次业务清单及各 Source token 的准确前缀，创建限于 OPEN、staged、idle 且无未登记获取的边界。releaseSavepoint 严格按嵌套栈释放标记，不 complete 任何效果。rollbackTo 后停止前进，resolveBusiness/Source.resolve 只逆补偿后缀；UNKNOWN 阻止越过依赖，finishRollbackTo 在实际退出并全部确认后裁剪清单并恢复可续段边界。原 Source/affinity、成功前缀和 fence 保留；全局 rollback 可扩大局部回退，跳过已经确认的后缀补偿。
+
+保存点本身不解决业务间的依赖隔离；RecipeProcess.Stage.acquireNextBatch 在未确定候选期间只推进其工位，保证可回退效果是连续后缀。普通 continuation 仍共享获取轮次及独立 source lanes。真实接线和验证见[检查点审计](checkpoint-execution-audit.md)。

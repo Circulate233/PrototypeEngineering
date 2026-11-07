@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSys
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementAlternatives;
 import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.api.recipe.selective.SelectiveContext;
@@ -46,11 +47,19 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             return RequirementTransaction.SUCCESS;
         }
         var payload = requirement.payload();
+        if (payload.candidates().stream().anyMatch(RecipeRequirement::usesContinuations)) {
+            return new Selecting(process, state, path, payload);
+        }
         for (int index = 0; index < payload.candidates().size(); index++) {
             var candidate = capture(process, payload.candidates().get(index), RecipeStage.START);
             if (candidate.result() != ProcessResult.SUCCESS) {
                 ResourceTransactions.rollback(candidate.reservations(), candidate::rollback);
                 continue;
+            }
+            if (candidate.continuation() != null) {
+                var failure = new IllegalStateException("Continued alternative must declare its acquisition shape");
+                rollbackAfterFailure(candidate, candidate.reservations(), failure);
+                throw failure;
             }
             return begin(process, state, path, index, candidate, payload.modifiers());
         }
@@ -84,6 +93,56 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         var selection = state == null ? null : state.selection(process.requirementPath());
         if (selection != null && selection.index() >= 0 && !selection.completed()) {
             chosen(requirement.payload(), selection).cancel(process);
+        }
+    }
+
+    /** Candidate steps belong to the outer batch; only successful selection installs its effects. */
+    private static final class Selecting implements RequirementTransaction, RequirementAlternatives {
+        private final RecipeProcess process;
+        private final SelectiveState state;
+        private final RequirementPath path;
+        private final SelectiveRequirement payload;
+        private int index;
+        private boolean candidatePending;
+        private boolean selected;
+        private Resolution terminal = Resolution.REVERSIBLE;
+
+        private Selecting(RecipeProcess process, SelectiveState state, RequirementPath path, SelectiveRequirement payload) {
+            this.process = process;
+            this.state = state;
+            this.path = path;
+            this.payload = payload;
+        }
+
+        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+        @Override public RequirementContinuation continuation() { return this; }
+        @Override public void commit() { }
+        @Override public void complete() { terminal = Resolution.COMPLETED; }
+        @Override public void rollback() { terminal = Resolution.ROLLED_BACK; }
+        @Override public Resolution resolution() { return terminal; }
+        @Override public boolean startsAlternative() { return !selected && !candidatePending && index < payload.candidates().size(); }
+
+        @Override public @Nullable RequirementTransaction acquireNext() {
+            if (terminal != Resolution.REVERSIBLE) { throw new IllegalStateException("Selection cursor is already terminal"); }
+            if (selected) { return null; }
+            if (candidatePending) {
+                selected = true;
+                return begin(process, state, path, index, EMPTY, payload.modifiers());
+            }
+            if (index == payload.candidates().size()) {
+                selected = true;
+                return begin(process, state, path, -1, EMPTY, ObjectLists.emptyList());
+            }
+            candidatePending = true;
+            return payload.candidates().get(index).acquire(process, RecipeStage.START);
+        }
+
+        @Override public void rejectAlternative(ProcessResult rejected) {
+            if (terminal != Resolution.REVERSIBLE || selected || !candidatePending || rejected == ProcessResult.SUCCESS) {
+                throw new IllegalStateException("Selection has no rejected candidate to advance");
+            }
+            candidatePending = false;
+            index++;
         }
     }
 

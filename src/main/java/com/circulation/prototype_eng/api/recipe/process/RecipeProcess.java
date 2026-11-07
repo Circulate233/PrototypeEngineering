@@ -14,6 +14,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementTyp
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementAlternatives;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import com.circulation.prototype_eng.recipe.RecipeAbortCleanup;
@@ -433,19 +434,27 @@ public final class RecipeProcess {
             if (!continuationRead) {
                 var tail = scoped(delegate::continuation);
                 continuationRead = true;
-                if (tail != null) {
-                    continuation = () -> {
-                        if (!commitAttempted || closed || intendedTerminal != null || continuing) {
-                            throw new IllegalStateException("Requirement continuation is not at a staged acquisition boundary");
+                if (tail instanceof RequirementAlternatives alternatives) {
+                    continuation = new RequirementAlternatives() {
+                        @Override public boolean startsAlternative() { return scoped(alternatives::startsAlternative); }
+                        @Override public void rejectAlternative(ProcessResult rejected) {
+                            scoped(() -> alternatives.rejectAlternative(rejected));
                         }
-                        continuing = true;
-                        try { return scoped(tail::acquireNext); }
-                        finally { continuing = false; }
+                        @Override public @Nullable RequirementTransaction acquireNext() { return advanceContinuation(tail); }
                     };
-                }
+                } else if (tail != null) { continuation = () -> advanceContinuation(tail); }
             }
             return continuation;
         }
+        private @Nullable RequirementTransaction advanceContinuation(RequirementContinuation tail) {
+            if (!commitAttempted || closed || intendedTerminal != null || continuing) {
+                throw new IllegalStateException("Requirement continuation is not at a staged acquisition boundary");
+            }
+            continuing = true;
+            try { return scoped(tail::acquireNext); }
+            finally { continuing = false; }
+        }
+
         @Override public boolean prepareCommit() {
             if (closed || intendedTerminal != null || preparationAttempted || commitAttempted || queryExecuting || validating) {
                 throw new IllegalStateException("Cannot replay or prepare a resolving requirement transaction");
@@ -814,6 +823,13 @@ public final class RecipeProcess {
 
         public ProcessResult result() { requireAcquired(); return acquisition.result(); }
         public boolean hasContinuation() { requireAcquired(); return acquisition.hasContinuation(); }
+        public boolean hasRejectedAlternative() { requireAcquired(); return acquisition.hasRejectedAlternative(); }
+        public ResourceBatch.Savepoint rejectedSavepoint() { requireAcquired(); return acquisition.rejectedSavepoint(); }
+        public boolean finishAlternativeRollback(ResourceBatch expected) {
+            requireAcquired();
+            if (batch != expected) { throw new IllegalStateException("Candidate belongs to another batch"); }
+            return acquisition.finishAlternativeRollback(expected);
+        }
 
         private void acquireNext() {
             requireAcquired();
@@ -832,15 +848,39 @@ public final class RecipeProcess {
          * An unknown inventory leaves the batch's acquisition window open and prevents release.
          */
         public static boolean acquireNextBatch(List<Stage> stages, ResourceBatch batch) {
-            var advanced = new ObjectArrayList<Stage>();
+            var ready = new ObjectArrayList<Stage>();
+            Stage exclusive = null;
+            for (var stage : stages) {
+                stage.requireAcquired();
+                if (stage.batch != batch) { throw new IllegalStateException("Recipe stage belongs to another batch"); }
+                if (stage.acquisition.activeAlternative()) {
+                    if (exclusive != null) { throw new IllegalStateException("A batch cannot interleave unresolved candidates"); }
+                    exclusive = stage;
+                }
+            }
+            if (exclusive != null) {
+                if (!exclusive.hasContinuation()) { throw new IllegalStateException("Candidate compensation must finish before more acquisition"); }
+                ready.add(exclusive);
+            } else {
+                for (var stage : stages) {
+                    if (!stage.hasContinuation()) { continue; }
+                    if (stage.acquisition.startsAlternative()) {
+                        if (ready.isEmpty()) { ready.add(stage); }
+                        break;
+                    }
+                    ready.add(stage);
+                }
+            }
+            if (ready.isEmpty()) { throw new IllegalStateException("No continued stage remains"); }
+            // An unresolved candidate owns a contiguous suffix; ordinary continuations can still
+            // share the same round and dispatch independent sources in parallel.
+            for (var stage : ready) { stage.acquisition.prepareContinuation(batch); }
+            var entered = new ObjectArrayList<Stage>();
             Throwable failure = null;
             try {
                 batch.acquireNext(() -> {
-                    for (var stage : stages) {
-                        stage.requireAcquired();
-                        if (stage.batch != batch) { throw new IllegalStateException("Recipe stage belongs to another batch"); }
-                        if (!stage.hasContinuation()) { continue; }
-                        advanced.add(stage);
+                    for (var stage : ready) {
+                        entered.add(stage);
                         stage.acquireNext();
                         if (stage.result() != ProcessResult.SUCCESS) { break; }
                     }
@@ -849,7 +889,7 @@ public final class RecipeProcess {
             var tokens = new ObjectArrayList<ResourceReservation>();
             var business = new ObjectArrayList<ReversibleTransaction>();
             boolean known = true;
-            for (var stage : advanced) {
+            for (var stage : entered) {
                 known &= stage.acquisition.inventoryComplete();
                 tokens.addAll(stage.acquisition.stepReservations());
                 business.addAll(stage.acquisition.stepTransactions());
@@ -868,7 +908,7 @@ public final class RecipeProcess {
             }
             if (failure instanceof RuntimeException runtime) { throw runtime; }
             if (failure instanceof Error error) { throw error; }
-            return advanced.stream().allMatch(stage -> stage.result() == ProcessResult.SUCCESS);
+            return entered.stream().allMatch(stage -> stage.result() == ProcessResult.SUCCESS || stage.hasRejectedAlternative());
         }
 
         /** Preserves ResourceTransactions' all-domain lock and terminal notification semantics. */

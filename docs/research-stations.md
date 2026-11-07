@@ -37,7 +37,7 @@ START 完成 source apply → business commit → 全部终态确认后，才获
 
 换队或黑名单使研究失效时，`restoreForCleanup` 只证明原真实站点和仓室，允许在失去旧队网络工作许可后解码并取消；该证明不能用于推进，不获取 THREAD/numeric。原实体缺失时仍等待。取消异常保留已重建进程，禁止重新解码重放回调。永久破坏后原实体不再存在的会话处理仍待衔接实际生命周期。
 
-当前仓室 token 没有可持久结果回执，因此不宣称 vanilla chunk 库存与研究文件跨文件原子。另有既存的嵌套检查点顺序问题，真实回滚契约及待修范围见[专项审计](checkpoint-execution-audit.md)：`CheckpointRequirementSystem` 内部仍先获取子 START/TICK/END 再统一提交；子 selector 在 START commit 才生效，不能据本阶段顶层周期通过验证，就声称该嵌套组合也已正确。
+当前仓室 token 没有可持久结果回执，因此不宣称 vanilla chunk 库存与研究文件跨文件原子。嵌套检查点已通过原批次分段执行修复阶段可见性，候选后续拒绝已支持局部退款再改选，见[专项审计](checkpoint-execution-audit.md)。检查点仍以一次外层触发为共同补偿边界，不能与研究站材料周期已经提交的历史阶段混同。
 
 ## 自动调度与故障边界
 

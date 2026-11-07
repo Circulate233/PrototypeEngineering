@@ -19,6 +19,8 @@ import java.util.List;
 public final class CheckpointRequirementSystem implements RecipeRequirementSystem<CheckpointRequirement> {
     private static final RecipeStage[] CHILD_STAGES = RecipeStage.values();
 
+    @Override public boolean continuedAcquisition(CheckpointRequirement payload) { return true; }
+
     @Override
     public List<RecipeRequirement<?>> children(CheckpointRequirement payload) { return List.of(payload.requirement()); }
 

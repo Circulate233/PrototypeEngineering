@@ -40,6 +40,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -203,6 +204,50 @@ class CheckpointSequentialExecutionTest {
         }
     }
 
+    @Test void independentCheckpointContinuationsStillApplyConcurrentlyOnTheirSourceLanes() {
+        try (var backend = new Backend(true)) {
+            var firstEnergy = new EnergyBuffer(100, () -> {});
+            var firstLane = backend.laneFor(firstEnergy.context());
+            var secondEnergy = new EnergyBuffer(100, () -> {});
+            // Select a different real lane through its public dispatcher, without testing its hash.
+            for (int attempt = 0; attempt < 32 && backend.laneFor(secondEnergy.context()) == firstLane; attempt++) {
+                secondEnergy = new EnergyBuffer(100, () -> {});
+            }
+            assertNotSame(firstLane, backend.laneFor(secondEnergy.context()));
+            firstEnergy.receiveEnergy(100, Actionable.MODULATE);
+            secondEnergy.receiveEnergy(100, Actionable.MODULATE);
+            var entered = new CountDownLatch(2);
+            Runnable meetOtherSource = () -> {
+                entered.countDown();
+                try { assertTrue(entered.await(5, TimeUnit.SECONDS), "Independent child sources must be dispatched together"); }
+                catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+            };
+            var firstObservations = new SourceObservations(meetOtherSource);
+            var secondObservations = new SourceObservations(meetOtherSource);
+            var firstMachine = machine(null, firstEnergy, firstObservations);
+            var secondMachine = machine(null, secondEnergy, secondObservations);
+            var first = process(firstMachine, 1, checkpoint("first_parallel", 0, energy("first_input", 40, 0, 0, 0)));
+            var second = process(secondMachine, 1, checkpoint("second_parallel", 0, energy("second_input", 40, 0, 0, 0)));
+            var firstHost = new MachineWorkSlots(firstMachine, List.of());
+            var secondHost = new MachineWorkSlots(secondMachine, List.of());
+            assertTrue(firstHost.start(first));
+            assertTrue(secondHost.start(second));
+            var coordinator = new PlannedRecipeCoordinator(backend.tasks, List.of(firstHost, secondHost), deadline(),
+                new PlannedCancellationToken(), () -> true);
+            assertTrue(coordinator.advance(deadline()));
+            assertNull(coordinator.failure());
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, first.state().lifecycle());
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, second.state().lifecycle());
+            assertEquals(60, firstEnergy.savedEnergy());
+            assertEquals(60, secondEnergy.savedEnergy());
+            assertEquals(1, firstObservations.applies.size());
+            assertEquals(1, secondObservations.applies.size());
+            assertEquals(1, firstObservations.completions.get());
+            assertEquals(1, secondObservations.completions.get());
+            assertNotSame(firstObservations.applies.peek(), secondObservations.applies.peek());
+        }
+    }
+
     @Test void aPlannedOuterBlockCompensatesAllStagedChildrenOnTheirSourceLaneWithoutAdvancingTheParent() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
@@ -337,10 +382,14 @@ class CheckpointSequentialExecutionTest {
     }
 
     private static final class SourceObservations {
+        private final Runnable onApply;
         private final ConcurrentLinkedQueue<Thread> applies = new ConcurrentLinkedQueue<>();
         private final AtomicInteger exposures = new AtomicInteger();
         private final AtomicInteger completions = new AtomicInteger();
         private final AtomicInteger rollbacks = new AtomicInteger();
+
+        private SourceObservations() { this(() -> {}); }
+        private SourceObservations(Runnable onApply) { this.onApply = onApply; }
     }
 
     private record ObservedEnergy(EnergyBuffer delegate, SourceObservations observations) implements EnergyHatch {
@@ -363,7 +412,11 @@ class CheckpointSequentialExecutionTest {
             return new ReservationResult(reserved.status(), new ResourceReservation() {
                 @Override public StorageContext context() { return token.context(); }
                 @Override public boolean canApply() { return token.canApply(); }
-                @Override public void apply() { observations.applies.add(Thread.currentThread()); token.apply(); }
+                @Override public void apply() {
+                    observations.applies.add(Thread.currentThread());
+                    observations.onApply.run();
+                    token.apply();
+                }
                 @Override public boolean supportsSequentialUse() { return token.supportsSequentialUse(); }
                 @Override public void exposeApplied() { observations.exposures.incrementAndGet(); token.exposeApplied(); }
                 @Override public void complete() { assertOriginalLane(); observations.completions.incrementAndGet(); token.complete(); }
@@ -377,13 +430,27 @@ class CheckpointSequentialExecutionTest {
     private static final class Backend implements AutoCloseable {
         private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
         private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
-        private final PlannedTaskExecutor tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+        private final ExecutorService otherLane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+        private final PlannedTaskExecutor tasks;
+        private Backend() { this(false); }
+        private Backend(boolean parallel) {
+            tasks = new PlannedTaskExecutor(workers, parallel ? new ExecutorService[]{lane, otherLane} : new ExecutorService[]{lane});
+        }
+        private Thread laneFor(StorageContext context) {
+            var dispatched = tasks.runOnSourceLanes(List.of(new PlannedTaskExecutor.SourceJob<>("storage:" + context.order(),
+                new PlannedTaskExecutor.Job<>(null, Thread::currentThread))), deadline());
+            assertTrue(dispatched.quiescent());
+            if (dispatched.results().getFirst() instanceof PlannedTaskExecutor.Success<Thread>(var thread)) { return thread; }
+            throw new AssertionError("Source lane lookup did not finish successfully");
+        }
         @Override public void close() {
             workers.shutdownNow();
             lane.shutdownNow();
+            otherLane.shutdownNow();
             try {
                 assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
                 assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
+                assertTrue(otherLane.awaitTermination(5, TimeUnit.SECONDS));
             } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
         }
     }

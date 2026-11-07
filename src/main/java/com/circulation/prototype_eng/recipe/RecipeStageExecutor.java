@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementAlternatives;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
@@ -140,7 +141,8 @@ public final class RecipeStageExecutor {
         private final RequirementTransaction transition;
         private final ObjectArrayList<RequirementTransaction> transactions = new ObjectArrayList<>();
         private final ObjectArrayList<ResourceReservation> reservations = new ObjectArrayList<>();
-        private final ObjectArrayList<RequirementContinuation> continuations = new ObjectArrayList<>();
+        private final ObjectArrayList<ContinuationFrame> continuations = new ObjectArrayList<>();
+        @Nullable private ContinuationFrame rejectedAlternative;
         private final Reference2ObjectOpenHashMap<ResourceReservation, SourceObservation> sourceIdentities = new Reference2ObjectOpenHashMap<>();
         private int requirementCursor;
         private int stepBusinessStart;
@@ -194,8 +196,8 @@ public final class RecipeStageExecutor {
                 while (result == ProcessResult.SUCCESS) {
                     if (!continuations.isEmpty()) {
                         var tail = continuations.getLast();
-                        var transaction = tail.acquireNext();
-                        if (transaction == null) { continuations.removeLast(); continue; }
+                        var transaction = tail.continuation.acquireNext();
+                        if (transaction == null) { continuations.removeLast(); break; }
                         capture(transaction);
                         break;
                     }
@@ -210,7 +212,12 @@ public final class RecipeStageExecutor {
                 failure = acquisitionFailure;
                 throw acquisitionFailure;
             } finally {
-                if (acquisitionFailed || result != ProcessResult.SUCCESS
+                if (!acquisitionFailed && result != ProcessResult.SUCCESS) {
+                    for (int index = continuations.size() - 1; index >= 0; index--) {
+                        if (continuations.get(index).savepoint != null) { rejectedAlternative = continuations.get(index); break; }
+                    }
+                }
+                if (acquisitionFailed || result != ProcessResult.SUCCESS && rejectedAlternative == null
                     || continuations.isEmpty() && requirementCursor == process.orderedRequirements().size()) {
                     addTransition();
                 }
@@ -241,7 +248,7 @@ public final class RecipeStageExecutor {
             result = Objects.requireNonNull(transaction.result(), "transaction result");
             if (result == ProcessResult.SUCCESS) {
                 var tail = transaction.continuation();
-                if (tail != null) { continuations.add(tail); sequential = true; }
+                if (tail != null) { continuations.add(new ContinuationFrame(tail)); sequential = true; }
             }
         }
 
@@ -251,6 +258,71 @@ public final class RecipeStageExecutor {
                 transactions.add(transition);
                 business.add(new BusinessObservation(transition));
             }
+        }
+
+        /** Called at the idle staged boundary before invoking one continued acquisition. */
+        public void prepareContinuation(ResourceBatch batch) {
+            requireOwner();
+            if (rejectedAlternative != null) { throw new IllegalStateException("Rejected candidate must resolve before advancing"); }
+            if (continuations.isEmpty()) { return; }
+            var frame = continuations.getLast();
+            if (!(frame.continuation instanceof RequirementAlternatives alternatives)) { return; }
+            if (alternatives.startsAlternative()) {
+                if (frame.savepoint != null) { throw new IllegalStateException("Candidate already owns a savepoint"); }
+                frame.savepoint = batch.savepoint();
+                frame.businessStart = transactions.size();
+                frame.sourceStart = reservations.size();
+                frame.observationStart = sources.size();
+            } else if (frame.savepoint != null) {
+                batch.releaseSavepoint(frame.savepoint);
+                frame.savepoint = null;
+            }
+        }
+
+        public boolean activeAlternative() {
+            return continuations.stream().anyMatch(frame -> frame.savepoint != null);
+        }
+
+        public boolean startsAlternative() {
+            return !continuations.isEmpty() && continuations.getLast().continuation instanceof RequirementAlternatives alternatives
+                && alternatives.startsAlternative();
+        }
+
+        public boolean hasRejectedAlternative() { return rejectedAlternative != null; }
+
+        public ResourceBatch.Savepoint rejectedSavepoint() {
+            return Objects.requireNonNull(Objects.requireNonNull(rejectedAlternative, "No rejected candidate").savepoint);
+        }
+
+        /** Advances the original cursor only after the batch confirms every suffix participant. */
+        public boolean finishAlternativeRollback(ResourceBatch batch) {
+            requireOwner();
+            var frame = Objects.requireNonNull(rejectedAlternative, "No rejected candidate");
+            if (!batch.finishRollbackTo(Objects.requireNonNull(frame.savepoint))) { return false; }
+            batch.access(() -> {
+                var alternatives = (RequirementAlternatives) frame.continuation;
+                alternatives.rejectAlternative(result);
+                while (continuations.getLast() != frame) { continuations.removeLast(); }
+                for (int index = frame.sourceStart; index < reservations.size(); index++) { sourceIdentities.remove(reservations.get(index)); }
+                transactions.size(frame.businessStart);
+                business.size(frame.businessStart);
+                reservations.size(frame.sourceStart);
+                synchronousSources.size(frame.sourceStart);
+                sources.size(frame.observationStart);
+                frame.savepoint = null;
+                rejectedAlternative = null;
+                result = ProcessResult.SUCCESS;
+            });
+            return true;
+        }
+
+        private static final class ContinuationFrame {
+            private final RequirementContinuation continuation;
+            @Nullable private ResourceBatch.Savepoint savepoint;
+            private int businessStart;
+            private int sourceStart;
+            private int observationStart;
+            private ContinuationFrame(RequirementContinuation continuation) { this.continuation = continuation; }
         }
 
         public boolean sequential() { return sequential; }
@@ -299,17 +371,27 @@ public final class RecipeStageExecutor {
             synchronousStarted = true;
             executing = true;
             boolean accepted = false;
+            boolean staged = false;
             Throwable primary = null;
             try {
-                while (result == ProcessResult.SUCCESS && !acquisitionFailed) {
+                while (!acquisitionFailed) {
+                    if (hasRejectedAlternative()) {
+                        batch.rollbackTo(rejectedSavepoint());
+                        for (var source : batch.sources()) { source.resolve(); }
+                        if (!finishAlternativeRollback(batch)) { break; }
+                        staged = true;
+                    }
+                    if (result != ProcessResult.SUCCESS) { break; }
                     boolean applied = true;
                     for (var entry : batch.sources()) {
                         if (entry.state() == ResourceBatch.SourceState.RESERVED && !entry.apply()) { applied = false; break; }
                     }
                     if (!applied) { break; }
                     if (hasContinuation()) {
-                        if (!batch.stage(() -> true)) { break; }
+                        if (!staged && !batch.stage(() -> true)) { break; }
+                        prepareContinuation(batch);
                         acquireSequentialStep(batch);
+                        staged = false;
                         continue;
                     }
                     accepted = probe ? batch.stage(() -> true) : batch.commit(() -> true);
