@@ -1,0 +1,123 @@
+package com.circulation.prototype_eng.api.research;
+
+import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
+import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
+import net.minecraft.util.ResourceLocation;
+
+import java.util.Objects;
+import java.util.UUID;
+
+/** One immutable world checkpoint, including every offline player source needed for recovery. */
+public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams) {
+    public ResearchWorldSnapshot {
+        if (serverTime < 0) { throw new IllegalArgumentException("Negative research world time"); }
+        players = frozenList(players);
+        teams = frozenList(teams);
+        var playerIds = new ObjectOpenHashSet<UUID>();
+        for (var player : players) {
+            if (!playerIds.add(player.playerUuid())) { throw new IllegalArgumentException("Duplicate research world player"); }
+            for (var claim : player.rewardClaims()) {
+                if (claim.eligibleAtWorldTime() > serverTime || claim.claimingAtWorldTime().orElse(0) > serverTime
+                    || claim.claimedAtWorldTime().orElse(0) > serverTime) {
+                    throw new IllegalArgumentException("Reward event exceeds research world time");
+                }
+            }
+        }
+        var teamIds = new ObjectOpenHashSet<String>();
+        var sessionIds = new ObjectOpenHashSet<UUID>();
+        var operations = new ObjectOpenHashSet<UUID>();
+        for (var team : teams) {
+            if (!teamIds.add(team.teamId())) { throw new IllegalArgumentException("Duplicate research world team"); }
+            if (team.queue().updatedAtWorldTime() > serverTime) { throw new IllegalArgumentException("Research queue exceeds world time"); }
+            for (var member : team.knownMembers()) { requirePlayer(playerIds, member); }
+            for (var entry : team.queue().entries()) { requirePlayer(playerIds, entry.requestedBy()); }
+            for (var session : team.manualSessions()) {
+                if (!sessionIds.add(session.id())) { throw new IllegalArgumentException("Duplicate research world session"); }
+                if (session.lastActivity() > serverTime) { throw new IllegalArgumentException("Manual session exceeds world time"); }
+                if (session.contributor() != null) { requirePlayer(playerIds, session.contributor()); }
+                var material = session.materialIntent();
+                if (material != null) {
+                    requirePlayer(playerIds, material.contributor());
+                    if (!operations.add(material.operationId())) { throw new IllegalArgumentException("Duplicate world material operation"); }
+                }
+                var completion = session.completionIntent();
+                if (completion != null) { for (var member : completion.baselines().keySet()) { requirePlayer(playerIds, member); } }
+            }
+        }
+    }
+
+    /** knownMembers is retained history, so a former member may also be known by another team. */
+    public record Team(String teamId, ObjectSet<UUID> knownMembers, ObjectSet<ResourceLocation> blacklist,
+                       TeamOwnedResearch.Snapshot research, TeamResearchQueue.Snapshot queue,
+                       ObjectList<ManualResearchSession> manualSessions) {
+        public Team {
+            Objects.requireNonNull(teamId);
+            if (teamId.isBlank() || !teamId.equals(teamId.trim())) { throw new IllegalArgumentException("Invalid research team id"); }
+            knownMembers = frozenSet(knownMembers);
+            blacklist = frozenSet(blacklist);
+            Objects.requireNonNull(research);
+            Objects.requireNonNull(queue);
+            manualSessions = frozenList(manualSessions);
+            if (!teamId.equals(research.teamId()) || !teamId.equals(queue.teamId())) {
+                throw new IllegalArgumentException("Research team sources have different owners");
+            }
+            var queueIds = new LongOpenHashSet();
+            var queueKeys = new ObjectOpenHashSet<TeamResearchQueue.Key>();
+            for (var entry : queue.entries()) {
+                if (!queueIds.add(entry.key().queueEntryId()) || !queueKeys.add(entry.key())) {
+                    throw new IllegalArgumentException("Duplicate saved queue entry key");
+                }
+            }
+            var sessionIds = new ObjectOpenHashSet<UUID>();
+            var sessionEntries = new LongOpenHashSet();
+            for (var session : manualSessions) {
+                if (!teamId.equals(session.teamId()) || !sessionIds.add(session.id())
+                    || !sessionEntries.add(session.queueKey().queueEntryId())) {
+                    throw new IllegalArgumentException("Manual session owner or identity differs");
+                }
+                if (session.queueKey().queueEntryId() >= queue.nextEntryId()) {
+                    throw new IllegalArgumentException("Manual session queue id was never allocated");
+                }
+                switch (session.status()) {
+                    case QUEUE_HEAD_REMOVED -> {
+                        if (queueIds.contains(session.queueKey().queueEntryId())) {
+                            throw new IllegalArgumentException("Removed manual queue entry is still present");
+                        }
+                    }
+                    case COMPLETION_PENDING, COMPLETION_PROPAGATED -> {
+                        if (!session.queueKey().equals(queue.activeHead()) || !queueKeys.contains(session.queueKey())) {
+                            throw new IllegalArgumentException("Manual completion lost its exact queue head");
+                        }
+                    }
+                    default -> {
+                        if (!queueKeys.contains(session.queueKey())) { throw new IllegalArgumentException("Manual session lost its exact queue entry"); }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void requirePlayer(ObjectSet<UUID> players, UUID id) {
+        if (!players.contains(id)) { throw new IllegalArgumentException("Research world is missing an authoritative player source: " + id); }
+    }
+
+    private static <T> ObjectList<T> frozenList(ObjectList<T> values) {
+        var copy = new ObjectArrayList<>(Objects.requireNonNull(values));
+        for (var value : copy) { Objects.requireNonNull(value); }
+        return ObjectLists.unmodifiable(copy);
+    }
+
+    private static <T> ObjectSet<T> frozenSet(ObjectSet<T> values) {
+        var copy = new ObjectLinkedOpenHashSet<>(Objects.requireNonNull(values));
+        for (var value : copy) { Objects.requireNonNull(value); }
+        return ObjectSets.unmodifiable(copy);
+    }
+}

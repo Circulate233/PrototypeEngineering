@@ -16,8 +16,8 @@
 | PM 显式 overlay 回调 | Java 显式入口已接 | 旧 `RecipeOverlayModifierPipeline.apply` 按 ID 调用修改器，但旧普通执行链未自动调用；新 `RecipeOverlayPipeline.apply` 可显式执行并撤销。不能将此入口算作自动触发的 START 事件。 |
 | PM 并行数量需求 | 实际效果已迁；旧空类不复制 | 旧 ParallelismRequirementComponent/System 是空壳。实际效果来自扫描时选择 PROCESS_PARALLELISM 和资源/FE 数量缩放，新 scanner/RecipeParallelism/需求系统已有对应逻辑。 |
 | PN 给每个配方追加研究/计算条件的扩展回调 | 未迁移 | 旧 `NetworkRecipeExtensionListener.extend`、有序 registry.publish/context.freeze/index 及 createWorkGate 是具体扩展链。新项目只有通用配方注册和网络共同 gate/账本，尚无对应的逐配方研究门槛及资源消费者。 |
-| PN 研究启动条件、队列、阶段推进及完成 | 定义/资格/权限入队/队列/手动执行/完成传播已有执行；研究站未接 | ResearchRegistry 已接注册事件，ResearchEligibility 真执行 startCondition，TeamResearchCompletion 按双来源创建等级/奖励资格；TeamResearchStart/TeamResearchQueue已有真实入队/规划/grant/prune及NBT；ManualResearch已有逐项投料/回执恢复/暂停接管/冻结完成。研究站材料/计算提交和服务器存档链仍缺，不能将这些可调用步骤视为完整研究流程。 |
-| PN 研究奖励及事件奖励 | Java 领取/恢复核心已有执行；服务器入口未接 | ResearchRewardClaimer 在实际领取时调用 RewardEventAction.deliver，保留选择、片段和checkpoint；Minecraft物品adapter可调用。领取 packet/UI、权威存档服务及完整物品交互冻结尚未接入，默认未知交付不盲目重发。 |
+| PN 研究启动条件、队列、阶段推进及完成 | 手动服务器链已接；研究站未接 | ResearchRegistry 注册、权限/真实 startCondition 入队、队列/逐项投料/回执恢复/冻结完成已执行。ResearchWorld/ServerResearch 已绑定单一世界存档、FTB 成员核对、既有 tick 边界及登录退出，并提供 Java 开始/接管入口。正 tier 研究站材料/计算提交仍缺。 |
+| PN 研究奖励及事件奖励 | Java 领取/恢复核心已有执行；服务器入口未接 | ResearchRewardClaimer 在实际领取时调用 RewardEventAction.deliver，保留选择、片段和checkpoint；Minecraft物品adapter可调用。权威世界存档已有，但领取 packet/UI、领取事务与存档绑定及完整物品交互冻结尚未接入，默认未知交付不盲目重发。 |
 | PN 研究物品下载事件 | 未迁移 | 旧 ResearchItemDownloadEvent.createOutput 按材料注册，由 ResearchItemDownloadEvaluation 调用，再进入权威下载事务；当前没有对应 download 模块。 |
 | PN 计算组件的实际物品供给 | 仅快照/规划/账本底座 | 旧 DeviceRuntimeRegistry→ComponentInventory→ContributionCalculator 有真实 ItemStack 组件注册、读取和供给计算；当前 resourcesPerTick 数据快照与账本不能代替这条组件执行链。 |
 | CraftTweaker 接口及脚本数据适配 | 按用户要求最后处理 | PM ZenRecipeBuilder 通过 addRequirement/register 声明配方，Zen 参数转换、工厂和 ZSData 脚本数据组件尚未迁移；未发现该 builder 额外提供一套每配方 onStart/onFinish 事件 DSL。Java 功能完整之后再实现 CT，不能以 CT 延后为理由延后其底层 Java 功能。 |

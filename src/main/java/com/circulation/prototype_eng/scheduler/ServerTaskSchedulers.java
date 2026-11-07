@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
+import com.circulation.prototype_eng.research.ServerResearch;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -56,7 +57,18 @@ public final class ServerTaskSchedulers {
             long tick = current.nextTick;
             current.nextTick = Math.addExact(tick, 1);
             network.beginTick(tick);
-            try { current.scheduler.tick(network::refresh); }
+            try {
+                // Retained workers must exit before research mutates shared sources. Coalesce waits
+                // rather than accumulating one material advancement for every blocked server tick.
+                if (!current.researchQueued) {
+                    current.researchQueued = true;
+                    current.scheduler.runAtBoundary(() -> {
+                        current.researchQueued = false;
+                        ServerResearch.tick(current.server);
+                    });
+                }
+                current.scheduler.tick(network::refresh);
+            }
             finally { network.endTick(); }
         }
     }
@@ -66,6 +78,7 @@ public final class ServerTaskSchedulers {
         private final TaskScheduler scheduler;
         // Advances once per server END event, never once per task or network capture.
         private long nextTick;
+        private boolean researchQueued;
 
         private Session(MinecraftServer server, TaskScheduler scheduler) {
             this.server = server;

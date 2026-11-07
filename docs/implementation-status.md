@@ -6,6 +6,14 @@
 
 ## 当前状态
 
+- 服务器研究阶段已完成：ResearchWorld 管理共享玩家来源、队伍研究/黑名单/队列/手动会话；ServerResearch 在真实 FML 生命周期、既有 tick boundary、主世界保存/卸载、玩家登录退出中执行，并提供 Java 手动开始/接管。独占压缩原子存档；旧 pending 先重试，关闭失败不丢会话；FTB 不可用暂停，研究失效先处理扣料与完成义务再 prune。来源、接口、修复和边界见[服务器研究](server-research.md)。
+- 本阶段新增 50 项行为测试，完整构建通过 741 项测试、104 suites，零失败/错误/跳过。本机 IDEA MCP 对 16 个本阶段 Java 与 Tags 共 17 文件逐个 errorsOnly:false，零错误/警告/弱警告；build_project 成功。证据 build/reports/idea/server-research-final.json。真实文件 IO 有测试，未启动游戏；原 23 份用户修改保留。
+- 仍待完成：PN 普通配方研究/计算消费者、研究站完整材料和计算提交、领取 packet/UI 与存档事务绑定、下载，以及正式 planned 接线、结构投影/复杂渲染/每池 JEI 和最终 CT。用户确认算力等占用随配方并行缩放，并发按整机只占 1，不能与 Java 工作线程混淆。
+
+## 阶段记录
+
+以下按各阶段当时状态记录；当前完成度以上方及索引为准。
+
 - 手动研究执行阶段已完成：ManualResearch绑定准确队列项，ManualMaterials按requirementId/inputIndex保留独立进度、每个未完成项各投1个；公开ManualResearchInventory与真实Minecraft背包实现保存完整before/after及PREPARED/COMMITTED/SETTLEMENT_CONFIRMED。九状态会话/NBT、暂停接管、冻结成员/等级/时间的完成传播和准确队头删除已接到执行链。正常缺料不固定PREPARED库存；世界checkpoint异常先重存准确状态，同进程未消费证明允许补准备，重载缺证据仍不重扣。旧source的41槽范围与同步执行保留，移除PM planned桥接。服务器存档owner、tick/登录退出/成员协调及操作入口仍待接，见[手动研究](manual-research.md)。
 
 - 本阶段验证：`gradlew.bat spotlessApply build --console=plain`通过691项测试、101 suites，零失败/错误/跳过；新增44项材料计划、会话/NBT、真实队列/完成状态机及回执恢复逻辑测试。IDEA MCP对本阶段14个src Java和Tags共15文件逐个errorsOnly:false，零错误/警告/弱警告、无超时；build_project成功。证据`build/reports/idea/manual-research-final.json`。未初始化Bootstrap/FML或运行游戏；真实Minecraft背包和磁盘IO尚无实机验收。原23份未暂存修改完整保持。

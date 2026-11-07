@@ -1,6 +1,6 @@
 # 研究定义、资格、完成与奖励执行
 
-已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。它们有实际可调用的 Java 执行入口，尚未形成完整的服务器研究流程；研究站材料/计算提交、下载和存档服务接线仍须继续完成。
+已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。研究站材料/计算提交、普通配方研究/计算消费者、领取入口与下载仍须完成。
 
 ## 定义与注册
 
@@ -25,7 +25,7 @@
 - `canStart` 校验实际请求者属于捕获成员、目标为当前有效等级加一，再执行真实 `startCondition.canStart`。回调异常传播。
 - `structurallyEligible` 供已有队列重建使用，只核对结构资格，不重新执行用户开始条件。
 
-沿 `TeamResearchViewCalculatorImpl` 的算法，把旧逐等级回退改为逐阶段回退。这里消费调用方捕获的队伍和资源事实；尚未自动绑定 FTB 成员变化、中心状态或研究队列。
+沿 `TeamResearchViewCalculatorImpl` 的算法，把旧逐等级回退改为逐阶段回退。`calculateStructural` 为保留已有目标提供不执行 startCondition 的视图；`ResearchWorld` 已将其接到服务端 FTB 成员变化和队列协调。正 tier 的实际中心/站点消费者仍待接入。
 
 ## 实际入队与研究队列
 
@@ -41,7 +41,7 @@
 
 ## 完成传播与持久数据
 
-手动研究已通过`ManualResearch.advance`接入逐项物料计划、玩家PREPARED/COMMITTED回执、九状态世界恢复、暂停接管和冻结完成传播。正常缺料不创建扣料记录；已提交恢复不重扣；检查点异常保留准确快照并原样传播。公开库存和检查点接口供服务器所有者绑定，详细顺序、迁移修正与尚未完成的服务器接线见[手动研究](manual-research.md)。
+手动研究已通过`ManualResearch.advance`接入逐项物料计划、玩家PREPARED/COMMITTED回执、九状态世界恢复、暂停接管和冻结完成传播。正常缺料不创建扣料记录；已提交恢复不重扣；检查点异常保留准确快照并原样传播。公开库存和检查点接口已绑定到服务器所有者，详细顺序与迁移修正见[手动研究](manual-research.md)。
 
 `TeamResearchCompletion.prepare/prepareFrozen` 复用 PN `TeamResearchCompletionImpl` 的双来源传播与恢复基线规则：
 
@@ -51,7 +51,7 @@
 - 按各阶段实际奖励等级遍历，移除旧 `boolean[targetLevel+1]` 和逐等级扫描。
 - 准备后的具体玩家/队伍事务持有原状态写入权，支持提交、反向回滚和最终完成；源被下载或领取占用时正常返回 busy。准备失败释放之前已准备的准确实例。
 
-`PlayerResearchStateNbt` 保存个人等级和完整领取状态；`TeamOwnedResearch.CODEC` 保存直属等级。它们不保存运行权限，恢复必须重新通过当前定义/成员/业务资格校验。尚未注册完整 WorldSavedData/服务器研究存档所有者，也尚未把材料、研究进度和完成传播接成同一个研究站工作提交。
+`PlayerResearchStateNbt` 保存个人等级和完整领取状态；`TeamOwnedResearch.CODEC` 保存直属等级。`ResearchWorldNbt` 将玩家来源、直属研究、黑名单、队列和手动会话一起保存到独占研究文件；不注册 MapStorage 第二 writer。它们不保存运行权限，恢复重新核对当前定义/成员/业务资格。材料、研究进度和完成传播尚未接成同一个研究站工作提交。
 
 ## 奖励回调与物品交付
 

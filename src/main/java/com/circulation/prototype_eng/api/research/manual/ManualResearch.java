@@ -7,7 +7,6 @@ import com.circulation.prototype_eng.api.research.TeamResearchCompletion;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.research.manual.ManualMaterials;
 import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -48,7 +47,7 @@ public final class ManualResearch {
     private final Function<TeamResearchQueue.Key, ManualMaterials> materialCompiler;
     private final Object2ObjectOpenHashMap<TeamResearchQueue.Key, ManualMaterials> compiledMaterials = new Object2ObjectOpenHashMap<>();
     private final Long2ObjectLinkedOpenHashMap<ManualResearchSession> sessions = new Long2ObjectLinkedOpenHashMap<>();
-    private final LongOpenHashSet completedAwaitingResult = new LongOpenHashSet();
+    private final Long2ObjectLinkedOpenHashMap<Status> terminalAwaitingResult = new Long2ObjectLinkedOpenHashMap<>();
     // Live-process proof only: execution has not yet called consume for these exact operations.
     private final ObjectOpenHashSet<UUID> unpreparedOperations = new ObjectOpenHashSet<>();
     @Nullable private CheckpointState pendingCheckpoint;
@@ -141,14 +140,20 @@ public final class ManualResearch {
     }
 
     public Status pause(long queueEntryId, Context context) {
+        return pause(queueEntryId, context, ManualResearchSession.PauseReason.EXPLICIT);
+    }
+
+    /** Pauses an active contributor at any queue position, including an offline non-head session. */
+    public Status pause(long queueEntryId, Context context, ManualResearchSession.PauseReason reason) {
         return guarded(() -> {
+            Objects.requireNonNull(reason);
             var session = requireSession(queueEntryId);
             validateTime(session, context);
             if (queue.busy() || team.busy()) { return Status.RECOVERY_PENDING; }
             if (!context.current().getAsBoolean()) { return Status.STALE_CONTEXT; }
             if (session.status() == ManualResearchSession.Status.PAUSED) { return Status.PAUSED; }
             if (session.status() != ManualResearchSession.Status.ACTIVE) { return Status.RECOVERY_PENDING; }
-            return pause(session, ManualResearchSession.PauseReason.EXPLICIT, context.serverTime());
+            return pause(session, reason, context.serverTime());
         });
     }
 
@@ -158,8 +163,37 @@ public final class ManualResearch {
      * A null/offline inventory is normal and keeps recovery pending.
      */
     public Status advance(long queueEntryId, Context context, @Nullable ManualResearchInventory inventory) {
-        return guarded(() -> completedAwaitingResult.remove(queueEntryId) ? Status.COMPLETED
-            : advance(requireSession(queueEntryId), context, inventory));
+        return guarded(() -> {
+            var terminal = terminalAwaitingResult.remove(queueEntryId);
+            return terminal != null ? terminal : advance(requireSession(queueEntryId), context, inventory);
+        });
+    }
+
+    /** Removes one structurally invalid target after resolving its exact paid material and completion evidence. */
+    public Status cancelInvalidated(long queueEntryId, Context context, @Nullable ManualResearchInventory inventory) {
+        return guarded(() -> {
+            Objects.requireNonNull(context);
+            if (!context.current().getAsBoolean()) { return Status.STALE_CONTEXT; }
+            var terminal = terminalAwaitingResult.remove(queueEntryId);
+            if (terminal != null) { return terminal; }
+            var session = requireSession(queueEntryId);
+            validateTime(session, context);
+            if (queue.busy() || team.busy()) { return Status.RECOVERY_PENDING; }
+            var materials = materials(session.queueKey());
+            materials.validateWork(session.work());
+            validateMaterialPlan(session, materials);
+            if (isCompletion(session.status())) {
+                if (session.status() != ManualResearchSession.Status.QUEUE_HEAD_REMOVED) {
+                    requireQueued(session.queueKey());
+                    if (!isHead(session.queueKey())) { return Status.COMPLETION_PENDING; }
+                }
+                return finishCompletion(session, materials);
+            }
+            requireQueued(session.queueKey());
+            if (session.materialIntent() == null) { return removeInvalidated(session, context); }
+            if (!isHead(session.queueKey())) { return Status.RECOVERY_PENDING; }
+            return recoverMaterial(session, context, inventory, materials, true);
+        });
     }
 
     /** Retry a failed world checkpoint without planning, consuming or propagating anything again. */
@@ -206,26 +240,39 @@ public final class ManualResearch {
 
     private Status recoverMaterial(ManualResearchSession session, Context context,
                                    @Nullable ManualResearchInventory inventory, ManualMaterials materials) {
+        return recoverMaterial(session, context, inventory, materials, false);
+    }
+
+    private Status recoverMaterial(ManualResearchSession session, Context context,
+                                   @Nullable ManualResearchInventory inventory, ManualMaterials materials, boolean invalidated) {
         var intent = Objects.requireNonNull(session.materialIntent());
         if (inventory == null || !context.onlinePlayers().contains(intent.contributor())) { return Status.RECOVERY_PENDING; }
         requireInventory(inventory, intent.contributor());
         var receipt = inventory.find(intent.operationId());
-        if (receipt == null && unpreparedOperations.contains(intent.operationId())) {
+        if (!invalidated && session.status() == ManualResearchSession.Status.MATERIAL_COMMIT_PENDING
+            && receipt == null && unpreparedOperations.contains(intent.operationId())) {
             receipt = new ManualResearchMaterialReceipt(session.id(), session.teamId(), session.queueKey(), intent,
                 inventory.snapshotInventory(), null, ManualResearchMaterialReceipt.Status.PREPARED, context.serverTime(), -1, -1);
             inventory.recordPrepared(receipt);
         }
         if (receipt != null) { unpreparedOperations.remove(intent.operationId()); }
         if (receipt != null) { requireReceipt(session, receipt); }
+        if (invalidated && !context.current().getAsBoolean()) { return Status.STALE_CONTEXT; }
         boolean committedPersisted = false;
         if (session.status() == ManualResearchSession.Status.MATERIAL_COMMIT_PENDING) {
             // A missing receipt cannot prove that an earlier process never consumed the materials.
-            if (receipt == null) { return Status.RECOVERY_PENDING; }
-            if (receipt.status() == ManualResearchMaterialReceipt.Status.PREPARED) {
+            if (receipt == null) {
+                if (!invalidated || !unpreparedOperations.contains(intent.operationId())) { return Status.RECOVERY_PENDING; }
+                session = session.abortPrepared(intent.operationId(), ManualResearchSession.PauseReason.RESEARCH_INVALIDATED, context.serverTime());
+                put(session);
+                persist(ObjectList.of());
+            } else if (receipt.status() == ManualResearchMaterialReceipt.Status.PREPARED) {
                 if (!inventory.matches(receipt.inventoryBefore())) { return Status.RECOVERY_PENDING; }
                 if (!context.current().getAsBoolean()) { return Status.STALE_CONTEXT; }
-                if (!context.members().contains(intent.contributor())) {
-                    session = session.abortPrepared(intent.operationId(), ManualResearchSession.PauseReason.CONTRIBUTOR_TEAM_CHANGED, context.serverTime());
+                if (invalidated || !context.members().contains(intent.contributor())) {
+                    var reason = invalidated ? ManualResearchSession.PauseReason.RESEARCH_INVALIDATED
+                        : ManualResearchSession.PauseReason.CONTRIBUTOR_TEAM_CHANGED;
+                    session = session.abortPrepared(intent.operationId(), reason, context.serverTime());
                     put(session);
                     persist(ObjectList.of());
                 } else {
@@ -241,6 +288,7 @@ public final class ManualResearch {
                 }
             }
             if (session.status() == ManualResearchSession.Status.MATERIAL_COMMIT_PENDING) {
+                Objects.requireNonNull(receipt);
                 if (receipt.status() != ManualResearchMaterialReceipt.Status.COMMITTED) {
                     throw new IllegalStateException("Pending material intent has an incompatible player receipt");
                 }
@@ -254,12 +302,17 @@ public final class ManualResearch {
         if (session.status() == ManualResearchSession.Status.MATERIAL_ABORT_RECEIPT_PENDING) {
             if (receipt != null && (receipt.status() != ManualResearchMaterialReceipt.Status.PREPARED
                 || !inventory.matches(receipt.inventoryBefore()))) { return Status.RECOVERY_PENDING; }
+            boolean cancel = invalidated || session.pauseReason() == ManualResearchSession.PauseReason.RESEARCH_INVALIDATED;
+            if (cancel && !context.current().getAsBoolean()) { return Status.STALE_CONTEXT; }
             inventory.removePrepared(intent.operationId());
-            put(session.finishAbort(intent.operationId(), context.serverTime()));
+            unpreparedOperations.remove(intent.operationId());
+            session = session.finishAbort(intent.operationId(), context.serverTime());
+            put(session);
             persist(ObjectList.of());
-            return Status.PAUSED;
+            return cancel ? removeInvalidated(session, context) : Status.PAUSED;
         }
         if (session.status() == ManualResearchSession.Status.MATERIAL_COMMITTED) {
+            if (invalidated && receipt == null) { return Status.RECOVERY_PENDING; }
             if (receipt == null || receipt.status() != ManualResearchMaterialReceipt.Status.COMMITTED) {
                 throw new IllegalStateException("Committed material intent lost its player receipt");
             }
@@ -287,7 +340,21 @@ public final class ManualResearch {
         session = session.finishMaterialReceipt(intent.operationId(), context.serverTime());
         put(session);
         persist(ObjectList.of());
-        return isCompletion(session.status()) ? finishCompletion(session, materials) : Status.ADVANCED;
+        if (isCompletion(session.status())) { return finishCompletion(session, materials); }
+        return invalidated ? removeInvalidated(session, context) : Status.ADVANCED;
+    }
+
+    private Status removeInvalidated(ManualResearchSession session, Context context) {
+        if (!context.current().getAsBoolean()) { return Status.STALE_CONTEXT; }
+        if (queue.busy() || team.busy()) { return Status.RECOVERY_PENDING; }
+        queue.removeUnstarted(session.queueKey());
+        long entryId = session.queueKey().queueEntryId();
+        sessions.remove(entryId);
+        compiledMaterials.remove(session.queueKey());
+        terminalAwaitingResult.put(entryId, Status.CANCELLED);
+        persist(ObjectList.of());
+        terminalAwaitingResult.remove(entryId);
+        return Status.CANCELLED;
     }
 
     private Status finishCompletion(ManualResearchSession session, ManualMaterials materials) {
@@ -327,9 +394,9 @@ public final class ManualResearch {
         if (queued(session.queueKey())) { throw new IllegalStateException("Completed queue entry reappeared"); }
         sessions.remove(session.queueKey().queueEntryId());
         compiledMaterials.remove(session.queueKey());
-        completedAwaitingResult.add(session.queueKey().queueEntryId());
+        terminalAwaitingResult.put(session.queueKey().queueEntryId(), Status.COMPLETED);
         persist(members);
-        completedAwaitingResult.remove(session.queueKey().queueEntryId());
+        terminalAwaitingResult.remove(session.queueKey().queueEntryId());
         return Status.COMPLETED;
     }
 
@@ -500,7 +567,7 @@ public final class ManualResearch {
     @FunctionalInterface public interface Checkpoint { void persist(CheckpointState state); }
 
     public enum Status {
-        STARTED, ALREADY_PRESENT, RESUMED, ADVANCED, COMPLETED, PAUSED, WAITING_FOR_TURN,
+        STARTED, ALREADY_PRESENT, RESUMED, ADVANCED, COMPLETED, CANCELLED, PAUSED, WAITING_FOR_TURN,
         NO_MATERIALS, CONTRIBUTOR_UNAVAILABLE, STALE_CONTEXT, RECOVERY_PENDING, COMPLETION_PENDING
     }
 }

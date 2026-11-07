@@ -12,7 +12,7 @@
 - PM planned source 确实扣库存，但 `RegistryBackedMachinePlannedExecution.kt:247–250` 的 process 恒 null；没有实际时长推进、END 输出或完整需求生命周期。投影会把 fluid/FE START 与 perTick 输入一起扣，可能反复投 START 材料。不能把这条链硬复制为完整配方迁移。
 - 普通 PN 设备组件 system=null，applyWorkState 只保存枚举；未发现普通配方消费扩展条件的入口。
 
-新库必须把条件和计算 receipt 接到现有真实 `RecipeProcess.Stage`，与物料/FE 同阶段结算；已有账本不是消费者完成的证明。计费阶段及并行缩放不能谎称旧实现已确定，已向用户核对新契约。活动 DC 研究快照、设备默认条件与逐配方条件的注册/合并/执行仍待完成。
+新库必须把条件和计算 receipt 接到现有真实 `RecipeProcess.Stage`，与物料/FE 的实际工作协调；已有账本不是消费者完成的证明。用户已确认：算力等 PN 资源的占用随配方并行量缩放；并发资源按整机去重，不论并行量和工作线程数均只占 1。旧桥接链没有完整使用该缩放不能成为删减规则的理由。此前把 planned 技术调度与游戏并发资源混称、用“计费”概括占用的问法不准确。活动 DC 研究快照、设备默认条件与逐配方条件的注册/合并/执行仍待完成。
 
 ## 启动与权限
 

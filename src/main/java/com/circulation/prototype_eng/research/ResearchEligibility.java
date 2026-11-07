@@ -43,6 +43,28 @@ public final class ResearchEligibility {
         requireTeamId(teamId);
         if (networkCenterLevel < 0) { throw new IllegalArgumentException("Negative network center level"); }
         var resources = NetworkResourceModifier.copyResources(availableResources);
+        var structuralView = calculateStructural(teamId, currentMembers, playerStates, teamOwnedResearch, blacklistedResearchIds);
+        var startable = new Object2IntOpenHashMap<ResourceLocation>();
+        for (var definition : registry.all()) {
+            int completed = structuralView.completedLevel(definition.id());
+            if (completed >= definition.maxLevel()) { continue; }
+            int target = completed + 1;
+            if (structurallyEligible(structuralView, definition.id(), target)
+                && definition.startCondition().canStart(new ResearchStartContext(definition.id(), target, null,
+                    teamId, structuralView.sharedLevels(), resources, networkCenterLevel))) {
+                startable.put(definition.id(), target);
+            }
+        }
+        return new TeamResearchView(registry, teamId, structuralView.members(), structuralView.sharedLevels(),
+            startable, structuralView.blacklistedResearchIds());
+    }
+
+    /** Captures source levels and structural rules for server admission and queue retention without running start conditions. */
+    public TeamResearchView calculateStructural(String teamId, Collection<UUID> currentMembers,
+                                               Map<UUID, PlayerResearchState> playerStates,
+                                               Object2IntMap<ResourceLocation> teamOwnedResearch,
+                                               Set<ResourceLocation> blacklistedResearchIds) {
+        requireTeamId(teamId);
         var members = new ObjectOpenHashSet<UUID>();
         for (var member : Objects.requireNonNull(currentMembers)) {
             if (!members.add(Objects.requireNonNull(member))) {
@@ -81,19 +103,7 @@ public final class ResearchEligibility {
         var resolving = new ObjectOpenHashSet<ResourceLocation>();
         for (var definition : registry.all()) { resolveEffective(definition.id(), raw, blacklist, effective, resolving); }
         var emptyTargets = new Object2IntOpenHashMap<ResourceLocation>();
-        var structuralView = new TeamResearchView(registry, teamId, members, effective, emptyTargets, blacklist);
-        var startable = new Object2IntOpenHashMap<ResourceLocation>();
-        for (var definition : registry.all()) {
-            int completed = structuralView.completedLevel(definition.id());
-            if (completed >= definition.maxLevel()) { continue; }
-            int target = completed + 1;
-            if (structurallyEligible(structuralView, definition.id(), target)
-                && definition.startCondition().canStart(new ResearchStartContext(definition.id(), target, null,
-                    teamId, structuralView.sharedLevels(), resources, networkCenterLevel))) {
-                startable.put(definition.id(), target);
-            }
-        }
-        return new TeamResearchView(registry, teamId, members, effective, startable, blacklist);
+        return new TeamResearchView(registry, teamId, members, effective, emptyTargets, blacklist);
     }
 
     /**

@@ -112,6 +112,22 @@ class ManualResearchSessionTest {
         assertThrows(IllegalStateException.class, () -> pending.markMaterialCommitted(OPERATION).abortPrepared(OPERATION, CONTRIBUTOR_TEAM_CHANGED, 3));
     }
 
+    @Test void researchInvalidationAbortRetainsItsReasonAndPaidWorkThroughWorldRestoration() {
+        var prior = session(ACTIVE, PLAYER, null, amounts(2), null, null);
+        var pending = prior.beginMaterial(intent(1, 3), 2, completion(2));
+        var abort = pending.abortPrepared(OPERATION, RESEARCH_INVALIDATED, 3);
+        var saved = abort.restored();
+        assertEquals(MATERIAL_ABORT_RECEIPT_PENDING, saved.status());
+        assertEquals(RESEARCH_INVALIDATED, saved.pauseReason());
+        assertNull(saved.completionIntent());
+        assertEquals(2, saved.work().getLong(MATERIAL));
+        var paused = saved.finishAbort(OPERATION, 4);
+        assertEquals(PAUSED, paused.status());
+        assertEquals(RESEARCH_INVALIDATED, paused.pauseReason());
+        assertEquals(2, paused.work().getLong(MATERIAL));
+        assertNull(paused.materialIntent());
+    }
+
     @Test void pendingRecoveryRejectsResumeAndWrongOperationOrBackwardTime() {
         var pending = active().beginMaterial(intent(3, 3), 2, null);
         var wrong = new UUID(0, 99);
@@ -177,7 +193,7 @@ class ManualResearchSessionTest {
     @Test void fullCodecPreservesActivePausedAndCompletionStatesBeforeWorldRestore() {
         var codec = codec(0);
         var complete = active().beginCompletion(completion(2));
-        for (var value : List.of(active(), active().pause(EXPLICIT, 2), complete,
+        for (var value : List.of(active(), active().pause(EXPLICIT, 2), active().pause(RESEARCH_INVALIDATED, 2), complete,
             complete.markCompletionPropagated(), complete.markCompletionPropagated().markQueueHeadRemoved())) {
             assertEquals(value, codec.decode(codec.encode(value)));
         }

@@ -4,34 +4,17 @@
 
 ## 当前检查点
 
-- 配方事件已按用户要求由独立子代理重查：PM并非只有机器tick；选择提交回调、动态匹配脚本、检查点/属性效果、进程组件都有实际入口，PE对应Java调用已有，CT桥仍最后。此前宽泛的“没有配方runtime回调/DSL”已纠正，见[配方事件复审](pm-recipe-events-audit.md)。功能优先，不继续脱离业务细化调度。
-- 配方专项复核边界：清单已移除机器tick和机器生命周期，只列需求阶段、选择提交回调、检查点/属性效果、动态匹配条件和进程钩子。PM进程Pre/Normal/Post确有派发，但内置回调为空；PE外部组件通过公开RecipeProcessFactory按配方显式装配，scanner真调用工厂，process真派发。PM没有独立配方取消/失败事件，PE的cancel属于新增清理能力。本轮只核对源码并修正文档，没有推进研究实现或重新构建。
-- 手动研究已有真实Java执行：ManualResearch绑定准确队列、逐未完成材料项各投1个、暂停接管、玩家扣料回执与九状态恢复、冻结成员完成传播及移除准确队头。正常缺料不建PREPARED，checkpoint异常先重存旧快照，COMMITTED不重扣；源码迁移与服务器剩余接线见[手动研究](manual-research.md)。
-- 研究已具备定义/冻结注册、双来源资格、完成传播和奖励执行；权限→设备等级→请求者startCondition→入队，以及容量5的队列/多站numeric规划/grant/prune/NBT均有执行。已有目标保留只检查结构资格，不重跑开始条件；owner线程与回滚后epoch防旧计划重新有效。站点实际材料/计算/完成共同提交、服务器存档/领取入口仍待接，见[研究功能](research-features.md)。
-- PN工作单元与研究执行已独立审计：旧planned每tick每槽按候选operation收费，未接真实配方进度，不能硬迁为重复START投料；研究门槛必须读选中DC真实存储。计费阶段/并行缩放已向用户核对，研究流程独立继续。见[pn-research-execution-audit.md](pn-research-execution-audit.md)。
-- 生命周期按侧代理整理：主类仅委托，CommonProxy承载双端通用初始化及server生命周期，ClientProxy.preInit先super再注册唯一客户端模型处理；辅助模型类不重复订阅。
-- 本阶段接入TaskScheduler的planned执行所有权：PlannedExecution四方法/包内factory，在普通join后先保留准确cycle再advance；旧pending先于任何新业务，false保留提交队列，取消与实际退出分别确认。tryClose先使用原lane清理，正常pending保留现场；closingRequested阻止tick恢复后提前排卸载。runPrepare补beforeDispatch句柄。实际机器factory、复合组件/生命周期接线、pureprepare与PN预算仍待完成，正式mode仍拒绝，见scheduler-planned-ownership.md。
-- 已具备机器暂停边界：ComponentMap.captureDispatch固定同一dispatch，normal逐项推进并保持机器fail-fast；MachineLifecycle.beginScheduled持RUNNING至全部已观察工作槽确认quiescent，retire/fault后只清理。基础API已测试，尚未接MachineInstance拦截、跨机器scope与TaskScheduler；下一步先处理pending优先清理、源lane关闭顺序已由调度器持有；真实组件接线仍待完成，详见machine-tick-boundaries.md、scheduler-planned-ownership.md。
-- 上一阶段已接入真实多宿主阶段协调器：TickGroup先整体捕获/持lease、共享callback作用域并统一释放；PlannedRecipeCoordinator按真实current-stage获取/拒绝补偿/成功批次source apply→owner提交→原lane确认→release/ack推进，保留pending与实际退出。runner派发前交付Batch、直接异常完整stop/freeze。服务器调度、纯prepare扩展及PN预算仍未接入，PLANNED_PARALLEL继续拒绝。阶段本地提交、不推送，原23份修改保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过691项测试（101 suites，无失败/错误/跳过）；手动研究阶段新增44项材料/会话/回执/执行恢复行为测试。本机IDEA MCP对本阶段14个src Java与Tags共15文件逐个`errorsOnly:false`，零错误/警告/弱警告且无超时；MCP build_project成功。证据`build/reports/idea/manual-research-final.json`。原23份未暂存改动完整保持，不运行游戏。
-- 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
-- planned：借用 worker/serial source lanes；接受、实际开始及发布结果均检查共同 deadline。NEW/QUEUED 停止后不执行，RUNNING 为不确定结果；保留已发布结果，迟到返回不覆盖。Batch 退出证明独立于结果屏障，中断等待也必须等实际退出。旧 PM planned 工位 process 始终为空，PN commit 仅计算 receipt；当前协调器已复用真实 RecipeProcess 当前阶段；纯prepare/服务器接线待续，不能按整张配方重复投料。审计与边界见 planned-execution.md、planned-migration-audit.md。
-- 资源批次：全部context一次try-claim，source单域/owner全域scope自动短锁，跨屏障保留逻辑独占；ordinary多域先退锁再等。source实际退出后owner业务commit前后重验授权，成功先决定COMPLETE再完成；rollback先业务后原lane tokens。业务与token均按准确实例query，UNKNOWN不重试，成功项不重放。全部确认后owner释放fence并发布捕获通知；owner invalidate需scope。普通修改不侵占token apply/终态及独立失效额度，见deferred-resource-batches.md、transaction-recovery.md。
-- 需求恢复：ScopedRequirement查询/清理均保留原路径与冻结Tick；成功返回或准确terminal才减少acquired计数，禁止commit重放及terminal/query重入。确认后仍保留原persistenceFailure，不自动恢复健康。checkpoint/selector逐子与自身效果确认，自有cleanup无query仍UNKNOWN且不覆盖其他writer。真实阶段session已接，见recipe-tick-sessions.md。
-- 计算声明：NetworkResourceRegistrationEvent 早于配方/机器runtime解析，冻结表含标准 thread/compute/qubit；同名完整metadata须一致，相等record无需对象身份相同。捕获检查设备/flat/ppm/参与者全部键，失败撤旧许可。maxPerTickValue限制组件单物品供给和研究segment grant，不限制设备/全队。旧预算与lease审计见network-resources.md。
-- 网络运行时：MachineNetworkDevice 显式声明且 recreated，ownership 先load；capture owner-only，精确identity/loadOrder/formed及宿主证明校验后整批发布。每次MAIN action前与CON捕获前refresh，tick退出revoke；失败无旧许可回退。registry revision拒副本来去后的旧批次；旧卸载不撤新代。只暂停配方，普通组件仍运行，恢复不重START。
-- 网络规划：OwnerTeamResolver 是扩展接口，FTB 使用真实 server/Universe 持久玩家，离线允许。capture 每 owner 一次查询、拒重复/过期/成员矛盾与同 ID 不同资源元数据；worker plan 只读。中心按等级/加载顺序，数据中心再比已有研究；满库可选。中心+合格电脑+同队参与者合计后一次 exact flat/ppm，不把 maxPerTickValue 当全队上限。
-- 身份：FRESH 只接受真实放置玩家，RESTORED 保留 machine/owner；不自动安装到普通机器。位置按 World 引用 + pos，同位置新代撤旧登记，旧 close 不删新代；同 UUID 多个活副本全不唯一，剩一个恢复。登记绑定准确 MachineInstance，不等于 team/epoch/recipe-work 许可。
-- 自动配方：显式声明 MachineWorkSlots 后再声明 RecipeScanning，工位走既有 codec、scanner recreated；系统 runBefore 保证同 tick 先扫描后处理。注册表整批发布共享 catalog。空 groups 在 catalog/index/scanner/admission/restore 一致表示全局，包含无组配方；显式组仍过滤。候选/probe 有限额，内部工作预算仍待接。
-- GUI：具体类直接继承 AEBaseGui/AEBaseContainer，公开两侧 Java factory。join 后重查窗口/TE 身份，仅同步最多七行不可变快照，保留进度和真实背包；PM 临时 4×4 库存、固定 Idle 和空扩展页是占位。方向工具保留两模式、PM 24 向数学、武器/采掘/耐久/附魔、配置/模型/成就。
-- 存储：独立 ResourceStorage/FE 契约和事务不变；AEKey 数量用 AEKey2LongMap 和 addTo，保留必要的溢出预检/零清理/顺序/别名去重，快照通过专用不可变包装器保护。
-- 控制器：类型/结构/assembly 整批发布；TE 构造/read 仅留副本，下一 update 过 Forge 放置取消窗口后装配；结构 PM 20/5 节奏 capture→worker→join 后发布。完整朝向与配置变更走 owner FIFO，旧代请求失效。显示不含 runtime/ForgeCaps，不授 PN 权限。
-- 运行时与持久化：附 host 后 factory，完整恢复/validate 后 load；retire 先停止新工作，accepted worker 全部实际 join 后清理，卸载保进度、破坏取消。普通调度的 MAIN/CONCURRENT/亲和 lanes 已接；故障不复活。正常 Cleanroom dormant 从 NBT 重建 TE。
-- 已有配方能力：组件多系统/Pre-Normal-Post、需求事务、概率/检查点/模糊动态输入/选择器/overlay、完整进程/工位 NBT、取消/失败清理。结构已有 AE 24 向、模板/贪心切片、事实快照与失稳重试；这些不代表剩余整合全部完成。
+- 服务器手动研究已接通：ResearchWorld/ServerResearch 持有世界状态与单一存档 writer；FML 生命周期、既有调度边界、FTB 成员捕获、登录退出、Java 开始/接管都已调用。失效队列先结算或保留玩家回执，再 prune；重试旧检查点先于新业务，关闭保存失败保留会话。见[服务器研究](server-research.md)。
+- 最近验证（2026-11-07）：完整 Gradle 构建通过 741 项测试、104 suites，零失败/错误/跳过；本阶段 16 个 Java 与 Tags 共 17 文件 IDEA MCP 全级零诊断，MCP 项目构建成功。证据 build/reports/idea/server-research-final.json。原 23 份未暂存用户修改保留；没有运行游戏。
+- 研究定义、资格、权限入队、队列、手动投料/恢复、完成传播及奖励执行核心已有。正 tier 研究站材料/计算提交、领取 packet/UI 与存档事务绑定、下载、普通配方的研究/计算消费者仍缺，见[研究功能](research-features.md)。
+- 用户已确认 PN 占用规则：算力等资源随配方并行量缩放；并发资源按机器去重，整机不论并行量和工作线程数只占 1。planned 是技术调度方式，不能与游戏并发资源混称。已有账本不代表逐配方消费者完成，见[预算](network-budgets.md)。
+- 配方事件已独立核对：需求 START/TICK/END、选择提交回调、检查点/属性效果、动态匹配条件与进程钩子均有 Java 实际调用。外部进程组件由 RecipeProcessFactory 按配方装配。机器事件不计入此清单；CT 桥最后。见[事件复审](pm-recipe-events-audit.md)。
+- 控制器、结构捕获/匹配、三方向十阶通用资源/独立 FE 仓、普通调度、自动扫描、默认/自定义 Java GUI 与方向工具已接入。GUI 直接 AEBaseGui，资源数量用 AEKey2LongMap；具体限度按下方专题和实施进度核对。
+- planned 已有真实配方阶段会话、跨宿主协调、源 lane 事务恢复及调度器持有 pending/取消/实际退出；正式机器 factory、完整生命周期接线、纯 prepare 和 PN 资源消费者仍缺，PLANNED_PARALLEL 继续拒绝。功能优先，使用已有能力完成消费者，不脱离业务反复扩展底座。
 
 ## 下一步
 
-1. 先按recipe-feature-parity.md补完整实际功能：PN逐配方研究/计算条件消费者，队列/手动执行的服务器接线、研究站阶段推进与完整需求材料提交、存档所有者及领取接线，随后下载事件。复用已完成的权限/入队/队列/手动/定义/资格/完成/奖励步骤，不能把可调用步骤视为服务器全链已通；Java先完整，CraftTweaker最后。
+1. 先按recipe-feature-parity.md补完整实际功能：PN逐配方研究/计算条件消费者，研究站阶段推进与完整需求材料提交、领取接线，随后下载事件。复用已完成的权限/入队/队列/手动/定义/资格/完成/奖励步骤，不能把可调用步骤视为服务器全链已通；Java先完整，CraftTweaker最后。
 2. 将研究与普通配方消费者接到真实计算供给/阶段限额、队伍当前状态及预算，保留numeric独立、lease共享与准确原代补偿。角色与账本已经存在，不能只检查共同gate或worker current()就跳过具体配方条件和提交校验。
 3. 结合具体功能连接真实MachineController/Registration/MachineInstance与机器cursor、完整生命周期和planned cycle。已有调度持有pending/取消/退出/tryClose，优先复用；纯prepare/frozen input/result、内部工作预算与PN向量receipt仍待完成，正式mode仍拒绝，不先扩展无业务消费者的底座。
 4. 完成严格两阶段JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义JEI及其他未取消功能，最后CraftTweaker。Applied-Flux继续暂缓，保留v1.0.0:dev。
@@ -54,6 +37,7 @@
 | 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
 | 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md)，api/research、research |
+| 服务器研究 owner/单一存档/FTB/玩家事件/手动入口 | [server-research.md](server-research.md)，ResearchWorld、ServerResearch |
 | 手动研究逐项投料/玩家回执/九状态恢复/暂停接管 | [manual-research.md](manual-research.md)，api/research/manual、research/manual |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md)，api/recipe、api/machine/workslot |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md)，api/gui、api/client/gui、container/MachineContainer |

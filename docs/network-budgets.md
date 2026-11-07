@@ -12,6 +12,7 @@
 
 ## lease、数值与操作身份
 
+- 用户确认的消费规则：算力等数值资源随配方并行量缩放；并发资源（标准 THREAD）按机器只占 1，不随并行量、工位数或 Java 工作线程数重复占用。数值缩放必须在真实配方消费者中应用；当前账本接受已计算的向量，不代表消费接线完成。
 - `requestLease(machineId)` 使用 THREAD；同一机器本 tick 只消耗一份，其他工位为 ALREADY_GRANTED。没有工位结束即释放的操作，数值不足/取消也不退 lease，保持 PN 请求顺序。
 - `requestLease(machineId, logicalType)` 支持已注册自定义 logical 维度，各维独立机器集合和 long 容量，不再只支持 THREAD 或强制 int。一次申请一维，不代表多维 lease 原子申请。
 - WorkPermit 对活动中心免标准 THREAD lease，返回 NOT_REQUIRED；自定义 logical 仍实际申请。其他角色在普通数值预留前真实申请 THREAD，不给所有已加载设备预分配额度。

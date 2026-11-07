@@ -56,9 +56,9 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
                 requireExpected(work, materialIntent);
             }
             case MATERIAL_ABORT_RECEIPT_PENDING -> {
-                if (contributor != null || pauseReason != PauseReason.CONTRIBUTOR_TEAM_CHANGED || materialIntent == null
+                if (contributor != null || !isAbortReason(pauseReason) || materialIntent == null
                     || completionIntent != null) {
-                    throw new IllegalArgumentException("Manual abort receipt requires an uncommitted intent and contributor-team-change reason");
+                    throw new IllegalArgumentException("Manual abort receipt requires an uncommitted intent and invalidation reason");
                 }
                 requireExpected(work, materialIntent);
             }
@@ -138,7 +138,7 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         requireStatus(Status.MATERIAL_COMMIT_PENDING);
         requireOperation(operationId);
         requireTime(time);
-        if (reason != PauseReason.CONTRIBUTOR_TEAM_CHANGED) { throw new IllegalArgumentException("Prepared manual abort requires contributor team change"); }
+        if (!isAbortReason(reason)) { throw new IllegalArgumentException("Prepared manual abort requires contributor team change or research invalidation"); }
         return copy(null, time, Status.MATERIAL_ABORT_RECEIPT_PENDING, reason, work, materialIntent, null);
     }
 
@@ -146,7 +146,7 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         requireStatus(Status.MATERIAL_ABORT_RECEIPT_PENDING);
         requireOperation(operationId);
         requireTime(time);
-        return copy(null, time, Status.PAUSED, PauseReason.CONTRIBUTOR_TEAM_CHANGED, work, null, null);
+        return copy(null, time, Status.PAUSED, pauseReason, work, null, null);
     }
 
     public ManualResearchSession beginCompletion(CompletionIntent completion) {
@@ -212,7 +212,11 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         ACTIVE, PAUSED, MATERIAL_COMMIT_PENDING, MATERIAL_COMMITTED, MATERIAL_ABORT_RECEIPT_PENDING,
         MATERIAL_SETTLED_RECEIPT_PENDING, COMPLETION_PENDING, COMPLETION_PROPAGATED, QUEUE_HEAD_REMOVED
     }
-    public enum PauseReason { CONTRIBUTOR_OFFLINE, CONTRIBUTOR_TEAM_CHANGED, SESSION_TIMEOUT, EXPLICIT, WORLD_RESTORED }
+    public enum PauseReason { CONTRIBUTOR_OFFLINE, CONTRIBUTOR_TEAM_CHANGED, SESSION_TIMEOUT, EXPLICIT, WORLD_RESTORED, RESEARCH_INVALIDATED }
+
+    private static boolean isAbortReason(@Nullable PauseReason reason) {
+        return reason == PauseReason.CONTRIBUTOR_TEAM_CHANGED || reason == PauseReason.RESEARCH_INVALIDATED;
+    }
 
     static Object2LongMap<ManualMaterialKey> immutableWork(Object2LongMap<ManualMaterialKey> source) {
         return Object2LongMaps.unmodifiable(new FrozenWork(source));

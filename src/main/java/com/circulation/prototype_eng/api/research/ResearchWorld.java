@@ -1,0 +1,443 @@
+package com.circulation.prototype_eng.api.research;
+
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.research.manual.ManualResearch;
+import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
+import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
+import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
+import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
+import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
+import com.circulation.prototype_eng.research.ResearchEligibility;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
+import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Collection;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+/**
+ * Authoritative world owner for research sources, queues and manual execution. Membership is captured
+ * by the platform, not inferred from network machines. Save failure retains the exact complete world
+ * snapshot; further mutations first retry it. No research content or gameplay values are registered.
+ */
+@SuppressWarnings("unused") // Server hosts and integrations use this public owner API.
+public final class ResearchWorld {
+    private final Thread owner = Thread.currentThread();
+    private final ResearchRegistry registry;
+    private final NetworkResourceRegistry resources;
+    private final ResearchPermissionPolicy permissions;
+    private final TeamResearchStart admission;
+    private final ResearchEligibility eligibility;
+    private final Consumer<ResearchWorldSnapshot> writer;
+    private Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectLinkedOpenHashMap<>();
+    private final Object2ObjectLinkedOpenHashMap<String, TeamProgress> teams = new Object2ObjectLinkedOpenHashMap<>();
+    @Nullable private ResearchWorldSnapshot pendingSave;
+    private long serverTime;
+    private boolean executing;
+    private boolean dirty;
+    private boolean closing;
+    private boolean closed;
+
+    public ResearchWorld(ResearchRegistry registry, NetworkResourceRegistry resources,
+                         ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
+        this.registry = Objects.requireNonNull(registry);
+        this.resources = Objects.requireNonNull(resources);
+        this.permissions = Objects.requireNonNull(permissions);
+        this.writer = Objects.requireNonNull(writer);
+        admission = new TeamResearchStart(registry, resources, permissions);
+        eligibility = new ResearchEligibility(registry);
+    }
+
+    public long serverTime() { requireOwner(); return serverTime; }
+    public boolean savePending() { requireOwner(); return pendingSave != null; }
+
+    /** Read-only snapshot; changing an authoritative source still requires this owner's checkpoint. */
+    public ResearchWorldSnapshot snapshot() { requireOwner(); return snapshotState(); }
+
+    /** Exposes an existing source to an authoritative integration; never implicitly creates one. */
+    public PlayerResearchState player(UUID id) {
+        return operate(serverTime, false, () -> {
+            var player = players.get(Objects.requireNonNull(id));
+            if (player == null) { throw new IllegalArgumentException("Unknown research player " + id); }
+            dirty = true;
+            return player;
+        });
+    }
+
+    /** Restore all sources before any manual session; invalid input never publishes a partial world. */
+    public void restore(ResearchWorldSnapshot saved) {
+        operate(saved.serverTime(), false, () -> {
+            if (!players.isEmpty() || !teams.isEmpty()) { throw new IllegalStateException("Research world has already been initialized"); }
+            var restoredPlayers = new Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState>();
+            for (var snapshot : saved.players()) {
+                var state = new PlayerResearchState(snapshot.playerUuid());
+                state.restore(snapshot);
+                restoredPlayers.put(snapshot.playerUuid(), state);
+            }
+            var restoredTeams = new Object2ObjectLinkedOpenHashMap<String, TeamProgress>();
+            for (var snapshot : saved.teams()) {
+                var team = new TeamProgress(snapshot.teamId(), TeamResearchQueue.restore(registry, resources, snapshot.queue()), restoredPlayers);
+                team.research.restore(snapshot.research());
+                team.knownMembers = snapshot.knownMembers();
+                team.blacklist.addAll(snapshot.blacklist());
+                team.manual.restore(snapshot.manualSessions());
+                restoredTeams.put(snapshot.teamId(), team);
+            }
+            players = restoredPlayers;
+            teams.putAll(restoredTeams);
+            dirty = true; // ACTIVE sessions were intentionally changed to PAUSED during restore.
+            return null;
+        });
+    }
+
+    /** Active saved teams, queued requesters and pending contributors must be resolved even offline. */
+    public ObjectSet<UUID> trackedPlayers() {
+        requireOwner();
+        var tracked = new ObjectOpenHashSet<UUID>();
+        for (var team : teams.values()) {
+            if (team.queue.size() == 0 && team.manual.sessions().isEmpty()) { continue; }
+            tracked.addAll(team.knownMembers);
+            for (var entry : team.queue.queueSnapshot()) { tracked.add(entry.requestedBy()); }
+            for (var session : team.manual.sessions()) {
+                if (session.contributor() != null) { tracked.add(session.contributor()); }
+                if (session.materialIntent() != null) { tracked.add(session.materialIntent().contributor()); }
+                if (session.completionIntent() != null) { tracked.addAll(session.completionIntent().baselines().keySet()); }
+            }
+        }
+        return ObjectSets.unmodifiable(tracked);
+    }
+
+    public void playerLogin(UUID player, long time) {
+        operate(time, false, () -> { ensurePlayer(player); if (dirty) { persist(); } return null; });
+    }
+
+    /** Logout pauses every matching active session, including work waiting behind another queue head. */
+    public void playerLogout(UUID player, long time, Set<UUID> remainingOnline) {
+        operate(time, false, () -> {
+            if (remainingOnline.contains(player)) { throw new IllegalArgumentException("Logout snapshot still contains the leaving player"); }
+            for (var team : teams.values()) {
+                var context = new ManualResearch.Context(time, team.knownMembers, remainingOnline, () -> true);
+                for (var session : team.manual.sessions()) {
+                    if (session.status() == ManualResearchSession.Status.ACTIVE && player.equals(session.contributor())) {
+                        team.manual.pause(session.queueKey().queueEntryId(), context, ManualResearchSession.PauseReason.CONTRIBUTOR_OFFLINE);
+                    }
+                }
+            }
+            if (dirty) { persist(); }
+            return null;
+        });
+    }
+
+    /** Admission uses structural facts and invokes the real requester condition exactly at start. */
+    public TeamResearchStart.Result start(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                          ResourceLocation id, int target, TeamResearchStart.Environment environment,
+                                          long time, Set<UUID> online, BooleanSupplier current) {
+        return operate(time, false, () -> {
+            if (!membership.accepted() || !current.getAsBoolean()) { return staleStart(); }
+            if (!membership.teamId().equals(permission.targetTeamId())) { throw new IllegalArgumentException("Admission target team changed"); }
+            var definition = registry.require(id);
+            boolean manual = definition.stageForLevel(target).researchTier() == 0;
+            if (manual && (!membership.members().contains(permission.actorId()) || !online.contains(permission.actorId()))) { return staleStart(); }
+            var team = captureTeam(membership.teamId(), membership.members());
+            ensurePlayer(permission.actorId());
+            if (team.queue.busy() || team.research.busy() || membersBusy(team.knownMembers)) {
+                return new TeamResearchStart.Result(TeamResearchStart.Status.QUEUE_BUSY, null, null);
+            }
+            var capturedSources = new ObjectArrayList<PlayerResearchState.Snapshot>();
+            for (var member : team.knownMembers) { capturedSources.add(players.get(member).snapshot()); }
+            var capturedTeam = team.research.snapshot();
+            BooleanSupplier proof = () -> current.getAsBoolean() && capturedTeam.equals(team.research.snapshot())
+                && !team.research.busy() && sourcesCurrent(capturedSources);
+            var view = structural(team, false);
+            var result = admission.start(new TeamResearchStart.Request(team.queue, view, permission, id, target, environment, time, proof));
+            if (result.status() != TeamResearchStart.Status.STARTED) { if (dirty) { persist(); } return result; }
+            var entry = Objects.requireNonNull(result.entry());
+            dirty = true;
+            if (!manual) { persist(); return result; }
+            try {
+                var status = team.manual.begin(entry, permission.actorId(), new ManualResearch.Context(time, team.knownMembers, online, proof));
+                if (status == ManualResearch.Status.STARTED) { return result; }
+                if (team.manual.session(entry.key().queueEntryId()) != null || team.manual.checkpointPending()) {
+                    throw new IllegalStateException("Unsuccessful manual start still owns persistent work");
+                }
+                team.queue.removeUnstarted(entry.key());
+                persist();
+                return staleStart();
+            } catch (RuntimeException | Error failure) {
+                // begin may already have installed its intent before persistence failed. Keep that pair.
+                if (team.manual.session(entry.key().queueEntryId()) == null && !team.manual.checkpointPending()) {
+                    try {
+                        if (queued(team.queue, entry.key())) { team.queue.removeUnstarted(entry.key()); }
+                        persist();
+                    } catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }
+                }
+                throw failure;
+            }
+        });
+    }
+
+    public ManualResearch.Status takeover(OwnerTeamResolution membership, UUID actor, ResourceLocation id, int target,
+                                           long time, Set<UUID> online, BooleanSupplier current) {
+        return operate(time, false, () -> {
+            if (!membership.accepted() || !current.getAsBoolean()) { return ManualResearch.Status.STALE_CONTEXT; }
+            var team = teams.get(membership.teamId());
+            if (team == null) { return ManualResearch.Status.STALE_CONTEXT; }
+            captureTeam(membership.teamId(), membership.members());
+            for (var entry : team.queue.queueSnapshot()) {
+                if (entry.key().researchId().equals(id) && entry.key().targetLevel() == target) {
+                    if (team.manual.session(entry.key().queueEntryId()) == null) { return ManualResearch.Status.STALE_CONTEXT; }
+                    return team.manual.takeover(entry.key().queueEntryId(), actor, new ManualResearch.Context(time, team.knownMembers, online, current));
+                }
+            }
+            return ManualResearch.Status.STALE_CONTEXT;
+        });
+    }
+
+    /** Persist a permission-checked blacklist; the next tick settles pending work before pruning it. */
+    public ResearchPermissionPolicy.Decision setBlacklisted(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                                            ResourceLocation id, boolean value, long time, BooleanSupplier current) {
+        return operate(time, false, () -> {
+            registry.require(id);
+            if (!membership.accepted() || !membership.teamId().equals(permission.targetTeamId()) || !current.getAsBoolean()) {
+                return ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER;
+            }
+            var decision = permissions.can(ResearchPermissionPolicy.Action.BLACKLIST_TEAM_RESEARCH, permission);
+            if (decision != ResearchPermissionPolicy.Decision.ALLOWED) { return decision; }
+            if (!current.getAsBoolean()) { return ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER; }
+            var team = captureTeam(membership.teamId(), membership.members());
+            boolean changed = value ? team.blacklist.add(id) : team.blacklist.remove(id);
+            if (changed) { dirty = true; }
+            if (dirty) { persist(); }
+            return decision;
+        });
+    }
+
+    /** One call per server END boundary, after worker exit; unavailable membership never means teardown. */
+    public void tick(long time, Map<UUID, OwnerTeamResolution> captures, Set<UUID> online,
+                     Function<UUID, ManualResearchInventory> inventories, BooleanSupplier current) {
+        operate(time, false, () -> {
+            if (!captures.keySet().containsAll(trackedPlayers())) { throw new IllegalArgumentException("Research capture omitted tracked players"); }
+            var memberships = validateMemberships(captures);
+            if (memberships == null || !current.getAsBoolean()) { return null; }
+            for (var entry : memberships.entrySet()) { captureTeam(entry.getKey(), entry.getValue()); }
+            for (var team : teams.values()) {
+                if (team.queue.size() == 0 && team.manual.sessions().isEmpty()) { continue; }
+                var members = memberships.getOrDefault(team.id, ObjectSets.emptySet());
+                if (!members.equals(team.knownMembers)) { team.knownMembers = members; dirty = true; }
+            }
+            for (var team : new ObjectArrayList<>(teams.values())) {
+                if (!current.getAsBoolean()) { break; }
+                if (team.queue.size() == 0 && team.manual.sessions().isEmpty()) { continue; }
+                if (team.queue.busy() || team.research.busy() || membersBusy(team.knownMembers)) { continue; }
+                var context = new ManualResearch.Context(time, team.knownMembers, online, current);
+                if (!reconcile(team, context, inventories)) { continue; }
+                var head = team.queue.activeHead().orElse(null);
+                if (head == null || registry.require(head.key().researchId()).stageForLevel(head.key().targetLevel()).researchTier() != 0) { continue; }
+                var session = team.manual.session(head.key().queueEntryId());
+                if (session == null) { throw new IllegalStateException("Tier-zero queue head has no manual session"); }
+                team.manual.advance(head.key().queueEntryId(), context, inventoryFor(session, inventories));
+            }
+            if (dirty) { persist(); }
+            return null;
+        });
+    }
+
+    private boolean reconcile(TeamProgress team, ManualResearch.Context context, Function<UUID, ManualResearchInventory> inventories) {
+        // Cancellation can complete an already-paid head and change subsequent eligibility. The queue is bounded.
+        for (int round = 0; round <= TeamResearchQueue.CAPACITY; round++) {
+            var view = structural(team, team.knownMembers.isEmpty());
+            boolean changed = false;
+            boolean pending = false;
+            for (var session : team.manual.sessions()) {
+                var key = session.queueKey();
+                if (!eligibility.structurallyEligible(view, key.researchId(), key.targetLevel())) {
+                    var result = team.manual.cancelInvalidated(key.queueEntryId(), context, inventoryFor(session, inventories));
+                    if (result == ManualResearch.Status.CANCELLED || result == ManualResearch.Status.COMPLETED) { changed = true; }
+                    else { pending = true; }
+                }
+            }
+            if (pending || !context.current().getAsBoolean()) { return false; }
+            if (changed) { continue; }
+            boolean needsPrune = false;
+            for (var entry : team.queue.queueSnapshot()) {
+                if (!eligibility.structurallyEligible(view, entry.key().researchId(), entry.key().targetLevel())) { needsPrune = true; break; }
+            }
+            if (!needsPrune) { return true; }
+            var prune = team.queue.preparePrune(view);
+            boolean removed = !prune.removed().isEmpty();
+            try { prune.commit(); }
+            catch (RuntimeException | Error failure) {
+                try { prune.rollback(); }
+                catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }
+                throw failure;
+            }
+            prune.complete();
+            if (removed) { dirty = true; }
+            return true;
+        }
+        throw new IllegalStateException("Manual cancellation did not converge within its bounded queue");
+    }
+
+    @Nullable private static ManualResearchInventory inventoryFor(ManualResearchSession session, Function<UUID, ManualResearchInventory> inventories) {
+        UUID player = session.materialIntent() == null ? session.contributor() : session.materialIntent().contributor();
+        return player == null ? null : inventories.apply(player);
+    }
+
+    @Nullable private static Map<String, ObjectSet<UUID>> validateMemberships(Map<UUID, OwnerTeamResolution> captures) {
+        var memberships = new Object2ObjectOpenHashMap<String, ObjectSet<UUID>>();
+        for (var entry : captures.entrySet()) {
+            var resolution = Objects.requireNonNull(entry.getValue());
+            if (!resolution.ownerId().equals(entry.getKey())) { throw new IllegalArgumentException("Research membership capture changed its owner"); }
+            if (resolution.status() == OwnerTeamResolutionStatus.UNIVERSE_UNAVAILABLE) { return null; }
+            if (!resolution.accepted()) { continue; }
+            var previous = memberships.putIfAbsent(resolution.teamId(), resolution.members());
+            if (previous != null && !previous.equals(resolution.members())) { throw new IllegalArgumentException("Contradictory research team captures"); }
+            for (var member : resolution.members()) {
+                var peer = captures.get(member);
+                if (peer == null || !peer.accepted() || !peer.teamId().equals(resolution.teamId())
+                    || !peer.members().equals(resolution.members())) { throw new IllegalArgumentException("Incomplete research membership capture"); }
+            }
+        }
+        return memberships;
+    }
+
+    private TeamProgress captureTeam(String id, Collection<UUID> members) {
+        for (var member : members) { ensurePlayer(member); }
+        var team = teams.get(id);
+        if (team == null) { team = new TeamProgress(id, new TeamResearchQueue(registry, resources, id), players); teams.put(id, team); dirty = true; }
+        var copy = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
+        if (!copy.equals(team.knownMembers)) { team.knownMembers = copy; dirty = true; }
+        return team;
+    }
+
+    private void ensurePlayer(UUID id) {
+        Objects.requireNonNull(id);
+        if (!players.containsKey(id)) { players.put(id, new PlayerResearchState(id)); dirty = true; }
+    }
+
+    private TeamResearchView structural(TeamProgress team, boolean disappeared) {
+        var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+        for (var id : team.knownMembers) { members.put(id, Objects.requireNonNull(players.get(id))); }
+        var blacklist = new ObjectOpenHashSet<>(team.blacklist);
+        if (disappeared) { for (var definition : registry.all()) { blacklist.add(definition.id()); } }
+        return eligibility.calculateStructural(team.id, team.knownMembers, members, team.research.completedLevelsSnapshot(), blacklist);
+    }
+
+    private boolean membersBusy(Collection<UUID> members) {
+        for (var id : members) { if (Objects.requireNonNull(players.get(id)).busy()) { return true; } }
+        return false;
+    }
+
+    private boolean sourcesCurrent(ObjectList<PlayerResearchState.Snapshot> snapshots) {
+        for (var snapshot : snapshots) {
+            var current = players.get(snapshot.playerUuid());
+            if (current == null || current.busy() || !current.snapshot().equals(snapshot)) { return false; }
+        }
+        return true;
+    }
+
+    private void manualCheckpoint(TeamProgress team, ManualResearch.CheckpointState state) {
+        if (!executing || teams.get(team.id) != team || !state.queue().equals(team.queue.snapshot())
+            || !state.team().equals(team.research.snapshot()) || !state.sessions().equals(team.manual.sessions())
+            || !sourcesCurrent(state.players())) { throw new IllegalStateException("Manual checkpoint does not own the world records it supplied"); }
+        // Sources are shared authoritative objects. Preserve every other player; never replace the global table.
+        dirty = true;
+        persist();
+    }
+
+    public void checkpoint(long time) { operate(time, true, () -> { persist(); return null; }); }
+
+    /** Stop accepting work before the final write; a failed write retains this owner for retry. */
+    public void close(long time) {
+        requireOwner();
+        if (closed) { return; }
+        if (executing) { throw new IllegalStateException("Research close cannot reenter an operation"); }
+        if (time < serverTime) { throw new IllegalArgumentException("Research close time moved backwards"); }
+        closing = true;
+        operate(time, true, () -> {
+            persist();
+            closed = true;
+            return null;
+        });
+    }
+
+    private ResearchWorldSnapshot snapshotState() {
+        var playerSnapshots = new ObjectArrayList<PlayerResearchState.Snapshot>();
+        for (var player : players.values()) {
+            if (player.busy()) { throw new IllegalStateException("Cannot snapshot a research source owned by another transaction"); }
+            playerSnapshots.add(player.snapshot());
+        }
+        var teamSnapshots = new ObjectArrayList<ResearchWorldSnapshot.Team>();
+        for (var team : teams.values()) {
+            if (team.research.busy()) { throw new IllegalStateException("Cannot snapshot a pending team research mutation"); }
+            teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklist,
+                team.research.snapshot(), team.queue.snapshot(), team.manual.sessions()));
+        }
+        return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots);
+    }
+
+    private void persist() {
+        if (pendingSave != null) { throw new IllegalStateException("Previous world checkpoint still owns its snapshot"); }
+        pendingSave = snapshotState();
+        flushPending();
+    }
+
+    private void flushPending() {
+        if (pendingSave == null) { return; }
+        if (!pendingSave.equals(snapshotState())) { throw new IllegalStateException("Pending research save lost its exact world state"); }
+        writer.accept(pendingSave);
+        if (!pendingSave.equals(snapshotState())) { throw new IllegalStateException("Research writer changed the world it was saving"); }
+        pendingSave = null;
+        dirty = false;
+    }
+
+    private <T> T operate(long time, boolean allowClosing, Supplier<T> action) {
+        requireOwner();
+        if (executing || closed || closing && !allowClosing) { throw new IllegalStateException("Research owner is busy or closing"); }
+        if (time < serverTime) { throw new IllegalArgumentException("Research server time moved backwards"); }
+        executing = true;
+        try {
+            flushPending();
+            for (var team : teams.values()) { team.manual.retryCheckpoint(); }
+            serverTime = time;
+            return action.get();
+        }
+        finally { executing = false; }
+    }
+
+    private void requireOwner() { if (Thread.currentThread() != owner) { throw new IllegalStateException("Research world requires its owner thread"); } }
+    private static TeamResearchStart.Result staleStart() { return new TeamResearchStart.Result(TeamResearchStart.Status.STALE_CONTEXT, null, null); }
+    private static boolean queued(TeamResearchQueue queue, TeamResearchQueue.Key key) {
+        for (var entry : queue.queueSnapshot()) { if (entry.key().equals(key)) { return true; } }
+        return false;
+    }
+
+    private final class TeamProgress {
+        private final String id;
+        private final TeamResearchQueue queue;
+        private final TeamOwnedResearch research;
+        private final ManualResearch manual;
+        private ObjectSet<UUID> knownMembers = ObjectSets.emptySet();
+        private final ObjectSet<ResourceLocation> blacklist = new ObjectOpenHashSet<>();
+
+        private TeamProgress(String id, TeamResearchQueue queue, Map<UUID, PlayerResearchState> sources) {
+            this.id = id;
+            this.queue = queue;
+            research = new TeamOwnedResearch(id, registry);
+            manual = new ManualResearch(queue, research, sources, state -> manualCheckpoint(this, state));
+        }
+    }
+}

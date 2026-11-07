@@ -14,6 +14,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
+import com.circulation.prototype_eng.research.ServerResearch;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
@@ -21,6 +22,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerAboutToStartEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import com.circulation.prototype_eng.container.EnergyHatchContainer;
 import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
@@ -72,8 +74,17 @@ public class CommonProxy implements IGuiHandler {
         }
     }
 
+    public void serverStarting(FMLServerStartingEvent event) {
+        ServerResearch.start(event.getServer());
+    }
+
+    public void serverStopping() {
+        ServerResearch.stop();
+    }
+
     public void serverStopped() {
         ServerTaskSchedulers.stop();
+        ServerResearch.stop();
         ServerNetworkRuntime.stop();
         ServerMachineIdentities.stop();
     }

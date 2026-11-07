@@ -281,6 +281,209 @@ class ManualResearchTest {
         assertCompletion(fixture, FIRST, 1);
     }
 
+    @Test void invalidationRemovesOnlyItsExactEntryWithoutRefundingPreviouslyPaidWork() {
+        var fixture = fixture(3);
+        fixture.begin();
+        var tail = fixture.queue.enqueue(TAIL, 1, FIRST, 1);
+        var inventory = new FakeInventory(FIRST, 10);
+        assertEquals(ManualResearch.Status.ADVANCED, fixture.advance(2, inventory));
+        assertEquals(ManualResearch.Status.CANCELLED, fixture.cancel(3, inventory));
+        assertEquals(9, inventory.amount);
+        assertEquals(1, inventory.consumed);
+        assertEquals(List.of(tail), fixture.queue.queueSnapshot());
+        assertTrue(fixture.runtime.sessions().isEmpty());
+        assertEquals(0, fixture.players.get(FIRST).completedLevel(TARGET));
+        assertTrue(fixture.players.get(FIRST).rewardClaimsSnapshot().isEmpty());
+        assertEquals(List.of(tail), Objects.requireNonNull(fixture.checkpoints.latest).queue().entries());
+    }
+
+    @Test void namedOfflinePauseAndInvalidationCanHandleANonHeadActiveSession() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var tail = fixture.queue.enqueue(TAIL, 1, SECOND, 1);
+        assertEquals(ManualResearch.Status.STARTED, fixture.runtime.begin(tail, SECOND, context(1)));
+        assertEquals(ManualResearch.Status.PAUSED, fixture.runtime.pause(tail.key().queueEntryId(), context(2),
+            ManualResearchSession.PauseReason.CONTRIBUTOR_OFFLINE));
+        assertEquals(ManualResearchSession.PauseReason.CONTRIBUTOR_OFFLINE,
+            Objects.requireNonNull(fixture.runtime.session(tail.key().queueEntryId())).pauseReason());
+        assertEquals(ManualResearch.Status.CANCELLED, fixture.runtime.cancelInvalidated(tail.key().queueEntryId(), context(3), null));
+        assertEquals(List.of(fixture.entry), fixture.queue.queueSnapshot());
+        assertEquals(ManualResearchSession.Status.ACTIVE, fixture.session().status());
+    }
+
+    @Test void invalidatedPreparedReceiptIsAbortedAndRemovedWithoutConsumingMaterials() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var inventory = new FakeInventory(FIRST, 10);
+        inventory.allowConsume = false;
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.advance(2, inventory));
+        inventory.allowConsume = true;
+        assertEquals(ManualResearch.Status.CANCELLED, fixture.cancel(3, inventory));
+        assertEquals(0, inventory.consumed);
+        assertEquals(10, inventory.amount);
+        assertNull(inventory.receipt);
+        assertTrue(fixture.queue.queueSnapshot().isEmpty());
+    }
+
+    @Test void liveUnpreparedProofPermitsInvalidationWithoutCreatingANewReceipt() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var inventory = new FakeInventory(FIRST, 10);
+        fixture.checkpoints.failStatus = ManualResearchSession.Status.MATERIAL_COMMIT_PENDING;
+        assertThrows(IllegalStateException.class, () -> fixture.advance(2, inventory));
+        assertEquals(ManualResearch.Status.CANCELLED, fixture.cancel(3, inventory));
+        assertEquals(0, inventory.prepared);
+        assertEquals(0, inventory.consumed);
+        assertEquals(10, inventory.amount);
+    }
+
+    @Test void invalidationRetainsRestoredMissingReceiptsChangedBeforeImagesAndOfflineContributors() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var inventory = new FakeInventory(FIRST, 10);
+        inventory.allowConsume = false;
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.advance(2, inventory));
+        var original = inventory.receipt;
+        inventory.receipt = null;
+        fixture.reopen();
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.cancel(3, inventory));
+        inventory.receipt = original;
+        inventory.amount++;
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.cancel(4, inventory));
+        inventory.amount--;
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.runtime.cancelInvalidated(fixture.entry.key().queueEntryId(),
+            context(5, Set.of(SECOND), Set.of(SECOND)), inventory));
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.cancel(6, null));
+        assertEquals(ManualResearchSession.Status.MATERIAL_COMMIT_PENDING, fixture.session().status());
+        assertEquals(List.of(fixture.entry), fixture.queue.queueSnapshot());
+        assertEquals(0, inventory.consumed);
+    }
+
+    @Test void invalidationRejectsStaleContextAndForeignReceiptWithoutWritingAnAbort() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var inventory = new FakeInventory(FIRST, 10);
+        inventory.allowConsume = false;
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.advance(2, inventory));
+        var before = fixture.session();
+        int saves = fixture.checkpoints.attempts.size();
+        assertEquals(ManualResearch.Status.STALE_CONTEXT, fixture.runtime.cancelInvalidated(fixture.entry.key().queueEntryId(),
+            new ManualResearch.Context(3, Set.of(FIRST), Set.of(FIRST), () -> false), inventory));
+        var receipt = Objects.requireNonNull(inventory.receipt);
+        inventory.receipt = new ManualResearchMaterialReceipt(new UUID(0, 99), receipt.teamId(), receipt.queueKey(), receipt.intent(),
+            receipt.inventoryBefore(), null, ManualResearchMaterialReceipt.Status.PREPARED, receipt.preparedAt(), -1, -1);
+        assertThrows(IllegalStateException.class, () -> fixture.cancel(4, inventory));
+        assertSame(before, fixture.session());
+        assertEquals(saves, fixture.checkpoints.attempts.size());
+        assertEquals(0, inventory.consumed);
+    }
+
+    @Test void nonHeadPendingMaterialIsRetainedWithoutTouchingItsReceipt() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var tail = fixture.queue.enqueue(TAIL, 1, SECOND, 1);
+        var session = ManualResearchSession.newActive(new UUID(0, 50), "team", tail.key(), SECOND, 1);
+        var plan = fixture.materials.plan(session.work());
+        var intent = new ManualResearchSession.MaterialIntent(new UUID(0, 51), SECOND, plan.sequence(), plan.increments(), plan.expectedWork());
+        var pending = session.beginMaterial(intent, 2, null);
+        var firstSession = fixture.session();
+        fixture.runtime = new ManualResearch(fixture.queue, fixture.team, fixture.players, fixture.checkpoints, _ -> fixture.materials);
+        fixture.runtime.restore(List.of(firstSession, pending));
+        var inventory = new FakeInventory(SECOND, 10);
+        inventory.receipt = new ManualResearchMaterialReceipt(pending.id(), "team", tail.key(), intent, inventory.snapshotInventory(), null,
+            ManualResearchMaterialReceipt.Status.PREPARED, 2, -1, -1);
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.runtime.cancelInvalidated(tail.key().queueEntryId(), context(3), inventory));
+        assertEquals(ManualResearchSession.Status.MATERIAL_COMMIT_PENDING,
+            Objects.requireNonNull(fixture.runtime.session(tail.key().queueEntryId())).status());
+        assertEquals(0, inventory.consumed);
+        assertNotNull(inventory.receipt);
+        assertEquals(List.of(fixture.entry, tail), fixture.queue.queueSnapshot());
+    }
+
+    @Test void invalidationSettlesCommittedMaterialOnceThenCancelsTheRemainingWork() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var inventory = new FakeInventory(FIRST, 10);
+        inventory.failCommitted = new IllegalStateException("committed save failed");
+        assertThrows(IllegalStateException.class, () -> fixture.advance(2, inventory));
+        fixture.reopen();
+        assertEquals(ManualResearch.Status.CANCELLED, fixture.cancel(3, inventory));
+        assertEquals(1, inventory.consumed);
+        assertEquals(9, inventory.amount);
+        assertNull(inventory.receipt);
+        assertTrue(fixture.runtime.sessions().isEmpty());
+        assertEquals(0, fixture.players.get(FIRST).completedLevel(TARGET));
+    }
+
+    @Test void invalidationRetainsACommittedWorldIntentUntilItsReceiptIsAvailable() {
+        var fixture = fixture(2);
+        fixture.begin();
+        var inventory = new FakeInventory(FIRST, 10);
+        fixture.checkpoints.failStatus = ManualResearchSession.Status.MATERIAL_COMMITTED;
+        assertThrows(IllegalStateException.class, () -> fixture.advance(2, inventory));
+        fixture.runtime.retryCheckpoint();
+        fixture.reopen();
+        var committed = inventory.receipt;
+        inventory.receipt = null;
+        assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.cancel(3, inventory));
+        assertEquals(ManualResearchSession.Status.MATERIAL_COMMITTED, fixture.session().status());
+        assertEquals(List.of(fixture.entry), fixture.queue.queueSnapshot());
+        inventory.receipt = committed;
+        assertEquals(ManualResearch.Status.CANCELLED, fixture.cancel(4, inventory));
+        assertEquals(1, inventory.consumed);
+        assertEquals(9, inventory.amount);
+    }
+
+    @Test void invalidationOfFinalCommittedOrCompletionWorkPropagatesFrozenEligibility() {
+        for (var boundary : List.of(ManualResearchSession.Status.MATERIAL_COMMITTED, ManualResearchSession.Status.MATERIAL_SETTLED_RECEIPT_PENDING,
+            ManualResearchSession.Status.COMPLETION_PENDING, ManualResearchSession.Status.COMPLETION_PROPAGATED,
+            ManualResearchSession.Status.QUEUE_HEAD_REMOVED)) {
+            var fixture = fixture(1);
+            fixture.begin();
+            var inventory = new FakeInventory(FIRST, 10);
+            fixture.checkpoints.failStatus = boundary;
+            assertThrows(IllegalStateException.class, () -> fixture.advance(2, inventory));
+            assertEquals(ManualResearch.Status.COMPLETED, fixture.cancel(3, inventory));
+            assertEquals(1, inventory.consumed);
+            for (var player : List.of(FIRST, SECOND)) { assertCompletion(fixture, player, 1); }
+        }
+    }
+
+    @Test void abortCheckpointFailuresPreserveTheInvalidationUntilReceiptsAreSafelyRemoved() {
+        for (var boundary : List.of(ManualResearchSession.Status.MATERIAL_ABORT_RECEIPT_PENDING, ManualResearchSession.Status.PAUSED)) {
+            var fixture = fixture(2);
+            fixture.begin();
+            var inventory = new FakeInventory(FIRST, 10);
+            inventory.allowConsume = false;
+            assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.advance(2, inventory));
+            fixture.checkpoints.failStatus = boundary;
+            assertSame(fixture.checkpoints.failure, assertThrows(IllegalStateException.class, () -> fixture.cancel(3, inventory)));
+            assertEquals(ManualResearchSession.PauseReason.RESEARCH_INVALIDATED, fixture.session().pauseReason());
+            fixture.runtime.retryCheckpoint();
+            fixture.reopen();
+            assertEquals(ManualResearch.Status.CANCELLED, fixture.cancel(4, inventory));
+            assertEquals(0, inventory.consumed);
+            assertEquals(10, inventory.amount);
+            assertNull(inventory.receipt);
+        }
+    }
+
+    @Test void cancellationDeletionFailureReturnsCancelledOnEitherRetryEntryWithoutCompletingResearch() {
+        for (boolean retryWithAdvance : new boolean[] {false, true}) {
+            var fixture = fixture(2);
+            fixture.begin();
+            fixture.checkpoints.failEmpty = true;
+            assertSame(fixture.checkpoints.failure, assertThrows(IllegalStateException.class, () -> fixture.cancel(2, null)));
+            assertTrue(fixture.runtime.checkpointPending());
+            assertTrue(fixture.runtime.sessions().isEmpty());
+            var status = retryWithAdvance ? fixture.advance(3, new FakeInventory(FIRST, 10)) : fixture.cancel(3, null);
+            assertEquals(ManualResearch.Status.CANCELLED, status);
+            assertFalse(fixture.runtime.checkpointPending());
+            assertEquals(0, fixture.players.get(FIRST).completedLevel(TARGET));
+            assertTrue(fixture.players.get(FIRST).rewardClaimsSnapshot().isEmpty());
+        }
+    }
+
     private static void checkPauseAndTakeover(ManualResearch.Context unavailable, ManualResearchSession.PauseReason reason) {
         var fixture = fixture(3, 2);
         fixture.begin();
@@ -391,6 +594,7 @@ class ManualResearchTest {
         private ManualResearchSession session() { return Objects.requireNonNull(runtime.session(entry.key().queueEntryId())); }
         private void begin() { assertEquals(ManualResearch.Status.STARTED, runtime.begin(entry, FIRST, context(1))); }
         private ManualResearch.Status advance(long time, FakeInventory inventory) { return runtime.advance(entry.key().queueEntryId(), context(time), inventory); }
+        private ManualResearch.Status cancel(long time, @Nullable FakeInventory inventory) { return runtime.cancelInvalidated(entry.key().queueEntryId(), context(time), inventory); }
 
         private void reopen() {
             var saved = checkpoints.latest;
