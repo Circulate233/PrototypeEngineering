@@ -1,6 +1,6 @@
 # 配方功能与事件迁移核对
 
-2026-11-07，按用户要求重新以具体功能核对，停止优先扩展调度底座。当前源码检查点为 `f1ada8d`；593 项测试和 337 文件 MCP 零诊断只证明已实现部分，不代表 PM/PN 全部功能迁移完成。
+2026-11-07，按用户要求重新以具体功能核对，停止优先扩展调度底座。用户再次指出“配方事件”后，独立子代理重查 PM 全仓，详细定义、脚本预设及调用证据见[配方事件复审](pm-recipe-events-audit.md)。验证数量只证明已实现部分，不代表 PM/PN 全部功能迁移完成。
 
 ## 预设阶段、回调与实际行为
 
@@ -14,15 +14,15 @@
 | PM 并行数量需求 | 实际效果已迁；旧空类不复制 | 旧 ParallelismRequirementComponent/System 是空壳。实际效果来自扫描时选择 PROCESS_PARALLELISM 和资源/FE 数量缩放，新 scanner/RecipeParallelism/需求系统已有对应逻辑。 |
 | PM 加载、成型变化、卸载、破坏回调 | 已有具体生命周期入口 | `MachineLifecycleListener` 四方法由 MachineLifecycle 发布，普通控制器接线已存在；这不是“研究完成”事件。 |
 | PN 给每个配方追加研究/计算条件的扩展回调 | 未迁移 | 旧 `NetworkRecipeExtensionListener.extend`、有序 registry.publish/context.freeze/index 及 createWorkGate 是具体扩展链。新项目只有通用配方注册和网络共同 gate/账本，尚无对应的逐配方研究门槛及资源消费者。 |
-| PN 研究启动条件、队列、阶段推进及完成 | 未迁移业务链 | 旧 ResearchDefinition.startCondition 由 TeamResearchViewCalculator 实际调用，TeamResearchStart、ResearchStationTick/Runtime、研究队列和持久状态有具体行为；当前没有对应 research/queue/station 模块。网络预算或通用 RecipeProcess 不能代替这些业务。 |
-| PN 研究奖励及事件奖励 | 未迁移 | 旧 PlayerResearchState 在完成研究后创建未领取资格，实际领取才由 ResearchRewardClaim 调用 RewardEventAction.deliver；EventRewardGroup 组织事件奖励。不是研究完成即自动发奖。当前没有对应执行入口。 |
+| PN 研究启动条件、队列、阶段推进及完成 | 定义/资格/完成传播已有执行；队列与研究站未接 | ResearchRegistry 已接注册事件，ResearchEligibility 真执行 startCondition，TeamResearchCompletion 按双来源创建等级/奖励资格；队列、手动研究、研究站推进和服务器存档链仍缺。不能将这些可调用步骤视为完整研究流程。 |
+| PN 研究奖励及事件奖励 | Java 领取/恢复核心已有执行；服务器入口未接 | ResearchRewardClaimer 在实际领取时调用 RewardEventAction.deliver，保留选择、片段和checkpoint；Minecraft物品adapter可调用。领取 packet/UI、权威存档服务及完整物品交互冻结尚未接入，默认未知交付不盲目重发。 |
 | PN 研究物品下载事件 | 未迁移 | 旧 ResearchItemDownloadEvent.createOutput 按材料注册，由 ResearchItemDownloadEvaluation 调用，再进入权威下载事务；当前没有对应 download 模块。 |
 | PN 计算组件的实际物品供给 | 仅快照/规划/账本底座 | 旧 DeviceRuntimeRegistry→ComponentInventory→ContributionCalculator 有真实 ItemStack 组件注册、读取和供给计算；当前 resourcesPerTick 数据快照与账本不能代替这条组件执行链。 |
 | CraftTweaker 接口及脚本数据适配 | 按用户要求最后处理 | PM ZenRecipeBuilder 通过 addRequirement/register 声明配方，Zen 参数转换、工厂和 ZSData 脚本数据组件尚未迁移；未发现该 builder 额外提供一套每配方 onStart/onFinish 事件 DSL。Java 功能完整之后再实现 CT，不能以 CT 延后为理由延后其底层 Java 功能。 |
 
 上表的“已迁”指源码中的真实执行职责与已有逻辑测试，不代表游戏中 GUI、世界交互及最终所有兼容链均已验收。旧需求系统里的方法名是阶段钩子，不应混同 Forge 配方注册事件；PN 的 PostInit 配方扩展监听器也不应混同每 tick 事件。
 
-旧 PM 没有额外的每配方 condition/runtime event 字段，内置进程组件的 system 也没有遗漏的实际 tick 效果；相应扩展通过需求系统和通用进程组件实现。已修正的旧行为包括 checkpoint time=0 原先永不触发、Selective 被拒候选原先可能 commit，以及选择状态/属性恢复问题，不能把保留旧 bug 作为功能对齐标准。
+旧 PM 没有独立于 requirements 的顶层 condition/events 数组，但有每配方选择提交回调、动态匹配条件、检查点/属性效果、进程组件钩子，并且已有选择修改器和动态匹配器的 CT 回调注册。此前“不存在运行时配方回调/DSL”的概括错误；具体预设与新项目映射见复审表。Java 对应调用已存在，CT 桥尚缺。已修正的旧行为包括 checkpoint time=0 原先永不触发、Selective 被拒候选原先可能 commit，以及选择状态/属性恢复问题，不能把保留旧 bug 作为功能对齐标准。
 
 ## 后续工作顺序
 

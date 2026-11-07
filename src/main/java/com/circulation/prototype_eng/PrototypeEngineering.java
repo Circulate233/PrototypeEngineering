@@ -1,25 +1,12 @@
 package com.circulation.prototype_eng;
 
 import com.circulation.prototype_eng.proxy.CommonProxy;
-import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
-import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
-import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
-import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.machine.ServerMachineIdentities;
-import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
-import com.circulation.prototype_eng.scheduler.SchedulerConfig;
-import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
-import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerAboutToStartEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppedEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.common.network.NetworkRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -36,48 +23,22 @@ public class PrototypeEngineering {
     public static CommonProxy proxy;
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
-        HatchConfig.load(event.getModConfigurationDirectory());
-        SchedulerConfig.load(event.getModConfigurationDirectory());
-        OrientationToolConfig.load(event.getModConfigurationDirectory());
-        HatchCapabilityRegistration.register();
-        NetworkRegistry.INSTANCE.registerGuiHandler(this, proxy);
-        LOGGER.info("Loading {} {}", Tags.MOD_NAME, Tags.VERSION);
+        proxy.preInit(event);
     }
 
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
-        MinecraftForge.EVENT_BUS.post(new NetworkResourceRegistrationEvent(NetworkResourceRegistry.INSTANCE));
-        NetworkResourceRegistry.INSTANCE.freeze();
-        MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE));
-        RecipeRegistry.INSTANCE.freeze();
-        var machines = new MachineRuntimeRegistrationEvent(MachineTypeRegistry.INSTANCE);
-        MinecraftForge.EVENT_BUS.post(machines);
-        MachineTypeRegistry.INSTANCE.resolveRuntime(machines.structures(), machines.assemblies());
+        proxy.postInit();
     }
 
     @Mod.EventHandler
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {
-        ServerTaskSchedulers.start(event.getServer());
-        try {
-            ServerMachineIdentities.start(event.getServer());
-            ServerNetworkRuntime.start(event.getServer());
-        }
-        catch (RuntimeException | Error failure) {
-            try {
-                ServerTaskSchedulers.stop();
-                ServerNetworkRuntime.stop();
-                ServerMachineIdentities.stop();
-            }
-            catch (RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
-            throw failure;
-        }
+        proxy.serverAboutToStart(event);
     }
 
     @Mod.EventHandler
     public void serverStopped(FMLServerStoppedEvent event) {
-        ServerTaskSchedulers.stop();
-        ServerNetworkRuntime.stop();
-        ServerMachineIdentities.stop();
+        proxy.serverStopped();
     }
 
 }

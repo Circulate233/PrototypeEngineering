@@ -6,7 +6,13 @@
 
 ## 当前状态
 
-- 用户要求已调整优先级：先补具体功能，不再优先细化调度底座。PM需求START/TICK/END和内置资源/FE/属性/检查点/选择器已有真实执行；PN逐配方研究/计算扩展、研究启动/队列/阶段、奖励和下载事件仍未迁移，不能用网络账本或通用coordinator代替完成证明。后续先按[配方功能核对](recipe-feature-parity.md)补齐业务链，CT仍最后。
+- 功能优先。独立复审确认PM配方有需求阶段、选择提交回调、动态匹配条件/脚本、检查点/属性效果、进程组件钩子；这些Java调用已迁，CT尚缺。此前将“没有顶层events字段”泛化为“没有运行时配方回调/DSL”的说法已修正，具体源码证据见[PM配方事件复审](pm-recipe-events-audit.md)。
+
+- 研究功能本阶段已实现：公开定义/阶段/公式/冻结注册；双来源资格与真实startCondition；TeamResearchCompletion按个人/直属队伍策略创建等级及UNCLAIMED资格、准确事务补偿；ResearchRewardClaimer按固定选择执行事件与物品片段并恢复；玩家/队伍NBT。外部callback/checkpoint异常保留准确状态后原样传播，显式RETRY_LATER才作为业务暂停。尚未接完整研究队列/手动与研究站推进/逐配方研究计算消费者/服务器存档/领取packet和UI/下载/物品交互冻结，见[研究功能](research-features.md)。
+
+- CommonProxy/ClientProxy用途已修正：主类四个现有生命周期方法仅委托；CommonProxy负责配置、能力、GUI、定义注册及服务器启动/停止。ClientProxy.preInit先调用super，再注册模型事件；模型辅助类不再自行订阅。已对照Cleanroom源码确认ModelRegistryEvent在preInit分发后触发，客户端注册时序有效。
+
+- 本阶段验证：`gradlew.bat spotlessApply build --console=plain`通过626项测试、95 suites，零失败/错误/跳过（新增研究行为测试33项）。本机IDEA MCP对所有本阶段涉及的59个src Java及Tags共60文件逐文件errorsOnly:false，零错误/警告/弱警告、无超时；MCP build_project成功。报告`build/reports/idea/research-and-proxies-final.json`。未启动Minecraft/服务端，实机交互仍未验收。
 
 - 调度器planned所有权已实现：公开PlannedExecution按advance/awaitExit/finished/cancel职责划分，内部factory不暴露任意host提交。TaskScheduler在普通join后先持准确cycle再执行，旧pending在任何新业务前恢复，正常false不故障、不丢ordinary队列；初始取消后等实际退出并有界清理，跨tick只清理。取消未确认或await无退出证明均保留，wholecycle完成加退出证明才开放boundary。tryClose在原lane上先清理，closingRequested保留关闭请求，tick清完也须再确认线程池终止才排卸载。prepare新增beforeDispatch，复用原runner；真实机器factory、组件cycle/登记代、PN消费者和纯prepare扩展仍待接，mode仍拒绝。见[调度所有权](scheduler-planned-ownership.md)。
 

@@ -380,6 +380,8 @@ com.circulation.prototype_eng
 
 公开定义和值类型放在所属 `api.*` 包，内部功能包直接使用它们，不再复制一份同名内部定义。内部状态、调度细节、NBT 实现和具体 TileEntity 留在功能包。
 
+启动生命周期通过侧代理组织：主类只将 Forge 生命周期委托给 `CommonProxy`；双端通用的配置、能力、注册及服务器启动/停止逻辑在 `CommonProxy`。`ClientProxy` 继承对应方法，先调用 `super`，再增加客户端初始化。客户端模型事件由 `ClientProxy.preInit` 注册，辅助模型类不再自行注册另一份订阅。
+
 “计算网络”与“网络消息”通过 `computing` 和 `sync` 区分，避免同一个 network 包同时承载两种含义。AE2 是基础依赖，可在 API 签名与内部实现中直接使用；不要求所有 AE2 调用都经过一个等价的包装接口层。
 
 ### 5.2 契约职责与实际类名

@@ -1,0 +1,176 @@
+package com.circulation.prototype_eng.api.research;
+
+import com.circulation.prototype_eng.api.persistence.NbtCodec;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.common.util.Constants;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
+
+/** Direct ITEM_ONLY research source. Personal research travels with players instead of this state. */
+public final class TeamOwnedResearch {
+    public static final NbtCodec<Snapshot> CODEC = new SnapshotCodec();
+    private final ResearchRegistry registry;
+    private Snapshot state;
+    @Nullable private Completion writer;
+
+    public TeamOwnedResearch(String teamId, ResearchRegistry registry) {
+        this.registry = Objects.requireNonNull(registry);
+        if (!registry.isFrozen()) { throw new IllegalStateException("Research registry is not ready"); }
+        state = new Snapshot(teamId, Object2IntMaps.emptyMap());
+    }
+
+    public synchronized String teamId() { return state.teamId(); }
+    public synchronized int completedLevel(ResourceLocation id) { return state.levels().getInt(Objects.requireNonNull(id)); }
+    public synchronized Object2IntMap<ResourceLocation> completedLevelsSnapshot() { return state.levels(); }
+    public synchronized Snapshot snapshot() { return state; }
+    public synchronized boolean busy() { return writer != null; }
+
+    ResearchRegistry registry() { return registry; }
+
+    /** Restore data only; a pending completion or download owns no serializable permission. */
+    public synchronized void restore(Snapshot saved) {
+        requireAvailable();
+        if (!state.teamId().equals(saved.teamId())) { throw new IllegalArgumentException("Team snapshot identity changed"); }
+        for (var entry : saved.levels().object2IntEntrySet()) { requireLevel(entry.getKey(), entry.getIntValue()); }
+        state = saved;
+    }
+
+    @SuppressWarnings("ReturnOfInnerClass") // The receipt intentionally retains its exact source until settlement.
+    public synchronized Completion prepareCompletion(ResourceLocation id, int level) {
+        requireAvailable();
+        requireLevel(id, level);
+        int before = state.levels().getInt(id);
+        return acquire(id, Math.max(before, level));
+    }
+
+    /** Download source consumption shares the completion writer; rollback retains its exact baseline. */
+    @SuppressWarnings("ReturnOfInnerClass") // A download must compensate the same source that it reserved.
+    public synchronized Completion prepareSourceMutation(ResourceLocation id, int expectedBeforeLevel, int afterLevel) {
+        requireAvailable();
+        requireLevel(id, expectedBeforeLevel);
+        if (afterLevel < 0 || afterLevel > expectedBeforeLevel || state.levels().getInt(id) != expectedBeforeLevel) {
+            throw new IllegalArgumentException("Invalid team research source transition");
+        }
+        return acquire(id, afterLevel);
+    }
+
+    private Completion acquire(ResourceLocation id, int level) {
+        var levels = new Object2IntOpenHashMap<>(state.levels());
+        if (level == 0) { levels.removeInt(id); }
+        else { levels.put(id, level); }
+        writer = new Completion(state, new Snapshot(state.teamId(), levels), level > state.levels().getInt(id));
+        return writer;
+    }
+
+    private void requireLevel(ResourceLocation id, int level) {
+        var definition = registry.require(id);
+        if (definition.specialOnly() || definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.ITEM_ONLY
+                || level < 1 || level > definition.maxLevel()) {
+            throw new IllegalArgumentException("Invalid direct team research level: " + id + " = " + level);
+        }
+    }
+
+    private void requireAvailable() {
+        if (writer != null) { throw new IllegalStateException("Team research source has an active writer"); }
+    }
+
+    /** Concrete source transaction; it never invokes addon callbacks. */
+    public final class Completion implements ReversibleTransaction {
+        private final Snapshot before;
+        private final Snapshot after;
+        private final boolean levelRaised;
+        private boolean committed;
+        @Nullable private Resolution terminal;
+
+        private Completion(Snapshot before, Snapshot after, boolean levelRaised) {
+            this.before = before;
+            this.after = after;
+            this.levelRaised = levelRaised;
+        }
+
+        public boolean levelRaised() { return levelRaised; }
+
+        @Override public void commit() {
+            synchronized (TeamOwnedResearch.this) {
+                if (writer != this || terminal != null || committed || state != before) {
+                    throw new IllegalStateException("Team completion no longer owns its baseline");
+                }
+                state = after;
+                committed = true;
+            }
+        }
+
+        @Override public void complete() { settle(Resolution.COMPLETED); }
+        @Override public void rollback() { settle(Resolution.ROLLED_BACK); }
+
+        private void settle(Resolution expected) {
+            synchronized (TeamOwnedResearch.this) {
+                if (terminal == expected) { return; }
+                if (terminal != null || writer != this || state != (committed ? after : before)
+                        || expected == Resolution.COMPLETED && !committed) {
+                    throw new IllegalStateException("Team completion has incompatible state");
+                }
+                if (expected == Resolution.ROLLED_BACK) { state = before; }
+                terminal = expected;
+                writer = null;
+            }
+        }
+
+        @Override public Resolution resolution() {
+            synchronized (TeamOwnedResearch.this) { return terminal == null ? Resolution.REVERSIBLE : terminal; }
+        }
+    }
+
+    public record Snapshot(String teamId, Object2IntMap<ResourceLocation> levels) {
+        public Snapshot {
+            Objects.requireNonNull(teamId);
+            if (teamId.isBlank() || !teamId.equals(teamId.trim())) { throw new IllegalArgumentException("Invalid stable team id"); }
+            var copy = new Object2IntOpenHashMap<ResourceLocation>();
+            for (var entry : Objects.requireNonNull(levels).object2IntEntrySet()) {
+                if (entry.getKey() == null || entry.getIntValue() < 1) { throw new IllegalArgumentException("Invalid saved team research"); }
+                copy.put(entry.getKey(), entry.getIntValue());
+            }
+            levels = ResearchSnapshots.levels(copy);
+        }
+    }
+
+    private static final class SnapshotCodec implements NbtCodec<Snapshot> {
+        @Override public NBTTagCompound encode(Snapshot value) {
+            var tag = new NBTTagCompound();
+            tag.setInteger("Version", 1);
+            tag.setString("Team", value.teamId());
+            var levels = new NBTTagList();
+            for (var entry : value.levels().object2IntEntrySet()) {
+                var item = new NBTTagCompound();
+                item.setString("Id", entry.getKey().toString());
+                item.setInteger("Level", entry.getIntValue());
+                levels.appendTag(item);
+            }
+            tag.setTag("Levels", levels);
+            return tag;
+        }
+
+        @Override public Snapshot decode(NBTTagCompound tag) {
+            StrictNbt.requireKeys(tag, "Version", "Team", "Levels");
+            if (StrictNbt.requireInt(tag, "Version") != 1) { throw new IllegalArgumentException("Unsupported team research version"); }
+            var list = StrictNbt.requireList(tag, "Levels", Constants.NBT.TAG_COMPOUND);
+            var levels = new Object2IntOpenHashMap<ResourceLocation>();
+            for (int index = 0; index < list.tagCount(); index++) {
+                var entry = list.getCompoundTagAt(index);
+                StrictNbt.requireKeys(entry, "Id", "Level");
+                var id = StrictNbt.requireId(entry, "Id");
+                int level = StrictNbt.requireInt(entry, "Level");
+                if (level < 1 || levels.putIfAbsent(id, level) != 0) { throw new IllegalArgumentException("Invalid or duplicate team research level"); }
+            }
+            return new Snapshot(StrictNbt.requireString(tag, "Team"), levels);
+        }
+    }
+}

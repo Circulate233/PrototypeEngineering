@@ -4,11 +4,13 @@
 
 ## 当前检查点
 
-- 用户最新纠偏：功能优先，停止脱离功能主线继续细化调度。PM需求三阶段与内置效果已接真实执行；PN逐配方研究/计算扩展、研究业务、奖励及下载事件仍缺失。先读[配方功能核对](recipe-feature-parity.md)，不能把测试数量/基础接口视为这些功能完成。
+- 配方事件已按用户要求由独立子代理重查：PM并非只有机器tick；选择提交回调、动态匹配脚本、检查点/属性效果、进程组件都有实际入口，PE对应Java调用已有，CT桥仍最后。此前宽泛的“没有配方runtime回调/DSL”已纠正，见[配方事件复审](pm-recipe-events-audit.md)。功能优先，不继续脱离业务细化调度。
+- 新增研究定义/冻结注册、双来源有效等级与真实startCondition、完成传播、奖励领取/片段恢复及NBT；33项研究行为测试。尚未接研究队列/手动与研究站推进/逐配方研究计算消费者/完整存档和领取入口，不能称研究已完整迁移，见[研究功能](research-features.md)。
+- 生命周期按侧代理整理：主类仅委托，CommonProxy承载双端通用初始化及server生命周期，ClientProxy.preInit先super再注册唯一客户端模型处理；辅助模型类不重复订阅。
 - 本阶段接入TaskScheduler的planned执行所有权：PlannedExecution四方法/包内factory，在普通join后先保留准确cycle再advance；旧pending先于任何新业务，false保留提交队列，取消与实际退出分别确认。tryClose先使用原lane清理，正常pending保留现场；closingRequested阻止tick恢复后提前排卸载。runPrepare补beforeDispatch句柄。实际机器factory、复合组件/生命周期接线、pureprepare与PN预算仍待完成，正式mode仍拒绝，见scheduler-planned-ownership.md。
 - 已具备机器暂停边界：ComponentMap.captureDispatch固定同一dispatch，normal逐项推进并保持机器fail-fast；MachineLifecycle.beginScheduled持RUNNING至全部已观察工作槽确认quiescent，retire/fault后只清理。基础API已测试，尚未接MachineInstance拦截、跨机器scope与TaskScheduler；下一步先处理pending优先清理、源lane关闭顺序已由调度器持有；真实组件接线仍待完成，详见machine-tick-boundaries.md、scheduler-planned-ownership.md。
 - 上一阶段已接入真实多宿主阶段协调器：TickGroup先整体捕获/持lease、共享callback作用域并统一释放；PlannedRecipeCoordinator按真实current-stage获取/拒绝补偿/成功批次source apply→owner提交→原lane确认→release/ack推进，保留pending与实际退出。runner派发前交付Batch、直接异常完整stop/freeze。服务器调度、纯prepare扩展及PN预算仍未接入，PLANNED_PARALLEL继续拒绝。阶段本地提交、不推送，原23份修改保留未暂存。
-- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过 593 项测试（91 suites，无失败/错误/跳过）；IDEA MCP 对 336 个 src Java 和 Tags 共 337 文件逐个 `errorsOnly:false`，最终零错误/警告/弱警告且无超时；MCP build_project 成功。证据 `build/reports/idea/scheduler-planned-ownership-final.json`。实际 Forge/GUI/模型交互未运行验证。
+- 最近验证（2026-11-07）：`gradlew.bat spotlessApply build --console=plain` 通过626项测试（95 suites，无失败/错误/跳过）；IDEA MCP对本阶段涉及的59个src Java与Tags共60文件逐个`errorsOnly:false`，零错误/警告/弱警告且无超时；MCP build_project成功。证据`build/reports/idea/research-and-proxies-final.json`。此前未改动Java沿用上一阶段337文件检查，未运行游戏或服务端。
 - 预算：begin/end 每 server END 事件一次，capture epoch 不充额度；同 tick 首次成功队伍供给固定，revoke/失败/队伍消失返回不清余额。lease 按实际请求，每机器每 logical 维度一次，中心免标准 THREAD。研究初始numeric与普通余额独立。receipt过期不能commit，rollback仅退原book；去重键含machine/source/sequence，不保留receipt反向引用。owner许可重验全部Capture，worker只读current；重验成本须在正式planned边界整合。
 - planned：借用 worker/serial source lanes；接受、实际开始及发布结果均检查共同 deadline。NEW/QUEUED 停止后不执行，RUNNING 为不确定结果；保留已发布结果，迟到返回不覆盖。Batch 退出证明独立于结果屏障，中断等待也必须等实际退出。旧 PM planned 工位 process 始终为空，PN commit 仅计算 receipt；当前协调器已复用真实 RecipeProcess 当前阶段；纯prepare/服务器接线待续，不能按整张配方重复投料。审计与边界见 planned-execution.md、planned-migration-audit.md。
 - 资源批次：全部context一次try-claim，source单域/owner全域scope自动短锁，跨屏障保留逻辑独占；ordinary多域先退锁再等。source实际退出后owner业务commit前后重验授权，成功先决定COMPLETE再完成；rollback先业务后原lane tokens。业务与token均按准确实例query，UNKNOWN不重试，成功项不重放。全部确认后owner释放fence并发布捕获通知；owner invalidate需scope。普通修改不侵占token apply/终态及独立失效额度，见deferred-resource-batches.md、transaction-recovery.md。
@@ -26,7 +28,7 @@
 
 ## 下一步
 
-1. 先按recipe-feature-parity.md迁移实际功能：PN逐配方研究/计算条件的扩展注册与执行、研究定义/启动/队列/阶段推进/完成、奖励及下载事件。核对旧真实入口再复用，不能只写模型、接口或预算底座；Java功能先完整，CraftTweaker最后。
+1. 先按recipe-feature-parity.md补完整实际功能：PN逐配方研究/计算条件消费者，研究队列/手动与研究站阶段推进、材料提交、存档所有者及完成/领取接线，随后下载事件。复用本轮已经完成的研究定义/资格/完成/奖励步骤，不能把可调用步骤视为服务器全链已通；Java先完整，CraftTweaker最后。
 2. 将研究与普通配方消费者接到真实计算供给/阶段限额、队伍当前状态及预算，保留numeric独立、lease共享与准确原代补偿。角色与账本已经存在，不能只检查共同gate或worker current()就跳过具体配方条件和提交校验。
 3. 结合具体功能连接真实MachineController/Registration/MachineInstance与机器cursor、完整生命周期和planned cycle。已有调度持有pending/取消/退出/tryClose，优先复用；纯prepare/frozen input/result、内部工作预算与PN向量receipt仍待完成，正式mode仍拒绝，不先扩展无业务消费者的底座。
 4. 完成严格两阶段JSON/注册、结构预览/投影/切片/BOM/display override、复杂渲染、每池默认/自定义JEI及其他未取消功能，最后CraftTweaker。Applied-Flux继续暂缓，保留v1.0.0:dev。
@@ -47,7 +49,8 @@
 | 已确认需求/功能范围 | [development-spec.md](development-spec.md)，R 编号 |
 | 实际完成度/验证证据 | [implementation-status.md](implementation-status.md) |
 | 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
-| 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md) |
+| 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
+| 研究定义/资格/完成传播/奖励执行与服务器缺口 | [research-features.md](research-features.md)，api/research、research |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md)，api/recipe、api/machine/workslot |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md)，api/gui、api/client/gui、container/MachineContainer |
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md)，item、OrientationToolConfig |
