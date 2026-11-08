@@ -6,6 +6,8 @@
 
 ## 当前状态
 
+- 2026-11-08 用户进一步澄清：基类职责原则适用于所有已公开的继承扩展点，已同步到开发文档 5.2，并由 R33 引用。共同机制、契约及必要身份/绑定/所有权不变量由基类保持，默认实体/组件/业务选择由本仓库具体实现绑定；注册工厂与消费者实际调用可扩展创建/查询/行为入口。只读核对当前 R31/R33 的 typed T/Class/create 全链、真实 controllerFactory/createItem 派发、canonical type/Item 对应校验、GUI/仓室能力接口及 AE 无参创建合同，未发现新的扩展阻碍或语义回退。不可变值对象可保留 final；具体实现可固定默认类型和业务选择，已承诺的继承扩展点不得封闭；本次为三文档澄清，沿用 R33 既有验证，没有新增源码或重跑测试/MCP/build。
+
 - 2026-11-08 结构 D2 GUI/交互/JEI 本阶段实现与验证已完成。StructurePreviewGui 直接继承 AEBaseGui；StructurePreviewScreens、公开 concrete Scene/Panel 供机器原 GUI 和独立 RecipePoolJeiPage 组合。机器子页复用原 Container/window，HEI 即时父页保留；GuiOpen/InitPre/InitPost 按真实原生顺序，精确 screen/player/world/connection/container/window/catalog owner 和 scoped close 保护处理嵌套替换、撤销、取消与返回，不保留旧窗口输入权限。AE原Slot/x/y/enabled快照在取消/重入中恢复；viewer不执行inventory click、AE wheel库存操作或MouseTweaks，HEI slots为空。Esc/背包/Back等原生已消费按下等待release；内嵌camera跨draw刷新准确时间戳/坐标，并跨普通关屏持有准确button的一次up消费凭据，新的同button down先撤销旧凭据。
 
 - 相机平滑轨道/平移/缩放、自转暂停、viewport/scissor/ray/pick共同坐标已接；相对Layer只限制场景和世界投影，不减少full BOM。材料使用long与fastutil addTo，保留unknown/mismatch/unloaded和整行混合匹配过滤；代表项选择按完整StructureDisplay身份，occurrence按子边路径选片。View用Request.advance剩余visits逐cell/BOM/prune续办，索引完整后才发布model；观察稀疏状态/knownCounts避免完成时完整unknown初始化。材料native名字按model/代表项/resource/语言失效，rows按token/count/name/query/sort/filter/scan缓存，稳定帧不重建/重排；变更时全BOM排序和单次全cell点击拾取仍是显式CPU边界。Scene mesh/overlay游标独立，不撤销D1轮换样本pending。ProjectionOrientations复用AE v1.1.0 rotateClockwiseAround(axis.getOpposite())：其正UP实为WEST，预览正向契约NORTH/UP→EAST，以首转/逆转与全24向四转行为验证；不改C/D1变换。

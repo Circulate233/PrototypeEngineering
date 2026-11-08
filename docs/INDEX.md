@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-08 最新基类职责澄清已同步[需求 5.2](development-spec.md#52-契约职责与实际类名)及 R33：所有公开继承扩展点保留共同机制/必要不变量与真实泛型和可重写入口，默认实现选择由具体类绑定，注册/消费者实际使用扩展入口。当前 R31/R33 的创建/查询/factory/GUI/能力链只读核对无新阻碍；不可变值对象可保留 final；具体实现可固定默认类型和业务选择，已承诺的继承扩展点不得封闭。本次三文档更新沿用 R33 既有验证，源码和验证运行没有新增；D2 已本地提交 b0dd852，下一步 D3 与其他未取消能力继续。
+
 - 2026-11-08 结构 D2 GUI/交互/JEI 本阶段实现与验证已完成：直接 AEBaseGui 与公开 concrete Scene/Panel 组合，机器原容器/准确父页返回、HEI 内嵌及独立结构页、相机/拾取/层/全结构 long BOM/代表项/occurrence 切片、D1 mesh/邻接与 owned TESR-SNBT 已接。原生事件与重入 owner 撤销、已消费鼠标 release 跨关屏、增量 cell/BOM/prune 索引与按状态/资源/语言变化材料缓存已闭环；方向复用实际 AE API 的相反轴满足 NORTH/UP→EAST。focused47/3、受影响82/8、最终正常完整 build1486 tests /183 suites 全过；41 Java 本机 MCP 全级零、完整项目文件读回/磁盘41/41一致、MCP build成功，85源码资源 raw SHA 构建及MCP后稳定。40 PNG 与原路径/NOTICE 保留；精确写前/固定推广/窄修/失败与最终验证/89路径交接入口 `build/staging/structure-preview-gui/`，见[结构定义](structures.md)、[JEI](jei.md)。未推送、未启动Minecraft/服务端/Bootstrap/FML；真实GL/TESR/HEI输入和网络包实机未验收。下一步D3成型模型/动画/Bloom/隐藏及其他未取消能力继续，不能把D2算整个预览完成。
 
 - 2026-11-08 控制器/仓室物理基类泛型修复已实现并验证：抽象 `HatchBlock<T>` / `MachineControllerBlock<T extends AEBaseTile & MachineControllerHost>` 保留真实类令牌、typed 创建/查询/状态/交互；仅 ResourceHatchBlock、EnergyHatchBlock、BasicMachineControllerBlock 绑定默认结果。原生无参入口已修默认仓首次准确附着模式/等级补齐、默认控制器 validate 前数据/完整朝向捕获，NBT/显式配置优先且装配/owner窗口保留。新增4真实配置行为；focused8/3、受影响298/43、正常完整build1439 tests /180 suites全过；13 Java本机MCP全级零、项目文件读回/磁盘13/13一致、MCP build成功、构建及MCP后raw SHA稳定。准确写前/冻结delta/验证入口 `build/staging/block-tile-generics/`，见[仓室](hatches.md)、[控制器](controller-integration.md)、[机器声明](machine-types.md)。阶段本地提交由精确差异流程完成；未推送、未启动Minecraft/服务端/Bootstrap/FML，真实World/注册表交互未验收。D2/D3仍按原检查点继续。
