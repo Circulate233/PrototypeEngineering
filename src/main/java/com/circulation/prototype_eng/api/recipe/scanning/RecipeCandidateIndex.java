@@ -8,6 +8,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.Objects;
 
 /**
  * Pure optional candidate filtering inside an immutable scope. Empty groups denote the complete
@@ -25,4 +27,50 @@ import java.util.Set;
 public interface RecipeCandidateIndex {
     @Nullable
     Collection<MachineRecipe> lookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope);
+
+    /**
+     * Optional incremental lookup. The default invokes the original callback once after a credit;
+     * that opaque callback is cooperative. The catalog charges every returned member separately.
+     * A cursor must keep partial opinions private until advance returns true.
+     */
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    default Cursor beginLookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope) {
+        return new Cursor() {
+            private boolean complete;
+            @Nullable private Collection<MachineRecipe> result;
+
+            @Override
+            public boolean advance(RecipeWorkBudget budget) {
+                Objects.requireNonNull(budget);
+                if (complete) {
+                    return true;
+                }
+                if (!budget.take()) {
+                    return false;
+                }
+                result = lookup(machine, groups, scope);
+                complete = true;
+                return true;
+            }
+
+            @Override
+            public @Nullable Collection<MachineRecipe> result() {
+                if (!complete) {
+                    throw new IllegalStateException("Index opinion is incomplete");
+                }
+                return result;
+            }
+        };
+    }
+
+    interface Cursor {
+        boolean advance(RecipeWorkBudget budget);
+
+        @Nullable Collection<MachineRecipe> result();
+
+        /** A live capture is a search observation, never admission authority. */
+        default boolean current() {
+            return true;
+        }
+    }
 }

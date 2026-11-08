@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-08 块二 B 扫描内部工作预算本阶段实现与验证已完成：真实 RecipeScanningSystem 经原机器游标暂停到同一 planned owner，目录/索引、factory、属性继承、约束/START probe、需求捕获和存储预留/结算按实际访问续办；ScanLimits 的候选/probe 限额与 RecipeWorkBudget 独立。只允许 captureOnlyPreparation 捕获穿过等待中的纯资源准备，同轮完整捕获后才派发，FE/opaque 回调保持原序；旧 Stage.acquire 同步与后续子段语义保持。原授权/deadline 后重验，UNKNOWN/真实未退出保留原 token、receipt 与清理义务，部分原生预留及退款溢出预检已覆盖。受影响 629 tests / 83 suites、最后授权重验 41 tests / 3 suites、最后正常完整 build 1377 tests / 174 suites 全通过；52 Java 本机 IDEA MCP errorsOnly:false 全级零、完整项目文件读回/磁盘 52/52 一致、MCP build_project 成功，52 Java 构建前后 SHA 稳定。准确写前与最终输入同时冻结，原 41 个受影响失败及修复证据保留于 `build/staging/recipe-scan-budget/verification/`，见[正式执行](planned-execution.md)、[配方](recipes.md)、[网络消费者](network-recipes.md)与[功能核对](recipe-feature-parity.md)。外部合作回调、完整首次 tick 等价投影、结构预览/复杂渲染及实机验收仍有边界；未推送、未启动 Minecraft 或服务端。
+
 - 2026-11-08 结构 B 运行中重载、准确既有/独立宿主配置代撤销与客户端权威目录/缓存同步已实现并验证：实际 `/pe_structures reload` 经原 scheduler join/待确认义务边界，复用 A 完整解析与原子目录替换；整批旧配置先撤销，再暂停/安装新代并重建同朝向绑定，旧 worker 无权发布。实际 Loaded 记录后自动登记独立宿主，显式 owner 保留原 cadence；live session 的 foreign scheduler 构造显式拒绝且无登记残留。服务端会话/序号+16 KiB 分块同步完整几何/name/display DAG，部分数据保留旧 view/cache，完成后一次替换，断连清理。23 项 B 行为、受影响 187 tests / 24 suites、完整 build 1308 tests / 164 suites 全通过；24 Java 本机 IDEA MCP errorsOnly:false 全级零、完整项目文件读回/磁盘一致、MCP build_project 成功，26 源码资源构建前后及 24 Java MCP SHA 稳定，独立 max 审计闭环。见[结构定义](structures.md)，准确 formal-before/冻结候选/修正 delta/最终统一清单与验证证据 `build/staging/structure-reload/`。预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染及实机验收仍待继续；本阶段实现与验证已完成，未推送、未启动游戏或服务端。
 
 - 2026-11-08 结构 A 启动期严格两阶段 JSON/共享发布本阶段实现与验证已完成：PreInit 只冻结 DTO，PostInit 冻结内置/外部谓词工厂并解析全部 JSON/Java DAG，完整目录、机器结构引用与装配经一个私有不可变快照原子发布；未被机器引用的定义也保留，translationKey/display 与 matcher 分离，昼夜使用实际 DAYTIME。新增 21 项行为，受影响 112 tests / 14 suites、完整 build 1285 tests / 161 suites 全通过；18 Java IDEA MCP errorsOnly:false 全级零、完整 read_file 项目文件文本/磁盘一致、MCP build_project 成功，18 Java 构建前后与 MCP 检查 SHA 稳定。见[结构定义](structures.md)及 `build/staging/structure-json/` 的准确写前/最终快照与证据。后续 B 的实际结果见上方检查点；投影/切片/BOM/display override 消费与复杂渲染未计完成。A 已本地提交 `63247b8b5c2652c7909835b023a2f94d5e2584f9`，未推送，未启动游戏或服务端。
@@ -25,7 +27,7 @@
 - 研究默认 GUI 与 AE2 分页同步已接：目录/队列/奖励、文案/图标、Java 打开及开始/接管/黑名单/领取。请求绑定原窗口、玩家、队伍和准确队列项，奖励保留本人永久资格；详情见[研究界面](research-gui.md)。
 
 - PN 普通配方研究/计算已接通：有序扩展注册、机器默认与逐配方条件合并、真实选中数据中心、阶段占用/提交/补偿。算力等 numeric 随并行量缩放；THREAD 按整机 UUID 只占 1，不随工位或 Java 线程数重复。START/扫描只检查，工作 TICK 占用，零时长 START 占用一次。见[配方消费者](network-recipes.md)。
-- 服务器 CONCURRENT 网络机器已自动转入 owner 协调，原组件游标在工位处理处暂停，材料/FE 来源 lanes 仍并行，结算后恢复后续 normal/post；pending、卸载及旧 tick 保留准确清理义务。公共三参 scheduler 默认接正式机器宿主；普通 CONCURRENT 网络 admission/refresh 由服务器注入，扫描内部预算归 2B。
+- 服务器 CONCURRENT 网络机器已自动转入 owner 协调，原组件游标在工位处理处暂停，材料/FE 来源 lanes 仍并行，结算后恢复后续 normal/post；pending、卸载及旧 tick 保留准确清理义务。公共三参 scheduler 默认接正式机器宿主；普通 CONCURRENT 网络 admission/refresh 由服务器注入，扫描内部预算已由 2B 接入并验证。
 - 真实计算组件物品供给已接通：AEItemKey 精确注册、真实 committed 槽、long 数量、单物品上限和整机供给合并；提取预留仍供给，待插入输出不供给。捕获后的授权只读版本证明，可在材料/FE 锁及 source fence 内使用，见[计算资源](network-resources.md)。
 - 研究站自动服务器执行与世界会话已接：普通工作之前由 scheduler 持有原 execution，真实站点/共享 lease、合摊材料、numeric 独立限额及 END grant/completion 共用原 lanes。每段 START→一次成功 TICK→END，缺料只重试未成功阶段；当前 Schema 5 保存原站、可选原控制器方块凭据和完整材料，并包含接口式用户盘导入；永久破坏沿原进程 cancel 或精确 cold 局部终结，见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接：同一外层阶段逐段执行子 START/TICK/END；候选 Blocked/Failure 时，在原 fence 和 source lanes 撤销完整候选后缀，确认后尝试下一项，外层成功前缀保留。支持嵌套选择、产物链、满仓闭环与 modifier/overlay 顺序；普通 continuation 保留跨来源并行，见[检查点审计](checkpoint-execution-audit.md)。
@@ -40,9 +42,9 @@
 
 0. 扩展和 R30 接口式用户盘共同导入均已实现、验证并本地提交；盘物品/tier/布局由外部注册，无内置盘/等级表。永久破坏材料会话本阶段已接真实入口，最终证据见 `build/staging/research-station-destruction/`；背景修改及 `docs/INDEX.md~` 保留。
 
-1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；2A 正式 PLANNED_PARALLEL 与独立宿主已验证；下一步按[配方功能核对](recipe-feature-parity.md)接 2B 扫描内部工作预算。Java 先完整，CT 最后。
+1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；2A 正式 PLANNED_PARALLEL 与独立宿主已验证；2B 扫描内部预算已接并验证；下一步按[配方功能核对](recipe-feature-parity.md)继续剩余 Java 功能与结构/渲染联动。Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
-3. 2B 复用已验证的纯 kernel、实际预算游标、机器生命周期与 source lanes，接扫描内部预算；外部合作回调不冒充可抢占实现。整体重开发仍在进行。
+3. 2B 已复用纯 kernel、实际预算游标、机器生命周期与 source lanes 接入扫描内部预算；外部合作回调仍遵守原稳定/纯契约。继续结构预览/复杂渲染、JEI 额外联动及实机验收，整体重开发仍在进行。
 4. 结构 A 启动期严格两阶段 JSON/共享注册及 B 运行中重载、准确宿主撤销/刷新与客户端权威目录/缓存同步已实现验证；B 实现与验证已完成。继续结构预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染、结构准备工作预算、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
 ## 必须遵守

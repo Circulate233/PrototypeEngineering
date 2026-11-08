@@ -2,15 +2,15 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /** Ordered business effects sharing a terminal decision, retaining each exact cleanup receipt. */
 final class TransactionGroup implements ReversibleTransaction {
-    private final ObjectList<ReversibleTransaction> transactions;
+    private final List<? extends ReversibleTransaction> transactions;
     private final boolean[] terminal;
     private final boolean[] uncertain;
     @Nullable private Resolution decision;
@@ -19,10 +19,30 @@ final class TransactionGroup implements ReversibleTransaction {
     private boolean commitAttempted;
     private boolean validationAttempted;
     private boolean executing;
+    private int confirmed;
+    private int prepareCursor;
+    private int commitCursor;
+    private int validateCursor;
+    private int settleCursor = -1;
+    private int queryCursor = -1;
+    private boolean childSelected;
+    private boolean querySelected;
+    private boolean queryRetryable;
+    private boolean budgetPrepare;
+    private boolean budgetCommit;
+    private boolean budgetValidate;
+    @Nullable private Throwable settleFailure;
+    @Nullable private Throwable queryFailure;
 
     TransactionGroup(List<? extends ReversibleTransaction> transactions) {
-        this.transactions = new ObjectArrayList<>(transactions);
-        this.transactions.forEach(Objects::requireNonNull);
+        this(transactions, false);
+    }
+
+    static TransactionGroup frozen(List<? extends ReversibleTransaction> transactions) { return new TransactionGroup(transactions, true); }
+
+    private TransactionGroup(List<? extends ReversibleTransaction> transactions, boolean frozen) {
+        this.transactions = frozen ? transactions : new ObjectArrayList<>(transactions);
+        if (!frozen) this.transactions.forEach(Objects::requireNonNull);
         terminal = new boolean[transactions.size()];
         uncertain = new boolean[transactions.size()];
     }
@@ -100,8 +120,7 @@ final class TransactionGroup implements ReversibleTransaction {
                     if (terminal[index]) { continue; }
                     if (expected == Resolution.COMPLETED) { transaction.complete(); }
                     else { transaction.rollback(); }
-                    terminal[index] = true;
-                    uncertain[index] = false;
+                    confirm(index);
                 } catch (RuntimeException | Error cleanup) {
                     uncertain[index] = true;
                     failure = accumulate(failure, cleanup);
@@ -139,14 +158,176 @@ final class TransactionGroup implements ReversibleTransaction {
 
     private boolean confirmOrRetry(int index, ReversibleTransaction transaction) {
         var actual = Objects.requireNonNull(transaction.resolution());
-        if (actual == decision) { terminal[index] = true; uncertain[index] = false; return false; }
+        if (actual == decision) {
+            confirm(index); return false; }
         if (actual == Resolution.UNKNOWN) { return false; }
         if (actual == Resolution.REVERSIBLE) { return true; }
         throw new IllegalStateException("Composite child contradicts its terminal decision: " + actual);
     }
 
     private boolean allTerminal() {
-        for (boolean confirmed : terminal) { if (!confirmed) { return false; } }
+        return confirmed == terminal.length; }
+
+    private void confirm(int index) {
+        if (!terminal[index]) { terminal[index] = true; confirmed++; }
+        uncertain[index] = false;
+    }
+
+    @Override
+    public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget budget) {
+        requireIdle();
+        if (commitAttempted || decision != null || preparationAttempted && !budgetPrepare) throw new IllegalStateException("Cannot replay composite preparation");
+        preparationAttempted = true;
+        budgetPrepare = true;
+        executing = true;
+        try {
+            while (prepareCursor < transactions.size()) {
+                if (!selectChild(budget)) return null;
+                var accepted = transactions.get(prepareCursor).prepareCommitWithinBudget(budget);
+                if (accepted == null) return null;
+                childSelected = false;
+                if (!accepted) { budgetPrepare = false; return false; }
+                prepareCursor++;
+            }
+            preparationAccepted = true;
+            budgetPrepare = false;
+            return true;
+        } catch (RuntimeException | Error failure) { budgetPrepare = false; throw failure; }
+        finally { executing = false; }
+    }
+
+    @Override
+    public boolean commitWithinBudget(RecipeWorkBudget budget) {
+        requireIdle();
+        if (decision != null || commitAttempted && !budgetCommit || preparationAttempted && !preparationAccepted) throw new IllegalStateException("Cannot replay composite commit");
+        commitAttempted = true;
+        budgetCommit = true;
+        executing = true;
+        try {
+            while (commitCursor < transactions.size()) {
+                if (!selectChild(budget)) return false;
+                if (!transactions.get(commitCursor).commitWithinBudget(budget)) return false;
+                childSelected = false;
+                commitCursor++;
+            }
+            budgetCommit = false;
+            return true;
+        } catch (RuntimeException | Error failure) { budgetCommit = false; throw failure; }
+        finally { executing = false; }
+    }
+
+    @Override
+    public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget budget) {
+        requireIdle();
+        if (decision != null || !commitAttempted || budgetCommit || validationAttempted && !budgetValidate) throw new IllegalStateException("Cannot replay composite validation");
+        validationAttempted = true;
+        budgetValidate = true;
+        executing = true;
+        try {
+            while (validateCursor < transactions.size()) {
+                if (!selectChild(budget)) return null;
+                var accepted = transactions.get(validateCursor).validateCommitWithinBudget(budget);
+                if (accepted == null) return null;
+                childSelected = false;
+                if (!accepted) { budgetValidate = false; return false; }
+                validateCursor++;
+            }
+            budgetValidate = false;
+            return true;
+        } catch (RuntimeException | Error failure) { budgetValidate = false; throw failure; }
+        finally { executing = false; }
+    }
+
+    @Override public boolean completeWithinBudget(RecipeWorkBudget budget) { return settleWithinBudget(Resolution.COMPLETED, budget); }
+    @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) { return settleWithinBudget(Resolution.ROLLED_BACK, budget); }
+
+    private boolean settleWithinBudget(Resolution expected, RecipeWorkBudget budget) {
+        requireIdle();
+        if (decision != null && decision != expected) throw new IllegalStateException("Cannot change composite terminal decision");
+        if (allTerminal()) return true;
+        if (decision == null) { decision = expected; childSelected = false; }
+        if (settleCursor == -1) settleCursor = expected == Resolution.COMPLETED ? 0 : transactions.size() - 1;
+        executing = true;
+        try {
+            while (settleCursor >= 0 && settleCursor < transactions.size()) {
+                if (!selectChild(budget)) return false;
+                int index = settleCursor;
+                var transaction = transactions.get(index);
+                if (!terminal[index]) {
+                    if (uncertain[index]) {
+                        try {
+                            var actual = transaction.resolutionWithinBudget(budget);
+                            if (actual == null) return false;
+                            if (actual == expected) confirm(index);
+                            else if (actual == Resolution.REVERSIBLE) uncertain[index] = false;
+                            else if (actual != Resolution.UNKNOWN) throw new IllegalStateException("Composite child contradicts its terminal decision: " + actual);
+                        } catch (RuntimeException | Error failure) {
+                            settleFailure = accumulate(settleFailure, failure);
+                            if (failure instanceof VirtualMachineError fatal) throw fatal;
+                        }
+                    }
+                    if (!terminal[index] && !uncertain[index]) {
+                        try {
+                            boolean done = expected == Resolution.COMPLETED ? transaction.completeWithinBudget(budget) : transaction.rollbackWithinBudget(budget);
+                            if (!done) return false;
+                            confirm(index);
+                        } catch (RuntimeException | Error failure) {
+                            uncertain[index] = true;
+                            settleFailure = accumulate(settleFailure, failure);
+                            if (failure instanceof VirtualMachineError fatal) throw fatal;
+                        }
+                    }
+                }
+                childSelected = false;
+                settleCursor += expected == Resolution.COMPLETED ? 1 : -1;
+            }
+            settleCursor = -1;
+            var failure = settleFailure;
+            settleFailure = null;
+            rethrow(failure);
+            if (!allTerminal()) throw new IllegalStateException("Composite cleanup requires exact recovery proof");
+            return true;
+        } finally { executing = false; }
+    }
+
+    @Override
+    public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+        requireIdle();
+        if (decision == null) return Resolution.REVERSIBLE;
+        if (allTerminal()) return decision;
+        if (queryCursor == -1) { queryCursor = 0; queryRetryable = true; }
+        executing = true;
+        try {
+            while (queryCursor < transactions.size()) {
+                if (!querySelected) { if (!budget.take()) return null; querySelected = true; }
+                int index = queryCursor;
+                if (!terminal[index] && uncertain[index]) {
+                    try {
+                        var actual = transactions.get(index).resolutionWithinBudget(budget);
+                        if (actual == null) return null;
+                        if (actual == decision) confirm(index);
+                        else if (actual == Resolution.UNKNOWN) queryRetryable = false;
+                        else if (actual != Resolution.REVERSIBLE) throw new IllegalStateException("Composite child contradicts its terminal decision: " + actual);
+                    } catch (RuntimeException | Error failure) {
+                        queryFailure = accumulate(queryFailure, failure);
+                        if (failure instanceof VirtualMachineError fatal) throw fatal;
+                    }
+                }
+                querySelected = false;
+                queryCursor++;
+            }
+            queryCursor = -1;
+            var failure = queryFailure;
+            queryFailure = null;
+            rethrow(failure);
+            return allTerminal() ? decision : queryRetryable ? Resolution.REVERSIBLE : Resolution.UNKNOWN;
+        } finally { executing = false; }
+    }
+
+    private boolean selectChild(RecipeWorkBudget budget) {
+        if (childSelected) return true;
+        if (!budget.take()) return false;
+        childSelected = true;
         return true;
     }
 

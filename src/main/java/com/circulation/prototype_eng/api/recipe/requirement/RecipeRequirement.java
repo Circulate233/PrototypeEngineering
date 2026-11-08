@@ -65,7 +65,7 @@ public final class RecipeRequirement<C> {
             if (process.usesPurePreparation()) {
                 var prepared = type.system().prepare(process, effective, stage);
                 if (prepared != null) {
-                    return new PreparedRequirement(prepared);
+                    return new PreparedRequirement(ownerFacts(process, stage, prepared));
                 }
             }
             Supplier<RequirementTransaction> callback = () -> switch (stage) {
@@ -75,6 +75,20 @@ public final class RecipeRequirement<C> {
             };
             return process.usesPurePreparation() ? new PreparedRequirement(() -> process.withSynchronousRequirements(callback)) : callback.get();
         });
+    }
+
+    private static RequirementPreparation ownerFacts(RecipeProcess process, RecipeStage stage, RequirementPreparation prepared) {
+        return new RequirementPreparation() {
+            @Override public boolean ownerWorkMetered() { return prepared.ownerWorkMetered(); }
+            @Override public boolean captureOnlyPreparation() { return prepared.captureOnlyPreparation(); }
+            @Override public @Nullable RecipePureComputation computation() { return prepared.computation(); }
+            @Override public RequirementTransaction acquire() { return prepared.acquire(); }
+            @Override public void retainPureFacts() { prepared.retainPureFacts(); }
+            @Override public void withdrawPureFacts(RecipePureComputation expected) {
+                process.withdrawPureFacts(stage, expected);
+                prepared.withdrawPureFacts(expected);
+            }
+        };
     }
 
     /**
@@ -100,6 +114,11 @@ public final class RecipeRequirement<C> {
                 }
 
                 @Override
+                public boolean captureOnlyPreparation() {
+                    return prepared != null && prepared.captureOnlyPreparation();
+                }
+
+                @Override
                 public @Nullable RecipePureComputation computation() {
                     return prepared == null ? null : prepared.computation();
                 }
@@ -109,6 +128,17 @@ public final class RecipeRequirement<C> {
                     if (prepared != null) {
                         process.withPreparationContext(path, () -> {
                             prepared.retainPureFacts();
+                            return null;
+                        });
+                    }
+                }
+
+                @Override
+                public void withdrawPureFacts(RecipePureComputation expected) {
+                    if (prepared != null) {
+                        process.withPreparationContext(path, () -> {
+                            process.withdrawPureFacts(stage, expected);
+                            prepared.withdrawPureFacts(expected);
                             return null;
                         });
                     }

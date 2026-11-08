@@ -6,6 +6,14 @@
 
 ## 当前状态
 
+- 2026-11-08 块二 B 扫描内部工作预算本阶段实现与验证已完成。RecipeScanningSystem 在原组件/lifecycle 游标处把真实 ScanAttempt 交给 MachineRecipeExecution；同一 owner 以原 current attempt/deadline 驱动目录 union/顺序、index 交集、factory 增量创建、属性祖先/overlay 读取、固定 IO/START probe 与 admission，候选/probe 限额保持独立。内置访问在执行处计费，暂停保留准确游标、进程及预留，不用候选数掩盖内部成本；无义务的纯暂停只复用无授权事实，跨 tick 重捕获当前来源/许可。旧同步 scan 和 Stage.acquire 的子段保持原语义。
+
+- 同轮先捕获全部隐藏纯 kernel 再派发，Preparation/Prepared/Scoped/Stage 贯通精确 captureOnlyPreparation 许可；默认 false，资源初始事实/Timeline 捕获可推进，FE 和 opaque 副作用回调保持原序，Prepared entered 后不再允许穿越。root/nested preparation 派发前按 stage/path/expected identity 撤回进程缓存；严格嵌套 flat candidate parent 链恢复原 ancestor，pop 仍严格 LIFO。每个 continuation owner prepare 返回后重新检查 forwardAllowed 才捕获下一批，失权只沿原 rollback；successfulTicks 溢出先 O(1) 拒绝，正常同步 TICK 建立准确 activeTick。
+
+- StorageFence claim、ResourceBatch 分组/标量与事务预检、source apply/query/resolve、Slotted 原槽/部分日志和 notification 的内置循环均按实际工作续办；精确 partial native token 保留到确认，退款先按全量撤销量检查总余额溢出，再重验每个原 part，失败前不改槽/余额/revision。取消的原部分 claim 准确 drain 后，failed forward bind 的独立 additional cleanup 用原附加事务完成；UNKNOWN 业务完成前不退材料。source.fullySettled 使用 O(1) confirmed count，局部回退的 ROLLED_BACK 后缀不能掩盖仍 APPLIED 的历史前缀。明确 commit 拒绝决定 ROLLBACK 时本片继续原清理；正常 terminal batch 等待真实退出、消费/reclaim 一次 receipt；预算耗尽返回准确 pending，Success(false) 且 source 未 workYielded 仍为 UNKNOWN，不重播。外部默认 snapshot/matcher/comparator/opaque callback 是合作回调边界，标量算术保持必要溢出与事务预检，不能把外部回调内部耗时当作可抢占。
+
+- B 最初候选 92 tests / 12 suites 全过，但扩大受影响原运行 628 tests / 83 suites 有 41 failures；原固定49源码/XML与准确写前保留。按共同根因修复而非增预算或删业务断言；新增双槽退款溢出1项，最终受影响 629 tests / 83 suites 全过，最后两个授权重验定向 41 tests / 3 suites 全过。旧 PureRecipePreparation fixture 时机调整在原8单位预算驱动到 first hold 后取消，保留全部 hold/cancel/最终余额断言；另一次正常 full build 1377 tests / 174 suites 有2个研究站回归失败，原输入/XML保留；修正测试包装器在owner捕获前截取空kernel的时机并保留原reservation/终态，生产仅使明确Decision.ROLLBACK的commit拒绝在同片续原清理，原断言/预算不变，研究站/协调器/网络定向37 tests / 3 suites全过。overlap 强化为 workPerAdvance(1)、两实际 native worker latch 会合，晚 opaque 回调验证前两个 hold 已真实预留。最后正常完整 `gradlew.bat build --console=plain` 1377 tests / 174 suites，failure/error/skipped 均0，assemble/Spotless/test/check通过；52 Java 本机 MCP逐文件 `get_file_problems(errorsOnly:false)` 零错误/警告/弱警告，无 timeout/isError，完整 `read_file` 项目文件文本/磁盘52/52一致，不据此声称未保存 Document。MCP build_project成功、52 Java构建前后与最终MCP SHA一致。准确49写前+3追加写前、6文档真实写前、历史失败输入、checkpoint-12研究修正后52Java、最终统一清单/快照、原日志/XML、独立审计与保护结果见 `build/staging/recipe-scan-budget/verification/`。未推送，未启动Minecraft或服务端；本阶段不表示任意首次tick投影、结构预览/复杂渲染、JEI额外联动或游戏验收完成。
+
 - 2026-11-08 结构 A 启动期严格两阶段 JSON 与共享目录/机器装配原子发布本阶段实现与验证已完成。CommonProxy 的 PreInit 只严格解析并冻结结构 DTO，PostInit 经内置/外部谓词注册事件 freeze 后收集 Java 定义，解析完整 JSON/Java 子结构 DAG，并在全部机器引用/装配检查成功后一次发布 MachineTypeRegistry 的私有不可变 ResolvedRuntime；失败不发布半套状态。StructureCatalog 保留未被机器直接引用的定义及稳定代身份；模板/切片、canonical 子对象、独立候选 NBT OR 与额外谓词 AND、相对验证器读取/旋转、冻结 regex、translationKey/LocalizationEnum 名字与独立 display 均已接。DAYTIME 捕获真实 world.isDaytime，与 day-cycle WORLD_TIME 独立。详见[结构定义](structures.md)。
 
 - A 的独立候选审计四项已修复：Gson 2.2.4 的最小词法补丁只检查字符串外完整 token，合法 `1E-3` 继续交给外部数值参数，`truE/falsE` 拒绝；结构根只有真正不存在或可访问空目录才接受为空，非目录/读取失败报告；工厂未知 ID 准确定位 `$.validators[0].id`；整数按精确数值与 signed int 范围判断，`1/1.0/1e0` 等价，非整数拒绝且范围检查先于 stripTrailingZeros。不升级 Gson、不增加第二套解析器。新增 21 项真实纯行为测试，正常受影响运行 112 tests / 14 suites、完整 `gradlew.bat build --console=plain` 1285 tests / 161 suites 全部零失败/错误/跳过，assemble/Spotless/test/check 通过。18 Java 本机 IDEA MCP `get_file_problems(errorsOnly:false)` 零错误/警告/弱警告、无 timeout/isError，完整 `read_file` 项目文件文本与磁盘一致，不据此声称未保存 Document；MCP build_project `isSuccess:true`、`problems:[]`，18 Java 构建前后及 MCP 检查 SHA 一致。原始候选与审计、修复候选、准确 formal-before、统一 final 清单/快照及原始输出保存在 `build/staging/structure-json/`，测试 XML 见 `test-results-affected-final/` 和 `test-results-full-final/`。未推送，未启动 Minecraft 或服务端，未添加 Bootstrap/FML/native Block/Item 测试初始化。
@@ -45,7 +53,7 @@
 
 - PN 普通配方消费者已接通：NetworkRecipeExtensions 在真实注册事件中有序发布；NetworkRecipeWork 合并机器默认与逐配方研究/数值需求，真实 START/TICK/END 检查选中物理数据中心、按并行量占用 numeric，并按整机 UUID 共享一份 THREAD。扫描不占额度；授权失效与物料/FE/业务同阶段补偿，历史完成 tick 不重扣或退款。
 - 物理数据中心已有外部 DataCenterStorage 接口、MachineDataCenterStorage 组件及严格 NBT；普通数据库下载和自动云同步已接服务器，特殊/ITEM_ONLY 不自动升级，黑名单不删除已存内容。普通物品转换事件/扣料/扣级/产物交付与恢复已接；接口式分级盘编码/真实导入消费与数据库共同恢复已完成，使用方自行注册盘物品/等级布局。
-- 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 默认接 typed 正式机器，普通 CONCURRENT 网络 admission/refresh 由服务器注入。块一 pure prepare/预算与 2A 正式模式已接，扫描内部预算属于 2B。详见[配方消费者](network-recipes.md)。
+- 服务器默认 CONCURRENT 网络机器已自动进入 owner 协调：保留真实机器游标、扫描顺序、生命周期门限和原来源 lanes 并行；配方结算结束才运行后继 normal/post。多工位与别名不重复执行；旧 tick、卸载和 UNKNOWN 保留原代清理。显式 MAIN 沿用同步；独立三参 TaskScheduler 默认接 typed 正式机器，普通 CONCURRENT 网络 admission/refresh 由服务器注入。块一 pure prepare/预算、2A 正式模式及 2B 扫描内部预算均已接并验证。详见[配方消费者](network-recipes.md)。
 - 真实计算物品供给已接通：注册表在资源表 freeze 后发布；MachineComputerComponents 复用公开通用仓槽，按 committed 内容和 long 数量累计单物品限额后的供给。Sources/provider/StorageContext 版本证明在外部 FE/材料锁及 source fence 内不重读、不追加锁。未知普通物品不供给，实际仓负责内容恢复。
 - 研究站显式 Java 消费者已接通：真实站点捕获/续办、同维度合摊来源、完整材料周期及 END 同批 grant/completion。材料一次成功 TICK 与速度无关，独立并行基数为 1，保留后续选择/属性效果；原 source lanes/退出/UNKNOWN 逻辑复用。完整材料 codec 可对新宿主恢复，只重试未成功阶段。详见[研究站执行](research-stations.md)。
 - 检查点与候选局部回退已接真实执行：RequirementAlternatives 在候选开始前建立 ResourceBatch.Savepoint，Blocked/Failure 后只撤销候选及完整嵌套后缀，确认后按声明顺序改选。同步和 PlannedRecipeCoordinator 共用原 fence/来源 lanes；跨工位成功前缀保留，普通 continuation 仍可跨来源并行。UNKNOWN、超时及未退出回调保留原 Stage 和补偿义务，取消扩大为整批回退且不重放，见[检查点审计](checkpoint-execution-audit.md)。
@@ -55,7 +63,7 @@
 - 服务器奖励 Java 领取已接：ResearchWorld 持有准确 RewardSession，逐次完整世界检查点仅放行自己的玩家写入；旧 pending 先重写，组/片段不重放。ServerResearch.requestReward 走 MAIN 并重验实际玩家会话；确认落盘后清交付标签，登录及掉落后续加载补清已确认片段。平台文件证据与剩余恢复保护见[服务器奖励](research-rewards.md)。
 - 奖励明确未调用/零效果的尝试保存 RETRY_PLANNED，重试保持原计划。原生交互保护已接：必要 Mixin 在原 MAIN 方法阻止物品操作，保留死亡奖励并在 Clone 前移交，保护光标关闭/存档、装备损耗、掉落更新及漏斗提取；不取消玩家死亡。共享查询位于独立 API 包，第三方直接改栈仍须遵守该契约。确认清理先重写原 pending，不能根据只读内存快照提前清标签。
 - 奖励效果前持久凭据已接：prepare 保存玩家 PREPARED，世界保存 DELIVERING 后先持久 ISSUING 再操作物品；准确未发出恢复先保存 RETRY_PLANNED。玩家加载时合并 live/UUID.dat/单人 Data.Player，任一 ISSUING 或缺失源保留未知，防普通保存覆盖强证据；确认后仅删除准确自身凭据。
-- 接口式研究盘和特殊磁盘共同持久恢复、Schema 5 永久破坏材料会话与块一实际 pure prepare/预算已完成；仍待个人遗忘/管理员操作、2B 扫描内部预算、结构投影/复杂渲染/JEI 额外联动和最终 CT。普通物品化下载已真实接通，整体 PM/PN 重开发尚未完成。
+- 接口式研究盘和特殊磁盘共同持久恢复、Schema 5 永久破坏材料会话与块一实际 pure prepare/预算已完成；2B 扫描内部预算已完成；仍待个人遗忘/管理员操作、结构投影/复杂渲染/JEI 额外联动和最终 CT。普通物品化下载已真实接通，整体 PM/PN 重开发尚未完成。
 
 ## 阶段记录
 

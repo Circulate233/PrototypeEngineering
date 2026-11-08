@@ -19,6 +19,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 class SlottedSequentialReservationTest {
     private static final KeyType FIRST = new KeyType("sequence_first");
@@ -140,7 +141,11 @@ class SlottedSequentialReservationTest {
                 input.apply(); input.exposeApplied();
                 var output = accepted(storage.reserveInsert(storage.snapshot(), MATERIAL, Long.MAX_VALUE));
                 output.apply(); output.exposeApplied();
+                long revision = storage.snapshot().revision();
                 assertThrows(ArithmeticException.class, input::rollback);
+                assertEquals(revision, storage.snapshot().revision());
+                assertTrue(storage.context().isValid());
+                assertEquals(ResourceReservation.Resolution.APPLIED, input.resolution());
                 assertEquals(Long.MAX_VALUE, storage.amount(MATERIAL));
                 assertEquals(0, storage.insert(MATERIAL, 1, Actionable.SIMULATE));
                 output.rollback(); input.rollback();
@@ -149,6 +154,54 @@ class SlottedSequentialReservationTest {
                 assertNull(storage.getStack(1));
             });
         } finally { fence.release(); }
+    }
+
+    @Test
+    void multiSlotRollbackPreflightsTheWholeRefundBeforeAnySlotDependency() {
+        for (boolean budgeted : new boolean[]{false, true}) {
+            long capacity = Long.MAX_VALUE / 2;
+            long originalAmount = capacity * 2;
+            var storage = buffer(2, capacity);
+            storage.insert(MATERIAL, originalAmount, Actionable.MODULATE);
+            var input = accepted(storage.reserveExtract(storage.snapshot(), MATERIAL, originalAmount));
+            var fence = fence(storage);
+            try {
+                fence.access(() -> {
+                    input.apply();
+                    input.exposeApplied();
+                    long laterAmount = capacity + 1;
+                    var output = accepted(storage.reserveInsert(storage.snapshot(), MATERIAL, laterAmount));
+                    output.apply();
+                    output.exposeApplied();
+                    // Each individual refund fits long, but the complete two-slot refund does not.
+                    assertEquals(Long.MAX_VALUE, Math.addExact(laterAmount, capacity));
+                    long revision = storage.snapshot().revision();
+                    if (budgeted) {
+                        assertFalse(input.rollbackWithinBudget(new RecipeWorkBudget(0)));
+                        var budget = new RecipeWorkBudget(1);
+                        assertThrows(ArithmeticException.class, () -> input.rollbackWithinBudget(budget));
+                        assertEquals(0, budget.remaining());
+                    } else {
+                        assertThrows(ArithmeticException.class, input::rollback);
+                    }
+                    assertEquals(revision, storage.snapshot().revision());
+                    assertTrue(storage.context().isValid());
+                    assertEquals(ResourceReservation.Resolution.APPLIED, input.resolution());
+                    assertEquals(laterAmount, storage.amount(MATERIAL));
+                    assertEquals(capacity, storage.getAmount(0));
+                    assertEquals(1, storage.getAmount(1));
+                    output.rollback();
+                    input.rollback();
+                    assertEquals(originalAmount, storage.availableAmount(MATERIAL));
+                    assertEquals(capacity, storage.getAmount(0));
+                    assertEquals(capacity, storage.getAmount(1));
+                    assertEquals(ResourceReservation.Resolution.ROLLED_BACK, input.resolution());
+                    assertEquals(ResourceReservation.Resolution.ROLLED_BACK, output.resolution());
+                });
+            } finally {
+                fence.release();
+            }
+        }
     }
 
     @Test void exposureRequiresAppliedStateAndTheExactRetainedFenceUntilTerminal() {

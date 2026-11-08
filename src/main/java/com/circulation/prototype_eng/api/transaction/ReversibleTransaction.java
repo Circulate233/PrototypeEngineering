@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.api.transaction;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import org.jetbrains.annotations.Nullable;
+
 /**
  * One acquired business effect. Commit retains complete undo information, including on failure;
  * rollback undoes acquisition and commit. Completion relinquishes undo after the whole batch decides
@@ -36,6 +39,55 @@ public interface ReversibleTransaction {
      * certify that the transition must not be repeated. Queries must retain the original scope.
      */
     default Resolution resolution() { return Resolution.UNKNOWN; }
+
+    /**
+     * Resumes preparation on this exact transaction and caller scope. Null means work yield,
+     * false is the original known rejection, and true is completed preparation. A yield is neither
+     * failure nor UNKNOWN and must resume the same instance without replaying completed effects.
+     * The default charges one cooperative legacy callback; owned implementations meter their loops.
+     */
+    default @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget budget) {
+        return budget.take() ? prepareCommit() : null;
+    }
+
+    /**
+     * Resumes read-only validation on the same committed transaction. Null means work yield;
+     * false rejects the original batch normally; true certifies completed validation. No result
+     * grants a new authority, acquisition, commit attempt, or callback scope.
+     */
+    default @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget budget) {
+        return budget.take() ? validateCommit() : null;
+    }
+
+    /** True completes this original commit; false yields its same cursor with full undo retained. */
+    default boolean commitWithinBudget(RecipeWorkBudget budget) {
+        if (!budget.take()) return false;
+        commit();
+        return true;
+    }
+
+    /** True confirms original completion; false yields, without certifying any terminal outcome. */
+    default boolean completeWithinBudget(RecipeWorkBudget budget) {
+        if (!budget.take()) return false;
+        complete();
+        return true;
+    }
+
+    /** True confirms original rollback; false yields, without replaying an uncertain callback. */
+    default boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+        if (!budget.take()) return false;
+        rollback();
+        return true;
+    }
+
+    /**
+     * Null is a query work yield. UNKNOWN is the original unresolved outcome; REVERSIBLE permits
+     * only the already decided terminal retry. Terminal values remain exact receipts from this
+     * original transaction. A normal yield never becomes uncertainty merely because work paused.
+     */
+    default @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+        return budget.take() ? resolution() : null;
+    }
 
     enum Resolution { UNKNOWN, REVERSIBLE, COMPLETED, ROLLED_BACK }
 }

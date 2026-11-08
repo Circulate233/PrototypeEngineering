@@ -18,6 +18,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import com.circulation.prototype_eng.api.structure.StructureComponents;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
+import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 
 /**
  * Server-side machine boundaries migrated from PM. Attach once, after world attachment and before
@@ -368,6 +370,12 @@ public final class MachineLifecycle {
         return execution != null && execution.defer(Objects.requireNonNull(slots));
     }
 
+    /** Captures the exact scanner callback before any acquisition; the scheduler owns its attempt. */
+    public boolean deferRecipeScan(RecipeScanner scanner, ScanLimits limits) {
+        var execution = scheduledExecution;
+        return execution != null && execution.deferScan(Objects.requireNonNull(scanner), Objects.requireNonNull(limits));
+    }
+
     /**
      * One deferred lifecycle ownership transfer, controlled only by its creating server thread.
      * This handle does not dispatch or join workers. Callers retain it through source exit and exact
@@ -381,6 +389,8 @@ public final class MachineLifecycle {
         private boolean executing;
         private boolean finished;
         private boolean componentScope;
+        private boolean scanDispatched;
+        @Nullable private DeferredScan deferredScan;
         private final ReferenceOpenHashSet<MachineWorkSlots> completedDeferred = new ReferenceOpenHashSet<>();
         @Nullable private MachineWorkSlots deferred;
         @Nullable private Throwable failure;
@@ -409,7 +419,7 @@ public final class MachineLifecycle {
         public boolean runComponent(Runnable execution) {
             Objects.requireNonNull(execution);
             requireOwner();
-            if (deferred != null) { throw new IllegalStateException("Previous component work is still deferred"); }
+            if (deferred != null || deferredScan != null) { throw new IllegalStateException("Previous component work is still deferred"); }
             if (!lifecycle.schedulingAllowed()) { return false; }
             componentScope = true;
             try { invoke(execution); }
@@ -420,12 +430,37 @@ public final class MachineLifecycle {
         private boolean defer(MachineWorkSlots slots) {
             if (Thread.currentThread() != owner || !executing || !componentScope || finished) { return false; }
             if (slots.owner() != lifecycle.machine) { throw new IllegalArgumentException("Deferred slots belong to another machine"); }
+            if (deferredScan != null) throw new IllegalStateException("A scanner attempt must settle before work slots");
             if (completedDeferred.contains(slots)) { return true; }
             if (deferred != null && deferred != slots) { throw new IllegalStateException("One normal callback deferred multiple work-slot hosts"); }
             deferred = slots;
             observe(List.of(slots));
             return true;
         }
+
+        private boolean deferScan(RecipeScanner scanner, ScanLimits limits) {
+            if (Thread.currentThread() != owner || !executing || !componentScope || finished) return false;
+            if (scanner.host().owner() != lifecycle.machine) throw new IllegalArgumentException("Deferred scanner belongs to another machine");
+            if (scanDispatched) return true; // One actual scan/admission opportunity for this captured machine tick.
+            if (deferred != null) throw new IllegalStateException("Work slots must settle before a later scan callback");
+            scanDispatched = true;
+            deferredScan = new DeferredScan(scanner, limits);
+            return true;
+        }
+
+        public @Nullable DeferredScan deferredRecipeScan() {
+            requireOwner();
+            return deferredScan;
+        }
+
+        public void finishDeferredRecipeScan(DeferredScan expected) {
+            requireOwner();
+            if (deferredScan != Objects.requireNonNull(expected)) throw new IllegalArgumentException("Different deferred scanner");
+            if (expected.scanner().pendingScan() != null) throw new IllegalStateException("Scanner still owns its attempt");
+            deferredScan = null;
+        }
+
+        public record DeferredScan(RecipeScanner scanner, ScanLimits limits) { }
 
         @Nullable public MachineWorkSlots deferredRecipeWork() {
             requireOwner();
@@ -475,7 +510,7 @@ public final class MachineLifecycle {
             executing = true;
             try {
                 observe(lifecycle.capture().workSlots());
-                if (deferred != null) { return false; }
+                if (deferred != null || deferredScan != null) { return false; }
                 boolean quiescent = true;
                 for (var slots : observedSlots) { quiescent &= slots.quiescent(); }
                 if (!quiescent) { return false; }

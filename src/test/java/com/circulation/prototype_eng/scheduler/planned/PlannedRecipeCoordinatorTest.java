@@ -41,6 +41,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 class PlannedRecipeCoordinatorTest {
     private static final Runnable NO_OP = () -> {};
@@ -510,7 +513,13 @@ class PlannedRecipeCoordinatorTest {
     private static final class Backend implements AutoCloseable {
         private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
         private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
-        private final PlannedTaskExecutor tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+        private final PlannedTaskExecutor tasks;
+
+        private Backend() { this(System::nanoTime); }
+
+        private Backend(LongSupplier nanoTime) {
+            tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, nanoTime);
+        }
         @Override public void close() {
             workers.shutdownNow();
             lane.shutdownNow();
@@ -519,5 +528,79 @@ class PlannedRecipeCoordinatorTest {
                 assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
             } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
         }
+    }
+
+    @Test
+    void oneUnitPreparedOwnerSlicesMeterTheActualTickAttributeChainAndKeepTheOriginalEnergySource() {
+        var host = host();
+        var energy = energy(NO_OP);
+        host.owner().components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(energy), List.of()));
+        var io = RecipeRequirements.ENERGY.requirement(id("budget_energy"), new EnergyRequirement(0, 1, 0, 0, false));
+        var process = process(host, "budget_speed", 2, io);
+        process.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 1);
+        var calls = new AtomicInteger();
+        for (int index = 0; index < 256; index++) {
+            String modifierId = "budget_speed_" + index;
+            process.attributes().addModifier(StandardMachineAttributes.PROCESS_SPEED, new AttributeModifier() {
+                @Override public String id() { return modifierId; }
+                @Override public Operation operation() { return Operation.ADDITION; }
+                @Override public double apply(double base, double current) { calls.incrementAndGet(); return current; }
+            });
+        }
+        // This exercises allowance accounting with real lanes, independently of wall-clock load.
+        var clock = new AtomicLong();
+        var originalDeadline = PlannedDeadline.after(Duration.ofSeconds(5), clock.get());
+        try (var backend = new Backend(clock::get)) {
+            var coordinator = new PlannedRecipeCoordinator(backend.tasks, List.of(host), originalDeadline,
+                new PlannedCancellationToken(), () -> true, clock::get);
+            coordinator.workPerAdvance(1);
+            for (int step = 0; step < 20000 && !coordinator.finished(); step++) {
+                clock.addAndGet(1000);
+                int before = calls.get();
+                coordinator.advance(originalDeadline);
+                assertTrue(calls.get() - before <= 1, "Each actual modifier callback consumes the owner slice");
+                if (coordinator.hasActiveSources()) coordinator.awaitExit();
+            }
+            assertTrue(coordinator.finished());
+            assertNull(coordinator.failure());
+            assertNull(coordinator.stopReason());
+        }
+        assertEquals(256, calls.get());
+        assertEquals(1, process.state().successfulTicks());
+        assertEquals(1.0, process.state().progress());
+        assertEquals(99, energy.storedEnergy());
+        process.requirePersistenceBoundary();
+    }
+
+
+    @Test
+    void aLaterCleanupFatalEscapesTheOwnerImmediatelyEvenAfterAnOrdinaryBusinessFailure() {
+        var ordinary = new IllegalStateException("ordinary business failure");
+        var fatal = new OutOfMemoryError("later cleanup fatal");
+        var commits = new AtomicInteger();
+        var rollbacks = new AtomicInteger();
+        var host = host();
+        var cleanup = requirement("a_fatal_cleanup", (_, _) -> new RequirementTransaction() {
+            private Resolution state = Resolution.REVERSIBLE;
+            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+            @Override public void commit() { commits.incrementAndGet(); }
+            @Override public void rollback() { rollbacks.incrementAndGet(); state = Resolution.ROLLED_BACK; throw fatal; }
+            @Override public Resolution resolution() { return state; }
+        });
+        var rejection = requirement("z_ordinary", (_, _) -> { throw ordinary; });
+        process(host, "fatal_after_ordinary", 1, cleanup, rejection);
+        try (var backend = new Backend()) {
+            var coordinator = coordinator(backend, List.of(host));
+            assertSame(fatal, assertThrows(OutOfMemoryError.class, () -> coordinator.advance(deadline())));
+            assertEquals(0, commits.get());
+            assertEquals(1, rollbacks.get());
+            assertSame(ordinary, coordinator.failure(), "Ordinary aggregation remains the failure history");
+            assertSame(Reason.WORKER_FAILURE, coordinator.stopReason());
+            assertSame(ordinary, assertThrows(IllegalStateException.class, () -> coordinator.advance(deadline())));
+            for (int step = 0; step < 100 && !coordinator.finished(); step++) coordinator.advance(deadline());
+            assertTrue(coordinator.finished());
+            assertEquals(1, rollbacks.get(), "Exact terminal recovery does not replay the fatal callback");
+        }
+        assertNull(host.pendingTickBatch());
     }
 }

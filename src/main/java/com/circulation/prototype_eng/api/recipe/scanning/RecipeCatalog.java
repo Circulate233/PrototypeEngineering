@@ -15,18 +15,18 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.Iterator;
 
 /** Frozen canonical recipes in pool/declaration order; empty query groups select the complete catalog. */
 public final class RecipeCatalog {
     private final Map<ResourceLocation, MachineRecipe> recipes;
     private final List<MachineRecipe> orderedRecipes;
     private final Map<ResourceLocation, List<MachineRecipe>> byGroup;
-    private final Reference2IntOpenHashMap<MachineRecipe> order = new Reference2IntOpenHashMap<>();
 
     public RecipeCatalog(Collection<RecipePool> pools) {
         Objects.requireNonNull(pools, "pools");
@@ -41,7 +41,6 @@ public final class RecipeCatalog {
                     }
                     continue;
                 }
-                order.put(recipe, order.size());
                 for (var group : recipe.recipeGroups()) {
                     groups.computeIfAbsent(group, _ -> new ObjectArrayList<>()).add(recipe);
                 }
@@ -64,63 +63,194 @@ public final class RecipeCatalog {
      * select their union. Each index sees the same full immutable scope; nonnull results intersect.
      */
     public List<MachineRecipe> candidates(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
-        Objects.requireNonNull(machine, "machine");
-        Objects.requireNonNull(groups, "groups");
-        Objects.requireNonNull(indexes, "indexes");
-        var groupCopy = new ObjectLinkedOpenHashSet<ResourceLocation>();
-        for (var group : groups) {
-            groupCopy.add(Objects.requireNonNull(group, "group"));
+        var pass = beginCandidates(machine, groups, indexes);
+        var budget = new RecipeWorkBudget(Long.MAX_VALUE);
+        while (!pass.advance(budget)) {
+            if (!pass.current()) {
+                pass = beginCandidates(machine, groups, indexes);
+            }
         }
-        var frozenGroups = ObjectSets.unmodifiable(groupCopy);
-        var indexCopy = new ObjectArrayList<RecipeCandidateIndex>(indexes.size());
-        for (var index : indexes) {
-            indexCopy.add(Objects.requireNonNull(index, "index"));
+        return pass.result();
+    }
+
+    /**
+     * Begins without copying or enumerating caller collections. They must remain unchanged until
+     * the pass freezes them. All library visits, including index output validation, use this budget.
+     */
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public CandidatePass beginCandidates(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
+        return new CandidatePass(machine, groups, indexes);
+    }
+
+    public final class CandidatePass {
+        private final MachineInstance machine;
+        private final Iterator<ResourceLocation> inputGroups;
+        private final Iterator<RecipeCandidateIndex> inputIndexes;
+        private final ObjectLinkedOpenHashSet<ResourceLocation> groupCopy = new ObjectLinkedOpenHashSet<>();
+        private final ObjectArrayList<RecipeCandidateIndex> indexCopy = new ObjectArrayList<>();
+        private final ReferenceOpenHashSet<MachineRecipe> scoped = new ReferenceOpenHashSet<>();
+        private final ObjectArrayList<MachineRecipe> orderedScope = new ObjectArrayList<>();
+        private Reference2IntOpenHashMap<MachineRecipe> agreements = new Reference2IntOpenHashMap<>();
+        private ObjectArrayList<RecipeCandidateIndex.Cursor> observed = new ObjectArrayList<>();
+        private ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
+        private ReferenceOpenHashSet<MachineRecipe> accepted;
+        private Set<ResourceLocation> frozenGroups;
+        private List<MachineRecipe> scope;
+        private Iterator<ResourceLocation> groupIterator;
+        private List<MachineRecipe> members;
+        private int memberCursor;
+        private int canonicalCursor;
+        private int indexCursor;
+        private int outputCursor;
+        private int opinions;
+        private RecipeCandidateIndex.Cursor lookup;
+        private Iterator<MachineRecipe> opinion;
+        private int proofCursor;
+        private int phase;
+        private boolean stale;
+
+        private CandidatePass(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
+            this.machine = Objects.requireNonNull(machine, "machine");
+            inputGroups = Objects.requireNonNull(groups, "groups").iterator();
+            inputIndexes = Objects.requireNonNull(indexes, "indexes").iterator();
         }
-        var scoped = new ReferenceOpenHashSet<MachineRecipe>();
-        var orderedScope = new ObjectArrayList<MachineRecipe>();
-        if (frozenGroups.isEmpty()) {
-            scoped.addAll(orderedRecipes);
-            orderedScope.addAll(orderedRecipes);
-        } else {
-            for (var group : frozenGroups) {
-                var members = byGroup.get(group);
-                if (members == null) {
-                    continue;
-                }
-                for (var recipe : members) {
-                    if (scoped.add(recipe)) {
-                        orderedScope.add(recipe);
+
+        public boolean advance(RecipeWorkBudget budget) {
+            Objects.requireNonNull(budget);
+            if (phase == 6) {
+                return true;
+            }
+            if (stale) {
+                return false;
+            }
+            while (true) {
+                if (phase == 0) {
+                    while (inputGroups.hasNext()) {
+                        if (!budget.take()) return false;
+                        groupCopy.add(Objects.requireNonNull(inputGroups.next(), "group"));
                     }
+                    while (inputIndexes.hasNext()) {
+                        if (!budget.take()) return false;
+                        indexCopy.add(Objects.requireNonNull(inputIndexes.next(), "index"));
+                    }
+                    frozenGroups = ObjectSets.unmodifiable(groupCopy);
+                    groupIterator = groupCopy.iterator();
+                    phase = 1;
+                }
+                if (phase == 1) {
+                    if (!groupCopy.isEmpty()) {
+                        while (members != null || groupIterator.hasNext()) {
+                            if (members == null) {
+                                if (!budget.take()) return false;
+                                members = byGroup.get(groupIterator.next());
+                                memberCursor = 0;
+                                if (members == null) continue;
+                            }
+                            while (memberCursor < members.size()) {
+                                if (!budget.take()) return false;
+                                scoped.add(members.get(memberCursor++));
+                            }
+                            members = null;
+                        }
+                    }
+                    phase = 2;
+                }
+                if (phase == 2) {
+                    while (canonicalCursor < orderedRecipes.size()) {
+                        if (!budget.take()) return false;
+                        var recipe = orderedRecipes.get(canonicalCursor++);
+                        if (groupCopy.isEmpty()) scoped.add(recipe);
+                        if (scoped.contains(recipe)) orderedScope.add(recipe);
+                    }
+                    scope = ObjectLists.unmodifiable(orderedScope);
+                    phase = scope.isEmpty() ? 6 : 3;
+                    if (phase == 6) return true;
+                }
+                if (phase == 3) {
+                    while (indexCursor < indexCopy.size()) {
+                        if (lookup == null) {
+                            if (!budget.take()) return false;
+                            lookup = Objects.requireNonNull(indexCopy.get(indexCursor).beginLookup(machine, frozenGroups, scope));
+                            observed.add(lookup);
+                        }
+                        if (!lookup.advance(budget)) {
+                            stale = !lookup.current();
+                            return false;
+                        }
+                        if (opinion == null) {
+                            var values = lookup.result();
+                            if (values == null) {
+                                lookup = null;
+                                indexCursor++;
+                                continue;
+                            }
+                            opinions++;
+                            opinion = values.iterator();
+                            accepted = new ReferenceOpenHashSet<>();
+                        }
+                        while (opinion.hasNext()) {
+                            if (!budget.take()) return false;
+                            var candidate = Objects.requireNonNull(opinion.next(), "indexed candidate");
+                            if (recipes.get(candidate.id()) != candidate || !scoped.contains(candidate)) {
+                                throw new IllegalArgumentException("Indexed recipe is foreign, counterfeit or outside its group scope: " + candidate.id());
+                            }
+                            if (accepted.add(candidate)) agreements.addTo(candidate, 1);
+                        }
+                        opinion = null;
+                        lookup = null;
+                        indexCursor++;
+                    }
+                    phase = 4;
+                }
+                if (phase == 4) {
+                    while (outputCursor < scope.size()) {
+                        if (!budget.take()) return false;
+                        var recipe = scope.get(outputCursor++);
+                        if (agreements.getInt(recipe) == opinions) result.add(recipe);
+                    }
+                    phase = 5;
+                }
+                if (phase == 5) {
+                    while (proofCursor < observed.size()) {
+                        if (!budget.take()) return false;
+                        if (!observed.get(proofCursor++).current()) {
+                            stale = true;
+                            return false;
+                        }
+                    }
+                    phase = 6;
+                    return true;
                 }
             }
-            orderedScope.sort(Comparator.comparingInt(order::getInt));
         }
-        if (orderedScope.isEmpty()) {
-            return ObjectLists.emptyList();
+
+        public boolean current() {
+            return !stale;
         }
-        var scope = ObjectLists.unmodifiable(orderedScope);
-        var remaining = new ReferenceOpenHashSet<>(scoped);
-        for (var index : indexCopy) {
-            var candidates = index.lookup(machine, frozenGroups, scope);
-            if (candidates == null) {
-                continue;
-            }
-            var accepted = new ReferenceOpenHashSet<MachineRecipe>();
-            for (var candidate : candidates) {
-                Objects.requireNonNull(candidate, "indexed candidate");
-                if (recipes.get(candidate.id()) != candidate || !scoped.contains(candidate)) {
-                    throw new IllegalArgumentException("Indexed recipe is foreign, counterfeit or outside its group scope: " + candidate.id());
-                }
-                accepted.add(candidate);
-            }
-            remaining.retainAll(accepted);
+
+        /**
+         * A later attempt may reuse only frozen catalog/scope facts. Every live index capture and
+         * partial opinion is discarded before reading a new tick; no old storage binding is a lease.
+         */
+        public void restartLiveIndexes() {
+            if (phase < 3) return;
+            agreements = new Reference2IntOpenHashMap<>();
+            observed = new ObjectArrayList<>();
+            result = new ObjectArrayList<>();
+            accepted = null;
+            lookup = null;
+            opinion = null;
+            indexCursor = 0;
+            outputCursor = 0;
+            proofCursor = 0;
+            opinions = 0;
+            stale = false;
+            phase = scope.isEmpty() ? 6 : 3;
         }
-        var result = new ObjectArrayList<MachineRecipe>(remaining.size());
-        for (var recipe : scope) {
-            if (remaining.contains(recipe)) {
-                result.add(recipe);
-            }
+
+        public List<MachineRecipe> result() {
+            if (phase != 6 || stale) throw new IllegalStateException("Candidate pass is incomplete or stale");
+            return ObjectLists.unmodifiable(result);
         }
-        return ObjectLists.unmodifiable(result);
     }
 }

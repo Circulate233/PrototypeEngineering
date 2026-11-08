@@ -185,12 +185,27 @@ class PureRecipePreparationTest {
         var second = host(secondHatch);
         var one = process(first, 0, requirement);
         var two = process(second, 0, requirement);
+        var opaqueCalls = new AtomicInteger();
+        var opaqueHost = host();
+        var opaque = new RecipeRequirementType<>(id("later_opaque"), new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                opaqueCalls.incrementAndGet();
+                assertEquals(0, Objects.requireNonNull(firstHatch.input()).availableAmount(material));
+                assertEquals(0, Objects.requireNonNull(secondHatch.input()).availableAmount(material));
+                return RequirementTransaction.SUCCESS;
+            }
+        }).requirement(id("opaque_after_native_reserves"), "owner");
+        var three = process(opaqueHost, 0, opaque);
         try (var backend = new Backend()) {
-            var coordinator = new PlannedRecipeCoordinator(backend.tasks, List.of(first, second), deadline(), new PlannedCancellationToken(), () -> true);
+            var coordinator = new PlannedRecipeCoordinator(backend.tasks, List.of(first, second, opaqueHost), deadline(), new PlannedCancellationToken(), () -> true);
+            coordinator.workPerAdvance(1);
             finish(coordinator);
             assertEquals(0, entered.getCount());
             assertEquals(RecipeProcess.Lifecycle.COMPLETED, one.state().lifecycle());
             assertEquals(RecipeProcess.Lifecycle.COMPLETED, two.state().lifecycle());
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, three.state().lifecycle());
+            assertEquals(1, opaqueCalls.get());
             assertEquals(0, Objects.requireNonNull(firstHatch.input()).amount(material));
             assertEquals(0, Objects.requireNonNull(secondHatch.input()).amount(material));
         }
@@ -340,6 +355,11 @@ class PureRecipePreparationTest {
             var coordinator = new PlannedRecipeCoordinator(backend.tasks, List.of(slots), deadline(), new PlannedCancellationToken(), () -> true);
             coordinator.workPerAdvance(8);
             assertFalse(coordinator.advance(deadline()));
+            int slices = 0;
+            while (first.energySnapshot().availableEnergy() != 0) {
+                assertFalse(coordinator.advance(deadline()));
+                assertTrue(++slices < 10_000);
+            }
             assertEquals(0, first.energySnapshot().availableEnergy());
             assertEquals(1, first.storedEnergy());
             assertEquals(1, last.energySnapshot().availableEnergy());

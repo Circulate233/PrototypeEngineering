@@ -48,7 +48,7 @@ ServerTaskSchedulers 为服务器会话安装 MachineRecipeExecutionFactory，�
 
 pending 保留准确 lifecycle 句柄和原始期限，失效 tick 只确认/补偿旧事务，不能继续下一阶段或后续 normal 回调。卸载与取消在来源实际退出、进程 post 及事务确认完成后才释放生命周期门限；UNKNOWN 保持 pending，不盲目重发完成回调。刷新网络只发生在来源工作之外。
 
-普通 CONCURRENT 网络 admission 属于内置 ServerTaskSchedulers。公共三参 TaskScheduler 默认安装泛化机器入口，Controller/Instance 或外部 PlannedMachineTask 包装交付已有 lifecycle 的真实机器即可选择正式模式，不需内部 factory 或服务器静态服务。当前性同时证明原登记、active、捕获 mode、原机器/lifecycle 与底层 mode；owner refresh 返回后再次重验才进入后继组件。旧 pending 不取得新 tick 授权。块一 pure prepare/实际需求工作预算与 2A 正式入口已接；扫描内部预算仍归 2B。
+普通 CONCURRENT 网络 admission 属于内置 ServerTaskSchedulers。公共三参 TaskScheduler 默认安装泛化机器入口，Controller/Instance 或外部 PlannedMachineTask 包装交付已有 lifecycle 的真实机器即可选择正式模式，不需内部 factory 或服务器静态服务。当前性同时证明原登记、active、捕获 mode、原机器/lifecycle 与底层 mode；owner refresh 返回后再次重验才进入后继组件。旧 pending 不取得新 tick 授权。块一 pure prepare/实际需求工作预算、2A 正式入口与 2B 扫描内部预算均已接并验证。扫描在原 machine/lifecycle 组件游标暂停，MachineRecipeExecution 复用同一 ScanAttempt、pure prepare 与 source lanes；candidate/probe 限额和内部 RecipeWorkBudget 独立。完整同轮捕获后才派发，FE/opaque 保持原副作用顺序，continuation owner prepare 返回后重验原 current/deadline。UNKNOWN、实际未退出、部分 token 和独立 additional cleanup 保留原义务，旧 pending 不续权或重复额度；外部合作回调和完整首次 tick 投影边界见[执行边界](planned-execution.md)。
 
 owner 先增量捕获资源数量及 revision，纯 worker 根据冻结数据计算倍率、随机输出和动态候选；owner 再捕获当前数量，验证原事实和来源版本，完成选择、预检与资源/FE 预留。动态 kernel 保留全部已排序匹配，owner 先过滤当前非零可用项，再应用 maxCandidates 并选择满足数量的项。来源变化不能让旧候选误消费；成功 START/历史 tick 的材料与效果不因计算暂停重复执行。
 

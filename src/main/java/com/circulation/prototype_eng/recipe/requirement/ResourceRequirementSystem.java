@@ -35,6 +35,8 @@ import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import java.util.Iterator;
 import org.jetbrains.annotations.Nullable;
+import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 
 /** PM's ordered multi-container resource IO, reserving actual quantities instead of simulating twice. */
 public final class ResourceRequirementSystem implements RecipeRequirementSystem<ResourceRequirement> {
@@ -63,8 +65,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         captured.advance(process.preparationBudget());
         String salt = "resource:" + process.requirementPath() + ":" + stage
             + (stage == RecipeStage.TICK ? ":" + process.state().successfulTicks() : "");
-        int parallels = RecipeParallelism.effective(process);
-        double chance = payload.chance().effective(process);
+        var parallelCapture = process.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+        var chanceCapture = payload.chance().attribute() == null ? null : process.attributes().beginValueCapture(payload.chance().attribute(), 1);
         var tick = process.captureTickContext();
         return new RequirementPreparation() {
             @Nullable
@@ -72,8 +74,12 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             @Nullable
             private ResourceAcquisition acquisition;
 
+            private boolean attributesReady;
+            private int parallels;
+            private double chance;
+
             private @Nullable ResourceComputation facts() {
-                if (computation == null && captured.complete) {
+                if (computation == null && captured.complete && attributesReady) {
                     var previous = process.takePureFacts(stage);
                     computation = previous instanceof ResourceComputation retained
                         && retained.matches(payload, stage, process.seed(), salt, parallels, chance, process.probabilityTuning(),
@@ -92,6 +98,11 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             }
 
             @Override
+            public boolean captureOnlyPreparation() {
+                return computation == null;
+            }
+
+            @Override
             public @Nullable RecipePureComputation computation() {
                 return facts();
             }
@@ -102,11 +113,25 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             }
 
             @Override
+            public void withdrawPureFacts(RecipePureComputation expected) {
+                if (computation != expected) throw new IllegalStateException("Pure facts belong to another resource binding");
+                process.withdrawPureFacts(stage, expected);
+            }
+
+            @Override
             public RequirementTransaction acquire() {
                 if (process.hatches() != hatches) {
                     return new ReservedRequirement(RecipeText.StorageChanged.blocked(), List.of());
                 }
                 var budget = process.preparationBudget();
+                if (!parallelCapture.current() || chanceCapture != null && !chanceCapture.current()) return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), List.of());
+                if (!attributesReady) {
+                    if (!parallelCapture.advance(budget) || chanceCapture != null && !chanceCapture.advance(budget)) return new PreparedRequirement(this);
+                    parallels = Math.max(1, (int) Math.floor(parallelCapture.result()));
+                    chance = payload.chance().percent() * Math.max(0, chanceCapture == null ? 1 : chanceCapture.result());
+                    if (!Double.isFinite(chance)) throw new IllegalStateException("Resource chance multiplier overflow");
+                    attributesReady = true;
+                }
                 if (computation == null) {
                     if (!captured.advance(budget)) {
                         return new PreparedRequirement(this);
@@ -138,7 +163,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private final AEKey2LongMap rawInputs = new AEKey2LongMap.LinkdOpenHashMap();
         private AEKey2LongMap consumed;
         private AEKey2LongMap checkedInputs;
-        private final ObjectArrayList<ResourceReservation> checks = new ObjectArrayList<>();
+        private ObjectArrayList<ResourceReservation> checks = new ObjectArrayList<>();
+        @Nullable private RecipeStageExecutor.Acquisition.FlatCandidate checksCleanup;
         @Nullable
         private Iterator<Object2LongMap.Entry<AEKey>> entries;
         @Nullable
@@ -180,10 +206,33 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                     cancel();
                     super.rollback();
                 }
+                @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+                    if (!cancelWithinBudget(budget)) return false;
+                    return super.rollbackWithinBudget(budget);
+                }
             };
         }
 
+        private void retainChecks() {
+            if (checksCleanup != null || !process.incrementalAcquisition()) return;
+            var retained = checks;
+            checksCleanup = process.capturePreparedCleanup(new RequirementTransaction() {
+                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+                @Override public List<ResourceReservation> reservations() { return retained; }
+                @Override public void commit() { }
+                @Override public void rollback() { }
+            });
+        }
+
         private boolean releaseChecks(RecipeWorkBudget budget) {
+            if (checksCleanup != null) {
+                checksCleanup.reject();
+                if (!checksCleanup.cleaned()) return false;
+                checksCleanup.releaseCleaned();
+                checksCleanup = null;
+                checks = new ObjectArrayList<>();
+                return true;
+            }
             while (!checks.isEmpty()) {
                 if (!budget.take()) {
                     return false;
@@ -195,10 +244,13 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
 
         private void cancel() {
-            releaseChecks(new RecipeWorkBudget(Long.MAX_VALUE));
-            if (selection != null) {
-                selection.rollback();
+            if (!cancelWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) throw new IllegalStateException("Preflight checks still own source cleanup obligations");
             }
+
+        private boolean cancelWithinBudget(RecipeWorkBudget budget) {
+            if (checksCleanup != null && !checksCleanup.cleaned()) return false;
+            if (!releaseChecks(budget)) return false;
+            return selection == null || selection.rollback(budget);
         }
 
         private RequirementTransaction advance(RecipeWorkBudget budget, RequirementPreparation binding) {
@@ -221,7 +273,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                                 if (entry.getLongValue() < 0) { throw new IllegalStateException("Negative available resource balance"); }
                                 if (entry.getLongValue() == 0) { continue; }
                                 if (!facts.knows(entry.getKey())) {
-                                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), owned);
+                                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), owned);
                                 }
                                 long old = available.getLong(entry.getKey());
                                 available.addTo(entry.getKey(), Math.min(entry.getLongValue(), Long.MAX_VALUE - old));
@@ -241,7 +293,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             }
                             selection = choices.selection();
                             if (selection.result() != ProcessResult.SUCCESS) {
-                                return new ReservedRequirement(selection.result(), owned);
+                                return ReservedRequirement.frozen(selection.result(), owned);
                             }
                         }
                         phase++;
@@ -277,13 +329,14 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                                 return pause(binding, owned);
                             }
                             if (!current.captures.get(verified++).current()) {
-                                return new ReservedRequirement(RecipeText.StorageChanged.blocked(), owned);
+                                return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), owned);
                             }
                         }
                         phase = facts.times() != facts.checkTimes() ? 3 : 6;
                     } else if (phase == 3 || phase == 4 || phase == 6 || phase == 7) {
                         boolean input = phase == 3 || phase == 6;
                         boolean preflight = phase < 6;
+                        if (preflight) retainChecks();
                         boolean needsInput = selection != null ? !selection.inputs().isEmpty() : !inputs.isEmpty();
                         if (reservation == null) {
                             reservation = new ReservationCursor(hatches,
@@ -297,7 +350,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                         reservation = null;
                         if (result != ProcessResult.SUCCESS) {
                             if (!preflight) {
-                                return new ReservedRequirement(result, owned);
+                                return ReservedRequirement.frozen(result, owned);
                             }
                             phase = 5;
                         } else if (phase == 4) {
@@ -310,18 +363,33 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             return pause(binding, owned);
                         }
                         if (result != ProcessResult.SUCCESS) {
-                            return new ReservedRequirement(result, owned);
+                            return ReservedRequirement.frozen(result, owned);
                         }
                         phase = 6;
                     } else {
                         if (selection != null && !selection.install(budget)) {
                             return pause(binding, owned);
                         }
-                        var reserved = new ReservedRequirement(ProcessResult.SUCCESS, owned);
+                        var reserved = ReservedRequirement.frozen(ProcessResult.SUCCESS, owned);
                         return selection == null ? reserved : new ResolvedResources(reserved, selection);
                     }
                 }
             } catch (RuntimeException | Error failure) {
+                if (process.incrementalAcquisition()) {
+                    if (checksCleanup != null) checksCleanup.reject();
+                    @SuppressWarnings("UnnecessaryLocalVariable") // Cleanup retains this exact list even if later cursor state changes.
+
+                    var retained = owned;
+                    var cleanup = process.capturePreparedCleanup(new RequirementTransaction() {
+                        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+                        @Override public List<ResourceReservation> reservations() { return retained; }
+                        @Override public void commit() { }
+                        @Override public void rollback() { if (selection != null) selection.rollback(); }
+                        @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) { return selection == null || selection.rollback(work); }
+                    });
+                    cleanup.reject();
+                    throw failure;
+                }
                 try {
                     cancel();
                 } catch (RuntimeException | Error cleanup) {
@@ -352,6 +420,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private int hatch;
         private int source;
         private boolean complete;
+        @Nullable private ReservationCaptureToken capture;
         private ProcessResult result = ProcessResult.SUCCESS;
 
         private ReservationCursor(List<ResourceHatch> hatches, AEKey2LongMap quantities, boolean input,
@@ -398,10 +467,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                     source = 0;
                 }
                 while (source < storages.size()) {
-                    if (!budget.take()) {
-                        return false;
-                    }
-                    var storage = storages.get(source++);
+                    if (remaining == 0) break;
+                    if (capture == null && !budget.take()) return false;
+                    var storage = storages.get(source);
                     var context = storage.context();
                     context.lock();
                     try {
@@ -410,23 +478,24 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             complete = true;
                             return true;
                         }
-                        var snapshot = storage.snapshotFor(key);
-                        long available = input ? snapshot.available().getLong(key) : storage.insert(key, remaining, Actionable.SIMULATE);
-                        if (available < 0 || !input && available > remaining) {
-                            throw new IllegalStateException("Storage violated simulated transfer contract");
+                        if (capture == null) {
+                            var snapshot = storage.snapshotFor(key);
+                            var nativeCapture = input ? storage.beginReserveExtract(snapshot, key, remaining) : storage.beginReserveInsert(snapshot, key, remaining);
+                            capture = new ReservationCaptureToken(storage.context(), nativeCapture);
+                            owned.add(capture); // One original handle is retained even before its native journal completes.
                         }
-                        long portion = Math.min(remaining, available);
-                        if (portion == 0) {
-                            continue;
-                        }
-                        var reserved = input ? storage.reserveExtract(snapshot, key, portion) : storage.reserveInsert(snapshot, key, portion);
-                        if (reserved.status() != ReservationResult.Status.ACCEPTED) {
+                        if (!capture.advance(budget)) return false;
+                        var reserved = Objects.requireNonNull(capture.result);
+                        long portion = capture.amount;
+                        if (portion < 0 || portion > remaining) throw new IllegalStateException("Storage violated reservation capture contract");
+                        if (reserved.status() != ReservationResult.Status.ACCEPTED && reserved.status() != ReservationResult.Status.INSUFFICIENT) {
                             result = RecipeText.StorageChanged.blocked();
                             complete = true;
                             return true;
                         }
-                        owned.add(Objects.requireNonNull(reserved.reservation()));
                         remaining -= portion;
+                        capture = null;
+                        source++;
                     } finally {
                         context.unlock();
                     }
@@ -443,6 +512,74 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             }
             complete = true;
             return true;
+        }
+    }
+
+    /** One inventory identity spans native partial capture, token transfer and exact source undo. */
+    private static final class ReservationCaptureToken implements ResourceReservation {
+        private final StorageContext context;
+        private final ResourceStorage.ReservationCapture capture;
+        @Nullable private ReservationResult result;
+        @Nullable private ResourceReservation token;
+        private long amount;
+        private boolean cancelled;
+        private ReservationCaptureToken(StorageContext context, ResourceStorage.ReservationCapture capture) {
+            this.context = context; this.capture = Objects.requireNonNull(capture);
+        }
+        private boolean advance(RecipeWorkBudget budget) {
+            if (result != null) return true;
+            if (!capture.advance(budget)) return false;
+            amount = capture.amount();
+            result = Objects.requireNonNull(capture.result());
+            token = result.reservation();
+            if (token != null && token.context() != context) throw new IllegalStateException("Captured reservation changed its physical context");
+            return true;
+        }
+        @Override public StorageContext context() { return context; }
+        @Override public boolean canApply() { return Boolean.TRUE.equals(canApplyWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))); }
+        @Override public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+            if (cancelled || result == null) return false;
+            return token == null ? budget.take() ? Boolean.TRUE : null : token.canApplyWithinBudget(budget);
+        }
+        @Override public void apply() {
+            if (cancelled || result == null) throw new IllegalStateException("Incomplete capture cannot apply");
+            if (token != null) token.apply(); // Preserve the native legacy all-domain lock contract.
+        }
+        @Override public boolean applyWithinBudget(RecipeWorkBudget budget) {
+            if (cancelled || result == null) throw new IllegalStateException("Incomplete capture cannot apply");
+            return token == null ? budget.take() : token.applyWithinBudget(budget);
+        }
+        @Override public boolean supportsSequentialUse() { return token == null || token.supportsSequentialUse(); }
+        @Override public void exposeApplied() { if (token != null) token.exposeApplied(); }
+        @Override public boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) { return token == null ? budget.take() : token.exposeAppliedWithinBudget(budget); }
+        @Override public void complete() {
+            if (result == null) throw new IllegalStateException("Incomplete capture cannot complete");
+            if (token != null) token.complete();
+        }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget budget) {
+            if (token != null) return token.completeWithinBudget(budget);
+            if (result == null) throw new IllegalStateException("Incomplete capture cannot complete");
+            return budget.take();
+        }
+        @Override public void rollback() {
+            if (cancelled) return;
+            if (token != null) {
+                token.rollback();
+            } else {
+                if (!capture.cancel()) throw new IllegalStateException("Native capture cleanup remains pending");
+            }
+            cancelled = true;
+        }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+            if (cancelled) return true;
+            boolean complete = token == null ? capture.cancel(budget) : token.rollbackWithinBudget(budget);
+            if (complete) cancelled = true;
+            return complete;
+        }
+        @Override public Resolution resolution() { return cancelled ? Resolution.ROLLED_BACK : token == null ? capture.resolution() : token.resolution(); }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+            if (cancelled) return Resolution.ROLLED_BACK;
+            return token == null ? capture.resolutionWithinBudget(budget) : token.resolutionWithinBudget(budget);
         }
     }
 

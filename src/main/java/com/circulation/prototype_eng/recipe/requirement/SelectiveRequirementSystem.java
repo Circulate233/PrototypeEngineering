@@ -29,6 +29,10 @@ import java.util.Objects;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
 import com.circulation.prototype_eng.recipe.PreparedRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import java.util.AbstractList;
 
 /**
  * PM's first available alternative, with provisional selection and one enclosing stage settlement.
@@ -162,14 +166,14 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         try {
             selection = state.begin(path, index);
         } catch (RuntimeException | Error failure) {
-            rollbackAfterFailure(child, child.reservations(), failure);
+            if (!process.incrementalAcquisition()) rollbackAfterFailure(child, child.reservations(), failure);
             throw failure;
         }
         try {
             return new StartTransaction(process, path, state, selection, child, modifiers);
         } catch (RuntimeException | Error failure) {
             state.discard(path, selection);
-            rollbackAfterFailure(child, child.reservations(), failure);
+            if (!process.incrementalAcquisition()) rollbackAfterFailure(child, child.reservations(), failure);
             throw failure;
         }
     }
@@ -212,10 +216,10 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         var selection = state == null ? null : state.selection(path);
         var payload = requirement.payload();
         if (stage == RecipeStage.START) {
-            if (selection != null || payload.candidates().stream().anyMatch(RecipeRequirement::usesContinuations)) {
+            if (selection != null) {
                 return null;
             }
-            return new FlatPreparation(process, path, payload, 0);
+            return new ShapePreparation(process, path, payload);
         }
         if (selection == null || selection.completed() || selection.index() < 0) {
             return null;
@@ -238,11 +242,63 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             }
 
             @Override
+            public void withdrawPureFacts(RecipePureComputation expected) {
+                child.withdrawPureFacts(expected);
+            }
+
+            @Override
             public RequirementTransaction acquire() {
-                var acquired = capture(child.acquire());
+                var transaction = child.acquire();
+                var candidate = process.capturePreparedCandidate(transaction);
+                if (candidate != null) return new PreparedRequirement(new ChosenCapture(process, candidate, stage, selection));
+                var acquired = capture(transaction);
                 return stage == RecipeStage.END ? new EndTransaction(acquired, selection) : acquired;
             }
         };
+    }
+
+    /** Keeps the selected child's original continuation while freezing its inventory incrementally. */
+    private record ChosenCapture(RecipeProcess process, RecipeStageExecutor.Acquisition.FlatCandidate candidate,
+                                 RecipeStage stage, SelectiveState.Selection selection) implements RequirementPreparation {
+        @Override public boolean ownerWorkMetered() { return true; }
+        @Override public @Nullable RecipePureComputation computation() { return null; }
+        @Override public RequirementTransaction acquire() {
+            var budget = process.preparationBudget();
+            if (!candidate.capture(budget) || !budget.take()) return new PreparedRequirement(this);
+            var child = new CapturedTransaction(candidate.result(), new FrozenReservations(candidate.reservations()), candidate.transaction());
+            candidate.transfer();
+            return stage == RecipeStage.END ? new EndTransaction(child, selection) : child;
+        }
+    }
+
+    /** Chooses the existing flat/continued branch after metering this effective payload's shape. */
+    private static final class ShapePreparation implements RequirementPreparation {
+        private final RecipeProcess process;
+        private final RequirementPath path;
+        private final SelectiveRequirement payload;
+        private final RecipeProcess.ContinuationShape shape;
+
+        private ShapePreparation(RecipeProcess process, RequirementPath path, SelectiveRequirement payload) {
+            this.process = process;
+            this.path = path;
+            this.payload = payload;
+            shape = process.beginContinuationShape(payload.candidates(), path);
+        }
+
+        @Override public boolean ownerWorkMetered() { return true; }
+        @Override public @Nullable RecipePureComputation computation() { return null; }
+
+        @Override
+        public RequirementTransaction acquire() {
+            var budget = process.preparationBudget();
+            if (!shape.advance(budget) || !budget.take()) return new PreparedRequirement(this);
+            return process.withPreparationContext(path, () -> {
+                if (shape.usesContinuations()) {
+                    return new Selecting(process, SelectiveState.getOrCreate(process), path, payload);
+                }
+                return new PreparedRequirement(new FlatPreparation(process, path, payload, 0));
+            });
+        }
     }
 
     /**
@@ -283,6 +339,11 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
 
         @Override
+        public void withdrawPureFacts(RecipePureComputation expected) {
+            if (child != null) child.withdrawPureFacts(expected);
+        }
+
+        @Override
         public RequirementTransaction acquire() {
             return process.withPreparationContext(path, () -> {
                 var state = SelectiveState.getOrCreate(process);
@@ -295,6 +356,8 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
 
         private RequirementTransaction finishCandidate(RequirementTransaction transaction) {
             return process.withPreparationContext(path, () -> {
+                var incremental = process.capturePreparedCandidate(transaction);
+                if (incremental != null) return new PreparedRequirement(new FlatCapture(this, incremental));
                 var continuation = transaction.continuation();
                 if (continuation != null && continuation.preparationPending()) {
                     var binding = new RequirementPreparation() {
@@ -314,23 +377,16 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
                         }
 
                         @Override
+                        public void withdrawPureFacts(RecipePureComputation expected) {
+                            continuation.withdrawPureFacts(expected);
+                        }
+
+                        @Override
                         public RequirementTransaction acquire() {
                             return finishCandidate(Objects.requireNonNull(continuation.acquireNext(), "Prepared candidate must produce its actual result"));
                         }
                     };
-                    return new PreparedRequirement(binding) {
-                        @Override
-                        public void complete() {
-                            transaction.complete();
-                            super.complete();
-                        }
-
-                        @Override
-                        public void rollback() {
-                            transaction.rollback();
-                            super.rollback();
-                        }
-                    };
+                    return new OriginalPrepared(binding, transaction, transaction.reservations());
                 }
                 var state = SelectiveState.getOrCreate(process);
                 var candidate = capture(transaction);
@@ -348,10 +404,129 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
     }
 
+    /** Same flat child boundary, with only its capture and rejected-child undo made resumable. */
+    @SuppressWarnings("ClassCanBeRecord") // This identity retains the original mutable preparation and candidate owners.
+    private static final class FlatCapture implements RequirementPreparation {
+        private final FlatPreparation preparation;
+        private final RecipeStageExecutor.Acquisition.FlatCandidate candidate;
+        private FlatCapture(FlatPreparation preparation, RecipeStageExecutor.Acquisition.FlatCandidate candidate) {
+            this.preparation = preparation;
+            this.candidate = candidate;
+        }
+        @Override public boolean ownerWorkMetered() { return true; }
+        @Override public @Nullable RecipePureComputation computation() { return null; }
+        @Override
+        public RequirementTransaction acquire() {
+            var process = preparation.process;
+            var budget = process.preparationBudget();
+            if (!candidate.capture(budget)) return new PreparedRequirement(this);
+            if (candidate.preparationPending()) {
+                if (!budget.take()) return new PreparedRequirement(this);
+                var continuation = Objects.requireNonNull(candidate.continuation());
+                var binding = new RequirementPreparation() {
+                    @Override public boolean ownerWorkMetered() { return continuation.ownerWorkMetered(); }
+                    @Override public @Nullable RecipePureComputation computation() { return continuation.computation(); }
+                    @Override public void retainPureFacts() { continuation.retainPureFacts(); }
+                    @Override public void withdrawPureFacts(RecipePureComputation expected) { continuation.withdrawPureFacts(expected); }
+                    @Override public RequirementTransaction acquire() {
+                        candidate.continueWith(Objects.requireNonNull(continuation.acquireNext(), "Prepared candidate must produce its actual result"));
+                        return new PreparedRequirement(new FlatCapture(preparation, candidate));
+                    }
+                };
+                return new PreparedRequirement(binding);
+            }
+            if (candidate.continuation() != null) throw new IllegalStateException("Continued alternative must declare its acquisition shape");
+            if (candidate.result() != ProcessResult.SUCCESS) {
+                candidate.reject();
+                if (!candidate.cleaned() || !budget.take()) return new PreparedRequirement(this);
+                candidate.releaseCleaned();
+                return new PreparedRequirement(new FlatPreparation(process, preparation.path, preparation.payload, preparation.index + 1));
+            }
+            if (!budget.take()) return new PreparedRequirement(this);
+            var child = new CapturedTransaction(candidate.result(), new FrozenReservations(candidate.reservations()), new PreparedChild(TransactionGroup.frozen(candidate.transactions())));
+            var transaction = begin(process, SelectiveState.getOrCreate(process), preparation.path, preparation.index, child, preparation.payload.modifiers());
+            candidate.transfer();
+            return transaction;
+        }
+    }
+
+    /** The successful flat child's original prepared transactions share one original terminal order. */
+    private record PreparedChild(TransactionGroup group) implements RequirementTransaction {
+        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+        @Override public boolean prepareCommit() { return group.prepareCommit(); }
+        @Override public boolean validateCommit() { return group.validateCommit(); }
+        @Override public void commit() { group.commit(); }
+        @Override public void complete() { group.complete(); }
+        @Override public void rollback() { group.rollback(); }
+        @Override public Resolution resolution() { return group.resolution(); }
+        @Override public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) { return group.prepareCommitWithinBudget(work); }
+        @Override public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) { return group.validateCommitWithinBudget(work); }
+        @Override public boolean commitWithinBudget(RecipeWorkBudget work) { return group.commitWithinBudget(work); }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget work) { return group.completeWithinBudget(work); }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) { return group.rollbackWithinBudget(work); }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget work) { return group.resolutionWithinBudget(work); }
+    }
+
+    /** Original prepared child inventory and phased terminal proof, retained across binding pauses. */
+    private static final class OriginalPrepared extends PreparedRequirement {
+        private final RequirementTransaction original;
+        private final List<? extends ResourceReservation> reservations;
+        private boolean originalCompleted;
+        private boolean originalRolledBack;
+        @Nullable private Resolution intended;
+        @Nullable private Resolution queriedOriginal;
+        private OriginalPrepared(RequirementPreparation binding, RequirementTransaction original, List<? extends ResourceReservation> reservations) {
+            super(binding); this.original = original; this.reservations = reservations;
+        }
+        @Override public List<? extends ResourceReservation> reservations() { return reservations; }
+        @Override public void complete() { if (!completeWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) throw new IllegalStateException("Prepared child remains pending"); }
+        @Override public void rollback() { if (!rollbackWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) throw new IllegalStateException("Prepared child remains pending"); }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget work) {
+            if (intended != null && intended != Resolution.COMPLETED) throw new IllegalStateException("Cannot change prepared child terminal decision");
+            intended = Resolution.COMPLETED;
+            queriedOriginal = null;
+            if (!originalCompleted) { if (!original.completeWithinBudget(work)) return false; originalCompleted = true; }
+            return super.completeWithinBudget(work);
+        }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) {
+            if (intended != null && intended != Resolution.ROLLED_BACK) throw new IllegalStateException("Cannot change prepared child terminal decision");
+            intended = Resolution.ROLLED_BACK;
+            queriedOriginal = null;
+            if (!originalRolledBack) { if (!original.rollbackWithinBudget(work)) return false; originalRolledBack = true; }
+            return super.rollbackWithinBudget(work);
+        }
+        private Resolution observe(Resolution actual) {
+            if (intended != null && actual != Resolution.REVERSIBLE && actual != intended) return Resolution.UNKNOWN;
+            if (actual == Resolution.COMPLETED) originalCompleted = true;
+            if (actual == Resolution.ROLLED_BACK) originalRolledBack = true;
+            var own = super.resolution();
+            if (actual == own) return own;
+            if (own == Resolution.REVERSIBLE && (actual == Resolution.COMPLETED || actual == Resolution.ROLLED_BACK)) return Resolution.REVERSIBLE;
+            return Resolution.UNKNOWN;
+        }
+        @Override public Resolution resolution() { return observe(original.resolution()); }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget work) {
+            if (queriedOriginal == null) {
+                queriedOriginal = original.resolutionWithinBudget(work);
+                if (queriedOriginal == null) return null;
+            }
+            if (!work.take()) return null;
+            var result = observe(queriedOriginal); queriedOriginal = null; return result;
+        }
+    }
+
+    /** Private proof of an inventory frozen item by item by the exact flat candidate handle. */
+    private static final class FrozenReservations extends AbstractList<ResourceReservation> {
+        private final List<ResourceReservation> reservations;
+        private FrozenReservations(List<ResourceReservation> reservations) { this.reservations = reservations; }
+        @Override public ResourceReservation get(int index) { return reservations.get(index); }
+        @Override public int size() { return reservations.size(); }
+    }
+
     private record CapturedTransaction(ProcessResult result, List<ResourceReservation> reservations,
                                        RequirementTransaction child) implements RequirementTransaction {
         private CapturedTransaction {
-            reservations = ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
+            if (!(reservations instanceof FrozenReservations)) reservations = ObjectLists.unmodifiable(new ObjectArrayList<>(reservations));
         }
         @Override public @Nullable RequirementContinuation continuation() { return child.continuation(); }
         @Override public boolean prepareCommit() { return child.prepareCommit(); }
@@ -360,6 +535,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         @Override public void complete() { child.complete(); }
         @Override public void rollback() { child.rollback(); }
         @Override public Resolution resolution() { return child.resolution(); }
+        @Override public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) { return child.prepareCommitWithinBudget(work); }
+        @Override public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) { return child.validateCommitWithinBudget(work); }
+        @Override public boolean commitWithinBudget(RecipeWorkBudget work) { return child.commitWithinBudget(work); }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget work) { return child.completeWithinBudget(work); }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) { return child.rollbackWithinBudget(work); }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget work) { return child.resolutionWithinBudget(work); }
     }
 
     private static final class StartTransaction implements RequirementTransaction {
@@ -374,8 +555,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
             group = new TransactionGroup(List.of(
                 TransactionGroup.callbacks(NO_OP, NO_OP, () -> state.discard(path, selection)),
                 child,
-                TransactionGroup.callbacks(() -> applyModifiers(process, path, selection, modifiers),
-                    selection::completeStart, selection::cleanupEffects)));
+                new ModifierEffects(process, path, selection, modifiers)));
         }
 
         @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
@@ -387,6 +567,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         @Override public void complete() { group.complete(); }
         @Override public void rollback() { group.rollback(); }
         @Override public Resolution resolution() { return group.resolution(); }
+        @Override public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) { return group.prepareCommitWithinBudget(work); }
+        @Override public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) { return group.validateCommitWithinBudget(work); }
+        @Override public boolean commitWithinBudget(RecipeWorkBudget work) { return group.commitWithinBudget(work); }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget work) { return group.completeWithinBudget(work); }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) { return group.rollbackWithinBudget(work); }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget work) { return group.resolutionWithinBudget(work); }
 
         private static void applyModifiers(RecipeProcess process, RequirementPath path,
                                            SelectiveState.Selection selection, List<SelectiveModifierDescriptor> modifiers) {
@@ -403,9 +589,73 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         }
     }
 
+    private static final class ModifierEffects implements ReversibleTransaction {
+        private final RecipeProcess process;
+        private final RequirementPath path;
+        private final SelectiveState.Selection selection;
+        private final List<SelectiveModifierDescriptor> modifiers;
+        private int ordinal;
+        private Resolution terminal = Resolution.REVERSIBLE;
+        private ModifierEffects(RecipeProcess process, RequirementPath path, SelectiveState.Selection selection, List<SelectiveModifierDescriptor> modifiers) {
+            this.process = process; this.path = path; this.selection = selection; this.modifiers = modifiers;
+        }
+        @Override public void commit() { StartTransaction.applyModifiers(process, path, selection, modifiers); }
+        @Override public void complete() { finish(Resolution.COMPLETED, selection::completeStart); }
+        @Override public void rollback() { finish(Resolution.ROLLED_BACK, selection::cleanupEffects); }
+        private void finish(Resolution expected, Runnable callback) { terminal = Resolution.UNKNOWN; callback.run(); terminal = expected; }
+        @Override public Resolution resolution() { return terminal; }
+        @Override
+        public boolean commitWithinBudget(RecipeWorkBudget budget) {
+            while (ordinal < modifiers.size()) {
+                if (!budget.take()) return false;
+                int index = ordinal++; // No descriptor is replayed after its callback throws.
+                var descriptor = modifiers.get(index);
+                var context = new Context(process, path, selection, descriptor.id(), index);
+                try { descriptor.modifier().apply(context); }
+                finally { context.close(); }
+            }
+            if (!budget.take()) return false;
+            selection.markCommitted();
+            return true;
+        }
+        @Override
+        public boolean completeWithinBudget(RecipeWorkBudget budget) {
+            try {
+                if (!selection.completeStartWithinBudget(budget)) return false;
+                terminal = Resolution.COMPLETED;
+                return true;
+            } catch (RuntimeException | Error failure) { terminal = Resolution.UNKNOWN; throw failure; }
+        }
+        @Override
+        public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+            try {
+                if (!selection.cleanupEffectsWithinBudget(budget)) return false;
+                terminal = Resolution.ROLLED_BACK;
+                return true;
+            } catch (RuntimeException | Error failure) { terminal = Resolution.UNKNOWN; throw failure; }
+        }
+    }
+
+    private static final class FinishSelection implements ReversibleTransaction {
+        private final SelectiveState.Selection selection;
+        private Resolution terminal = Resolution.REVERSIBLE;
+        private FinishSelection(SelectiveState.Selection selection) { this.selection = selection; }
+        @Override public void commit() { }
+        @Override public void rollback() { terminal = Resolution.ROLLED_BACK; }
+        @Override public void complete() { terminal = Resolution.UNKNOWN; selection.finish(); terminal = Resolution.COMPLETED; }
+        @Override public Resolution resolution() { return terminal; }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget budget) {
+            try {
+                if (!selection.finishWithinBudget(budget)) return false;
+                terminal = Resolution.COMPLETED;
+                return true;
+            } catch (RuntimeException | Error failure) { terminal = Resolution.UNKNOWN; throw failure; }
+        }
+    }
+
     private record EndTransaction(CapturedTransaction child, TransactionGroup group) implements RequirementTransaction {
         private EndTransaction(CapturedTransaction child, SelectiveState.Selection selection) {
-            this(child, new TransactionGroup(List.of(child, TransactionGroup.callbacks(NO_OP, selection::finish, NO_OP))));
+            this(child, new TransactionGroup(List.of(child, new FinishSelection(selection))));
         }
 
         @Override public ProcessResult result() { return child.result(); }
@@ -417,6 +667,12 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
         @Override public void complete() { group.complete(); }
         @Override public void rollback() { group.rollback(); }
         @Override public Resolution resolution() { return group.resolution(); }
+        @Override public @Nullable Boolean prepareCommitWithinBudget(RecipeWorkBudget work) { return group.prepareCommitWithinBudget(work); }
+        @Override public @Nullable Boolean validateCommitWithinBudget(RecipeWorkBudget work) { return group.validateCommitWithinBudget(work); }
+        @Override public boolean commitWithinBudget(RecipeWorkBudget work) { return group.commitWithinBudget(work); }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget work) { return group.completeWithinBudget(work); }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) { return group.rollbackWithinBudget(work); }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget work) { return group.resolutionWithinBudget(work); }
     }
 
     private static final class Context implements SelectiveContext {

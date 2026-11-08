@@ -49,6 +49,8 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationTo
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.recipe.PreparedRequirement;
 
 class ResearchStationWorkTest {
     private static final TestResources.Key RAW = new TestResources.Key(TYPE, "raw");
@@ -262,23 +264,51 @@ class ResearchStationWorkTest {
                 if (binding == null || !firstSlice.get()) {
                     return binding;
                 }
-                var original = binding.computation();
-                RecipePureComputation computation = budget -> {
-                    boolean ready = Objects.requireNonNull(original).advance(budget);
+                return new RequirementPreparation() {
+                    private RecipePureComputation original;
+                    private RecipePureComputation wrapped;
+
+                    @Override
+                    public RecipePureComputation computation() {
+                        var currentComputation = binding.computation();
+                        if (currentComputation == null) {
+                            return null;
+                        }
+                        if (currentComputation != original) {
+                            original = currentComputation;
+                            wrapped = budget -> {
+                    boolean ready = currentComputation.advance(budget);
                     if (!ready && firstSlice.compareAndSet(true, false)) {
                         current.set(false);
                     }
                     return ready;
                 };
-                return new RequirementPreparation() {
+                        }
+                        return wrapped;
+                    }
+
                     @Override
-                    public RecipePureComputation computation() {
-                        return computation;
+                    public boolean ownerWorkMetered() {
+                        return binding.ownerWorkMetered();
+                    }
+
+                    @Override
+                    public boolean captureOnlyPreparation() {
+                        return binding.captureOnlyPreparation();
                     }
 
                     @Override
                     public RequirementTransaction acquire() {
-                        return binding.acquire();
+                        var transaction = binding.acquire();
+                        if (transaction instanceof PreparedRequirement) {
+                            // Keep the real worker gate attached through native owner capture pauses.
+                            return new PreparedRequirement(this) {
+                                @Override public List<? extends ResourceReservation> reservations() { return transaction.reservations(); }
+                                @Override public void complete() { super.complete(); transaction.complete(); }
+                                @Override public void rollback() { super.rollback(); transaction.rollback(); }
+                            };
+                        }
+                        return transaction;
                     }
 
                     @Override

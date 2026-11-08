@@ -22,6 +22,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
 import com.circulation.prototype_eng.recipe.PreparedRequirement;
+import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import org.jetbrains.annotations.Nullable;
 
 /** PM's independent FE start/tick/end IO, with each source counted once per operation. */
 public final class EnergyRequirementSystem implements RecipeRequirementSystem<EnergyRequirement> {
@@ -44,8 +46,9 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             return null;
         }
         var hatches = process.hatches();
-        var quantities = new EnergyQuantities(input, output, RecipeParallelism.effective(process));
+        var parallelCapture = process.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
         return new RequirementPreparation() {
+            @Nullable private EnergyQuantities quantities;
             private int direction;
             private int index;
             private long remaining = -1;
@@ -57,7 +60,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             }
 
             @Override
-            public RecipePureComputation computation() {
+            public @Nullable RecipePureComputation computation() {
                 return quantities;
             }
 
@@ -73,10 +76,16 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             @Override
             public RequirementTransaction acquire() {
                 var reservations = new ObjectArrayList<ResourceReservation>();
-                if (!quantities.complete || process.hatches() != hatches) {
-                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), reservations);
-                }
                 var budget = process.preparationBudget();
+                if (!parallelCapture.current()) return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);
+                if (quantities == null) {
+                    if (!parallelCapture.advance(budget)) return paused(reservations);
+                    quantities = new EnergyQuantities(input, output, Math.max(1, (int) Math.floor(parallelCapture.result())));
+                    return paused(reservations);
+                }
+                if (!quantities.complete || process.hatches() != hatches) {
+                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);
+                }
                 String id = requirement.id().toString();
                 if (remaining < 0) {
                     remaining = quantities.input;
@@ -99,7 +108,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                             context.lock();
                             try {
                                 if (!(inputSource != null ? inputSource.isValid() : outputSource.isValid())) {
-                                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), reservations);
+                                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);
                                 }
                                 var snapshot = inputSource != null ? inputSource.energySnapshot() : outputSource.energySnapshot();
                                 long portion = Math.min(remaining, inputSource != null
@@ -111,7 +120,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                                 var reserved = inputSource != null ? inputSource.reserveExtractEnergy(snapshot, portion)
                                     : outputSource.reserveReceiveEnergy(snapshot, portion);
                                 if (reserved.status() != ReservationResult.Status.ACCEPTED) {
-                                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), reservations);
+                                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);
                                 }
                                 reservations.add(Objects.requireNonNull(reserved.reservation()));
                                 remaining -= portion;
@@ -124,15 +133,27 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                                 ? visited.isEmpty() ? RecipeText.NoEnergyInput.blocked(id) : RecipeText.EnergyMissing.blocked(id, Long.toString(remaining))
                                 : visited.isEmpty() ? RecipeText.NoEnergyOutput.blocked(id)
                                 : payload.voidExcessOutputs() ? ProcessResult.SUCCESS : RecipeText.EnergyOutputFull.blocked(id, Long.toString(remaining));
-                            return new ReservedRequirement(result, reservations);
+                            return ReservedRequirement.frozen(result, reservations);
                         }
                         direction++;
                         index = 0;
                         visited = new ReferenceOpenHashSet<>();
                         remaining = quantities.output;
                     }
-                    return new ReservedRequirement(ProcessResult.SUCCESS, reservations);
+                    return ReservedRequirement.frozen(ProcessResult.SUCCESS, reservations);
                 } catch (RuntimeException | Error failure) {
+                    if (process.incrementalAcquisition()) {
+                        @SuppressWarnings("UnnecessaryLocalVariable") // The captured cleanup owns this exact reservation list.
+                        var retained = reservations;
+                        var cleanup = process.capturePreparedCleanup(new RequirementTransaction() {
+                            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+                            @Override public List<ResourceReservation> reservations() { return retained; }
+                            @Override public void commit() { }
+                            @Override public void rollback() { }
+                        });
+                        cleanup.reject();
+                        throw failure;
+                    }
                     ReservedRequirement.rollbackAfterFailure(reservations, failure);
                     throw failure;
                 }

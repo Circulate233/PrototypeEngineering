@@ -20,8 +20,17 @@ public interface RequirementPreparation {
         return false;
     }
 
+    /** This next owner step only captures facts; it never acquires business or resource effects. */
+    default boolean captureOnlyPreparation() {
+        return false;
+    }
+
     /** Owner callback after a successful worker slice has physically exited; default retains no facts. */
     default void retainPureFacts() {
+    }
+
+    /** Withdraws only this binding's cached identity before its mutable facts leave the owner. */
+    default void withdrawPureFacts(RecipePureComputation expected) {
     }
 
 }

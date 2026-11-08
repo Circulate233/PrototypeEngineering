@@ -12,6 +12,7 @@ public final class StorageContext {
     private static final VarHandle NEXT_ORDER;
     private static final VarHandle DIRTY;
     private static final VarHandle REVISION;
+    private static final VarHandle DEFERRED_MUTATIONS;
     private static final ThreadLocal<HeldLocks> HELD_LOCKS = ThreadLocal.withInitial(HeldLocks::new);
     @SuppressWarnings("unused") // Mutated through NEXT_ORDER, shared by all contexts.
     private static long nextOrder;
@@ -22,6 +23,7 @@ public final class StorageContext {
             NEXT_ORDER = lookup.findStaticVarHandle(StorageContext.class, "nextOrder", long.class);
             DIRTY = lookup.findVarHandle(StorageContext.class, "dirty", boolean.class);
             REVISION = lookup.findVarHandle(StorageContext.class, "revision", long.class);
+            DEFERRED_MUTATIONS = lookup.findVarHandle(StorageContext.class, "deferredMutations", int.class);
         } catch (ReflectiveOperationException failure) {
             throw new ExceptionInInitializerError(failure);
         }
@@ -34,9 +36,15 @@ public final class StorageContext {
     @SuppressWarnings("unused") // Mutated through DIRTY to coalesce cross-thread notifications.
     private boolean dirty;
     private long revision;
+    @SuppressWarnings("unused") // Version proofs are invalid for every unclosed native mutation journal.
+    private int deferredMutations;
     // Credits promised to exact tokens, separate from the one lifetime invalidation change.
     private long reservedChanges;
     @Nullable private volatile StorageFence fence;
+    // Protected by the exact live descriptor's gate monitor. Every scope/work exit resets these
+    // before its RELEASED release publication; replacement claim's acquire observes null/zero.
+    @Nullable Thread sourceWorkOwner;
+    int sourceScopes;
 
     public StorageContext(Runnable onChanged) {
         this.onChanged = Objects.requireNonNull(onChanged);
@@ -55,7 +63,7 @@ public final class StorageContext {
 
     public void lock() {
         while (true) {
-            var currentFence = fence;
+            var currentFence = fence();
             StorageFence.checkAccess(this, currentFence);
             if (currentFence != null) {
                 currentFence.rejectOwnerWithoutAccess(this);
@@ -64,10 +72,11 @@ public final class StorageContext {
             lock.lock();
             StorageFence blocked;
             try {
-                var lockedFence = fence;
+                var lockedFence = fence();
                 StorageFence.checkAccess(this, lockedFence);
                 if (lockedFence == null || StorageFence.permits(this, lockedFence)) {
                     HELD_LOCKS.get().count++;
+                    StorageFence.acquiredExplicitLock(this);
                     return;
                 }
                 blocked = lockedFence;
@@ -85,6 +94,9 @@ public final class StorageContext {
      * lock. Use this instead of looping over lock() when a normal operation touches multiple domains.
      */
     public static void lockAll(List<StorageContext> contexts) {
+        if (StorageFence.budgetOwnerAccess()) {
+            throw new IllegalStateException("Budget owner operations must advance per domain; lockAll requires a synchronous scope");
+        }
         long previous = -1;
         for (var context : contexts) {
             if (Objects.requireNonNull(context).order <= previous) {
@@ -93,7 +105,7 @@ public final class StorageContext {
             previous = context.order;
         }
         if (StorageFence.hasAccess()) {
-            contexts.forEach(context -> StorageFence.checkAccess(context, context.fence));
+            contexts.forEach(context -> StorageFence.checkAccess(context, context.fence()));
             contexts.forEach(StorageContext::lock);
             return;
         }
@@ -132,7 +144,7 @@ public final class StorageContext {
         if (!lock.tryLock()) {
             return false;
         }
-        if (fence != null) {
+        if (fence() != null) {
             lock.unlock();
             return false;
         }
@@ -149,19 +161,28 @@ public final class StorageContext {
 
     /** Batch coordinators release all participants before publishing any callbacks. */
     public void unlockDeferred() {
-        if (StorageFence.hasAccess() && lock.isHeldByCurrentThread() && lock.getHoldCount() == 1) {
+        if (StorageFence.ownsBaseLock(this) && lock.isHeldByCurrentThread() && lock.getHoldCount() == 1) {
             throw new IllegalStateException("Cannot release a physical lock owned by the fence scope");
         }
         lock.unlock();
         HELD_LOCKS.get().count--;
+        if (!lock.isHeldByCurrentThread()) {
+            StorageFence.releasedExplicitLock(this);
+        }
     }
 
+    /**
+     * Real physical lock, or the exact exclusive creating-owner budget scope capability. The latter
+     * is acquired through the fence gate after all source scopes actually exit. Ordinary and source
+     * accesses retain their real-lock requirement; a fence reference alone never grants capability.
+     */
     public void requireLock() {
-        if (!lock.isHeldByCurrentThread()) {
+        var effective = fence();
+        if (!lock.isHeldByCurrentThread() && !StorageFence.ownerCapability(this, effective)) {
             throw new IllegalStateException("Storage access requires its shared lock");
         }
-        StorageFence.checkAccess(this, fence);
-        if (fence != null && !StorageFence.permits(this, fence)) {
+        StorageFence.checkAccess(this, effective);
+        if (effective != null && !StorageFence.permits(this, effective)) {
             throw new IllegalStateException("Storage access requires its fence scope");
         }
     }
@@ -169,9 +190,24 @@ public final class StorageContext {
     /** Exact transferable isolation proof for exposing reversible effects to later sequence steps. */
     public StorageFence requireFenceAccess() {
         requireLock();
-        var activeFence = fence;
+        var activeFence = fence();
         if (activeFence == null) { throw new IllegalStateException("Sequential effects require retained fence isolation"); }
         return activeFence;
+    }
+
+    /** Exact current scope proof, or null for an ordinary locked context; never grants new access. */
+    public @Nullable StorageFence fenceAccess() { requireLock(); return fence(); }
+
+    /** Native budget journals pair this under the original physical lock/fence, before first write. */
+    public void beginDeferredMutation() {
+        requireLock(); DEFERRED_MUTATIONS.setRelease(this, Math.incrementExact(deferredMutations));
+    }
+
+    /** Call only after the journal has published its final revision and every own effect is coherent. */
+    public void endDeferredMutation() {
+        requireLock();
+        if (deferredMutations == 0) { throw new IllegalStateException("Native mutation journal lost its version barrier"); }
+        DEFERRED_MUTATIONS.setRelease(this, deferredMutations - 1);
     }
 
     /** Pin isolation before releasing an applied reservation's compensation holds. */
@@ -200,7 +236,8 @@ public final class StorageContext {
      * transaction's fence. It neither reads balances nor reserves future access to this context.
      */
     public boolean current(long expectedRevision) {
-        return valid && (long) REVISION.getAcquire(this) == expectedRevision;
+        return valid && (int) DEFERRED_MUTATIONS.getAcquire(this) == 0 && (long) REVISION.getAcquire(this) == expectedRevision
+            && (int) DEFERRED_MUTATIONS.getAcquire(this) == 0 && (long) REVISION.getAcquire(this) == expectedRevision;
     }
 
     /** Preflight an ordinary mutation without spending token cleanup or lifetime invalidation credits. */
@@ -223,6 +260,14 @@ public final class StorageContext {
         if (changes <= 0) { throw new IllegalArgumentException("A revision reservation must be positive"); }
         requireChange(changes);
         reservedChanges += changes;
+    }
+
+    /** Reserve the pending availability publication as well as the token's future changes.
+     * The initial publication spends one credit after every native slot becomes coherent. */
+    public void reserveDeferredChanges(int tokenChanges) {
+        if (tokenChanges <= 0) { throw new IllegalArgumentException("A revision reservation must be positive"); }
+        requireChange(tokenChanges);
+        reservedChanges += Math.incrementExact(tokenChanges);
     }
 
     /** Preflight a token mutation. The token retains its own remaining credit count until terminal. */
@@ -256,14 +301,14 @@ public final class StorageContext {
 
     /** The callback runs on the caller thread and must not access world state from a worker. */
     public void publishChanges() {
-        StorageFence.checkAccess(this, fence);
-        if (HELD_LOCKS.get().count != 0 || StorageFence.hasAccess() || fence != null) {
+        StorageFence.checkAccess(this, fence());
+        if (HELD_LOCKS.get().count != 0 || StorageFence.hasAccess() || fence() != null) {
             return;
         }
         boolean publish;
         lock.lock();
         try {
-            publish = fence == null && (boolean) DIRTY.getAndSet(this, false);
+            publish = fence() == null && (boolean) DIRTY.getAndSet(this, false);
         } finally {
             lock.unlock();
         }
@@ -298,7 +343,7 @@ public final class StorageContext {
         requireLock();
         StorageFence.requireOutsideAccess();
         if (initialRevision < 0 || initialRevision == Long.MAX_VALUE || !valid || revision != 0
-            || reservedChanges != 0 || fence != null || dirty) {
+            || reservedChanges != 0 || deferredMutations != 0 || fence() != null || dirty) {
             throw new IllegalStateException("Revision initialization requires an unused storage context");
         }
         revision = initialRevision;
@@ -311,10 +356,28 @@ public final class StorageContext {
     }
 
     boolean tryPhysicalLock() { return lock.tryLock(); }
-    void lockPhysical() { lock.lock(); }
     void unlockPhysical() { lock.unlock(); }
-    @Nullable StorageFence fence() { return fence; }
-    void setFence(@Nullable StorageFence fence) { this.fence = fence; }
+    @Nullable StorageFence fence() {
+        var current = fence;
+        if (current != null && current.released()) {
+            // Raw stale links can be ignored anywhere, but only removed under the physical lock.
+            if (lock.isHeldByCurrentThread()) { clearReleasedFence(current); }
+            return null;
+        }
+        return current;
+    }
+    void setFence(@Nullable StorageFence fence) {
+        if (!lock.isHeldByCurrentThread()) {
+            throw new IllegalStateException("Fence links require the physical context lock");
+        }
+        this.fence = fence; }
+
+    void clearReleasedFence(StorageFence expected) {
+        if (!lock.isHeldByCurrentThread()) {
+            throw new IllegalStateException("Stale fence cleanup requires the physical lock");
+        }
+        if (fence == expected && expected.released()) { fence = null; }
+    }
     boolean takeFenceChanges() { return (boolean) DIRTY.getAndSet(this, false); }
     void publishFenceChanges() { onChanged.run(); }
 
@@ -327,6 +390,14 @@ public final class StorageContext {
             HELD_LOCKS.get().count--;
         }
         return leaked;
+    }
+
+    void finishExplicitAccess() {
+        int held = lock.getHoldCount();
+        for (int index = 0; index < held; index++) {
+            lock.unlock();
+            HELD_LOCKS.get().count--;
+        }
     }
 
     private static final class HeldLocks {

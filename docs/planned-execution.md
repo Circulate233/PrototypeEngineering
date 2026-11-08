@@ -1,6 +1,6 @@
 # Planned 执行屏障与正式机器宿主
 
-PM 的 runner、取消注册和单调 deadline 已用于真实阶段协调器。块一已在服务器 CONCURRENT 网络配方和研究材料消费者接通纯 prepare、实际 owner 工作预算及原 source 结算屏障；2A 已将正式 PLANNED_PARALLEL 与公共三参 scheduler 的独立机器宿主接到同一真实执行流程；扫描内部工作预算属于 2B。原行为及适配缺口见[迁移审计](planned-migration-audit.md)。
+PM 的 runner、取消注册和单调 deadline 已用于真实阶段协调器。块一已在服务器 CONCURRENT 网络配方和研究材料消费者接通纯 prepare、实际 owner 工作预算及原 source 结算屏障；2A 已将正式 PLANNED_PARALLEL 与公共三参 scheduler 的独立机器宿主接到同一真实执行流程；2B 已将扫描内部工作预算接到同一流程并验证。原行为及适配缺口见[迁移审计](planned-migration-audit.md)。
 
 ## 取消与 deadline
 
@@ -30,7 +30,7 @@ executor 的提交拒绝变成对应 Failure，其他已接受动作仍收束到
 
 本工具仅管理执行机制，generic Job 不证明任意对象深度不可变。正式 coordinator 必须在 owner 冻结独立输入，prepare 只读冻结数据；source mutation 使用专门 reservation/resolve 协议。不能把含 World/TileEntity 的现有 callback 直接投进 prepare。
 
-真实消费者已复用 StorageFence/ResourceBatch 的跨屏障独占、延迟 complete 和准确 token 恢复，见[资源批次](deferred-resource-batches.md)、[阶段会话](recipe-tick-sessions.md)、[工位批次](work-slot-batches.md)及[真实阶段协调器](planned-recipe-coordinator.md)。正式模式与独立机器入口已由 2A 接通；discover/扫描内部预算仍待 2B。完整验证数量及 MCP 证据记在实施进度。
+真实消费者已复用 StorageFence/ResourceBatch 的跨屏障独占、延迟 complete 和准确 token 恢复，见[资源批次](deferred-resource-batches.md)、[阶段会话](recipe-tick-sessions.md)、[工位批次](work-slot-batches.md)及[真实阶段协调器](planned-recipe-coordinator.md)。正式模式与独立机器入口已由 2A 接通，discover/扫描内部预算已由 2B 接入并验证。完整验证数量及 MCP 证据记在实施进度。
 
 ## 正式宿主与当前性
 
@@ -51,3 +51,13 @@ executor 的提交拒绝变成对应 Failure，其他已接受动作仍收束到
 `RecipeWorkBudget` 在内置循环实际访问处扣减：owner 捕获来源/数量/revision，合并当前余额，复制和缩放需求，选择、预检、真实资源/FE 预留及锁安装；worker 执行概率、随机逐次抽样、动态完整匹配/规范 NBT 编码/排序及缓存内容证明。小切片保持游标，透明暂停仍属于原获取段，不制造 stage/append/expose。首次 `Stage.acquire()` 的同步模式与 `acquirePreparedWithinBudget` 的纯 prepare 模式分别保留到其后续子段。
 
 机器 `MachineRecipeExecution` 和研究 `ResearchStationWork.drive` 只在 `workYielded`、原 deadline 未过期且原 attempt 仍 current 时继续。工作暂停不续期、不重充数值额度、不换授权；UNKNOWN 来源/业务结果继续等待确认。外部 `ResourceStorage` 默认 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，预算不能强行中断其内部实现；外部来源可用 `beginQuantityCapture` 提供增量捕获。
+
+## 块二 B 扫描与原结算预算
+
+真实 `RecipeScanningSystem` 经 lifecycle 暂停原机器组件游标，`MachineRecipeExecution` 驱动同一个 `RecipeScanner.ScanAttempt`。目录/组 union 与原声明顺序、index 交集、factory 创建、属性继承/overlay、约束、START probe、admission 以及来源捕获/预留都在实际内部访问处扣 `RecipeWorkBudget`；`ScanLimits` 仍独立限制候选/probe 次数。默认同步 scan 沿同一逻辑驱动，外部 index/factory/constraint 可提供增量实现，默认单次合作回调仍保持原契约。
+
+同轮 owner 必须完成全部纯准备捕获后才派发；`captureOnlyPreparation` 明确证明尚未产生副作用的捕获可穿越纯等待。默认 false，内置资源初始 facts 与 Timeline 捕获可以推进；FE 和 opaque 回调保持原序，Prepared 进入后许可立即关闭。root/nested bindings 在派发前自动按原 stage/path/expected identity 撤回进程缓存，只有真实退出并接受的纯事实能重新发布。后续 continuation prepare 返回后重新核验 current/deadline，失权只清理原 token，不开始新批次。
+
+原 `StorageFence` claim、`ResourceBatch` 分组/预检/source/业务确认和 Slotted 原槽/部分日志按预算续办。标量与事务溢出预检仍在 mutation 前，退款全量检查不因部分切片缩小；取消部分 claim 精确 drain，独立 additional cleanup 在 UNKNOWN 完成前阻止退款。明确 commit 拒绝决定 ROLLBACK 时本片继续原清理；正常 terminal batch 短 join 到真实退出后消费和回收一次 receipt；Stopped 保留 pending，`Success(false)` 且 source 未因预算 yield 仍属 UNKNOWN。已确认局部回退后缀不覆盖未结清历史前缀，预算耗尽返回原义务而不空转或重播。旧同步 `Stage.acquire` 及其后续子段、嵌套 flat candidate LIFO 和成功刻数 O(1) 溢出拒绝保持。
+
+本阶段实现验证证据见[实施进度](implementation-status.md)与 `build/staging/recipe-scan-budget/verification/`。预算约束内置可续办工作，外部 snapshot/matcher/comparator/opaque callback 的内部仍需使用方保持合作、纯和稳定契约；完整首次 tick 等价投影及游戏交互验收仍有边界。

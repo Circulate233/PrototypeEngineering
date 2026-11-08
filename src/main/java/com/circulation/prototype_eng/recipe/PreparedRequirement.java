@@ -8,6 +8,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransacti
 import java.util.Objects;
 import java.util.function.Supplier;
 import org.jetbrains.annotations.Nullable;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.function.Consumer;
 
 /**
  * Keeps pure work at the original ordered continuation boundary, under its captured path/tick.
@@ -17,7 +19,9 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
     private final RecipePureComputation computation;
     private final Supplier<RequirementTransaction> acquire;
     private final Runnable retainFacts;
+    private final Consumer<RecipePureComputation> withdrawFacts;
     private final boolean ownerWorkMetered;
+    private final boolean captureOnlyPreparation;
     private boolean entered;
     private Resolution terminal = Resolution.REVERSIBLE;
 
@@ -26,7 +30,9 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
         computation = binding.computation();
         acquire = binding::acquire;
         retainFacts = binding::retainPureFacts;
+        withdrawFacts = binding::withdrawPureFacts;
         ownerWorkMetered = binding.ownerWorkMetered();
+        captureOnlyPreparation = binding.captureOnlyPreparation();
     }
 
     /**
@@ -37,17 +43,32 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
         computation = null;
         retainFacts = () -> {
         };
+        withdrawFacts = _ -> {
+        };
         ownerWorkMetered = false;
+        captureOnlyPreparation = false;
     }
 
     @Override
     public boolean ownerWorkMetered() {
-        return ownerWorkMetered;
+        // The entered wrapper's terminal null step does no binding work and consumes no owner
+        // budget itself. The framework must charge that close rather than drain a deep stack free.
+        return !entered && ownerWorkMetered;
+    }
+
+    @Override
+    public boolean captureOnlyPreparation() {
+        return !entered && captureOnlyPreparation;
     }
 
     @Override
     public void retainPureFacts() {
         retainFacts.run();
+    }
+
+    @Override
+    public void withdrawPureFacts(RecipePureComputation expected) {
+        withdrawFacts.accept(expected);
     }
 
     @Override
@@ -99,5 +120,16 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
     @Override
     public Resolution resolution() {
         return terminal;
+    }
+
+    @Override public boolean completeWithinBudget(RecipeWorkBudget work) {
+        if (!work.take()) return false;
+        terminal = Resolution.COMPLETED;
+        return true;
+    }
+    @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) {
+        if (!work.take()) return false;
+        terminal = Resolution.ROLLED_BACK;
+        return true;
     }
 }

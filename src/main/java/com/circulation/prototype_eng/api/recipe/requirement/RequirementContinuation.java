@@ -27,8 +27,16 @@ public interface RequirementContinuation {
         return false;
     }
 
+    default boolean captureOnlyPreparation() {
+        return false;
+    }
+
     /** Owner-only transfer after the corresponding worker's physical exit. */
     default void retainPureFacts() {
+    }
+
+    /** Owner callback at this exact binding; continuations without cached facts need no action. */
+    default void withdrawPureFacts(RecipePureComputation expected) {
     }
 
     /**

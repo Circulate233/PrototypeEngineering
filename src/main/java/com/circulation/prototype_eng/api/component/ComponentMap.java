@@ -14,6 +14,11 @@ import java.util.Set;
 import java.util.Map;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import java.util.AbstractSet;
+import java.util.Iterator;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Typed component assembly and ordered phase execution migrated from PM's MachineComponentMap.
@@ -26,6 +31,9 @@ public final class ComponentMap<E> {
     private final Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>> types = new Object2ObjectOpenHashMap<>();
     private long dispatchRevision = -1;
     private List<TickEntry<E, ?>> dispatch = ObjectLists.emptyList();
+    private long graphValidatedRevision = -1;
+    private long assemblyCapturedRevision = -1;
+    private List<SavedBinding<E, ?>> frozenAssembly = ObjectLists.emptyList();
 
     /**
      * Checks declaration identities and the same dependency/system graph used by live dispatch,
@@ -107,6 +115,230 @@ public final class ComponentMap<E> {
         return assemblyBindings();
     }
 
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public BindingCapture beginAssemblyCapture() {
+        return new BindingCapture(false);
+    }
+
+    /** Same complete component/system graph validation as snapshotBindings, with actual visits charged. */
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public BindingCapture beginSnapshotBindings() {
+        return new BindingCapture(true);
+    }
+
+    public final class BindingCapture {
+        private final long revision = components.revision();
+        private final boolean validate;
+        private final Iterator<TopologicalComponentMap.Node<ComponentType<E, ?>, Binding<E, ?>>> assembly = components.assemblyIterator();
+        private final ObjectArrayList<SavedBinding<E, ?>> captured = new ObjectArrayList<>();
+        private final Object2ObjectOpenHashMap<ComponentType<E, ?>, ObjectLinkedOpenHashSet<ComponentType<E, ?>>> edges = new Object2ObjectOpenHashMap<>();
+        private final Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>> systems = new Object2ObjectOpenHashMap<>();
+        private final Object2ObjectOpenHashMap<ResourceLocation, ObjectLinkedOpenHashSet<ComponentType<E, ?>>> owners = new Object2ObjectOpenHashMap<>();
+        private final Object2IntOpenHashMap<ComponentType<E, ?>> indegrees = new Object2IntOpenHashMap<>();
+        private final Object2ObjectOpenHashMap<ComponentType<E, ?>, ObjectArrayList<ComponentType<E, ?>>> dependents = new Object2ObjectOpenHashMap<>();
+        private final ObjectArrayList<ComponentType<E, ?>> queue = new ObjectArrayList<>();
+        private TopologicalComponentMap.Node<ComponentType<E, ?>, Binding<E, ?>> node;
+        private Iterator<ComponentType<E, ?>> originalEdges;
+        private ObjectLinkedOpenHashSet<ComponentType<E, ?>> mutableEdges;
+        private int registrationCursor;
+        private ComponentType<E, ?> registrationType;
+        private int registrationSystem;
+        private ObjectLinkedOpenHashSet<ResourceLocation> registrationIds;
+        private int edgeCursor;
+        private ComponentType<E, ?> edgeType;
+        private int edgeSystemCursor;
+        private ComponentSystem<E, ?> edgeSystem;
+        private Iterator<ResourceLocation> ordering;
+        private Iterator<ComponentType<E, ?>> targetOwners;
+        private boolean before;
+        private int degreeCursor;
+        private ComponentType<E, ?> degreeType;
+        private Iterator<ComponentType<E, ?>> dependencies;
+        private int rootCursor;
+        private int queueCursor;
+        private Iterator<ComponentType<E, ?>> outgoing;
+        private int ordered;
+        private int phase;
+        private boolean stale;
+        private List<SavedBinding<E, ?>> cachedResult;
+
+        private BindingCapture(boolean validate) {
+            this.validate = validate && dispatchRevision != revision && graphValidatedRevision != revision;
+            if (!this.validate && assemblyCapturedRevision == revision) {
+                cachedResult = frozenAssembly;
+                phase = 6;
+            }
+        }
+
+        public boolean advance(RecipeWorkBudget budget) {
+            Objects.requireNonNull(budget);
+            if (!current()) return false;
+            if (phase == 6) return true;
+            if (phase == 0) {
+                while (node != null || assembly.hasNext()) {
+                    if (node == null) {
+                        if (!budget.take()) return false;
+                        node = assembly.next();
+                        captured.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
+                        if (!validate) {
+                            node = null;
+                            continue;
+                        }
+                        mutableEdges = new ObjectLinkedOpenHashSet<>();
+                        edges.put(node.key(), mutableEdges);
+                        originalEdges = node.dependencies().iterator();
+                    }
+                    while (originalEdges.hasNext()) {
+                        if (!budget.take()) return false;
+                        mutableEdges.add(originalEdges.next());
+                    }
+                    node = null;
+                }
+                if (!validate) {
+                    frozenAssembly = ObjectLists.unmodifiable(captured);
+                    assemblyCapturedRevision = revision;
+                    phase = 6;
+                    return true;
+                }
+                phase = 1;
+            }
+            if (phase == 1) {
+                while (registrationType != null || registrationCursor < captured.size()) {
+                    if (registrationType == null) {
+                        if (!budget.take()) return false;
+                        registrationType = captured.get(registrationCursor++).type();
+                        registrationSystem = 0;
+                        registrationIds = new ObjectLinkedOpenHashSet<>();
+                    }
+                    while (registrationSystem < registrationType.systems().size()) {
+                        if (!budget.take()) return false;
+                        var system = registrationType.systems().get(registrationSystem++);
+                        var id = Objects.requireNonNull(system.id(), "system id");
+                        var previous = systems.putIfAbsent(id, system);
+                        if (previous != null && previous != system) throw new IllegalArgumentException("Different systems share id " + id);
+                        if (!registrationIds.add(id)) throw new IllegalArgumentException("System bound twice: " + id);
+                        owners.computeIfAbsent(id, _ -> new ObjectLinkedOpenHashSet<>()).add(registrationType);
+                    }
+                    registrationType = null;
+                }
+                phase = 2;
+            }
+            if (phase == 2) {
+                while (edgeType != null || edgeCursor < captured.size()) {
+                    if (edgeType == null) {
+                        if (!budget.take()) return false;
+                        edgeType = captured.get(edgeCursor++).type();
+                        edgeSystemCursor = 0;
+                    }
+                    while (edgeSystem != null || edgeSystemCursor < edgeType.systems().size()) {
+                        if (edgeSystem == null) {
+                            if (!budget.take()) return false;
+                            edgeSystem = edgeType.systems().get(edgeSystemCursor++);
+                            ordering = Objects.requireNonNull(edgeSystem.runAfter()).iterator();
+                            before = false;
+                        }
+                        while (true) {
+                            if (targetOwners != null) {
+                                while (targetOwners.hasNext()) {
+                                    if (!budget.take()) return false;
+                                    var other = targetOwners.next();
+                                    if (other != edgeType) {
+                                        if (before) edges.get(other).add(edgeType);
+                                        else edges.get(edgeType).add(other);
+                                    }
+                                }
+                                targetOwners = null;
+                            }
+                            if (ordering.hasNext()) {
+                                if (!budget.take()) return false;
+                                var targets = owners.get(ordering.next());
+                                if (targets != null) targetOwners = targets.iterator();
+                                continue;
+                            }
+                            if (!before) {
+                                if (!budget.take()) return false;
+                                before = true;
+                                ordering = Objects.requireNonNull(edgeSystem.runBefore()).iterator();
+                                continue;
+                            }
+                            edgeSystem = null;
+                            break;
+                        }
+                    }
+                    edgeType = null;
+                }
+                phase = 3;
+            }
+            if (phase == 3) {
+                while (degreeType != null || degreeCursor < captured.size()) {
+                    if (degreeType == null) {
+                        if (!budget.take()) return false;
+                        degreeType = captured.get(degreeCursor++).type();
+                        dependencies = edges.get(degreeType).iterator();
+                    }
+                    while (dependencies.hasNext()) {
+                        if (!budget.take()) return false;
+                        var dependency = dependencies.next();
+                        if (edges.containsKey(dependency)) {
+                            indegrees.addTo(degreeType, 1);
+                            dependents.computeIfAbsent(dependency, _ -> new ObjectArrayList<>()).add(degreeType);
+                        }
+                    }
+                    degreeType = null;
+                }
+                phase = 4;
+            }
+            if (phase == 4) {
+                while (rootCursor < captured.size()) {
+                    if (!budget.take()) return false;
+                    var type = captured.get(rootCursor++).type();
+                    if (indegrees.getInt(type) == 0) queue.add(type);
+                }
+                phase = 5;
+            }
+            while (outgoing != null || queueCursor < queue.size()) {
+                if (outgoing == null) {
+                    if (!budget.take()) return false;
+                    var type = queue.get(queueCursor++);
+                    ordered++;
+                    var next = dependents.get(type);
+                    if (next == null) continue;
+                    outgoing = next.iterator();
+                }
+                while (outgoing.hasNext()) {
+                    if (!budget.take()) return false;
+                    var type = outgoing.next();
+                    if (indegrees.addTo(type, -1) == 1) queue.add(type);
+                }
+                outgoing = null;
+            }
+            if (ordered != captured.size()) throw new IllegalStateException("Circular component dependency");
+            graphValidatedRevision = revision;
+            frozenAssembly = ObjectLists.unmodifiable(captured);
+            assemblyCapturedRevision = revision;
+            phase = 6;
+            return true;
+        }
+
+        public boolean current() {
+            stale |= components.revision() != revision;
+            return !stale;
+        }
+
+        public List<SavedBinding<E, ?>> result() {
+            if (phase != 6 || !current()) throw new IllegalStateException("Component binding capture is incomplete or stale");
+            return cachedResult == null ? ObjectLists.unmodifiable(captured) : cachedResult;
+        }
+    }
+
+    /** Private proof: TopologicalComponentMap.Node already froze this exact immutable set. */
+    private static final class FrozenDependencies<E> extends AbstractSet<ComponentType<E, ?>> {
+        private final Set<ComponentType<E, ?>> values;
+        private FrozenDependencies(Set<ComponentType<E, ?>> values) { this.values = values; }
+        @Override public @NotNull Iterator<ComponentType<E, ?>> iterator() { return values.iterator(); }
+        @Override public int size() { return values.size(); }
+    }
+
     /**
      * Unsorted assembly for exceptional lifecycle cleanup when a broken dependency graph cannot be
      * ordered. This deliberately does not validate the graph and must not replace save validation.
@@ -137,7 +369,8 @@ public final class ComponentMap<E> {
         public SavedBinding {
             Objects.requireNonNull(type);
             Objects.requireNonNull(component);
-            dependencies = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies));
+            dependencies = dependencies instanceof FrozenDependencies<?> ? dependencies
+                : ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies));
         }
     }
 

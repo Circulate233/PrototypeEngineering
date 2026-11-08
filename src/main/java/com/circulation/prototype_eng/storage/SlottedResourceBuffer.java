@@ -33,11 +33,11 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final long[] reservedExtract;
     private final long[] reservedInsert;
     private final AEKey2LongMap totals = new AEKey2LongMap.LinkdOpenHashMap();
-    private final AEKey2LongMap extractHolds = new AEKey2LongMap.OpenHashMap();
+    private final AEKey2LongMap extractHolds;
     // Includes pending output and the capacity retained to refund applied input.
-    private final AEKey2LongMap insertHolds = new AEKey2LongMap.OpenHashMap();
+    private final AEKey2LongMap insertHolds;
     private final BitSet freeSlots;
-    private final BitSet changedSlots = new BitSet();
+    private final BitSet changedSlots;
     private int activeReservations;
 
     public SlottedResourceBuffer(int slots, Map<AEKeyType, Long> capacities, Runnable onChanged) {
@@ -52,11 +52,15 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             }
             this.capacities.put(type, capacity);
         }
+        // Every positive hold key occupies a physical slot. Fixed expected capacity prevents
+        // a no-fence pending install from rehashing after its new entry has already been written.
+        extractHolds = new AEKey2LongMap.OpenHashMap(slots); insertHolds = new AEKey2LongMap.OpenHashMap(slots);
         context = new StorageContext(onChanged);
         keys = new AEKey[slots];
         amounts = new long[slots];
         reservedExtract = new long[slots];
         reservedInsert = new long[slots];
+        changedSlots = new BitSet(slots);
         freeSlots = new BitSet(slots);
         freeSlots.set(0, slots);
     }
@@ -130,6 +134,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 if (complete) {
                     return true;
                 }
+                if (context.isValid() && !context.current(context.revision())) { return false;
+                }
                 if (revision != context.revision()) {
                     revision = context.revision();
                     quantities = new AEKey2LongMap.LinkdOpenHashMap();
@@ -170,7 +176,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         public boolean current() {
             context.lock();
             try {
-                return complete && context.isValid() && revision == context.revision();
+                return complete && context.current(revision);
             } finally {
                 context.unlock();
             }
@@ -325,6 +331,196 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         return reserve(snapshot, key, amount, true);
     }
 
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public ReservationCapture beginReserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
+        return new ReserveCapture(snapshot, key, amount, false);
+    }
+
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public ReservationCapture beginReserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
+        return new ReserveCapture(snapshot, key, amount, true);
+    }
+
+    /** Each installed part owns only its live hold delta; no private fence escapes this capture. */
+    private final class ReserveCapture implements ReservationCapture {
+        private final Thread owner = Thread.currentThread();
+        private final StorageSnapshot snapshot;
+        private final AEKey key;
+        private final long maximum;
+        private final boolean insert;
+        private final IntArrayList plannedSlots = new IntArrayList();
+        private final LongArrayList plannedAmounts = new LongArrayList();
+        private @Nullable StorageFence borrowedFence;
+        private @Nullable Reservation token;
+        private @Nullable ReservationResult result;
+        private int phase, slot, part;
+        private long remaining, capturedAmount;
+        private int[] frozenSlots;
+        private long[] frozenAmounts;
+        private boolean transferred, cancelling, cancelled;
+        private ReservationResult.Status rejection = ReservationResult.Status.INSUFFICIENT;
+
+        private ReserveCapture(StorageSnapshot snapshot, AEKey key, long maximum, boolean insert) {
+            this.snapshot = Objects.requireNonNull(snapshot); this.key = Objects.requireNonNull(key);
+            if (maximum <= 0) { throw new IllegalArgumentException("A reservation needs a positive amount"); }
+            this.maximum = maximum; this.insert = insert;
+        }
+        private void requireOwner() {
+            if (Thread.currentThread() != owner) { throw new IllegalStateException("Reservation capture requires its creating owner"); }
+        }
+        @Override public boolean advance(RecipeWorkBudget budget) {
+            requireOwner(); Objects.requireNonNull(budget);
+            while (result == null) {
+                if (token != null && token.ambiguous) { throw new IllegalStateException("Native capture retains unknown primitive effects"); }
+                if (cancelling) { return false; } // Only the original cleanup source continues cancellation.
+                if (!budget.take()) { return false; }
+                context.lock();
+                try { advancePart(); } finally { context.unlock(); }
+            }
+            return true;
+        }
+        private void reject(ReservationResult.Status status) {
+            rejection = status; cancelling = true; result = rejected(status); capturedAmount = 0;
+            // Forward refusal is complete. Its installed prefix remains in this exact inventory
+            // until the original ACTIVE source actually cancels it.
+            if (token == null || !token.initialized) { cancelled = true; }
+        }
+        private void advancePart() {
+            if (!context.isValid()) { reject(ReservationResult.Status.INVALID_STORAGE); return; }
+            if (snapshot.context() != context || snapshot.revision() != context.revision()
+                || phase != 0 && context.fenceAccess() != borrowedFence
+                || (token == null || !token.initialized) && !context.current(snapshot.revision())) {
+                reject(ReservationResult.Status.STALE_SNAPSHOT); return;
+            }
+            if (phase == 0) {
+                borrowedFence = context.fenceAccess();
+                remaining = Math.min(maximum, insert ? insertionHeadroom(key) : totals.getLong(key) - extractHolds.getLong(key));
+                if (remaining <= 0 || !capacities.containsKey(key.getType())) { reject(ReservationResult.Status.INSUFFICIENT); return; }
+                phase = 1; return;
+            }
+            if (phase == 1 || phase == 2) {
+                if (slot == keys.length || remaining == 0) {
+                    if (phase == 1 && insert && remaining > 0) { phase = 2; slot = 0; return; }
+                    capturedAmount = 0;
+                    // Freeze and sum each planned portion in separately budgeted steps.
+                    forFreeze(); return;
+                }
+                int currentSlot = slot++;
+                if (phase == 1 ? key.equals(keys[currentSlot]) : keys[currentSlot] == null) {
+                    long portion = slotTransferable(currentSlot, key, remaining, insert);
+                    if (portion > 0) {
+                        plannedSlots.add(currentSlot); plannedAmounts.add(portion); remaining -= portion;
+                    }
+                }
+                return;
+            }
+            if (phase == 3) {
+                if (part == frozenSlots.length) {
+                    if (capturedAmount == 0) { reject(ReservationResult.Status.INSUFFICIENT); return; }
+                    token = new Reservation(key, new Allocation(frozenSlots, frozenAmounts, capturedAmount), insert, false);
+                    if (activeReservations == Integer.MAX_VALUE) { throw new IllegalStateException("Too many active storage reservations"); }
+                    context.requireChange(3);
+                    // Overflow is a preflight proof; the actual mutation happens after all checks.
+                    long checkedHold = Math.addExact((insert ? insertHolds : extractHolds).getLong(key), capturedAmount);
+                    if (checkedHold < 0) throw new IllegalStateException("Negative native hold total");
+                    phase = 4; part = 0; return;
+                }
+                frozenSlots[part] = plannedSlots.getInt(part); frozenAmounts[part] = plannedAmounts.getLong(part);
+                capturedAmount = Math.addExact(capturedAmount, frozenAmounts[part]); part++; return;
+            }
+            var currentToken = Objects.requireNonNull(token);
+            if (phase == 4) {
+                if (part == frozenSlots.length) { phase = 5; part = 0; return; }
+                validateInstall(part++); return;
+            }
+            if (phase == 5) {
+                if (part == frozenSlots.length) { phase = 6; return; }
+                if (!validateInstall(part)) { return; }
+                if (!currentToken.initialized) {
+                    context.requireChange(3);
+                    if (activeReservations == Integer.MAX_VALUE) { throw new IllegalStateException("Too many active storage reservations"); }
+                    context.beginDeferredMutation(); currentToken.journal = true;
+                    context.reserveDeferredChanges(3); currentToken.revisionChanges = 4; activeReservations++; currentToken.initialized = true;
+                }
+                int currentSlot = frozenSlots[part]; long portion = frozenAmounts[part];
+                var holds = insert ? reservedInsert : reservedExtract;
+                var heldTotals = insert ? insertHolds : extractHolds;
+                if (!heldTotals.containsKey(key) && heldTotals.size() >= keys.length) {
+                    throw new IllegalStateException("Native hold map exceeds its physical slot key bound");
+                }
+                long held = heldTotals.getLong(key);
+                if (held < 0) { throw new IllegalStateException("Native aggregate hold is negative"); }
+                long nextHeld = Math.addExact(held, portion);
+                // Constructor minN/maxFill and the key bound exclude rehash. All user hash/equals
+                // calls occur before addTo's first write; after it only fixed preallocated writes remain.
+                addAmount(heldTotals, key, portion, nextHeld);
+                holds[currentSlot] += portion; keys[currentSlot] = key; freeSlots.clear(currentSlot); changedSlots.set(currentSlot);
+                currentToken.reservedParts++; part++; currentToken.ambiguous = false; return;
+            }
+            if (phase == 6) {
+                var acceptedResult = new ReservationResult(ReservationResult.Status.ACCEPTED, currentToken);
+                currentToken.ambiguous = true;
+                context.reservedChanged(currentToken.revisionChanges, false); currentToken.revisionChanges--; currentToken.endJournal();
+                result = acceptedResult; phase = 8; currentToken.ambiguous = false;
+            }
+        }
+        private void forFreeze() {
+            frozenSlots = new int[plannedSlots.size()]; frozenAmounts = new long[plannedSlots.size()]; phase = 3; part = 0;
+        }
+        private boolean validateInstall(int index) {
+            int currentSlot = frozenSlots[index]; long portion = frozenAmounts[index];
+            if (slotTransferable(currentSlot, key, portion, insert) != portion) {
+                reject(ReservationResult.Status.STALE_SNAPSHOT); return false;
+            }
+            if (portion > Long.MAX_VALUE - (insert ? reservedInsert : reservedExtract)[currentSlot]) {
+                throw new IllegalStateException("Reserved slot amount exceeds long capacity");
+            }
+            return true;
+        }
+        @Override public ReservationResult result() {
+            requireOwner();
+            if (result == null) { throw new IllegalStateException("Reservation capture is incomplete"); }
+            transferred = result.status() == ReservationResult.Status.ACCEPTED; return result;
+        }
+        @Override public long amount() {
+            requireOwner(); if (result == null) { throw new IllegalStateException("Reservation capture is incomplete"); }
+            return result.status() == ReservationResult.Status.ACCEPTED ? capturedAmount : 0;
+        }
+        @Override public boolean hasObligations() {
+            requireOwner(); return !transferred && token != null && token.initialized && token.state != State.ROLLED_BACK;
+        }
+        @Override public ResourceReservation.Resolution resolution() {
+            context.requireLock();
+            if (token != null && token.ambiguous) { return ResourceReservation.Resolution.UNKNOWN; }
+            if (cancelled || token != null && token.state == State.ROLLED_BACK) {
+                return ResourceReservation.Resolution.ROLLED_BACK;
+            }
+            // Full accepted token proof belongs to the published token, not to a partial capture.
+            return ResourceReservation.Resolution.REVERSIBLE;
+        }
+        @Override public @Nullable ResourceReservation.Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+            context.requireLock(); return budget.take() ? resolution() : null;
+        }
+        @Override public boolean cancel(RecipeWorkBudget budget) {
+            context.requireLock(); Objects.requireNonNull(budget);
+            if (transferred) { return true; }
+            cancelling = true;
+            if (token != null && token.initialized && token.state != State.ROLLED_BACK) {
+                if (!token.rollbackWithinBudget(budget)) { return false; }
+            }
+            result = rejected(rejection); capturedAmount = 0; phase = 8; cancelled = true; return true;
+        }
+        @Override public boolean cancel() {
+            context.requireLock();
+            if (transferred) return true;
+            cancelling = true;
+            if (token != null && token.initialized && token.state != State.ROLLED_BACK) token.rollback();
+            result = rejected(rejection); capturedAmount = 0; phase = 8; cancelled = true; return true;
+        }
+    }
+
     private ReservationResult reserve(StorageSnapshot snapshot, AEKey key, long amount, boolean insert) {
         Objects.requireNonNull(snapshot);
         Objects.requireNonNull(key);
@@ -336,7 +532,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (!context.isValid()) {
                 return rejected(ReservationResult.Status.INVALID_STORAGE);
             }
-            if (snapshot.context() != context || snapshot.revision() != context.revision()) {
+            if (snapshot.context() != context || !context.current(snapshot.revision())) {
                 return rejected(ReservationResult.Status.STALE_SNAPSHOT);
             }
             if (insert && amount > insertionHeadroom(key)) {
@@ -359,6 +555,15 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                     throw new IllegalStateException("Reserved slot amount exceeds long capacity");
                 }
             }
+            var token = new Reservation(key, allocation, insert);
+            var acceptedResult = new ReservationResult(ReservationResult.Status.ACCEPTED, token);
+            var heldTotals = insert ? insertHolds : extractHolds;
+            if (!heldTotals.containsKey(key) && heldTotals.size() >= keys.length) {
+                throw new IllegalStateException("Native hold map exceeds its physical slot key bound");
+            }
+            // This positive addTo cannot rehash. Its key callbacks happen before the first write.
+            // Everything afterwards is preflighted and runs under this same continuous physical lock.
+            addAmount(heldTotals, key, amount, insert ? nextInsertHold : nextExtractHold);
             context.reserveChanges(3);
             for (int part = 0; part < allocation.slots.length; part++) {
                 int slot = allocation.slots[part];
@@ -367,14 +572,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 holds[slot] += allocation.amounts[part];
                 changedSlots.set(slot);
             }
-            if (insert) {
-                addAmount(insertHolds, key, amount, nextInsertHold);
-            } else {
-                addAmount(extractHolds, key, amount, nextExtractHold);
-            }
             activeReservations++;
             context.changed();
-            return new ReservationResult(ReservationResult.Status.ACCEPTED, new Reservation(key, allocation, insert));
+            return acceptedResult;
         } finally {
             context.unlock();
         }
@@ -665,20 +865,31 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private record Allocation(int[] slots, long[] amounts, long total) {
     }
 
+    private enum WorkKind {APPLY, EXPOSE, COMPLETE, ROLLBACK}
+
     private enum State { PENDING, APPLIED, EXPOSED, COMMITTED, ROLLED_BACK }
 
+    /** One exact allocation journal; legacy calls synchronously drain this same native cursor. */
     private final class Reservation implements ResourceReservation {
         private final AEKey key;
         private final Allocation allocation;
         private final boolean insert;
         private State state = State.PENDING;
         private byte revisionChanges = 3;
-        @Nullable private StorageFence exposedFence;
+        private int reservedParts, appliedParts, exposedParts;
+        private long appliedAmount, exposedAmount;
+        private boolean initialized, journal, ambiguous;
+        private @Nullable StorageFence exposedFence;
+        private @Nullable StorageFence mutationFence;
+        private boolean mutationRetained;
+        private @Nullable Work work;
 
         private Reservation(AEKey key, Allocation allocation, boolean insert) {
-            this.key = key;
-            this.allocation = allocation;
-            this.insert = insert;
+            this(key, allocation, insert, true);
+        }
+        private Reservation(AEKey key, Allocation allocation, boolean insert, boolean initialized) {
+            this.key = key; this.allocation = allocation; this.insert = insert; this.initialized = initialized;
+            reservedParts = initialized ? allocation.slots.length : 0;
         }
 
         @Override
@@ -689,197 +900,270 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         @Override
         public Resolution resolution() {
             context.requireLock();
-            return switch (state) {
-                case PENDING -> Resolution.RESERVED;
-                case APPLIED -> Resolution.APPLIED;
-                case EXPOSED -> { requireExposure(); yield Resolution.APPLIED; }
-                case COMMITTED -> Resolution.COMPLETED;
-                case ROLLED_BACK -> Resolution.ROLLED_BACK;
-            };
+            if (ambiguous) { return Resolution.UNKNOWN; }
+            if (state == State.COMMITTED) { return Resolution.COMPLETED; }
+            if (state == State.ROLLED_BACK) { return Resolution.ROLLED_BACK; }
+            if (exposedFence != null) { requireExposure(); }
+            if (journal) { return Resolution.REVERSIBLE; }
+            return state == State.PENDING ? Resolution.RESERVED : Resolution.APPLIED; }
+        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+            context.requireLock(); return budget.take() ? resolution() : null;
         }
 
         @Override public boolean supportsSequentialUse() { return true; }
 
-        @Override public void exposeApplied() {
-            context.requireLock();
-            requireState(State.APPLIED);
-            context.requireFenceAccess();
-            context.requireReservedChange(revisionChanges);
-            var holds = insert ? reservedExtract : reservedInsert;
-            var totalsHeld = insert ? extractHolds : insertHolds;
-            long nextHeld = Math.subtractExact(totalsHeld.getLong(key), allocation.total);
-            if (nextHeld < 0) { throw new IllegalStateException("Reservation lost its aggregate compensation hold"); }
-            for (int part = 0; part < allocation.slots.length; part++) {
-                int slot = allocation.slots[part];
-                if (!key.equals(keys[slot]) || holds[slot] < allocation.amounts[part]) {
-                    throw new IllegalStateException("Reservation lost its compensation allocation");
-                }
-            }
-            // Reserve isolation before making this token's output/refund capacity reusable.
-            exposedFence = context.retainSequentialReservation();
-            for (int part = 0; part < allocation.slots.length; part++) {
-                int slot = allocation.slots[part];
-                holds[slot] -= allocation.amounts[part];
-                cleanSlot(slot);
-                changedSlots.set(slot);
-            }
-            addAmount(totalsHeld, key, -allocation.total, nextHeld);
-            state = State.EXPOSED;
-            context.reservedChanged(revisionChanges, false);
-            revisionChanges--;
-        }
+        @Override public void exposeApplied() { drain(WorkKind.EXPOSE); }
 
         @Override
         public boolean canApply() {
             context.requireLock();
             requireState(State.PENDING);
+            if (ambiguous || !initialized || reservedParts != allocation.slots.length) {
+                throw new IllegalStateException("Reservation has incomplete native obligations");
+            }
             return context.isValid();
+        }
+        @Override public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+            context.requireLock(); return budget.take() ? canApply() : null;
         }
 
         @Override
-        public void apply() {
-            context.requireLock();
-            requireState(State.PENDING);
-            if (!context.isValid()) {
-                throw new IllegalStateException("Cannot apply an invalid storage reservation");
+        public void apply() { drain(WorkKind.APPLY);
             }
-            context.requireReservedChange(revisionChanges);
-            long totalDelta = insert ? allocation.total : -allocation.total;
-            long nextTotal = Math.addExact(totals.getLong(key), totalDelta);
-            long nextInsertHold = Math.subtractExact(insertHolds.getLong(key), totalDelta);
-            long nextExtractHold = Math.addExact(extractHolds.getLong(key), totalDelta);
-            long[] previousHolds = insert ? reservedInsert : reservedExtract;
-            long[] nextHolds = insert ? reservedExtract : reservedInsert;
-            long[] nextAmounts = new long[allocation.slots.length];
-            for (int part = 0; part < allocation.slots.length; part++) {
-                int slot = allocation.slots[part];
-                long portion = allocation.amounts[part];
-                if (!key.equals(keys[slot]) || previousHolds[slot] < portion) {
-                    throw new IllegalStateException("Reservation lost its slot allocation");
+
+        @Override
+        public void complete() { drain(WorkKind.COMPLETE); }
+
+        @Override
+        public void rollback() { drain(WorkKind.ROLLBACK);
+            }
+        @Override public boolean applyWithinBudget(RecipeWorkBudget budget) { return advance(WorkKind.APPLY, budget, false); }
+        @Override public boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) { return advance(WorkKind.EXPOSE, budget, false); }
+        @Override public boolean completeWithinBudget(RecipeWorkBudget budget) { return advance(WorkKind.COMPLETE, budget, false); }
+        @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) { return advance(WorkKind.ROLLBACK, budget, false); }
+
+        private void drain(WorkKind kind) {
+            try {
+                if (!advance(kind, new RecipeWorkBudget(Long.MAX_VALUE), true)) {
+                    throw new IllegalStateException("Native reservation cannot settle ambiguous effects");
                 }
+            } catch (RuntimeException | Error failure) {
+                if (ambiguous && mutationFence == null) {
+                    // A raw legacy caller has no retained descriptor. Retire this exact context so
+                    // later planning/consumption/restore cannot treat an unknown map as healthy.
+                    try { context.invalidate(); }
+                    catch (RuntimeException | Error retirement) { if (retirement != failure) { failure.addSuppressed(retirement); } }
+                }
+                throw failure;
+            }
+        }
+        private boolean advance(WorkKind kind, RecipeWorkBudget budget, boolean synchronous) {
+            context.requireLock(); Objects.requireNonNull(budget);
+            // Pending reserve/cancel owns coherent live holds. Primary effects need original isolation
+            // across every yielded physical scope; a version barrier never grants that isolation.
+            if (mutationFence != null || !synchronous && (kind == WorkKind.APPLY || kind == WorkKind.EXPOSE
+                || kind == WorkKind.COMPLETE || reservedParts != 0 || appliedParts != 0 || state == State.APPLIED || state == State.EXPOSED)) {
+                var currentFence = context.requireFenceAccess();
+                if (mutationFence == null) { mutationFence = currentFence; }
+                else if (mutationFence != currentFence) { throw new IllegalStateException("Native journal belongs to another fence"); }
+            }
+            if (ambiguous) { throw new IllegalStateException("Native reservation retains unknown primitive effects"); }
+            if (work != null && work.kind != kind) {
+                if (kind != WorkKind.ROLLBACK || work.kind == WorkKind.COMPLETE) {
+                    throw new IllegalStateException("Native reservation cannot change its decided operation");
+                }
+                work = null; // The exact applied/exposed/reserved prefixes remain the rollback journal.
+            }
+            if (work == null) {
+                if (kind == WorkKind.APPLY) { requireState(State.PENDING); }
+                else if (kind == WorkKind.EXPOSE) { requireState(State.APPLIED); context.requireFenceAccess(); }
+                else if (kind == WorkKind.COMPLETE) {
+                    if (state != State.APPLIED && state != State.EXPOSED) {
+                        throw new IllegalStateException("Only applied storage reservations can complete");
+                    }
+                } else if (state != State.PENDING && state != State.APPLIED && state != State.EXPOSED) {
+                    throw new IllegalStateException("Cannot roll back terminal storage reservation");
+                }
+                work = new Work(kind);
+            }
+            var currentWork = work;
+            while (work != null) {
+                if (!budget.take()) { return false; }
+                if (currentWork.phase == 0) {
+                    if (!initialized) { throw new IllegalStateException("Native reservation has not retained its revision credits"); }
+                    context.requireReservedChange(revisionChanges);
+                    if (currentWork.kind == WorkKind.APPLY) {
+                        if (!context.isValid()) { throw new IllegalStateException("Cannot apply an invalid storage reservation"); }
+                        if (reservedParts != allocation.slots.length) { throw new IllegalStateException("Reservation allocation is incomplete"); }
+                        long delta = insert ? allocation.total : -allocation.total;
+                        checkedNonnegative(Math.addExact(totals.getLong(key), delta));
+                        checkedNonnegative(Math.subtractExact(insertHolds.getLong(key), delta));
+                        checkedNonnegative(Math.addExact(extractHolds.getLong(key), delta));
+                    }
+                    if (currentWork.kind == WorkKind.EXPOSE) { context.requireFenceAccess(); }
+                    if (exposedFence != null) { requireExposure(); }
+                    if (activeReservations <= 0) { throw new IllegalStateException("Reservation count is inconsistent"); }
+                    if (currentWork.kind == WorkKind.ROLLBACK) { validateRollbackTotals(); }
+                    currentWork.phase = 1; continue;
+                }
+                if (currentWork.phase == 1) {
+                    if (currentWork.index == currentWork.limit) {
+                        currentWork.phase = 2; currentWork.index = 0; continue;
+                    }
+                    validatePart(currentWork, currentWork.part()); currentWork.index++; continue;
+                }
+                if (currentWork.phase == 2) {
+                    if (currentWork.index == currentWork.limit) { currentWork.phase = 3; continue; }
+                    int part = currentWork.part(); validatePart(currentWork, part);
+                    if (mutationFence != null && !mutationRetained) {
+                        if (context.retainSequentialReservation() != mutationFence) {
+                            throw new IllegalStateException("Native journal lost its original fence");
+                        }
+                        mutationRetained = true;
+                    }
+                    if (!journal) { context.beginDeferredMutation(); journal = true; }
+                    if (currentWork.kind == WorkKind.EXPOSE && exposedFence == null) {
+                        exposedFence = context.retainSequentialReservation();
+                    }
+                    mutatePart(currentWork.kind, part); currentWork.index++; continue;
+                }
+                finishWork(currentWork.kind); work = null;
+            }
+            return true;
+        }
+        private void validatePart(Work currentWork, int part) {
+            int slot = allocation.slots[part]; long portion = allocation.amounts[part];
+            if (currentWork.kind == WorkKind.APPLY) {
+                if (!context.isValid()) { throw new IllegalStateException("Cannot apply an invalid storage reservation"); }
+                var previousHolds = insert ? reservedInsert : reservedExtract;
+                var nextHolds = insert ? reservedExtract : reservedInsert;
+                requireHold(slot, previousHolds, portion);
                 if (portion > Long.MAX_VALUE - nextHolds[slot]) {
                     throw new IllegalStateException("Compensation slot amount exceeds long capacity");
                 }
-                nextAmounts[part] = checkedSlotChange(slot, key, portion, insert);
+                checkedSlotChange(slot, key, portion, insert); return;
             }
-            for (int part = 0; part < allocation.slots.length; part++) {
-                int slot = allocation.slots[part];
-                long portion = allocation.amounts[part];
-                previousHolds[slot] -= portion;
-                nextHolds[slot] += portion;
-                amounts[slot] = nextAmounts[part];
-                changedSlots.set(slot);
+            boolean applied = part < appliedParts;
+            boolean exposed = part < exposedParts;
+            if (currentWork.kind == WorkKind.EXPOSE) {
+                requireHold(slot, insert ? reservedExtract : reservedInsert, portion); return;
             }
+            if (exposed) {
+                requireExposure();
+            } else {
+                boolean holdsInsert = applied != insert;
+                requireHold(slot, holdsInsert ? reservedInsert : reservedExtract, portion);
+            }
+            if (currentWork.kind == WorkKind.ROLLBACK && applied) {
+                // Recheck the whole remaining journal after every yielded physical scope.
+                validateRollbackTotals();
+                if (exposed && slotTransferable(slot, key, portion, !insert) != portion) {
+                    throw new IllegalStateException("Sequential rollback requires later dependent reservations to resolve first");
+                }
+                checkedSlotChange(slot, key, portion, !insert);
+            }
+        }
+        private void validateRollbackTotals() {
+            long nextTotal = Math.addExact(totals.getLong(key), insert ? -appliedAmount : appliedAmount);
+            if (nextTotal < 0 || !insert && exposedAmount > insertionHeadroom(key)) {
+                throw new IllegalStateException("Sequential rollback lost aggregate compensation capacity");
+            }
+        }
+        private void requireHold(int slot, long[] holds, long portion) {
+            if (!key.equals(keys[slot]) || holds[slot] < portion) {
+                throw new IllegalStateException("Reservation lost its exact slot hold");
+            }
+        }
+        private void mutatePart(WorkKind kind, int part) {
+            int slot = allocation.slots[part]; long portion = allocation.amounts[part];
+            long totalDelta = 0, insertDelta = 0, extractDelta = 0;
+            boolean applied = part < appliedParts, exposed = part < exposedParts;
+            if (kind == WorkKind.APPLY) {
+                totalDelta = insert ? portion : -portion; insertDelta = -totalDelta; extractDelta = totalDelta;
+            } else if (kind == WorkKind.EXPOSE) {
+                if (insert) { extractDelta = -portion; } else { insertDelta = -portion; }
+            } else {
+                if (kind == WorkKind.ROLLBACK && applied) { totalDelta = insert ? -portion : portion; }
+                if (!exposed) {
+                    if (applied != insert) { insertDelta = -portion; } else { extractDelta = -portion; }
+                }
+            }
+            long nextTotal = checkedNonnegative(Math.addExact(totals.getLong(key), totalDelta));
+            long nextInsert = checkedNonnegative(Math.addExact(insertHolds.getLong(key), insertDelta));
+            long nextExtract = checkedNonnegative(Math.addExact(extractHolds.getLong(key), extractDelta));
+            long nextAmount = totalDelta == 0 ? amounts[slot] : checkedSlotChange(slot, key, portion, totalDelta > 0);
+            ambiguous = true; // Any primitive failure after this boundary keeps the original obligation UNKNOWN.
             addAmount(totals, key, totalDelta, nextTotal);
-            addAmount(insertHolds, key, -totalDelta, nextInsertHold);
-            addAmount(extractHolds, key, totalDelta, nextExtractHold);
-            state = State.APPLIED;
-            context.reservedChanged(revisionChanges, false);
-            revisionChanges--;
-        }
-
-        @Override
-        public void complete() {
-            context.requireLock();
-            if (state != State.APPLIED && state != State.EXPOSED) { throw new IllegalStateException("Only applied storage reservations can complete"); }
-            release(false);
-            state = State.COMMITTED;
-        }
-
-        @Override
-        public void rollback() {
-            context.requireLock();
-            if (state != State.PENDING && state != State.APPLIED && state != State.EXPOSED) {
-                throw new IllegalStateException("Cannot roll back terminal storage reservation");
+            addAmount(insertHolds, key, insertDelta, nextInsert); addAmount(extractHolds, key, extractDelta, nextExtract);
+            if (kind == WorkKind.APPLY) {
+                (insert ? reservedInsert : reservedExtract)[slot] -= portion;
+                (insert ? reservedExtract : reservedInsert)[slot] += portion;
+                appliedParts++;
+                appliedAmount += portion; // Exact allocation prefixes are bounded by allocation.total.
+            } else if (kind == WorkKind.EXPOSE) {
+                (insert ? reservedExtract : reservedInsert)[slot] -= portion; exposedParts++;
+                exposedAmount += portion;
+            } else {
+                if (!exposed) { (applied != insert ? reservedInsert : reservedExtract)[slot] -= portion; }
+                reservedParts--; if (applied) { appliedParts--; } if (exposed) { exposedParts--; }
+                if (applied) { appliedAmount -= portion; }
+                if (exposed) { exposedAmount -= portion; }
             }
-            release(state == State.APPLIED || state == State.EXPOSED);
-            state = State.ROLLED_BACK;
+            amounts[slot] = nextAmount;
+            if (nextAmount > 0) { keys[slot] = key; freeSlots.clear(slot); }
+            cleanSlot(slot); changedSlots.set(slot); ambiguous = false;
         }
-
-        private void release(boolean restore) {
-            if (state == State.EXPOSED) { finishExposed(restore); return; }
+        private long checkedNonnegative(long value) {
+            if (value < 0) { throw new IllegalStateException("Reservation aggregate hold or balance is negative"); }
+            return value;
+        }
+        private void finishWork(WorkKind kind) {
             context.requireReservedChange(revisionChanges);
-            if (activeReservations <= 0) {
-                throw new IllegalStateException("Reservation count is inconsistent");
-            }
-            // Applying switches output capacity to held quantity, and input quantity to refund capacity.
-            boolean holdsInsert = (state == State.PENDING) == insert;
-            long[] holds = holdsInsert ? reservedInsert : reservedExtract;
-            long nextInsertHold = holdsInsert ? Math.subtractExact(insertHolds.getLong(key), allocation.total)
-                : insertHolds.getLong(key);
-            long nextExtractHold = holdsInsert ? extractHolds.getLong(key)
-                : Math.subtractExact(extractHolds.getLong(key), allocation.total);
-            long nextTotal = totals.getLong(key);
-            if (restore) {
-                nextTotal = insert ? Math.subtractExact(nextTotal, allocation.total) : Math.addExact(nextTotal, allocation.total);
-            }
-            long[] nextAmounts = new long[allocation.slots.length];
-            for (int part = 0; part < allocation.slots.length; part++) {
-                int slot = allocation.slots[part];
-                if (!key.equals(keys[slot]) || holds[slot] < allocation.amounts[part]) {
-                    throw new IllegalStateException("Reservation lost its compensation rights");
+            boolean terminal = kind == WorkKind.COMPLETE || kind == WorkKind.ROLLBACK;
+            if (terminal && activeReservations <= 0) { throw new IllegalStateException("Reservation count is inconsistent"); }
+            if (exposedFence != null) { requireExposure(); }
+            // Final revision publication precedes removing the pending-proof barrier.
+            ambiguous = true;
+            context.reservedChanged(revisionChanges, terminal);
+            revisionChanges = terminal ? 0 : (byte) (revisionChanges - 1);
+            state = switch (kind) {
+                case APPLY -> State.APPLIED;
+                case EXPOSE -> State.EXPOSED;
+                case COMPLETE -> State.COMMITTED;
+                case ROLLBACK -> State.ROLLED_BACK;
+            };
+            if (terminal) {
+                activeReservations--;
+                if (exposedFence != null) { context.releaseSequentialReservation(exposedFence); exposedFence = null; }
+                if (mutationRetained) {
+                    context.releaseSequentialReservation(Objects.requireNonNull(mutationFence)); mutationRetained = false;
                 }
-                nextAmounts[part] = restore ? checkedSlotChange(slot, key, allocation.amounts[part], !insert) : amounts[slot];
+                mutationFence = null;
             }
-            for (int part = 0; part < allocation.slots.length; part++) {
-                int slot = allocation.slots[part];
-                long portion = allocation.amounts[part];
-                amounts[slot] = nextAmounts[part];
-                holds[slot] -= portion;
-                cleanSlot(slot);
-                changedSlots.set(slot);
-            }
-            addAmount(totals, key, restore ? (insert ? -allocation.total : allocation.total) : 0, nextTotal);
-            addAmount(insertHolds, key, holdsInsert ? -allocation.total : 0, nextInsertHold);
-            addAmount(extractHolds, key, holdsInsert ? 0 : -allocation.total, nextExtractHold);
-            activeReservations--;
-            context.reservedChanged(revisionChanges, true);
-            revisionChanges = 0;
+            endJournal(); ambiguous = false;
+        }
+        private void endJournal() {
+            if (journal) { context.endDeferredMutation(); journal = false; }
         }
 
-        private void finishExposed(boolean restore) {
-            var fence = requireExposure();
-            context.requireReservedChange(revisionChanges);
-            if (activeReservations <= 0) { throw new IllegalStateException("Reservation count is inconsistent"); }
-            if (restore) {
-                long delta = insert ? -allocation.total : allocation.total;
-                long nextTotal = Math.addExact(totals.getLong(key), delta);
-                if (nextTotal < 0 || !insert && allocation.total > insertionHeadroom(key)) {
-                    throw new IllegalStateException("Sequential rollback lost its aggregate compensation capacity");
-                }
-                for (int part = 0; part < allocation.slots.length; part++) {
-                    int slot = allocation.slots[part];
-                    long portion = allocation.amounts[part];
-                    if (slotTransferable(slot, key, portion, !insert) != portion) {
-                        throw new IllegalStateException("Sequential rollback requires later dependent reservations to resolve first");
-                    }
-                    checkedSlotChange(slot, key, portion, !insert);
-                }
-                for (int part = 0; part < allocation.slots.length; part++) {
-                    int slot = allocation.slots[part];
-                    writeSlot(slot, key, allocation.amounts[part], !insert);
-                }
-                addAmount(totals, key, delta, nextTotal);
-            }
-            activeReservations--;
-            context.reservedChanged(revisionChanges, true);
-            revisionChanges = 0;
-            context.releaseSequentialReservation(fence);
-            exposedFence = null;
-        }
-
-        private StorageFence requireExposure() {
+        private void requireExposure() {
             var fence = Objects.requireNonNull(exposedFence, "Reservation lost its sequential fence");
             if (context.requireFenceAccess() != fence) {
                 throw new IllegalStateException("Sequential reservation belongs to another fence");
             }
-            return fence;
         }
 
         private void requireState(State expected) {
             if (state != expected) {
                 throw new IllegalStateException("Reservation is " + state + ", expected " + expected);
             }
+        }
+        private final class Work {
+            private final WorkKind kind;
+            private final int limit;
+            private int phase, index;
+            private Work(WorkKind kind) { this.kind = kind; limit = reservedParts; }
+            private int part() { return kind == WorkKind.COMPLETE || kind == WorkKind.ROLLBACK ? limit - index - 1 : index; }
         }
     }
 }

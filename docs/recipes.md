@@ -58,7 +58,7 @@ registry.registerRecipe(poolId, new MachineRecipe(recipeId, durationTicks,
 
 透明预算暂停仍属于同一获取段，保留真实预留和当前游标，不人工 stage/append/expose。最终预留前再次证明当前捕获版本；新来源事实不在原候选证明内时阻塞重试。普通网络及研究材料工作只在原 deadline、原 attempt 仍 current 时继续 work yield；取消退还全部准确持有预留，UNKNOWN 等待原来源/业务确认。旧 `Stage.acquire()` 后续子段保留同步模式，纯 prepare 入口后续子段保留纯计算模式。
 
-进程本地缓存只保存纯计算状态，精确需求内容及来源数量证明通过后才复用；当前 permit、lease、来源与预留不进入缓存，跨 tick 必须重捕获当前授权，终态清除且不写 NBT。外部 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，使用方需保持既有纯/稳定契约，预算不抢占其内部实现。正式 PLANNED_PARALLEL、独立宿主自动接线和扫描预算属于块二，见[执行边界](planned-execution.md)。
+进程本地缓存只保存纯计算状态，精确需求内容及来源数量证明通过后才复用；当前 permit、lease、来源与预留不进入缓存，跨 tick 必须重捕获当前授权，终态清除且不写 NBT。外部 snapshot、matcher、comparator 和 opaque callback 是合作式单次回调边界，使用方需保持既有纯/稳定契约，预算不抢占其内部实现。正式 PLANNED_PARALLEL、独立宿主和扫描内部预算已由块二接入并验证，见[执行边界](planned-execution.md)。
 
 ## 已接入的固定需求和来源组件
 
@@ -115,7 +115,7 @@ RandomOutputPool 在 END 的每个执行循环按整数权重无放回选取最�
 
 `FuzzyInputGroup` 保存有序 AEKey 候选和每执行数量，按声明顺序选首个足量 key；空候选组明确不可满足。`DynamicInputGroup` 保存 AEKey pattern、公开 NamedResourceMatcher、数量、可选 displayedCandidates、maxCandidates 和可选稳定全序比较器。ResourceMatcher 是真实可扩展的纯 predicate；NamedResourceMatcher 将稳定 ID 直接绑定到不可变匹配实现，不通过可随时替换的全局注册表查运行中进程。displayedCandidates 仅供展示，不过滤实际来源。
 
-动态候选来自有效输入仓室快照中非零可用的 key，先按真实 context 去重并汇合。每个不同 key 都参与匹配，全扫描匹配结果后按 typeId、resourceId、完整 key NBT 的规范字节排序；compound 字段名排序、list 保留顺序，叶子完整编码，long array 经最小只读 Mixin 访问，不以 hash、对象身份或可能省略内容的 NBT toString 排序。块一 worker 保留全部已排序匹配，owner 先过滤当前非零可用项，再截取 maxCandidates 并判断数量；匹配、规范编码和排序内部工作均可按预算暂停。不同 key 序列化身份相同时拒绝，扩展类型可提供纯、稳定且区分所有不相等 key 的比较器。maxCandidates 只限制候选数量，不是总扫描/排序/NBT 内存预算；扫描消费者自己的完整预算仍属块二。
+动态候选来自有效输入仓室快照中非零可用的 key，先按真实 context 去重并汇合。每个不同 key 都参与匹配，全扫描匹配结果后按 typeId、resourceId、完整 key NBT 的规范字节排序；compound 字段名排序、list 保留顺序，叶子完整编码，long array 经最小只读 Mixin 访问，不以 hash、对象身份或可能省略内容的 NBT toString 排序。块一 worker 保留全部已排序匹配，owner 先过滤当前非零可用项，再截取 maxCandidates 并判断数量；匹配、规范编码和排序内部工作均可按预算暂停。不同 key 序列化身份相同时拒绝，扩展类型可提供纯、稳定且区分所有不相等 key 的比较器。maxCandidates 只限制候选数量，不是总扫描/排序/NBT 内存预算；扫描消费者内部预算已由块二 B 接入同一真实游标，外部合作回调内部仍遵守原契约。
 
 内置 EXACT 用 AEKey.equals，ITEM_ONLY 保留 PM 的同 item + metadata、忽略 NBT。不能用 AEItemKey.dropSecondary 替代 ITEM_ONLY：该方法重新构造默认 ItemStack，也丢弃 metadata。自定义 matcher 和排序器须在配方/进程生命周期与未来恢复中保持行为稳定。
 
@@ -214,7 +214,7 @@ RecipeCatalog 冻结配方池/声明顺序和 canonical 配方实例，相同 ID
 
 RecipeScanner 绑定一个 MachineWorkSlots，在独占执行边界按目录顺序扫描，选择首个空且组兼容槽。若任一槽为空白名单，扫描 scope 为全局；否则 scope 为全部槽组的 union，具体 admission 仍按所选槽的兼容规则。当前容量满返回 FULL，同 recipe ID 已在任一槽运行则跳过。每次 scan 最多一次成功 admission，调用方每个机器 tick 最多调用一次。结果包含 ADMITTED/YIELDED/EXHAUSTED/FULL/PAUSED 和本次 candidate/probe 数，达到限制让出，退休后完整回滚返回 PAUSED；扫描异常标记 scanner faulted，后续 scan 拒绝。
 
-ScanLimits 只限制每次检查的候选数和并行 probe 次数。游标和候选列表/搜索边界可跨调用保留，搜索固定 seed 与 ProbabilityTuning，每个 amount 都经外部 factory 构造 fresh 未公开 NEW 进程，核对 machine、canonical recipe、seed/tuning、未挂接和稳定边界；不跨 tick 保留资源 reservation、候选进程或运行权限。机器父并行上限改变会重建当前搜索。一次 pass 逐 probe 观察活动存储，候选/index 快照与上界不代表跨 tick 原子视图，也不保证动态存储下的全局最大值。
+ScanLimits 独立限制每次检查的候选数和并行 probe 次数；块二 B 的 RecipeWorkBudget 另按目录、索引、factory、属性/约束、probe、来源和原结算的实际内部访问计费。游标和候选列表/搜索边界可跨调用保留，搜索固定 seed 与 ProbabilityTuning，每个 amount 都经外部 factory 构造 fresh 未公开 NEW 进程，核对 machine、canonical recipe、seed/tuning、未挂接和稳定边界；纯暂停不跨 tick 保留资源 reservation、候选进程或运行权限；有部分预留/UNKNOWN 时准确 ScanAttempt 与原 token 留作清理，失权后不能继续前向。机器父并行上限改变会重建当前搜索。一次 pass 逐 probe 观察活动存储，候选/index 快照与上界不代表跨 tick 原子视图，也不保证动态存储下的全局最大值。
 
 默认对 base amount 从上界向 1 逐一递减探测，支持非单调需求。只有显式 `Predicate<MachineRecipe> monotonicStart` 保证 factory 局部 modifier、全部 preparation、约束、需求和存储组成的**完整 probe** 成功集为连续前缀时才二分，不能根据 type ID 自动推断。搜索界使用 long，amount=Integer.MAX_VALUE 时加减不会回绕；二分得到的 best 在 admission 前重新构造并完整探测，旧成功不等于预留权。重探测失败则下次重新观察，真实 START 始终具有最终决定权。
 
@@ -232,7 +232,7 @@ probe 不直接调用进程组件 Pre/Normal/Post；真实 RecipeProcess.tick �
 
 RecipeScanningSystem 显式 `runBefore` WorkSlotProcessingSystem，onTick 核对 scanner owner，并检查 `machine.canProcessRecipes()` 与 ready Predicate。ready 只决定本次 admission 是否扫描，不暂停既有工位，也不提供 PN 权限或实现 RESCAN。当前 FixedIoScanConstraint 补充受限固定 IO 的独立 TICK/END 预筛，已验证；START 或各预筛阶段成功均不能证明完整首 tick 或后续生命周期可行。组件声明及恢复见下一节。
 
-当前 candidate/probe 计数不限制目录 union/sort、index lookup、factory、constraint、动态全扫描/排序/key NBT、随机逐次抽样和嵌套生命周期内部工作，也不是 wall-clock/deadline 预算。数量倍率缩放资源，速度改变绝对进度，成功刻数仍每次成功 TICK 加 1；真实 planned 仍须两次 join、稳定 affinity lane 与 PN owner/epoch/向量预算，不能持锁跨 lane 等待。
+candidate/probe 计数与内部工作额度独立。块二 B 的 ScanAttempt 将目录 union/声明顺序、index 交集、factory 增量创建、属性继承/overlay、constraint/START probe 与 admission 接到原 planned owner；资源/动态排序/key NBT、随机抽样与嵌套需求复用块一纯 kernel 和内部预算。来源捕获、StorageFence claim、ResourceBatch 标量/事务预检和 Slotted 原槽/部分日志按访问续办，保留必要溢出预检和精确 partial token。退款先全量检查，再逐原 part 重验，UNKNOWN 或真实未退出保留清理义务。captureOnlyPreparation 仅许可纯捕获穿过等待，同轮捕获完成后才派发，FE/opaque 保持原序；每次后继 prepare 返回后重验 current/deadline。数量倍率缩放资源，速度改变绝对进度，成功刻数仍每次成功 TICK 加 1；旧同步 scan/acquire 与后续子段保持。真实 planned 继续沿两次 join、稳定 affinity lane 与 PN owner/epoch/向量预算，不持锁跨 lane 等待。外部默认 snapshot/index/factory/constraint、matcher/comparator/opaque callback 的内部为合作边界；本阶段不能证明任意组件首次 tick 等价投影。
 
 ## 自动扫描组件声明与恢复
 
@@ -314,9 +314,9 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 - 加权输出保留每个输出循环按权重无放回选取多个候选；`ignore_output_full` 保留部分产出并丢弃余量的效果。容量预留须覆盖实际确定的 key 和数量，不能只检查数量最大的候选而宣称覆盖所有随机结果。
 - 选择性包装器保留按顺序选择首个 START 成功的子需求、全程沿用选择、无可用候选时本次进程禁用但不阻塞，以及外部 modifier 施加进程属性效果。阻塞重试不能遗漏候选输入，也不能提前删除仍应生效的 modifier。
 - 需求 overlay 保留按类型和实例 ID 定位、每进程覆写有效需求而不改基础配方，以及外部 overlay applier 和 modifier 扩展。物品/流体 IO、流体每刻 IO、能源速率和满输出策略都是已有覆盖效果。
-- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。块一真实消费者已使用这些定义和状态的纯事实及内部预算游标；正式模式、独立宿主和扫描消费者仍须块二接线。PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表任意高级外部效果已支持 planned。
+- 属性 root/overlay、数量倍率、单进程刻状态、可补偿的属性需求及资源 chance/随机输出/检查点、模糊动态/路径/逻辑解析锁/选择器/需求 overlay、严格进程 NBT/组件装配与自有效果恢复已经接入并完成此前验证。当前工作槽宿主与整组恢复已接入，已通过此前工作槽阶段验证。块一真实消费者已使用这些定义和状态的纯事实及内部预算游标；正式模式、独立宿主和扫描消费者已由块二接线并验证。PM 当前物品/流体 snapshot 拒绝非空 properties，固定消耗投影不能代表任意高级外部效果已支持 planned。
 
-显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。真实世界结构宿主、普通调度和 PN 配方权限已接，块二继续正式 PLANNED_PARALLEL、独立宿主自动接线与扫描预算。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
+显式取消与终态所有权保存已完成验证；宿主生命周期、结构失效暂停和控制器破坏边界见[机器生命周期](machine-lifecycle.md)。真实世界结构宿主、普通调度和 PN 配方权限已接，块二已接正式 PLANNED_PARALLEL、独立宿主与扫描内部预算，剩余迁移继续按功能核对。实现时保留外部需求、process factory、约束、matcher、modifier、codec/validator 和 overlay 扩展职责；这一排序不取消任何能力。
 
 ## 验证与未完成部分
 
@@ -326,4 +326,4 @@ PM 的高级需求是必须继续迁移的行为，固定资源/FE 需求不能�
 
 属性与单进程生命周期、资源概率/随机输出/检查点、模糊动态/路径/解析锁/选择器、完成链、需求 overlay 和严格进程持久化已完成此前阶段的逻辑构建验证、逐类 IDEA MCP 全问题检查和 MCP build_project。此前工作槽宿主、单 driver 与整组 NBT 恢复通过 gradlew.bat spotlessApply build、逐类 IDEA MCP errorsOnly:false 检查及 MCP build_project，零失败/错误/跳过，IDEA 零错误、警告及弱警告且无超时；报告 `build/reports/idea/work-slots-final.json`，测试范围和准确数量见[实施进度](implementation-status.md)。此前基础扫描、首刻局部 preparation、START 探测与 resolved-base/NBT Version 2 已通过扫描阶段构建与 MCP 检查；此前扫描阶段 230 项测试通过，178 文件零诊断，报告 `build/reports/idea/recipe-scanning-final.json`。当前固定预筛/资源索引扩展已通过此前固定预筛/索引阶段构建与 MCP 检查；此前固定预筛/索引阶段 240 项测试及 182 文件 MCP 零诊断证据见 `build/reports/idea/fixed-io-index-final.json`。当前显式取消、失败所有权清理及进程 NBT Version 2/回执已通过本阶段构建与 MCP 检查；本阶段 260 项测试通过，188 文件 MCP 零诊断，报告 `build/reports/idea/process-abort-final.json`；不替代游戏或真实调度集成验证。
 
-机器宿主生命周期已接入扫描/工位/保存：普通卸载保留、恢复等待新 load 及结构、失效暂停、破坏取消；普通并发/亲和性调度、控制器 NBT 与结构宿主、显式自动扫描均已接，准确阶段证据见[实施进度](implementation-status.md)。块一 pure prepare、内置实际预算和真实网络/研究材料运行补偿已完成，证据见[实施进度](implementation-status.md)。尚未完成：真实 TileEntity/World 交互验证、RESCAN 执行策略、块二正式 PLANNED_PARALLEL/独立宿主自动接线/扫描预算、完整投影/预览/复杂渲染和 JEI。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或 planned 完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。
+机器宿主生命周期已接入扫描/工位/保存：普通卸载保留、恢复等待新 load 及结构、失效暂停、破坏取消；普通并发/亲和性调度、控制器 NBT 与结构宿主、显式自动扫描均已接，准确阶段证据见[实施进度](implementation-status.md)。块一 pure prepare、内置实际预算和真实网络/研究材料运行补偿已完成，证据见[实施进度](implementation-status.md)。尚未完成：真实 TileEntity/World 交互验证、RESCAN 执行策略、完整投影/预览/复杂渲染和 JEI 额外转移/书签/结构联动。块二正式模式/独立宿主/扫描内部预算及 JEI 每池默认与独立自定义页面已实现验证。固定 IO 预筛只覆盖受限 flat 场景与独立当前量/容量，局部 preparation 不能自动证明任意外部组件与首次 tick 等价，也不覆盖世界副作用或不可逆行为；当前实现不能据此宣称完整机器运行、旧 PM 存档升级或 planned 完成。所有剩余项都是必须继续迁移的功能，不是可选项。当前不启动 Minecraft 客户端或服务端。

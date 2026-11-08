@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.Map;
 import java.util.Collections;
+import java.util.Iterator;
 
 /**
  * PM's soft dependency graph, with a cached Kahn ordering. Missing dependencies become active when
@@ -154,6 +155,11 @@ public final class TopologicalComponentMap<K, C> {
 
     List<Node<K, C>> assemblyComponents() {
         return ObjectLists.unmodifiable(new ObjectArrayList<>(nodes.values()));
+    }
+
+    /** Package owner cursor: immutable nodes; the enclosing capture checks revision before use. */
+    Iterator<Node<K, C>> assemblyIterator() {
+        return nodes.values().iterator();
     }
 
     Map<K, Set<K>> pendingDependencies() {

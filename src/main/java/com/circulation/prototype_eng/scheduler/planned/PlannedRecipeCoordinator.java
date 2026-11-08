@@ -20,6 +20,8 @@ import java.util.function.Function;
 import java.util.function.LongSupplier;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.AbstractList;
+import java.util.Iterator;
 
 /**
  * One captured multi-machine tick, driven through real recipe stages and original source lanes.
@@ -39,14 +41,33 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private final PlannedCancellationToken cancellation;
     private final BooleanSupplier authorization;
     private final LongSupplier nanoTime;
-    private final ObjectArrayList<Entry> round = new ObjectArrayList<>();
+    private ObjectArrayList<Entry> round = new ObjectArrayList<>();
+    @Nullable private List<RecipeProcess.Stage> roundCapture;
+    private int roundCaptureCursor;
+    private int cleanupRoundCursor = -2;
+    private boolean cleanupRoundSelected;
+    private ObjectArrayList<Entry> cleanupTransferable = new ObjectArrayList<>();
+    @Nullable private ObjectArrayList<Entry> unresolvedEntries;
+    private int unresolvedCursor;
     private long workPerAdvance = 16_384;
     private RecipeWorkBudget work = new RecipeWorkBudget(0);
     @Nullable
     private PlannedTaskExecutor.Batch<Boolean> preparing;
-    private final ReferenceOpenHashSet<RecipePureComputation> preparedComputations = new ReferenceOpenHashSet<>();
-    private final ObjectArrayList<RecipeWorkBudget> prepareSlices = new ObjectArrayList<>();
-    private final ObjectArrayList<RecipeProcess.Stage> prepareOwners = new ObjectArrayList<>();
+    private ReferenceOpenHashSet<RecipePureComputation> preparedComputations = new ReferenceOpenHashSet<>();
+    private ObjectArrayList<RecipeWorkBudget> prepareSlices = new ObjectArrayList<>();
+    private ObjectArrayList<RecipeWorkBudget> prepareReceipts = new ObjectArrayList<>();
+    private ObjectArrayList<RecipeProcess.Stage> prepareOwners = new ObjectArrayList<>();
+    private ObjectArrayList<PlannedTaskExecutor.Job<Boolean>> prepareJobs = new ObjectArrayList<>();
+    @Nullable private List<RecipeProcess.Stage> prepareInput;
+    @Nullable private RecipePureComputation pendingComputation;
+    @Nullable private RecipeProcess.Stage pendingPrepareOwner;
+    @Nullable private RecipeWorkBudget pendingPrepareSlice;
+    private RecipeWorkBudget pendingPrepareReceipt = new RecipeWorkBudget(0);
+    private int prepareCapture;
+    private int prepareReceipt;
+    private int prepareReclaimed;
+    private boolean prepareCompleted = true;
+    private boolean prepareInspectionReady;
     private int acquisitionCursor;
     private int preparationCursor;
     private boolean begun;
@@ -56,6 +77,9 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Nullable private Throwable failure;
     @Nullable private Throwable unreported;
     @Nullable private Settlement settlement;
+    @Nullable private PreparedCleanup preparedCleanup;
+    @Nullable private Binding binding;
+    @Nullable private PlannedDeadline activeCleanupDeadline;
 
     public PlannedRecipeCoordinator(PlannedTaskExecutor tasks, List<MachineWorkSlots> hosts,
                                     PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation,
@@ -125,23 +149,36 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Override public boolean advance(PlannedDeadline cleanupDeadline) {
         requireOwner();
         Objects.requireNonNull(cleanupDeadline);
+        activeCleanupDeadline = cleanupDeadline;
         if (finished()) { return true; }
-        if (preparing == null && (settlement == null || settlement.barrier == null)) {
+        if (preparing == null && (settlement == null || settlement.barrier == null) && (preparedCleanup == null || preparedCleanup.barrier == null)) {
             work = new RecipeWorkBudget(workPerAdvance);
         }
         executing = true;
         workYielded = false;
         try {
             while (!finished()) {
+                receivedWorkerExit = false;
+                if (preparedCleanup != null && !drivePreparedCleanup(preparedCleanup.stage, !forwardAllowed(), cleanupDeadline)) break;
+                if (binding != null) {
+                    if (!bind(binding.entries, binding.rollback || !forwardAllowed())) break;
+                    continue;
+                }
                 if (preparing != null) {
                     if (!finishPrepare()) {
                         break;
                     }
                 }
                 if (settlement != null) {
-                    if (!settleActive(cleanupDeadline)) { break; }
+                    long allowance = work.remaining();
+                    if (!settleActive(cleanupDeadline)) {
+                        if (settlement != null && RecipeProcess.Stage.nextBatchPending(settlement.stages)
+                            && (forwardAllowed() || (settlement.rollback || stopReason != null) && !cleanupDeadline.expired(nanoTime.getAsLong()))
+                            && work.remaining() > 0 && (work.remaining() < allowance || receivedWorkerExit)) continue;
+                        break; }
                     continue;
                 }
+                if (roundCapture != null && !captureRound()) break;
                 if (!forwardAllowed()) {
                     if (!cleanRound(cleanupDeadline)) { break; }
                     if (settlement != null) { continue; }
@@ -156,13 +193,14 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 }
                 if (round.isEmpty()) {
                     try {
-                        for (var stage : nextStages()) { round.add(new Entry(stage)); }
+                        roundCapture = nextStages();
                     } catch (RuntimeException | Error captureFailure) {
                         record(captureFailure);
                         // nextRound can throw after creating earlier prepared leases.
-                        for (var stage : currentStages()) { round.add(new Entry(stage)); }
+                        roundCapture = currentStages();
                         continue;
                     }
+                    if (!captureRound()) break;
                     acquisitionCursor = 0;
                     if (round.isEmpty()) { finishGroup(); break; }
                 }
@@ -178,16 +216,18 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 }
                 if (preparationCursor < round.size()) {
                     var entry = round.get(preparationCursor);
+                    if (entry.stage.preparedCleanupPending() && !drivePreparedCleanup(entry.stage, false, cleanupDeadline)) break;
                     if (entry.stage.preparationPending()) {
-                        var stages = new ObjectArrayList<RecipeProcess.Stage>();
-                        for (int index = preparationCursor; index < round.size(); index++) {
-                            stages.add(round.get(index).stage);
-                        }
+                        var stages = stageView(round, preparationCursor);
                         if (!prepareContinuations(stages) || !entry.stage.ownerWorkMetered() && !takeOwnerWork()) {
                             break;
                         }
+                        if (!forwardAllowed()) continue;
+                        if (!entry.stage.preparationPending()) continue;
+                        if (work.remaining() == 0) { workYielded = true; break; }
                         try {
                             entry.stage.resumePreparedWithinBudget(work);
+                            prepareInspectionReady = false;
                             if (work.remaining() == 0 && entry.stage.preparationPending()) {
                                 workYielded = true;
                                 break;
@@ -197,17 +237,21 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                         }
                         continue;
                     }
-                    preparationCursor++;
                     boolean accepted = entry.stage.result() == ProcessResult.SUCCESS;
                     if (accepted && participants != null) {
-                        try { accepted = captureParticipants(entry); }
+                        try {
+                            var result = captureParticipants(entry);
+                            if (result == null) break;
+                            accepted = result; }
                         catch (RuntimeException | Error participantFailure) { record(participantFailure); continue; }
                     }
+                    preparationCursor++;
                     if (!accepted && !bind(List.of(entry), true)) { break;
                     }
                     continue;
                 }
                 var accepted = unresolved();
+                if (accepted == null) break;
                 if (!accepted.isEmpty()) {
                     if (!bind(accepted, false)) { break; }
                 } else { clearRound(); }
@@ -260,22 +304,42 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         return stage == null ? List.of() : List.of(stage);
     }
 
-    private boolean captureParticipants(Entry entry) {
+    private boolean captureRound() {
+        var captured = Objects.requireNonNull(roundCapture);
+        while (roundCaptureCursor < captured.size()) {
+            if (!takeOwnerWork()) return false;
+            round.add(new Entry(captured.get(roundCaptureCursor++)));
+        }
+        roundCapture = null; roundCaptureCursor = 0; acquisitionCursor = preparationCursor = 0;
+        return true;
+    }
+
+    private @Nullable Boolean captureParticipants(Entry entry) {
+        if (entry.participantUnknown) return null;
+        if (entry.participantAccepted != null) return entry.participantAccepted;
+        if (!entry.participantStarted) {
+            if (!takeOwnerWork()) return null;
+            entry.participantStarted = true;
+            try {
         var captured = Objects.requireNonNull(participants).apply(entry.stage);
-        if (captured == null) { return false; }
-        var unique = new ReferenceOpenHashSet<ReversibleTransaction>();
-        for (var transaction : captured) {
-            Objects.requireNonNull(transaction, "Additional business acquisition");
-            if (!unique.add(transaction)) { throw new IllegalArgumentException("Repeated additional business acquisition"); }
+        if (captured == null) { entry.participantAccepted = false; return false; }
+                entry.participantInput = captured.iterator();
+            } catch (RuntimeException | Error failure) { entry.participantUnknown = true; throw failure; }
+        }
+        while (Objects.requireNonNull(entry.participantInput).hasNext()) {
+            if (!takeOwnerWork()) return null;
+            var transaction = Objects.requireNonNull(entry.participantInput.next(), "Additional business acquisition");
+            if (!entry.participantIdentities.add(transaction)) throw new IllegalArgumentException("Repeated additional business acquisition");
             entry.participants.add(transaction);
         }
+        entry.participantAccepted = true; entry.participantInput = null;
         return true;
     }
 
     /** Accepted source actions require physical exit before another owner settlement attempt. */
     public boolean hasActiveSources() {
         requireOwner();
-        return preparing != null || settlement != null && settlement.barrier != null;
+        return preparing != null || settlement != null && settlement.barrier != null || preparedCleanup != null && preparedCleanup.barrier != null;
     }
 
     @Override public void cancel(Reason reason) {
@@ -292,7 +356,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     @Override public void awaitExit() {
         requireOwner();
         var current = settlement;
-        if (preparing == null && (current == null || current.barrier == null)) { return; }
+        if (preparing == null && (current == null || current.barrier == null) && (preparedCleanup == null || preparedCleanup.barrier == null)) { return; }
         executing = true;
         try {
             if (preparing != null) {
@@ -301,6 +365,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
             if (current != null && current.barrier != null) {
                 current.barrier.awaitQuiescence();
             }
+            if (preparedCleanup != null && preparedCleanup.barrier != null) preparedCleanup.barrier.awaitQuiescence();
         }
         catch (RuntimeException | Error interruption) {
             stop(Reason.INTERRUPTED);
@@ -322,101 +387,164 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     private boolean bind(List<Entry> entries, boolean rollback) {
-        var stages = new ObjectArrayList<RecipeProcess.Stage>(entries.size());
-        var additional = new ObjectArrayList<ReversibleTransaction>();
-        for (var entry : entries) { stages.add(entry.stage); additional.addAll(entry.participants); }
+        var active = binding;
+        if (active == null) { active = new Binding(entries, rollback); binding = active; }
+        active.rollback |= rollback;
         try {
-            var resources = RecipeProcess.Stage.tryAcquireBatch(stages, additional);
-            if (resources == null) { stop(Reason.RESERVATION_CONFLICT); return false; }
-            settlement = new Settlement(resources, new ObjectArrayList<>(entries), rollback);
+            if (active.failedForwardClaim) {
+                if (active.capture != null && !active.capture.releaseCancelledClaimWithinBudget(work)) return false;
+                while (active.cleanupParticipantEntry < active.entries.size()) {
+                    if (!cleanParticipants(active.entries.get(active.cleanupParticipantEntry))) return false;
+                    active.cleanupParticipantEntry++;
+                }
+                active.capture = null;
+                active.failedForwardClaim = false;
+                active.omitAdditional = true;
+            }
+            while (active.entry < active.entries.size()) {
+                var entry = active.entries.get(active.entry);
+                if (active.rollback && !drivePreparedCleanup(entry.stage, true, Objects.requireNonNull(activeCleanupDeadline))) return false;
+                if (!active.selected) {
+                    if (!takeOwnerWork()) return false;
+                    active.stages.add(entry.stage); active.selected = true;
+                }
+                while (active.participant < entry.participants.size()) {
+                    if (!takeOwnerWork()) return false;
+                    active.additional.add(entry.participants.get(active.participant++)); }
+                active.entry++; active.participant = 0; active.selected = false;
+            }
+            if (active.capture == null) active.capture = RecipeProcess.Stage.beginBatchCapture(active.stages, active.omitAdditional ? List.of() : active.additional);
+            if (active.rollback) active.capture.cancel();
+            if (!active.capture.advance(work)) { workYielded |= work.remaining() == 0; return false; }
+            var resources = active.capture.result();
+            if (resources == null) { stop(Reason.RESERVATION_CONFLICT);
+                binding = null;
+                return false; }
+            settlement = new Settlement(resources, active.entries, active.rollback);
+            binding = null;
             return true;
         } catch (RuntimeException | Error bindingFailure) {
-            // No successful transfer: exact acquisitions still belong to their stage handles.
-            for (var entry : entries) { entry.localCleanup = true; }
+            boolean beginCleanup = !active.rollback;
+            active.failedForwardClaim |= beginCleanup;
+            active.rollback = true;
+            if (active.capture != null) active.capture.cancel();
             record(bindingFailure);
-            return true;
+            return beginCleanup;
         }
     }
 
     private boolean cleanRound(PlannedDeadline cleanupDeadline) {
-        boolean pending = false;
-        var transferable = new ObjectArrayList<Entry>();
-        for (int index = round.size() - 1; index >= 0; index--) {
-            var entry = round.get(index);
-            if (entry.stage.settled()) { continue; }
-            if (!entry.acquired) { entry.stage.discard(); continue; }
-            if (!entry.localCleanup && entry.stage.transferable()) { transferable.add(entry); continue; }
-            if (cleanupDeadline.expired(nanoTime.getAsLong())) { pending = true; continue; }
-            entry.localCleanup = true;
-            if (!cleanParticipants(entry)) { pending = true; continue; }
-            try {
-                if (!entry.cleanupStarted) { entry.cleanupStarted = true; entry.stage.rollbackSynchronously(); }
-                else { entry.stage.resolveSynchronously(); }
-            } catch (RuntimeException | Error cleanup) { record(cleanup); }
-            pending |= !entry.stage.settled();
-        }
-        if (!transferable.isEmpty()) { return bind(transferable.reversed(), true); }
-        if (!pending) { clearRound(); }
-        return !pending;
+        if (cleanupRoundCursor == -2) cleanupRoundCursor = round.size() - 1;
+        while (cleanupRoundCursor >= 0) {
+            if (!cleanupRoundSelected) { if (!takeOwnerWork()) return false; cleanupRoundSelected = true; }
+            var entry = round.get(cleanupRoundCursor);
+            if (!entry.stage.settled()) {
+                if (!entry.acquired) entry.stage.discard();
+                else {
+                    if (!drivePreparedCleanup(entry.stage, true, cleanupDeadline)) return false;
+                    if (!entry.stage.finishCapturedInventoryWithinBudget(work)) { workYielded |= work.remaining() == 0; return false; }
+                    if (entry.participantStarted && captureParticipants(entry) == null) return false;
+                    if (!entry.stage.transferable()) return false;
+                    cleanupTransferable.add(entry);
+                }
+            }
+            cleanupRoundCursor--; cleanupRoundSelected = false; }
+        var transferred = cleanupTransferable.reversed();
+        cleanupTransferable = new ObjectArrayList<>(); cleanupRoundCursor = -2;
+            if (!transferred.isEmpty()) return bind(transferred, true);
+        clearRound(); return true;
     }
 
-    /** Only a failed transfer takes this local path; successful binds retain the combined batch. */
     private boolean cleanParticipants(Entry entry) {
-        if (entry.participants.isEmpty()) { return true; }
+        if (entry.participants.isEmpty()) return true;
         if (entry.participantCleanup == null) {
-            entry.participantCleanup = Objects.requireNonNull(ResourceBatch.tryAcquire(List.of(), entry.participants));
+            if (entry.participantCleanupCapture == null) entry.participantCleanupCapture = ResourceBatch.beginAcquire(List.of(), entry.participants);
+            if (!entry.participantCleanupCapture.advance(work)) return false;
+            entry.participantCleanup = Objects.requireNonNull(entry.participantCleanupCapture.result());
+            entry.participantCleanupCapture = null;
         }
         var cleanup = entry.participantCleanup;
-        if (cleanup.finished()) { return true; }
         try {
-            if (cleanup.decision() == ResourceBatch.Decision.OPEN) { cleanup.rollback(); }
-            else { cleanup.resolveBusiness(); }
-            if (cleanup.readyToFinish()) { cleanup.finish(); }
-        } catch (RuntimeException | Error failure) { record(failure); }
+            boolean resolved = cleanup.decision() == ResourceBatch.Decision.OPEN ? cleanup.rollbackWithinBudget(work) : cleanup.resolveBusinessWithinBudget(work);
+            if (!resolved || !cleanup.readyToFinish()) { workYielded |= cleanup.workYielded(); return false; }
+            if (!cleanup.finishWithinBudget(work)) { workYielded |= cleanup.workYielded(); return false; }
+        } catch (RuntimeException | Error failure) { record(failure);
+            return false;
+        }
         return cleanup.finished();
     }
 
-    private ObjectArrayList<Entry> unresolved() {
-        var entries = new ObjectArrayList<Entry>();
-        for (var entry : round) { if (!entry.stage.settled()) { entries.add(entry); } }
-        return entries;
+    private @Nullable ObjectArrayList<Entry> unresolved() {
+        if (unresolvedEntries == null) unresolvedEntries = new ObjectArrayList<>();
+        while (unresolvedCursor < round.size()) {
+            if (!takeOwnerWork()) return null;
+            var entry = round.get(unresolvedCursor++);
+            if (!entry.stage.settled()) unresolvedEntries.add(entry); }
+        return unresolvedEntries;
     }
 
-    private void clearRound() { round.clear(); acquisitionCursor = 0;
-        preparationCursor = 0;
-        preparedComputations.clear();
+    private void clearRound() { round = new ObjectArrayList<>(); acquisitionCursor = preparationCursor = 0;
+        unresolvedEntries = null; unresolvedCursor = 0;
+        cleanupRoundCursor = -2; cleanupRoundSelected = false; cleanupTransferable = new ObjectArrayList<>();
+        preparedComputations = new ReferenceOpenHashSet<>();
+        prepareInspectionReady = false;
+        if (preparing == null) resetPrepareCapture();
     }
 
     private boolean settleActive(PlannedDeadline cleanupDeadline) {
         var active = Objects.requireNonNull(settlement);
         var resources = active.resources;
         if (resources.finished()) { return finishSettlement(active); }
-        if (active.barrier != null) {
-            if (!active.barrier.quiescent()) { return false; }
-            boolean successful = true;
-            for (var result : active.barrier.results()) {
+        if (active.barrier != null || active.afterSources) {
+            if (active.barrier != null && !active.barrier.quiescent()) {
+                if (active.barrier.stopReason() != null) return false;
+                active.barrier.awaitQuiescence();
+            }
+            if (!active.afterSources) {
+            var results = Objects.requireNonNull(active.barrier).results();
+            while (active.receipt < results.size()) {
+                int index = active.receipt++;
+                if (!active.receipts.get(index).take()) throw new IllegalStateException("Source receipt credit was spent before physical exit");
+                var result = results.get(index);
+                receivedWorkerExit = true;
                 if (result instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) {
+                    active.successful = false;
                     record(cause);
-                    successful = false;
                 } else if (result instanceof PlannedTaskExecutor.Stopped<Boolean> stopped) {
                     stop(stopped.reason());
-                    successful = false;
+                    active.successful = false;
                 } else if (result instanceof PlannedTaskExecutor.Success<Boolean>(var accepted) && !accepted) {
-                    successful = false;
+                    if (active.submitted.get(index).workYielded()) workYielded = true;
+                    else {
+                    active.successful = false;
                     if (!active.resolving) { stop(Reason.RESERVATION_CONFLICT); }
                 }
             }
-            for (var slice : active.slices) {
-                work.reclaim(slice);
             }
-            active.slices.clear();
+            while (active.reclaimed < active.slices.size()) {
+                int index = active.reclaimed++;
+                if (!active.receipts.get(index).take()) throw new IllegalStateException("Source reclaim credit was spent before physical exit");
+                work.reclaim(active.slices.get(index));
+                work.reclaim(active.receipts.get(index));
+            }
+            active.resetDispatch();
             active.barrier = null;
+            active.afterSources = true;
+            }
+            while (active.applyCheck < resources.sources().size()) {
+                if (!takeOwnerWork()) return false;
+                active.allApplied &= resources.sources().get(active.applyCheck++).state() == ResourceBatch.SourceState.APPLIED;
+            }
+            active.afterSources = false;
+            active.applyCheck = 0;
             if (active.resolving) {
                 if (active.rewinding != null && resources.decision() == ResourceBatch.Decision.OPEN) {
                     if (!forwardAllowed()) { active.rollback = true; }
                     else {
-                        if (active.rewinding.finishAlternativeRollback(resources)) {
+                        if (active.rewinding.finishAlternativeRollbackWithinBudget(resources, work)) {
                             active.rewinding = null;
+                            active.rewindSearch = 0;
+                            active.inspected = false;
                             active.staged = true;
                             active.applied = true;
                             return true;
@@ -428,46 +556,67 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                     return false;
                 }
             }
-            active.applied = successful && resources.sources().stream()
-                                                    .allMatch(source -> source.state() == ResourceBatch.SourceState.APPLIED);
-            if (!successful) { active.rollback = true;
+            active.applied = active.successful && active.allApplied;
+            active.allApplied = true;
+            if (!active.successful) { active.rollback = true;
             }
+            active.successful = true;
         }
 
         if (resources.acquiringNext()) {
-            var stages = new ObjectArrayList<RecipeProcess.Stage>();
-            for (var entry : active.entries) {
-                stages.add(entry.stage);
+            var stages = active.stages;
+            while (!active.cleanupVerified && active.cleanupEntry < active.entries.size()) {
+                if (!active.cleanupSelected) { if (!takeOwnerWork()) return false; active.cleanupSelected = true; }
+                var entry = active.entries.get(active.cleanupEntry);
+                if (!drivePreparedCleanup(entry.stage, active.rollback || !forwardAllowed(), cleanupDeadline)) return false;
+                active.cleanupSelected = false;
+                active.cleanupEntry++;
             }
+            active.cleanupVerified = true;
             if (active.rollback || !forwardAllowed()) {
-                if (!RecipeProcess.Stage.adoptNextBatch(stages, resources, true)) {
+                if (!RecipeProcess.Stage.adoptNextBatchWithinBudget(stages, resources, true, work)) {
+                    workYielded |= work.remaining() == 0;
                     return false;
                 }
                 active.rollback = true;
             } else {
-                if (!prepareContinuations(stages) || stages.stream().anyMatch(stage -> !stage.ownerWorkMetered()) && !takeOwnerWork()) {
+                if (!prepareContinuations(stages)) {
                     return false;
+                }
+                if (!forwardAllowed()) { active.rollback = true; return true; }
+                if (work.remaining() == 0) { workYielded = true; return false;
                 }
                 try {
                     active.rollback = !RecipeProcess.Stage.acquireNextBatchWithinBudget(stages, resources, work);
-                    if (work.remaining() == 0 && stages.stream().anyMatch(RecipeProcess.Stage::preparationPending)) {
-                        workYielded = true;
-                    }
+                    prepareInspectionReady = false;
+                    active.cleanupEntry = 0; active.cleanupVerified = false;
+                    if (RecipeProcess.Stage.nextBatchPending(stages)) { workYielded |= work.remaining() == 0; return false; }
+                    workYielded |= work.remaining() == 0;
                 } catch (RuntimeException | Error acquisitionFailure) {
-                    record(acquisitionFailure);
+                    prepareInspectionReady = false;
+                    active.cleanupEntry = 0; active.cleanupVerified = false;
                     active.rollback = true;
+                    active.applied = false;
+                    active.staged = false;
+                    active.inspected = false;
+                    record(acquisitionFailure);
                 }
                 active.applied = false;
                 active.staged = false;
+                active.inspected = false;
                 return true; }
         }
 
         if (resources.decision() == ResourceBatch.Decision.OPEN) {
             if (active.rollback || !forwardAllowed()) {
                 if (cleanupDeadline.expired(nanoTime.getAsLong())) { return false; }
-                try { resources.rollback(); }
+                try {
+                    if (!resources.rollbackWithinBudget(work)) { workYielded |= resources.workYielded(); return false; }
+                }
                 catch (RuntimeException | Error rollback) { record(rollback); }
-            } else if (active.rewinding != null || active.entries.stream().anyMatch(entry -> entry.stage.hasRejectedAlternative())) {
+            } else if (!inspectStages(active)) {
+                return false;
+            } else if (active.rewinding != null || active.rejected) {
                 return rewindAlternative(active, cleanupDeadline);
             } else if (!active.applied) {
                 if (work.remaining() == 0) {
@@ -478,130 +627,301 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 return true;
             } else {
                 try {
-                    boolean more = active.entries.stream().anyMatch(entry -> entry.stage.hasContinuation());
+                    boolean more = active.more;
                     if (more) {
-                        if (active.staged || resources.stage(this::forwardAllowed)) {
+                        if (active.staged || resources.stageWithinBudget(this::forwardAllowed, work)) {
                             active.staged = true;
-                            var stages = new ObjectArrayList<RecipeProcess.Stage>(active.entries.size());
-                            for (var entry : active.entries) { stages.add(entry.stage); }
+                            var stages = active.stages;
                             if (!prepareContinuations(stages)) {
                                 return false;
                             }
-                            if (!takeOwnerWork()) {
-                                return false;
+                            if (!forwardAllowed()) { active.rollback = true; return true; }
+                            if (work.remaining() == 0) { workYielded = true; return false;
                             }
                             active.rollback = !RecipeProcess.Stage.acquireNextBatchWithinBudget(stages, resources, work);
-                            preparedComputations.clear();
+                            prepareInspectionReady = false;
+                            active.cleanupEntry = 0; active.cleanupVerified = false;
+                            if (RecipeProcess.Stage.nextBatchPending(stages)) {
+                                if (resources.acquiringNext()) { active.applied = false; active.staged = false; }
+                                active.inspected = false;
+                                workYielded |= work.remaining() == 0;
+                                return false;
+                            }
+                            preparedComputations = new ReferenceOpenHashSet<>();
                             active.applied = false;
                             active.staged = false;
+                            active.inspected = false;
                             return true;
                         }
-                    } else { resources.commit(this::forwardAllowed); }
-                } catch (RuntimeException | Error commit) { record(commit); }
+                        if (resources.workYielded()) { workYielded = true; return false;
+                        }
+                    } else {
+                        if (!resources.commitWithinBudget(this::forwardAllowed, work)
+                            && resources.decision() != ResourceBatch.Decision.ROLLBACK) { workYielded |= resources.workYielded(); return false; }
+                    }
+                } catch (RuntimeException | Error commit) {
+                    prepareInspectionReady = false;
+                    active.cleanupEntry = 0; active.cleanupVerified = false;
+                    record(commit); }
                 if (resources.decision() == ResourceBatch.Decision.ROLLBACK) {
                     if (cleanupDeadline.expired(nanoTime.getAsLong())) { return false; }
-                    try { resources.rollback(); }
+                    try {
+                        if (!resources.rollbackWithinBudget(work)) { workYielded |= resources.workYielded(); return false; }
+                    }
                     catch (RuntimeException | Error rollback) { record(rollback); }
                 }
             }
         } else {
             if (resources.readyToFinish()) { return finishSettlement(active); }
             if (cleanupDeadline.expired(nanoTime.getAsLong())) { return false; }
-            try { resources.resolveBusiness(); }
+            try {
+                if (!resources.resolveBusinessWithinBudget(work)) { workYielded |= resources.workYielded(); return false; }
+            }
             catch (RuntimeException | Error confirmation) { record(confirmation); }
         }
         if (resources.readyToFinish()) { return finishSettlement(active); }
         if (cleanupDeadline.expired(nanoTime.getAsLong())) { return false; }
-        var pendingSources = resources.sources().stream().anyMatch(source ->
-            source.state() != ResourceBatch.SourceState.COMPLETED && source.state() != ResourceBatch.SourceState.ROLLED_BACK);
-        if (!pendingSources) { return false; }
+        if (work.remaining() == 0) {
+            workYielded = true;
+            return false; }
         dispatch(active, true, cleanupDeadline);
         return true;
     }
 
-    private boolean prepareContinuations(List<RecipeProcess.Stage> stages) {
-        var computations = new ObjectArrayList<RecipePureComputation>();
-        for (var stage : stages) {
-            var computation = stage.computation();
-            if (computation != null && !preparedComputations.contains(computation)) {
-                computations.add(computation);
-                prepareOwners.add(stage);
-            }
-        }
-        if (computations.isEmpty()) {
-            return true;
-        }
-        if (work.remaining() < computations.size()) {
-            workYielded = true;
-            prepareOwners.clear();
-            return false;
-        }
-        long portion = work.remaining() / computations.size();
-        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(computations.size());
-        for (int index = 0; index < computations.size(); index++) {
-            var computation = computations.get(index);
-            prepareOwners.get(index).withdrawPreparedFacts(computation);
-            var slice = work.allocate(portion);
-            prepareSlices.add(slice);
-            jobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> computation.advance(slice)));
-        }
-        try {
-            tasks.runPrepare(jobs, forwardDeadline, batch -> preparing = batch);
-        } catch (RuntimeException | Error dispatchFailure) {
-            record(dispatchFailure);
-        }
-        return finishPrepare(computations);
+    private static List<RecipeProcess.Stage> stageView(List<Entry> entries, int offset) {
+        return new AbstractList<>() {
+            @Override public RecipeProcess.Stage get(int index) { return entries.get(Math.addExact(offset, index)).stage; }
+            @Override public int size() { return entries.size() - offset; }
+        };
     }
 
-    private final ObjectArrayList<RecipePureComputation> prepareRound = new ObjectArrayList<>();
+    private boolean inspectStages(Settlement active) {
+        if (active.inspected) return true;
+        if (active.inspect == 0) { active.more = false; active.rejected = false; }
+        while (active.inspect < active.entries.size()) {
+            if (!takeOwnerWork()) return false;
+            var stage = active.entries.get(active.inspect++).stage;
+            active.more |= stage.hasContinuation();
+            active.rejected |= stage.hasRejectedAlternative();
+        }
+        active.inspected = true;
+        active.inspect = 0;
+        return true;
+    }
 
-    private boolean finishPrepare(List<RecipePureComputation> computations) {
-        prepareRound.clear();
-        prepareRound.addAll(computations);
+    /** Original prepared acquisition cleanup, using the same source lanes and physical receipts. */
+    private boolean drivePreparedCleanup(RecipeProcess.Stage stage, boolean cancel, PlannedDeadline deadline) {
+        var active = preparedCleanup;
+        if (active != null && active.stage != stage) return false;
+        if (active == null) {
+            if (stage.advancePreparedCleanup(work, cancel)) return true;
+            active = new PreparedCleanup(stage, cancel);
+            preparedCleanup = active;
+        }
+        active.cancel |= cancel;
+        while (true) {
+        if (active.barrier != null) {
+            if (!active.barrier.quiescent()) {
+                if (active.barrier.stopReason() != null) return false;
+                active.barrier.awaitQuiescence();
+            }
+            var results = active.barrier.results();
+            boolean unknown = false;
+            while (active.receipt < results.size()) {
+                int index = active.receipt++;
+                if (!active.receipts.get(index).take()) throw new IllegalStateException("Prepared source receipt credit was spent before physical exit");
+                var result = results.get(index);
+                receivedWorkerExit = true;
+                boolean resolved = false;
+                if (result instanceof PlannedTaskExecutor.Success<Boolean>(var accepted)) {
+                    resolved = accepted;
+                    unknown |= !accepted && !active.submitted.get(index).workYielded();
+                }
+                else if (result instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) { unknown = true; record(cause); }
+                else if (result instanceof PlannedTaskExecutor.Stopped<Boolean> stopped) { unknown = true; stop(stopped.reason()); }
+                stage.finishPreparedCleanupSource(active.submitted.get(index), resolved);
+            }
+            while (active.reclaimed < active.slices.size()) {
+                int index = active.reclaimed++;
+                if (!active.receipts.get(index).take()) throw new IllegalStateException("Prepared source reclaim credit was spent before physical exit");
+                work.reclaim(active.slices.get(index));
+                work.reclaim(active.receipts.get(index));
+            }
+            active.barrier = null;
+            active.sources = null;
+            active.jobs = new ObjectArrayList<>();
+            active.submitted = new ObjectArrayList<>();
+            active.slices = new ObjectArrayList<>();
+            active.receipts = new ObjectArrayList<>();
+            active.source = active.receipt = active.reclaimed = 0;
+            if (unknown) return false;
+        }
+        if (active.sources == null) {
+            long allowance = work.remaining();
+            if (stage.advancePreparedCleanup(work, active.cancel)) { preparedCleanup = null; return true; }
+            active.sources = stage.preparedCleanupSources();
+            if (active.sources.isEmpty()) {
+                active.sources = null;
+                if (work.remaining() > 0 && work.remaining() < allowance && !deadline.expired(nanoTime.getAsLong())) continue;
+                workYielded |= work.remaining() == 0;
+                return false;
+            }
+        }
+        while (active.source < active.sources.size() || active.pendingSource != null) {
+            if (active.pendingSource == null) {
+                if (!takeOwnerWork()) break;
+                var source = active.sources.get(active.source++);
+                if (source.state() == ResourceBatch.SourceState.COMPLETED || source.state() == ResourceBatch.SourceState.ROLLED_BACK) continue;
+                active.pendingSource = source;
+            }
+            active.pendingReceipt.reclaim(work.allocate(2 - active.pendingReceipt.remaining()));
+            if (active.pendingReceipt.remaining() < 2) break;
+            if (active.pendingSlice == null) {
+                if (work.remaining() == 0) break;
+                active.pendingSlice = work.allocate(Math.max(1, work.remaining() / Math.max(1, active.sources.size() - active.source + 1)));
+            }
+            var source = active.pendingSource;
+            var slice = active.pendingSlice;
+            active.slices.add(slice);
+            active.receipts.add(active.pendingReceipt);
+            active.submitted.add(source);
+            active.jobs.add(new PlannedTaskExecutor.SourceJob<>(source.affinity(), new PlannedTaskExecutor.Job<>(null, () -> source.resolveWithinBudget(slice))));
+            active.pendingSource = null;
+            active.pendingSlice = null;
+            active.pendingReceipt = new RecipeWorkBudget(0);
+        }
+        if (active.jobs.isEmpty()) {
+            if (active.pendingSource == null && active.source == active.sources.size()) {
+                active.sources = null;
+                active.source = 0;
+                if (work.remaining() > 0 && !deadline.expired(nanoTime.getAsLong())) continue;
+            }
+            workYielded |= work.remaining() == 0;
+            return false;
+        }
+        if (active.pendingSource != null) { workYielded |= work.remaining() == 0; return false; }
+        if (deadline.expired(nanoTime.getAsLong())) return false;
+        var captured = active;
+        boolean interrupted = Thread.interrupted();
+        try { tasks.runOnSourceLanes(active.jobs, deadline, barrier -> captured.barrier = barrier); }
+        catch (RuntimeException | Error failure) { record(failure); }
+        finally { if (interrupted) Thread.currentThread().interrupt(); }
+        if (active.barrier == null || unreported != null) return false;
+        }
+    }
+
+    private boolean prepareContinuations(List<RecipeProcess.Stage> stages) {
+        if (preparing != null) return finishPrepare();
+        if (prepareInspectionReady) return true;
+        if (prepareInput == null) prepareInput = stages;
+        while (prepareCapture < prepareInput.size() || pendingComputation != null) {
+            if (pendingComputation == null) {
+                if (!prepareOwnerSelected) {
+                    if (!takeOwnerWork()) break;
+                    prepareOwnerSelected = true;
+                }
+                var stage = prepareInput.get(prepareCapture);
+                if (stage.preparedCleanupPending() && !drivePreparedCleanup(stage, false, Objects.requireNonNull(activeCleanupDeadline))) return false;
+                var computation = stage.computation();
+            if (computation == null && stage.preparationPending()) {
+                    if (prepareCapture > 0 && !stage.captureOnlyPreparation()) {
+                        prepareCapture++;
+                        prepareOwnerSelected = false;
+                        continue;
+                    }
+                    if (!forwardAllowed() || work.remaining() == 0) { workYielded |= work.remaining() == 0; return false; }
+                    long allowance = work.remaining();
+                    try {
+                        if (settlement == null) stage.resumePreparedWithinBudget(work);
+                        else if (!settlement.resources.accessWithinBudget(() -> stage.resumePreparedWithinBudget(work))) {
+                            workYielded |= settlement.resources.workYielded();
+                            return false;
+                        }
+                    } catch (RuntimeException | Error failure) {
+                        record(failure);
+                        return true;
+                    }
+                    if (stage.preparationPending() && stage.computation() == null && work.remaining() == allowance) return false;
+                    continue;
+                }
+                prepareCapture++;
+                prepareOwnerSelected = false;
+                if (computation == null || preparedComputations.contains(computation)) continue;
+                pendingComputation = computation; pendingPrepareOwner = stage;
+                stage.withdrawPreparedFacts(computation);
+            }
+            pendingPrepareReceipt.reclaim(work.allocate(2 - pendingPrepareReceipt.remaining()));
+            if (pendingPrepareReceipt.remaining() < 2) break;
+            if (pendingPrepareSlice == null) {
+                if (work.remaining() == 0) break;
+                pendingPrepareSlice = work.allocate(Math.max(1, work.remaining() / Math.max(1, prepareInput.size() - prepareCapture + 1)));
+            }
+            var computation = pendingComputation;
+            var slice = pendingPrepareSlice;
+            prepareRound.add(computation);
+                prepareOwners.add(pendingPrepareOwner);
+            prepareSlices.add(slice); prepareReceipts.add(pendingPrepareReceipt);
+            prepareJobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> computation.advance(slice)));
+            pendingComputation = null; pendingPrepareOwner = null; pendingPrepareSlice = null; pendingPrepareReceipt = new RecipeWorkBudget(0);
+        }
+        if (prepareJobs.isEmpty()) {
+            if (pendingComputation == null && prepareCapture == prepareInput.size()) { resetPrepareCapture(); prepareInspectionReady = true; return true; }
+            workYielded |= work.remaining() == 0; return false;
+        }
+        if (pendingComputation != null || prepareCapture < prepareInput.size()) { workYielded |= work.remaining() == 0; return false; }
+        try {
+            tasks.runPrepare(prepareJobs, forwardDeadline, batch -> preparing = batch);
+        } catch (RuntimeException | Error failure) {
+            record(failure);
+        }
         return finishPrepare();
+    }
+
+    private ObjectArrayList<RecipePureComputation> prepareRound = new ObjectArrayList<>();
+    private boolean prepareOwnerSelected;
+    private boolean receivedWorkerExit;
+
+    private void resetPrepareCapture() {
+        prepareInput = null; pendingComputation = null; pendingPrepareOwner = null; pendingPrepareSlice = null;
+        pendingPrepareReceipt = new RecipeWorkBudget(0); prepareCapture = prepareReceipt = prepareReclaimed = 0;
+        prepareOwnerSelected = false;
+        prepareSlices = new ObjectArrayList<>(); prepareReceipts = new ObjectArrayList<>(); prepareOwners = new ObjectArrayList<>();
+        prepareJobs = new ObjectArrayList<>(); prepareRound = new ObjectArrayList<>(); prepareCompleted = true;
     }
 
     private boolean finishPrepare() {
         var barrier = preparing;
-        if (barrier == null) {
-            return stopReason == null;
-        }
+        if (barrier == null) return stopReason == null;
         if (!barrier.quiescent()) {
-            return false;
+            if (barrier.stopReason() != null) return false;
+            barrier.awaitQuiescence();
         }
-        boolean completed = true;
         var results = barrier.results();
-        for (int index = 0; index < results.size(); index++) {
+        while (prepareReceipt < results.size()) {
+            int index = prepareReceipt++;
+            if (!prepareReceipts.get(index).take()) throw new IllegalStateException("Pure prepare receipt credit was spent before physical exit");
             var result = results.get(index);
+            receivedWorkerExit = true;
             if (result instanceof PlannedTaskExecutor.Success<Boolean>(var ready)) {
                 try {
                     prepareOwners.get(index).retainPreparedFacts(prepareRound.get(index));
-                } catch (RuntimeException | Error publicationFailure) {
-                    record(publicationFailure);
-                    completed = false;
-                }
-                completed &= ready;
-                if (ready) {
-                    preparedComputations.add(prepareRound.get(index));
-                }
-            } else if (result instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) {
-                record(cause);
-                completed = false;
+                } catch (RuntimeException | Error failure) { prepareCompleted = false; record(failure); }
+                prepareCompleted &= ready;
+                if (ready) preparedComputations.add(prepareRound.get(index));
+            } else if (result instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) { prepareCompleted = false; record(cause);
             } else if (result instanceof PlannedTaskExecutor.Stopped<Boolean> stopped) {
-                stop(stopped.reason());
-                completed = false;
+                stop(stopped.reason()); prepareCompleted = false;
             }
         }
-        for (var slice : prepareSlices) {
-            work.reclaim(slice);
+        while (prepareReclaimed < prepareSlices.size()) {
+            int index = prepareReclaimed++;
+            if (!prepareReceipts.get(index).take()) throw new IllegalStateException("Pure prepare reclaim credit was spent before physical exit");
+            work.reclaim(prepareSlices.get(index)); work.reclaim(prepareReceipts.get(index));
         }
-        prepareSlices.clear();
-        prepareOwners.clear();
-        preparing = null;
-        prepareRound.clear();
-        if (!completed && stopReason == null && failure == null) {
-            workYielded = true;
-        }
+        boolean completed = prepareCompleted;
+        preparing = null; resetPrepareCapture();
+        prepareInspectionReady = completed;
+        if (!completed && stopReason == null && failure == null) workYielded = true;
         return completed || stopReason != null;
     }
 
@@ -609,23 +929,31 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         if (deadline.expired(nanoTime.getAsLong())) { return false; }
         var resources = active.resources;
         if (active.rewinding == null) {
-            for (var entry : active.entries) {
+            while (active.rewindSearch < active.entries.size()) {
+                if (!takeOwnerWork()) return false;
+                var entry = active.entries.get(active.rewindSearch++);
                 if (entry.stage.hasRejectedAlternative()) { active.rewinding = entry.stage; break; }
             }
         }
         var stage = Objects.requireNonNull(active.rewinding, "No rejected candidate");
         try {
-            if (!resources.rewinding()) { resources.rollbackTo(stage.rejectedSavepoint()); }
-            else { resources.resolveBusiness(); }
-            if (stage.finishAlternativeRollback(resources)) {
+            if (!resources.rewinding()) {
+                if (!resources.rollbackToWithinBudget(stage.rejectedSavepoint(), work)) { workYielded |= resources.workYielded(); return false; }
+            }
+            else {
+                if (!resources.resolveBusinessWithinBudget(work)) { workYielded |= resources.workYielded(); return false; }
+            }
+            if (stage.finishAlternativeRollbackWithinBudget(resources, work)) {
                 active.rewinding = null;
+                active.rewindSearch = 0;
+                active.inspected = false;
                 active.staged = true;
                 active.applied = true;
                 return true;
             }
         } catch (RuntimeException | Error failure) {
-            record(failure);
             active.rollback = true;
+            record(failure);
             return true;
         }
         dispatch(active, true, deadline);
@@ -633,43 +961,82 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     private void dispatch(Settlement active, boolean resolving, PlannedDeadline deadline) {
-        active.resolving = resolving;
-        var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>();
-        long portion = resolving ? Long.MAX_VALUE : Math.max(1, work.remaining() / Math.max(1, active.resources.sources().size()));
-        for (var source : active.resources.sources()) {
-            if (!resolving && source.state() != ResourceBatch.SourceState.RESERVED) { continue; }
-            if (resolving && (source.state() == ResourceBatch.SourceState.COMPLETED
-                || source.state() == ResourceBatch.SourceState.ROLLED_BACK)) { continue; }
-            var slice = resolving ? null : work.allocate(portion);
-            if (slice != null) {
-                active.slices.add(slice);
+        if (active.collecting && active.resolving != resolving) {
+            while (active.reclaimed < active.slices.size()) {
+                int index = active.reclaimed++;
+                if (!active.receipts.get(index).take()) throw new IllegalStateException("Unsubmitted source reclaim credit was spent");
+                work.reclaim(active.slices.get(index));
+                work.reclaim(active.receipts.get(index));
             }
-            jobs.add(new PlannedTaskExecutor.SourceJob<>(source.affinity(), new PlannedTaskExecutor.Job<>(
-                resolving ? null : cancellation, resolving ? source::resolve : () -> source.applyWithinBudget(Objects.requireNonNull(slice)))));
+            if (active.pendingSlice != null) work.reclaim(active.pendingSlice);
+            work.reclaim(active.pendingReceipt);
+            active.pendingSource = null; active.pendingSlice = null; active.pendingReceipt = new RecipeWorkBudget(0);
+            active.resetDispatch();
         }
-        // Mandatory cleanup still runs after owner interruption; restore the flag on return.
+        active.resolving = resolving;
+        active.collecting = true;
+        var sources = active.resources.sources();
+        while (active.source < sources.size() || active.pendingSource != null) {
+            if (active.pendingSource == null) {
+                if (!takeOwnerWork()) break;
+                var source = sources.get(active.source++);
+                if (!resolving && source.state() != ResourceBatch.SourceState.RESERVED || resolving && (source.state() == ResourceBatch.SourceState.COMPLETED
+                || source.state() == ResourceBatch.SourceState.ROLLED_BACK)
+                    && (active.resources.rewinding() || source.fullySettled())) continue;
+                active.pendingSource = source;
+            }
+            active.pendingReceipt.reclaim(work.allocate(2 - active.pendingReceipt.remaining()));
+            if (active.pendingReceipt.remaining() < 2) break;
+            if (active.pendingSlice == null) {
+                if (work.remaining() == 0) break;
+                active.pendingSlice = work.allocate(Math.max(1, work.remaining() / Math.max(1, sources.size() - active.source + 1)));
+            }
+            var source = active.pendingSource;
+            var slice = active.pendingSlice;
+            active.slices.add(slice); active.receipts.add(active.pendingReceipt); active.submitted.add(source);
+            active.jobs.add(new PlannedTaskExecutor.SourceJob<>(source.affinity(), new PlannedTaskExecutor.Job<>(
+                resolving ? null : cancellation, resolving ? () -> source.resolveWithinBudget(slice) : () -> source.applyWithinBudget(slice))));
+            active.pendingSource = null; active.pendingSlice = null; active.pendingReceipt = new RecipeWorkBudget(0);
+        }
+        if (active.jobs.isEmpty()) {
+            if (active.pendingSource == null && active.source == sources.size()) {
+                // Fully classified empty work still needs the original charged source-state proof.
+                active.resetDispatch();
+                active.afterSources = true;
+            } else workYielded |= work.remaining() == 0;
+            return;
+        }
+        if (active.pendingSource != null) { workYielded |= work.remaining() == 0; return; }
+        if (deadline.expired(nanoTime.getAsLong())) return;
         boolean interrupted = resolving && Thread.interrupted();
         try {
-            tasks.runOnSourceLanes(jobs, deadline, barrier -> active.barrier = barrier);
+            tasks.runOnSourceLanes(active.jobs, deadline, barrier -> active.barrier = barrier);
+            active.collecting = false;
         } catch (RuntimeException | Error dispatchFailure) {
-            record(dispatchFailure);
             active.rollback |= !resolving;
-        } finally { if (interrupted) { Thread.currentThread().interrupt(); } }
-    }
+            record(dispatchFailure);
+        } finally { if (interrupted) Thread.currentThread().interrupt(); } }
 
     private boolean finishSettlement(Settlement active) {
         if (!active.resources.finished()) {
-            try { active.resources.finish(); }
+            try {
+                if (!active.resources.finishWithinBudget(work)) { workYielded |= active.resources.workYielded(); return false; }
+            }
             catch (RuntimeException | Error notification) { record(notification); }
         }
         if (!active.resources.finished()) { return false; }
-        for (var entry : active.entries) {
-            if (entry.stage.settled()) { continue; }
+        while (active.acknowledge < active.entries.size()) {
+            if (!active.acknowledgeSelected) { if (!takeOwnerWork()) return false; active.acknowledgeSelected = true; }
+            var entry = active.entries.get(active.acknowledge);
+            if (entry.stage.settled()) {
+                active.acknowledge++; active.acknowledgeSelected = false;
+                continue; }
             try { entry.stage.settleBatch(failure); }
             catch (RuntimeException | Error acknowledgement) { record(acknowledgement); }
-        }
-        if (active.entries.stream().anyMatch(entry -> !entry.stage.settled())) { return false; }
+            if (!entry.stage.settled()) return false;
+            active.acknowledge++; active.acknowledgeSelected = false; }
         settlement = null;
+        unresolvedEntries = null; unresolvedCursor = 0;
         return true;
     }
 
@@ -702,6 +1069,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         else if (processSession != null && Objects.requireNonNull(process).pendingTick() == processSession) {
             processSession.recordFailure(observed);
         }
+        if (observed instanceof VirtualMachineError fatal) throw fatal;
     }
 
     private void requireOwner() {
@@ -715,19 +1083,81 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     private static final class Entry {
+        @Nullable private ResourceBatch.Acquire participantCleanupCapture;
         private final RecipeProcess.Stage stage;
         private boolean acquired;
-        private boolean localCleanup;
-        private boolean cleanupStarted;
+        private boolean participantStarted;
+        private boolean participantUnknown;
+        @Nullable private Boolean participantAccepted;
+        @Nullable private Iterator<? extends ReversibleTransaction> participantInput;
+        private final ReferenceOpenHashSet<ReversibleTransaction> participantIdentities = new ReferenceOpenHashSet<>();
         private final ObjectArrayList<ReversibleTransaction> participants = new ObjectArrayList<>();
         @Nullable private ResourceBatch participantCleanup;
         private Entry(RecipeProcess.Stage stage) { this.stage = stage; }
     }
 
+    private static final class Binding {
+        private final List<Entry> entries;
+        private final ObjectArrayList<RecipeProcess.Stage> stages = new ObjectArrayList<>();
+        private final ObjectArrayList<ReversibleTransaction> additional = new ObjectArrayList<>();
+        @Nullable private RecipeProcess.Stage.BatchCapture capture;
+        private boolean rollback;
+        private boolean failedForwardClaim;
+        private boolean omitAdditional;
+        private int cleanupParticipantEntry;
+        private int entry;
+        private int participant;
+        private boolean selected;
+        private Binding(List<Entry> entries, boolean rollback) { this.entries = entries; this.rollback = rollback; }
+    }
+
+    private static final class PreparedCleanup {
+        private final RecipeProcess.Stage stage;
+        private boolean cancel;
+        @Nullable private List<ResourceBatch.Source> sources;
+        private ObjectArrayList<ResourceBatch.Source> submitted = new ObjectArrayList<>();
+        private ObjectArrayList<RecipeWorkBudget> slices = new ObjectArrayList<>();
+        private ObjectArrayList<RecipeWorkBudget> receipts = new ObjectArrayList<>();
+        @Nullable private ResourceBatch.Source pendingSource;
+        @Nullable private RecipeWorkBudget pendingSlice;
+        private RecipeWorkBudget pendingReceipt = new RecipeWorkBudget(0);
+        private ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>> jobs = new ObjectArrayList<>();
+        @Nullable private PlannedTaskExecutor.Batch<Boolean> barrier;
+        private int source;
+        private int receipt;
+        private int reclaimed;
+        private PreparedCleanup(RecipeProcess.Stage stage, boolean cancel) { this.stage = stage; this.cancel = cancel; }
+    }
+
     private static final class Settlement {
         private final ResourceBatch resources;
         private final List<Entry> entries;
-        private final ObjectArrayList<RecipeWorkBudget> slices = new ObjectArrayList<>();
+        private final List<RecipeProcess.Stage> stages;
+        private int cleanupEntry;
+        private boolean cleanupSelected;
+        private boolean cleanupVerified;
+        private int rewindSearch;
+        private int acknowledge;
+        private boolean acknowledgeSelected;
+        private int inspect;
+        private boolean inspected;
+        private boolean more;
+        private boolean rejected;
+        private ObjectArrayList<RecipeWorkBudget> slices = new ObjectArrayList<>();
+        private ObjectArrayList<RecipeWorkBudget> receipts = new ObjectArrayList<>();
+        private ObjectArrayList<ResourceBatch.Source> submitted = new ObjectArrayList<>();
+        private ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>> jobs = new ObjectArrayList<>();
+        @Nullable private ResourceBatch.Source pendingSource;
+        @Nullable private RecipeWorkBudget pendingSlice;
+        private RecipeWorkBudget pendingReceipt = new RecipeWorkBudget(0);
+        private int source;
+        private int receipt;
+        private int reclaimed;
+        private int applyCheck;
+        private boolean collecting;
+        private boolean afterSources;
+        private boolean allApplied = true;
+        private boolean successful = true;
         @Nullable private PlannedTaskExecutor.Batch<Boolean> barrier;
         private boolean rollback;
         private boolean applied;
@@ -737,7 +1167,13 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         private Settlement(ResourceBatch resources, List<Entry> entries, boolean rollback) {
             this.resources = resources;
             this.entries = entries;
+            stages = stageView(entries, 0);
             this.rollback = rollback;
+        }
+        private void resetDispatch() {
+            slices = new ObjectArrayList<>(); receipts = new ObjectArrayList<>(); submitted = new ObjectArrayList<>(); jobs = new ObjectArrayList<>();
+            source = receipt = reclaimed = 0;
+            collecting = false;
         }
     }
 }

@@ -7,6 +7,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.Iterator;
 
 /**
  * ID-addressed root or overlay attributes. A layer may be mutated only by its machine/process
@@ -25,18 +28,21 @@ public final class MachineAttributes {
 
     private final @Nullable MachineAttributes parent;
     private final double defaultBase;
+    private final AttributeEpoch epoch;
     private Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalState> local = new Object2ObjectLinkedOpenHashMap<>();
 
     /** Root attributes use zero as the base when only modifiers exist. */
     public MachineAttributes() {
         parent = null;
         defaultBase = 0;
+        epoch = new AttributeEpoch();
     }
 
     /** Process overlays normally use defaultBase=1 when no parent attribute exists. */
     public MachineAttributes(MachineAttributes parent, double defaultBase) {
         this.parent = Objects.requireNonNull(parent, "parent");
         this.defaultBase = finite(defaultBase, "default base");
+        epoch = parent.epoch;
     }
 
     public double value(ResourceLocation id) {
@@ -70,12 +76,108 @@ public final class MachineAttributes {
         return current;
     }
 
+    /** Resumes this original value capture; modifier functions remain individual cooperative calls. */
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public ValueCapture beginValueCapture(ResourceLocation id, double fallback) {
+        return new ValueCapture(Objects.requireNonNull(id), finite(fallback, "fallback"));
+    }
+
+    public final class ValueCapture {
+        private final ResourceLocation id;
+        private final double fallback;
+        private final Object capturedEpoch = epoch.marker;
+        private final ObjectArrayList<LayerValue> layers = new ObjectArrayList<>();
+        private final Object2ObjectLinkedOpenHashMap<String, AttributeModifier> modifiers = new Object2ObjectLinkedOpenHashMap<>();
+        private MachineAttributes next = MachineAttributes.this;
+        private Iterator<Map.Entry<String, AttributeModifier>> entries;
+        private Iterator<AttributeModifier> applying;
+        private int phase;
+        private int included = -1;
+        private int layer;
+        private int operation;
+        private boolean defined;
+        private boolean baseFound;
+        private double base;
+        private double result;
+
+        private ValueCapture(ResourceLocation id, double fallback) { this.id = id; this.fallback = fallback; }
+
+        public boolean advance(RecipeWorkBudget budget) {
+            Objects.requireNonNull(budget);
+            if (!current()) return false;
+            if (phase == 4) return true;
+            while (phase == 0 && next != null) {
+                if (!budget.take()) return false;
+                var attributes = next;
+                var state = attributes.local.get(id);
+                layers.add(new LayerValue(attributes, state));
+                if (state != null) {
+                    defined = true;
+                    if (!baseFound && state.baseOverride != null) { base = state.baseOverride; baseFound = true; }
+                    else if (!baseFound) base = attributes.defaultBase;
+                    if (included == -1 && !state.inheritModifiers) included = layers.size() - 1;
+                }
+                next = attributes.parent;
+            }
+            if (phase == 0) {
+                if (!defined) { result = fallback; phase = 4; return current(); }
+                layer = included == -1 ? layers.size() - 1 : included;
+                phase = 1;
+            }
+            while (phase == 1 && layer >= 0) {
+                if (entries == null) {
+                    if (!budget.take()) return false;
+                    var state = layers.get(layer).state;
+                    if (state == null) { layer--; continue; }
+                    entries = state.modifiers.entrySet().iterator();
+                }
+                while (entries.hasNext()) {
+                    if (!budget.take()) return false;
+                    var entry = entries.next();
+                    modifiers.put(entry.getKey(), entry.getValue());
+                }
+                entries = null;
+                layer--;
+            }
+            if (phase == 1) { result = base; phase = 2; }
+            while (phase == 2 && operation < OPERATION_ORDER.length) {
+                if (applying == null) applying = modifiers.values().iterator();
+                while (applying.hasNext()) {
+                    if (!budget.take()) return false;
+                    var modifier = applying.next();
+                    if (modifier.operation() == OPERATION_ORDER[operation]) {
+                        result = modifier.apply(base, result);
+                        if (!Double.isFinite(result)) throw new IllegalStateException("Nonfinite attribute result for " + id + " from " + modifier.id());
+                    }
+                    if (!current()) return false;
+                }
+                applying = null;
+                operation++;
+            }
+            if (!budget.take()) return false;
+            phase = 4;
+            return current();
+        }
+
+        /** Any mutation in this shared attribute ancestry conservatively invalidates the capture. */
+        public boolean current() { return capturedEpoch == epoch.marker; }
+        public double result() {
+            if (phase != 4 || !current()) throw new IllegalStateException("Attribute value capture is incomplete or changed");
+            return result;
+        }
+    }
+
+    private record LayerValue(MachineAttributes attributes, @Nullable LocalState state) { }
+    private static final class AttributeEpoch { private Object marker = new Object(); }
+    private void changed() { epoch.marker = new Object(); }
+
     public void setBase(ResourceLocation id, double base) {
         Objects.requireNonNull(id, "id");
         finite(base, "base");
         var state = local.computeIfAbsent(id, _ -> new LocalState());
         state.baseOverride = base;
         state.inheritModifiers = true;
+        changed();
     }
 
     /**
@@ -89,6 +191,7 @@ public final class MachineAttributes {
         var state = local.computeIfAbsent(id, _ -> new LocalState());
         state.baseOverride = base;
         state.inheritModifiers = false;
+        changed();
     }
 
     public boolean clearBase(ResourceLocation id) {
@@ -100,6 +203,7 @@ public final class MachineAttributes {
         state.baseOverride = null;
         state.inheritModifiers = true;
         prune(id, state);
+        changed();
         return true;
     }
 
@@ -108,7 +212,9 @@ public final class MachineAttributes {
         Objects.requireNonNull(id, "id");
         validateModifier(modifier);
         var state = local.computeIfAbsent(id, _ -> new LocalState());
-        return state.modifiers.putIfAbsent(modifier.id(), modifier) == null;
+        boolean added = state.modifiers.putIfAbsent(modifier.id(), modifier) == null;
+        if (added) changed();
+        return added;
     }
 
     /** Removes only a local modifier, revealing any inherited modifier with the same ID. */
@@ -120,6 +226,7 @@ public final class MachineAttributes {
             return false;
         }
         prune(id, state);
+        changed();
         return true;
     }
 
@@ -160,6 +267,7 @@ public final class MachineAttributes {
             }
         }
         local = replacement;
+        changed();
     }
 
     /** A local save entry. The map is copied; modifier objects must satisfy their immutable contract. */

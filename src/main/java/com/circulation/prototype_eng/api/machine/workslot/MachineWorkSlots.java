@@ -20,6 +20,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.Iterator;
+import java.util.function.BooleanSupplier;
 
 /**
  * PM's ordered work-slot host. One execution owner controls admission, tick, transfer and persistence;
@@ -44,6 +48,7 @@ public final class MachineWorkSlots {
     private boolean executing;
     private boolean faulted;
     @Nullable private TickBatch activeBatch;
+    @Nullable private Admission activeAdmission;
 
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions) {
         this(owner, definitions, Set.of());
@@ -109,6 +114,110 @@ public final class MachineWorkSlots {
         process.attachTo(this);
         slot.setState(process, process.state().result());
         return true;
+    }
+
+    /**
+     * Original admission rules with a retained local host gate while active-count/group visits yield.
+     * No storage, lifecycle or scheduler authority is acquired; the caller already owns the machine.
+     */
+    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    public Admission beginAdmission(String name, RecipeProcess process) {
+        requireBoundary();
+        validateUnattached(process);
+        var admission = new Admission(requireSlot(name), process);
+        activeAdmission = admission;
+        return admission;
+    }
+
+    public final class Admission {
+        private final Thread thread = Thread.currentThread();
+        private final WorkSlot slot;
+        private final RecipeProcess process;
+        private int cursor;
+        private int active;
+        private int phase;
+        private final Iterator<ResourceLocation> groups;
+        private boolean accepted;
+        private boolean admitted;
+        private boolean finished;
+        private boolean advancing;
+        @Nullable private RecipeProcess permitted;
+        @Nullable private MachineAttributes.ValueCapture capacityValue;
+
+        private Admission(WorkSlot slot, RecipeProcess process) {
+            this.slot = slot;
+            this.process = process;
+            accepted = slot.allowedRecipeGroups().isEmpty();
+            groups = process.recipe().recipeGroups().iterator();
+        }
+
+        public boolean advance(RecipeWorkBudget budget, BooleanSupplier authorization) {
+            requireOwner();
+            Objects.requireNonNull(budget);
+            Objects.requireNonNull(authorization);
+            if (finished) return true;
+            advancing = true;
+            try {
+                if (workPaused() || !authorization.getAsBoolean()) return finish(false);
+                if (phase == 0) {
+                    while (cursor < slots.size()) {
+                        if (!budget.take()) return false;
+                        var captured = slots.get(cursor++).process();
+                        if (captured == null) continue;
+                        permitted = captured;
+                        try {
+                            captured.requirePersistenceBoundary();
+                            if (captured.host() != MachineWorkSlots.this) throw new IllegalStateException("Work slot lost its process ownership");
+                        } finally {
+                            permitted = null;
+                        }
+                        active++;
+                    }
+                    phase = 1;
+                }
+                if (phase == 1) {
+                    while (!accepted && groups.hasNext()) {
+                        if (!budget.take()) return false;
+                        accepted = slot.allowedRecipeGroups().contains(groups.next());
+                    }
+                    phase = 2;
+                }
+                if (capacityValue == null) capacityValue = owner.attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
+                if (!capacityValue.advance(budget)) {
+                    if (!capacityValue.current()) capacityValue = null;
+                    return false;
+                }
+                if (!budget.take()) return false;
+                validateUnattached(process);
+                // Authorization is an extension callback: prove the captured attributes again after it.
+                if (!accepted || slot.process() != null || workPaused() || !authorization.getAsBoolean()) return finish(false);
+                if (!capacityValue.current()) { capacityValue = null; return false; }
+                validateUnattached(process);
+                if (active >= Math.clamp((long) capacityValue.result(), 0, slots.size()) || slot.process() != null || workPaused()) return finish(false);
+                process.attachTo(MachineWorkSlots.this);
+                slot.setState(process, process.state().result());
+                return finish(true);
+            } finally {
+                advancing = false;
+            }
+        }
+
+        public void cancel() { requireOwner(); if (!finished) finish(false); }
+        public boolean finished() { requireOwner(); return finished; }
+        public boolean admitted() {
+            requireOwner();
+            if (!finished) throw new IllegalStateException("Admission is incomplete");
+            return admitted;
+        }
+        private boolean finish(boolean accepted) {
+            admitted = accepted;
+            finished = true;
+            activeAdmission = null;
+            return true;
+        }
+        private void requireOwner() {
+            if (Thread.currentThread() != thread || advancing || !finished && activeAdmission != this) throw new IllegalStateException("Admission requires its idle captured owner");
+        }
     }
 
     /**
@@ -279,6 +388,9 @@ public final class MachineWorkSlots {
 
     /** Process boundary hook: only this batch's exact owner operation can enter a captured process. */
     public void requireProcessBoundary(RecipeProcess process) {
+        if (activeAdmission != null && (activeAdmission.thread != Thread.currentThread() || activeAdmission.permitted != process)) {
+            throw new IllegalStateException("Process overlaps a captured admission");
+        }
         if (activeBatch != null && (activeBatch.permitted != process || activeBatch.ownerThread != Thread.currentThread())) {
             throw new IllegalStateException("Process is owned by a work-slot tick batch");
         }
@@ -286,6 +398,9 @@ public final class MachineWorkSlots {
 
     /** Session/stage hook: a callback may not enter another process in the same captured batch. */
     public void requireProcessOperation(RecipeProcess process) {
+        if (activeAdmission != null && (activeAdmission.thread != Thread.currentThread() || activeAdmission.permitted != process)) {
+            throw new IllegalStateException("Recipe operation overlaps a captured admission");
+        }
         if (activeBatch != null && activeBatch.group != null) { activeBatch.group.requireProcessOperation(process); }
         if (activeBatch != null && (activeBatch.ownerThread != Thread.currentThread()
             || executing && activeBatch.permitted != process)) {
@@ -691,7 +806,7 @@ public final class MachineWorkSlots {
      * This does not acquire ownership, release a captured batch, or grant persistence permission.
      */
     public boolean quiescent() {
-        if (executing || activeBatch != null) { return false; }
+        if (executing || activeBatch != null || activeAdmission != null) { return false; }
         boolean quiescent = true;
         for (var slot : slots) {
             var process = slot.process();
@@ -764,11 +879,11 @@ public final class MachineWorkSlots {
     }
 
     private void requireBoundary() {
-        if (executing || activeBatch != null || faulted) { throw new IllegalStateException("Work slots are executing or faulted"); }
+        if (executing || activeBatch != null || activeAdmission != null || faulted) { throw new IllegalStateException("Work slots are executing or faulted"); }
     }
 
     private void requireCancellationBoundary() {
-        if (executing || activeBatch != null) { throw new IllegalStateException("Work slots are executing"); }
+        if (executing || activeBatch != null || activeAdmission != null) { throw new IllegalStateException("Work slots are executing"); }
     }
 
     public record SlotSnapshot(WorkSlotDefinition definition, @Nullable RecipeProcess process,

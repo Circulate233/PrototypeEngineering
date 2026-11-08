@@ -15,6 +15,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.function.Supplier;
 
 /**
  * Process-owned overlays of immutable requirement definitions. A named layer replaces only its own
@@ -232,7 +234,22 @@ public final class RecipeOverlays {
             } finally {
                 editing = false;
             }
-        });
+        }, () -> beginLayerEdit(binding, Objects.requireNonNull(installed == null ? previous : installed).id(), installed, previous));
+    }
+
+    private <C> LayerEdit<C> beginLayerEdit(Binding<C> binding, String id, @Nullable Object expected,
+                                            @Nullable Layer<C, ?> replacement) {
+        beginEdit();
+        try {
+            if (binding.layers.get(id) != expected) throw new IllegalStateException("Overlay layer changed before cleanup: " + id);
+            return new LayerEdit<>(this, binding, id, expected, replacement);
+        } catch (RuntimeException | Error failure) { editing = false; throw failure; }
+    }
+
+    private <C> LayerEdit<C> beginRemoval(RecipeRequirement<C> target, RequirementPath path, String id, Object expected) {
+        var binding = binding(target, path);
+        if (binding == null) throw new IllegalStateException("Owned overlay layer changed before cleanup: " + id);
+        return beginLayerEdit(binding, id, expected, null);
     }
 
     private void beginEdit() {
@@ -272,6 +289,7 @@ public final class RecipeOverlays {
         private final RecipeRequirement<C> base;
         private Object2ObjectOpenHashMap<String, Layer<C, ?>> layers = new Object2ObjectOpenHashMap<>();
         private RecipeRequirement<C> effective;
+        private List<Layer<C, ?>> ordered = List.of();
         private long nextOrder;
 
         private Binding(RecipeRequirement<C> base) {
@@ -279,8 +297,8 @@ public final class RecipeOverlays {
             effective = base;
         }
 
-        private RecipeRequirement<C> compute(Object2ObjectOpenHashMap<String, Layer<C, ?>> proposed) {
-            if (proposed.isEmpty()) { return base; }
+        private Computed<C> compute(Object2ObjectOpenHashMap<String, Layer<C, ?>> proposed) {
+            if (proposed.isEmpty()) { return new Computed<>(base, List.of()); }
             var ordered = new ObjectArrayList<>(proposed.values());
             ordered.sort(Comparator.comparingLong(Layer::order));
             C payload = base.payload();
@@ -297,15 +315,112 @@ public final class RecipeOverlays {
                     }
                 }
             }
-            return base.withPayload(payload);
+            return new Computed<>(base.withPayload(payload), ObjectLists.unmodifiable(ordered));
         }
 
-        private void install(Object2ObjectOpenHashMap<String, Layer<C, ?>> next, RecipeRequirement<C> result) {
+        private void install(Object2ObjectOpenHashMap<String, Layer<C, ?>> next, Computed<C> result) {
             layers = next;
-            effective = result;
+            effective = result.effective();
+            ordered = result.ordered();
         }
 
-        private void recompute() { effective = compute(layers); }
+        private void recompute() {
+            install(layers, compute(layers)); }
+    }
+
+    private record Computed<C>(RecipeRequirement<C> effective, List<Layer<C, ?>> ordered) { }
+
+    /** Filters the already ordered private proof, then publishes exactly one complete new binding. */
+    private static final class LayerEdit<C> {
+        private final RecipeOverlays owner;
+        private final Binding<C> binding;
+        private final String id;
+        private final @Nullable Object expected;
+        private final @Nullable Layer<C, ?> replacement;
+        private final Object2ObjectOpenHashMap<String, Layer<C, ?>> original;
+        private final List<Layer<C, ?>> source;
+        private final Object2ObjectOpenHashMap<String, Layer<C, ?>> next = new Object2ObjectOpenHashMap<>();
+        private final ObjectArrayList<Layer<C, ?>> ordered = new ObjectArrayList<>();
+        private int index;
+        private boolean inserted;
+        private boolean done;
+        private @Nullable ComputeCapture<C> computation;
+        private LayerEdit(RecipeOverlays owner, Binding<C> binding, String id, @Nullable Object expected, @Nullable Layer<C, ?> replacement) {
+            this.owner = owner; this.binding = binding; this.id = id; this.expected = expected; this.replacement = replacement;
+            original = binding.layers; source = binding.ordered;
+        }
+        private boolean advance(RecipeWorkBudget budget) {
+            if (done) return true;
+            while (index < source.size() || replacement != null && !inserted) {
+                if (!budget.take()) return false;
+                var old = index < source.size() ? source.get(index) : null;
+                if (replacement != null && !inserted && (old == null || replacement.order() <= old.order())) {
+                    next.put(id, replacement); ordered.add(replacement); inserted = true;
+                } else {
+                    index++;
+                    if (!Objects.requireNonNull(old).id().equals(id)) { next.put(old.id(), old); ordered.add(old); }
+                }
+            }
+            if (computation == null) computation = new ComputeCapture<>(binding.base, ObjectLists.unmodifiable(ordered));
+            if (!computation.advance(budget)) return false;
+            if (!budget.take()) return false;
+            if (binding.layers != original || original.get(id) != expected) throw new IllegalStateException("Overlay binding changed before cleanup publication");
+            binding.install(next, computation.result());
+            done = true;
+            owner.editing = false;
+            return true;
+        }
+        private void abort() { owner.editing = false; }
+    }
+
+    /** The same layer appliers and canonical direct-child checks as synchronous Binding.compute. */
+    private static final class ComputeCapture<C> {
+        private final RecipeRequirement<C> base;
+        private final List<Layer<C, ?>> ordered;
+        private C payload;
+        private @Nullable List<RecipeRequirement<?>> children;
+        private @Nullable List<RecipeRequirement<?>> effectiveChildren;
+        private int layer;
+        private int child;
+        private int phase;
+        private boolean done;
+        private ComputeCapture(RecipeRequirement<C> base, List<Layer<C, ?>> ordered) { this.base = base; this.ordered = ordered; payload = base.payload(); }
+        private boolean advance(RecipeWorkBudget budget) {
+            if (done) return true;
+            if (ordered.isEmpty()) { done = true; return true; }
+            if (children == null) {
+                if (!budget.take()) return false;
+                children = Objects.requireNonNull(base.type().system().children(payload));
+            }
+            while (layer < ordered.size()) {
+                if (phase == 0) {
+                    if (!budget.take()) return false;
+                    payload = ordered.get(layer).apply(payload);
+                    phase = 1;
+                }
+                if (phase == 1) {
+                    if (!budget.take()) return false;
+                    effectiveChildren = Objects.requireNonNull(base.type().system().children(payload));
+                    if (children.size() != effectiveChildren.size()) throw new IllegalArgumentException("Overlay changed structural child count");
+                    child = 0;
+                    phase = 2;
+                }
+                while (child < children.size()) {
+                    if (!budget.take()) return false;
+                    if (children.get(child).definition() != Objects.requireNonNull(effectiveChildren).get(child).definition()) throw new IllegalArgumentException("Overlay changed structural child identity or order");
+                    child++;
+                }
+                layer++;
+                phase = 0;
+                effectiveChildren = null;
+            }
+            done = true;
+            return true;
+        }
+        private Computed<C> result() {
+            if (!done) throw new IllegalStateException("Overlay computation is incomplete");
+            return new Computed<>(ordered.isEmpty() ? base : base.withPayload(payload), ordered);
+        }
     }
 
     private record Layer<C, D>(String id, long order, RecipeOverlayType<C, D> type, D data) {
@@ -335,6 +450,7 @@ public final class RecipeOverlays {
         private final String layerId;
         private final Layer<?, ?> expected;
         private boolean removed;
+        private @Nullable LayerEdit<?> pending;
 
         private RemovalClaim(RecipeOverlays owner, RecipeRequirement<?> target, RequirementPath path, String layerId, Layer<?, ?> expected) {
             this.owner = owner;
@@ -356,10 +472,28 @@ public final class RecipeOverlays {
             }
         }
 
+        @SuppressWarnings("StatementWithEmptyBody") // The original cursor performs the synchronous drain in the loop condition.
         public void remove() {
-            if (removed) { return; }
+            if (removed) {
+                return;
+            }
+            if (pending != null) { while (!removeWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) { } return; }
             owner.removeClaim(target, path, layerId, expected);
             removed = true;
+        }
+
+        public boolean removeWithinBudget(RecipeWorkBudget budget) {
+            if (removed) return true;
+            if (pending == null) {
+                if (!budget.take()) return false;
+                pending = owner.beginRemoval(target, path, layerId, expected);
+            }
+            try {
+                if (!pending.advance(budget)) return false;
+                pending = null;
+                removed = true;
+                return true;
+            } catch (RuntimeException | Error failure) { pending.abort(); pending = null; throw failure; }
         }
     }
 
@@ -367,22 +501,56 @@ public final class RecipeOverlays {
     public static final class Change {
         @Nullable private RecipeOverlays owner;
         @Nullable private Runnable undo;
+        private @Nullable Supplier<LayerEdit<?>> undoEdit;
+        private @Nullable LayerEdit<?> pending;
+        private boolean undone;
 
         private Change(@Nullable RecipeOverlays owner, @Nullable Runnable undo) {
+            this(owner, undo, null);
+        }
+        private Change(@Nullable RecipeOverlays owner, @Nullable Runnable undo, @Nullable Supplier<LayerEdit<?>> undoEdit) {
             this.owner = owner;
             this.undo = undo;
+            this.undoEdit = undoEdit;
         }
 
+        @SuppressWarnings("StatementWithEmptyBody") // The original cursor performs the synchronous drain in the loop condition.
         public void rollback() {
+            if (pending != null || undone) { while (!rollbackWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) { } return; }
             if (undo == null) { return; }
             undo.run();
             complete();
         }
 
         public void complete() {
+            if (pending != null) throw new IllegalStateException("Cannot relinquish a pending overlay rollback");
             if (owner != null) { owner.acquiredChanges--; }
             owner = null;
             undo = null;
+            undoEdit = null;
+        }
+
+        public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+            if (undo == null) return true;
+            if (!undone) {
+                if (pending == null) {
+                    if (!budget.take()) return false;
+                    pending = Objects.requireNonNull(undoEdit, "budgeted overlay undo").get();
+                }
+                try {
+                    if (!pending.advance(budget)) return false;
+                    pending = null;
+                    undone = true;
+                } catch (RuntimeException | Error failure) { pending.abort(); pending = null; throw failure; }
+            }
+            return completeWithinBudget(budget);
+        }
+
+        public boolean completeWithinBudget(RecipeWorkBudget budget) {
+            if (undo == null) return true;
+            if (!budget.take()) return false;
+            complete();
+            return true;
         }
     }
 }

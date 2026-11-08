@@ -101,6 +101,11 @@ import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import java.util.Collections;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.recipe.PreparedRequirement;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 class NetworkRecipeExecutionTest {
     private static final ResourceLocation SCANNING_ID = new RecipeScanningSystem(new ScanLimits(1, 1), _ -> true).id();
@@ -123,6 +128,105 @@ class NetworkRecipeExecutionTest {
             assertEquals(2, process.state().successfulTicks());
             assertEquals(2, worker.processPost.get());
             assertEquals(90, worker.energy.savedEnergy());
+        }
+    }
+
+    @Test
+    void realControllersScanMoreThanOneWorkSliceAndUndoProbeSourcesOnTheirOriginalLanesBeforeAdmission() {
+        for (var mode : List.of(ExecutionMode.CONCURRENT, ExecutionMode.PLANNED_PARALLEL)) {
+            try (var fixture = new Fixture(1, 1000, 3, false, original -> {
+                var roots = new ObjectArrayList<>(original.orderedRequirements());
+                for (int index = 0; index < 2500; index++) roots.add(RecipeRequirements.RESOURCES.requirement(
+                    id("scan_empty_" + index), new ResourceRequirement(List.of(), List.of())));
+                return new MachineRecipe(original.id(), original.durationTicks(), roots);
+            })) {
+                var worker = fixture.worker(true, 2, mode, Layout.ORDINARY);
+                fixture.tick();
+                assertEquals(1, worker.processes.size());
+                assertEquals(1, worker.processes.getFirst().state().successfulTicks());
+                assertEquals(1, worker.probeRollbacks.get());
+                assertNotSame(fixture.owner, worker.probeRollbackThread.get());
+                assertEquals(1, worker.slots.activeProcesses().size(), "One machine tick admits at most one process");
+                assertEquals(90, worker.energy.savedEnergy());
+                assertEquals(List.of("pre", "before", "after", "post"), worker.events);
+                assertEquals(1, worker.processPre.get());
+                assertEquals(1, worker.processPost.get());
+            }
+        }
+    }
+
+    @Test
+    void anOriginalScanLosingItsTickDuringSourceUndoCannotAdmitOrRunSuccessorCallbacks() {
+        try (var fixture = new Fixture(1, 20, 3)) {
+            var worker = fixture.worker(true, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            worker.onProbeRollback = () -> fixture.tickGate.set(false);
+            fixture.tick();
+            assertEquals(1, worker.probeRollbacks.get());
+            assertNotSame(fixture.owner, worker.probeRollbackThread.get());
+            assertTrue(worker.slots.activeProcesses().isEmpty());
+            assertEquals(100, worker.energy.savedEnergy());
+            assertEquals(List.of("pre", "before"), worker.events);
+            assertEquals(0, worker.processPre.get());
+            assertEquals(0, worker.processPost.get());
+            assertTrue(worker.processes.getFirst().persistenceReady());
+            worker.slots.requireQuiescent();
+        }
+    }
+
+    @Test
+    void aRealMachineScanConsumesAFatalWorkerReceiptBeforeItsNextOriginalSourceCleanup() {
+        var fatal = new OutOfMemoryError("scan source rollback fatal");
+        var callbackExited = new AtomicBoolean();
+        try (var fixture = new Fixture(1, 20, 3);
+             var workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+             var lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
+            var worker = fixture.worker(true, 1, ExecutionMode.CONCURRENT, Layout.ORDINARY);
+            worker.onProbeRollback = () -> {
+                try { throw fatal; }
+                finally { callbackExited.set(true); }
+            };
+            var tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+            fixture.tickOpen = true;
+            var lifecycle = Objects.requireNonNull(worker.machine.lifecycle());
+            var originalDeadline = PlannedDeadline.after(Duration.ofSeconds(5));
+            var execution = new MachineRecipeExecution(tasks,
+                List.of(new MachineRecipeExecution.Candidate(worker.machine, lifecycle, () -> true)),
+                originalDeadline, fixture::refresh, () -> fixture.tickOpen);
+            boolean delivered = false;
+            for (int step = 0; step < 10000 && !delivered && !execution.finished(); step++) {
+                try { execution.advance(originalDeadline); }
+                catch (OutOfMemoryError reported) {
+                    assertSame(fatal, reported);
+                    assertTrue(callbackExited.get(), "The fatal receipt belongs to the actual exited source callback");
+                    assertEquals(1, worker.probeRollbacks.get());
+                    delivered = true;
+                }
+                execution.awaitExit();
+            }
+            assertTrue(delivered, "The original attempt must deliver its actual fatal source receipt");
+            execution.awaitExit();
+            assertTrue(callbackExited.get());
+            assertEquals(1, worker.probeRollbacks.get());
+            assertNotSame(fixture.owner, worker.probeRollbackThread.get());
+            for (int step = 0; step < 4 && !execution.finished(); step++) {
+                try { execution.advance(originalDeadline); }
+                catch (OutOfMemoryError reported) {
+                    assertSame(fatal, reported);
+                    assertTrue(execution.finished(), "An already delivered fatal may remain in history, but its worker receipt cannot be consumed again");
+                }
+                execution.awaitExit();
+            }
+            assertTrue(execution.finished(), "The original Source terminal proof and machine lifecycle can finish on cleanup");
+            assertEquals(1, worker.probeRollbacks.get(), "Cleanup queries the exact terminal token instead of replaying its throwing rollback");
+            assertEquals(100, worker.energy.savedEnergy());
+            assertTrue(worker.slots.activeProcesses().isEmpty());
+            assertEquals(List.of("pre", "before"), worker.events);
+            assertEquals(0, worker.processPre.get());
+            assertEquals(0, worker.processPost.get());
+            worker.slots.requireQuiescent();
+            fixture.tickOpen = false;
+            worker.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            assertEquals(MachineLifecycle.State.UNLOADED, lifecycle.state());
         }
     }
 
@@ -443,6 +547,17 @@ class NetworkRecipeExecutionTest {
                                 super.apply();
                             }
                         });
+                    } else {
+                        token = new ReservationAdapter(token) {
+                            @Override public void apply() { throw new AssertionError("Flat admission probe must not apply FE"); }
+                            @Override public void complete() { throw new AssertionError("Admission probe must not complete FE"); }
+                            @Override public void rollback() {
+                                worker.probeRollbackThread.set(Thread.currentThread());
+                                worker.probeRollbacks.incrementAndGet();
+                                super.rollback();
+                                worker.onProbeRollback.run();
+                            }
+                        };
                     }
                     return new ReservedEnergy(token);
                 }
@@ -619,6 +734,9 @@ class NetworkRecipeExecutionTest {
         private final AtomicInteger processPost = new AtomicInteger();
         private final AtomicInteger sourceApplies = new AtomicInteger();
         private final AtomicReference<Thread> sourceThread = new AtomicReference<>();
+        private final AtomicInteger probeRollbacks = new AtomicInteger();
+        private final AtomicReference<Thread> probeRollbackThread = new AtomicReference<>();
+        private Runnable onProbeRollback = () -> { };
         private Runnable onPre = () -> { };
         private Runnable onAfter = () -> { };
         private UnaryOperator<ResourceReservation> adapter = UnaryOperator.identity();
@@ -736,23 +854,41 @@ class NetworkRecipeExecutionTest {
                 if (binding == null || !firstSlice.get()) {
                     return binding;
                 }
-                var original = binding.computation();
-                RecipePureComputation computation = budget -> {
-                    boolean ready = Objects.requireNonNull(original).advance(budget);
-                    if (!ready && firstSlice.compareAndSet(true, false)) {
-                        tickGate.set(false);
-                    }
-                    return ready;
-                };
                 return new RequirementPreparation() {
+                    private RecipePureComputation original;
+                    private RecipePureComputation wrapped;
                     @Override
                     public RecipePureComputation computation() {
-                        return computation;
+                        var current = binding.computation();
+                        if (current == null) return null;
+                        if (current != original) {
+                            original = current;
+                            wrapped = budget -> {
+                    boolean first = firstSlice.get();
+                                var slice = first ? budget.allocate(1) : budget;
+                                boolean ready;
+                                try { ready = current.advance(slice); }
+                                finally { if (first) budget.reclaim(slice); }
+                                if (!ready && firstSlice.compareAndSet(true, false)) tickGate.set(false);
+                                return ready;
+                };
+                        }
+                        return wrapped;
                     }
 
                     @Override
                     public RequirementTransaction acquire() {
-                        return binding.acquire();
+                        var transaction = binding.acquire();
+                        if (transaction instanceof PreparedRequirement) {
+                            // Keep this test's pure worker gate attached while the native owner
+                            // capture publishes later preparation pauses and their exact tokens.
+                            return new PreparedRequirement(this) {
+                                @Override public List<? extends ResourceReservation> reservations() { return transaction.reservations(); }
+                                @Override public void complete() { super.complete(); transaction.complete(); }
+                                @Override public void rollback() { super.rollback(); transaction.rollback(); }
+                            };
+                        }
+                        return transaction;
                     }
 
                     @Override

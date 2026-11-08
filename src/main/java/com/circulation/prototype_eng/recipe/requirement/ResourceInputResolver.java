@@ -269,7 +269,9 @@ final class ResourceInputResolver {
         private final ObjectArrayList<GenericStack> inputs;
         private final ResourceInputLocks locks;
         private final List<Choice> pending;
-        private final ObjectArrayList<Choice> installed = new ObjectArrayList<>();
+        private ObjectArrayList<Choice> installed = new ObjectArrayList<>();
+        private int rollbackIndex = -2;
+        @Nullable private Throwable rollbackFailure;
 
         private Selection(ObjectArrayList<GenericStack> inputs, ResourceInputLocks locks, List<Choice> pending) {
             this.inputs = inputs;
@@ -285,6 +287,7 @@ final class ResourceInputResolver {
             install(new RecipeWorkBudget(Long.MAX_VALUE)); }
 
         boolean install(RecipeWorkBudget budget) {
+            if (rollbackIndex != -2) throw new IllegalStateException("Cannot install choices after rollback begins");
             while (installedIndex < pending.size()) {
                 if (!budget.take()) {
                     return false;
@@ -296,19 +299,33 @@ final class ResourceInputResolver {
         }
 
         void rollback() {
-            Throwable failure = null;
-            for (int index = installed.size() - 1; index >= 0; index--) {
-                var choice = installed.get(index);
+            rollback(new RecipeWorkBudget(Long.MAX_VALUE));
+                }
+
+        boolean rollback(RecipeWorkBudget budget) {
+            if (rollbackIndex == -2) rollbackIndex = installed.size() - 1;
+            while (rollbackIndex >= 0) {
+                if (!budget.take()) return false;
+                var choice = installed.get(rollbackIndex--);
                 try {
                     locks.remove(choice.lock(), choice.resource());
                 } catch (RuntimeException | Error cleanup) {
-                    if (failure == null) { failure = cleanup; }
-                    else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                    if (rollbackFailure == null) {
+                        rollbackFailure = cleanup;
+                    } else if (rollbackFailure != cleanup) {
+                        rollbackFailure.addSuppressed(cleanup);
+                    }
+                    if (cleanup instanceof VirtualMachineError fatal) throw fatal;
                 }
             }
-            installed.clear();
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
+            installed = new ObjectArrayList<>();
+            if (rollbackFailure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (rollbackFailure instanceof Error error) {
+                throw error;
+            }
+            return true;
         }
     }
 
