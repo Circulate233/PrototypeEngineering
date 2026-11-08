@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-08 结构 C 基础预览模型与世界盒投影本阶段实现与验证已完成：客户端沿权威目录增量展开模板/切片 occurrence，按子边选择切片、根旋转、零片子结构、固定控制器排除和坐标后项覆盖；完整不可变模型交付名字/层/全结构 display BOM。StructurePreviews.client 的 request/advance/project/move/stop 已接实际 tick 与 RenderWorldLast，支持轮廓/半透明盒/组合、距离/层/预算/展示命中隐藏；观察仅代表性视觉比较，不是 matcher/成型权威。精确代/连接/世界及回调重入隔离，未知注册ID与未加载chunk显式处理。focused26/2、受影响126/14、正常完整build1417 tests /178 suites全通过；12 Java本机MCP全级零、完整项目文件读回/磁盘12/12一致、MCP build成功，源码SHA稳定。准确写前、冻结候选/P2与推广修正、原失败及最终证据/15路径统一清单见 `build/staging/structure-preview/verification/` 和[结构定义](structures.md)。未推送、未启动Minecraft或服务端；完整纹理方块模型、模型隐藏/复杂渲染/VBO/Bloom、预览GUI/JEI及实机验收继续后续，Applied-Flux暂缓、CT最后。
+
 - 2026-11-08 R32 机器声明/动态配方池本阶段实现与验证已完成：静态池引用、canonical 池和机器反查同次冻结发布；实际 `getRecipePools(RecipeCatalog)` 子类入口经 create/restore 工厂交付，零声明/空选择无自动候选，任意 canonical 池可动态选择，同一逻辑 pass 在预算 yield 间只取样一次。同步/bounded 扫描复用原工位与资源/FE/研究/计算/来源结算，运行和恢复进程保持原生命周期；JEI 消费静态机器关联注册真实控制器 catalyst，默认页显示本地化数量/名称/ID。新增14行为；focused37、额外受影响92、旧fixture复验12全通过，正常完整 build1391 tests /176 suites全通过；19 Java本机MCP全级零、完整读回/磁盘19/19一致、MCP build成功，21源码资源测试SHA稳定。见[配方](recipes.md)、[JEI](jei.md)、[需求](development-spec.md)，准确写前/固定delta/失败与最终验证/统一清单入口 `build/staging/machine-recipe-pools/verification/`。本阶段实现与验证已完成；未推送、未启动Minecraft或服务端，OpenGL/原生catalyst实机验收仍待继续。
 
 - 2026-11-08 块二 B 扫描内部工作预算本阶段实现与验证已完成：真实 RecipeScanningSystem 经原机器游标暂停到同一 planned owner，目录/索引、factory、属性继承、约束/START probe、需求捕获和存储预留/结算按实际访问续办；ScanLimits 的候选/probe 限额与 RecipeWorkBudget 独立。只允许 captureOnlyPreparation 捕获穿过等待中的纯资源准备，同轮完整捕获后才派发，FE/opaque 回调保持原序；旧 Stage.acquire 同步与后续子段语义保持。原授权/deadline 后重验，UNKNOWN/真实未退出保留原 token、receipt 与清理义务，部分原生预留及退款溢出预检已覆盖。受影响 629 tests / 83 suites、最后授权重验 41 tests / 3 suites、最后正常完整 build 1377 tests / 174 suites 全通过；52 Java 本机 IDEA MCP errorsOnly:false 全级零、完整项目文件读回/磁盘 52/52 一致、MCP build_project 成功，52 Java 构建前后 SHA 稳定。准确写前与最终输入同时冻结，原 41 个受影响失败及修复证据保留于 `build/staging/recipe-scan-budget/verification/`，见[正式执行](planned-execution.md)、[配方](recipes.md)、[网络消费者](network-recipes.md)与[功能核对](recipe-feature-parity.md)。外部合作回调、完整首次 tick 等价投影、结构预览/复杂渲染及实机验收仍有边界；未推送、未启动 Minecraft 或服务端。
@@ -46,8 +48,8 @@
 
 1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；2A 正式 PLANNED_PARALLEL 与独立宿主已验证；2B 扫描内部预算与 R32 机器池声明/动态选择及静态 JEI 关联已接并验证；下一步按[配方功能核对](recipe-feature-parity.md)继续剩余 Java 功能与结构/渲染联动。Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
-3. R32 本阶段实现与验证已完成；2B 已复用纯 kernel、实际预算游标、机器生命周期与 source lanes 接入扫描内部预算；外部合作回调仍遵守原稳定/纯契约。继续结构预览/复杂渲染、JEI 额外联动及实机验收，整体重开发仍在进行。
-4. 结构 A 启动期严格两阶段 JSON/共享注册及 B 运行中重载、准确宿主撤销/刷新与客户端权威目录/缓存同步已实现验证；B 实现与验证已完成。继续结构预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染、结构准备工作预算、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
+3. R32 本阶段实现与验证已完成；2B 已复用纯 kernel、实际预算游标、机器生命周期与 source lanes 接入扫描内部预算；外部合作回调仍遵守原稳定/纯契约。C 基础预览/盒投影已验证；继续完整纹理方块模型/复杂渲染、JEI 额外联动及实机验收，整体重开发仍在进行。
+4. 结构 A 启动期严格两阶段 JSON/共享注册及 B 运行中重载、准确宿主撤销/刷新与客户端权威目录/缓存同步已实现验证；C 基础预览/世界盒投影、切片/层/BOM/display override 消费本阶段实现与验证已完成。继续完整纹理方块模型、模型隐藏/复杂渲染/VBO/Bloom、预览 GUI/JEI、结构准备工作预算、JEI 额外联动及其他未取消功能，最后 CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
 ## 必须遵守
 

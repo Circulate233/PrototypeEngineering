@@ -1,6 +1,6 @@
 # 结构定义、快照与匹配
 
-已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核、公开仓室发现、实际控制器和调度器。2026-11-08 已补齐 A 启动期严格两阶段 JSON 与共享目录/机器装配原子发布，以及 B 运行中重载、准确宿主配置代撤销/刷新和客户端权威目录/缓存同步。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)；库不内置正式机器或配方。
+已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核、公开仓室发现、实际控制器和调度器。2026-11-08 已补齐 A 启动期严格两阶段 JSON 与共享目录/机器装配原子发布，以及 B 运行中重载、准确宿主配置代撤销/刷新和客户端权威目录/缓存同步，C 基础预览模型、切片/层/BOM 消费与实际世界盒投影。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)；库不内置正式机器或配方。
 
 ## 朝向与定义
 
@@ -8,7 +8,7 @@
 
 PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAround(UP)` 实际把 NORTH 变为 WEST，因此没有拿这个方法直接替代 PM 旋转；目标朝向通过 AE2 的前/上方向表示。
 
-`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存入口已接，预览渲染仍待接入。
+`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存与基础预览/盒投影入口已接，完整纹理方块模型等复杂渲染继续后续。
 
 `StructurePlan` 将定义从它的基础朝向转换到请求朝向，保留一个固定控制器坐标并收集读取。每次 `match` 返回独立 `StructureMatch` 树或 null，前一次成功不会污染下一次失败。结果保存每个 occurrence 的重复数、实际本层方块位置及子树；位置收集按公开结果进行，不按具体模板/切片类判断，也不按 ID 扁平覆盖计数。
 
@@ -43,6 +43,20 @@ GLOBAL 实际 Loaded 只记录 machine/host/lifecycle 身份，离开 load gate 
 StructureCatalogView 只捕获原 Template/Slice 相对几何、child shape 身份 DAG、translationKey 与独立 display；不传 matcher/factory。外部形状通过 StructurePreviewProvider 提供几何，否则显式 OPAQUE。实际 Forge S2C 通道以 session UUID/成功 sequence 同步，严格 UTF-8 codec 限总 8 MiB、集合及字符串字节 65,536，分为 16 KiB 消息；登录发送当前目录。客户端在实际 client thread/准确 NetHandler manager 上收件，永不重读本地 config。完整合法新代到齐才一次替换 view 并清代缓存；部分、旧代、错连接、冲突或畸形数据保留旧完成目录。断连清 view/cache，旧断连不清替代连接；重复同 manager 通知保持目录。StructurePreviewCache 按权威 view 身份与设置缓存，跨代 builder 无权发布旧结果，订阅 handles 各自保留对象身份。
 
 B 新增 23 项行为（3 suites），最终受影响正常 Gradle 187 tests / 24 suites、一次完整 build 1308 tests / 164 suites 均零失败/错误/跳过。24 Java 本机 IDEA MCP errorsOnly:false 全级零、完整项目文件读回/磁盘一致，MCP build_project 成功；26 源码资源构建前后与 24 Java MCP SHA 稳定。独立 max 审计的 foreign scheduler P2 以最小入口拒绝/无残留纯行为及实际构造转发复核闭环；准确正式写前、只读候选/修正、统一最终清单/快照与真实证据见 `build/staging/structure-reload/`。未启动游戏或 native Session/Bootstrap/FML 测试初始化；同步展示数据不表示预览/投影渲染、切片/BOM/display override 消费、模型隐藏或复杂渲染完成。
+
+## C：基础预览模型与世界盒投影
+
+客户端 Java 入口为 `StructurePreviews.client()`，沿 ClientProxy 惰性创建服务并注册实际 ClientTick END / RenderWorldLast 适配器；独立 `StructurePreviews(ClientStructureCatalog)` 供纯逻辑消费。仅使用服务端已完整发布的 StructureCatalogView，不读取本地 JSON、定义工厂或 matcher。调用 `request(id, settings)` 后按 `Request.advance(maxSteps)` 增量展开，只有 READY 交付完整不可变 model；BUILDING 不泄露半成品，旧代/关闭后的请求为 STALE，异常保留 FAILED 与原 cause。默认服务使用按权威代和设置的 32 项 LRU；原单参 StructurePreviewCache 构造保持无限制缓存契约。
+
+StructurePreviewSettings 保存根朝向、按 StructurePreviewPath 子边 occurrence 路径选择的切片数，以及 occurrence/cell-visit 上限；未选择使用服务端 min，选择夹在 min/max 内。展开保持模板/切片层级及每次子边 occurrence，不能以共享 node/ID 合并重复实例；全部相对坐标按根朝向旋转。零片 children 沿 base - sliceOffset，所有层仅排除固定控制器原点，坐标重叠以遍历后项覆盖。OPAQUE occurrence 明确记录，不猜几何。Model 同时交付 cells、包围盒、occurrences、LocalizationEnum 名字和全结构 BOM；Layer 仅筛选一个相对 Y 平面，不改变 BOM。BOM 以完整冻结 StructureDisplay（候选块/meta/NBT/tileNbt/key）等价值累计 long，fastutil addTo；缺表示以 null 行明确未知，不合并只有相同展示 key 的不同候选。Builder 自己拥有私有列表，单 owner 构造后一次 freeze 为零复制只读结果，冻结后拒绝任何追加。
+
+`project(id, settings, anchor, options)` / `moveProjection(anchor)` / `stopProjection()` 已接实际世界投影意图；Style 提供 BOX_OUTLINE、TRANSLUCENT_BOX、BOX_AND_OUTLINE。原生实现以 CPU BufferBuilder 绘制单位盒轮廓或半透明盒，保存/恢复使用的 GL 状态，支持距离、相对层、每 tick 展开/观察与每 frame 访问额度及隐藏已观察 DISPLAY_MATCH。保留普通白色轮廓和未加载黄色轮廓。展示观察为 DISPLAY_MATCH/MISSING/DIFFERENT/UNLOADED/UNKNOWN：比较权威 display 的代表 state；不运行 matcher，也不证明成型或全量匹配。缺注册 ID 先 containsKey，禁止 Forge 默认 AIR 回退冒充有效代表；观察使用 isBlockLoaded(position, false)，不强加载或将 EmptyChunk 当已加载；NBT/tileNbt 无法代表性验证时明确 UNKNOWN。
+
+ProjectionState 每轮绑定精确世界、意图、请求、模型、目录代、状态表和游标；观察回调返回后重新核对整个私有 round，回调重入移动/停止/换代/换世界不会覆盖替代状态，旧异常不能取消新意图或新轮。目录完成代切换会重新申请/展开，断连清意图；替代连接与世界按原身份隔离。持有 Model 的外部消费者使用前必须 `current(model)`，READY 不授予未来世界或目录使用权。
+
+C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受影响 126 tests / 14 suites，以及正常完整 `gradlew.bat build --console=plain` 1417 tests / 178 suites，failure/error/skipped 均 0。12 Java 本机 IDEA MCP 逐文件 get_file_problems(errorsOnly:false) 零错误/警告/弱警告，无 timeout/isError；完整 read_file 项目文件文本/磁盘 12/12 一致，不据此声称未保存 Document。MCP build_project 成功；12 Java 构建前后及最终 MCP SHA 稳定。原候选、三项独立 P2 修正与 mapped MC/Forge 源依据、IDE 格式化旧文本回退的真实首次 compile 失败、必要公开 API/局部 inspection 修正、8 文件 CRLF-only Spotless 失败/等价修正、原日志/XML、准确 formal-before 与最终 15 文件统一清单/快照保留于 `build/staging/structure-preview/verification/`。
+
+本阶段实现与验证已完成；未启动 Minecraft、服务端或 Bootstrap/FML/native Block/Item 测试初始化。真实 OpenGL/World/注册表实机视觉仍未验收。完整纹理方块模型、模型隐藏/碰撞/复杂渲染、VBO/Bloom、预览 GUI 与 JEI 联动、结构准备工作预算及其他未取消能力继续后续；本阶段盒投影不缩减这些范围。
 
 ## 模板、切片与修正
 
@@ -107,4 +121,4 @@ B 新增 23 项行为（3 suites），最终受影响正常 Gradle 187 tests / 2
 
 新增测试覆盖真实 worker 消费快照、读取证明/时间刷新、切片增长、同方向换仓、过期成功/失败/失配、配置 ABA、卸载、发现失稳重试、故障隔离、跨线程/执行重叠及重入。逻辑 fixture 实现公开宿主接口，没有伪造 Forge 注册环境。
 
-实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。下一步接预览/投影渲染、切片/BOM/display override 消费、模型隐藏/复杂渲染及结构准备工作预算；当前目录同步与宿主发布契约不代表这些能力已完成，也没有缩减其迁移范围。游戏内集成未验收；本阶段实现与验证已完成。
+实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费已接并验证。下一步继续完整纹理方块模型、模型隐藏/复杂渲染/VBO/Bloom、预览 GUI/JEI 联动与结构准备工作预算；基本盒投影没有缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。

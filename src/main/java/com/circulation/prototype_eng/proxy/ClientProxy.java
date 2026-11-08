@@ -30,9 +30,21 @@ import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetHandlerPlayClient;
 import net.minecraftforge.fml.common.network.FMLNetworkEvent;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
+import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
 
 public class ClientProxy extends CommonProxy {
     private ClientStructureCatalog structures;
+    private StructurePreviews previews;
+
+    public StructurePreviews previews() {
+        var catalog = structures();
+        if (previews == null || previews.closed()) {
+            previews = new StructurePreviews(catalog);
+            MinecraftForge.EVENT_BUS.register(new WorldProjectionManager(previews));
+        }
+        return previews;
+    }
 
     public ClientStructureCatalog structures() {
         if (!Minecraft.getMinecraft().isCallingFromMinecraftThread()) throw new IllegalStateException("Structure view requires the client thread");
