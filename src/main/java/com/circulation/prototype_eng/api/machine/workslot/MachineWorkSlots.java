@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import java.util.Iterator;
 import java.util.function.BooleanSupplier;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 
 /**
  * PM's ordered work-slot host. One execution owner controls admission, tick, transfer and persistence;
@@ -58,7 +59,9 @@ public final class MachineWorkSlots {
         this(owner, definitions, defaultGroups, RecipeExecutor.DEFAULT);
     }
 
-    /** An empty layout uses PM's implicit main slot; empty machine-level groups accept every recipe. */
+    /**
+     * An empty layout uses PM's implicit main slot; empty machine-level groups add no group filter.
+     */
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups,
                             RecipeExecutor executor) {
         this.owner = Objects.requireNonNull(owner);
@@ -116,17 +119,35 @@ public final class MachineWorkSlots {
         return true;
     }
 
+    /** The scanner's frozen pool scope supplements slot rules for this new admission only. */
+    public boolean startIn(String name, RecipeProcess process, RecipeCatalog.Selection selection) {
+        requireBoundary();
+        validateUnattached(process);
+        return Objects.requireNonNull(selection).accepts(owner, process.recipe()) && startIn(name, process);
+    }
+
+    @SuppressWarnings("ReturnOfInnerClass") // The retained admission cursor belongs to this exact work-slot host.
+    public Admission beginAdmission(String name, RecipeProcess process, RecipeCatalog.Selection selection) {
+        Objects.requireNonNull(selection);
+        return createAdmission(name, process, selection);
+    }
+
+    private Admission createAdmission(String name, RecipeProcess process, @Nullable RecipeCatalog.Selection selection) {
+        requireBoundary();
+        validateUnattached(process);
+        var admission = new Admission(requireSlot(name), process);
+        admission.selection = selection;
+        activeAdmission = admission;
+        return admission;
+    }
+
     /**
      * Original admission rules with a retained local host gate while active-count/group visits yield.
      * No storage, lifecycle or scheduler authority is acquired; the caller already owns the machine.
      */
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     public Admission beginAdmission(String name, RecipeProcess process) {
-        requireBoundary();
-        validateUnattached(process);
-        var admission = new Admission(requireSlot(name), process);
-        activeAdmission = admission;
-        return admission;
+        return createAdmission(name, process, null);
     }
 
     public final class Admission {
@@ -141,6 +162,7 @@ public final class MachineWorkSlots {
         private boolean admitted;
         private boolean finished;
         private boolean advancing;
+        @Nullable private RecipeCatalog.Selection selection;
         @Nullable private RecipeProcess permitted;
         @Nullable private MachineAttributes.ValueCapture capacityValue;
 
@@ -190,7 +212,8 @@ public final class MachineWorkSlots {
                 if (!budget.take()) return false;
                 validateUnattached(process);
                 // Authorization is an extension callback: prove the captured attributes again after it.
-                if (!accepted || slot.process() != null || workPaused() || !authorization.getAsBoolean()) return finish(false);
+                if (!accepted || selection != null && !selection.accepts(owner, process.recipe())
+                    || slot.process() != null || workPaused() || !authorization.getAsBoolean()) return finish(false);
                 if (!capacityValue.current()) { capacityValue = null; return false; }
                 validateUnattached(process);
                 if (active >= Math.clamp((long) capacityValue.result(), 0, slots.size()) || slot.process() != null || workPaused()) return finish(false);

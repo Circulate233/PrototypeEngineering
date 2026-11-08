@@ -81,7 +81,7 @@ public class CommonProxy implements IGuiHandler {
         MinecraftForge.EVENT_BUS.post(new ResearchItemDownloadRegistrationEvent(ResearchItemDownloadRegistry.INSTANCE));
         ResearchItemDownloadRegistry.INSTANCE.freeze(ResearchRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE));
-        RecipeRegistry.INSTANCE.freeze();
+        RecipeRegistry.INSTANCE.freeze(MachineTypeRegistry.INSTANCE.types());
         NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.catalog(), ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
         var structurePredicates = new StructurePredicateRegistry();
         BuiltinStructurePredicates.register(structurePredicates);

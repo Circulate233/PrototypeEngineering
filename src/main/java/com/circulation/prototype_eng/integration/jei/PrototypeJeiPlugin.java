@@ -7,9 +7,6 @@ import com.circulation.prototype_eng.api.client.jei.JeiQueryIdentityIndex;
 import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRegistrationEvent;
 import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRegistry;
-import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -18,13 +15,11 @@ import mezz.jei.api.IModRegistry;
 import mezz.jei.api.JEIPlugin;
 import mezz.jei.api.recipe.IRecipeCategoryRegistration;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.Objects;
-import java.util.Set;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 import mcp.MethodsReturnNonnullByDefault;
@@ -80,8 +75,9 @@ public class PrototypeJeiPlugin implements IModPlugin {
             for (var catalyst : pages.catalysts(page.pool().id())) {
                 registration.addRecipeCatalyst(catalyst, page.getUid());
             }
-            for (var block : MachineControllerBlocks.all()) {
-                if (uses(block.type(), page.pool())) {
+            for (var machine : page.pool().machines()) {
+                for (var block : MachineControllerBlocks.all()) {
+                if (block.type() != machine) continue;
                     var controller = new ItemStack(block);
                     if (!controller.isEmpty()) {
                         registration.addRecipeCatalyst(controller, page.getUid());
@@ -89,37 +85,5 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 }
             }
         }
-    }
-
-    /**
-     * Mirrors the existing scanner's group selection without creating a second recipe directory.
-     */
-    static boolean uses(MachineType machine, RecipePool pool) {
-        for (var recipe : pool.recipes()) {
-            if (machine.workSlots().isEmpty()) {
-                if (accepts(machine.recipeGroups(), recipe)) {
-                    return true;
-                }
-            } else {
-                for (var slot : machine.workSlots()) {
-                    if (slot.accepts(recipe)) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    private static boolean accepts(Set<ResourceLocation> groups, MachineRecipe recipe) {
-        if (groups.isEmpty()) {
-            return true;
-        }
-        for (var group : groups) {
-            if (recipe.recipeGroups().contains(group)) {
-                return true;
-            }
-        }
-        return false;
     }
 }

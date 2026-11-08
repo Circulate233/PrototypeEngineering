@@ -31,6 +31,7 @@ public final class MachineType {
     private final ResourceLocation structureId;
     private final List<ComponentType<MachineInstance, ?>> componentTypes;
     private final Set<ResourceLocation> recipeGroups;
+    private final List<ResourceLocation> recipePoolIds;
     private final List<WorkSlotDefinition> workSlots;
     private final Object2DoubleMap<ResourceLocation> defaultAttributeBases;
     private final ExecutionMode executionMode;
@@ -42,6 +43,7 @@ public final class MachineType {
         structureId = builder.structureId;
         componentTypes = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.components.values()));
         ComponentMap.validateTypes(componentTypes);
+        recipePoolIds = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.recipePools));
         recipeGroups = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(builder.recipeGroups));
         workSlots = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.workSlots.values()));
         defaultAttributeBases = Object2DoubleMaps.unmodifiable(new Object2DoubleLinkedOpenHashMap<>(builder.attributes));
@@ -59,8 +61,16 @@ public final class MachineType {
     public LocalizationEnum displayName() { return displayName; }
     public ResourceLocation structureId() { return structureId; }
     public List<ComponentType<MachineInstance, ?>> componentTypes() { return componentTypes; }
-    /** Groups for the implicit main slot when workSlots is empty; empty groups accept every recipe. */
+
+    /**
+     * Groups for the implicit main slot; empty groups add no filter within the selected pool scope.
+     */
     public Set<ResourceLocation> recipeGroups() { return recipeGroups; }
+
+    /** Static pool references resolved together after all recipe registration; order does not reorder recipes. */
+    public List<ResourceLocation> recipePoolIds() {
+        return recipePoolIds;
+    }
     public List<WorkSlotDefinition> workSlots() { return workSlots; }
     @SuppressWarnings("unused") // Assembly applies these public defaults after restoring persisted attributes.
     public Object2DoubleMap<ResourceLocation> defaultAttributeBases() { return defaultAttributeBases; }
@@ -74,6 +84,7 @@ public final class MachineType {
         private final LocalizationEnum displayName;
         private final ResourceLocation structureId;
         private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ComponentType<MachineInstance, ?>> components = new Object2ObjectLinkedOpenHashMap<>();
+        private final ObjectLinkedOpenHashSet<ResourceLocation> recipePools = new ObjectLinkedOpenHashSet<>();
         private final ObjectLinkedOpenHashSet<ResourceLocation> recipeGroups = new ObjectLinkedOpenHashSet<>();
         private final Object2ObjectLinkedOpenHashMap<String, WorkSlotDefinition> workSlots = new Object2ObjectLinkedOpenHashMap<>();
         private final Object2DoubleLinkedOpenHashMap<ResourceLocation> attributes = new Object2DoubleLinkedOpenHashMap<>();
@@ -90,6 +101,14 @@ public final class MachineType {
             Objects.requireNonNull(type, "component type");
             if (components.putIfAbsent(type.id(), type) != null) {
                 throw new IllegalArgumentException("Duplicate machine component ID: " + type.id());
+            }
+            return this;
+        }
+
+        /** Declares this machine as a static user of the pool, including addon pools registered later. */
+        public Builder recipePool(ResourceLocation poolId) {
+            if (!recipePools.add(Objects.requireNonNull(poolId, "recipe pool"))) {
+                throw new IllegalArgumentException("Duplicate machine recipe pool: " + poolId);
             }
             return this;
         }

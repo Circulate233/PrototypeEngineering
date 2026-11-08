@@ -277,3 +277,4 @@ structure.prototype_eng.ReloadUsage=/pe_structures reload
 structure.prototype_eng.Reloaded=Structure catalog generation %s published.
 structure.prototype_eng.ReloadFailed=Structure reload rejected; generation %s retained. See the server log.
 structure.prototype_eng.ReloadRefreshFailed=Structure catalog generation %s published; a host refresh or delivery failed. See the server log.
+jei.prototype_eng.Machines=Machines (%s)

@@ -18,6 +18,9 @@ import java.util.function.BooleanSupplier;
 import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import java.util.List;
 
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
@@ -25,7 +28,7 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
  * one MachineLifecycle before scheduling. Unbound instances support standalone library execution;
  * they carry no world/scheduler permission. Scheduler registration and world matching remain external.
  */
-public final class MachineInstance implements PlannedMachineTask {
+public class MachineInstance implements PlannedMachineTask {
     private final ComponentMap<MachineInstance> components = new ComponentMap<>();
     private final MachineAttributes attributes = new MachineAttributes();
     @Nullable private final MachineType type;
@@ -43,6 +46,20 @@ public final class MachineInstance implements PlannedMachineTask {
     public MachineInstance(MachineType type) { this.type = Objects.requireNonNull(type); }
 
     @Nullable public MachineType type() { return type; }
+
+    /**
+     * The single runtime pool-selection override called by the recipe framework. Default declared
+     * machines use only their static pool IDs; a standalone instance uses the supplied catalog.
+     * Overrides may select any canonical pool from that catalog, including outside the static list.
+     * Empty means no automatic candidates. The returned collection must stay immutable while the
+     * logical scan pass captures it across budget yields. This cooperative callback runs on the execution owner and
+     * must use thread-safe component/state facts, never an unavailable World or team backend.
+     * A new pass after admission, exhaustion or an explicit safe reset samples again;
+     * selection changes during the pass apply to the next pass. Existing processes and static JEI bindings are unaffected.
+     */
+    public List<RecipePool> getRecipePools(RecipeCatalog catalog) {
+        return type == null ? catalog.pools() : catalog.poolsFor(type);
+    }
 
     /** Host assembly boundary; an attached lifecycle cannot be replaced or shared across machines. */
     public void attachLifecycle(MachineLifecycle lifecycle) {

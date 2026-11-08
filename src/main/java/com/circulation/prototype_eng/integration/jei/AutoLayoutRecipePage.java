@@ -90,6 +90,8 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     public void drawExtras(Minecraft minecraft) {
         minecraft.fontRenderer.drawString(JeiText.Input.getLocal(), INPUT_X, 2, 0x404040);
         minecraft.fontRenderer.drawString(JeiText.Output.getLocal(), OUTPUT_X, 2, 0x404040);
+        var machines = JeiText.Machines.getLocal(pool.machines().size());
+        minecraft.fontRenderer.drawString(minecraft.fontRenderer.trimStringToWidth(machines, 54), 42, 2, 0x404040);
         frames(inputSlots, INPUT_X);
         frames(outputSlots, OUTPUT_X);
         Gui.drawRect(80, 42, 95, 47, 0xFF777777);
@@ -170,6 +172,14 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public List<String> getTooltipStrings(int mouseX, int mouseY) {
+            if (mouseX >= 42 && mouseX < 98 && mouseY >= 0 && mouseY < 14) {
+                var names = new ObjectArrayList<String>();
+                names.add(JeiText.Machines.getLocal(owner.pool.machines().size()));
+                for (var machine : owner.pool.machines()) {
+                    names.add(machine.displayName().getLocal() + " (" + machine.id() + ")");
+                }
+                return names;
+            }
             if (mouseX >= 78 && mouseX < 98 && mouseY >= 36 && mouseY < 54) {
                 return ObjectArrayList.of(JeiText.Duration.getLocal(recipe().durationTicks(), recipe().durationTicks() / 20.0),
                     JeiText.Runtime.getLocal());

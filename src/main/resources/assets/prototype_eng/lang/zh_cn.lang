@@ -277,3 +277,4 @@ structure.prototype_eng.ReloadUsage=/pe_structures reload
 structure.prototype_eng.Reloaded=结构目录第 %s 代已发布。
 structure.prototype_eng.ReloadFailed=结构重载已拒绝，保留第 %s 代。详情见服务器日志。
 structure.prototype_eng.ReloadRefreshFailed=结构目录第 %s 代已发布，个别宿主刷新或同步发送失败。详情见服务器日志。
+jei.prototype_eng.Machines=机器（%s）

@@ -58,7 +58,7 @@ class AutomaticRecipeProcessingTest {
         var registry = registry(recipe);
         var scanner = RecipeScanning.component(id("scanner"), registry::catalog, LIMITS);
         var assembly = assembly(scanner, recipe);
-        registry.freeze();
+        registry.freeze(List.of(assembly.type()));
         try (var scheduler = scheduler()) {
             var original = controller(assembly, scheduler);
             original.load(null);
@@ -261,7 +261,7 @@ class AutomaticRecipeProcessingTest {
 
     private static MachineType.Builder declaration() {
         return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"))
-            .recipeGroup(GROUP).executionMode(ExecutionMode.MAIN_THREAD);
+            .recipePool(id("pool")).recipeGroup(GROUP).executionMode(ExecutionMode.MAIN_THREAD);
     }
 
     private static MachineAssembly assembly(ComponentType<MachineInstance, RecipeScanner> scanner, MachineRecipe... recipes) {

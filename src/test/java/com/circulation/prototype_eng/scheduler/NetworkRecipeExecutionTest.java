@@ -642,7 +642,7 @@ class NetworkRecipeExecutionTest {
             var builder = type("worker_" + position).executionMode(mode).component(ownership).component(role).component(work).component(before)
                 .component(MachineWorkSlots.TYPE).component(after);
             for (int index = 0; index < capacity; index++) { builder.workSlot(new WorkSlotDefinition("slot_" + index)); }
-            if (scanning) { builder.component(scan); }
+            if (scanning) { builder.recipePool(id("pool")).component(scan); }
             if (layout == Layout.ALIAS || layout == Layout.SECONDARY) { builder.component(extra); }
             if (layout == Layout.FAIL_AFTER_DEFER) { builder.component(failing); }
             var type = builder.build();

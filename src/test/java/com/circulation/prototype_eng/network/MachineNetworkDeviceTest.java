@@ -248,7 +248,8 @@ class MachineNetworkDeviceTest {
             var type = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure"))
                 .component(ownershipType).component(networkType).component(MachineWorkSlots.TYPE)
                 .component(scannerType).component(ordinaryType)
-                .workSlot(new WorkSlotDefinition("first")).workSlot(new WorkSlotDefinition("second"))
+                .recipePool(id("recipes"))
+                                  .workSlot(new WorkSlotDefinition("first")).workSlot(new WorkSlotDefinition("second"))
                 .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2).build();
             var codec = new MachineWorkSlotsNbt("slots-v1", List.of(
                 RecipeProcessNbt.builder(firstRecipe, "recipe-v1").build(),

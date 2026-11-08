@@ -6,6 +6,12 @@
 
 ## 当前状态
 
+- 2026-11-08 R32 机器声明配方池与动态选择本阶段已实现并验证。`MachineType.Builder.recipePool(ID)` 与不可变 `recipePoolIds()` 声明静态池，`RecipeRegistry.freeze(types)` 在 RecipeRegistrationEvent 后预检全部前向引用，再同次发布 canonical 池、`RecipePool.machines()` 机器反查与目录；失败不部分发布。`MachineInstance` 可继承，框架实际唯一调用 `getRecipePools(RecipeCatalog)`；装配 `instanceFactory` 在新建/恢复都交付准确 canonical type 的全新空实例。默认 typed 机器仅声明池，零声明/空动态选择没有自动候选；显式 untyped 库实例保留传入全目录，动态可选任意传入 canonical 池，伪造/异目录拒绝。
+
+- 每个逻辑扫描 pass 只采样一次，在 RecipeWorkBudget yield 间复用，fresh 等价 immutable List 仍能推进；ADMITTED/EXHAUSTED/安全 reset 后重新采样，原目录顺序/跨池 canonical recipe 去重和池内 group 过滤保持。同步和 bounded admission 把准确 Selection 交付原工位；活动/执行/faulted attempt 拒绝 reset，先结算原 probe/source 清理义务。既有直接 start/startIn、运行/恢复/detach 进程和全部资源/FE/研究/计算/并发/owner/deadline/source lanes 保持。JEI 直接消费静态 pool.machines()，注册实际 canonical 控制器原生 catalyst，默认页本地化机器数与名称/ID tooltip；运行时选择不改静态关联或分类。
+
+- 新增14行为，focused37 tests /4 suites、额外受影响92 tests /12 suites、旧自动扫描fixture复验12 tests /2 suites全通过。首focused37/1为headless I18n locale缺失，测试同包轻量Locale helper初始化并恢复null后37/0；无反射、Bootstrap/FML/nativeItem初始化。首完整build因Catalog/Slots行尾Spotless失败，按输出确认逻辑文本相同后仅CRLF修正；随后完整1391/4是两旧typed机器fixture缺显式池声明，先捕获准确before，再按实际catalog补.recipePool且保留全部原扫描/生命周期/预算断言。正常最终 `gradlew.bat build --console=plain` 1391 tests /176 suites、failure/error/skipped均0，assemble/Spotless/test/check通过。19 Java本机MCP逐文件 `get_file_problems(errorsOnly:false)` 零错误/警告/弱警告、无timeout/isError；完整 `read_file` 项目文件文本/磁盘19/19一致，不据此声称未保存Document；MCP build_project成功、21源码资源测试构建前后与最终MCP SHA稳定。原失败日志/XML、准确formal-before与追加before、固定候选及修正delta、最终输出/统一清单见 `build/staging/machine-recipe-pools/verification/`。背景修改与INDEX备份保留；未推送、未启动Minecraft或服务端。真实OpenGL、原生catalyst实机、JEI额外联动及整体剩余Java/渲染/CT不计本阶段完成。
+
 - 2026-11-08 块二 B 扫描内部工作预算本阶段实现与验证已完成。RecipeScanningSystem 在原组件/lifecycle 游标处把真实 ScanAttempt 交给 MachineRecipeExecution；同一 owner 以原 current attempt/deadline 驱动目录 union/顺序、index 交集、factory 增量创建、属性祖先/overlay 读取、固定 IO/START probe 与 admission，候选/probe 限额保持独立。内置访问在执行处计费，暂停保留准确游标、进程及预留，不用候选数掩盖内部成本；无义务的纯暂停只复用无授权事实，跨 tick 重捕获当前来源/许可。旧同步 scan 和 Stage.acquire 的子段保持原语义。
 
 - 同轮先捕获全部隐藏纯 kernel 再派发，Preparation/Prepared/Scoped/Stage 贯通精确 captureOnlyPreparation 许可；默认 false，资源初始事实/Timeline 捕获可推进，FE 和 opaque 副作用回调保持原序，Prepared entered 后不再允许穿越。root/nested preparation 派发前按 stage/path/expected identity 撤回进程缓存；严格嵌套 flat candidate parent 链恢复原 ancestor，pop 仍严格 LIFO。每个 continuation owner prepare 返回后重新检查 forwardAllowed 才捕获下一批，失权只沿原 rollback；successfulTicks 溢出先 O(1) 拒绝，正常同步 TICK 建立准确 activeTick。

@@ -343,7 +343,7 @@ class NetworkRecipeWorkTest {
             var defaults = NetworkWorkRequirements.builder().resource(NetworkResources.COMPUTE, 4);
             if (researchGate) { defaults.research(id("gate"), 3); }
             var work = NetworkRecipeWork.component(id("network_work"), workerRole, defaults.build(), extensions, research, resources);
-            var workerType = type("worker").component(ownership).component(workerRole).component(work).build();
+            var workerType = type("worker").component(ownership).component(workerRole).component(work).recipePool(id("recipes")).build();
             workerAssembly = MachineAssembly.builder(workerType, "worker-v1").component(ownership, MachineOwnership.CODEC).recreated(workerRole, work).build();
             var dataRole = MachineNetworkDevice.capturedComponent(id("data_role"), ownership,
                 (owner, identity) -> Objects.requireNonNull(owner.components().get(storage)).networkCapture(identity,

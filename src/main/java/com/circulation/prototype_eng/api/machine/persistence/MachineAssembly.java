@@ -40,6 +40,7 @@ import java.util.function.Consumer;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
+import java.util.function.Function;
 
 /**
  * Attached-host assembly and explicit persistence for one canonical machine declaration revision.
@@ -60,6 +61,8 @@ public final class MachineAssembly {
         }
     };
 
+    private final Function<MachineType, ? extends MachineInstance> instanceFactory;
+
     private final MachineType type;
     private final String revision;
     private final MachineAttributesNbt attributes;
@@ -67,6 +70,7 @@ public final class MachineAssembly {
     private final List<Consumer<MachineInstance>> validators;
 
     private MachineAssembly(Builder builder) {
+        instanceFactory = builder.instanceFactory;
         type = builder.type;
         revision = builder.revision;
         attributes = new MachineAttributesNbt(builder.attributes);
@@ -112,10 +116,19 @@ public final class MachineAssembly {
         return identity;
     }
 
+    private MachineInstance createInstance() {
+        var machine = Objects.requireNonNull(instanceFactory.apply(type), "Machine instance factory returned null");
+        if (machine.type() != type || machine.lifecycle() != null || !machine.components().assemblyBindings().isEmpty()
+            || !machine.components().snapshotPendingDependencies().isEmpty()) {
+            throw new IllegalArgumentException("Machine instance factory must return a fresh empty instance of this canonical type");
+        }
+        return machine;
+    }
+
     public MachineInstance create(MachineLifecycleHost host) { return create(host, MachineLifecycleRegistry.GLOBAL); }
 
     public MachineInstance create(MachineLifecycleHost host, MachineLifecycleRegistry registry) {
-        var machine = new MachineInstance(type);
+        var machine = createInstance();
         var lifecycle = new MachineLifecycle(machine, host, registry);
         lifecycle.assemble(() -> {
             for (var declared : type.componentTypes()) {
@@ -134,7 +147,7 @@ public final class MachineAssembly {
     }
 
     public MachineInstance restore(MachineLifecycleHost host, NBTTagCompound saved, MachineLifecycleRegistry registry) {
-        var machine = new MachineInstance(type);
+        var machine = createInstance();
         var lifecycle = new MachineLifecycle(machine, host, registry);
         lifecycle.assemble(() -> restoreState(machine, Objects.requireNonNull(saved).copy()));
         lifecycle.load(MachineLifecycleEvent.LoadBoundary.RESTORED);
@@ -480,6 +493,7 @@ public final class MachineAssembly {
         private AttributeModifierNbt attributes = new AttributeModifierNbt();
         private final Map<ResourceLocation, Binding<?>> bindings = new Object2ObjectLinkedOpenHashMap<>();
         private final List<Consumer<MachineInstance>> validators = new ObjectArrayList<>();
+        private Function<MachineType, ? extends MachineInstance> instanceFactory = MachineInstance::new;
 
         private Builder(MachineType type, String revision) {
             this.type = Objects.requireNonNull(type);
@@ -503,6 +517,12 @@ public final class MachineAssembly {
             return this;
         }
         private <C> void addRecreated(ComponentType<MachineInstance, C> descriptor) { add(bindings, new Binding<>(descriptor, null)); }
+
+        /** Creates the same custom runtime subclass for fresh assembly and restoration, before host attachment. */
+        public Builder instanceFactory(Function<MachineType, ? extends MachineInstance> factory) {
+            instanceFactory = Objects.requireNonNull(factory);
+            return this;
+        }
         public Builder attributes(AttributeModifierNbt codec) { attributes = Objects.requireNonNull(codec); return this; }
         public Builder workSlots(MachineWorkSlotsNbt codec) {
             Objects.requireNonNull(codec);

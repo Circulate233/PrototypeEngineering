@@ -30,8 +30,10 @@ import java.util.Iterator;
 import java.util.function.BooleanSupplier;
 
 /**
- * Ordered PM recipe admission with bounded cooperative search. Empty slot groups accept the global
- * catalog; explicit groups restrict that slot. The scanner belongs to
+ * Ordered PM recipe admission with bounded cooperative search. Each logical pass snapshots the
+ * instance's selected canonical pools once, through all budget yields. Empty slot groups add no
+ * group restriction inside that pool scope; explicit groups restrict that slot. Selection changes
+ * are observed by the next pass after admission/exhaustion or an explicit safe reset. The scanner belongs to
  * one machine's exclusive execution owner. It retains only a search cursor, never a reservation or
  * scheduler authority between calls. A pass observes changing live storage at each probe, so it is
  * not an atomic global maximum. The actual process START remains authoritative after admission.
@@ -53,6 +55,8 @@ public final class RecipeScanner {
     private boolean faulted;
     @Nullable private ScanAttempt activeAttempt;
     @Nullable private RecipeCatalog.CandidatePass discovery;
+    @Nullable private RecipeCatalog.Selection selection;
+    @Nullable private RecipeCatalog.SelectionCapture selectionCapture;
 
     /** Safe default for arbitrary wrappers, probability, selectors and external attribute modifiers. */
     public RecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
@@ -94,6 +98,15 @@ public final class RecipeScanner {
     }
 
     public MachineWorkSlots host() { return host; }
+
+    /** Refresh dynamic selection only after the old attempt's cleanup and source obligations settle. */
+    public void reset() {
+        if (scanning || faulted || activeAttempt != null) {
+            throw new IllegalStateException("Settle the active scan attempt before resetting its pool selection");
+        }
+        host.snapshot();
+        resetPass();
+    }
 
     /** At most one new process per call. Call at most once per scheduled machine tick. */
     public Result scan(ScanLimits limits) {
@@ -222,8 +235,17 @@ public final class RecipeScanner {
                     phase = 1;
                 }
                 if (phase == 1) {
+                    if (selection == null) {
+                        if (selectionCapture == null) {
+                            if (!budget.take()) return yielded();
+                            selectionCapture = catalog.beginSelection(host.owner());
+                        }
+                        if (!selectionCapture.advance(budget)) return yielded();
+                        selection = selectionCapture.result();
+                        selectionCapture = null;
+                    }
                     if (candidates.isEmpty()) {
-                        if (discovery == null) discovery = catalog.beginCandidates(host.owner(), groups, indexes);
+                        if (discovery == null) discovery = catalog.beginCandidates(Objects.requireNonNull(selection), groups, indexes);
                         if (!discovery.advance(budget)) {
                             if (!discovery.current()) discovery.restartLiveIndexes();
                             return yielded();
@@ -344,7 +366,7 @@ public final class RecipeScanner {
                 if (phase == 5) {
                     if (admission == null) {
                         if (!budget.take()) return yielded();
-                        admission = host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process));
+                        admission = host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process), Objects.requireNonNull(selection));
                     }
                     if (!admission.advance(budget, allowed)) return yielded();
                     boolean admitted = admission.admitted();
@@ -419,6 +441,7 @@ public final class RecipeScanner {
         }
     }
 
+    @SuppressWarnings("StatementWithEmptyBody") // Legacy synchronous calls drain the same pool capture without creating an owner attempt.
     private Result advance(ScanLimits limits) {
         var running = new ObjectOpenHashSet<ResourceLocation>();
         var active = host.activeProcesses();
@@ -426,7 +449,13 @@ public final class RecipeScanner {
         int capacity = host.capacity();
         if (workPaused()) { return result(Status.PAUSED, 0, 0); }
         if (active.size() >= capacity) { return result(Status.FULL, 0, 0); }
-        if (candidates.isEmpty()) { candidates = catalog.candidates(host.owner(), groups, indexes); }
+        if (selection == null) {
+            if (selectionCapture == null) selectionCapture = catalog.beginSelection(host.owner());
+            while (!selectionCapture.advance(new RecipeWorkBudget(Long.MAX_VALUE))) { /* synchronous explicit caller */ }
+            selection = selectionCapture.result();
+            selectionCapture = null;
+        }
+        if (candidates.isEmpty()) { candidates = catalog.candidates(selection, groups, indexes); }
         int examined = 0;
         int probes = 0;
         while (cursor < candidates.size() && examined < limits.candidates()) {
@@ -520,7 +549,7 @@ public final class RecipeScanner {
 
     private Result admit(WorkSlot slot, RecipeProcess process, int examined, int probes) {
         if (workPaused()) { return result(Status.PAUSED, examined, probes); }
-        if (!host.startIn(slot.name(), process)) {
+        if (!host.startIn(slot.name(), process, Objects.requireNonNull(selection))) {
             if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             // Admission can change after a pure constraint only if the host configuration changed.
             search = null;
@@ -544,6 +573,8 @@ public final class RecipeScanner {
         return lifecycle != null && lifecycle.retired() || !host.owner().recipeWorkAllowed();
     }
     private void resetPass() {
+        selection = null;
+        selectionCapture = null;
         discovery = null;
         candidates = List.of(); cursor = 0; search = null; }
     private static Result result(Status status, int examined, int probes) { return new Result(status, null, examined, probes); }

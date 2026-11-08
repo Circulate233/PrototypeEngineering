@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.machine.MachineType;
 
 /**
  * Register during RecipeRegistrationEvent; frozen definitions are available after mod post-init.
@@ -54,14 +55,33 @@ public final class RecipeRegistry {
      * Called by the lifecycle owner, once all Java registrations have been dispatched.
      */
     public void freeze() {
+        freeze(List.of());
+        }
+
+    /** Resolve every static machine reference before publishing pools, reverse bindings or indexes. */
+    public void freeze(List<MachineType> machines) {
         if (frozen != null) {
             throw new IllegalStateException("Recipe registry already frozen");
+        }
+        var users = new Object2ObjectLinkedOpenHashMap<ResourceLocation, ObjectArrayList<MachineType>>();
+        var machineIds = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>();
+        for (var machine : Objects.requireNonNull(machines, "machine declarations")) {
+            Objects.requireNonNull(machine, "machine declaration");
+            if (machineIds.putIfAbsent(machine.id(), machine) != null) {
+                throw new IllegalArgumentException("Duplicate machine declaration: " + machine.id());
+            }
+            for (var poolId : machine.recipePoolIds()) {
+                if (!registrations.containsKey(poolId)) {
+                    throw new IllegalArgumentException("Unknown recipe pool " + poolId + " for machine " + machine.id());
+                }
+                users.computeIfAbsent(poolId, _ -> new ObjectArrayList<>()).add(machine);
+            }
         }
         var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
         for (var entry : registrations.object2ObjectEntrySet()) {
             var registration = entry.getValue();
             pools.put(entry.getKey(), new RecipePool(entry.getKey(), registration.translationKey,
-                new ObjectArrayList<>(registration.recipes.values())));
+                new ObjectArrayList<>(registration.recipes.values()), users.getOrDefault(entry.getKey(), new ObjectArrayList<>())));
         }
         var ordered = new ObjectArrayList<>(pools.values());
         ordered.sort(Comparator.comparing(pool -> pool.id().toString()));
