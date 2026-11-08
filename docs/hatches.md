@@ -30,7 +30,9 @@
 
 ## 外部实现
 
-R31 的物理扩展边界已接：`HatchBlock` 继承 `AEBaseTileBlock<AEBaseTile>`，构造接受完整 `ResourceLocation` 和 `Supplier<? extends AEBaseTile>`，允许下游命名空间及自定义实体；`createItem()` 提供 AE2S 的 `AEBaseBlockItem` 并可覆写。默认资源/FE 实体继承 `AEBaseTile`，已移除公开物理类的 `final` 限制。NBT 使用 `loadTag/saveAdditional`，失效、重新挂载和区块卸载使用 `setRemoved/clearRemoved/onChunkUnloaded`，保留原缓存失效和服务端脏信号冲刷。没有新增第二套实体基类。
+R31 的物理基类保留实体泛型：`HatchBlock<T extends AEBaseTile>` 是抽象基类，protected 构造接受完整 `ResourceLocation`、`Class<T>` 和硬度，protected `createHatch(World, IBlockState)` 返回同一个 `T`。真实类令牌交给 AE `setTileEntity`，继承的 typed `getTileEntity`、库存识别、实体状态桥接及公开 `createTileEntity` 保持类型一致；共同 GUI、掉落与物品逻辑保留在基类，`createItem()` 可覆写。默认 `ResourceHatchBlock` / `EnergyHatchBlock` 才绑定对应默认实体及模式/等级；外部独立 AEBaseTile 实体直接继承泛型方块基类，不依赖内置实体。注册数组使用 `HatchBlock<?>[]`，十阶三方向共60方块和资产 ID 保持原值。
+
+AE 的 final `createNewTileEntity` 通过真实 `Class<T>` 的 public 无参构造创建实体，不经过状态创建钩子；正常 Forge 放置使用 typed `createTileEntity`，由具体方块创建带模式/等级的实体。默认资源/FE 无参实体在 `onLoad` 仅对尚未显式配置、未读过 NBT 且仍是对应方块的准确当前实体补入模式/等级，弃用的旧存储视图失效；任何已读 NBT（包括缺字段标签）沿用既有恢复语义。`loadTag/saveAdditional`、`setRemoved/clearRemoved/onChunkUnloaded` 继续保留缓存失效和服务端脏信号冲刷，不新增第二套实体基类。
 
 原 `ResourceHatch` / `EnergyInput` / `EnergyOutput` 仍用于能力发现、结构捕获和机器配方消费。需要共享槽位适配器的外部实现可实现 `SlottedResourceHatch`，其双侧返回 `SlottedResourceStorage`；`HatchInventoryPort` 和 `HatchFluidHandler` 接受该接口，不再要求 `BufferedResourceHatch`。默认容器通过 `ResourceHatchGuiHost` / `EnergyHatchGuiHost` 取得准确 AEBaseTile、模式、等级和真实存储；FE 用户设置独立为 `EnergyHatchSettings`。这些 GUI 职责是可选接入能力，不成为所有机器侧仓室的额外要求。
 

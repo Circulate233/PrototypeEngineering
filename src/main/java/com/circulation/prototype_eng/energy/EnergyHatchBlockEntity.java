@@ -19,6 +19,7 @@ import java.util.Objects;
 
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
+import com.circulation.prototype_eng.block.EnergyHatchBlock;
 
 /** PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions. */
 public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGuiHost {
@@ -35,6 +36,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
     private HatchTier tier;
+    private boolean pendingConfiguration;
     private HatchMode mode;
     private EnergyBuffer buffer;
     private ForgeEnergyPort port;
@@ -45,12 +47,39 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
 
     /** Forge instantiates registered tile entities through this constructor when loading NBT. */
     @SuppressWarnings("unused")
-    public EnergyHatchBlockEntity() { this(HatchMode.INPUT, HatchTier.LV1); }
+    public EnergyHatchBlockEntity() { this(HatchMode.INPUT, HatchTier.LV1);
+        pendingConfiguration = true;
+    }
 
     public EnergyHatchBlockEntity(HatchMode mode, HatchTier tier) {
         this.mode = Objects.requireNonNull(mode, "mode");
         this.tier = Objects.requireNonNull(tier, "tier");
         createStorage();
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (pendingConfiguration && world != null && world.getTileEntity(pos) == this
+            && world.getBlockState(pos).getBlock() instanceof EnergyHatchBlock block
+            && block.getTileEntity(world, pos) == this) {
+            initializeConfiguration(block.mode(), block.tier());
+        }
+    }
+
+    /** Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative. */
+    protected void initializeConfiguration(HatchMode mode, HatchTier tier) {
+        if (!pendingConfiguration) {
+            return;
+        }
+        buffer.invalidate();
+        this.mode = Objects.requireNonNull(mode);
+        this.tier = Objects.requireNonNull(tier);
+        createStorage();
+        if (isInvalid()) {
+            buffer.invalidate();
+        }
+        pendingConfiguration = false;
     }
 
     @Override
@@ -149,6 +178,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
 
     @Override
     public void loadTag(@NotNull NBTTagCompound tag) {
+        pendingConfiguration = false;
         super.loadTag(tag);
         buffer.invalidate();
         tier = tag.hasKey("Tier", 3) ? HatchTier.of(tag.getInteger("Tier")) : tier;

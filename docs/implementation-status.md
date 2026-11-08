@@ -6,6 +6,12 @@
 
 ## 当前状态
 
+- 2026-11-08 物理方块基类泛型本阶段修复完成。`HatchBlock<T extends AEBaseTile>` 与 `MachineControllerBlock<T extends AEBaseTile & MachineControllerHost>` 改为真正抽象基类；protected Class<T> 构造与 typed createHatch/createController、公开 createTileEntity、继承 getTileEntity、typed 状态钩子和共同交互贯通。ResourceHatchBlock、EnergyHatchBlock、BasicMachineControllerBlock 才固定本仓库实体，注册器/Item/声明工厂事件使用<?>，无 raw/unchecked 擦型或 runtime Host 猜型。外部 AEBaseTile+MachineControllerHost 独立实现仍可接入；十阶三方向60仓、资源/FE效果及资产 ID 未改。
+
+- AE/Forge 原生入口按本地源码核对：AE final createNewTileEntity 直接 public 无参反射，正常 Block/Chunk 路径调用状态创建钩子，Forge 注册 ID 加无参构造后读 NBT，ItemBlock 先 BlockEntityTag 后 placedBy。默认仓仅无参且从未读NBT时按准确当前对应方块补模式/等级，旧视图失效；显式与保存/partial NBT不覆盖。Chunk.validate 在 TE map.put 前执行，默认控制器用实际 syncOrientationFromBlockState 捕获空数据的类型/完整朝向，保存/同步精确附着兜底；不提前装配、不生成placer、不覆写runtime。新增4配置行为测试覆盖能源旧引用/限额/容量、显式与完整/partial NBT优先、资源布局、默认控制器首装配前保存/方向/runtime保护。真实World/Block/Item注册初始化未在JUnit模拟。
+
+- 验证：完整 compileJava/compileTestJava 成功；focused8 tests /3 suites、受影响298 tests /43 suites、最终正常 gradlew.bat build1439 tests /180 suites，failure/error/skipped均0，assemble/Spotless/test/check通过。13 Java本机 IDEA MCP get_file_problems(errorsOnly:false)最终零错误/警告/弱警告，无timeout/isError；初次两个文件3项warning（缺@NotNull两项、空字符串拼接一项）已MCP修改后逐文件复验消除。13项目文件完整read_file与磁盘文本一致，此读回不声称检查未保存IDE Document；MCP build_project isSuccess:true/problems[]。13 Java raw SHA构建前后及MCP后稳定。准确before/raw+HEAD/index/status/完整背景diff、固定候选和本项delta、初/终诊断及日志/XML统一入口 `build/staging/block-tile-generics/`；本地精确提交按本项delta进行，背景status与INDEX备份保留，不整文件吞背景。独立max审计以正式盘核定；未推送、未启动Minecraft/服务端/Bootstrap/FML，D2/D3和实机验收未计完成。见[仓室](hatches.md)、[控制器](controller-integration.md)与[机器声明](machine-types.md)。
+
 - 2026-11-08 结构 D1 原生方块模型世界投影本阶段实现与验证已完成。沿 C `StructurePreviews.project(...BLOCK_MODEL...)` / ClientProxy / 实际 RenderWorldLast 接入 atlas 四层 baked 模型与相对16³ VBO，保留 fullbright 0x00F000F0、BLOCK顶点alpha 0.65、tint、深度测试不写深度和polygon offset。只解析当前完整model已发布display的首个有效block/meta；状态facing/axis按C基础到请求朝向转换，已展开位置不二次旋转，不运行matcher/factory，不将NBT展示条件当state properties。未知代表项与尚未准备/预算延迟样本暂显BOX；完成后交付实际原生模型，GUI选择/TESR-NBT属于D2。
 
 - `PreviewBlockModelCache` 保留独立8模型LRU与原96 chunks/frame、128 chunks以内全访；空/远/可见区块都计一次访问并前移游标，不为一个VBO draw强塞cell权重。静态分组/开chunk/状态/layer/getQuads/单quad/逐layer upload按独立工作预算续办。hideDisplayedMatches或layer过滤、无VBO路径只消费C已按访问付费Sample，复用同一QuadCursor增量准备/发射CPU quads；静态pending不另同步全quad烘焙。CPU准备绑定准确model/cell，C样本轮换或临时过滤保留pending进展，稳定多样本以公平工作游标推进，最终实际选中顶点再按原远→近样本顺序提交，低预算不会永久只出首项BOX。外部模型/tint/getQuads回调和driver上传/绘制是合作/原生边界，库不宣称可抢占这些调用。

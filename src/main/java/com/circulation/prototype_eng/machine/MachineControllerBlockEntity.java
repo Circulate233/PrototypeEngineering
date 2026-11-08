@@ -70,6 +70,29 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         data = new ControllerData(type, orientation, null);
     }
 
+    /** Supplies only immutable construction data; assembly remains deferred to the owner boundary. */
+    protected void initializeControllerConfiguration(ResourceLocation type, BlockOrientation orientation) {
+        if (data == null) {
+            data = new ControllerData(Objects.requireNonNull(type), Objects.requireNonNull(orientation), null);
+        }
+    }
+
+    private void captureBlockConfiguration() {
+        if (data == null && isAttached()) {
+            var block = requireBlock();
+            initializeControllerConfiguration(block.type().id(), block.getOrientation(world.getBlockState(pos)));
+        }
+    }
+
+    @Override
+    public void syncOrientationFromBlockState(@Nullable IBlockState state) {
+        super.syncOrientationFromBlockState(state);
+        // Chunk validates before adding the tile to its map, so the supplied state is the construction source.
+        if (data == null && state != null && state.getBlock() instanceof MachineControllerBlockHost block) {
+            initializeControllerConfiguration(block.type().id(), block.getOrientation(state));
+        }
+    }
+
     @Override
     public AEBaseTile blockEntity() {
         return this;
@@ -142,6 +165,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     public void onLoad() {
         super.onLoad();
+        captureBlockConfiguration();
         attachmentPosition = pos.toImmutable();
         wantsLoad = true;
         updated = false;
@@ -402,6 +426,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
 
     @Override
     public void saveAdditional(@NotNull NBTTagCompound tag) {
+        captureBlockConfiguration();
         var saved = Objects.requireNonNull(data, "Controller has no type or pending data");
         if (controller != null && !replacementData) {
             saved = new ControllerData(saved.type(), orientation(), controller.save());
@@ -421,6 +446,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
     @Override public @NotNull NBTTagCompound getUpdateTag() {
         requireServer();
+        captureBlockConfiguration();
         if (displayGeneration == 0) { displayGeneration = ControllerDisplayData.newGeneration(); }
         var tag = new NBTTagCompound();
         tag.setInteger("x", pos.getX()); tag.setInteger("y", pos.getY()); tag.setInteger("z", pos.getZ());

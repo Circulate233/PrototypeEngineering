@@ -27,6 +27,8 @@ import java.lang.invoke.VarHandle;
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
+import com.circulation.prototype_eng.block.ResourceHatchBlock;
+import java.util.Objects;
 
 public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings {
     private static final VarHandle STORAGE_DIRTY;
@@ -41,6 +43,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
+    private boolean pendingConfiguration;
     private final Reference2ObjectMap<Capability<?>, Object> adapters = new Reference2ObjectOpenHashMap<>();
     private HatchMode mode;
     private HatchTier tier;
@@ -54,6 +57,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     public ResourceHatchBlockEntity() {
         this(HatchMode.INPUT);
+        pendingConfiguration = true;
     }
 
     public ResourceHatchBlockEntity(HatchMode mode) {
@@ -64,6 +68,33 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         this.mode = mode;
         this.tier = tier;
         slots = HatchConfig.slotsPerSide(tier, mode);
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (pendingConfiguration && world != null && world.getTileEntity(pos) == this
+            && world.getBlockState(pos).getBlock() instanceof ResourceHatchBlock block
+            && block.getTileEntity(world, pos) == this) {
+            initializeConfiguration(block.mode(), block.tier());
+        }
+    }
+
+    /** Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative. */
+    protected void initializeConfiguration(HatchMode mode, HatchTier tier) {
+        if (!pendingConfiguration) {
+            return;
+        }
+        if (hatch != null) {
+            hatch.invalidate();
+        }
+        hatch = null;
+        adapters.clear();
+        capacities = null;
+        this.mode = Objects.requireNonNull(mode);
+        this.tier = Objects.requireNonNull(tier);
+        slots = HatchConfig.slotsPerSide(tier, mode);
+        pendingConfiguration = false;
     }
 
     @Override
@@ -206,6 +237,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @Override
     public void loadTag(@NotNull NBTTagCompound tag) {
+        pendingConfiguration = false;
         super.loadTag(tag);
         maxFluidInputRate = Math.max(0, tag.getLong("MaxFluidInRate"));
         maxFluidOutputRate = Math.max(0, tag.getLong("MaxFluidOutRate"));

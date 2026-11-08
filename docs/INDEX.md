@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-08 控制器/仓室物理基类泛型修复已实现并验证：抽象 `HatchBlock<T>` / `MachineControllerBlock<T extends AEBaseTile & MachineControllerHost>` 保留真实类令牌、typed 创建/查询/状态/交互；仅 ResourceHatchBlock、EnergyHatchBlock、BasicMachineControllerBlock 绑定默认结果。原生无参入口已修默认仓首次准确附着模式/等级补齐、默认控制器 validate 前数据/完整朝向捕获，NBT/显式配置优先且装配/owner窗口保留。新增4真实配置行为；focused8/3、受影响298/43、正常完整build1439 tests /180 suites全过；13 Java本机MCP全级零、项目文件读回/磁盘13/13一致、MCP build成功、构建及MCP后raw SHA稳定。准确写前/冻结delta/验证入口 `build/staging/block-tile-generics/`，见[仓室](hatches.md)、[控制器](controller-integration.md)、[机器声明](machine-types.md)。阶段本地提交由精确差异流程完成；未推送、未启动Minecraft/服务端/Bootstrap/FML，真实World/注册表交互未验收。D2/D3仍按原检查点继续。
+
 - 2026-11-08 结构 D1 原生方块模型世界投影本阶段实现与验证已完成：公开 BLOCK_MODEL 实际接 RenderWorldLast，复用 C 当前完整模型/已过滤 Sample；首个有效 display block/meta、原生 atlas 四层、fullbright/0.65 顶点 alpha、相对16³ VBO 与 LRU8 已接。静态构建及逐格 CPU 准备/发射按 cell/layer/getQuads/quad 续办，保留原独立96/128区块访问预算；空/远区块也计访问。稳定多样本低预算跨帧公平推进，最终透明选中集远→近；代/resource epoch/断连/外部close准确撤销与释放。新增18行为，focused18/1、受影响130/12、最终正常完整build1435 tests /179 suites全过；12 Java本机MCP errorsOnly:false全级零、完整读回/磁盘12/12一致、MCP build成功，当前盘raw源码构建前后及最终MCP稳定。准确写前、C最终重接、固定候选/修正delta/原诊断与15路径统一清单入口 `build/staging/structure-preview-block-models/verification/`，见[结构定义](structures.md)。未推送、未启动Minecraft/服务端，真实OpenGL实机尚未验收；下一步D2 AEBaseGui/JEI/代表项选择/TESR-NBT、D3模型/动画/Bloom/隐藏继续，不能把D1算整个预览完成。
 
 - 2026-11-08 结构 C 基础预览模型与世界盒投影本阶段实现与验证已完成：客户端沿权威目录增量展开模板/切片 occurrence，按子边选择切片、根旋转、零片子结构、固定控制器排除和坐标后项覆盖；完整不可变模型交付名字/层/全结构 display BOM。StructurePreviews.client 的 request/advance/project/move/stop 已接实际 tick 与 RenderWorldLast，支持轮廓/半透明盒/组合、距离/层/预算/展示命中隐藏；观察仅代表性视觉比较，不是 matcher/成型权威。精确代/连接/世界及回调重入隔离，未知注册ID与未加载chunk显式处理。focused26/2、受影响126/14、正常完整build1417 tests /178 suites全通过；12 Java本机MCP全级零、完整项目文件读回/磁盘12/12一致、MCP build成功，源码SHA稳定。准确写前、冻结候选/P2与推广修正、原失败及最终证据/15路径统一清单见 `build/staging/structure-preview/verification/` 和[结构定义](structures.md)。未推送、未启动Minecraft或服务端；完整纹理方块模型、模型隐藏/复杂渲染/VBO/Bloom、预览GUI/JEI及实机验收继续后续，Applied-Flux暂缓、CT最后。
@@ -45,6 +47,8 @@
 - 控制器、结构捕获/匹配、三方向十阶通用资源/独立 FE 仓、普通调度、扫描、默认/自定义 Java GUI 与方向工具已接入。GUI 直接 AEBaseGui，资源数量使用 AEKey2LongMap；实际边界按专题及实施进度核对。
 
 ## 下一步
+
+- 物理基类泛型本阶段已验证；下游自定义实体按真实 `Class<T>` / public 无参构造 / typed 创建钩子接入，完整运行验收和 D2/D3 继续原范围。
 
 0. 扩展和 R30 接口式用户盘共同导入均已实现、验证并本地提交；盘物品/tier/布局由外部注册，无内置盘/等级表。永久破坏材料会话本阶段已接真实入口，最终证据见 `build/staging/research-station-destruction/`；背景修改及 `docs/INDEX.md~` 保留。
 

@@ -7,9 +7,9 @@ import ae2.block.AEBaseBlockItem;
 
 /** Uses the machine's localization contract without manufacturing another translation key. */
 public class MachineControllerItem extends AEBaseBlockItem {
-    private final MachineControllerBlock controller;
+    private final MachineControllerBlock<?> controller;
 
-    public MachineControllerItem(MachineControllerBlock controller) {
+    public MachineControllerItem(MachineControllerBlock<?> controller) {
         super(controller);
         this.controller = controller;
     }

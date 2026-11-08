@@ -43,6 +43,10 @@ MachineAssembly已接附宿主后建组件、恢复属性与组件图、load的�
 
 通用TE注册、实际装配/保存、完整方向、延后清理、放置者、显示/默认模型已接入。新增 resolveRuntime 整批校验并原子发布结构和assembly；游戏注册经两个同步事件完成，见[控制器集成](controller-integration.md)。仍未完成持久身份/搬运权限、PN角色/研究/向量预算、planned绑定和完整运行索引。结构绑定不替代这些步骤；详见 [控制器迁移审查](machine-controller-migration-audit.md)。
 
+## 物理控制器扩展
+
+声明事件的 `controllerFactory` 接受 `Function<MachineType, ? extends MachineControllerBlock<?>>`，注册器按原规范对象验证并保存异质控制器列表。默认使用 `BasicMachineControllerBlock`；自定义实现继承 `MachineControllerBlock<MyTile>`，其中 `MyTile extends AEBaseTile implements MachineControllerHost`，在 protected 构造传入 `MyTile.class` 并实现 typed `createController(World, IBlockState)`。`Class<T>` 同时驱动 AE 原生查询、库存识别、无参创建和状态桥接；自定义实体负责 public 无参构造及独立 Forge 保存 ID，不能依赖状态创建钩子是唯一入口。默认实体可继续继承，外部独立宿主仍可直接实现原接口。
+
 ## 验证范围
 
 新增逻辑用例覆盖整批拒绝/关闭、缺失结构不部分发布、规范对象和重入拒绝、无工厂调用、声明与实际 dispatch 共用循环检查、附着/load 调度门限、真实线程上的默认/覆盖模式，以及声明工位的配方准入与推进。现有完整逻辑测试继续运行。逐文件 IDEA MCP 与构建的最终结果记录在 [实施进度](implementation-status.md)。没有启动 Minecraft、创建真实 World 或加入 Bootstrap/FML 测试初始化。

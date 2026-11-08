@@ -22,9 +22,9 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class MachineControllerBlocks {
-    private static List<MachineControllerBlock> blocks = List.of();
+    private static List<MachineControllerBlock<?>> blocks = List.of();
     private MachineControllerBlocks() { }
-    public static List<MachineControllerBlock> all() { return blocks; }
+    public static List<MachineControllerBlock<?>> all() { return blocks; }
 
     @SubscribeEvent
     public static void registerBlocks(RegistryEvent.Register<Block> event) {
@@ -38,11 +38,11 @@ public final class MachineControllerBlocks {
                 throw new IllegalArgumentException("Controller factory has no machine declaration: " + type);
             }
         }
-        var generated = new ObjectArrayList<MachineControllerBlock>();
+        var generated = new ObjectArrayList<MachineControllerBlock<?>>();
         var names = new ObjectOpenHashSet<ResourceLocation>();
         for (var type : registry.types()) {
             var factory = factories.get(type.id());
-            var block = factory == null ? new MachineControllerBlock(type)
+            var block = factory == null ? new BasicMachineControllerBlock(type)
                 : Objects.requireNonNull(factory.apply(type), "Controller factory returned null");
             if (block.type() != type || block.getRegistryName() == null) {
                 throw new IllegalArgumentException("Controller factory must bind its canonical machine type and registry name");
@@ -54,7 +54,7 @@ public final class MachineControllerBlocks {
         }
         // Even an empty library needs its generic tile mapping for downstream loading and saves.
         GameRegistry.registerTileEntity(MachineControllerBlockEntity.class, new ResourceLocation(Tags.MOD_ID, "machine_controller"));
-        event.getRegistry().registerAll(generated.toArray(MachineControllerBlock[]::new));
+        event.getRegistry().registerAll(generated.toArray(MachineControllerBlock<?>[]::new));
         blocks = ObjectLists.unmodifiable(generated);
     }
 

@@ -13,23 +13,19 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.GameRegistry;
 
-import java.util.Locale;
 import java.util.Objects;
 
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class HatchBlocks {
-    private static final HatchBlock[] BLOCKS = createBlocks();
+    private static final HatchBlock<?>[] BLOCKS = createBlocks();
 
-    private static HatchBlock[] createBlocks() {
-        var blocks = new HatchBlock[60];
+    private static HatchBlock<?>[] createBlocks() {
+        var blocks = new HatchBlock<?>[60];
         int index = 0;
         for (var tier : HatchTier.values()) {
             for (var mode : HatchMode.values()) {
-                String direction = mode.name().toLowerCase(Locale.ROOT);
-                blocks[index++] = new HatchBlock(direction + "_hatch_" + tier.level(),
-                        () -> new ResourceHatchBlockEntity(mode, tier), 5.0F);
-                blocks[index++] = new HatchBlock("energy_" + direction + "_hatch_" + tier.level(),
-                        () -> new EnergyHatchBlockEntity(mode, tier), 3.5F);
+                blocks[index++] = new ResourceHatchBlock(mode, tier);
+                blocks[index++] = new EnergyHatchBlock(mode, tier);
             }
         }
         return blocks;
@@ -38,7 +34,7 @@ public final class HatchBlocks {
     private HatchBlocks() {
     }
 
-    public static HatchBlock[] all() {
+    public static HatchBlock<?>[] all() {
         return BLOCKS.clone();
     }
 
@@ -51,7 +47,7 @@ public final class HatchBlocks {
 
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
-        for (HatchBlock block : all()) {
+        for (HatchBlock<?> block : all()) {
             event.getRegistry().register(block.createItem().setRegistryName(Objects.requireNonNull(block.getRegistryName())));
         }
     }

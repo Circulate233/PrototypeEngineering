@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.block;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.Tags;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
@@ -20,7 +19,6 @@ import net.minecraft.world.World;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.function.Supplier;
 
 import ae2.block.AEBaseBlockItem;
 import ae2.block.AEBaseTileBlock;
@@ -31,17 +29,11 @@ import net.minecraft.util.ResourceLocation;
 /**
  * Physical shell shared by tiered resource and energy hatches. Storage belongs to the tile.
  */
-public class HatchBlock extends AEBaseTileBlock<AEBaseTile> {
-    private final Supplier<? extends AEBaseTile> factory;
-
-    public HatchBlock(String name, Supplier<? extends AEBaseTile> factory, float hardness) {
-        this(new ResourceLocation(Tags.MOD_ID, name), factory, hardness);
-    }
-
-    public HatchBlock(ResourceLocation id, Supplier<? extends AEBaseTile> factory, float hardness) {
+public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T> {
+    /** The registered entity class must expose a public no-arg constructor for AE and Forge. */
+    protected HatchBlock(ResourceLocation id, Class<T> tileClass, float hardness) {
         super(Material.IRON);
-        this.factory = Objects.requireNonNull(factory);
-        setTileEntity(AEBaseTile.class);
+        setTileEntity(Objects.requireNonNull(tileClass));
         setRegistryName(Objects.requireNonNull(id));
         setTranslationKey(id.getNamespace() + "." + id.getPath());
         setCreativeTab(CreativeTabs.REDSTONE);
@@ -62,9 +54,12 @@ public class HatchBlock extends AEBaseTileBlock<AEBaseTile> {
     }
 
     @Override
-    public AEBaseTile createTileEntity(@NotNull World world, @NotNull IBlockState state) {
-        return Objects.requireNonNull(factory.get(), "Hatch factory returned null");
+    public T createTileEntity(@NotNull World world, @NotNull IBlockState state) {
+        return Objects.requireNonNull(createHatch(world, state), "Hatch creation returned null");
     }
+
+    /** Creates the configured entity for Forge's block-state-aware placement path. */
+    protected abstract T createHatch(World world, IBlockState state);
 
     @Override
     public boolean onBlockActivated(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState state, EntityPlayer player,
@@ -73,7 +68,7 @@ public class HatchBlock extends AEBaseTileBlock<AEBaseTile> {
             return false;
         }
         if (!world.isRemote && player instanceof EntityPlayerMP serverPlayer) {
-            TileEntity tile = world.getTileEntity(pos);
+            T tile = getTileEntity(world, pos);
             if (tile == null || tile.isInvalid()) {
                 return false;
             }
@@ -89,7 +84,7 @@ public class HatchBlock extends AEBaseTileBlock<AEBaseTile> {
     @Override
     public void getDrops(@NotNull NonNullList<ItemStack> drops, IBlockAccess world, @NotNull BlockPos pos, @NotNull IBlockState state, int fortune) {
         var stack = new ItemStack(this);
-        TileEntity tile = world.getTileEntity(pos);
+        T tile = getTileEntity(world, pos);
         if (tile != null) {
             NBTTagCompound saved = tile.writeToNBT(new NBTTagCompound());
             saved.removeTag("x");
