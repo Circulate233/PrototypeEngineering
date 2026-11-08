@@ -37,3 +37,9 @@
 R32 机器绑定已实现验证：JEI 新增 1 项行为包含在 focused 37 tests / 4 suites 中，完整 build 为 1391 tests / 176 suites 全通过；19 个变更 Java 的本机 MCP 全级零诊断、完整读回/磁盘一致及 MCP build 成功，21 源码资源构建前后/最终 MCP SHA 稳定。证据见 `build/staging/machine-recipe-pools/verification/`。`PrototypeJeiPlugin.register` 直接消费池 `machines()` 列表并绑定实际 canonical controller 的原生 catalyst，空池也保留静态绑定。运行时动态选择不重写该列表或分类，不枚举世界实例。
 
 默认 `AutoLayoutRecipePage` 在输入/输出标题中间显示本地化机器数量，悬停列出静态关联机器的本地化名称与 ID；没有 Item 代表的合法 MachineType 仍能被说明，不虚构物品或输出。自定义页直接使用实际 `page.pool().machines()` 接口。新增文案沿 `JeiText.Machines` / LocalizationEnum，两语言各追加 1 键。必要轻量 fixture 验证实际默认 wrapper tooltip 消费准确关联，并排除只有同 group 的无绑定机器；未初始化 FML/Bootstrap/nativeItem，也不代表 OpenGL 或原生 catalyst 实机验收。
+
+## D2 结构预览联动
+
+PrototypeJeiPlugin注册实际StructurePreviewJeiCategory/Recipe；静态canonical MachineType.structureId关联独立机器结构页和已有controller catalyst，完整服务端客户端目录供view选择，不枚举世界实例或执行matcher。AutoLayoutRecipePage的嵌入预览使用公开concrete Panel/Scene；独立custom RecipePoolJeiPage可调用StructurePreviewScreens.panel，不继承默认实现。全屏viewer直接AEBaseGui，保留即时HEI父页和准确机器原容器返回。原生GuiOpen/InitPre/InitPost、取消与嵌套owner撤销保持；嵌入的Mouse/Keyboard事件仅消费实际绘制控件，拖拽跨draw继续且关闭后准确一次up不泄露到父槽位。
+
+材料层显示保持完整long BOM，代表项/子边occurrence切片独立；同一Scene复用D1真实原生模型和owned TESR-SNBT，唯一handleUpdateTag，不运行异常兼容回退。材料rows和native名称按状态/查询/过滤及resource/语言变化失效，稳定draw复用。原路径40 PNG与NOTICE保留；全部文案沿实现LocalizationEnum的StructurePreviewText。focused47/3、受影响82/8、最终正常完整build1486/183全过；41Java本机MCP全级零、完整项目读回/磁盘一致、MCP build成功，证据见build/staging/structure-preview-gui/verification。未启动Minecraft/服务端/Bootstrap/FML；真实HEI、GL/TESR和网络包实机未验收。D3成型模型/动画/Bloom/隐藏、其他未取消能力继续。

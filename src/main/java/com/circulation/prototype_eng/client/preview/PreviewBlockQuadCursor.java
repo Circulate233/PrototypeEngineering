@@ -26,6 +26,7 @@ final class PreviewBlockQuadCursor {
     private final StructurePreviewModel.Cell cell;
     private final BooleanSupplier current;
     private final long seed;
+    private final PreviewBlockAccess access;
     private IBlockState state;
     private IBakedModel baked;
     private List<BakedQuad> quads;
@@ -37,10 +38,11 @@ final class PreviewBlockQuadCursor {
         void put(int layer, int[] vertices);
     }
 
-    PreviewBlockQuadCursor(StructurePreviewModel model, StructurePreviewModel.Cell cell, BooleanSupplier current) {
+    PreviewBlockQuadCursor(StructurePreviewModel model, StructurePreviewModel.Cell cell, BooleanSupplier current, PreviewBlockAccess access) {
         this.model = model;
         this.cell = cell;
         this.current = current;
+        this.access = access;
         seed = MathHelper.getPositionRandom(cell.position());
     }
 
@@ -53,7 +55,8 @@ final class PreviewBlockQuadCursor {
         if (!current.getAsBoolean() || complete) return complete;
         if (!initialized) {
             initialized = true;
-            state = PreviewBlockStates.first(model, cell);
+            state = access == null ? PreviewBlockStates.first(model, cell) : access.represented(cell.position());
+            if (state != null && access != null) state = state.getActualState(access, cell.position());
             complete = state == null;
             return complete;
         }
@@ -85,6 +88,11 @@ final class PreviewBlockQuadCursor {
                     return false;
                 }
                 var direction = face == 0 ? null : FACES[face - 1];
+                if (direction != null && access != null && access.visible(cell.position().offset(direction))
+                    && !state.shouldSideBeRendered(access, cell.position(), direction)) {
+                    face++;
+                    return false;
+                }
                 var captured = baked.getQuads(state, direction, direction == null ? seed : seed + direction.getIndex() * 1315423911L);
                 if (!current.getAsBoolean()) return false;
                 face++;
@@ -93,7 +101,7 @@ final class PreviewBlockQuadCursor {
                 return false;
             }
             var source = quads.get(quad++);
-            int tint = source.hasTintIndex() ? Minecraft.getMinecraft().getBlockColors().colorMultiplier(state, null, null, source.getTintIndex()) : -1;
+            int tint = source.hasTintIndex() ? Minecraft.getMinecraft().getBlockColors().colorMultiplier(state, access, access == null ? null : cell.position(), source.getTintIndex()) : -1;
             if (!current.getAsBoolean()) return false;
             var data = PreviewBlockVertices.prepare(source.getVertexData(), tint, ByteOrder.nativeOrder());
             // Positions were expanded/rotated by C; translate only, exactly once, in relative model space.

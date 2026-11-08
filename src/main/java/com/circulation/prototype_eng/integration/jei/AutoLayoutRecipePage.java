@@ -24,6 +24,7 @@ import java.util.Objects;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 import mcp.MethodsReturnNonnullByDefault;
+import com.circulation.prototype_eng.localization.StructurePreviewText;
 
 /**
  * Pool-wide maximum slots and a bounded, explicitly paged default display, following MMCE.
@@ -115,6 +116,8 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         private final RecipePanelLayout panels;
         private int panel;
         private IRecipeLayout layout;
+        private boolean choosingMachine;
+        private int machineOffset;
 
         public AutoLayoutRecipe(AutoLayoutRecipePage owner, MachineRecipe recipe, JeiRecipeDisplay display,
                                 JeiRecipeIngredients ingredients) {
@@ -152,6 +155,18 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
                 minecraft.fontRenderer.drawString(pageText, (WIDTH - minecraft.fontRenderer.getStringWidth(pageText)) / 2,
                     FOOTER_Y, 0x404040);
             }
+            if (choosingMachine) {
+                Gui.drawRect(0, 0, WIDTH, HEIGHT, 0xee30343c);
+                minecraft.fontRenderer.drawString(JeiText.Machines.getLocal(owner.pool.machines().size()), 4, 4, 0xffffff);
+                int visible = 7;
+                machineOffset = Math.clamp(machineOffset, 0, Math.max(0, owner.pool.machines().size() - visible));
+                for (int row = 0; row < visible && machineOffset + row < owner.pool.machines().size(); row++) {
+                    var machine = owner.pool.machines().get(machineOffset + row);
+                    int y = 20 + row * 16;
+                    if (mouseX >= 2 && mouseX < WIDTH - 2 && mouseY >= y && mouseY < y + 15) Gui.drawRect(2, y, WIDTH - 2, y + 15, 0xff4080aa);
+                    minecraft.fontRenderer.drawString(minecraft.fontRenderer.trimStringToWidth(machine.displayName().getLocal(), WIDTH - 8), 4, y + 4, 0xffffff);
+                }
+            }
         }
 
         private void resources(Minecraft minecraft, List<JeiRecipeDisplay.Resource> resources, int x) {
@@ -172,6 +187,14 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public List<String> getTooltipStrings(int mouseX, int mouseY) {
+            if (choosingMachine) {
+                int row = (mouseY - 20) / 16;
+                if (mouseY >= 20 && row < 7 && machineOffset + row < owner.pool.machines().size()) {
+                    var machine = owner.pool.machines().get(machineOffset + row);
+                    return ObjectArrayList.of(machine.displayName().getLocal(), machine.id().toString(), StructurePreviewText.Open.getLocal());
+                }
+                return ObjectArrayList.of();
+            }
             if (mouseX >= 42 && mouseX < 98 && mouseY >= 0 && mouseY < 14) {
                 var names = new ObjectArrayList<String>();
                 names.add(JeiText.Machines.getLocal(owner.pool.machines().size()));
@@ -225,6 +248,21 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public boolean handleClick(Minecraft minecraft, int mouseX, int mouseY, int mouseButton) {
+            if (mouseButton == 0 && choosingMachine) {
+                int row = (mouseY - 20) / 16;
+                if (mouseX >= 0 && mouseX < WIDTH && mouseY >= 20 && row < 7 && machineOffset + row < owner.pool.machines().size()) {
+                    var machine = owner.pool.machines().get(machineOffset + row);
+                    choosingMachine = false;
+                    StructurePreviewJeiScreens.open(machine);
+                    return true;
+                }
+                choosingMachine = false;
+                return true;
+            }
+            if (mouseButton == 0 && mouseX >= 42 && mouseX < 98 && mouseY >= 0 && mouseY < 14 && !owner.pool.machines().isEmpty()) {
+                choosingMachine = true;
+                return true;
+            }
             if (mouseButton != 0 || panels.pageCount() <= 1 || mouseY < FOOTER_Y - 1 || mouseY >= HEIGHT) {
                 return false;
             }
@@ -241,6 +279,10 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public boolean handleMouseScroll(int mouseX, int mouseY, int scrollDelta) {
+            if (choosingMachine && scrollDelta != 0 && mouseX >= 0 && mouseX < WIDTH && mouseY >= 0 && mouseY < HEIGHT) {
+                machineOffset = Math.clamp(machineOffset + (scrollDelta > 0 ? -1 : 1), 0, Math.max(0, owner.pool.machines().size() - 7));
+                return true;
+            }
             if (panels.pageCount() <= 1 || scrollDelta == 0 || mouseX < 0 || mouseX >= WIDTH || mouseY < 0 || mouseY >= HEIGHT) {
                 return false;
             }

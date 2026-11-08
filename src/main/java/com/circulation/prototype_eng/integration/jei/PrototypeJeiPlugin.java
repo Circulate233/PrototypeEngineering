@@ -23,6 +23,7 @@ import java.util.Objects;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 import mcp.MethodsReturnNonnullByDefault;
+import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 
 /**
  * HEI 4.35.1 discovers this entry on the client; common mod initialization never references it.
@@ -45,6 +46,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         for (var page : pages.pages()) {
             registration.addRecipeCategories(page);
         }
+        registration.addRecipeCategories(new StructurePreviewJeiCategory(helper));
     }
 
     @Override
@@ -60,6 +62,20 @@ public class PrototypeJeiPlugin implements IModPlugin {
         }
         // Finish the global identity audit before registering any pool's wrappers.
         var identities = JeiQueryIdentityIndex.capture(converters, registration.getIngredientRegistry(), allDisplays);
+        var structures = new ObjectArrayList<StructurePreviewJeiRecipe>();
+        for (var machine : MachineTypeRegistry.INSTANCE.types()) {
+            var controllers = new ObjectArrayList<ItemStack>();
+            for (var block : MachineControllerBlocks.all()) {
+                if (block.type() != machine) continue;
+                var stack = new ItemStack(block);
+                if (!stack.isEmpty()) {
+                    controllers.add(stack);
+                    registration.addRecipeCatalyst(stack.copy(), StructurePreviewJeiCategory.UID);
+                }
+            }
+            structures.add(new StructurePreviewJeiRecipe(machine, controllers));
+        }
+        registration.addRecipes(structures, StructurePreviewJeiCategory.UID);
         for (var page : pages.pages()) {
             var wrappers = new ObjectArrayList<>();
             for (var recipe : page.pool().recipes()) {

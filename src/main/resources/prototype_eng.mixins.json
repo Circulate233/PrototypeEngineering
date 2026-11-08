@@ -18,6 +18,11 @@
     "EnchantmentThornsMixin",
     "NBTTagLongArrayMixin"
   ],
+  "client": [
+    "client.MinecraftPreviewGuiMixin",
+    "client.GuiContainerPreviewMixin",
+    "client.GuiScreenPreviewMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

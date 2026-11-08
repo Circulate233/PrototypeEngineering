@@ -33,6 +33,12 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
 import net.minecraft.client.resources.IReloadableResourceManager;
+import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
+import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
+import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
+import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
+import com.circulation.prototype_eng.client.preview.StructurePreviewCommand;
+import net.minecraftforge.client.ClientCommandHandler;
 
 public class ClientProxy extends CommonProxy {
     private ClientStructureCatalog structures;
@@ -81,6 +87,14 @@ public class ClientProxy extends CommonProxy {
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
         MinecraftForge.EVENT_BUS.register(this);
+        MinecraftForge.EVENT_BUS.register(PreviewGuiResources.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(PreviewEmbeddedInput.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ProjectionInteractions.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(PreviewClientOpenQueue.INSTANCE);
+        ProjectionInteractions.INSTANCE.registerKeys();
+        ClientCommandHandler.instance.registerCommand(new StructurePreviewCommand());
+        if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager previewResources)
+            previewResources.registerReloadListener(PreviewGuiResources.INSTANCE);
         if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager resources)
             resources.registerReloadListener(_ -> {
                 if (projectionManager != null) projectionManager.invalidateResources();

@@ -17,6 +17,10 @@ import org.lwjgl.input.Mouse;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewScreens;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.localization.StructurePreviewText;
+import net.minecraft.client.gui.GuiButton;
 
 /** PM's scrollable seven-row progress view, directly composed on AE2's GUI and scrollbar. */
 public final class MachineGui extends AEBaseGui<MachineContainer> {
@@ -40,6 +44,7 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         xSize = Math.min(384, width - 8);
         ySize = Math.min(256, height - 8);
         super.initGui();
+        buttonList.add(new GuiButton(80, guiLeft + xSize - 54, guiTop + 3, 50, 16, StructurePreviewText.Open.getLocal()));
         visibleRows = Math.clamp((ySize - LIST_Y - 5) / ROW_HEIGHT, 1, MachineGuiSnapshot.MAX_ROWS);
         scrollbar.setPosition(new Point(100, LIST_Y));
         scrollbar.setHeight(visibleRows * ROW_HEIGHT);
@@ -91,7 +96,7 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
     @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
         var snapshot = container.snapshot;
         fontRenderer.drawString(MachineGuiText.WorkSlots.getLocal(), LIST_X, 6, 0x404040);
-        fontRenderer.drawString(fontRenderer.trimStringToWidth(Objects.requireNonNull(container.getGuiTitle()).getUnformattedText(), xSize - 132), 124, 6, 0x404040);
+        fontRenderer.drawString(fontRenderer.trimStringToWidth(Objects.requireNonNull(container.getGuiTitle()).getUnformattedText(), Math.max(0, xSize - 184)), 124, 6, 0x404040);
         var status = !snapshot.active() ? MachineGuiText.Unavailable : snapshot.formed() ? MachineGuiText.Formed : MachineGuiText.Unformed;
         fontRenderer.drawString(status.getLocal(), 124, 24, 0x404040);
         if (snapshot.totalSlots() == 0) { fontRenderer.drawString(MachineGuiText.NoWorkSlots.getLocal(), 124, 38, 0x404040); }
@@ -122,6 +127,14 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         if (scrollbar.getBounds().contains(mouseX - guiLeft, mouseY - guiTop)
                 && scrollbar.onMouseDown(new Point(mouseX - guiLeft, mouseY - guiTop), button)) { updateView(); return; }
         super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override protected void actionPerformed(GuiButton button) throws IOException {
+        if (button.id == 80 && container.getTarget() instanceof MachineControllerHost host) {
+            StructurePreviewScreens.open(this, host.type(), host.orientation());
+            return;
+        }
+        super.actionPerformed(button);
     }
     @Override protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
         if (scrollbar.onMouseDrag(new Point(mouseX - guiLeft, mouseY - guiTop), button)) { updateView(); return; }

@@ -25,6 +25,8 @@ final class PreviewBlockStates {
 
     @SuppressWarnings("deprecation") // Published 1.12 display options carry canonical registry metadata.
     static IBlockState first(StructurePreviewModel model, StructurePreviewModel.Cell cell) {
+        var explicit = model.settings().displayOptions().get(cell.display());
+        if (explicit != null) return selected(model, cell, explicit);
         var display = cell.display();
         if (display == null) return null;
         var root = model.generation().entries().get(model.structureId());
@@ -36,6 +38,19 @@ final class PreviewBlockStates {
             if (block != null) return rotate(block.getStateFromMeta(option.meta()), rotation);
         }
         return null;
+    }
+
+    @SuppressWarnings("deprecation")
+    static IBlockState selected(StructurePreviewModel model, StructurePreviewModel.Cell cell, int optionIndex) {
+        var display = cell.display();
+        if (display == null || optionIndex < 0 || optionIndex >= display.options().size()) return null;
+        var option = display.options().get(optionIndex);
+        if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) return null;
+        var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
+        if (block == null) return null;
+        var root = model.generation().entries().get(model.structureId());
+        var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
+        return rotate(block.getStateFromMeta(option.meta()), rotation);
     }
 
     @SuppressWarnings("unchecked")

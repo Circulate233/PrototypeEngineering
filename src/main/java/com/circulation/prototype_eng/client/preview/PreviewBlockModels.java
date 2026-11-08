@@ -36,6 +36,9 @@ public final class PreviewBlockModels implements AutoCloseable {
     private final WorldVertexBufferUploader uploader = new WorldVertexBufferUploader();
     private final FloatBuffer colors = BufferUtils.createFloatBuffer(4);
     private StructurePreviewModel bakingModel;
+    private PreviewBlockAccess sceneAccess;
+    private Object sceneToken;
+    private Integer sceneLayer;
     private boolean closed;
 
     public PreviewBlockModels(StructurePreviews previews) {
@@ -43,7 +46,7 @@ public final class PreviewBlockModels implements AutoCloseable {
         cache = new PreviewBlockModelCache(this::current, () -> new Baker(Objects.requireNonNull(bakingModel)), 8);
         sampleModels = new PreviewSampleBlockModels((model, cell) -> {
             var token = cache.epochToken();
-            var cursor = new PreviewBlockQuadCursor(model, cell, () -> cache.currentEpoch(token) && current(model));
+            var cursor = new PreviewBlockQuadCursor(model, cell, () -> cache.currentEpoch(token) && current(model), sceneAccess);
             return sink -> cursor.step((_, data) -> sink.accept(data));
         });
     }
@@ -143,16 +146,70 @@ public final class PreviewBlockModels implements AutoCloseable {
         return boxes;
     }
 
+    /** Same actual Baker, four layer meshes, sample cursor and GL restoration as world rendering. */
+    public void renderScene(StructurePreviewView view, PreviewBlockAccess access, double cameraX, double cameraY, double cameraZ) {
+        requireOwner();
+        var model = view.model();
+        if (model == null || !access.ready() || !current(model)) return;
+        Integer layer = view.threeDimensional ? null : view.layer;
+        if (sceneToken != view.token() || !Objects.equals(sceneLayer, layer) || sceneAccess != access) {
+            invalidate(); sceneToken = view.token(); sceneLayer = layer; sceneAccess = access;
+        }
+        var token = sceneToken;
+        BooleanSupplier valid = () -> !closed && token == view.token() && access.current() && current(model);
+        var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false,
+            layer == null ? null : new StructurePreviewModel.Layer(layer), 2048, 0, 4096, Double.MAX_VALUE, 4096, 96, 128);
+        var intent = new StructurePreviews.Projection(model.structureId(), model.settings(), BlockPos.ORIGIN, options);
+        PreviewBlockModelCache.Ready ready = null;
+        if (OpenGlHelper.useVbo() && layer == null) {
+            bakingModel = model;
+            try { ready = cache.advance(model, options.blockModelBuildVisitsPerFrame()); }
+            finally { bakingModel = null; }
+            if (ready == null) return;
+        }
+        if (!valid.getAsBoolean()) return;
+        var before = State.capture(colors);
+        Throwable failure = null;
+        try {
+            GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+            GlStateManager.pushMatrix();
+            try {
+                GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+                GlStateManager.enableTexture2D(); GlStateManager.disableLighting(); GlStateManager.disableCull();
+                GlStateManager.enableBlend(); GlStateManager.enableDepth(); GlStateManager.depthMask(true);
+                GlStateManager.enableAlpha(); GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1f);
+                GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
+                Minecraft.getMinecraft().getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
+                if (ready != null) drawChunks(ready, intent, cameraX, cameraY, cameraZ, valid);
+                else {
+                    var samples = new ObjectArrayList<StructureProjectionState.Sample>();
+                    for (var cell : view.sceneSamples(options.renderVisitsPerFrame()))
+                        samples.add(new StructureProjectionState.Sample(cell, cell.position(), StructureProjectionState.Status.UNKNOWN));
+                    drawSamples(model, samples, intent, cache.epochToken(), cameraX, cameraY, cameraZ, valid);
+                }
+            } finally { GlStateManager.popMatrix(); }
+        } catch (RuntimeException | Error caught) { failure = caught; }
+        finally {
+            try { before.restore(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
+            if (failure != null) try { invalidate(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
+            PreviewBlockModelCache.rethrow(failure);
+        }
+    }
+
     static boolean staticGeometry(StructureProjectionOptions options) {
         return !options.hideDisplayedMatches() && options.layer() == null;
     }
 
     private void drawChunks(PreviewBlockModelCache.Ready ready, StructurePreviews.Projection intent, double x, double y, double z) {
+        drawChunks(ready, intent, x, y, z, () -> previews.projection() == intent);
+                }
+
+    private void drawChunks(PreviewBlockModelCache.Ready ready, StructurePreviews.Projection intent, double x, double y, double z, BooleanSupplier guard) {
         var options = intent.options();
         int visits = ready.chunks().size() <= options.blockModelRenderAllChunksIfUnder()
             ? ready.chunks().size() : options.blockModelChunkVisitsPerFrame();
         var selected = cache.select(ready, visits, intent.anchor(), x, y, z, options.maxDistance());
-        GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
+        if (sceneAccess == null) GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
         // Native client-array stack preserves the caller's pointers/enables/texture-coordinate units.
         GL11.glPushClientAttrib(GL11.GL_CLIENT_VERTEX_ARRAY_BIT);
         int oldArrayBuffer = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
@@ -166,13 +223,13 @@ public final class PreviewBlockModels implements AutoCloseable {
             OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
             for (int layer = 0; layer < 3; layer++) {
                 for (var mesh : selected) {
-                    if (!cache.valid(ready) || previews.projection() != intent) return;
+                    if (!cache.valid(ready) || !guard.getAsBoolean()) return;
                     var drawable = mesh.layers[layer];
                     if (drawable != null) drawable.draw();
                 }
             }
             for (var mesh : PreviewBlockModelCache.translucentOrder(selected, intent.anchor(), x, y, z)) {
-                if (!cache.valid(ready) || previews.projection() != intent) return;
+                if (!cache.valid(ready) || !guard.getAsBoolean()) return;
                 mesh.layers[3].draw();
             }
         } finally {
@@ -186,7 +243,12 @@ public final class PreviewBlockModels implements AutoCloseable {
      */
     private List<StructureProjectionState.Sample> drawSamples(StructurePreviewModel model, List<StructureProjectionState.Sample> samples,
                                                               StructurePreviews.Projection intent, Object token, double x, double y, double z) {
-        BooleanSupplier valid = () -> cache.currentEpoch(token) && current(model) && previews.projection() == intent;
+        return drawSamples(model, samples, intent, token, x, y, z, () -> previews.projection() == intent);
+                }
+
+    private List<StructureProjectionState.Sample> drawSamples(StructurePreviewModel model, List<StructureProjectionState.Sample> samples,
+                                                              StructurePreviews.Projection intent, Object token, double x, double y, double z, BooleanSupplier guard) {
+        BooleanSupplier valid = () -> cache.currentEpoch(token) && current(model) && guard.getAsBoolean();
         var ordered = new ObjectArrayList<>(samples);
         ordered.sort((left, right) -> Double.compare(distance(right.position(), x, y, z), distance(left.position(), x, y, z)));
         var buffer = buffers.borrow();
@@ -194,7 +256,7 @@ public final class PreviewBlockModels implements AutoCloseable {
         Throwable failure = null;
         List<StructureProjectionState.Sample> pending = List.of();
         try {
-            GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
+            if (sceneAccess == null) GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
             buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
             building = true;
             // C selected/paid cell visits already. Preparation and emission pay a separate, bounded quad work budget.
@@ -263,7 +325,7 @@ public final class PreviewBlockModels implements AutoCloseable {
             if (!valid()) return false;
             if (activeCell != cell) {
                 activeCell = cell;
-                cursor = new PreviewBlockQuadCursor(model, cell, this::valid);
+                cursor = new PreviewBlockQuadCursor(model, cell, this::valid, sceneAccess);
             }
             boolean done = cursor.step((layer, data) -> {
                 if (!valid()) return;
@@ -415,12 +477,12 @@ public final class PreviewBlockModels implements AutoCloseable {
     /**
      * Changed server state restores through GlStateManager, including atlas bindings and both texture units.
      */
-    private record State(boolean lighting, boolean cull, boolean blend, boolean depth, boolean depthMask, boolean alpha,
+    public record State(boolean lighting, boolean cull, boolean blend, boolean depth, boolean depthMask, boolean alpha,
                          int alphaFunc, float alphaRef, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha,
                          boolean polygonOffset, float factor, float units, int activeTexture, int matrixMode,
                          int atlasBinding, boolean atlasEnabled, int lightBinding, boolean lightEnabled,
                          float r, float g, float b, float a) {
-        static State capture(FloatBuffer colors) {
+        public static State capture(FloatBuffer colors) {
             colors.clear();
             GL11.glGetFloat(GL11.GL_CURRENT_COLOR, colors);
             int active = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
@@ -440,7 +502,7 @@ public final class PreviewBlockModels implements AutoCloseable {
                 active, GL11.glGetInteger(GL11.GL_MATRIX_MODE), atlas, atlasEnabled, light, lightEnabled, colors.get(0), colors.get(1), colors.get(2), colors.get(3));
         }
 
-        void restore() {
+        public void restore() {
             if (lighting) GlStateManager.enableLighting();
             else GlStateManager.disableLighting();
             if (cull) GlStateManager.enableCull();

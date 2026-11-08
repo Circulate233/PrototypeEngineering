@@ -5,22 +5,17 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
-import com.circulation.prototype_eng.api.structure.StructureTransform;
-import net.minecraft.block.properties.IProperty;
-import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.WorldVertexBufferUploader;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
@@ -154,61 +149,11 @@ public final class WorldProjectionManager implements AutoCloseable {
         PrototypeEngineering.LOGGER.error("Cannot present structure projection", failure);
     }
 
-    @SuppressWarnings("deprecation") // Published 1.12 block options encode canonical registry metadata.
     private StructureProjectionState.Status observe(World world, StructurePreviewModel.Cell cell, BlockPos position) {
-        if (!world.isBlockLoaded(position, false)) return StructureProjectionState.Status.UNLOADED;
-        var display = cell.display();
-        if (display == null || display.tileNbt() != null) return StructureProjectionState.Status.UNKNOWN;
         var intent = previews.projection();
         if (intent == null) return StructureProjectionState.Status.UNKNOWN;
         var request = previews.request(intent.id(), intent.settings());
-        var model = request == null ? null : request.model();
-        if (model == null) return StructureProjectionState.Status.UNKNOWN;
-        var rotation = StructureTransform.between(model.generation().nodes().get(model.generation().entries().get(model.structureId()).node()).orientation(),
-            model.settings().orientation());
-        var actual = world.getBlockState(position);
-        boolean unresolved = false;
-        for (var option : display.options()) {
-            if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) {
-                unresolved = true;
-                continue;
-            }
-            var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-            if (block == null || !option.nbt().isEmpty()) {
-                unresolved = true;
-                continue;
-            }
-            if (actual == rotateState(block.getStateFromMeta(option.meta()), rotation))
-                return StructureProjectionState.Status.DISPLAY_MATCH;
-        }
-        if (unresolved) return StructureProjectionState.Status.UNKNOWN;
-        return actual.getBlock().isAir(actual, world, position)
-            ? StructureProjectionState.Status.MISSING : StructureProjectionState.Status.DIFFERENT;
-    }
-
-    /**
-     * Same facing/axis rotation as existing StructurePredicates; no predicate runs on the client.
-     */
-    @SuppressWarnings("unchecked")
-    private static IBlockState rotateState(IBlockState state, StructureTransform rotation) {
-        var result = state;
-        for (var property : state.getPropertyKeys()) {
-            if (property.getValueClass() == EnumFacing.class) {
-                var facing = (IProperty<EnumFacing>) property;
-                var transformed = rotation.apply(state.getValue(facing));
-                if (facing.getAllowedValues().contains(transformed)) result = result.withProperty(facing, transformed);
-            } else if (property.getValueClass() == EnumFacing.Axis.class) {
-                var axis = (IProperty<EnumFacing.Axis>) property;
-                var representative = switch (state.getValue(axis)) {
-                    case X -> EnumFacing.EAST;
-                    case Y -> EnumFacing.UP;
-                    case Z -> EnumFacing.NORTH;
-                };
-                var transformed = rotation.apply(representative).getAxis();
-                if (axis.getAllowedValues().contains(transformed)) result = result.withProperty(axis, transformed);
-            }
-        }
-        return result;
+        return PreviewDisplayObservation.observe(world, request == null ? null : request.model(), cell, position);
     }
 
     private void draw(List<StructureProjectionState.Sample> samples, StructureProjectionOptions options,

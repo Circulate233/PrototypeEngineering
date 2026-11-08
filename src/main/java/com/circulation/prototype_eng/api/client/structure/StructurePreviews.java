@@ -56,6 +56,10 @@ public final class StructurePreviews implements AutoCloseable {
         return catalog.current(model.generation());
     }
 
+    /** Current authoritative names for client command completion; incomplete packets remain private. */
+    public @Nullable StructureCatalogView catalogView() { requireOpen(); return catalog.view(); }
+    public AutoCloseable onInvalidated(Runnable callback) { requireOpen(); return catalog.onInvalidated(callback); }
+
     /**
      * Starts presentation intent only; it never places blocks or alters the server.
      */

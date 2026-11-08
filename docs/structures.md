@@ -8,7 +8,7 @@
 
 PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAround(UP)` 实际把 NORTH 变为 WEST，因此没有拿这个方法直接替代 PM 旋转；目标朝向通过 AE2 的前/上方向表示。
 
-`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存、基础预览/盒投影与D1原生方块模型世界路径已接，AEBaseGui/JEI/TESR及模型/动画/Bloom/隐藏继续D2/D3。
+`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存、基础预览/盒投影与D1原生方块模型世界路径已接，D2 AEBaseGui/JEI/代表项/owned TESR已实现验证，成型模型/动画/Bloom/隐藏继续D3。
 
 `StructurePlan` 将定义从它的基础朝向转换到请求朝向，保留一个固定控制器坐标并收集读取。每次 `match` 返回独立 `StructureMatch` 树或 null，前一次成功不会污染下一次失败。结果保存每个 occurrence 的重复数、实际本层方块位置及子树；位置收集按公开结果进行，不按具体模板/切片类判断，也不按 ID 扁平覆盖计数。
 
@@ -69,6 +69,18 @@ C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受
 所有模型/GL操作在client owner。目录完成代、resource reload、断连和服务关闭先撤销epoch/权限再drain，回调返回及upload前后复核；迟到CPU/VBO结果不能发布旧代。addon关闭同步通知原生资源，逆序订阅、重入/重复close、失败继续清理及原VMError抛出均保持；closed不表示driver删除已被实机证明。恢复包括矩阵/纹理绑定与unit/client数组、blend/depth/alpha/颜色/polygon offset；VBO COLOR数组绘制后先GlStateManager.resetColor再恢复RGBA，避免MC颜色缓存跳过真实glColor调用。
 
 18项新增行为（含稳定双样本极低预算与透明提交回归）及focused18/1、受影响130/12通过；最终正常完整build1435 tests /179 suites零失败/错误/跳过。12 Java本机MCP errorsOnly:false全级零、完整项目文件读回/磁盘12/12一致、MCP build成功，构建和最终MCP的当前raw源码SHA稳定。准确C最终重接/写前/候选/修正delta/原诊断、正常日志XML和15路径统一清单见 `build/staging/structure-preview-block-models/verification/`。未启动游戏或Bootstrap/FML/native测试初始化；真实GL/驱动视觉不由纯测试证明。D1只闭合世界BLOCK_MODEL路径，D2 AEBaseGui/JEI/替代选择/TESR-NBT、D3成型模型/动画/Bloom/隐藏及整体其他保留能力仍继续。
+
+## D2：AEBaseGui、交互、JEI 与 owned TESR
+
+StructurePreviewGui 直接继承 AEBaseGui；公开 StructurePreviewScreens 与 concrete StructurePreviewScene/Panel 供 MachineGui 及不继承默认页的 RecipePoolJeiPage 组合。机器子页复用准确原 Container/window；HEI embedded wrapper 和机器独立 structure category 都接实际目录/机器关联。GuiOpen/InitPre/InitPost 原生事件保持，即时父页包括HEI RecipesGui；嵌套事件替换、owner撤销、取消与close reentry由原Session/Guard精确隔离。viewer阻止库存点击/AE滚轮/MouseTweaks和HEI槽位，原Slot/x/y/enabled快照在取消和返回重入中恢复；Back/Esc/背包等待已消费按下释放，embedded按准确panel/host刷新drag并跨普通关屏消费准确button的一次up，新同button down撤销旧up凭据。
+
+相机轨道/平移/缩放/平滑/自转、相对层、同viewport的scissor/ray/点击选择及完整long BOM已接。代表项以完整StructureDisplay选择，切片以StructurePreviewPath的子边occurrence选择，不合并同ID共享节点；层不改变全BOM。View沿Request.advance剩余visits逐cell/BOM/membership/prune续办，完整索引后才publish；观察只保存稀疏已见状态及knownCounts，unknown由完整line.count扣除。native名字缓存按model/代表项/resource与语言重载失效，材料rows按token/count/name/query/sort/filter/scan复用，稳定帧不重建/重排。变更时全BOM排序、单次点击全cell精确拾取与第三方native回调仍是显式CPU边界。mesh与overlay样本游标独立且保留D1准备进展。新ProjectionOrientations直接复用AE rotateClockwiseAround(axis.getOpposite())，适配实际v1.1.0正UP→WEST到预览契约NORTH/UP→EAST；C/D1既有变换未改。
+
+D1真实quad/atlas/VBO在GUI Scene复用，代表block/meta状态按完整邻接BlockAccess增量准备。owned TileEntity独立create，附client world/模型相对position但不插入World、不tick、不发包；SNBT每实体深拷贝覆盖x/y/z，再唯一调用一次handleUpdateTag(ownTag.copy())，应用后重设准确world/position。实际AE有#upd时handleUpdateTag仅读stream并返回、readFromNBT之后还loadTag，二者不等价，禁止异常后readFromNBT兼容回退。PE controller不伪造isAttached/authoritative Display更新，D3typed成型视觉另接。create/draw异常立即传播；取得实体后的失败invalidate，clear/close继续全部清理并聚合抛出，GL/lightmap/matrix恢复在finally。
+
+原PM界面40 PNG（gui_structure_preview目录38、根a/b两张）及NOTICE按原relative路径保留，按钮/菜单/材料/替代列表沿原生GuiTextField与LocalizationEnum文案。命令/pe_preview gui <id>、<id>投影及stop/off，机器预览按钮与HEI独立结构页/内嵌页均为实际入口；世界朝向lock/follow、正/逆旋和HUD已接，GUI/chat输入不排队到世界控制。
+
+focused47 tests /3 suites、受影响82 tests /8 suites及最终正常完整build1486 tests /183 suites全过，零失败/错误/跳过。41 Java本机MCP errorsOnly:false全级零、完整项目文件读回/磁盘41/41一致，MCP build成功，85源码资源raw SHA构建及MCP后稳定。原编译/首转/Spotless行尾失败、MCP诊断、固定推广/8路径窄修/准确before/89路径final交接与日志/XML见build/staging/structure-preview-gui；独立静态增量审计闭环。未启动Minecraft/服务端/Bootstrap/FML，不把fake-control/TE fixture当真实GL/TESR/HEI输入或网络包游戏验收。D2本阶段实现与验证已完成，D3成型模型/动画/Bloom/隐藏和其他未取消功能继续。
 
 ## 模板、切片与修正
 
@@ -133,4 +145,4 @@ C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受
 
 新增测试覆盖真实 worker 消费快照、读取证明/时间刷新、切片增长、同方向换仓、过期成功/失败/失配、配置 ABA、卸载、发现失稳重试、故障隔离、跨线程/执行重叠及重入。逻辑 fixture 实现公开宿主接口，没有伪造 Forge 注册环境。
 
-实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费、D1原生BLOCK_MODEL/VBO世界路径均已接并验证。下一步D2继续AEBaseGui/JEI、代表项选择/邻居裁剪/TESR-NBT，D3继续成型模型/动画/Bloom/隐藏；结构准备工作预算及整体其他保留能力也仍继续。基本盒投影和D1不缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。
+实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费、D1原生BLOCK_MODEL/VBO世界路径均已接并验证。D2 AEBaseGui/JEI、代表项选择/邻居裁剪/owned TESR-NBT本阶段已实现验证；下一步D3继续成型模型/动画/Bloom/隐藏；结构准备工作预算及整体其他保留能力也仍继续。基本盒投影和D1不缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。
