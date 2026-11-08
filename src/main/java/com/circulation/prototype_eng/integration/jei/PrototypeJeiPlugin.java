@@ -77,7 +77,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
             }
             for (var machine : page.pool().machines()) {
                 for (var block : MachineControllerBlocks.all()) {
-                if (block.type() != machine) continue;
+                    if (block.type() != machine) continue;
                     var controller = new ItemStack(block);
                     if (!controller.isEmpty()) {
                         registration.addRecipeCatalyst(controller, page.getUid());
@@ -86,4 +86,5 @@ public class PrototypeJeiPlugin implements IModPlugin {
             }
         }
     }
+
 }
