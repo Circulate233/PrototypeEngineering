@@ -1,0 +1,114 @@
+package com.circulation.prototype_eng.client.preview;
+
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.IBakedModel;
+import net.minecraft.util.BlockRenderLayer;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.MathHelper;
+import net.minecraftforge.client.ForgeHooksClient;
+import net.minecraftforge.client.MinecraftForgeClient;
+
+import java.nio.ByteOrder;
+import java.util.List;
+import java.util.function.BooleanSupplier;
+
+/**
+ * One published cell's actual state/layer/getQuads/quad work; shared by VBO and filtered CPU paths.
+ */
+final class PreviewBlockQuadCursor {
+    private static final BlockRenderLayer[] LAYERS = {BlockRenderLayer.SOLID, BlockRenderLayer.CUTOUT_MIPPED, BlockRenderLayer.CUTOUT, BlockRenderLayer.TRANSLUCENT};
+    private static final EnumFacing[] FACES = EnumFacing.values();
+    private final Thread owner = Thread.currentThread();
+    private final StructurePreviewModel model;
+    private final StructurePreviewModel.Cell cell;
+    private final BooleanSupplier current;
+    private final long seed;
+    private IBlockState state;
+    private IBakedModel baked;
+    private List<BakedQuad> quads;
+    private int layer, face, quad;
+    private boolean initialized, complete;
+
+    @FunctionalInterface
+    interface QuadSink {
+        void put(int layer, int[] vertices);
+    }
+
+    PreviewBlockQuadCursor(StructurePreviewModel model, StructurePreviewModel.Cell cell, BooleanSupplier current) {
+        this.model = model;
+        this.cell = cell;
+        this.current = current;
+        seed = MathHelper.getPositionRandom(cell.position());
+    }
+
+    /**
+     * Each call consumes exactly one library work visit, including empty/unsupported face/layer results.
+     */
+    boolean step(QuadSink sink) {
+        if (Thread.currentThread() != owner)
+            throw new IllegalStateException("Preview quad cursor requires its client owner thread");
+        if (!current.getAsBoolean() || complete) return complete;
+        if (!initialized) {
+            initialized = true;
+            state = PreviewBlockStates.first(model, cell);
+            complete = state == null;
+            return complete;
+        }
+        if (layer == LAYERS.length) {
+            complete = true;
+            baked = null;
+            quads = null;
+            state = null;
+            return true;
+        }
+        var previous = MinecraftForgeClient.getRenderLayer();
+        try {
+            ForgeHooksClient.setRenderLayer(LAYERS[layer]);
+            if (baked == null) {
+                boolean supported = state.getBlock().canRenderInLayer(state, LAYERS[layer]);
+                if (!current.getAsBoolean()) return false;
+                if (!supported) {
+                    layer++;
+                    return false;
+                }
+                baked = Minecraft.getMinecraft().getBlockRendererDispatcher().getBlockModelShapes().getModelForState(state);
+                return false;
+            }
+            if (quads == null) {
+                if (face == 7) {
+                    layer++;
+                    face = 0;
+                    baked = null;
+                    return false;
+                }
+                var direction = face == 0 ? null : FACES[face - 1];
+                var captured = baked.getQuads(state, direction, direction == null ? seed : seed + direction.getIndex() * 1315423911L);
+                if (!current.getAsBoolean()) return false;
+                face++;
+                quad = 0;
+                quads = captured.isEmpty() ? null : captured;
+                return false;
+            }
+            var source = quads.get(quad++);
+            int tint = source.hasTintIndex() ? Minecraft.getMinecraft().getBlockColors().colorMultiplier(state, null, null, source.getTintIndex()) : -1;
+            if (!current.getAsBoolean()) return false;
+            var data = PreviewBlockVertices.prepare(source.getVertexData(), tint, ByteOrder.nativeOrder());
+            // Positions were expanded/rotated by C; translate only, exactly once, in relative model space.
+            for (int vertex = 0; vertex < 4; vertex++) {
+                int offset = vertex * 7;
+                data[offset] = Float.floatToRawIntBits(Float.intBitsToFloat(data[offset]) + cell.position().getX());
+                data[offset + 1] = Float.floatToRawIntBits(Float.intBitsToFloat(data[offset + 1]) + cell.position().getY());
+                data[offset + 2] = Float.floatToRawIntBits(Float.intBitsToFloat(data[offset + 2]) + cell.position().getZ());
+            }
+            if (!current.getAsBoolean()) return false;
+            sink.put(layer, data);
+            if (quad == quads.size()) quads = null;
+            return false;
+        } finally {
+            ForgeHooksClient.setRenderLayer(previous);
+        }
+    }
+}

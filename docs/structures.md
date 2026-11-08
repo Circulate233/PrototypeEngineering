@@ -8,7 +8,7 @@
 
 PM 默认 NORTH/UP 绕 UP 到 EAST 的约定已验证。AE2S `rotateClockwiseAround(UP)` 实际把 NORTH 变为 WEST，因此没有拿这个方法直接替代 PM 旋转；目标朝向通过 AE2 的前/上方向表示。
 
-`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存与基础预览/盒投影入口已接，完整纹理方块模型等复杂渲染继续后续。
+`MachineStructure` 保留外部形状的真实扩展职责：转换、声明潜在读取、产生完整匹配结果。`TemplateStructure`、`SliceStructure` 是实际实现类，没有接口/Impl 镜像；定义保持对象身份，不引入递归结构相等。`StructurePattern` 冻结相对位置和谓词，模板/切片冻结偏移、验证器与子结构；`StructureDefinition` 另存名字及 display，启动 JSON/Java 共用完整 `StructureCatalog`。客户端权威目录/缓存、基础预览/盒投影与D1原生方块模型世界路径已接，AEBaseGui/JEI/TESR及模型/动画/Bloom/隐藏继续D2/D3。
 
 `StructurePlan` 将定义从它的基础朝向转换到请求朝向，保留一个固定控制器坐标并收集读取。每次 `match` 返回独立 `StructureMatch` 树或 null，前一次成功不会污染下一次失败。结果保存每个 occurrence 的重复数、实际本层方块位置及子树；位置收集按公开结果进行，不按具体模板/切片类判断，也不按 ID 扁平覆盖计数。
 
@@ -57,6 +57,18 @@ ProjectionState 每轮绑定精确世界、意图、请求、模型、目录代�
 C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受影响 126 tests / 14 suites，以及正常完整 `gradlew.bat build --console=plain` 1417 tests / 178 suites，failure/error/skipped 均 0。12 Java 本机 IDEA MCP 逐文件 get_file_problems(errorsOnly:false) 零错误/警告/弱警告，无 timeout/isError；完整 read_file 项目文件文本/磁盘 12/12 一致，不据此声称未保存 Document。MCP build_project 成功；12 Java 构建前后及最终 MCP SHA 稳定。原候选、三项独立 P2 修正与 mapped MC/Forge 源依据、IDE 格式化旧文本回退的真实首次 compile 失败、必要公开 API/局部 inspection 修正、8 文件 CRLF-only Spotless 失败/等价修正、原日志/XML、准确 formal-before 与最终 15 文件统一清单/快照保留于 `build/staging/structure-preview/verification/`。
 
 本阶段实现与验证已完成；未启动 Minecraft、服务端或 Bootstrap/FML/native Block/Item 测试初始化。真实 OpenGL/World/注册表实机视觉仍未验收。完整纹理方块模型、模型隐藏/碰撞/复杂渲染、VBO/Bloom、预览 GUI 与 JEI 联动、结构准备工作预算及其他未取消能力继续后续；本阶段盒投影不缩减这些范围。
+
+## D1：原生方块模型世界投影
+
+`StructureProjectionOptions.Style.BLOCK_MODEL` 已沿同一 Java project 入口接实际世界绘制。现有无参和7参构造保持兼容；新增三个独立原生预算字段：blockModelBuildVisitsPerFrame默认4096、blockModelChunkVisitsPerFrame默认96、blockModelRenderAllChunksIfUnder默认128。C的展开/观察/每帧cell访问额度保持原含义，VBO一次区块draw不按其全部cell加权；不超过128个区块全部访问，否则每帧96个，空/远区块也付一次访问并前移游标。
+
+具体PreviewBlockModels/PreviewBlockModelCache/QuadCursor复用当前完整且current的C模型，按相对16³分组烘焙SOLID、CUTOUT_MIPPED、CUTOUT、TRANSLUCENT，真实atlas/tint、fullbright和0.65顶点alpha保持。display只选择首个有效已发布block/meta，facing/axis用C同一变换，已展开位置只平移；NBT展示条件不解析成blockstate properties，不调用matcher/factory。静态构建逐cell/layer/getQuads/quad/上传layer续办，8项LRU精确释放；外部模型回调和GL driver调用本身仍是合作/原生边界。
+
+隐藏展示命中或选择Layer时全静态VBO无权绕过过滤；无VBO与动态路径只消费本帧C Sample。逐格CPU复用同一QuadCursor增量准备，按当前model/cell保留轮换样本间的准确pending与quad绘制游标，稳定可见列表跨帧公平分配工作，最终实际提交仍按当前样本远→近排序。静态pending仅暂显本轮C BOX，不通过fallback重复同步烘整模型；缺display/有效代表项或尚未就绪样本明确BOX，之后准备完成到达原生模型，BOX不替代目标效果。代表项显式选择和邻居face裁剪、TESR-NBT继续D2。
+
+所有模型/GL操作在client owner。目录完成代、resource reload、断连和服务关闭先撤销epoch/权限再drain，回调返回及upload前后复核；迟到CPU/VBO结果不能发布旧代。addon关闭同步通知原生资源，逆序订阅、重入/重复close、失败继续清理及原VMError抛出均保持；closed不表示driver删除已被实机证明。恢复包括矩阵/纹理绑定与unit/client数组、blend/depth/alpha/颜色/polygon offset；VBO COLOR数组绘制后先GlStateManager.resetColor再恢复RGBA，避免MC颜色缓存跳过真实glColor调用。
+
+18项新增行为（含稳定双样本极低预算与透明提交回归）及focused18/1、受影响130/12通过；最终正常完整build1435 tests /179 suites零失败/错误/跳过。12 Java本机MCP errorsOnly:false全级零、完整项目文件读回/磁盘12/12一致、MCP build成功，构建和最终MCP的当前raw源码SHA稳定。准确C最终重接/写前/候选/修正delta/原诊断、正常日志XML和15路径统一清单见 `build/staging/structure-preview-block-models/verification/`。未启动游戏或Bootstrap/FML/native测试初始化；真实GL/驱动视觉不由纯测试证明。D1只闭合世界BLOCK_MODEL路径，D2 AEBaseGui/JEI/替代选择/TESR-NBT、D3成型模型/动画/Bloom/隐藏及整体其他保留能力仍继续。
 
 ## 模板、切片与修正
 
@@ -121,4 +133,4 @@ C 新增 26 项纯行为（2 suites），focused 26 tests / 2 suites、扩大受
 
 新增测试覆盖真实 worker 消费快照、读取证明/时间刷新、切片增长、同方向换仓、过期成功/失败/失配、配置 ABA、卸载、发现失稳重试、故障隔离、跨线程/执行重叠及重入。逻辑 fixture 实现公开宿主接口，没有伪造 Forge 注册环境。
 
-实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费已接并验证。下一步继续完整纹理方块模型、模型隐藏/复杂渲染/VBO/Bloom、预览 GUI/JEI 联动与结构准备工作预算；基本盒投影没有缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。
+实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费、D1原生BLOCK_MODEL/VBO世界路径均已接并验证。下一步D2继续AEBaseGui/JEI、代表项选择/邻居裁剪/TESR-NBT，D3继续成型模型/动画/Bloom/隐藏；结构准备工作预算及整体其他保留能力也仍继续。基本盒投影和D1不缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。

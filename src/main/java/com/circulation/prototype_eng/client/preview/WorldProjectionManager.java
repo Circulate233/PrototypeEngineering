@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
+import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
@@ -28,26 +29,81 @@ import java.nio.FloatBuffer;
 import java.util.List;
 
 /**
- * PM immediate outline/ghost-box path; no textured block models, VBOs, matcher or block placement.
+ * PM outline/ghost-box and native textured block-model projection; display-only, client-owner presentation.
  */
-public final class WorldProjectionManager {
+public final class WorldProjectionManager implements AutoCloseable {
+    private final Thread owner = Thread.currentThread();
     private final StructurePreviews previews;
     private final StructureProjectionState state;
+    private final PreviewBlockModels blockModels;
+    private final AutoCloseable catalogSubscription;
+    private final AutoCloseable closeSubscription;
+    private boolean closed;
     private final BufferBuilder buffer = new BufferBuilder(1 << 16);
     private final WorldVertexBufferUploader uploader = new WorldVertexBufferUploader();
     private final FloatBuffer colorBuffer = BufferUtils.createFloatBuffer(4);
 
-    public WorldProjectionManager(StructurePreviews previews) {
+    public WorldProjectionManager(StructurePreviews previews, ClientStructureCatalog catalog) {
         this.previews = previews;
         state = new StructureProjectionState(previews);
+        blockModels = new PreviewBlockModels(previews);
+        catalogSubscription = catalog.onInvalidated(blockModels::invalidate);
+        closeSubscription = previews.onClosed(this::close);
+    }
+
+    private void requireOwner() {
+        if (Thread.currentThread() != owner)
+            throw new IllegalStateException("Projection renderer requires its client owner thread");
+    }
+
+    public void invalidateResources() {
+        requireOwner();
+        if (!closed) blockModels.invalidate();
+    }
+
+    @Override
+    public void close() {
+        requireOwner();
+        if (closed) return;
+        closed = true;
+        Throwable failure = null;
+        try {
+            state.clear();
+        } catch (RuntimeException | Error caught) {
+            failure = caught;
+        }
+        try {
+            MinecraftForge.EVENT_BUS.unregister(this);
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        try {
+            blockModels.close();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        try {
+            catalogSubscription.close();
+        } catch (Exception caught) {
+            failure = PreviewBlockModelCache.merge(failure, new IllegalStateException(caught));
+        } catch (Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        try {
+            closeSubscription.close();
+        } catch (Exception caught) {
+            failure = PreviewBlockModelCache.merge(failure, new IllegalStateException(caught));
+        } catch (Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        PreviewBlockModelCache.rethrow(failure);
     }
 
     @SubscribeEvent
     public void tick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         if (previews.closed()) {
-            state.clear();
-            MinecraftForge.EVENT_BUS.unregister(this);
+            close();
             return;
         }
         var world = Minecraft.getMinecraft().world;
@@ -73,6 +129,20 @@ public final class WorldProjectionManager {
             double x = camera.lastTickPosX + (camera.posX - camera.lastTickPosX) * event.getPartialTicks();
             double y = camera.lastTickPosY + (camera.posY - camera.lastTickPosY) * event.getPartialTicks();
             double z = camera.lastTickPosZ + (camera.posZ - camera.lastTickPosZ) * event.getPartialTicks();
+            if (intent.options().style() == StructureProjectionOptions.Style.BLOCK_MODEL) {
+                var request = previews.request(intent.id(), intent.settings());
+                var model = request == null ? null : request.model();
+                if (model != null && previews.current(model)) {
+                    var unknown = blockModels.render(model, samples, intent, x, y, z);
+                    if (!unknown.isEmpty() && !previews.closed() && previews.current(model) && previews.projection() == intent) {
+                        var options = intent.options();
+                        draw(unknown, new StructureProjectionOptions(StructureProjectionOptions.Style.BOX_OUTLINE,
+                            options.hideDisplayedMatches(), options.layer(), options.expansionStepsPerTick(), options.scanChecksPerTick(),
+                            options.renderVisitsPerFrame(), options.maxDistance()), x, y, z);
+                    }
+                }
+                return;
+            }
             draw(samples, intent.options(), x, y, z);
         } catch (RuntimeException failure) {
             state.cancelFailedRound(intent, originalRound);

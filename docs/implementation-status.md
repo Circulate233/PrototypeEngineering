@@ -6,6 +6,16 @@
 
 ## 当前状态
 
+- 2026-11-08 结构 D1 原生方块模型世界投影本阶段实现与验证已完成。沿 C `StructurePreviews.project(...BLOCK_MODEL...)` / ClientProxy / 实际 RenderWorldLast 接入 atlas 四层 baked 模型与相对16³ VBO，保留 fullbright 0x00F000F0、BLOCK顶点alpha 0.65、tint、深度测试不写深度和polygon offset。只解析当前完整model已发布display的首个有效block/meta；状态facing/axis按C基础到请求朝向转换，已展开位置不二次旋转，不运行matcher/factory，不将NBT展示条件当state properties。未知代表项与尚未准备/预算延迟样本暂显BOX；完成后交付实际原生模型，GUI选择/TESR-NBT属于D2。
+
+- `PreviewBlockModelCache` 保留独立8模型LRU与原96 chunks/frame、128 chunks以内全访；空/远/可见区块都计一次访问并前移游标，不为一个VBO draw强塞cell权重。静态分组/开chunk/状态/layer/getQuads/单quad/逐layer upload按独立工作预算续办。hideDisplayedMatches或layer过滤、无VBO路径只消费C已按访问付费Sample，复用同一QuadCursor增量准备/发射CPU quads；静态pending不另同步全quad烘焙。CPU准备绑定准确model/cell，C样本轮换或临时过滤保留pending进展，稳定多样本以公平工作游标推进，最终实际选中顶点再按原远→近样本顺序提交，低预算不会永久只出首项BOX。外部模型/tint/getQuads回调和driver上传/绘制是合作/原生边界，库不宣称可抢占这些调用。
+
+- 目录代/resource epoch/断连/外部 `previews.close()` 与代理替换先撤销旧上传/绘制权限，再逐项释放owned builder/VBO；每次模型回调后及upload前后复核，迟到返回handle单次close而不登记。close订阅逆注册顺序、错误线程拒绝、重入/重复关闭不重复delete，失败继续其他义务并保持VMError身份原样抛出；closed仅表示撤销和清理尝试，不证明driver删除成功。原生GL恢复完整绑定/client数组/矩阵及相关状态，VBO COLOR数组之后先resetColor再恢复捕获RGBA，保持MC缓存与真实GL一致。D1世界路径没有PM async reader/pin调用；这里只复用客户端独占池，D3原async merge/pin与延迟归还能力继续迁移。
+
+- 新增18项真实纯行为，原16保留且追加稳定双样本极低预算不饥饿、公平工作后的透明提交顺序；focused18 tests /1 suite、受影响130 tests /12 suites全通过。正常完整 `gradlew.bat build --console=plain` 最终1435 tests /179 suites，failure/error/skipped均0，assemble/Spotless/test/check通过。12 Java本机 IDEA MCP逐文件get_file_problems(errorsOnly:false)零错误/警告/弱警告，无timeout/isError，完整read_file项目文件文本/磁盘12/12一致；MCP build_project isSuccess:true/problems[]。实际当前盘raw SHA在最终构建前后及MCP读回/检查后12/12稳定；最终构建原session19154在暂停前后核实为28s正常终态，没有因恢复重复构建或启动服务。
+
+- C最终提交09f554e的12 Java与D1冻结基底normalized文本12/12相同，仅CRLF差异，按固定delta逐段重接4 overlay及7新生产/1测试，没有整文件覆盖C合法修正。独立审计的稳定样本饥饿与VBO真实COLOR恢复两项P2已最小修复；初次MCP全限定import、owned-close、computeIfAbsent及unused诊断、一次IDE旧Document覆盖四处诊断清理的实际快照均保留，之后使用本机MCP原生patch同步修正并全级复检。准确15路径formal-before/最终清单、462路径背景与INDEX备份保护、candidate/base/修正01–04/delta、原日志/XML、独立当前raw取样和最终IDE证据入口 `build/staging/structure-preview-block-models/verification/`。未推送、未启动Minecraft/服务端或Bootstrap/FML/native Block/Item测试初始化；纯测试不证明真实OpenGL/World/注册表视觉，D2 AEBaseGui/JEI/代表项选择/TESR-NBT和D3模型/动画/Bloom/隐藏继续，整体重开发未完成。见[结构定义](structures.md)。
+
 - 2026-11-08 结构 C 基础预览模型与世界盒投影本阶段实现与验证已完成。StructurePreviews.client 沿 ClientProxy 惰性服务与实际 ClientTick END/RenderWorldLast，公开 request/advance/model/BOM 与 project/move/stop；只消费已完成服务端权威 StructureCatalogView，不读本地JSON或运行matcher。模板/切片按子边 occurrence 路径选数、min默认与min/max夹取，根旋转、零片 base-sliceOffset、固定控制器排除和坐标last-wins保持原语义；OPAQUE/无display明确未知。Model.Builder私有列表单owner一次freeze，零复制只读结果；完整display值按long fastutil addTo累计全结构BOM，相对Layer不改BOM，默认32项代绑定LRU。实际CPU盒轮廓/半透明盒/组合支持距离/层/展开扫描帧额度与展示命中隐藏，普通白/未加载黄轮廓保留；DISPLAY_MATCH等五状态仅代表state观察，不授予成型权威。准确world/intent/request/model/generation/statuses/cursor私有round在observer回调后全量重验，旧成功/失败不能覆盖替代意图/世界/代。见[结构定义](structures.md)。
 
 - C固定原候选独立三项P2已闭环：Forge缺ID先containsKey避免默认AIR，isBlockLoaded(position,false)排除EmptyChunk且不加载，observer重入复核精确私有round并使旧异常无权取消替代round。实际cleanroom mapped MC/Forge源码完整依据与原/修正候选清单保留。推广首次MCP reformat把两个既有共享文件的IDE旧文本写回，focused compile真实失败（缺2参cache与previews入口）已留日志/写前，随后MCP.apply_patch恢复已审增量；必要Request static显式owner、局部非空/API unused/deprecation inspection修正另存delta-1/2，逻辑权限保持。首完整build只因8个新增生产Java LF换行Spotless失败，捕获delta-3准确before后仅转CRLF，normalizedTextEqual 8/8，不运行全项目spotlessApply。

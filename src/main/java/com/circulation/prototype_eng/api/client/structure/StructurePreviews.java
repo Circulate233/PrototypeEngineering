@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
 import com.circulation.prototype_eng.proxy.ClientProxy;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -18,6 +19,7 @@ public final class StructurePreviews implements AutoCloseable {
     private final ClientStructureCatalog catalog;
     private final StructurePreviewCache<Request> requests;
     private final AutoCloseable subscription;
+    private final ObjectArrayList<CloseListener> closeListeners = new ObjectArrayList<>();
     @Nullable
     private Projection projection;
     private boolean closed;
@@ -92,18 +94,69 @@ public final class StructurePreviews implements AutoCloseable {
         if (closed) throw new IllegalStateException("Structure previews are closed");
     }
 
+    /**
+     * Owner-thread close subscriptions run in reverse registration order; closed registration is rejected.
+     */
+    public AutoCloseable onClosed(Runnable callback) {
+        requireOpen();
+        var listener = new CloseListener(Objects.requireNonNull(callback));
+        closeListeners.add(listener);
+        return () -> {
+            catalog.view();
+            closeListeners.remove(listener);
+        };
+    }
+
+    @SuppressWarnings("ClassCanBeRecord") // Each subscription keeps its identity when the Runnable is shared.
+    private static final class CloseListener {
+        private final Runnable callback;
+
+        private CloseListener(Runnable callback) {
+            this.callback = callback;
+        }
+    }
+
     @Override
     public void close() {
+        catalog.view();
         if (closed) return;
         requireOpen();
         projection = null;
-        requests.close();
         closed = true;
+        Throwable failure = null;
+        try {
+            requests.close();
+        } catch (RuntimeException | Error caught) {
+            failure = caught;
+        }
         try {
             subscription.close();
-        } catch (Exception failure) {
-            throw new IllegalStateException("Cannot release preview subscription", failure);
+        } catch (Exception caught) {
+            failure = mergeCloseFailure(failure, new IllegalStateException("Cannot release preview subscription", caught));
+        } catch (Error caught) {
+            failure = mergeCloseFailure(failure, caught);
         }
+        while (!closeListeners.isEmpty()) {
+            var listener = closeListeners.removeLast();
+            try {
+                listener.callback.run();
+            } catch (RuntimeException | Error caught) {
+                failure = mergeCloseFailure(failure, caught);
+            }
+        }
+        if (failure instanceof RuntimeException runtime) throw runtime;
+        if (failure instanceof Error error) throw error;
+    }
+
+    private static Throwable mergeCloseFailure(Throwable original, Throwable next) {
+        if (original == null) return next;
+        if (original == next) return original;
+        if (next instanceof VirtualMachineError && !(original instanceof VirtualMachineError)) {
+            next.addSuppressed(original);
+            return next;
+        }
+        original.addSuppressed(next);
+        return original;
     }
 
     public record Projection(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,

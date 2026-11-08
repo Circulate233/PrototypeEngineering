@@ -10,15 +10,26 @@ import java.util.Objects;
 public record StructureProjectionOptions(Style style, boolean hideDisplayedMatches,
                                          @Nullable StructurePreviewModel.Layer layer,
                                          int expansionStepsPerTick, int scanChecksPerTick,
-                                         int renderVisitsPerFrame, double maxDistance) {
+                                         int renderVisitsPerFrame, double maxDistance,
+                                         int blockModelBuildVisitsPerFrame, int blockModelChunkVisitsPerFrame,
+                                         int blockModelRenderAllChunksIfUnder) {
     public StructureProjectionOptions {
         Objects.requireNonNull(style);
         if (expansionStepsPerTick <= 0 || scanChecksPerTick < 0 || renderVisitsPerFrame <= 0
-            || !Double.isFinite(maxDistance) || maxDistance <= 0)
+            || !Double.isFinite(maxDistance) || maxDistance <= 0 || blockModelBuildVisitsPerFrame <= 0
+            || blockModelChunkVisitsPerFrame <= 0 || blockModelRenderAllChunksIfUnder < 0)
             throw new IllegalArgumentException("Invalid projection presentation limits");
     }
 
-    public enum Style {BOX_OUTLINE, TRANSLUCENT_BOX, BOX_AND_OUTLINE}
+    public enum Style {BOX_OUTLINE, TRANSLUCENT_BOX, BOX_AND_OUTLINE, BLOCK_MODEL}
+
+    /**
+     * Retains C's existing source/API constructor; native VBO work uses its own PM chunk budgets.
+     */
+    public StructureProjectionOptions(Style style, boolean hideDisplayedMatches, @Nullable StructurePreviewModel.Layer layer,
+                                      int expansionStepsPerTick, int scanChecksPerTick, int renderVisitsPerFrame, double maxDistance) {
+        this(style, hideDisplayedMatches, layer, expansionStepsPerTick, scanChecksPerTick, renderVisitsPerFrame, maxDistance, 4096, 96, 128);
+    }
 
     /**
      * PM's existing scan/render/distance defaults, plus a bounded expansion cursor.
