@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.structure.StructureBounds;
 
 /** One viewer/wrapper's choices and bounded observations; all geometry is supplied by the C service. */
 public final class StructurePreviewView {
@@ -32,6 +34,9 @@ public final class StructurePreviewView {
     public record Click(Object token, StructurePreviewModel.Cell cell) {}
     private final StructurePreviews previews;
     private final ResourceLocation id;
+    private final @Nullable MachineType machine;
+    private boolean formedPreview, rootHideWorldBlocks;
+    private StructureBounds controllerBounds;
     private StructurePreviewSettings settings;
     private StructurePreviews.Request request;
     private StructurePreviewModel model;
@@ -66,8 +71,17 @@ public final class StructurePreviewView {
     public int layer;
 
     public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings) {
+        this(previews, id, settings, null);
+    }
+
+    /** Explicit declaration context is presentation only; bare structures never infer a machine. */
+    public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings,
+                                @Nullable MachineType machine) {
         this.previews = Objects.requireNonNull(previews);
         this.id = Objects.requireNonNull(id);
+        if (machine != null && !machine.structureId().equals(id))
+            throw new IllegalArgumentException("Preview machine does not reference the requested structure");
+        this.machine = machine;
         this.settings = Objects.requireNonNull(settings);
         settings.displayOptions().forEach((display, option) -> alternatives.put(display, option.intValue()));
     }
@@ -76,6 +90,35 @@ public final class StructurePreviewView {
     public ResourceLocation id() { return id; }
     public StructurePreviewSettings settings() { return settings; }
     public Object token() { return token; }
+
+    public @Nullable MachineType machine() {
+        return machine;
+    }
+
+    public boolean formedPreview() {
+        return formedPreview;
+    }
+
+    public boolean formingModelsVisible() {
+        return formedPreview && threeDimensional;
+    }
+
+    /** Include the independent controller only in 3D framing; complete geometry/BOM stay authoritative. */
+    public @Nullable StructureBounds sceneBounds() {
+        var complete = model();
+        return complete == null ? null : threeDimensional && machine != null ? controllerBounds : complete.bounds();
+    }
+
+    public boolean formedPreview(Object expected, boolean next) {
+        if (expected != token || !inputCurrent() || machine == null) return false;
+        if (formedPreview != next) {
+            formedPreview = next;
+            token = new Object();
+            picked = null;
+            sceneCursor = overlayCursor = 0;
+        }
+        return true;
+    }
     public boolean inputCurrent() {
         return !previews.closed() && request != null && request.state() != StructurePreviews.State.STALE
             && request.state() != StructurePreviews.State.FAILED && (model == null || previews.current(model));
@@ -107,6 +150,11 @@ public final class StructurePreviewView {
             forgetModel();
             model = completed;
             if (completed != null) {
+                var entry = completed.generation().entries().get(completed.structureId());
+                rootHideWorldBlocks = completed.generation().nodes().get(entry.node()).hideWorldBlocks();
+                var bounds = completed.bounds();
+                controllerBounds = new StructureBounds(new BlockPos(Math.min(0, bounds.min().getX()), Math.min(0, bounds.min().getY()), Math.min(0, bounds.min().getZ())),
+                    new BlockPos(Math.max(0, bounds.max().getX()), Math.max(0, bounds.max().getY()), Math.max(0, bounds.max().getZ())));
                 layer = Math.clamp(layer, completed.bounds().min().getY(), completed.bounds().max().getY());
             }
         }
@@ -130,7 +178,9 @@ public final class StructurePreviewView {
     }
 
     private void forgetModel() {
-        model = null; cells.clear(); membership.clear(); prune = null;
+        model = null;
+        controllerBounds = null;
+        rootHideWorldBlocks = false; cells.clear(); membership.clear(); prune = null;
         cellCursor = bomCursor = 0; indexed = false; token = new Object(); picked = null;
         invalidateMaterials();
         resetObservations();
@@ -207,7 +257,8 @@ public final class StructurePreviewView {
         return true;
     }
     public void select(@Nullable StructureDisplay display) { selected = display; picked = null; }
-    public boolean visible(StructurePreviewModel.Cell cell) { return threeDimensional || cell.position().getY() == layer; }
+    public boolean visible(StructurePreviewModel.Cell cell) { return (threeDimensional || cell.position().getY() == layer)
+            && (!formingModelsVisible() || !rootHideWorldBlocks && !cell.hideWorldBlocks()); }
     public List<StructurePreviewModel.Cell> sceneSamples(int visits) {
         return sample(visits, false);
     }

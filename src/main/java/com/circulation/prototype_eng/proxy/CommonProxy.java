@@ -59,9 +59,13 @@ import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import java.util.function.Consumer;
 import net.minecraft.network.NetworkManager;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.util.math.AxisAlignedBB;
 
 /** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
 public class CommonProxy implements IGuiHandler {
+    public AxisAlignedBB controllerRenderBounds(MachineControllerBlockEntity tile) {
+        return new AxisAlignedBB(tile.getPos());
+    }
     private StructureJsonLoader structureData = StructureJsonLoader.empty();
     private Path structureDirectory;
     private StructureCatalog javaStructures;

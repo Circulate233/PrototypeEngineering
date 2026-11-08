@@ -95,8 +95,9 @@ public final class StructurePreviewCamera {
     }
     public @Nullable StructurePreviewView.Click pick(StructurePreviewView view, Viewport viewport, double x, double y) {
         var model = view.model();
-        if (model == null) return null;
-        var ray = ray(viewport, x, y, model.bounds());
+        var bounds = view.sceneBounds();
+        if (model == null || bounds == null) return null;
+        var ray = ray(viewport, x, y, bounds);
         if (ray == null) return null;
         double best = Double.POSITIVE_INFINITY;
         StructurePreviewModel.Cell hit = null;

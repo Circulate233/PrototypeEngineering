@@ -51,7 +51,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private long frameTime;
     private StructurePreviewText pressedText;
     private long pressedUntil;
-    private record Action(int x, int y, int width, int height, StructurePreviewText text, boolean selected, Runnable run) {
+    private record Action(int x, int y, int width, int height, StructurePreviewText text, boolean selected,
+                          boolean enabled, Runnable run) {
         boolean contains(int px, int py) { return px >= x && px < x + width && py >= y && py < y + height; }
     }
     public StructurePreviewPanel(StructurePreviewView view) {
@@ -126,6 +127,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (view.optionsOpen) {
             button(width - 96, 43, 92, 16, StructurePreviewText.AutoRotate, view.autoRotate, () -> view.autoRotate = !view.autoRotate);
             button(width - 96, 61, 92, 16, StructurePreviewText.Wireframe, view.wireframe, () -> view.wireframe = !view.wireframe);
+            var expected = view.token();
+            button(width - 96, 79, 92, 16, StructurePreviewText.FormedPreview, view.formedPreview(), view.machine() != null,
+                () -> view.formedPreview(expected, !view.formedPreview()));
         }
         button(4, height - 20, (width - 12) / 2, 16, StructurePreviewText.Project, false,
             () -> { var anchor = StructurePreviewScreensAnchor.current(); view.anchor(anchor);
@@ -135,14 +139,22 @@ public final class StructurePreviewPanel implements AutoCloseable {
         button(width / 2 + 2, height - 20, width / 2 - 6, 16, StructurePreviewText.Stop, false, () -> view.previews().stopProjection());
     }
     private void button(int x, int y, int w, int h, StructurePreviewText text, boolean selected, Runnable callback) {
-        var action = new Action(x, y, w, h, text, selected, callback); actions.add(action);
+        button(x, y, w, h, text, selected, true, callback);
+    }
+
+    private void button(int x, int y, int w, int h, StructurePreviewText text, boolean selected, boolean enabled, Runnable callback) {
+        var action = new Action(x, y, w, h, text, selected, enabled, callback);
+        actions.add(action);
+        if (!enabled)
+            tooltips.put(action, List.of(text.getLocal(), StructurePreviewText.MachineContextRequired.getLocal()));
         var mc = Minecraft.getMinecraft();
         String name = pressedText == text && System.currentTimeMillis() < pressedUntil ? "self_resetting_press"
             : action.contains(mouseX, mouseY) ? "self_resetting_selected" : "self_resetting_default";
-        mc.getTextureManager().bindTexture(texture("top_button/" + name)); GlStateManager.color(1, 1, 1, 1);
+        mc.getTextureManager().bindTexture(texture("top_button/" + name));
+        GlStateManager.color(1, 1, 1, 1);
         Gui.drawScaledCustomSizeModalRect(x, y, 0, 0, 13, 5, w, h, 13, 5);
         var label = mc.fontRenderer.trimStringToWidth(text.getLocal(), Math.max(0, w - 2));
-        mc.fontRenderer.drawString(label, x + Math.max(1, (w - mc.fontRenderer.getStringWidth(label)) / 2), y + 4, selected ? 0x80d8ff : 0xffffff);
+        mc.fontRenderer.drawString(label, x + Math.max(1, (w - mc.fontRenderer.getStringWidth(label)) / 2), y + 4, !enabled ? 0x777777 : selected ? 0x80d8ff : 0xffffff);
     }
     private void materials(int top) {
         var font = Minecraft.getMinecraft().fontRenderer;
@@ -179,7 +191,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             font.drawString(font.trimStringToWidth(row.name(), Math.max(1, width - cw - 28)), 23, y + 4, 0xffffff);
             font.drawString(count, width - cw - 5, y + 4, 0xffffff);
             var token = drawnToken;
-            var action = new Action(4, y, width - 8, 17, StructurePreviewText.Selected, false,
+            var action = new Action(4, y, width - 8, 17, StructurePreviewText.Selected, false, true,
                 () -> { if (token == view.token() && view.model() != null) view.select(row.display()); });
             actions.add(action);
             tooltips.put(action, List.of(row.name(), StructurePreviewText.Counts.getLocal(row.count()), StructurePreviewText.Issues.getLocal(row.mismatch(), row.unloaded(), row.unknown())));
@@ -198,7 +210,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             Gui.drawRect(px, py, px + 20, py + 20, choice == representative(selected) ? 0xff4080aa : 0xff777777);
             var stack = optionStack(selected.options().get(choice));
             if (!stack.isEmpty()) Minecraft.getMinecraft().getRenderItem().renderItemAndEffectIntoGUI(stack, px + 2, py + 2);
-            var action = new Action(px, py, 20, 20, StructurePreviewText.Alternatives, false, () -> view.alternative(token, selected, choice));
+            var action = new Action(px, py, 20, 20, StructurePreviewText.Alternatives, false, true, () -> view.alternative(token, selected, choice));
             actions.add(action);
             var option = selected.options().get(choice);
             tooltips.put(action, List.of(stack.isEmpty() ? option.blockId().toString() : stack.getDisplayName(), option.blockId() + " @ " + option.meta()));
@@ -250,7 +262,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             search.mouseClicked(x, y, button);
             for (var action : actions) if (action.contains(x, y)) {
                 pressedText = action.text; pressedUntil = System.currentTimeMillis() + 120;
-                if (drawnToken == view.token()) action.run.run(); return true;
+                if (action.enabled && drawnToken == view.token()) action.run.run(); return true;
             }
         }
         var rect = scene.viewport();

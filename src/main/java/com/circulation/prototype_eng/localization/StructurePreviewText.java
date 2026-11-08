@@ -9,7 +9,7 @@ public enum StructurePreviewText implements LocalizationEnum {
     Search, SortIssues, SortCount, SortName, Match, Mismatch, Unloaded, Unknown, Scan, Selected,
     Alternatives, Slices, Occurrence, Project, Stop, Follow, Locked, Rotate, Position, Material,
     North, East, South, West, Usage, Started, Stopped, Counts, Issues, FormedPreviewFuture,
-    KeyCategory, KeyLock, KeyRotatePositive, KeyRotateNegative, Orientation, ViewOptions, AutoRotate, Wireframe;
+    KeyCategory, KeyLock, KeyRotatePositive, KeyRotateNegative, Orientation, ViewOptions, AutoRotate, Wireframe, FormedPreview, MachineContextRequired, MachineContextMismatch;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".StructurePreview." + name();
 

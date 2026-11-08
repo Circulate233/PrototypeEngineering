@@ -22,6 +22,9 @@ import org.lwjgl.util.glu.GLU;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Objects;
+import com.circulation.prototype_eng.block.MachineControllerBlock;
+import com.circulation.prototype_eng.block.MachineControllerBlocks;
+import net.minecraft.client.renderer.texture.TextureMap;
 
 /** Public concrete preview control for AEBaseGui and independent custom RecipePoolJeiPage composition. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
@@ -29,11 +32,16 @@ public final class StructurePreviewScene implements AutoCloseable {
     private final StructurePreviewView view;
     private final StructurePreviewCamera camera = new StructurePreviewCamera();
     private final PreviewBlockModels meshes;
+    private final PreviewMachineModels machines;
+    private final long animationStartNanos = System.nanoTime();
     private final AutoCloseable invalidationSubscription, closeSubscription;
     private final PreviewTileEntities<TileEntity> tiles = new PreviewTileEntities<>(new NativeTiles());
     private PreviewBlockAccess access;
     private Object token, world;
     private boolean closed;
+    private MachineControllerBlock<?> controller;
+    private int controllerCursor;
+    private boolean controllerResolved;
     private final FloatBuffer colors = BufferUtils.createFloatBuffer(4);
     private final FloatBuffer modelview = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16), projected = BufferUtils.createFloatBuffer(3);
     private final IntBuffer nativeViewport = BufferUtils.createIntBuffer(4);
@@ -41,7 +49,9 @@ public final class StructurePreviewScene implements AutoCloseable {
 
     public StructurePreviewScene(StructurePreviewView view) {
         this.view = view;
+        controllerResolved = view.machine() == null;
         meshes = new PreviewBlockModels(view.previews());
+        machines = new PreviewMachineModels(view);
         invalidationSubscription = view.previews().onInvalidated(this::invalidate);
         closeSubscription = view.previews().onClosed(this::close);
         PreviewGuiResources.add(this);
@@ -52,7 +62,24 @@ public final class StructurePreviewScene implements AutoCloseable {
     public void invalidate() {
         if (closed) return;
         view.invalidateMaterials();
-        access = null; token = null; tiles.clear(); meshes.invalidate();
+        access = null; token = null;
+        Throwable failure = null;
+        try {
+            machines.invalidate();
+        } catch (RuntimeException | Error caught) {
+            failure = caught;
+        }
+        try {
+            tiles.clear();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        try {
+            meshes.invalidate();
+    } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        PreviewBlockModelCache.rethrow(failure);
     }
     public void draw(StructurePreviewCamera.Viewport screenViewport, float partialTicks) {
         if (closed) return;
@@ -64,9 +91,15 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (world != mc.world || token != view.token()) {
             invalidate(); world = mc.world; token = view.token();
         }
-        if (model == null) return;
+        var bounds = view.sceneBounds();
+        if (model == null || bounds == null) return;
+        var round = view.token();
+        prepareController();
         if (access == null) access = new PreviewBlockAccess(view);
         access.advance(2048);
+        var controllerState = controller == null || !view.threeDimensional ? null : controller.previewState(view.settings().orientation(), view.formedPreview());
+        if (closed || view.token() != round || view.model() != model || mc.world != world) return;
+        access.controllerState(controllerState);
         tiles.prepare(view, access, mc.world, 512);
         camera.frame(System.currentTimeMillis(), view.autoRotate);
         var before = PreviewBlockModels.State.capture(colors);
@@ -83,18 +116,21 @@ public final class StructurePreviewScene implements AutoCloseable {
             GlStateManager.matrixMode(GL11.GL_PROJECTION); GlStateManager.pushMatrix();
             try {
                 GlStateManager.loadIdentity();
-                float far = (float) Math.clamp(camera.distance(model.bounds()) * 30, 2000, Float.MAX_VALUE);
+                float far = (float) Math.clamp(camera.distance(bounds) * 30, 2000, Float.MAX_VALUE);
                 GLU.gluPerspective(45, rect[2] / (float) rect[3], 0.1f, far);
                 GlStateManager.matrixMode(GL11.GL_MODELVIEW); GlStateManager.pushMatrix();
-                try {
+                try (var frame = machines.request((System.nanoTime() - animationStartNanos) / 50_000_000.0)) {
                     GlStateManager.loadIdentity();
-                    var center = camera.center(model.bounds());
-                    GlStateManager.translate(0, 0, -camera.distance(model.bounds()));
+                    var center = camera.center(bounds);
+                    GlStateManager.translate(0, 0, -camera.distance(bounds));
                     GlStateManager.rotate((float) camera.pitch(), 1, 0, 0); GlStateManager.rotate((float) camera.yaw(), 0, 1, 0);
                     GlStateManager.translate(-center.x, -center.y, -center.z);
-                    var ray = Objects.requireNonNull(camera.ray(viewport, viewport.x() + viewport.width() / 2, viewport.y() + viewport.height() / 2, model.bounds()));
+                    var ray = Objects.requireNonNull(camera.ray(viewport, viewport.x() + viewport.width() / 2, viewport.y() + viewport.height() / 2, bounds));
                     meshes.renderScene(view, access, ray.origin().x, ray.origin().y, ray.origin().z);
                     tiles.draw(view, partialTicks, 512);
+                    if (controllerState != null) drawController(controllerState);
+                    if (closed || view.token() != round || view.model() != model || mc.world != world) return;
+                    frame.draw(ray.origin());
                     GlStateManager.disableTexture2D(); GlStateManager.disableLighting(); GlStateManager.disableDepth();
                     var picked = view.picked();
                     if (picked != null && view.visible(picked)) {
@@ -136,19 +172,61 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
     public boolean press(double x, double y, int button) { return camera.press(viewport, x, y, button); }
-    public boolean drag(double x, double y) { var model = view.model(); return model != null && camera.drag(x, y, model.bounds(), viewport); }
+    public boolean drag(double x, double y) { var bounds = view.sceneBounds(); return bounds != null && camera.drag(x, y, bounds, viewport); }
     public boolean release(double x, double y, int button) { return camera.release(button) && view.choose(camera.pick(view, viewport, x, y)); }
     public boolean wheel(double x, double y, int delta) { return camera.wheel(viewport, x, y, delta); }
     @Override public void close() {
         if (closed) return;
         closed = true; PreviewGuiResources.remove(this);
         Throwable failure = null;
-        try { tiles.close(); } catch (RuntimeException | Error caught) { failure = caught; }
+        try {
+            machines.close();
+        } catch (RuntimeException | Error caught) {
+            failure = caught;
+        }
+        try {
+            tiles.close(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
         try { meshes.close(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
         for (var subscription : new AutoCloseable[] {invalidationSubscription, closeSubscription}) try { subscription.close(); }
         catch (Exception caught) { failure = PreviewBlockModelCache.merge(failure, new IllegalStateException("Cannot detach viewer subscription", caught)); }
         catch (Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
         PreviewBlockModelCache.rethrow(failure);
+    }
+
+    private void prepareController() {
+        if (controllerResolved || !view.threeDimensional) return;
+        var declarations = MachineControllerBlocks.all();
+        for (int spent = 0; spent < 512 && controllerCursor < declarations.size(); spent++) {
+            var block = declarations.get(controllerCursor++);
+            if (block.type() == view.machine()) {
+                controller = block;
+                controllerResolved = true;
+                return;
+            }
+        }
+        if (controllerCursor == declarations.size()) controllerResolved = true;
+    }
+
+    private void drawController(IBlockState state) {
+        var before = PreviewBlockModels.State.capture(colors);
+        float lightX = OpenGlHelper.lastBrightnessX, lightY = OpenGlHelper.lastBrightnessY;
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+            GlStateManager.enableTexture2D();
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
+            GlStateManager.enableAlpha();
+            GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1f);
+            GlStateManager.disableLighting();
+            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240);
+            Minecraft.getMinecraft().getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
+            Minecraft.getMinecraft().getBlockRendererDispatcher().renderBlockBrightness(state, 1);
+        } finally {
+            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, lightX, lightY);
+            GlStateManager.popMatrix();
+            before.restore();
+        }
     }
 
     private final class NativeTiles implements PreviewTileEntities.Owner<TileEntity> {

@@ -19,6 +19,10 @@
     "NBTTagLongArrayMixin"
   ],
   "client": [
+    "client.RenderGlobalMachineModelsMixin",
+    "client.TileEntityRendererDispatcherMachineMixin",
+    "client.SimpleReloadableResourceManagerAccessor",
+    "client.FallbackResourceManagerAccessor",
     "client.MinecraftPreviewGuiMixin",
     "client.GuiContainerPreviewMixin",
     "client.GuiScreenPreviewMixin"

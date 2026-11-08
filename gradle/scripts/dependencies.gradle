@@ -3,6 +3,12 @@ apply from: 'gradle/scripts/helpers.gradle'
 dependencies {
     implementation "com.cleanroommc:cleanmix:0.7.4"
     modImplementation 'mezz:jei:4.35.1'
+    // Keep the original Gecko coordinate; this repository delivers a jar whose VERSION field is 3.0.30.
+    modImplementation 'software.bernie.geckolib:geckolib-forge-1.12.2:3.0.31'
+    modImplementation 'curse.maven:component-model-hider-940949:4885858'
+    modCompileOnly 'curse.maven:lumenized-1234162:6734060'
+    modRuntimeOnly 'curse.maven:lumenized-1234162:6734060'
+    modRuntimeOnly 'curse.maven:ctm-267602:2915363'
     // AEBaseGui implements this optional API; javac needs it when compiling our concrete GUIs.
     modCompileOnly 'curse.maven:mouse-tweaks-unofficial-461660:5876158'
 

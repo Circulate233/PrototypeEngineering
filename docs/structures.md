@@ -84,9 +84,9 @@ focused47 tests /3 suites、受影响82 tests /8 suites及最终正常完整buil
 
 ## D3-A：完整成型显示事实、typed动画与纯锚点
 
-本块实现和验证已完成；实际复杂renderer仍属后续。`api.machine.render.MachineRenderSnapshot`保存服务器lifecycle已安装的完整accepted occurrence树、origin/step/count、实际coverage和controller bounds、当前ComponentMap IDs及typed动画。capture只在joined owner boundary取样并复验原machine/host/configuration/catalog，要求机器声明type；不调用客户端matcher、不持有World/TE执行权。重复ID按parent/child-edge分别保留；模板origin已经含offset，PER_SLICE直接origin+i*acceptedStep，count0没有自身slice anchor但child保留服务器origin-step+自身offset接受坐标。模型自己的offset另旋转一次。bounds仅为实际coverage/controller，后续模型geometry AABB另合并。
+A本块实现和验证已完成；随后实际复杂renderer由下方D3 B+C+D完成。`api.machine.render.MachineRenderSnapshot`保存服务器lifecycle已安装的完整accepted occurrence树、origin/step/count、实际coverage和controller bounds、当前ComponentMap IDs及typed动画。capture只在joined owner boundary取样并复验原machine/host/configuration/catalog，要求机器声明type；不调用客户端matcher、不持有World/TE执行权。重复ID按parent/child-edge分别保留；模板origin已经含offset，PER_SLICE直接origin+i*acceptedStep，count0没有自身slice anchor但child保留服务器origin-step+自身offset接受坐标。模型自己的offset另旋转一次。bounds仅为实际coverage/controller，后续模型geometry AABB另合并。
 
-`MachineAnimationState.TYPE/CODEC`沿原MachineType.Builder.component与MachineAssembly.Builder.component(TYPE,CODEC)声明/恢复，公开setLayers/setAnimation/clear只更新immutable ordered layers和checked long revision；实际执行context可更新，TE joined observer冻结同步，worker不操作TE/World。`api.client.render.MachineRenderBindings`按machine、实际component ID、machine内structure ID精确登记；原token关闭不能删除替代登记。GeckoModelBinding只声明普通geo/texture/animation位置、默认层/名称、model offset/yOffset/pass/global属性，不创建Gecko实例。formed且有structure声明时只走accepted树；unformed或无structure声明才machine/component fallback。有animation时typed非空层→默认层→默认名，无animation则层为空；后层覆盖骨骼的实际baker/driver仍后续。
+`MachineAnimationState.TYPE/CODEC`沿原MachineType.Builder.component与MachineAssembly.Builder.component(TYPE,CODEC)声明/恢复，公开setLayers/setAnimation/clear只更新immutable ordered layers和checked long revision；实际执行context可更新，TE joined observer冻结同步，worker不操作TE/World。`api.client.render.MachineRenderBindings`按machine、实际component ID、machine内structure ID精确登记；原token关闭不能删除替代登记。GeckoModelBinding只声明普通geo/texture/animation位置、默认层/名称、model offset/yOffset/pass/global属性，不创建Gecko实例。formed且有structure声明时只走accepted树；unformed或无structure声明才machine/component fallback。有animation时typed非空层→默认层→默认名，无animation则层为空；后层覆盖骨骼的实际baker/driver已由下方D3 B接通。
 
 原Display五字段不变，Render sibling使用strict独立schema/full signed xyz varint和16 KiB片。getUpdateTag/getUpdatePacket共用冻结首片，其余及ChunkWatch全片补发沿原SPacketUpdateTileEntity同pos/type；只向原世界、原connection和当前chunk观看者发送，不加载chunk。准确catalog输入/view配对覆盖reload短窗口撤权；连接/attached TE/坐标/type/Display generation/sequence/catalog session/sequence核验后，完整解码和完整目录相遇才一次发布。新header/目录/binding/resource/world/TE失效先撤current view，部分及晚到数据不恢复隐藏资格；native NBT tag不能改冻结Part，invalidate/installer重入和安装失败不覆盖或重新授予错误fact。root.hideWorldBlocks只是whole-tree coverage+controller的隐藏事实门禁，真正隐藏还要formed+current+drawable替代。
 
@@ -94,7 +94,17 @@ focused47 tests /3 suites、受影响82 tests /8 suites及最终正常完整buil
 
 focused24/4、受影响122/17与最终正常完整build1510 tests /187 suites均通过，failure/error/skipped为0。20 Java本机MCP errorsOnly:false全级零、完整项目文件读回/当前磁盘20/20一致、MCP build成功；16main仅CRLF规范化后normalized诊断输入不变，20当前raw SHA构建及最终MCP后稳定。准确写前/原与fix-p2候选/三项审计/4shared D2重接/原compile和Spotless失败/最终运行XML、读回、23路径差异见 `build/staging/machine-rendering/a/integration/`。未启动Minecraft/服务端/Bootstrap/FML，不据纯行为或项目读回证明真实World watcher/网络包、未保存Document或GL验收。
 
-按用户要求完成A后停止；恢复目标后从B的准确Gecko资产/CPU bake继续。原owned executor→builder/packed/direct-map输出与lease、静态/动画拆分、TESR/24向/pass/native fallback/Bloom/CMH overlap、可绘制替代后实际隐藏、D2 forming-model toggle全部保留，A不能算整个D3完成。
+A当时按本块范围停止；B+C+D随后完整接通以下渲染链，本轮在整个B+C+D完成后停止。
+
+## D3 B+C+D：资产、原生模型渲染与形成模型预览
+
+B使用原Gecko资源字节/动画loader、CPU骨骼层级/24向/静态和动画分区，保留独立任务调度、普通builder/packed bulk/mapped两槽、bounded合批和owned池/reader lease。native独立ZipFile的owner只选定并打开句柄，读取/解压在worker；FolderResourcePack保留原验证入口，覆盖的manager/custom pack在owner冻结原结果。资源消费者仅需Gecko JSON/ImageIO字节，metadata/getAllResources不属于等价声明。资源代/真实active reader退出和失败清理保持原义务，unmap失败整个结果不发布。world origin复用原camera-snapped coarse grid和负安全floorDiv，数值与int转换显式检查；不同机器共用origin，同origin/texture/light的实际drawMultiple继续合批，origin边界变化撤旧owner与hide权。
+
+C外部native扩展继承公开 `MachineControllerRenderer<T extends AEBaseTile & MachineControllerHost>`，提供真实 `Class<T>` 和typed view/snapshots/models；public bounds/maximumDistanceSquared按原生调用路径派发，调用 `register()` 绑定真实类型，仅Basic选择默认TE。native RenderChunk worker分类不读World/view，owner读取完整current view，accepted bounds与CPU发射模型world AABB合并；未知/新view/origin/force-global采用有限保守边界，native clipping不会零乘无穷产生NaN，distance SRG refmap已验证。DEFAULT/TRANSPARENT/BLOOM复用原uploader，ordinary控制器combinedLight与独立lightmap、透明中心远→近、数组/绑定/GL恢复保持。可用native Bloom ticket/FBO/layer的0/1/2 worldPass回调保留同一fork至第二回调或pass结束；CMH准确slot/immutable collection身份和重叠保护，仅formed+current+完整且有真实vertices的替代才隐藏，旧view撤draw/hide权；延迟Bloom native draw失败经实际State/Owner/View scope回调撤权，后继View与独立同cache外部State不被默认proxy代替。native isInvalid查询与stale状态/hider/队列/snapshot及GL恢复的逐项错误聚合已闭环。
+
+D在原D2 Scene/Panel/AEBaseGui/HEI模型上显式传可选MachineType，形成模型开关复用B+C；按selected occurrence/用户slice锚点构建owned Frame，不创建执行中的machine或临时服务器宿主。GUI原camera矩阵只应用一次，ZERO仅用于translation，透明排序使用同一camera ray的model-space eye。controller代表项通过公开typed previewState；原2D/相机/BOM/代表项/导航/父页返回及controller排除保持，40PNG和NOTICE未改。
+
+最终focused53/10、受影响161/19与正常完整build1563 tests /197 suites全过；56Java本机MCP全级零、完整项目读回/磁盘56/56一致、MCP build成功，61源码资源构建及最终MCP后raw SHA稳定。最早before、固定V1/V2/V3/最终源码、几何/生命周期P2和native SRG映射审计、真实原失败/最终XML/MCP与64路径精确本地提交入口 `build/staging/machine-rendering/`。保留572背景修改和INDEX备份，不推送、不启动Minecraft/服务端/Bootstrap/FML；纯行为/静态审计不证明真实World/网络包/GL/Bloom视觉、driver删除成功或HEI输入实机行为。本轮完成整个B+C+D后停止，其他保留能力在后续授权下继续。
 
 ## 模板、切片与修正
 
@@ -159,4 +169,4 @@ focused24/4、受影响122/17与最终正常完整build1510 tests /187 suites均
 
 新增测试覆盖真实 worker 消费快照、读取证明/时间刷新、切片增长、同方向换仓、过期成功/失败/失配、配置 ABA、卸载、发现失稳重试、故障隔离、跨线程/执行重叠及重入。逻辑 fixture 实现公开宿主接口，没有伪造 Forge 注册环境。
 
-实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费、D1原生BLOCK_MODEL/VBO世界路径均已接并验证。D2 AEBaseGui/JEI、代表项选择/邻居裁剪/owned TESR-NBT与D3-A完整成型状态同步/纯绑定锚点已实现验证；本块后停止，恢复目标后继续D3-B资产/CPU bake及后续TESR/Bloom/隐藏和forming-model toggle；结构准备工作预算及整体其他保留能力也仍继续。基本盒投影和D1不缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。
+实际控制器/机器类型生命周期与调度入口已有集成，A 启动期 JSON/共享发布与 B 运行中重载/准确宿主撤销刷新/客户端权威目录缓存同步已实现验证。C 基础预览/盒投影与切片/层/BOM/display override 消费、D1原生BLOCK_MODEL/VBO世界路径均已接并验证。D2 AEBaseGui/JEI、代表项选择/邻居裁剪/owned TESR-NBT与D3-A完整成型状态同步/纯绑定锚点、D3 B+C+D资产/CPU bake/native TESR/Bloom/隐藏及形成模型开关均已实现验证；本轮整个B+C+D完成后停止，结构准备工作预算及整体其他保留能力属于后续授权。基本盒投影和D1不缩减这些后续迁移范围。游戏内集成未验收；本阶段实现与验证已完成。

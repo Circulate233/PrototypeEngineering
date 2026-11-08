@@ -49,6 +49,7 @@ import com.circulation.prototype_eng.machine.render.ControllerRenderSync;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.List;
+import net.minecraft.util.math.AxisAlignedBB;
 
 /**
  * Empty construction/read never assembles. The next server update observes the final placement/NBT
@@ -56,6 +57,20 @@ import java.util.List;
  */
 @SuppressWarnings("resource") // FML owns the shared server scheduler, never an individual tile.
 public class MachineControllerBlockEntity extends AEBaseTile implements MachineControllerHost {
+    @Override
+    public @NotNull AxisAlignedBB getRenderBoundingBox() {
+        return PrototypeEngineering.proxy.controllerRenderBounds(this);
+    }
+
+    @Override
+    public double getMaxRenderDistanceSquared() {
+        var bounds = getRenderBoundingBox();
+        double x = Math.max(Math.abs(bounds.minX - pos.getX()), Math.abs(bounds.maxX - pos.getX()));
+        double y = Math.max(Math.abs(bounds.minY - pos.getY()), Math.abs(bounds.maxY - pos.getY()));
+        double z = Math.max(Math.abs(bounds.minZ - pos.getZ()), Math.abs(bounds.maxZ - pos.getZ()));
+        double distance = 64 + Math.sqrt(x * x + y * y + z * z);
+        return distance * distance;
+    }
     @Nullable private ControllerData data;
     @Nullable private MachineController controller;
     @Nullable private ControllerLifecycleHost host;

@@ -161,7 +161,7 @@ public final class PreviewBlockModels implements AutoCloseable {
             layer == null ? null : new StructurePreviewModel.Layer(layer), 2048, 0, 4096, Double.MAX_VALUE, 4096, 96, 128);
         var intent = new StructurePreviews.Projection(model.structureId(), model.settings(), BlockPos.ORIGIN, options);
         PreviewBlockModelCache.Ready ready = null;
-        if (OpenGlHelper.useVbo() && layer == null) {
+        if (OpenGlHelper.useVbo() && layer == null && !view.formingModelsVisible()) {
             bakingModel = model;
             try { ready = cache.advance(model, options.blockModelBuildVisitsPerFrame()); }
             finally { bakingModel = null; }

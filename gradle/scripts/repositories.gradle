@@ -38,6 +38,11 @@ repositories {
             includeGroup 'com.github.FormlessDragon'
         }
     }
+    maven {
+        name = 'GeckoLib'
+        url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+        content { includeGroup 'software.bernie.geckolib' }
+    }
     mavenCentral()
     mavenLocal() // Must be last for caching to work
 }

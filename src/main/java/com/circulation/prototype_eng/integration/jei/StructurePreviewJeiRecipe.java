@@ -32,7 +32,7 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     }
     @Override public void getIngredients(IIngredients ingredients) { if (!controllers.isEmpty()) ingredients.setOutputs(VanillaTypes.ITEM, controllers.stream().map(ItemStack::copy).toList()); }
     @Override public void drawInfo(Minecraft minecraft, int width, int height, int mouseX, int mouseY) {
-        if (view == null || view.previews().closed()) view = new StructurePreviewView(StructurePreviews.client(), machine.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP));
+        if (view == null || view.previews().closed()) view = new StructurePreviewView(StructurePreviews.client(), machine.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP), machine);
         if (panel == null || panel.closed()) panel = new StructurePreviewPanel(view);
         panel.draw(StructurePreviewJeiCategory.WIDTH, StructurePreviewJeiCategory.HEIGHT, mouseX, mouseY, minecraft.getRenderPartialTicks(), true);
     }

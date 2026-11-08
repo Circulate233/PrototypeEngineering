@@ -21,6 +21,7 @@ import net.minecraft.util.text.TextComponentString;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 
 /** Actual client command: authoritative geometry, GUI and read-only projection, without sample content. */
 @ParametersAreNonnullByDefault
@@ -31,16 +32,23 @@ public final class StructurePreviewCommand extends CommandBase {
     @Override public String getUsage(ICommandSender sender) { return StructurePreviewText.Usage.getLocal(); }
     @Override public int getRequiredPermissionLevel() { return 0; }
     @Override public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws WrongUsageException {
-        if (args.length == 0 || args.length > 2) throw new WrongUsageException(StructurePreviewText.Usage.getTranslationKey());
+        if (args.length == 0 || args.length > 3) throw new WrongUsageException(StructurePreviewText.Usage.getTranslationKey());
         var service = StructurePreviews.client();
         if (args[0].equals("stop") || args[0].equals("off")) {
             service.stopProjection(); sender.sendMessage(new TextComponentString(StructurePreviewText.Stopped.getLocal())); return;
         }
         boolean gui = args[0].equals("gui");
-        if (gui && args.length != 2 || !gui && args.length != 1) throw new WrongUsageException(StructurePreviewText.Usage.getTranslationKey());
+        if (gui && (args.length < 2 || args.length > 3) || !gui && args.length != 1) throw new WrongUsageException(StructurePreviewText.Usage.getTranslationKey());
         var textId = args[gui ? 1 : 0];
         if (!textId.matches("(?:[a-z0-9_.-]+:)?[a-z0-9/._-]+")) throw new WrongUsageException(StructurePreviewText.Usage.getTranslationKey());
         var id = new ResourceLocation(textId); var player = Minecraft.getMinecraft().player;
+        if (args.length == 3 && !args[2].matches("(?:[a-z0-9_.-]+:)?[a-z0-9/._-]+"))
+            throw new WrongUsageException(StructurePreviewText.Usage.getTranslationKey());
+        var machine = args.length == 3 ? MachineTypeRegistry.INSTANCE.get(new ResourceLocation(args[2])) : null;
+        if (args.length == 3 && (machine == null || !machine.structureId().equals(id))) {
+            sender.sendMessage(new TextComponentString(StructurePreviewText.MachineContextMismatch.getLocal()));
+            return;
+        }
         var settings = new StructurePreviewSettings(player == null ? BlockOrientation.NORTH_UP : BlockOrientation.get(player.getHorizontalFacing(), EnumFacing.UP));
         if (gui) {
             var mc = Minecraft.getMinecraft(); var world = mc.world; var connection = mc.getConnection();
@@ -50,7 +58,7 @@ public final class StructurePreviewCommand extends CommandBase {
             PreviewClientOpenQueue.INSTANCE.enqueue(() -> {
                 if (player == null || container == null || mc.player != player || mc.world != world || mc.getConnection() != connection
                     || player.openContainer != container || container.windowId != window || mc.currentScreen != null) return;
-                boolean opened = StructurePreviewScreens.open(id, settings);
+                boolean opened = StructurePreviewScreens.open(id, settings, machine);
                 sender.sendMessage(new TextComponentString((opened ? StructurePreviewText.Started : StructurePreviewText.Unavailable).getLocal(id)));
             });
             return;
@@ -66,6 +74,11 @@ public final class StructurePreviewCommand extends CommandBase {
         if (args.length == 1) { choices.add("gui"); choices.add("stop"); }
         if (args.length == 1 || args.length == 2 && args[0].equals("gui")) {
             var view = StructurePreviews.client().catalogView(); if (view != null) for (var id : view.entries().keySet()) choices.add(id.toString());
+        }
+        if (args.length == 3 && args[0].equals("gui") && args[1].matches("(?:[a-z0-9_.-]+:)?[a-z0-9/._-]+")) {
+            var structure = new ResourceLocation(args[1]);
+            for (var machine : MachineTypeRegistry.INSTANCE.types())
+                if (machine.structureId().equals(structure)) choices.add(machine.id().toString());
         }
         return getListOfStringsMatchingLastWord(args, choices);
     }

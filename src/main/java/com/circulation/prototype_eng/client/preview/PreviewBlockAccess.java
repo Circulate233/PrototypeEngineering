@@ -40,6 +40,13 @@ public final class PreviewBlockAccess implements IBlockAccess {
         }
         return used;
     }
+
+    /** Independent registered controller state for 3D neighbors; never a preview cell or tile. */
+    public void controllerState(@Nullable IBlockState state) {
+        if (!current()) return;
+        if (state == null) states.remove(BlockPos.ORIGIN);
+        else states.put(BlockPos.ORIGIN, state);
+    }
     public boolean visible(BlockPos pos) { var cell = view.at(pos); return cell != null && view.visible(cell); }
     public @Nullable IBlockState represented(BlockPos pos) { return states.get(pos); }
     @Override public IBlockState getBlockState(BlockPos pos) { return states.getOrDefault(pos, Blocks.AIR.getDefaultState()); }

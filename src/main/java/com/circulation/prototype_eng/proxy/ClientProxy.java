@@ -52,9 +52,29 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
+import com.circulation.prototype_eng.client.render.BasicMachineControllerRenderer;
+import com.circulation.prototype_eng.client.render.DirectVertexBufferPool;
+import com.circulation.prototype_eng.client.render.MachineControllerRenderer;
+import com.circulation.prototype_eng.client.render.MachineModelBloom;
+import com.circulation.prototype_eng.client.render.MachineModelRenderState;
+import com.circulation.prototype_eng.client.render.MachineRenderOptions;
+import com.circulation.prototype_eng.client.render.ModelAssets;
+import com.circulation.prototype_eng.client.render.ModelBufferPool;
+import com.circulation.prototype_eng.client.render.ModelBuildCache;
+import com.circulation.prototype_eng.client.render.ModelBuildExecutor;
+import com.circulation.prototype_eng.client.render.ModelClientThread;
+import com.circulation.prototype_eng.client.render.ReusableModelVboUploader;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 
 @SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
 public class ClientProxy extends CommonProxy {
+    private ModelBuildCache modelBuilds;
+    private ModelClientThread modelBuildThread;
+    private World modelBuildWorld;
+    private MachineModelRenderState modelRenderState;
+    private AutoCloseable modelRenderListener;
+    private MachineRenderOptions modelRenderOptions = MachineRenderOptions.defaults();
     private ClientStructureCatalog structures;
     private StructurePreviews previews;
     private WorldProjectionManager projectionManager;
@@ -76,6 +96,109 @@ public class ClientProxy extends CommonProxy {
         if (!Minecraft.getMinecraft().isCallingFromMinecraftThread()) throw new IllegalStateException("Structure view requires the client thread");
         if (structures == null) structures = new ClientStructureCatalog();
         return structures;
+    }
+
+    /** Concrete owned CPU model service, shared by the following runtime and preview consumers. */
+    public ModelBuildCache modelBuilds() {
+        structures();
+        var minecraft = Minecraft.getMinecraft();
+        if (modelBuilds != null && modelBuildWorld != minecraft.world) retireModelBuilds();
+        if (modelBuilds == null) {
+            if (modelBuildThread == null) modelBuildThread = ModelClientThread.minecraft();
+            var owner = modelBuildThread;
+            var assets = new ModelAssets(owner, minecraft.getResourceManager(), minecraft.gameDir.toPath().resolve("resources"));
+            modelBuilds = new ModelBuildCache(owner, assets,
+                new ModelBuildExecutor(modelRenderOptions.workers(), modelRenderOptions.fixedThreads()),
+                new ModelBufferPool(), new DirectVertexBufferPool(), new ReusableModelVboUploader(owner), modelRenderOptions.mappedOutput());
+            modelBuildWorld = minecraft.world;
+        }
+        return modelBuilds;
+    }
+
+    private void retireModelBuilds() {
+        var previous = modelBuilds;
+        var render = modelRenderState;
+        var listener = modelRenderListener;
+        modelBuilds = null;
+        modelBuildWorld = null;
+        modelRenderState = null;
+        modelRenderListener = null;
+        Throwable failure = null;
+        for (var resource : new AutoCloseable[]{listener, render, previous})
+            if (resource != null) try {
+                resource.close();
+            } catch (Exception | Error exception) {
+                if (failure == null) failure = exception;
+                else if (failure != exception) failure.addSuppressed(exception);
+            }
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
+        if (failure != null) throw new IllegalStateException(failure);
+    }
+
+    public MachineRenderOptions modelRenderOptions() {
+        structures();
+        return modelRenderOptions;
+    }
+
+    @SuppressWarnings("unused")
+    // Addons configure the concrete renderer before registration or change its owned service at runtime.
+    public void modelRenderOptions(MachineRenderOptions options) {
+        structures();
+        if (modelRenderOptions.equals(options)) return;
+        modelRenderOptions = Objects.requireNonNull(options);
+        retireModelBuilds();
+    }
+
+    public MachineModelRenderState modelRenderState() {
+        var cache = modelBuilds();
+        if (modelRenderState == null) {
+            modelRenderState = new MachineModelRenderState(cache, modelRenderOptions);
+            modelRenderListener = renderSnapshots().onInvalidated(modelRenderState::invalidateViews);
+        }
+        return modelRenderState;
+    }
+
+    public void flushMachineModels() {
+        if (modelRenderState != null) modelRenderState.flush();
+    }
+
+    @Override
+    public AxisAlignedBB controllerRenderBounds(MachineControllerBlockEntity tile) {
+        var owned = MachineControllerRenderer.ownedBounds(tile);
+        if (owned != null) return owned;
+        if (modelRenderState != null) return modelRenderState.bounds(tile);
+        if (renderSnapshots != null) {
+            var view = renderSnapshots.view(tile.getWorld(), tile, tile.getPos());
+            if (view != null) {
+                var bounds = view.snapshot().bounds();
+                return new AxisAlignedBB(bounds.min(), bounds.max().add(1, 1, 1));
+            }
+        }
+        return super.controllerRenderBounds(tile);
+    }
+
+    @SubscribeEvent
+    public void flushMachineModels(RenderWorldLastEvent event) {
+        modelCleanup(this::flushMachineModels, MachineModelBloom::clear);
+    }
+
+    @SubscribeEvent
+    public void machineModelFrame(TickEvent.RenderTickEvent event) {
+        MachineModelBloom.clear();
+    }
+
+    private static void modelCleanup(Runnable... actions) {
+        Throwable failure = null;
+        for (var action : actions)
+            try {
+                action.run();
+            } catch (RuntimeException | Error cleanup) {
+                if (failure == null) failure = cleanup;
+                else if (failure != cleanup) failure.addSuppressed(cleanup);
+            }
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
     }
 
     public MachineRenderBindings renderBindings() {
@@ -147,14 +270,27 @@ public class ClientProxy extends CommonProxy {
     public void renderWorldUnloaded(WorldEvent.Unload event) {
         if (!event.getWorld().isRemote) return;
         var world = event.getWorld();
-        Minecraft.getMinecraft().addScheduledTask(() -> {
+        var originalBuilds = modelBuildWorld == world ? modelBuilds : null;
+        Minecraft.getMinecraft().addScheduledTask(() -> modelCleanup(() -> {
+                if (originalBuilds != null && modelBuilds == originalBuilds) retireModelBuilds();
+            },
+            () -> {
             if (renderSnapshots != null) renderSnapshots.unloadWorld(world);
-        });
+        }));
     }
 
     @SubscribeEvent
     public void renderTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && renderSnapshots != null) renderSnapshots.tick();
+        if (event.phase != TickEvent.Phase.END) return;
+        modelCleanup(() -> {
+                if (modelRenderState != null) modelRenderState.tick();
+            },
+            () -> {
+                if (modelBuildThread != null) modelBuildThread.drain();
+            },
+            () -> {
+                if (renderSnapshots != null) renderSnapshots.tick();
+    });
     }
 
     @Override public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
@@ -176,11 +312,15 @@ public class ClientProxy extends CommonProxy {
     }
 
     @SubscribeEvent public void disconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
-        Minecraft.getMinecraft().addScheduledTask(() -> structures().disconnected(event.getManager()));
+        Minecraft.getMinecraft().addScheduledTask(() -> modelCleanup(() -> {
+                if (structures().connectedTo(event.getManager())) retireModelBuilds();
+            },
+            () -> structures().disconnected(event.getManager())));
     }
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        new BasicMachineControllerRenderer().register();
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(PreviewGuiResources.INSTANCE);
         MinecraftForge.EVENT_BUS.register(PreviewEmbeddedInput.INSTANCE);
@@ -192,6 +332,7 @@ public class ClientProxy extends CommonProxy {
             previewResources.registerReloadListener(PreviewGuiResources.INSTANCE);
         if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager resources)
             resources.registerReloadListener(_ -> {
+                retireModelBuilds();
                 if (renderSnapshots != null) renderSnapshots.invalidateResources();
                 if (projectionManager != null) projectionManager.invalidateResources();
             });
