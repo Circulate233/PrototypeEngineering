@@ -52,6 +52,13 @@ import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
 import com.circulation.prototype_eng.structure.reload.StructureNetwork;
 import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
 import java.nio.file.Path;
+import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
+import com.circulation.prototype_eng.machine.ControllerDisplayData;
+import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
+import java.util.function.Consumer;
+import net.minecraft.network.NetworkManager;
+import org.jetbrains.annotations.Nullable;
 
 /** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
 public class CommonProxy implements IGuiHandler {
@@ -134,6 +141,27 @@ public class CommonProxy implements IGuiHandler {
     /** Client override schedules onto the actual client thread; common class loads no client API. */
     public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
         throw new IllegalStateException("Server proxy cannot receive a client structure catalog");
+    }
+
+    public boolean controllerDisplayConnectionCurrent(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {
+        return false;
+    }
+
+    public void receiveControllerRender(MachineControllerBlockEntity tile, @Nullable NetworkManager manager,
+                                        ControllerRenderChunks.Part part, Consumer<MachineRenderSnapshot> installed) {
+        throw new IllegalStateException("Server proxy cannot receive client controller render state");
+    }
+
+    public void releaseControllerRender(MachineControllerBlockEntity tile) {
+    }
+
+    public void receiveControllerDisplay(MachineControllerBlockEntity tile, @Nullable NetworkManager manager,
+                                         ControllerDisplayData display,
+                                         Consumer<MachineRenderSnapshot> installed) {
+    }
+
+    public @Nullable MachineRenderSnapshot currentControllerRender(MachineControllerBlockEntity tile) {
+        return null;
     }
 
     @Override

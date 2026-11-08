@@ -39,11 +39,27 @@ import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
 import com.circulation.prototype_eng.client.preview.StructurePreviewCommand;
 import net.minecraftforge.client.ClientCommandHandler;
+import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
+import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
+import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
+import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
+import com.circulation.prototype_eng.machine.ControllerDisplayData;
+import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
+import java.util.function.Consumer;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.jetbrains.annotations.Nullable;
 
+@SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
 public class ClientProxy extends CommonProxy {
     private ClientStructureCatalog structures;
     private StructurePreviews previews;
     private WorldProjectionManager projectionManager;
+    private MachineRenderBindings renderBindings;
+    private ClientMachineRenderSnapshots renderSnapshots;
 
     public StructurePreviews previews() {
         var catalog = structures();
@@ -60,6 +76,85 @@ public class ClientProxy extends CommonProxy {
         if (!Minecraft.getMinecraft().isCallingFromMinecraftThread()) throw new IllegalStateException("Structure view requires the client thread");
         if (structures == null) structures = new ClientStructureCatalog();
         return structures;
+    }
+
+    public MachineRenderBindings renderBindings() {
+        structures();
+        if (renderBindings == null) renderBindings = new MachineRenderBindings();
+        return renderBindings;
+    }
+
+    public ClientMachineRenderSnapshots renderSnapshots() {
+        structures();
+        if (renderSnapshots == null) renderSnapshots = new ClientMachineRenderSnapshots(structures(), renderBindings());
+        return renderSnapshots;
+    }
+
+    @Override
+    public boolean controllerDisplayConnectionCurrent(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {
+        var minecraft = Minecraft.getMinecraft();
+        if (!minecraft.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Controller display requires the client owner");
+        var handler = minecraft.getConnection();
+        return handler != null && minecraft.world != null && tile.getWorld() == minecraft.world &&
+            (manager == null || handler.getNetworkManager() == manager) && handler.getNetworkManager().isChannelOpen() &&
+            structures().connectedTo(handler.getNetworkManager());
+    }
+
+    @Override
+    public void receiveControllerRender(MachineControllerBlockEntity tile, @Nullable NetworkManager manager,
+                                        ControllerRenderChunks.Part part, Consumer<MachineRenderSnapshot> installed) {
+        if (!controllerDisplayConnectionCurrent(tile, manager)) return;
+        var owner = attachRenderOwner(tile, part.display().type(), installed);
+        renderSnapshots().receive(owner, part);
+    }
+
+    @Override
+    public void receiveControllerDisplay(MachineControllerBlockEntity tile, @Nullable NetworkManager manager,
+                                         ControllerDisplayData display,
+                                         Consumer<MachineRenderSnapshot> installed) {
+        if (controllerDisplayConnectionCurrent(tile, manager))
+            renderSnapshots().withdraw(attachRenderOwner(tile, display.type(), installed), display);
+    }
+
+    private ClientMachineRenderSnapshots.Owner attachRenderOwner(MachineControllerBlockEntity tile,
+                                                                 ResourceLocation type,
+                                                                 Consumer<MachineRenderSnapshot> installed) {
+        var minecraft = Minecraft.getMinecraft();
+        var connection = Objects.requireNonNull(minecraft.getConnection()).getNetworkManager();
+        var world = tile.getWorld();
+        var position = tile.getPos().toImmutable();
+        return renderSnapshots().attach(world, tile, connection, position, type,
+            () -> minecraft.world == world && tile.getWorld() == world && !tile.isInvalid() && position.equals(tile.getPos()) &&
+                world.isBlockLoaded(position, false) && world.getTileEntity(position) == tile &&
+                world.getBlockState(position).getBlock() instanceof MachineControllerBlockHost host && host.type().id().equals(type), installed);
+    }
+
+    @Override
+    public void releaseControllerRender(MachineControllerBlockEntity tile) {
+        structures();
+        if (renderSnapshots != null) renderSnapshots.release(tile.getWorld(), tile, tile.getPos());
+    }
+
+    @Override
+    public @Nullable MachineRenderSnapshot currentControllerRender(MachineControllerBlockEntity tile) {
+        if (!controllerDisplayConnectionCurrent(tile, null) || renderSnapshots == null) return null;
+        var view = renderSnapshots.view(tile.getWorld(), tile, tile.getPos());
+        return view == null ? null : view.snapshot();
+    }
+
+    @SubscribeEvent
+    public void renderWorldUnloaded(WorldEvent.Unload event) {
+        if (!event.getWorld().isRemote) return;
+        var world = event.getWorld();
+        Minecraft.getMinecraft().addScheduledTask(() -> {
+            if (renderSnapshots != null) renderSnapshots.unloadWorld(world);
+        });
+    }
+
+    @SubscribeEvent
+    public void renderTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END && renderSnapshots != null) renderSnapshots.tick();
     }
 
     @Override public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
@@ -97,6 +192,7 @@ public class ClientProxy extends CommonProxy {
             previewResources.registerReloadListener(PreviewGuiResources.INSTANCE);
         if (Minecraft.getMinecraft().getResourceManager() instanceof IReloadableResourceManager resources)
             resources.registerReloadListener(_ -> {
+                if (renderSnapshots != null) renderSnapshots.invalidateResources();
                 if (projectionManager != null) projectionManager.invalidateResources();
             });
     }

@@ -6,6 +6,17 @@
 
 ## 当前状态
 
+- 2026-11-08 D3-A 成型渲染状态同步与纯绑定/锚点本块实现和验证已完成。MachineRenderSnapshot 仅读已安装 lifecycle match，按 parent/child-edge 保留完整 accepted occurrence、实际 origin/step/count、covered memberships/去重 positions/controller bounds、实际 ComponentMap IDs 和 typed animation。capture 在joined owner边界复验准确 machine/host/configuration/catalog；明确要求declared machine type，不授执行权限。MachineAnimationState 沿既有 TYPE/Factory/MachineComponentCodec 及实际assembly恢复，公开setter只更新immutable层/checked revision，joined TE observer合并变化；没有第二套组件同步或新并发框架。
+
+- 保留 ControllerDisplayData 五字段构造，在 sibling Render 中strict schema/UTF-8/full signed xyz zigzag分片。TE两原生更新入口只使用同一冻结首片，ControllerRenderSync在原世界/原connection/watch与已加载chunk精确核验后沿同pos/type原TE包发送其余片，ChunkWatch joined boundary补发全部片。ServerStructureReloads按实际candidate/published catalog对象配对准确view；reload发布短窗口先metadata-only unformed撤权，随后observer补完整新代。支持64 MiB/4096片、65,536 occurrences/components、1,048,576位置membership/重复/输出anchors与256动画层；超限或坐标溢出显式拒绝，无截断/clamp。client部分包保留旧完整事实但撤view，只有完整严格解码与准确完成目录相遇后一次安装Display+Render；原连接/TE/Display序号、binding/resource epoch或卸载失效先撤权，旧close不能撤新登记。
+
+- MachineRenderBindings按原registration identity替换/关闭；pure StructureRenderAnchors保持formed结构声明优先、unformed machine/component fallback与typed层→默认层→默认名，无animation则无layers。accepted origin/step不二次旋转或加结构offset；PER_SLICE零片自身无anchor但children保持实际origin-step+childOffset接受坐标；模型自身offset只旋转一次。hidePositions按root flag gate整树actual coverage并补controller，真正隐藏仍须current且可绘制替代，A没有注册native hider或执行Gecko/GPU/TESR。
+
+- focused24 tests /4 suites、受影响122 tests /17 suites通过；最终正常 `gradlew.bat build --console=plain` 1510 tests /187 suites，failure/error/skipped全部0，assemble/Spotless/test/check通过。20 Java本机IDEA MCP get_file_problems(errorsOnly:false)零错误/警告/弱警告、无timeout/isError，MCP build_project成功。最终逐Java完整read_file项目文本/当前磁盘20/20一致，不据此宣称未保存IDE Document；16main仅CRLF转换后的normalized文本20/20与最后诊断输入一致，诊断复用范围明确。20当前raw源码正常full构建前后及最终MCP读回后稳定。
+
+- 原A与fix-p2候选/审计保持，三P2已关闭：native encode clone阻断NBT数组别名，receive失效回调后复验exact header/complete，publish仅installer成功且原owner/header未被重入替代后提交fact。四shared在D2最终版本上窄重接并通过独立审计，保留D2资源/Input/OpenQueue/Command与typed/null-default配置/owner入口。真实初compile唯一fixture旧常量错误、原MCP诊断和第一次full仅LF/CRLF Spotless失败均留存；只修本块16main行尾，无全库SpotlessApply。准确formal-before、20重接/诊断修正、24行为与122/1510运行日志XML、MCP全级/完整项目读回、23路径最终before→final清单/差异入口 `build/staging/machine-rendering/a/integration/`。本块纯测试不证明原生World/chunk观看、真实网络包或GL视觉。未推送、未启动Minecraft/服务端/Bootstrap/FML；按用户要求完成本块后停止，恢复目标后继续B；Gecko3.0.31、CPU bake/owned输出、TESR/24向/pass/Bloom/CMH与D2 forming-model toggle均保留后续，整个D3未完成。
+
+
 - 2026-11-08 用户进一步澄清：基类职责原则适用于所有已公开的继承扩展点，已同步到开发文档 5.2，并由 R33 引用。共同机制、契约及必要身份/绑定/所有权不变量由基类保持，默认实体/组件/业务选择由本仓库具体实现绑定；注册工厂与消费者实际调用可扩展创建/查询/行为入口。只读核对当前 R31/R33 的 typed T/Class/create 全链、真实 controllerFactory/createItem 派发、canonical type/Item 对应校验、GUI/仓室能力接口及 AE 无参创建合同，未发现新的扩展阻碍或语义回退。不可变值对象可保留 final；具体实现可固定默认类型和业务选择，已承诺的继承扩展点不得封闭；本次为三文档澄清，沿用 R33 既有验证，没有新增源码或重跑测试/MCP/build。
 
 - 2026-11-08 结构 D2 GUI/交互/JEI 本阶段实现与验证已完成。StructurePreviewGui 直接继承 AEBaseGui；StructurePreviewScreens、公开 concrete Scene/Panel 供机器原 GUI 和独立 RecipePoolJeiPage 组合。机器子页复用原 Container/window，HEI 即时父页保留；GuiOpen/InitPre/InitPost 按真实原生顺序，精确 screen/player/world/connection/container/window/catalog owner 和 scoped close 保护处理嵌套替换、撤销、取消与返回，不保留旧窗口输入权限。AE原Slot/x/y/enabled快照在取消/重入中恢复；viewer不执行inventory click、AE wheel库存操作或MouseTweaks，HEI slots为空。Esc/背包/Back等原生已消费按下等待release；内嵌camera跨draw刷新准确时间戳/坐标，并跨普通关屏持有准确button的一次up消费凭据，新的同button down先撤销旧凭据。

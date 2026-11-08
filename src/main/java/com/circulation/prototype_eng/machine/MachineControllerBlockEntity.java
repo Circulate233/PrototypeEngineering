@@ -38,6 +38,17 @@ import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
+import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
+import com.circulation.prototype_eng.api.structure.StructureConfiguration;
+import com.circulation.prototype_eng.api.structure.StructureMatch;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
+import com.circulation.prototype_eng.machine.render.ControllerRenderSnapshots;
+import com.circulation.prototype_eng.machine.render.ControllerRenderSync;
+import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.List;
 
 /**
  * Empty construction/read never assembles. The next server update observes the final placement/NBT
@@ -51,6 +62,19 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Nullable private ControllerStructureUpdates structures;
     @Nullable private Placement placement;
     @Nullable private ControllerDisplayData display;
+    @Nullable
+    private ControllerDisplayData serverDisplay;
+    @Nullable
+    private MachineRenderSnapshot serverRender;
+    private List<ControllerRenderChunks.Part> renderParts = List.of();
+    @Nullable
+    private MachineInstance renderMachine;
+    @Nullable
+    private StructureConfiguration renderConfiguration;
+    @Nullable
+    private StructureMatch renderMatch;
+    @Nullable
+    private MachineAnimationState.Snapshot renderAnimation;
     private boolean wantsLoad;
     private boolean queuedLoad;
     private boolean replacementData;
@@ -195,6 +219,11 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
             structures.tick(now);
         }
+        // Observe typed state only after the scheduler joins this machine's workers.
+        var observedEpoch = attachmentEpoch;
+        scheduler().runAtBoundary(() -> {
+            if (observedEpoch == attachmentEpoch && wantsLoad && isAttached()) observeRenderState();
+        });
         // Components may mutate on scheduler workers; a server-side save mark covers their next pass.
         markDirty();
     }
@@ -215,6 +244,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             host = null;
             placement = null;
             displayGeneration = 0;
+            serverDisplay = null;
+            serverRender = null;
+            renderParts = List.of();
             attachmentEpoch = new Object();
         }
         UUID actor = null;
@@ -244,7 +276,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             try {
                 data = new ControllerData(type.id(), orientation(), null);
                 replacementData = false;
-                bound.configureStructure(MachineTypeRegistry.INSTANCE.structure(type), orientation());
+                bound.configureStructure(MachineTypeRegistry.INSTANCE.structureCatalog(), MachineTypeRegistry.INSTANCE.structure(type), orientation());
                 structures = new ControllerStructureUpdates(created, bound, scheduler(), this::changed);
                 applyState();
                 changed();
@@ -292,7 +324,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         data = new ControllerData(old.type(), orientation, old.runtime());
         var machine = machine();
         if (host != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
-            host.configureStructure(MachineTypeRegistry.INSTANCE.structure(block.type()), orientation);
+            host.configureStructure(MachineTypeRegistry.INSTANCE.structureCatalog(), MachineTypeRegistry.INSTANCE.structure(block.type()), orientation);
         }
         applyState();
         changed();
@@ -371,6 +403,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     protected void setRemoved() {
         try {
+            if (world != null && world.isRemote) PrototypeEngineering.proxy.releaseControllerRender(this);
             if (world != null && !world.isRemote) {
                 stop(MachineLifecycleEvent.UnloadReason.INVALIDATED);
             }
@@ -382,6 +415,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     protected void onChunkUnloaded() {
         try {
+            if (world != null && world.isRemote) PrototypeEngineering.proxy.releaseControllerRender(this);
             if (world != null && !world.isRemote) {
                 stop(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             }
@@ -437,36 +471,151 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
 
     private void changed() {
         requireServer();
-        displaySequence = Math.incrementExact(displaySequence);
-        markDirty();
-        if (isAttached()) {
-            var state = world.getBlockState(pos);
-            world.notifyBlockUpdate(pos, state, state, 3);
+        if (!isAttached()) {
+            markDirty();
+            return;
         }
+        captureBlockConfiguration();
+        if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
+        long previousSequence = displaySequence;
+        long nextSequence = Math.incrementExact(previousSequence);
+        var epoch = attachmentEpoch;
+        var original = machine();
+        var originalHost = host;
+        var lifecycle = original == null ? null : Objects.requireNonNull(original.lifecycle());
+        boolean loaded = lifecycle != null && lifecycle.state() == MachineLifecycle.State.LOADED && !lifecycle.retired();
+        var configuration = loaded && originalHost != null ? originalHost.structureConfiguration() : null;
+        var expectedCatalog = configuration == null ? MachineTypeRegistry.INSTANCE.structureCatalog() : configuration.catalog();
+        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var view = expectedCatalog == null ? null : ServerStructureReloads.view(server, expectedCatalog);
+        var metadata = new ControllerDisplayData(Objects.requireNonNull(data).type(), orientation(),
+            loaded && configuration != null && lifecycle.formed(), displayGeneration, nextSequence);
+        MachineRenderSnapshot snapshot = null;
+        if (view != null && loaded && configuration != null) {
+            snapshot = ControllerRenderSnapshots.capture(original, configuration, view, metadata, pos,
+                () -> epoch == attachmentEpoch && isAttached() && machine() == original && host == originalHost &&
+                    displaySequence == previousSequence && ServerStructureReloads.view(server, expectedCatalog) == view);
+            if (snapshot == null) return;
+        } else if (view != null) {
+            var ids = new ObjectArrayList<ResourceLocation>();
+            MachineAnimationState.Snapshot animation = null;
+            if (loaded) {
+                original.requirePersistenceBoundary();
+                for (var binding : original.components().assemblyBindings()) ids.add(binding.type().id());
+                var state = original.components().get(MachineAnimationState.TYPE);
+                if (state != null) animation = state.snapshot();
+            }
+            snapshot = new MachineRenderSnapshot(metadata, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()), pos,
+                configuration == null ? null : configuration.definition().id(), List.of(), List.of(), ids, animation);
+        }
+        // Session publication can briefly be unavailable during reload; metadata conservatively revokes formation.
+        if (view == null && metadata.formed())
+            metadata = new ControllerDisplayData(metadata.type(), metadata.orientation(), false, metadata.generation(), metadata.sequence());
+        var parts = snapshot == null ? List.<ControllerRenderChunks.Part>of() : ControllerRenderChunks.split(snapshot);
+        if (epoch != attachmentEpoch || !isAttached() || machine() != original || displaySequence != previousSequence)
+            return;
+        displaySequence = nextSequence;
+        serverDisplay = metadata;
+        serverRender = snapshot;
+        renderParts = parts;
+        renderMachine = original;
+        renderConfiguration = configuration;
+        renderMatch = loaded ? lifecycle.structureMatch() : null;
+        renderAnimation = snapshot == null ? null : snapshot.animation();
+        markDirty();
+        var state = world.getBlockState(pos);
+            world.notifyBlockUpdate(pos, state, state, 3);
+        ControllerRenderSync.remaining(this, parts);
+    }
+
+    private void observeRenderState() {
+        var current = machine();
+        if (current == null) return;
+        var lifecycle = Objects.requireNonNull(current.lifecycle());
+        if (lifecycle.state() != MachineLifecycle.State.LOADED || lifecycle.retired()) return;
+        current.requirePersistenceBoundary();
+        var configuration = host == null ? null : host.structureConfiguration();
+        var animation = current.components().get(MachineAnimationState.TYPE);
+        var state = animation == null ? null : animation.snapshot();
+        var ids = new ObjectArrayList<ResourceLocation>();
+        for (var binding : current.components().assemblyBindings()) ids.add(binding.type().id());
+        if (serverRender == null || current != renderMachine || configuration != renderConfiguration ||
+            lifecycle.structureMatch() != renderMatch || state != renderAnimation || !ids.equals(serverRender.components()))
+            changed();
+    }
+
+    /** Initial chunk reads use construction data only, never traverse an active machine. */
+    private void freezeColdDisplay() {
+        if (serverDisplay != null) return;
+        captureBlockConfiguration();
+        if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
+        serverDisplay = new ControllerDisplayData(Objects.requireNonNull(data).type(), orientation(), false, displayGeneration, displaySequence);
+        var view = ServerStructureReloads.view(Objects.requireNonNull(world.getMinecraftServer()), MachineTypeRegistry.INSTANCE.structureCatalog());
+        if (view != null) {
+            serverRender = new MachineRenderSnapshot(serverDisplay, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()),
+                pos, null, List.of(), List.of(), List.of(), null);
+            renderParts = ControllerRenderChunks.split(serverRender);
+        }
+    }
+
+    public List<ControllerRenderChunks.Part> serverRenderParts() {
+        requireServer();
+        freezeColdDisplay();
+        return renderParts;
+    }
+
+    /** Only a complete current client view is visible to later renderer consumers. */
+    @SuppressWarnings("unused") // Public read-only entry for the following renderer migration stage and addons.
+    public @Nullable MachineRenderSnapshot renderSnapshot() {
+        if (world == null || !world.isRemote) return null;
+        return PrototypeEngineering.proxy.currentControllerRender(this);
     }
     @Override public @NotNull NBTTagCompound getUpdateTag() {
         requireServer();
-        captureBlockConfiguration();
-        if (displayGeneration == 0) { displayGeneration = ControllerDisplayData.newGeneration(); }
+        freezeColdDisplay();
+        if (!renderParts.isEmpty()) return ControllerRenderSync.tag(this, renderParts.getFirst());
         var tag = new NBTTagCompound();
         tag.setInteger("x", pos.getX()); tag.setInteger("y", pos.getY()); tag.setInteger("z", pos.getZ());
-        tag.setTag("Display", new ControllerDisplayData(Objects.requireNonNull(data).type(), orientation(), formed(), displayGeneration, displaySequence).encode());
+        tag.setTag("Display", Objects.requireNonNull(serverDisplay).encode());
         return tag;
     }
     @Override public SPacketUpdateTileEntity getUpdatePacket() { return new SPacketUpdateTileEntity(pos, 0, getUpdateTag()); }
     @Override public void handleUpdateTag(@NotNull NBTTagCompound tag) {
-        if (world == null || !world.isRemote) { throw new IllegalStateException("Display data requires the client world"); }
-        if (StrictNbt.requireInt(tag, "x") != pos.getX() || StrictNbt.requireInt(tag, "y") != pos.getY() || StrictNbt.requireInt(tag, "z") != pos.getZ()) { return; }
-        if (!isAttached()) { return; }
+        acceptClientTag(tag, null);
+    }
+
+    private void acceptClientTag(NBTTagCompound tag, @Nullable NetworkManager manager) {
+        if (world == null || !world.isRemote) throw new IllegalStateException("Display data requires the client world");
+        if (!isAttached() || !PrototypeEngineering.proxy.controllerDisplayConnectionCurrent(this, manager)) return;
+        if (StrictNbt.requireInt(tag, "x") != pos.getX() || StrictNbt.requireInt(tag, "y") != pos.getY() || StrictNbt.requireInt(tag, "z") != pos.getZ())
+            return;
         var payload = StrictNbt.requireCompound(tag, "Display");
-        if (!requireBlock().type().id().equals(StrictNbt.requireId(payload, "Type"))) { return; }
+        if (!requireBlock().type().id().equals(StrictNbt.requireId(payload, "Type"))) return;
         var incoming = ControllerDisplayData.decode(payload);
-        if (!incoming.follows(display)) { return; }
+        // Includes the same-tile unload/reload ABA case: an old complete Display cannot seed a fresh assembler.
+        if (!incoming.follows(display)) return;
+        if (tag.hasKey("Render")) {
+            var part = ControllerRenderChunks.Part.decode(incoming, StrictNbt.requireCompound(tag, "Render"));
+            PrototypeEngineering.proxy.receiveControllerRender(this, manager, part, this::installClientRender);
+        } else if (!incoming.formed() && incoming.follows(display)) {
+            PrototypeEngineering.proxy.receiveControllerDisplay(this, manager, incoming, this::installClientRender);
+            installClientDisplay(incoming);
+        }
+    }
+
+    private void installClientRender(MachineRenderSnapshot snapshot) {
+        if (!isAttached() || !snapshot.controller().equals(pos) || !snapshot.display().follows(display)) return;
+        installClientDisplay(snapshot.display());
+    }
+
+    private void installClientDisplay(ControllerDisplayData incoming) {
         display = incoming;
         data = new ControllerData(incoming.type(), incoming.orientation(), null);
         world.markBlockRangeForRenderUpdate(pos, pos);
     }
-    @Override public void onDataPacket(@NotNull NetworkManager manager, @NotNull SPacketUpdateTileEntity packet) { handleUpdateTag(packet.getNbtCompound()); }
+    @Override public void onDataPacket(@NotNull NetworkManager manager, @NotNull SPacketUpdateTileEntity packet) {
+        if (packet.getPos().equals(pos) && packet.getTileEntityType() == 0)
+            acceptClientTag(packet.getNbtCompound(), manager); }
 
     private boolean isAttached() {
         return world != null && !isInvalid() && world.isBlockLoaded(pos, false) && world.getTileEntity(pos) == this

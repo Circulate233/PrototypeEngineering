@@ -25,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.function.Consumer;
+import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 
 /** One exact server session; no executor, global mutable structure table, or PN identity deduplication. */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
@@ -36,8 +37,16 @@ public final class ServerStructureReloads {
         if (!server.isCallingFromMinecraftThread() || session != null) throw new IllegalStateException("Structure session start requires an unused server owner");
         var scheduler = ServerTaskSchedulers.forServer(server);
         var coordinator = new StructureReloadCoordinator(scheduler, MachineTypeRegistry.INSTANCE,
-            () -> StructureJsonLoader.readDirectory(directory).resolve(javaDefinitions, factories, new ForgeStructureBlocks()),
-            publication -> { for (var player : server.getPlayerList().getPlayers()) StructureNetwork.send(publication, player); });
+            () -> readCandidate(server, directory, javaDefinitions, factories),
+            publication -> {
+                var current = session;
+                if (current != null && current.server == server) {
+                    current.publishedView = publication.view();
+                    // Keep the exact input object; a same-ID foreign runtime replacement cannot acquire this view.
+                    current.publishedCatalog = current.candidateCatalog;
+                    current.candidateCatalog = null;
+                }
+                for (var player : server.getPlayerList().getPlayers()) StructureNetwork.send(publication, player); });
         var subscription = MachineLifecycleRegistry.GLOBAL.register(new MachineLifecycleListener() {
             @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
                 if (event.context().host() instanceof ReloadableStructureHost host) {
@@ -50,6 +59,24 @@ public final class ServerStructureReloads {
             }
         });
         session = new Session(server, scheduler, coordinator, subscription);
+    }
+
+    private static StructureCatalog readCandidate(MinecraftServer server, Path directory, StructureCatalog javaDefinitions,
+                                                  StructurePredicateRegistry factories) {
+        var candidate = StructureJsonLoader.readDirectory(directory).resolve(javaDefinitions, factories, new ForgeStructureBlocks());
+        requireSession(server).candidateCatalog = candidate;
+        return candidate;
+    }
+
+    /** Exact owner query; absent session, replacement interval or foreign catalog has no usable display generation. */
+    public static @Nullable StructureCatalogView view(MinecraftServer server, StructureCatalog expected) {
+        if (!server.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Structure display view requires its server owner");
+        var current = session;
+        if (current == null || current.server != server || current.publishedCatalog != expected ||
+            MachineTypeRegistry.INSTANCE.structureCatalog() != expected || current.coordinator.publication().view() != current.publishedView)
+            return null;
+        return current.publishedView;
     }
 
     /** Every actual ControllerStructureUpdates construction joins this path, including external wrappers. */
@@ -116,9 +143,16 @@ public final class ServerStructureReloads {
         private final TaskScheduler scheduler;
         private final StructureReloadCoordinator coordinator;
         private final MachineLifecycleRegistry.Subscription subscription;
+        @Nullable
+        private StructureCatalog candidateCatalog;
+        @Nullable
+        private StructureCatalog publishedCatalog;
+        private StructureCatalogView publishedView;
         private long tick;
         private Session(MinecraftServer server, TaskScheduler scheduler, StructureReloadCoordinator coordinator, MachineLifecycleRegistry.Subscription subscription) {
             this.server = server; this.scheduler = scheduler; this.coordinator = coordinator; this.subscription = subscription;
+            publishedCatalog = MachineTypeRegistry.INSTANCE.structureCatalog();
+            publishedView = coordinator.publication().view();
         }
     }
 }

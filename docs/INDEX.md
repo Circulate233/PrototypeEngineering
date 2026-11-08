@@ -4,6 +4,9 @@
 
 ## 当前检查点
 
+- 2026-11-08 D3-A 成型渲染状态同步与纯绑定/锚点本块实现和验证已完成：仅读服务器已安装 accepted occurrence 树，保存实际位置/bounds/组件 IDs 与 typed 动画；Display sibling Render 16 KiB 分片沿原两 TE 通道和原 ChunkWatch 补发，client 完整目录/原 owner/序号及 binding/resource epoch 核验后一次发布。零片/重复 ID/嵌套真实 origin、root hide coverage、partial/late/冲突撤权、native NBT 隔离及回调重入/失败已闭环。focused24/4、受影响122/17、最终正常完整build1510 tests /187 suites全过；20 Java本机MCP全级零、完整项目读回/当前磁盘20/20一致、MCP build成功，当前raw源码构建及最终MCP后稳定。准确before/重接/三P2/真实原失败与最终验证入口 `build/staging/machine-rendering/a/integration/`，见[结构定义](structures.md)。未推送、未启动Minecraft/服务端/Bootstrap/FML；真实World观看/网络包与GL未实机验收。按用户要求完成本块后停止；恢复目标后从B的准确Gecko资产/CPU bake继续，TESR/Bloom/隐藏与D2 forming-model toggle保留后续，不能把A算整个复杂renderer完成。
+
+
 - 2026-11-08 最新基类职责澄清已同步[需求 5.2](development-spec.md#52-契约职责与实际类名)及 R33：所有公开继承扩展点保留共同机制/必要不变量与真实泛型和可重写入口，默认实现选择由具体类绑定，注册/消费者实际使用扩展入口。当前 R31/R33 的创建/查询/factory/GUI/能力链只读核对无新阻碍；不可变值对象可保留 final；具体实现可固定默认类型和业务选择，已承诺的继承扩展点不得封闭。本次三文档更新沿用 R33 既有验证，源码和验证运行没有新增；D2 已本地提交 b0dd852，下一步 D3 与其他未取消能力继续。
 
 - 2026-11-08 结构 D2 GUI/交互/JEI 本阶段实现与验证已完成：直接 AEBaseGui 与公开 concrete Scene/Panel 组合，机器原容器/准确父页返回、HEI 内嵌及独立结构页、相机/拾取/层/全结构 long BOM/代表项/occurrence 切片、D1 mesh/邻接与 owned TESR-SNBT 已接。原生事件与重入 owner 撤销、已消费鼠标 release 跨关屏、增量 cell/BOM/prune 索引与按状态/资源/语言变化材料缓存已闭环；方向复用实际 AE API 的相反轴满足 NORTH/UP→EAST。focused47/3、受影响82/8、最终正常完整 build1486 tests /183 suites 全过；41 Java 本机 MCP 全级零、完整项目文件读回/磁盘41/41一致、MCP build成功，85源码资源 raw SHA 构建及MCP后稳定。40 PNG 与原路径/NOTICE 保留；精确写前/固定推广/窄修/失败与最终验证/89路径交接入口 `build/staging/structure-preview-gui/`，见[结构定义](structures.md)、[JEI](jei.md)。未推送、未启动Minecraft/服务端/Bootstrap/FML；真实GL/TESR/HEI输入和网络包实机未验收。下一步D3成型模型/动画/Bloom/隐藏及其他未取消能力继续，不能把D2算整个预览完成。
