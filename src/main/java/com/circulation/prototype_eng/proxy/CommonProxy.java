@@ -60,6 +60,7 @@ import java.util.function.Consumer;
 import net.minecraft.network.NetworkManager;
 import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.math.AxisAlignedBB;
+import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 
 /** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
 public class CommonProxy implements IGuiHandler {
@@ -128,6 +129,7 @@ public class CommonProxy implements IGuiHandler {
     public void serverStarting(FMLServerStartingEvent event) {
         ServerResearch.start(event.getServer());
         event.registerServerCommand(new StructureReloadCommand());
+        event.registerServerCommand(new SchedulerCommand());
     }
 
     public void serverStopping() {

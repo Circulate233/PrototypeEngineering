@@ -345,3 +345,27 @@ gui.prototype_eng.research.LevelUnchanged=研究等级未变化
 gui.prototype_eng.research.SourceReserved=研究来源被下载预约
 gui.prototype_eng.research.SourceMismatch=研究来源类型不匹配
 gui.prototype_eng.research.InvalidLevelAction=目标或研究等级无效
+
+scheduler.prototype_eng.Usage=/pe_scheduler status | report | reload | metrics <on|off>
+scheduler.prototype_eng.Effective=当前生效
+scheduler.prototype_eng.Pending=已请求（等待 owner 边界）
+scheduler.prototype_eng.Settings=%s：%s，workers=%s，lanes=%s，planned 超时=%s，统计日志=%s，日志间隔=%s tick，窗口=%s tick
+scheduler.prototype_eng.Report=调度器 %s：窗口样本 %s/%s，已完成 %s tick
+scheduler.prototype_eng.Wall=%s 实际经过时间（平均/p95/最大）：%s µs
+scheduler.prototype_eng.Counts=%s（平均/p95/最大）：%s
+scheduler.prototype_eng.ReloadRequested=已从磁盘读取并请求配置；等待原工作实际退出后，在安全 tick 边界生效。
+scheduler.prototype_eng.MetricsRequested=已请求统计定时日志 %s；报告继续采样。此改动仅运行时生效，请修改 scheduler.cfg 以保存。
+scheduler.prototype_eng.OperationFailed=调度器操作失败：%s
+scheduler.prototype_eng.Total=完整 tick
+scheduler.prototype_eng.Main=主 owner 工作
+scheduler.prototype_eng.ConcurrentStage=并行阶段（包含 join）
+scheduler.prototype_eng.JoinWait=join 等待（属于并行阶段）
+scheduler.prototype_eng.Planned=planned 工作
+scheduler.prototype_eng.Cleanup=取消 / 等待实际退出清理（可能与 planned 或结构 worker 重叠）
+scheduler.prototype_eng.StructureWorker=结构 worker / 等待（仅 runStructureWorker 范围）
+scheduler.prototype_eng.MainTasks=主线程任务
+scheduler.prototype_eng.ConcurrentTasks=并行任务
+scheduler.prototype_eng.CustomMainTasks=自定义主线程任务
+scheduler.prototype_eng.CustomConcurrentTasks=自定义并行任务
+scheduler.prototype_eng.AffinityGroups=亲和组
+scheduler.prototype_eng.Status=调度器 %s：登记任务=%s，待退出执行=%s，边界就绪=%s，关闭请求=%s，故障=%s，已关闭=%s

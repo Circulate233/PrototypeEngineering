@@ -9,7 +9,6 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.jetbrains.annotations.Nullable;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -31,7 +30,7 @@ public final class ServerTaskSchedulers {
         if (!server.isCallingFromMinecraftThread()) { throw new IllegalStateException("Scheduler startup requires the server thread"); }
         if (session != null) { throw new IllegalStateException("A server scheduler is already running"); }
         var settings = SchedulerConfig.settings();
-        session = new Session(server, settings.workerThreads(), settings.laneCount());
+        session = new Session(server, settings);
     }
 
     /** Exact server identity prevents an old world's callbacks from accessing a new session. */
@@ -40,6 +39,17 @@ public final class ServerTaskSchedulers {
         var current = session;
         if (current == null || current.server != server) { throw new IllegalStateException("No scheduler for this server session"); }
         return current.scheduler;
+    }
+
+    /** Reads the configured file and queues settings for this exact server session. */
+    @SuppressWarnings("resource") // The lifecycle owns this borrowed scheduler.
+    public static SchedulerConfig.Settings requestReloadFromConfig(MinecraftServer server) {
+        var scheduler = forServer(server);
+        if (!server.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Scheduler reload requires the server thread");
+        var requested = SchedulerConfig.reload();
+        scheduler.requestSettings(requested);
+        return requested;
     }
 
     /** Called after server worlds have unloaded, so their controllers can unregister first. */
@@ -81,12 +91,12 @@ public final class ServerTaskSchedulers {
         private boolean dataCentersSynced;
 
         @SuppressWarnings("resource") // The FML network service owns this borrowed session runtime.
-        private Session(MinecraftServer server, int workers, int lanes) {
+        private Session(MinecraftServer server, SchedulerConfig.Settings settings) {
             this.server = server;
             var factory = new MachineRecipeExecutionFactory(this::candidates,
                 () -> () -> ServerNetworkRuntime.forServer(server).refresh(), () -> currentTick, () -> tickOpen, Session::networkMachine);
-            scheduler = new TaskScheduler(Thread.currentThread(), workers, lanes, factory,
-                (tasks, deadline) -> ServerResearch.prepareTick(server, tasks, deadline), Duration.ofSeconds(5));
+            scheduler = new TaskScheduler(Thread.currentThread(), settings, factory,
+                (tasks, deadline) -> ServerResearch.prepareTick(server, tasks, deadline));
         }
 
         private static boolean networkMachine(MachineInstance machine) {

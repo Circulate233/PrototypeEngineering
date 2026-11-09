@@ -29,6 +29,8 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import java.util.function.Supplier;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.scheduler.SchedulerReport;
 
 /**
  * Owned ordinary worker pool and serialized affinity lanes. Every tick joins all accepted tasks
@@ -40,8 +42,14 @@ import java.util.function.Supplier;
  */
 public final class TaskScheduler implements AutoCloseable {
     private final Thread owner;
-    private final int workerThreads;
-    private final int laneCount;
+    private int workerThreads;
+    private int laneCount;
+    private SchedulerConfig.Settings effectiveSettings;
+    @Nullable
+    private SchedulerConfig.Settings pendingSettings;
+    private final SchedulerMetrics metrics;
+    @Nullable
+    private TickMeasurement measurement;
     private final PlannedFactory plannedFactory;
     private final boolean defaultMachineFactory;
     private long tickGeneration;
@@ -49,7 +57,7 @@ public final class TaskScheduler implements AutoCloseable {
     @Nullable
     private Runnable tickPreparation;
     @Nullable private final PlannedFactory beforeOrdinary;
-    private final long plannedTimeoutNanos;
+    private long plannedTimeoutNanos;
     private final Reference2ObjectLinkedOpenHashMap<ScheduledTask, Registration> registered = new Reference2ObjectLinkedOpenHashMap<>();
     private final Object submissionLock = new Object();
     private ObjectArrayList<Submission> pending = new ObjectArrayList<>();
@@ -68,6 +76,10 @@ public final class TaskScheduler implements AutoCloseable {
     private boolean pendingExitProven = true;
     @Nullable private Reason pendingStopReason;
     private boolean pendingStopConfirmed;
+
+    public TaskScheduler(Thread owner, SchedulerConfig.Settings settings) {
+        this(owner, settings, null, null);
+    }
     private final ObjectArrayList<PlannedRegistration> plannedCandidates = new ObjectArrayList<>();
 
     public TaskScheduler(Thread owner, int workerThreads, int laneCount) {
@@ -85,20 +97,22 @@ public final class TaskScheduler implements AutoCloseable {
     /** Optional prerequisite cycle completes and proves source exit before ordinary work is captured. */
     TaskScheduler(Thread owner, int workerThreads, int laneCount, @Nullable PlannedFactory plannedFactory,
                   @Nullable PlannedFactory beforeOrdinary, Duration plannedTimeout) {
+        this(owner, new SchedulerConfig.Settings(workerThreads, laneCount, plannedTimeout, false, 200, 400),
+            plannedFactory, beforeOrdinary); }
+
+    TaskScheduler(Thread owner, SchedulerConfig.Settings settings, @Nullable PlannedFactory plannedFactory,
+                  @Nullable PlannedFactory beforeOrdinary) {
         this.owner = Objects.requireNonNull(owner);
-        if (workerThreads < 1 || laneCount < 1) { throw new IllegalArgumentException("Worker and lane counts must be positive"); }
-        this.workerThreads = workerThreads;
-        this.laneCount = laneCount;
+        effectiveSettings = Objects.requireNonNull(settings);
+        workerThreads = settings.workerThreads();
+        laneCount = settings.laneCount();
+        metrics = new SchedulerMetrics(settings.metricsWindowTicks());
         defaultMachineFactory = plannedFactory == null;
         this.plannedFactory = defaultMachineFactory
             ? new MachineRecipeExecutionFactory(this::plannedCandidates, this::capturePreparation,
             () -> tickGeneration, () -> tickOpen, _ -> false) : Objects.requireNonNull(plannedFactory);
         this.beforeOrdinary = beforeOrdinary;
-        Objects.requireNonNull(plannedTimeout);
-        if (plannedTimeout.isNegative() || plannedTimeout.isZero()) {
-            throw new IllegalArgumentException("Planned cleanup budget must be positive");
-        }
-        plannedTimeoutNanos = plannedTimeout.toNanos();
+        plannedTimeoutNanos = settings.plannedTimeout().toNanos();
     }
 
     /** Injected executors transfer ownership to this scheduler and must not cancel accepted work. */
@@ -141,6 +155,68 @@ public final class TaskScheduler implements AutoCloseable {
     public int registeredCount() {
         requireOwner();
         return registered.size();
+    }
+
+    public SchedulerConfig.Settings effectiveSettings() {
+        requireOwner();
+        return effectiveSettings;
+    }
+
+    @Nullable
+    public SchedulerConfig.Settings pendingSettings() {
+        requireOwner();
+        return pendingSettings;
+    }
+
+    public String policyLabel() {
+        requireOwner();
+        return "JAVA";
+    }
+
+    /** Real admission/cleanup state; a queued settings request is reported separately. */
+    public Status status() {
+        requireOwner();
+        return new Status(policyLabel(), registered.size(), pendingExecution != null, boundaryReady,
+            closingRequested, faulted, state == State.CLOSED);
+    }
+
+    public record Status(String policyLabel, int registeredCount, boolean pendingExecution, boolean boundaryReady,
+                         boolean closing, boolean faulted, boolean closed) {
+    }
+
+    public SchedulerReport snapshotReport() {
+        requireOwner();
+        return metrics.snapshotReport(policyLabel());
+    }
+
+    /** Owner requests only enqueue. Even an idle request waits for a later joined tick entry. */
+    public void requestSettings(SchedulerConfig.Settings settings) {
+        requireOwner();
+        if (state != State.IDLE && state != State.MAIN && state != State.BOUNDARY && state != State.PLANNED)
+            throw new IllegalStateException("Settings cannot be requested from owner metadata capture");
+        requireHealthy();
+        pendingSettings = Objects.requireNonNull(settings);
+    }
+
+    private void applySettings(SchedulerConfig.Settings eligible, Failures failures) {
+        if (pendingSettings != eligible || pendingExecution != null || !boundaryReady || closingRequested || faulted)
+            return;
+        if (workerThreads != eligible.workerThreads() || laneCount != eligible.laneCount()) {
+            // This is retirement, not closure: registrations, submissions, boundaries and admission survive.
+            boundaryReady = false;
+            boundaryReady = stopExecutors(failures);
+            failures.throwIfPresent();
+            if (!boundaryReady) throw new IllegalStateException("Previous scheduler executors did not terminate");
+            workers = null;
+            lanes = null;
+            plannedTasks = null;
+        }
+        workerThreads = eligible.workerThreads();
+        laneCount = eligible.laneCount();
+        plannedTimeoutNanos = eligible.plannedTimeout().toNanos();
+        metrics.resizeIfNeeded(eligible.metricsWindowTicks());
+        effectiveSettings = eligible;
+        pendingSettings = null;
     }
 
     /**
@@ -204,6 +280,7 @@ public final class TaskScheduler implements AutoCloseable {
             private PlannedTaskExecutor.Batch<T> batch;
         }
         var borrowed = new Borrow();
+        long structureStart = System.nanoTime();
         boundaryReady = false;
         Throwable primary = null;
         try {
@@ -215,6 +292,7 @@ public final class TaskScheduler implements AutoCloseable {
             primary = failure;
             throw failure;
         } finally {
+            long cleanupStart = System.nanoTime();
             try {
                 if (borrowed.batch != null) borrowed.batch.awaitQuiescence();
             } catch (RuntimeException | Error cleanup) {
@@ -224,8 +302,12 @@ public final class TaskScheduler implements AutoCloseable {
                 // awaitQuiescence reports interruption only after actual exit. Never release an
                 // uncertain live read merely because the ordered batch result became terminal.
                 boundaryReady = borrowed.batch == null || borrowed.batch.quiescent();
-            }
+                if (measurement != null) {
+                    measurement.cleanupWallNanos += System.nanoTime() - cleanupStart;
+                    measurement.structureWorkerWallNanos += System.nanoTime() - structureStart;
+                }
         }
+    }
     }
 
     public void tick() {
@@ -244,6 +326,10 @@ public final class TaskScheduler implements AutoCloseable {
     public void tick(Runnable prepare) {
         Objects.requireNonNull(prepare);
         enterTick();
+        var eligibleSettings = pendingSettings; // Requests made during this tick cannot install in it.
+        var tickMeasurement = new TickMeasurement(System.nanoTime());
+        measurement = tickMeasurement;
+        metrics.beginTick(policyLabel());
         tickPreparation = prepare;
         var failures = new Failures();
         var futures = new ObjectArrayList<FutureTask<Void>>();
@@ -259,6 +345,7 @@ public final class TaskScheduler implements AutoCloseable {
             failures.throwIfPresent();
             if (pendingExecution == null && !resumingClose) {
                 requireHealthy();
+                if (eligibleSettings != null) applySettings(eligibleSettings, failures);
                 if (beforeOrdinary != null) {
                     plannedCandidates.clear();
                     capturePlanned(beforeOrdinary);
@@ -277,6 +364,7 @@ public final class TaskScheduler implements AutoCloseable {
             fault();
         } finally {
             state = State.JOINING;
+            long joinStart = System.nanoTime();
             for (FutureTask<Void> future : futures) {
                 boolean completed = false;
                 while (!completed) {
@@ -295,6 +383,8 @@ public final class TaskScheduler implements AutoCloseable {
             }
             failures.observeInterrupt();
             if (failures.present()) { fault(); }
+            if (!futures.isEmpty()) tickMeasurement.joinWallNanos += System.nanoTime() - joinStart;
+            tickMeasurement.finishOrdinary();
             if (capturePlanned && !failures.present()) {
                 try { capturePlanned(prepare); }
                 catch (Throwable failure) { failures.add(failure); fault(); }
@@ -307,11 +397,18 @@ public final class TaskScheduler implements AutoCloseable {
             tickPreparation = null;
             state = State.IDLE;
             failures.restoreInterrupt();
+            measurement = null;
+            metrics.record(tickMeasurement.sample(System.nanoTime()));
+            metrics.maybeLog(effectiveSettings.metricsLogIntervalTicks(), effectiveSettings.metricsEnabled(),
+                report -> PrototypeEngineering.LOGGER.info(report.toLogLine()));
         }
         failures.throwIfPresent();
     }
 
     private void executeOrdinary(Runnable prepare, ObjectArrayList<FutureTask<Void>> futures, Failures failures) {
+        var current = Objects.requireNonNull(measurement);
+        current.mainStart = System.nanoTime();
+        try {
         plannedCandidates.clear();
         ObjectArrayList<Submission> batch;
         synchronized (submissionLock) {
@@ -325,7 +422,7 @@ public final class TaskScheduler implements AutoCloseable {
         var executed = new ReferenceOpenHashSet<ScheduledTask>();
         state = State.MAIN;
         for (Submission submission : batch) {
-            if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, prepare, failures); }
+            if (submission.mode == ExecutionMode.MAIN_THREAD) { runMain(submission.task, prepare, failures, true); }
         }
         for (Registration registration : main) {
             ScheduledTask task = registration.task;
@@ -339,10 +436,13 @@ public final class TaskScheduler implements AutoCloseable {
             } finally { state = State.MAIN; }
             if (mode == ExecutionMode.MAIN_THREAD && active) {
                 executed.add(task);
-                runMain(task::onSchedule, prepare, failures);
+                runMain(task::onSchedule, prepare, failures, false);
             }
         }
-        state = State.CAPTURING_CONCURRENT;
+            current.concurrentStart = System.nanoTime();
+            current.mainWallNanos += current.concurrentStart - current.mainStart;
+            current.mainStart = 0;
+            state = State.CAPTURING_CONCURRENT;
         prepare.run();
         var concurrent = new ObjectArrayList<Snapshot>();
         for (Registration registration : registered.values()) {
@@ -367,24 +467,40 @@ public final class TaskScheduler implements AutoCloseable {
         if (customConcurrent != 0 || !groups.isEmpty()) {
             initializeExecutors();
             for (Submission submission : batch) {
-                if (submission.mode == ExecutionMode.CONCURRENT) { dispatch(workers, submission.task, futures); }
+                if (submission.mode == ExecutionMode.CONCURRENT) { dispatch(workers, submission.task, futures);
+                        current.customConcurrentTasks++;
+                    }
             }
             for (Group group : groups) {
                 ExecutorService executor = group.lane < 0 ? workers : lanes[group.lane];
                 dispatch(executor, () -> runGroup(group), futures);
+                    current.concurrentTasks += group.tasks.size();
+                    current.affinityGroups++;
+                }
+        }
+    } finally {
+            if (current.mainStart != 0) {
+                current.mainWallNanos += System.nanoTime() - current.mainStart;
+                current.mainStart = 0;
             }
         }
     }
 
-    private void runMain(Runnable action, Runnable prepare, Failures failures) {
+    private void runMain(Runnable action, Runnable prepare, Failures failures, boolean custom) {
         try {
             state = State.CAPTURING_MAIN;
             prepare.run();
             state = State.MAIN;
+            var current = Objects.requireNonNull(measurement);
+            if (custom) current.customMainTasks++;
+            else current.mainTasks++;
             action.run();
+        } catch (Throwable failure) {
+            failures.add(failure);
+            fault();
+        } finally {
+            drainBoundary(failures, false);
         }
-        catch (Throwable failure) { failures.add(failure); fault(); }
-        finally { drainBoundary(failures, false); }
         failures.throwIfPresent();
     }
 
@@ -414,7 +530,13 @@ public final class TaskScheduler implements AutoCloseable {
         state = State.CAPTURING_PLANNED;
         initializeExecutors();
         if (plannedTasks == null) { plannedTasks = new PlannedTaskExecutor(workers, lanes); }
-        var captured = factory.capture(plannedTasks, cleanupDeadline());
+        long plannedStart = System.nanoTime();
+        PlannedExecution captured;
+        try {
+            captured = factory.capture(plannedTasks, cleanupDeadline());
+        } finally {
+            if (measurement != null) measurement.plannedWallNanos += System.nanoTime() - plannedStart;
+        }
         if (captured != null) {
             // Publication precedes the first callback or asynchronous action in this execution.
             pendingExecution = captured;
@@ -445,6 +567,7 @@ public final class TaskScheduler implements AutoCloseable {
 
     /** One recovery pass; an initial forward attempt additionally settles its cancelled remainder. */
     private void drivePending(Failures failures, boolean initial) {
+        long plannedStart = System.nanoTime();
         State previous = state;
         state = State.PLANNED;
         try {
@@ -470,7 +593,9 @@ public final class TaskScheduler implements AutoCloseable {
                 pendingExecution = null;
                 boundaryReady = !closingRequested;
             }
-        } finally { state = previous; }
+        } finally { state = previous;
+            if (measurement != null) measurement.plannedWallNanos += System.nanoTime() - plannedStart;
+        }
     }
 
     private void advancePending(Failures failures) {
@@ -494,15 +619,19 @@ public final class TaskScheduler implements AutoCloseable {
         if (pendingStopReason == null) { pendingStopReason = reason; }
         State previous = state;
         state = State.PLANNED;
+        long cleanupStart = System.nanoTime();
         try {
             Objects.requireNonNull(pendingExecution).cancel(pendingStopReason);
             pendingStopConfirmed = true;
         }
         catch (Throwable failure) { failures.add(failure); fault(); }
-        finally { state = previous; }
+        finally { state = previous;
+            if (measurement != null) measurement.cleanupWallNanos += System.nanoTime() - cleanupStart;
+        }
     }
 
     private void awaitPending(Failures failures) {
+        long cleanupStart = System.nanoTime();
         try {
             Objects.requireNonNull(pendingExecution).awaitExit();
             pendingExitProven = true;
@@ -517,6 +646,8 @@ public final class TaskScheduler implements AutoCloseable {
                 try { Objects.requireNonNull(pendingExecution).awaitExit(); pendingExitProven = true; }
                 catch (Throwable retryFailure) { failures.add(retryFailure); failures.observeInterrupt(); }
             }
+        } finally {
+            if (measurement != null) measurement.cleanupWallNanos += System.nanoTime() - cleanupStart;
         }
     }
 
@@ -720,6 +851,45 @@ public final class TaskScheduler implements AutoCloseable {
 
     private void requireOwner() {
         if (Thread.currentThread() != owner) { throw new IllegalStateException("Scheduler requires its owning thread"); }
+    }
+
+    private static final class TickMeasurement {
+        private final long tickStart;
+        private long mainStart;
+        private long concurrentStart;
+        private long mainWallNanos;
+        private long concurrentStageWallNanos;
+        private long joinWallNanos;
+        private long plannedWallNanos;
+        private long cleanupWallNanos;
+        private long structureWorkerWallNanos;
+        private long mainTasks;
+        private long concurrentTasks;
+        private long customMainTasks;
+        private long customConcurrentTasks;
+        private long affinityGroups;
+
+        private TickMeasurement(long tickStart) {
+            this.tickStart = tickStart;
+        }
+
+        private void finishOrdinary() {
+            long now = System.nanoTime();
+            if (mainStart != 0) {
+                mainWallNanos += now - mainStart;
+                mainStart = 0;
+            }
+            if (concurrentStart != 0) {
+                concurrentStageWallNanos += now - concurrentStart;
+                concurrentStart = 0;
+            }
+        }
+
+        private SchedulerMetrics.Sample sample(long end) {
+            return new SchedulerMetrics.Sample(end - tickStart, mainWallNanos, concurrentStageWallNanos, joinWallNanos,
+                plannedWallNanos, cleanupWallNanos, structureWorkerWallNanos, mainTasks, concurrentTasks,
+                customMainTasks, customConcurrentTasks, affinityGroups);
+        }
     }
 
     private static void requireOrdinary(ExecutionMode mode) {

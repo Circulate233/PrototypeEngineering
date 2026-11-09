@@ -409,3 +409,14 @@
 集合实现优先使用 fastutil；本轮容量表采用原生 long 映射，能力适配缓存采用引用身份映射。没有自行实现反射扫描或通过捕获异常维持常规资源流程。
 
 当前实施先完成源码、构建及必要逻辑测试，不继续自行启动客户端或服务端。此前的两个临时服务端已经正常停止。
+
+
+## 2026-11-09 调度统计/配置阶段（已实现并验证）
+
+- 起点 HEAD `ffea51fbc1830fb243285ecc85ef08e76013852b`。真实 8 路径 write-before 保存 `build/staging/scheduler-statistics-config/scheduler-before-manifest.json` 与 scheduler-before；新行为测试 absent-before 单独记录，未重构或覆盖此前结构/JEI/index 的原始 before。
+- 已审查 PM TaskSchedulerImpl、SchedulerMetrics、JavaTaskSchedulerBackend、SchedulerServerCommand、PmSchedulerConfig 和 SchedulerRuntimeSettings。保留 metricsEnabled 仅门控定期日志、真实 tick cadence、包含 join 的 concurrent wall、原 p95 floor(n×95/100)；typed 7 wall/5 count report 接入原 TaskScheduler，不制造另一套 scheduler/backend。
+- 原 Session/TaskScheduler 只增加不可变 effective/pending settings 与安全 tick entry 安装，先旧 pending 实际退出/finished 和 owner FIFO，再退休需要调整的原池；不调用 close/tryClose、不丢 Registration/一次性队列、不续期旧 forward deadline。actual FML 注册 permission-2 command 接线与配置真实 reload 已实现，6 个重载/计时行为测试及 6 个 metrics/command 测试已通过。status 显示真实登记数量及 pending/closing/faulted/boundaryReady/closed，而非假定文件值立即生效；保留 PM 的大小写/metrics 别名。
+- 用户 D04 明确“直接完全并入，不需要独立实现”：正式 spec/index/scheduling 已同步，后续 Modern 的有效算法与线程策略直接进入 Java 25 主工程当前调度/渲染管线，不保留独立模组、双 Jar 或另一套独立后端。
+- 统一 focused `test --rerun-tasks --tests com.circulation.prototype_eng.scheduler.*`：session33684/39s、120 tests/17 suites、0 failures/errors/skipped、10任务全执行；原11 frozen source hashes未变。首次正常完整重跑 session42596 在4新生产Java的LF/Spotless检查停止（编译成功，未执行全test），失败日志原样保留；真实repair-before与line-endings-repair-result证明仅CRLF变化，normalized文本完全相同，没有全仓spotlessApply。最终正常 `build --rerun-tasks` session27824/45s：1648 tests/210 suites全零、15任务全执行；full-v2-result/XML/log及sourcehash证据均保留。
+- 11 Java本机逐文件 get_file_problems(errorsOnly:false) 的错误/警告/弱警告全零；final-idea-checks（4纯行尾修改后由post-repair-idea-checks覆盖）及完整final-idea-readback/final-readback-result证明11/11 contiguous并与disk逐行一致。final MCP build isSuccess:true/problems:[]，post-mcp-source-result证明11 raw source均未变。IDE stale reformat覆盖过Status/mainfinally计时/public便利注释三个刚写delta，已通过MCP apply_patch恢复且最终全文/构建覆盖，原before未改。
+- 精确候选按17 owned路径的真正write-before→final delta graft当前HEAD，既有Java背景成员保留；stage/exact-commit记录独立候选审查、提交及raw工作字节保护。scope外晚capture581文件明确NOT earliest，原结构ffea保护记录可追溯原字节；不伪称晚capture为stage起点。没有推送或启动Minecraft/服务端/Bootstrap/FML，实机验收仍由用户自行启动。

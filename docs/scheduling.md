@@ -36,7 +36,21 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 网络角色现使用 `tick(prepare)`：每次实际 MAIN action 前、CONCURRENT 元数据捕获前及 formal owner 组件边界，owner 同步捕获/规划/发布当前网络条件；正常及异常 tick 退出都撤销。prepare 不能改 scheduler 登记或请求 owner 边界，失败沿用既有 fault/join/清理。默认无参 tick 保留原流程，网络拒绝仅暂停配方，不停普通组件。具体身份修订、临时失权和多次 MAIN 捕获的成本边界见[网络运行时](network-runtime.md)。
 
-`SchedulerConfig` 单独保存到 `prototype_eng/scheduler.cfg`，普通 worker 默认 `max(2, availableProcessors)`，lane 默认 `clamp(availableProcessors, 2, 8)`，来自 PM 原配置，服务器启动时生效。planned 超时、后端切换、性能统计窗口/命令和 Modern Backend 能力仍需后续迁移，当前没有用配置占位冒充已实现功能。
+`SchedulerConfig` 单独保存到 `prototype_eng/scheduler.cfg`，普通 worker 默认 `max(2, availableProcessors)`，lane 默认 `clamp(availableProcessors, 2, 8)`。planned 预算默认 5000ms，日志默认关闭、间隔 200 tick、采样窗口 400 tick。文件读取沿 PM sane 范围限制 workers 到处理器默认上限的两倍、lane 到 32、planned 毫秒到 1–60000、日志间隔到 1–1200、窗口到 20–6000。公共不可变 Settings 保留 Duration 精度；运行时请求在接受前验证正值及纳秒可表示性。
+
+## 统计与配置的实际边界
+
+TaskScheduler 的 effectiveSettings 与 pendingSettings 明确区分已生效与待应用设置。requestSettings 由 owner 只保存请求；即使 IDLE 请求也不调用立即排空的 runAtBoundary。每次真正 tick 入场冻结本次有资格安装的请求，先恢复旧 pending，确认所有接受的异步任务/source 实际退出及 finished，并排空旧 owner FIFO，再在新研究、ordinary、prepared capture 前安装。旧边界回调新请求覆盖已冻结请求时，新请求继续等待下一 tick；旧 pending 未结清、boundary 未证 quiescence、closing 或 faulted 都不能安装。
+
+调整 workers/lane 只在此边界退休原 owned executors，等待真实 termination 后才撤销旧 PlannedTaskExecutor 并懒建新池；同一 TaskScheduler/Session、Registration 身份、待处理一次性队列、owner FIFO、factories、tick generations 与网络/研究源合同保留。不调用 close/tryClose 兑现 reload，因为关闭有清理登记和队列的不同语义；退休失败保留原 executor/planned 引用并沿既有 fault/可重试清理路径报告。仅修改 timeout/metrics 不换池。旧 captured forward deadline 不因 reload 续期；未来 capture 使用新预算。
+
+每次已进入的实际 TaskScheduler.tick（包括报告故障及旧 cleanup 暂留的 tick）在 finally 只记一条 bounded sample。采样始终开启；metricsEnabled 仅控制定期日志。变更窗口重置 ring，但 completedTicks 和 lastLoggedTick 不重置，同一 tick 不重复日志。typed immutable SchedulerReport 返回 total/main/concurrentStage/join/planned/cleanup/structureWorker 的纳秒 avg/p95/max，以及 mainTasks/concurrentTasks/customMainTasks/customConcurrentTasks/affinityGroups 五项计数；快照按需复制排序，记录不构造 report。平均数不通过可能溢出的直接总和计算；p95 沿 PM 的 floor(n×95/100) 索引。
+
+wall 耗时表示 owner 观测的真实耗时：concurrentStage 包含 metadata/group/dispatch 和 join 等待；join 是实际接受 Future 的等待。planned 是 capture 与 retained drive，cleanup 是 cancel/awaitExit/结构 batch awaitQuiescence，结构项仅本 tick runStructureWorker 的实际 worker 段和退出等待。这些嵌套项会重叠，不能相加，也不表示 worker CPU；普通 main 内 owner boundary 的结构耗时同时在 main 内。计数主阶段按已调用 action，并发按实际成功派发的任务/组，不把拒绝派发算作已接受。tick 外同步边界执行不冒充某个 tick 的成本。
+
+实际 FMLServerStarting 注册 `/pe_scheduler status|report|reload|metrics <on|off>`，权限等级 2。status 展示实际 policy、登记数量、pending execution/boundaryReady/closing/faulted/closed 和 effective/pending，而非尚未生效的磁盘值；report 在日志关闭时仍可读取窗口。reload 重新读取原配置路径并完整替换待应用请求；命令操作忽略大小写，metrics 保留 PM 的 on/true/1/enable/enabled 与 off/false/0/disable/disabled 别名，基于 pending 优先、否则 effective 只改日志 flag，不覆盖已排队的 workers/lane/timeout，属于运行时请求。当前策略标签 JAVA 描述现有单一 Java 管线，不提供伪 COROUTINES 或另一个后端。
+
+D04 已由用户确认直接完全并入：后续 Modern 的有效算法与线程策略继续整合到 Java 25 主工程当前调度/渲染管线，独立模组、双 Jar 或另一套独立后端不保留。
 
 ## 验证与后续
 
@@ -44,4 +58,7 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。真实网络机器组件游标、控制器登记和配方/研究预算消费者已接通。研究作为普通工作之前的 PlannedExecution，先持有再执行，旧 pending 未结清不放行普通捕获；见[服务器研究](server-research.md)。块一纯 prepare/需求工作预算与 2A 正式模式已接；仍需 2B 扫描内部工作预算、性能统计与后端能力。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。真实网络机器组件游标、控制器登记和配方/研究预算消费者已接通。研究作为普通工作之前的 PlannedExecution，先持有再执行，旧 pending 未结清不放行普通捕获；见[服务器研究](server-research.md)。块一纯 prepare/需求工作预算与 2A 正式模式已接；结构预算已完成；统计/配置阶段已实现并验证，Modern 有效算法与线程策略的直接整合继续。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+
+
+2026-11-09 本阶段统一 focused `test --rerun-tasks --tests com.circulation.prototype_eng.scheduler.*` 为 120 tests/17 suites，全零、10任务全执行；最终正常 `build --rerun-tasks` 为 1648 tests/210 suites，全零、15任务全执行。首次完整构建在新生产文件 LF 的 Spotless 检查停止（编译通过、尚未跑全 test），只将四个新文件改为 CRLF，normalized 文本完全不变；最终重跑包含此格式修复。11 Java 逐文件本机 get_file_problems(errorsOnly:false) 全级零，完整 numbered readback 与 disk 逐行一致，MCP build isSuccess:true/problems:[]；post-MCP raw source hashes 不变。证据为 `build/staging/scheduler-statistics-config/{focused-result.json,full-first-result.json,line-endings-repair-result.json,full-v2-result.json,final-idea-checks.json,post-repair-idea-checks.json,final-readback-result.json,final-mcp-build.json,post-mcp-source-result.json}`。逻辑回归联合既有真实 pending/source/退出测试；可控 Retained 重载行为测试不冒充 Minecraft/实际 World 网络/FML 实机验收。阶段未推送或启动游戏/服务端。

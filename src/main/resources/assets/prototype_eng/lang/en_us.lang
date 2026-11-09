@@ -345,3 +345,27 @@ gui.prototype_eng.research.LevelUnchanged=Research level unchanged
 gui.prototype_eng.research.SourceReserved=Research source reserved by a download
 gui.prototype_eng.research.SourceMismatch=This research uses a different source
 gui.prototype_eng.research.InvalidLevelAction=Invalid target or research level
+
+scheduler.prototype_eng.Usage=/pe_scheduler status | report | reload | metrics <on|off>
+scheduler.prototype_eng.Effective=Effective
+scheduler.prototype_eng.Pending=Requested (pending owner boundary)
+scheduler.prototype_eng.Settings=%s: %s, workers=%s, lanes=%s, planned timeout=%s, metrics log=%s, log interval=%s ticks, window=%s ticks
+scheduler.prototype_eng.Report=Scheduler %s: %s/%s window samples, %s completed ticks
+scheduler.prototype_eng.Wall=%s wall time (avg/p95/max): %s µs
+scheduler.prototype_eng.Counts=%s (avg/p95/max): %s
+scheduler.prototype_eng.ReloadRequested=Configuration read from disk and requested; applies at a safe tick boundary after prior work exits.
+scheduler.prototype_eng.MetricsRequested=Periodic metrics log %s requested; reports keep collecting. Runtime only; update scheduler.cfg to persist.
+scheduler.prototype_eng.OperationFailed=Scheduler operation failed: %s
+scheduler.prototype_eng.Total=Total tick
+scheduler.prototype_eng.Main=Main owner work
+scheduler.prototype_eng.ConcurrentStage=Concurrent stage (includes join)
+scheduler.prototype_eng.JoinWait=Join wait (part of concurrent stage)
+scheduler.prototype_eng.Planned=Planned work
+scheduler.prototype_eng.Cleanup=Cancellation / await-exit cleanup (may overlap planned or structure worker)
+scheduler.prototype_eng.StructureWorker=Structure worker / wait (runStructureWorker scope)
+scheduler.prototype_eng.MainTasks=Main tasks
+scheduler.prototype_eng.ConcurrentTasks=Concurrent tasks
+scheduler.prototype_eng.CustomMainTasks=Custom main tasks
+scheduler.prototype_eng.CustomConcurrentTasks=Custom concurrent tasks
+scheduler.prototype_eng.AffinityGroups=Affinity groups
+scheduler.prototype_eng.Status=Scheduler %s: registered=%s, pending execution=%s, boundary ready=%s, closing=%s, faulted=%s, closed=%s
