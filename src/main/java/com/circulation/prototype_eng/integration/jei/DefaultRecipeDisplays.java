@@ -34,8 +34,6 @@ public class DefaultRecipeDisplays {
     public static JeiRecipeDisplay describe(MachineRecipe recipe, RecipeJeiDisplays extensions) {
         var display = new JeiRecipeDisplay.Builder();
         display.information(of(JeiText.Duration, recipe.durationTicks(), recipe.durationTicks() / 20.0));
-        display.information(of(JeiText.Definition, recipe.id()));
-        display.information(of(JeiText.Runtime));
         for (var requirement : recipe.orderedRequirements()) {
             describe(recipe, requirement, display, extensions);
         }
@@ -77,8 +75,8 @@ public class DefaultRecipeDisplays {
             }
         } else if (requirement.type() == RecipeRequirements.ATTRIBUTES) {
             var attribute = (AttributeRequirement) requirement.payload();
-            display.information(of(JeiText.Attribute, attribute.attribute(), attribute.modifier().id(),
-                attribute.applyAtStart(), attribute.removeAtEnd()));
+            if (attribute.applyAtStart()) display.information(of(JeiText.AttributeAdded, attribute.attribute(), attribute.modifier().id()));
+            if (attribute.removeAtEnd()) display.information(of(JeiText.AttributeRemoved, attribute.attribute(), attribute.modifier().id()));
         } else {
             display.information(of(JeiText.CustomRequirement, requirement.type().id(), requirement.id()));
         }
@@ -171,7 +169,9 @@ public class DefaultRecipeDisplays {
 
     private static void energy(JeiRecipeDisplay.Builder display, long amount, boolean input, JeiText stage) {
         if (amount > 0) {
-            display.scoped(of(stage)).energy(amount, input ? INPUT : OUTPUT, of(input ? JeiText.EnergyInput : JeiText.EnergyOutput, amount));
+            var text = stage == JeiText.Tick ? (input ? JeiText.EnergyInputPerTick : JeiText.EnergyOutputPerTick)
+                : (input ? JeiText.EnergyInput : JeiText.EnergyOutput);
+            display.energy(amount, input ? INPUT : OUTPUT, of(text, amount));
         }
     }
 }

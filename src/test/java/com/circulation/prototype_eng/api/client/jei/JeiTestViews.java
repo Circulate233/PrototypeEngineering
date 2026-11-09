@@ -25,21 +25,27 @@ import mezz.jei.api.recipe.IIngredientType;
 import mezz.jei.api.recipe.IRecipeCategory;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ResourceLocation;
-
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import javax.annotation.ParametersAreNonnullByDefault;
-
 import mcp.MethodsReturnNonnullByDefault;
 import org.jetbrains.annotations.Nullable;
-
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
+import com.circulation.prototype_eng.integration.jei.RecipeInformationLayout;
 /**
  * Explicit native API fakes; they do not bootstrap Forge/Minecraft or use reflection.
  */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 class JeiTestViews {
+    static final RecipeInformationLayout.Font FONT = new RecipeInformationLayout.Font(9,
+        (text, _) -> List.of(text.text().getTranslationKey()));
+
+    static AutoLayoutRecipePage page(RecipePool pool, IGuiHelper helper, RecipeJeiDisplays displays) {
+        return new AutoLayoutRecipePage(pool, helper, displays, JeiRenderOptions.defaults(), FONT);
+    }
     static class IdentityHelper<T> implements IIngredientHelper<T> {
         private final Function<T, String> uid;
 

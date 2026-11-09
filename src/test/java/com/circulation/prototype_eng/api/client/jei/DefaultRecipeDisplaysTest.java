@@ -55,8 +55,9 @@ class DefaultRecipeDisplaysTest {
         assertEquals(Long.MAX_VALUE, result.resources().getFirst().stack().amount());
         assertEquals(ObjectArrayList.of(JeiText.Start, JeiText.Tick, JeiText.Tick, JeiText.End),
             new ObjectArrayList<>(result.resources().stream().map(row -> row.details().getLast().text()).toList()));
-        assertEquals(2, result.information().stream().filter(line -> line.text() == JeiText.EnergyInput).count());
-        assertEquals(2, result.information().stream().filter(line -> line.text() == JeiText.EnergyOutput).count());
+        assertEquals(List.of(JeiText.Duration, JeiText.EnergyInput, JeiText.EnergyInputPerTick,
+                JeiText.EnergyOutputPerTick, JeiText.EnergyOutput),
+            result.information().stream().map(JeiRecipeDisplay.Text::text).toList());
         assertTrue(result.information().stream().anyMatch(line -> line.arguments().contains(Long.MAX_VALUE)));
     }
 

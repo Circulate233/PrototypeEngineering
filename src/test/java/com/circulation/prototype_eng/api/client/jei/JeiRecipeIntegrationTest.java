@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
 import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
+import com.circulation.prototype_eng.integration.jei.RecipeInformationLayout;
 import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
@@ -193,7 +194,7 @@ class JeiRecipeIntegrationTest {
         var smallerOutput = stack(ITEM, "small_output", 3);
         var smaller = recipe("smaller", ObjectArrayList.of(smallerInput), ObjectArrayList.of(smallerOutput));
         var pool = pool("default", recipe, smaller);
-        var page = new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays);
+        var page = JeiTestViews.page(pool, new JeiTestViews.Helper(), displays);
         var wrapper = page.createRecipe(recipe, display, ingredients(display));
         var indexed = new JeiTestViews.Ingredients();
         wrapper.getIngredients(indexed);
@@ -304,7 +305,7 @@ class JeiRecipeIntegrationTest {
         var pages = new RecipePoolJeiRegistry();
         var custom = new IndependentPage(customPool);
         pages.register(customPool.id(), custom);
-        pages.freeze(ObjectArrayList.of(defaultPool, customPool), pool -> new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays));
+        pages.freeze(ObjectArrayList.of(defaultPool, customPool), pool -> JeiTestViews.page(pool, new JeiTestViews.Helper(), displays));
         assertInstanceOf(AutoLayoutRecipePage.class, pages.pages().getFirst());
         assertSame(custom, pages.pages().getLast());
         assertNotSame(pages.pages().getFirst(), custom);
@@ -334,7 +335,7 @@ class JeiRecipeIntegrationTest {
     }
 
     @Test
-    void informationPanelsRetainEveryConditionAndRejectInvalidPageIndexes() {
+    void allMaterialPagesRepeatCompleteInformationAndRejectInvalidPageIndexes() {
         var builder = new JeiRecipeDisplay.Builder();
         var scoped = builder.scoped(JeiRecipeDisplay.Text.of(JeiText.CheckpointScaled, id("checkpoint"), 30),
             JeiRecipeDisplay.Text.of(JeiText.End));
@@ -343,15 +344,54 @@ class JeiRecipeIntegrationTest {
         }
         var display = builder.build();
         var layout = new RecipePanelLayout(display);
-        var retained = new ObjectArrayList<JeiRecipeDisplay.Text>();
-        for (int i = 0; i < layout.pageCount(); i++) {
-            retained.addAll(layout.information(i));
-        }
-        assertEquals(display.information(), retained);
-        assertEquals(2, retained.getLast().context().size());
-        assertSame(JeiText.End, retained.getLast().context().getLast().text());
+        assertEquals(1, layout.pageCount());
+        assertEquals(display.information(), layout.information(0));
+        assertEquals(2, layout.information(0).getLast().context().size());
+        assertSame(JeiText.End, layout.information(0).getLast().context().getLast().text());
+        for (int i = 0; i < 33; i++) builder.resource(stack(ITEM, "input" + i, 1), JeiRecipeDisplay.Role.INPUT);
+        var materialPages = new RecipePanelLayout(builder.build());
+        assertEquals(3, materialPages.pageCount());
+        for (int i = 0; i < materialPages.pageCount(); i++) assertEquals(display.information(), materialPages.information(i));
         assertThrows(IllegalArgumentException.class, () -> layout.information(-1));
         assertThrows(IllegalArgumentException.class, () -> layout.information(layout.pageCount()));
+    }
+
+    @Test
+    void poolHeightFitsWrappedExplanationsOnEveryMaterialPageAndRebuildsWithFontMetrics() {
+        var stacks = new ObjectArrayList<GenericStack>();
+        for (int i = 0; i < 33; i++) stacks.add(stack(ITEM, "wide" + i, i + 1));
+        var large = recipe("large", stacks, List.of());
+        var small = recipe("small", List.of(stacks.getFirst()), List.of());
+        var pool = pool("measured", small, large);
+        var displays = new RecipeJeiDisplays();
+        displays.register(RecipeRequirements.RESOURCES, (recipe, requirement, builder) -> {
+            for (var stack : requirement.payload().inputs()) builder.resource(stack, JeiRecipeDisplay.Role.INPUT);
+            builder.information(JeiRecipeDisplay.Text.of(JeiText.CustomRequirement, recipe == large ? "long" : "short"));
+        });
+        displays.freeze();
+        var longLines = List.of("Line one", "Line two", "Line three", "Line four", "Line five", "Line six", "Last line");
+        var font = new RecipeInformationLayout.Font(11, (text, width) -> {
+            assertEquals(170, width);
+            return text.arguments().contains("long") ? longLines : List.of("Short explanation");
+        });
+        var page = new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), font);
+        assertTrue(page.getBackground().getHeight() > 160);
+        assertEquals(16, page.inputLayout().size());
+        assertEquals(16, page.outputLayout().size());
+        var display = displays.describe(large);
+        var wrapper = page.createRecipe(large, display, ingredients(display));
+        var layout = new JeiTestViews.Layout();
+        page.setRecipe(layout, wrapper, new JeiTestViews.Ingredients());
+        int nearBottom = page.getBackground().getHeight() - 25;
+        for (int i = 0; i < 3; i++) {
+            assertEquals(longLines, wrapper.getTooltipStrings(2, nearBottom));
+            assertFalse(wrapper.handleMouseScroll(10, page.getBackground().getHeight(), -1));
+            assertTrue(wrapper.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
+        }
+        assertEquals(33, Objects.requireNonNull(wrapper.patternRecipe()).inputs().size());
+        var smallerFont = new RecipeInformationLayout.Font(9, (_, _) -> List.of("Short translation"));
+        var reloaded = new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), smallerFont);
+        assertTrue(reloaded.getBackground().getHeight() < page.getBackground().getHeight());
     }
 
     @Test

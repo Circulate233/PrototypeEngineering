@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.client.jei;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
-import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
 import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.localization.RecipeText;
 import net.minecraft.util.ResourceLocation;
@@ -36,7 +35,7 @@ class MachineRecipePoolJeiTest {
         var displays = new RecipeJeiDisplays();
         displays.freeze();
         var pages = new RecipePoolJeiRegistry();
-        pages.freeze(List.of(pool), current -> new AutoLayoutRecipePage(current, new JeiTestViews.Helper(), displays));
+        pages.freeze(List.of(pool), current -> JeiTestViews.page(current, new JeiTestViews.Helper(), displays));
         var page = pages.pages().getFirst();
         var display = displays.describe(recipe);
         var wrapper = page.createRecipe(recipe, display, new JeiRecipeIngredients(display, List.of(), List.of(), new JeiQueryIdentityIndex()));
@@ -48,7 +47,7 @@ class MachineRecipePoolJeiTest {
             assertEquals("Machines (1)", tooltip.getFirst());
             assertEquals("Unavailable (" + user.id() + ")", tooltip.get(1));
             assertFalse(tooltip.stream().anyMatch(line -> line.contains(unrelated.id().toString())));
-            assertTrue(wrapper.getTooltipStrings(40, 5).isEmpty());
+            assertTrue(wrapper.getTooltipStrings(0, 5).isEmpty());
         });
     }
 

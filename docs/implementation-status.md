@@ -1,5 +1,7 @@
 # 实施进度
 
+- 2026-11-09 默认JEI页修复：仅材料分页；两侧各16个PM空槽背景独立于ingredient数量绘制；说明不截断、不另开页，按实际Minecraft字体换行与池内最大高度扩展Y，能源图标与多行文字取较高者，页脚点击/悬停/滚轮同步。移除默认Definition/Runtime技术介绍；加工时间只画一次且参与换行，阶段/概率/候选/FE文案参考MMCE。GenericStack、同槽轮播、Tick×duration和全量样板导入保持。专项33 tests/8 suites、正常完整build的1682 tests/217 suites全部零失败/错误/跳过；12 Java及两语言的本机errorsOnly:false错误/警告/弱警告全零，MCP build成功。首次旧标签边界断言失败、固定参数清理遗漏导致编译失败、两份新Java行尾格式检查失败均修正并保留原记录。原有未跟踪JeiResourceReloadTest只适配无游戏字体fixture并保留未跟踪状态，不混入本地提交；用户原暂存删除和其他背景均保护。写前、日志/XML、本机MCP及精确提交在build/staging/jei-default-layout，未启动游戏。
+
 - 2026-11-09 交互仓/升级槽反馈：逐张检查42张原图，删除所有材料/能源仓的独立装饰槽栏；能源输入输出仓内部四格区域被移除，原电池整体右移23像素，标题/数量/速率框扩宽23像素，真实hit/clip区域同步。材料仓界面按主体像素宽度居中，修复交互仓Lv3/4输出左边界123→119、槽区顶部对齐24，保留槽数及双方真实存储。去掉穿过全宽标题的旧竖线，材料tooltip分别标明输入/输出，槽位使用占用槽数而非去重key数，容量/AEKey/容器提示继续沿原路径。
 - 用户纠正能源交互仓应为两份独立容器。PM本地EnergyHatchBlockEntity实际只有一份storage、Storage/Energy存档和main端口，EnergyHatchGUI仅首根电池动态接线；此前主代理将PE现状当作正确需求是错误判断。本轮按用户明确需求建立输入/输出独立EnergyBuffer/context：外部充入→输入、机器消耗←输入、机器产出→输出、外部抽取←输出。机器capability及存储身份分开，Forge仅提供信息性汇总且饱和到int，方向性操作不跨余额；保留原单缓存Forge构造与GUI宿主默认方法供外部旧实现使用。
 - 双侧在有序StorageContext锁下保存、改限额与失效；NBT按InputEnergy/OutputEnergy保存，旧PE单Energy值仅恢复到输入侧，不复制至输出。卸载/加载/重挂载均退休两侧旧引用。GUI新增输出电量/容量同步，两个电池及数量行各读自己的余额/容量，电池整个外框、数量与速率图标均有对应tooltip；run示例README的共享余额旧说明已更正。

@@ -240,7 +240,7 @@ class JeiCandidateDisplayTest {
         var nativeIngredients = ingredients(display);
         var alternatives = new RecipePanelLayout(display, ALTERNATIVES, nativeIngredients);
         var page = new AutoLayoutRecipePage(new DefaultRecipePool(new ResourceLocation("jei_test", "pool"), "jei.test.pool",
-            ObjectArrayList.of(recipe)), new JeiTestViews.Helper(), descriptions, ALTERNATIVES);
+            ObjectArrayList.of(recipe)), new JeiTestViews.Helper(), descriptions, ALTERNATIVES, JeiTestViews.FONT);
         var wrapper = page.createRecipe(recipe, display, nativeIngredients);
         var nativeLayout = new JeiTestViews.Layout();
         page.setRecipe(nativeLayout, wrapper, new JeiTestViews.Ingredients());
