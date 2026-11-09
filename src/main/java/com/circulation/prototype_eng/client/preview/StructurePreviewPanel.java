@@ -22,6 +22,7 @@ import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.init.SoundEvents;
 import java.util.Comparator;
+import com.circulation.prototype_eng.client.gui.GuiLabel;
 /** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewPanel implements AutoCloseable {
@@ -134,7 +135,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
             var model = view.model();
             var titleText = model == null ? null : model.title();
             String title = titleText == null ? view.id().toString() : titleText.getLocal();
-            Minecraft.getMinecraft().fontRenderer.drawString(title, 10, y + 6, 0xffffff, false);
+            GuiLabel.draw(Minecraft.getMinecraft().fontRenderer, title, 10, y + 5, 109, 10, 0xffffff, false);
+            area("title", 7, y, 115, 18, List.of(title), null);
         });
         clipped(123, 10, 17, 19, () -> {
             float y = 10 - 15 * collapseNow;

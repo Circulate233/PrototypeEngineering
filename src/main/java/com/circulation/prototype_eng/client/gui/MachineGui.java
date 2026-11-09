@@ -18,6 +18,12 @@ import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.init.SoundEvents;
 import org.jetbrains.annotations.NotNull;
+import ae2.client.Point;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.List;
+import java.awt.Rectangle;
+import ae2.client.gui.widgets.ITooltip;
+import net.minecraft.util.text.ITextComponent;
 /** PM DefaultMachineUI, retaining its original two pages, coordinates and scroll handle. */
 public final class MachineGui extends AEBaseGui<MachineContainer> {
     private static final ResourceLocation MAIN = GuiAtlas.texture("gui_controller_a");
@@ -34,12 +40,12 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         super(container, player);
         xSize = 384;
         ySize = 256;
+        widgets.add("mainPage", new PageTab(0, 0, 0), new Point(0, 0));
+        widgets.add("extensionPage", new PageTab(1, 0, 0), new Point(0, 22));
     }
 
     @Override public void initGui() {
         super.initGui();
-        addButton(new PageTab(0, guiLeft, guiTop));
-        addButton(new PageTab(1, guiLeft, guiTop + 22));
         updatePage();
         updateView();
     }
@@ -73,13 +79,13 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
     }
 
     @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
-        fontRenderer.drawStringWithShadow(Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 144, 13, 0xffffff);
+        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 144, 13, 228, 10, 0xffffff, true);
         if (page == 1) {
-            fontRenderer.drawString(MachineGuiText.ExtensionPage.getLocal(), 144, 33, 0xe0e0e0);
-            fontRenderer.drawSplitString(MachineGuiText.ExtensionDescription.getLocal(), 144, 47, 228, 0x9e9e9e);
+            GuiLabel.draw(fontRenderer, MachineGuiText.ExtensionPage.getLocal(), 144, 33, 228, 10, 0xe0e0e0, false);
+            fontRenderer.drawSplitString(MachineGuiText.ExtensionDescription.getLocal(), 144, 48, 228, 0x9e9e9e);
             return;
         }
-        fontRenderer.drawString(MachineGuiText.StatusIdle.getLocal(), 144, 27, 0xe0e0e0);
+        GuiLabel.draw(fontRenderer, MachineGuiText.Status.getLocal(summaryStatus().getLocal()), 144, 27, 228, 10, 0xe0e0e0, false);
         var snapshot = container.snapshot;
         for (int row = 0; row < snapshot.entries().size(); row++) {
             var entry = snapshot.entries().get(row);
@@ -97,11 +103,33 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         }
         if (maxScroll() > 0) {
             int handleY = handleY();
-            boolean hover = isPointInRegion(LIST_X + 47, handleY, 38, 15, mouseX, mouseY);
+            boolean hover = new Rectangle(LIST_X + 47, handleY, 38, 15).contains(mouseX - guiLeft, mouseY - guiTop);
             mc.getTextureManager().bindTexture(GuiAtlas.STATES);
             GlStateManager.color(1, 1, 1, 1);
             Gui.drawScaledCustomSizeModalRect(LIST_X + 47, handleY, dragging ? 172 : hover ? 159 : 146, 1,
                 13, 15, 38, 15, 256, 256);
+        }
+    }
+
+    private MachineGuiText summaryStatus() {
+        return MachineGuiText.status(container.snapshot.overallStatus());
+    }
+
+    @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        super.drawScreen(mouseX, mouseY, partialTicks);
+        if (isPointInRegion(144, 13, 228, 10, mouseX, mouseY)) {
+            drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
+        } else if (page == 0 && isPointInRegion(138, 173, 72, 72, mouseX, mouseY)) {
+            drawHoveringText(List.of(MachineGuiText.Placeholder.getLocal()), mouseX, mouseY);
+        } else if (page == 0 && isPointInRegion(LIST_X, LIST_Y, 89, LIST_HEIGHT, mouseX, mouseY)) {
+            int row = (mouseY - guiTop - LIST_Y) / ROW_HEIGHT;
+            if (row < container.snapshot.entries().size()) {
+                var entry = container.snapshot.entries().get(row);
+                var lines = new ObjectArrayList<String>();
+                lines.add(MachineGuiText.reason(entry));
+                if (!entry.recipe().isEmpty()) lines.add(entry.recipe());
+                drawHoveringText(lines, mouseX, mouseY);
+            }
         }
     }
 
@@ -151,8 +179,12 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         }
     }
 
-    private final class PageTab extends GuiButton {
+    private final class PageTab extends GuiButton implements ITooltip {
         private PageTab(int id, int x, int y) { super(id, x, y, 21, 22, ""); }
+
+        @Override public @NotNull List<ITextComponent> getTooltipMessage() { return List.of((id == 0 ? MachineGuiText.MainPage : MachineGuiText.ExtensionPage).text()); }
+        @Override public Rectangle getTooltipArea() { return new Rectangle(x, y, width, height); }
+        @Override public boolean isTooltipAreaVisible() { return visible; }
 
         @Override public void drawButton(@NotNull Minecraft minecraft, int mouseX, int mouseY, float partialTicks) {
             hovered = mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;

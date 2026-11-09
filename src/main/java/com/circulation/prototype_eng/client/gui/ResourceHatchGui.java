@@ -24,25 +24,33 @@ import net.minecraft.util.ResourceLocation;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 import java.util.List;
+import ae2.api.stacks.AmountFormat;
+import ae2.api.client.AEKeyRendering;
+import ae2.core.localization.Tooltips;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.util.text.ITextComponent;
+import net.minecraft.util.text.TextComponentString;
 /** PM's ItemHatchGUI/ItemIOHatchGUI, with AE's native generic resource slots. */
 public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
     private final ResourceLocation background;
     private final HatchScrollbar inputScrollbar;
     private final HatchScrollbar outputScrollbar;
-    private HatchToggleButton autoInput;
-    private HatchToggleButton autoOutput;
 
     public ResourceHatchGui(ResourceHatchContainer container, InventoryPlayer player) {
         super(container, player);
         xSize = container.guiWidth;
         ySize = container.guiHeight;
         boolean mixed = container.mode() == HatchMode.MIXED;
-        String folder = mixed ? "gui_item_io_hatch" : "gui_item_hatch";
+        String folder = mixed ? "gui_material_io_hatch" : "gui_material_hatch";
         background = GuiAtlas.texture(folder + "/" + folder + "_" + container.tier().level());
         inputScrollbar = new HatchScrollbar(mixed);
         outputScrollbar = new HatchScrollbar(mixed);
         widgets.add("inputScrollbar", inputScrollbar);
         widgets.add("outputScrollbar", outputScrollbar);
+        widgets.add("autoInput", new HatchToggleButton(100, 0, 0, true,
+            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput()), new Point(4, 13));
+        widgets.add("autoOutput", new HatchToggleButton(101, 0, 0, false,
+            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput()), new Point(4, 31));
     }
 
     @Override public void initGui() {
@@ -51,10 +59,6 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
             container.mode().hasInput() ? container.inputRows() : 0);
         outputScrollbar.configure(container.outputLeft, container.resourceTop, container.columns, container.visibleRows,
             container.mode().hasOutput() ? container.outputRows() : 0);
-        autoInput = addButton(new HatchToggleButton(100, guiLeft + 4, guiTop + 13, true,
-            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput()));
-        autoOutput = addButton(new HatchToggleButton(101, guiLeft + 4, guiTop + 31, false,
-            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput()));
         updateResourceSlots();
     }
 
@@ -64,10 +68,16 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         else super.actionPerformed(button);
     }
 
+    @Override protected boolean isHovering(Slot slot, int mouseX, int mouseY) {
+        if (container.isResourceSlot(slot.slotNumber)
+            && (mouseY < guiTop + container.resourceTop || mouseY >= guiTop + container.resourceTop + container.visibleRows * 18)) return false;
+        return super.isHovering(slot, mouseX, mouseY);
+    }
+
     @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
-        if (autoInput.isMouseOver()) drawHoveringText(List.of(GuiText.AutoInput.getLocal()), mouseX, mouseY);
-        if (autoOutput.isMouseOver()) drawHoveringText(List.of(GuiText.AutoOutput.getLocal()), mouseX, mouseY);
+        if (isPointInRegion(29, 8, titleWidth(), 10, mouseX, mouseY))
+            drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
     }
 
     @Override protected void updateBeforeRender() {
@@ -136,12 +146,50 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
     }
 
     @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
-        fontRenderer.drawString(Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 65, 7, 0x404040);
+        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
         if (container.mode().hasInput()) GuiAtlas.inset(26, container.resourceTop, container.columns * 18, container.visibleRows * 18);
         if (container.mode().hasOutput()) GuiAtlas.inset(container.outputLeft, container.resourceTop, container.columns * 18, container.visibleRows * 18);
     }
 
+    private int titleWidth() { return container.mode() == HatchMode.MIXED && container.visibleRows <= 4 ? 100 : 138; }
+
+    @Override protected void renderHoveredToolTip(int mouseX, int mouseY) {
+        var slot = findSlot(mouseX, mouseY);
+        if (slot == null || !container.isResourceSlot(slot.slotNumber) || !(slot instanceof AppEngSlot resource)) {
+            super.renderHoveredToolTip(mouseX, mouseY);
+            return;
+        }
+        var lines = new ObjectArrayList<ITextComponent>();
+        var key = resource.getGenericDisplayKey();
+        if (key != null) {
+            if (AEKeyRendering.get(key.getType()) != null) lines.addAll(AEKeyRendering.getTooltip(key));
+            else lines.add(key.getDisplayName());
+            lines.add(new TextComponentString(""));
+            lines.add(GuiText.ResourceTypes.text(container.usedTypes(container.isInputSlot(slot.slotNumber)),
+                container.typeSlots(container.isInputSlot(slot.slotNumber))));
+            lines.add(GuiText.ResourceStored.text(key.formatAmount(resource.getGenericDisplayAmount(), AmountFormat.FULL),
+                key.formatAmount(container.capacity(slot.slotNumber, key), AmountFormat.FULL)));
+        }
+        var carried = getCarriedItem();
+        var emptying = container.isInputSlot(slot.slotNumber) ? ContainerItemStrategies.getEmptyingAction(carried) : null;
+        if (emptying != null) lines.add(GuiText.EmptyContainer.text(Tooltips.getMouseButtonText(1), emptying.description()));
+        if (key != null && !(key instanceof AEItemKey) && !carried.isEmpty()) {
+            var context = ContainerItemStrategies.findCarriedContextForKey(key, playerInventory.player, container);
+            if (context != null && context.insert(key, resource.getGenericDisplayAmount(), Actionable.SIMULATE) > 0)
+                lines.add(GuiText.FillContainer.text(Tooltips.getMouseButtonText(0)));
+        }
+        if (!lines.isEmpty()) {
+            if (key != null) drawKeyTooltipWithImages(mouseX, mouseY, key, lines);
+            else drawTooltipWithHeader(mouseX, mouseY, lines);
+        }
+    }
+
     @Override protected void handleMouseClick(Slot slot, int slotId, int button, @NotNull ClickType click) {
+        if (click == ClickType.CLONE && container.isResourceSlot(slotId) && slot instanceof AppEngSlot resource
+            && resource.isEnabled() && resource.getGenericDisplayKey() instanceof AEItemKey) {
+            send(InventoryAction.CREATIVE_DUPLICATE, slotId);
+            return;
+        }
         if (container.isResourceSlot(slotId) && slot instanceof AppEngSlot resource && resource.isEnabled()
             && (click == ClickType.PICKUP || click == ClickType.QUICK_MOVE) && !getCarriedItem().isEmpty()) {
             if (button == 1 && container.isInputSlot(slotId) && ContainerItemStrategies.getEmptyingAction(getCarriedItem()) != null) {

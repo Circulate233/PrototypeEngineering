@@ -29,6 +29,7 @@ import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.localization.HatchGuiTitle;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 public final class ResourceHatchContainer extends AEBaseContainer {
     private static final String AUTO_INPUT = "autoInput";
     private static final String AUTO_OUTPUT = "autoOutput";
@@ -183,6 +184,20 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     public boolean isInputSlot(int index) {
         return index >= 0 && index < inputSlots;
     }
+
+    public int typeSlots(boolean input) { return input ? inputSlots : resourceSlots - inputSlots; }
+
+    public int usedTypes(boolean input) {
+        var keys = new ObjectOpenHashSet<AEKey>();
+        int start = input ? 0 : inputSlots, end = input ? inputSlots : resourceSlots;
+        for (int i = start; i < end; i++) {
+            var key = ((AppEngSlot) inventorySlots.get(i)).getGenericDisplayKey();
+            if (key != null) keys.add(key);
+        }
+        return keys.size();
+    }
+
+    public long capacity(int index, AEKey key) { return buffer(index).getMaxAmount(key); }
 
     public HatchMode mode() {
         return tile.mode();
@@ -351,6 +366,10 @@ public final class ResourceHatchContainer extends AEBaseContainer {
             return;
         }
         if (isResourceSlot(index)) {
+            if (action == InventoryAction.CREATIVE_DUPLICATE) {
+                slotClick(index, 2, ClickType.CLONE, player);
+                return;
+            }
             boolean fill = action == InventoryAction.FILL_ITEM || action == InventoryAction.FILL_ENTIRE_ITEM;
             boolean empty = action == InventoryAction.EMPTY_ITEM || action == InventoryAction.EMPTY_ENTIRE_ITEM;
             if (empty && !isInputSlot(index)) {

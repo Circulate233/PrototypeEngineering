@@ -329,6 +329,8 @@ Applied-Flux FE Key 的资源视图与能源视图共享同一余额。一次工
 
 2026-11-09 用户最终确认：保留自动生成与溢出可达，使用 PM 原槽位、能源及进度纹理，不再重画灰色页面。物品使用原生物品 ingredient，所有非物品使用 AE2S 元件详情页同样的 GenericStack 包装/AEKeyRendering。样板终端导入使用完整显示分组，概率、多可选材料等按展示导入，不附加拒绝策略；多可选材料使用 JEI 同槽候选轮播，具体选择交给 AE2S 的导入优先级；逐 tick 资源按配方 durationTicks×数量导入。保持实际候选关系与 long 数量，不因页面切换丢项；容量与算术溢出在写入前明确检查。
 
+2026-11-09 实机补充：结构关闭按钮使用 AE 控件并移除复制的 MUI 按钮资产；通用资源仓命名为材料仓，纹理和模型中的 item_hatch 同步改名。文本须适配实际区域，补全资源/容量/按钮/容器操作 tooltip，包装的大堆叠物品保留原有中键操作。控制器未绑定用途的占位区不得接收并丢弃真实物品。
+
 已检查 `F:/clone/ModularMachinery-Community-Edition` 本地工作区的 `CategoryDynamicRecipe`、`DynamicRecipeWrapper`、`RecipeLayoutPart`、`JEIComponentEnergy` 与 `ModIntegrationJEI`。调查时 HEAD 为 `e1d80aeaeaff55ef6482f9a9734fa1d5d8d16082`；本轮未运行该工程。其默认生成思路可作为本项目默认实例的参考：
 
 - 扫描同组可展示配方，按输入/输出及展示内容统计槽位需求，以组内所需的最大数量形成共用布局。

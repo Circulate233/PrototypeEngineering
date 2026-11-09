@@ -13,14 +13,11 @@ import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Set;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class MachineGuiSnapshotTest {
     @Test void pageCrossesHostsAndClampsAfterLayoutChangesWithoutRetainingLiveProgress() {
         var machine = new MachineInstance();
@@ -60,6 +57,20 @@ class MachineGuiSnapshotTest {
             assertEquals(snapshot, new MachineGuiSnapshot(buffer));
             assertEquals(0, buffer.readableBytes());
         } finally { buffer.release(); }
+    }
+
+    @Test
+    void overallStatusIncludesProcessesOutsideTheVisiblePage() {
+        var machine = new MachineInstance();
+        install(machine, "before", 8);
+        var host = install(machine, "after", 1);
+        var process = new RecipeProcess(machine, new MachineRecipe(id("offscreen"), 10, List.of()), 1);
+        assertTrue(host.start(process));
+        var snapshot = MachineGuiSnapshot.capture(machine, 0, 7);
+        assertTrue(snapshot.entries().stream().allMatch(entry -> entry.status() == WorkSlotStatus.IDLE));
+        assertEquals(WorkSlotStatus.RUNNING, snapshot.overallStatus());
+        assertTrue(host.cancel(process, new ProcessResult.Failure("test.failure", List.of())));
+        assertEquals(WorkSlotStatus.FAILED, MachineGuiSnapshot.capture(machine, 0, 7).overallStatus());
     }
 
     @Test void packetBoundsApplyBeforeAllocatingRowsAndArguments() {

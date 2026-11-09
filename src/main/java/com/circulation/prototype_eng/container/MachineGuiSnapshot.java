@@ -9,18 +9,20 @@ import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.network.PacketBuffer;
-
 import java.util.List;
 import java.util.Objects;
-
-/** Immutable, bounded display data. Capture only after scheduler join; never retain runtime objects. */
-public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset, List<Entry> entries) implements PacketWritable {
+/**
+ * Immutable, bounded display data. Capture only after scheduler join; never retain runtime objects.
+ */
+public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset,
+                                 List<Entry> entries, WorkSlotStatus overallStatus) implements PacketWritable {
     public static final int MAX_ROWS = 7;
     private static final int MAX_TEXT = 1024;
     private static final int MAX_ARGUMENTS = 16;
     public static final MachineGuiSnapshot EMPTY = new MachineGuiSnapshot(false, false, 0, 0, List.of());
 
     public MachineGuiSnapshot {
+        Objects.requireNonNull(overallStatus);
         if (offset < 0 || offset > totalSlots || entries.size() > MAX_ROWS || entries.size() > totalSlots - offset) {
             throw new IllegalArgumentException("Invalid machine GUI page");
         }
@@ -28,22 +30,32 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         entries.forEach(Objects::requireNonNull);
     }
 
+    public MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset, List<Entry> entries) {
+        this(formed, active, totalSlots, offset, entries, entries.stream().map(Entry::status).reduce(WorkSlotStatus.IDLE, MachineGuiSnapshot::combine));
+    }
+
     @SuppressWarnings("unused") // AE2 GuiSync invokes the public ByteBuf constructor.
     public MachineGuiSnapshot(ByteBuf data) {
-        this(data.readBoolean(), data.readBoolean(), data.readInt(), data.readInt(), readEntries(new PacketBuffer(data)));
+        this(data.readBoolean(), data.readBoolean(), data.readInt(), data.readInt(), readEntries(new PacketBuffer(data)), readStatus(data));
     }
 
     public static MachineGuiSnapshot capture(MachineInstance machine, int requestedOffset, int rows) {
         machine.requirePersistenceBoundary();
-        if (rows < 1 || rows > MAX_ROWS) { throw new IllegalArgumentException("Invalid visible row count"); }
+        if (rows < 1 || rows > MAX_ROWS) {
+            throw new IllegalArgumentException("Invalid visible row count");
+        }
         var hosts = new ObjectArrayList<MachineWorkSlots>();
         int total = 0;
+        var overall = WorkSlotStatus.IDLE;
         for (var binding : machine.components().orderedBindings()) {
             if (binding.component() instanceof MachineWorkSlots slots) {
                 slots.requireQuiescent();
-                if (slots.owner() != machine) { throw new IllegalArgumentException("Foreign work-slot host"); }
+                if (slots.owner() != machine) {
+                    throw new IllegalArgumentException("Foreign work-slot host");
+                }
                 hosts.add(slots);
                 total = Math.addExact(total, slots.slots().size());
+                for (var slot : slots.slots()) overall = combine(overall, slot.status());
             }
         }
         int start = Math.clamp(requestedOffset, 0, Math.max(0, total - rows));
@@ -69,21 +81,39 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                 result.add(new Entry(slot.name(), process == null ? "" : process.recipe().id().toString(), slot.status(), percent, reason, arguments));
             }
             base = Math.addExact(base, host.slots().size());
-            if (result.size() == rows) { break; }
+            if (result.size() == rows) {
+                break;
+            }
         }
         var lifecycle = machine.lifecycle();
-        return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result);
+        return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result, overall);
     }
 
-    @Override public void writeToPacket(ByteBuf data) {
+    @Override
+    public void writeToPacket(ByteBuf data) {
         data.writeBoolean(formed).writeBoolean(active).writeInt(totalSlots).writeInt(offset).writeByte(entries.size());
         var packet = new PacketBuffer(data);
         for (var entry : entries) {
             packet.writeString(entry.name).writeString(entry.recipe);
             packet.writeByte(entry.status.ordinal()).writeByte(entry.percent);
             packet.writeString(entry.reason).writeByte(entry.arguments.size());
-            for (var argument : entry.arguments) { packet.writeString(argument); }
+            for (var argument : entry.arguments) {
+                packet.writeString(argument);
+            }
         }
+        packet.writeByte(overallStatus.ordinal());
+    }
+
+    private static WorkSlotStatus combine(WorkSlotStatus first, WorkSlotStatus second) {
+        if (first == WorkSlotStatus.FAILED || second == WorkSlotStatus.FAILED) return WorkSlotStatus.FAILED;
+        if (first == WorkSlotStatus.BLOCKED || second == WorkSlotStatus.BLOCKED) return WorkSlotStatus.BLOCKED;
+        return first == WorkSlotStatus.RUNNING || second == WorkSlotStatus.RUNNING ? WorkSlotStatus.RUNNING : WorkSlotStatus.IDLE;
+    }
+
+    private static WorkSlotStatus readStatus(ByteBuf data) {
+        int status = data.readUnsignedByte();
+        if (status >= WorkSlotStatus.values().length) throw new IllegalArgumentException("Invalid machine GUI status");
+        return WorkSlotStatus.values()[status];
     }
 
     private static List<Entry> readEntries(PacketBuffer packet) {

@@ -12,13 +12,13 @@ import org.lwjgl.input.Keyboard;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
+import ae2.client.Point;
+import net.minecraft.client.renderer.GlStateManager;
 /** Original PM EnergyHatchGUI: 192x168, tier background, borderless rate fields and side icons. */
 public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
     private final ResourceLocation background;
     private HatchRateField inputRate;
     private HatchRateField outputRate;
-    private HatchToggleButton autoInput;
-    private HatchToggleButton autoOutput;
 
     public EnergyHatchGui(EnergyHatchContainer container, InventoryPlayer player) {
         super(container, player);
@@ -26,16 +26,16 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         ySize = 168;
         String file = container.mode() == HatchMode.MIXED ? "gui_energy_io_hatch_" : "gui_energy_hatch_";
         background = GuiAtlas.texture("gui_energy_hatch/" + file + container.tier().level());
+        widgets.add("autoInput", new HatchToggleButton(100, 0, 0, true,
+            () -> container.autoInput, container.mode().hasInput()), new Point(4, 13));
+        widgets.add("autoOutput", new HatchToggleButton(101, 0, 0, false,
+            () -> container.autoOutput, container.mode().hasOutput()), new Point(4, 31));
     }
 
     @Override public void initGui() {
         super.initGui();
         inputRate = createRateField(0, 52, container.inputRate);
         outputRate = createRateField(1, 68, container.outputRate);
-        autoInput = addButton(new HatchToggleButton(100, guiLeft + 4, guiTop + 13, true,
-            () -> container.autoInput, container.mode().hasInput()));
-        autoOutput = addButton(new HatchToggleButton(101, guiLeft + 4, guiTop + 31, false,
-            () -> container.autoOutput, container.mode().hasOutput()));
     }
 
     private HatchRateField createRateField(int id, int top, long value) {
@@ -110,21 +110,25 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         if (!inputRate.isFocused()) inputRate.setText(Long.toString(container.inputRate));
         if (!outputRate.isFocused()) outputRate.setText(Long.toString(container.outputRate));
         super.drawScreen(mouseX, mouseY, partialTicks);
-        inputRate.drawTextBox();
-        outputRate.drawTextBox();
-        if (autoInput.isMouseOver()) drawHoveringText(List.of(GuiText.AutoInput.getLocal()), mouseX, mouseY);
-        else if (autoOutput.isMouseOver()) drawHoveringText(List.of(GuiText.AutoOutput.getLocal()), mouseX, mouseY);
-        else if (isPointInRegion(146, 10, 16, 66, mouseX, mouseY)) {
+        if (isPointInRegion(29, 8, 106, 10, mouseX, mouseY)) drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
+        else if (isPointInRegion(146, 10, 16, 66, mouseX, mouseY) || isPointInRegion(40, 25, 97, 10, mouseX, mouseY)) {
             long capacity = Math.max(0, container.capacity);
             drawHoveringText(List.of(GuiNumbers.grouped(Math.clamp(container.energy, 0, capacity)) + " / "
                 + GuiNumbers.grouped(capacity) + " FE"), mouseX, mouseY);
-        } else if (fontRenderer.getStringWidth(inputRate.getText()) > 89 && isPointInRegion(40, 52, 97, 10, mouseX, mouseY)) drawHoveringText(List.of(inputRate.getText()), mouseX, mouseY);
-        else if (fontRenderer.getStringWidth(outputRate.getText()) > 89 && isPointInRegion(40, 68, 97, 10, mouseX, mouseY)) drawHoveringText(List.of(outputRate.getText()), mouseX, mouseY);
+        } else if (isPointInRegion(40, 52, 97, 10, mouseX, mouseY)) drawHoveringText(List.of(GuiText.InputRate.getLocal(), inputRate.getText()), mouseX, mouseY);
+        else if (isPointInRegion(40, 68, 97, 10, mouseX, mouseY)) drawHoveringText(List.of(GuiText.OutputRate.getLocal(), outputRate.getText()), mouseX, mouseY);
     }
 
     @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
-        fontRenderer.drawString(Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 65, 7, 0x404040);
+        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, 106, 10, 0x404040, false);
         long capacity = Math.max(0, container.capacity), energy = Math.clamp(container.energy, 0, capacity);
-        fontRenderer.drawString(GuiNumbers.compact(energy) + " / " + GuiNumbers.compact(capacity) + " FE", 44, 25, 0x404040);
+        GuiLabel.draw(fontRenderer, GuiNumbers.compact(energy) + " / " + GuiNumbers.compact(capacity) + " FE", 44, 25, 89, 10, 0x404040, false);
+        // Fields store screen coordinates; draw them before AE draws button/slot tooltips.
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(-x, -y, 0);
+            inputRate.drawTextBox();
+            outputRate.drawTextBox();
+        } finally { GlStateManager.popMatrix(); }
     }
 }

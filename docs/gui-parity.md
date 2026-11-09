@@ -4,7 +4,21 @@
 
 用户要求：原本已实现的 GUI 保持完全一致的布局、尺寸、纹理、控件、交互和本地化效果；通用输入仓槽位采用 AE 实现，兼容非 AEItemKey。用户后续明确能源数值解析也直接复用 AE 已有实现，不依赖或复制 EvalEx。继续遵守直接 AEBaseGui、无 ModularUI 运行依赖；这不授权替换 PM 原纹理或重设计界面。
 
-## 已核实的偏离
+## 2026-11-09 实机反馈后的再次修复
+
+用户截图再次否决标题位置/溢出和 tooltip。当前指示覆盖上轮“照抄原坐标”的做法：关闭按钮直接用 AE；通用仓正式称材料仓，纹理/模型同步改名；所有文本应在实际控件区域内布局，不得关闭重开吞掉物品。
+
+- 标题按实际 PNG 内框重设文字区域：材料仓 x=29、宽 138（低阶混合仓 100），能源仓宽 106，均 y=8、高 10；完整富文本在区域内等比收缩、垂直居中，悬停保留全名。能源数量框按 89×10 限制宽度，输入框垂直位置修正 1px；机器主/扩展页及结构标题使用相同区域约束。研究页已使用 fit/分页，不属于 PM 原 GUI，未重设计。
+- 自动 IO、控制器分页、关闭按钮注册到 AE WidgetContainer，不能仅放入 Minecraft buttonList，否则 ITooltip 不被 AE 读取。能源框移入前景层，在 AE tooltip 之前绘制；结构关闭按钮的 tooltip 优先于其背后的场景控件。原 PM 自动 IO 有 tooltip；分页按钮没有，本次补充明确页名；能源速率框补说明与完整值，数量文字和能源条都能显示完整当前量/上限。
+- 材料槽显式调用 AEKeyRendering + AE 图片 tooltip，追加原 PM 的种类数和当前量/容量，并补手持非物品容器的灌入/取出/Shift 操作提示。AE findSlot 独立于原版 isPointInRegion，现已同时限制 isHovering 的滚动可视区。超原版堆叠上限的物品会被 GenericStack 包装，AE 基类原先拦截包装槽 CLONE；本次仅把材料槽真实 AEItemKey 的中键动作送到自己的服务端校验，仍要求创造模式、空光标和有效当前容器，返回原版最大堆叠。
+- 原 PM DefaultMachineUI 的 4×4 是每次构建新建 ItemStackHandler 的占位区，未绑定存储/升级用途。上轮把临时库存当作可放真实物品的槽是错误迁移；现保留图案并提示预留区域，不再注册可收取物品的槽，不虚构持久机器库存。原固定 Status: Idle 改为完整机器快照的聚合状态，包含当前页之外的运行/阻塞/失败；增加跨页状态测试和同步字段，保留旧公开构造器。
+- 关闭控件使用 AE SimpleIconButton(Icon.CLEAR, GuiText.Close)，删除 PreviewCloseButton 和三张 MUI 图片及 NOTICE。104 个纹理/模型文件从 item_hatch/gui_item(_io)_hatch 改为 material_hatch/gui_material(_io)_hatch，60 个模型/方块状态引用同步更新；材质像素保持原图，方块注册 ID 不改以保留世界兼容。中英文材料仓名称同步修正。236 个关联资源检查无缺失；第一次检查遗漏 Forge blockstate 的 models/block 隐式前缀，原始无效路径报告保留，未据此制造额外模型。
+
+证据入口 `build/staging/gui-feedback/`：before.json、asset-renames.json、asset-reference-check.json、packaged-assets.json。专项 40 tests/6 suites 全零；完整 full-build 1676 tests/216 suites 全零，最后绘制顺序修正后的 final-build 曾出现结构节拍测试一次失败（5ms 默认切片的实时预算路径），原失败 XML 保留；不改后台/测试以掩盖问题，单独复查 12 tests/1 suite 已通过，最终构建见 verified-build.log/result.json。14 Java 及两语言文件本机 MCP 全级诊断和最终构建报告同目录保存。实机文字、hover、中键和重新打开仍需用户复验，不能用这些检查代替。
+
+用户额外授权的 6.1-sol/xhigh 子代理已完成 run 示例：13 台机器、13 池、106 配方，含能源输入/输出/混合仓与最大 170 个真实方块的结构；Java 25 编译并安装到 run/mods。示例五 Java 的 IDEA 全级检查因 run 被排除而拒绝，未改设置；实际成型/GUI/JEI 待用户运行。命令入口 run/visual-examples/README.md，独立报告 build/staging/run-boundary-examples/handoff.md。其余子代理和总 goal 保持暂停。
+
+## 首次核对的偏离
 
 - ResourceHatchGui 使用 BackgroundGenerator 与 drawRect 重画背景/槽框，分辨率和坐标也改动；额外流体限速/清空控件来自流体仓而非用户指定的物品仓 GUI。PM 原 ItemHatchGUI/ItemIOHatchGUI 使用分等级图、states.png、(26,25)/(26,24) 槽区、固定玩家背包、自动输入/输出图标与平滑滚动。
 - MachineGui 只用了 gui_controller_states.png 的进度条，未使用 gui_controller_a/b.png 背景，列表移位、缺原分页及原布局；“工位/无工位”并非 PM 原文。PM 原进度行是 #编号、百分比、空闲/工作中/错误，没有新增的工位标题。
@@ -18,7 +32,7 @@
 - AE：`F:/clone/Applied-Energistics-2/src/main/java/ae2/client/gui/AEBaseGui.java` 的 drawSlot/drawGenericStackSlot 与 handleMouseClick；AppEngSlot 接收 GenericStackDisplayInventory，AEKeyRendering 负责图标与单位，ContainerItemStrategies 负责非物品容器交互。
 - 当前 PE：`client/gui/{ResourceHatchGui,EnergyHatchGui,MachineGui,StructurePreviewGui}.java`、`container/ResourceHatchContainer.java`、`storage/HatchGuiInventory.java`、`client/preview/StructurePreviewPanel.java`。
 
-## 当前源码修改（已构建，实机未验收）
+## 上一轮源码修改（部分由上节反馈修正）
 
 - 仓室恢复分级 ItemHatch/ItemIOHatch 与 EnergyHatch 原 PNG、槽区/玩家背包位置、原自动输入/输出纹理按钮、原滚动皮肤。ResourceHatch 的槽内容仍直接交 AEBaseGui.drawSlot/GenericStackDisplayInventory 绘制，保留 ContainerItemStrategies 非物品容器传输；删除额外流体 GUI 控件，内部流体传输限额保留。
 - 默认机器页恢复 384×256、两张 controller_a/b 背景、两页标签、原 4×4 临时占位 inventory、原内容区域及 Status: Idle/Extension Page 原文、(27,8) 七行进度、原 38×15 拉伸滚动手柄；移除额外预览按钮和工位文案。MUI GREY.darker(2)/brighter(1) 实际是 #424242/#E0E0E0，已按源码纠正。

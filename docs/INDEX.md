@@ -4,6 +4,7 @@
 
 ## 当前检查点
 
+- 2026-11-09 实机 GUI 反馈已修正：标题/输入框/机器及结构标题按区域对齐，材料仓名称与104个纹理/模型文件改名，非物品及容量/按钮 tooltip、超64中键接线补全；关闭按钮改用 AE 并移除 MUI 三图/说明，控制器临时占位区禁收物品，整机状态包含页外进程。专项40项、最终完整1676 tests/216 suites全零，14 Java与两语言本机全级零；一次结构节拍测试失败及通过复查均保留于 `build/staging/gui-feedback/`。入口 [实机反馈修复](gui-parity.md)。用户另授权的6.1-sol/xhigh示例已交付：13台机器/13池/106配方，含能源输入/输出/混合仓与最大170实际方块结构，已安装run/mods；入口 `run/visual-examples/README.md`。其余代理及总goal保持暂停；实机复验待用户。
 - 2026-11-09 GUI/JEI 修复：恢复 PM 仓室/控制器原 PNG、布局、文本与交互，结构预览 native renderBlock、控制器拾取/24 朝向及仓室资产链；通用仓 slot 保留 AE 多类型操作，能源直接调用 AE MathExpressionParser，无 EvalEx 新依赖。JEI 保留按池自动排布/分页并用 PM 纹理，物品原生、非物品统一 GenericStack；多可选材料同槽轮播，样板导入复用 AE2S 优先级，逐 tick 数量乘配方时长，不附加概率/候选拒绝。最终完整重跑 1675 tests/216 suites 全零，49 Java 本机全级零、MCP build 成功；精确本地提交/背景保护从 `build/staging/gui-original-parity/` 进入。实机视觉及终端网络导入未验收，总 goal 与所有子代理仍暂停。入口 [GUI 原效果修复](gui-parity.md)、[JEI 显示与导入](jei.md)。
 - 2026-11-09 Modern有效算法/线程策略已直接并入：默认CPU平台池与显式virtual per-task、有限single-worker lanes保留原safe reload/pending/source/structure/finished/FIFO义务；Gecko SoA/cube packed及generic primary scratch接入当前管线，可选Vector保持scalar默认。正常完整build1658 tests/212 suites全零、15任务全执行，11 Java本机全级零/完整读回一致、MCP build成功；module缺席/强制scalar/实际Vector三种真实输出一致，9pilot排除阈值、六关键场景长样本与窄修/3最终scalar fork raw保留。入口 [普通调度](scheduling.md)、`build/staging/modern-inline-integration/`、`build/staging/gecko-modern-math/`；未推送/启动游戏。
 - 2026-11-09 控制器与配方池阶段已实现并验证：可继承的 MultithreadController/CrossRecipeController、正常装配默认 PLANNED_PARALLEL、整机并行余额/配方线程上限、事件最终数量覆盖、通用/简单池接口及预算化 live freshness。focused70 tests/9 suites、实际完整重跑1620 tests/206 suites均零失败/错误/跳过；42 Java 本机 IDEA 全级零、完整读回一致，最终 MCP build 成功。最早 before、真实失败/最终日志、独立审查和精确本地提交见 `build/staging/controller-shared-parallel/`、`build/staging/recipe-pool-strategies/`、`build/staging/controller-pool-plan/review.md`。
@@ -13,7 +14,7 @@
 
 ## 下一步
 
-- 当前优先级覆盖下方历史队列：按 [GUI 原效果修复](gui-parity.md) 等待用户实机复验：仓室/能源/控制器、结构预览、JEI 多可选材料轮播及普通/PEA 样板终端导入，其余迁移和子代理/总 goal 暂停。
+- 当前优先级覆盖下方历史队列：按 [GUI 原效果修复](gui-parity.md) 等待用户实机复验：仓室/能源/控制器、结构预览、JEI 多可选材料轮播及普通/PEA 样板终端导入，其余迁移及总 goal 暂停；run 边界示例已交付并安装，按 `run/visual-examples/README.md` 的 build/stock/charge 命令测试实际成型与运行。
 
 1. 继续 [配方功能核对](recipe-feature-parity.md)：工位 RESCAN/isCore 策略待契约，入口 `build/staging/workslot-restart-plan/facts-and-contract.md`。
 2. 统计/配置已实现并验证：入口 [普通调度](scheduling.md)、`build/staging/scheduler-statistics-config/`。D04 的直接整合本轮已实现并验证，入口 `build/staging/modern-inline-integration/` 与 `build/staging/gecko-modern-math/`；默认CPU平台池与标量数学、显式virtual/可选Vector的证据和成本边界均保留；历史 `build/staging/scheduler-backend-plan/handoff.md` 的独立组织待定不再适用。结构预算公开合同见 `build/staging/structure-budget-plan/policies.md`。

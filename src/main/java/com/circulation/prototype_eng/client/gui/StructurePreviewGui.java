@@ -3,6 +3,10 @@ package com.circulation.prototype_eng.client.gui;
 import java.util.List;
 import java.util.Collection;
 import ae2.client.gui.AEBaseGui;
+import ae2.client.Point;
+import ae2.client.gui.Icon;
+import ae2.core.localization.GuiText;
+import ae2.client.gui.widgets.SimpleIconButton;
 import ae2.container.AEBaseContainer;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
@@ -34,6 +38,7 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
     }
     private StructurePreviewGui(AEBaseContainer container, InventoryPlayer inventory, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
         super(container, inventory); this.view = view; this.navigation = navigation; xSize = 184; ySize = 220;
+        widgets.add("close", new SimpleIconButton(Icon.CLEAR, GuiText.Close.text(), backRequest::mousePress), new Point(164, 4));
         // A canceled native InitPre still leaves a displayed GUI. Its resources and local input
         // must already exist; a canceled/replaced GuiOpen releases this panel through Session.
         panel = new StructurePreviewPanel(view);
@@ -43,7 +48,6 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
         super.initGui();
         if (!navigation.initCurrent(this)) { releasePreview(); return; }
         if (panel == null || panel.closed()) panel = new StructurePreviewPanel(view);
-        addButton(new PreviewCloseButton(guiLeft + 170, guiTop + 4));
     }
     @Override public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         if (!navigation.viewerCurrent(this) || panel == null || panel.closed()) return;
@@ -57,10 +61,11 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
     @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         if (!navigation.viewerCurrent(this) || panel == null || panel.closed()) return;
         super.drawScreen(mouseX, mouseY, partialTicks);
+        for (var control : buttonList) if (control.visible && control.isMouseOver()) return;
         var tooltip = panel.tooltip(mouseX - guiLeft, mouseY - guiTop);
         if (!tooltip.isEmpty()) drawHoveringText(tooltip, mouseX, mouseY);
     }
-    @Override protected void actionPerformed(GuiButton button) { if (button.id == 0) backRequest.mousePress(); }
+    @Override protected void actionPerformed(@NotNull GuiButton button) { /* AE icon button dispatches its release callback. */ }
     private void back() {
         navigation.back();
     }
@@ -72,7 +77,7 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
     }
     @Override protected void mouseClicked(int x, int y, int button) {
         if (!navigation.viewerCurrent(this)) return;
-        // PM's close button accepts both buttons and sits above the scene at their shared edge.
+        // The AE close control owns clicks above the scene at their shared edge.
         if (button == 0 || button == 1) for (var control : buttonList) if (control.mousePressed(mc, x, y)) {
             control.playPressSound(mc.getSoundHandler()); actionPerformed(control); return;
         }

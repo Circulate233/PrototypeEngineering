@@ -116,7 +116,7 @@ final class HatchRateField extends GuiTextField {
         clip.draw(left + 1, top + 1, 95, 8, () -> {
             String text = getText();
             float startX = left + 4 - font.getStringWidth(text.substring(0, lineScrollOffset));
-            int y = top + (10 - font.FONT_HEIGHT) / 2;
+            int y = top + Math.round((10 - font.FONT_HEIGHT) / 2f);
             int low = Math.min(cursorPosition, selectionEnd), high = Math.max(cursorPosition, selectionEnd);
             GlStateManager.disableLighting();
             GlStateManager.disableDepth();

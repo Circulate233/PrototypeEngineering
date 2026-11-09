@@ -5,9 +5,7 @@ import ae2.container.guisync.GuiSync;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import ae2.container.SlotSemantics;
 import ae2.container.slot.AppEngSlot;
-import ae2.util.inv.AppEngInternalInventory;
 /**
  * Default real player inventory and a read-only machine page, synchronized through AE2.
  */
@@ -23,11 +21,7 @@ public final class MachineContainer extends AEBaseContainer {
         super(player, tile.blockEntity());
         this.tile = tile;
         setGuiTitle(tile.type().displayName().text());
-        // PM's original 4x4 placeholder is a per-screen inventory, with no machine storage role.
-        var placeholder = new AppEngInternalInventory(16);
-        for (int i = 0; i < 16; i++) {
-            addSlot(new AppEngSlot(placeholder, i, 139 + i % 4 * 18, 174 + i / 4 * 18), SlotSemantics.STORAGE);
-        }
+        // PM's 4x4 grid is an unimplemented placeholder. Keep its artwork without accepting real items.
         addPlayerInventorySlots(216, 172);
         registerClientAction(PAGE, Integer.class, page -> {
             if (page == null || page < 0 || page > 1 || !canInteractWith(getPlayer())) return;
