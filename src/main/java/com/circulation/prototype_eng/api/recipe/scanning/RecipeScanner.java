@@ -28,6 +28,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import java.util.Iterator;
 import java.util.function.BooleanSupplier;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
 /**
  * Ordered PM recipe admission with bounded cooperative search. Each logical pass snapshots the
@@ -39,6 +41,9 @@ import java.util.function.BooleanSupplier;
  * not an atomic global maximum. The actual process START remains authoritative after admission.
  */
 public final class RecipeScanner {
+    private enum ControllerMode { LEGACY, MULTITHREAD, CROSS_RECIPE }
+    private final ControllerMode mode;
+    private final boolean stableFixedInputs;
     private final MachineWorkSlots host;
     private final RecipeCatalog catalog;
     private final RecipeProcessFactory factory;
@@ -57,6 +62,16 @@ public final class RecipeScanner {
     @Nullable private RecipeCatalog.CandidatePass discovery;
     @Nullable private RecipeCatalog.Selection selection;
     @Nullable private RecipeCatalog.SelectionCapture selectionCapture;
+    private final Object2ObjectOpenHashMap<String, PassState> threadStates = new Object2ObjectOpenHashMap<>();
+    @Nullable private String selectedThread;
+    private int selectedThreadIndex;
+    private int nextThreadIndex;
+    @Nullable private MachineWorkSlots.SharedUsage candidateBasis;
+    @Nullable private RecipeCandidateIndex.Validation discoveryValidation;
+    private boolean crossRoundAdmitted;
+    @Nullable private MachineRecipe crossRoundRecipe;
+    private Preflight preflight = new Preflight(-1);
+    @Nullable private PureProgress pureProgress;
 
     /** Safe default for arbitrary wrappers, probability, selectors and external attribute modifiers. */
     public RecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
@@ -78,6 +93,18 @@ public final class RecipeScanner {
     public RecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, RecipeProcessFactory factory,
                          List<RecipeParallelismConstraint> constraints, List<RecipeCandidateIndex> indexes,
                          Predicate<MachineRecipe> monotonicStart, LongSupplier seeds, List<RecipeScanPreparation> preparations) {
+        this(host, catalog, factory, constraints, indexes, monotonicStart, seeds, preparations, ControllerMode.LEGACY, false);
+        }
+
+    private RecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, RecipeProcessFactory factory,
+                         List<RecipeParallelismConstraint> constraints, List<RecipeCandidateIndex> indexes,
+                         Predicate<MachineRecipe> monotonicStart, LongSupplier seeds, List<RecipeScanPreparation> preparations,
+                         ControllerMode mode, boolean stablePipeline) {
+        this.mode = mode;
+        boolean stable = stablePipeline;
+        if (stable) for (var recipe : catalog.recipes())
+            if (!recipe.parallelismSelection().stableFixedInputLowerBounds()) { stable = false; break; }
+        stableFixedInputs = stable;
         this.host = Objects.requireNonNull(host);
         this.catalog = Objects.requireNonNull(catalog);
         this.factory = Objects.requireNonNull(factory);
@@ -87,14 +114,51 @@ public final class RecipeScanner {
         this.monotonicStart = Objects.requireNonNull(monotonicStart);
         this.seeds = Objects.requireNonNull(seeds);
         var scope = new ObjectLinkedOpenHashSet<ResourceLocation>();
+        boolean unrestricted = false;
         for (var slot : host.slots()) {
             if (slot.allowedRecipeGroups().isEmpty()) {
                 scope.clear();
+                unrestricted = true;
                 break;
             }
             scope.addAll(slot.allowedRecipeGroups());
         }
+        if (host.dynamicRoster() && !unrestricted) {
+            if (host.dynamicRecipeGroups().isEmpty()) scope.clear();
+            else scope.addAll(host.dynamicRecipeGroups());
+        }
         groups = ObjectSets.unmodifiable(scope);
+        host.owner().registerRecipeScanner(this);
+    }
+
+    public static RecipeScanner multithreaded(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
+        return new RecipeScanner(host, catalog, RecipeProcessFactory.STANDARD, List.of(new FixedIoScanConstraint()),
+            List.of(), _ -> false, seeds, List.of(), ControllerMode.MULTITHREAD, true);
+    }
+
+    public static RecipeScanner crossRecipe(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
+        return new RecipeScanner(host, catalog, RecipeProcessFactory.STANDARD, List.of(new FixedIoScanConstraint()),
+            List.of(), _ -> false, seeds, List.of(), ControllerMode.CROSS_RECIPE, true);
+    }
+
+    /** External factories/preparations keep the controller mode; optional input pruning stays unknown. */
+    public static RecipeScanner multithreaded(MachineWorkSlots host, RecipeCatalog catalog, RecipeProcessFactory factory,
+        List<RecipeParallelismConstraint> constraints, List<RecipeCandidateIndex> indexes, Predicate<MachineRecipe> monotonicStart,
+        LongSupplier seeds, List<RecipeScanPreparation> preparations) {
+        return new RecipeScanner(host, catalog, factory, constraints, indexes, monotonicStart, seeds, preparations,
+            ControllerMode.MULTITHREAD, false);
+    }
+
+    public static RecipeScanner crossRecipe(MachineWorkSlots host, RecipeCatalog catalog, RecipeProcessFactory factory,
+        List<RecipeParallelismConstraint> constraints, List<RecipeCandidateIndex> indexes, Predicate<MachineRecipe> monotonicStart,
+        LongSupplier seeds, List<RecipeScanPreparation> preparations) {
+        return new RecipeScanner(host, catalog, factory, constraints, indexes, monotonicStart, seeds, preparations,
+            ControllerMode.CROSS_RECIPE, false);
+    }
+
+    /** Explicit known default factory/preparation/constraint path, with every recipe's local event guard. */
+    public boolean supportsStableFixedInputLowerBounds() {
+        return stableFixedInputs;
     }
 
     public MachineWorkSlots host() { return host; }
@@ -106,9 +170,14 @@ public final class RecipeScanner {
         }
         host.snapshot();
         resetPass();
+        threadStates.clear(); selectedThread = null;
+        crossRoundAdmitted = false; crossRoundRecipe = null;
     }
 
-    /** At most one new process per call. Call at most once per scheduled machine tick. */
+    /**
+     * A controller may admit multiple logical processes within this shared scan allowance.
+     * Call at most once per scheduled machine tick.
+     */
     public Result scan(ScanLimits limits) {
         Objects.requireNonNull(limits);
         if (scanning || faulted || activeAttempt != null) { throw new IllegalStateException("Recipe scanner is executing or faulted"); }
@@ -116,7 +185,7 @@ public final class RecipeScanner {
         if (workPaused()) { return result(Status.PAUSED, 0, 0); }
         scanning = true;
         try {
-            return advance(limits);
+            return mode == ControllerMode.LEGACY ? advance(limits) : advanceController(limits);
         } catch (RuntimeException | Error failure) {
             faulted = true;
             throw failure;
@@ -147,9 +216,6 @@ public final class RecipeScanner {
     public final class ScanAttempt {
         private final Thread owner = Thread.currentThread();
         private final ScanLimits limits;
-        private final ObjectOpenHashSet<ResourceLocation> running = new ObjectOpenHashSet<>();
-        private int active;
-        private int preflightCursor;
         private int examined;
         private int probes;
         private int phase;
@@ -160,7 +226,6 @@ public final class RecipeScanner {
         @Nullable private MachineRecipe recipe;
         private int parentLimit;
         @Nullable private MachineAttributes.ValueCapture parentValue;
-        @Nullable private MachineAttributes.ValueCapture capacityValue;
         private int bound;
         private int boundCursor;
         private int amount;
@@ -168,12 +233,21 @@ public final class RecipeScanner {
         @Nullable private RecipeProcess process;
         @Nullable private RecipeScanProbes.Session probe;
         @Nullable private RecipeProcessFactory.Creation creation;
+        @Nullable private RecipeProcessFactory.Creation creationProof;
         @Nullable private MachineWorkSlots.Admission admission;
         private boolean stopping;
         private boolean executing;
         private boolean finished;
         @Nullable private Result terminal;
         @Nullable private Throwable failure;
+        @Nullable private MachineWorkSlots.UsageCapture sharedCapture;
+        @Nullable private MachineWorkSlots.SharedUsage basis;
+        @Nullable private RecipeProcess lastAdmitted;
+        private int logicalVisited;
+        private boolean threadChosen;
+        private boolean discoveryValidated;
+        @Nullable private RecipeCandidateIndex.Validation exhaustionValidation;
+        private boolean exhaustionChecked;
 
         private ScanAttempt(ScanLimits limits) {
             this.limits = limits;
@@ -215,24 +289,8 @@ public final class RecipeScanner {
                     return finish(result(Status.PAUSED, examined, probes));
                 }
                 if (phase == 0) {
-                    while (preflightCursor < host.slots().size()) {
-                        if (!budget.take()) return yielded();
-                        var captured = host.slots().get(preflightCursor++).process();
-                        if (captured == null) continue;
-                        captured.requirePersistenceBoundary();
-                        if (captured.host() != host) throw new IllegalStateException("Work slot lost its process ownership");
-                        running.add(captured.recipe().id());
-                        active++;
-                    }
-                    if (capacityValue == null) capacityValue = host.owner().attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
-                    if (!capacityValue.advance(budget)) {
-                        if (!capacityValue.current()) capacityValue = null;
-                        return yielded();
-                    }
-                    int capacity = Math.clamp((long) capacityValue.result(), 0, host.slots().size());
-                    capacityValue = null;
-                    if (active >= capacity) return finish(result(Status.FULL, examined, probes));
-                    phase = 1;
+                    var stopped = prepareThread(budget);
+                        if (stopped != null) return stopped;
                 }
                 if (phase == 1) {
                     if (selection == null) {
@@ -244,35 +302,67 @@ public final class RecipeScanner {
                         selection = selectionCapture.result();
                         selectionCapture = null;
                     }
+                    if (discovery != null && !discoveryValidated) {
+                        if (discoveryValidation == null) discoveryValidation = discovery.beginValidation();
+                        if (!discoveryValidation.advance(budget)) return yielded();
+                        if (!discoveryValidation.current()) {
+                            discovery.restartLiveIndexes(); candidates = List.of(); cursor = 0; search = null;
+                            discardPureCandidate();
+                        }
+                        discoveryValidation = null; discoveryValidated = true;
+                    }
                     if (candidates.isEmpty()) {
-                        if (discovery == null) discovery = catalog.beginCandidates(Objects.requireNonNull(selection), groups, indexes);
+                        if (discovery == null) discovery = catalog.beginCandidates(Objects.requireNonNull(selection), passGroups(), indexes);
                         if (!discovery.advance(budget)) {
                             if (!discovery.current()) discovery.restartLiveIndexes();
                             return yielded();
                         }
                         candidates = discovery.result();
+                        discoveryValidated = true;
                     }
                     phase = 2;
                 }
                 if (phase == 2) {
                     if (cursor == candidates.size()) {
+                        if (!exhaustionChecked && discovery != null) {
+                            if (exhaustionValidation == null) exhaustionValidation = discovery.beginValidation();
+                            if (!exhaustionValidation.advance(budget)) return yielded();
+                            if (!exhaustionValidation.current()) {
+                                discovery.restartLiveIndexes(); candidates = List.of(); cursor = 0; search = null;
+                                discardPureCandidate(); phase = 1; exhaustionValidation = null; continue;
+                            }
+                            exhaustionChecked = true;
+                        }
+                        if (mode == ControllerMode.CROSS_RECIPE && crossRoundAdmitted) {
+                            if (examined >= limits.candidates() || probes >= limits.probes()) return yielded();
+                            if (sharedCapture == null) sharedCapture = host.beginSharedUsage(Objects.requireNonNull(crossRoundRecipe));
+                            if (!sharedCapture.advance(budget)) { if (!sharedCapture.current()) sharedCapture = null; return yielded(); }
+                            boolean anotherRound = sharedCapture.result().available() > 0;
+                            sharedCapture = null; crossRoundAdmitted = false;
+                            if (anotherRound) { resetPass(); clearExhaustionProof(); phase = 1; continue; }
+                            resetPass(); clearExhaustionProof();
+                        return finish(completed(Status.FULL));
+                        }
                         resetPass();
-                        return finish(result(Status.EXHAUSTED, examined, probes));
+                        if (mode == ControllerMode.MULTITHREAD && nextLogicalThread()) continue;
+                        return finish(completed(Status.EXHAUSTED));
                     }
                     if (recipe == null) {
                         if (examined >= limits.candidates() || !budget.take()) return yielded();
                         recipe = candidates.get(cursor);
                         examined++;
-                        slotCursor = 0;
+                        slotCursor = mode == ControllerMode.MULTITHREAD ? selectedThreadIndex : 0;
                         checkingSlot = null;
                         slot = null;
                         slotGroups = null;
-                        if (running.contains(recipe.id())) {
+                        if (mode == ControllerMode.LEGACY && preflight.running.contains(recipe.id())
+                            || mode != ControllerMode.LEGACY && host.owner().recipeThreadCount(recipe.id()) >= recipe.maxConcurrentThreads()) {
                             nextCandidate();
                             continue;
                         }
                     }
-                    while (slot == null && (checkingSlot != null || slotCursor < host.slots().size())) {
+                    int slotEnd = mode == ControllerMode.MULTITHREAD ? selectedThreadIndex + 1 : host.slots().size();
+                    while (slot == null && (checkingSlot != null || slotCursor < slotEnd)) {
                         if (checkingSlot == null) {
                             if (!budget.take()) return yielded();
                             checkingSlot = host.slots().get(slotCursor++);
@@ -295,20 +385,35 @@ public final class RecipeScanner {
                         }
                         checkingSlot = null;
                     }
+                    if (slot == null && mode == ControllerMode.CROSS_RECIPE) {
+                        if (!budget.take()) return yielded();
+                        slot = host.appendRuntimeSlot(recipe);
+                    }
                     if (slot == null) {
                         nextCandidate();
                         continue;
                     }
-                    if (parentValue == null) parentValue = host.owner().attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+                    if (mode == ControllerMode.LEGACY) {
+                        if (parentValue == null) parentValue = host.owner().attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
                     if (!parentValue.advance(budget)) {
                         if (!parentValue.current()) parentValue = null;
                         return yielded();
                     }
                     parentLimit = Math.max(1, (int) Math.floor(parentValue.result()));
                     parentValue = null;
+                    } else {
+                        if (sharedCapture == null) sharedCapture = host.beginSharedUsage(Objects.requireNonNull(recipe));
+                        if (!sharedCapture.advance(budget)) { if (!sharedCapture.current()) sharedCapture = null; return yielded(); }
+                        basis = sharedCapture.result(); sharedCapture = null;
+                        if (basis.available() == 0) return finish(completed(Status.FULL));
+                        if (basis.recipeThreads() >= recipe.maxConcurrentThreads()) { nextCandidate(); continue; }
+                        parentLimit = (int) Math.min(Integer.MAX_VALUE, basis.available());
+                    }
                     bound = parentLimit;
                     boundCursor = 0;
-                    phase = search != null && search.parentLimit == parentLimit ? 4 : 3;
+                    boolean sameSearch = search != null && search.recipe == recipe && search.parentLimit == parentLimit;
+                    if (!sameSearch) { creation = null; creationProof = null; process = null; probe = null; }
+                    phase = sameSearch ? 4 : 3;
                 }
                 if (phase == 3) {
                     while (boundCursor < constraints.size()) {
@@ -318,7 +423,7 @@ public final class RecipeScanner {
                         bound = nextBound;
                     }
                     if (!budget.take()) return yielded();
-                    search = new Search(parentLimit, bound, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
+                    search = new Search(Objects.requireNonNull(recipe), parentLimit, bound, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
                     phase = 4;
                 }
                 if (phase == 4) {
@@ -339,6 +444,7 @@ public final class RecipeScanner {
                             return yielded();
                         }
                         process = configureCandidate(creation.result(), recipe, amount, current);
+                        creationProof = creation;
                         creation = null;
                         probe = RecipeScanProbes.begin(process, preparations, constraints);
                         probes++;
@@ -366,7 +472,9 @@ public final class RecipeScanner {
                 if (phase == 5) {
                     if (admission == null) {
                         if (!budget.take()) return yielded();
-                        admission = host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process), Objects.requireNonNull(selection));
+                        admission = mode == ControllerMode.LEGACY
+                            ? host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process), Objects.requireNonNull(selection))
+                            : host.beginAdmission(Objects.requireNonNull(slot).name(), Objects.requireNonNull(process), Objects.requireNonNull(selection), Objects.requireNonNull(basis));
                     }
                     if (!admission.advance(budget, allowed)) return yielded();
                     boolean admitted = admission.admitted();
@@ -375,30 +483,140 @@ public final class RecipeScanner {
                         search = null;
                         return finish(yielded());
                     }
-                    resetPass();
-                    return finish(new Result(Status.ADMITTED, Objects.requireNonNull(process), examined, probes));
+                    lastAdmitted = Objects.requireNonNull(process);
+                    if (mode == ControllerMode.LEGACY) {
+                        resetPass();
+                    return finish(new Result(Status.ADMITTED, lastAdmitted, examined, probes));
                 }
+                    if (mode == ControllerMode.CROSS_RECIPE) {
+                        crossRoundAdmitted = true; crossRoundRecipe = process.recipe();
+                        nextCandidate(); continue;
+                    }
+                    resetPass();
+                    if (nextLogicalThread()) continue;
+                    return finish(completed(Status.EXHAUSTED));
+                }
+        }
+        }
+
+        @Nullable
+        private Result prepareThread(RecipeWorkBudget budget) {
+            if (preflight.rosterRevision != host.owner().recipeRosterRevision())
+                preflight = new Preflight(host.owner().recipeRosterRevision());
+            while (preflight.cursor < host.slots().size()) {
+                if (!budget.take()) return yielded();
+                var captured = host.slots().get(preflight.cursor++).process();
+                if (captured == null) continue;
+                captured.requirePersistenceBoundary();
+                if (captured.host() != host)
+                    throw new IllegalStateException("Work slot lost its process ownership");
+                preflight.running.add(captured.recipe().id());
+                preflight.active++;
+            }
+            if (preflight.capacity != null && !preflight.capacity.current()) preflight.capacity = null;
+            if (!host.dynamicRoster() && preflight.capacity == null)
+                preflight.capacity = host.owner().attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
+            if (!host.dynamicRoster() && !Objects.requireNonNull(preflight.capacity).advance(budget)) {
+                if (!preflight.capacity.current()) preflight.capacity = null;
+                return yielded();
+            }
+            int capacity = host.dynamicRoster() ? Integer.MAX_VALUE
+                : Math.clamp((long) Objects.requireNonNull(preflight.capacity).result(), 0, host.slots().size());
+            if (preflight.rosterRevision != host.owner().recipeRosterRevision()) {
+                preflight = new Preflight(host.owner().recipeRosterRevision()); return yielded();
+            }
+            if (preflight.active >= capacity) return finish(completed(Status.FULL));
+            if (mode == ControllerMode.MULTITHREAD && !threadChosen) {
+                while (logicalVisited < host.slots().size()) {
+                    selectedThreadIndex = Math.floorMod(nextThreadIndex, host.slots().size());
+                    var thread = host.slots().get(selectedThreadIndex);
+                    // This exact roster's occupancy was already visited by the retained preflight.
+                    if (thread.process() != null) {
+                        nextThreadIndex = (selectedThreadIndex + 1) % host.slots().size(); logicalVisited++; continue;
+                    }
+                    var savedState = threadStates.get(thread.name());
+                    var progress = thread.name().equals(selectedThread) ? pureProgress
+                        : savedState == null ? null : savedState.progress;
+                    boolean observedVacant = progress != null && progress.rosterRevision == host.owner().recipeRosterRevision();
+                    if (!observedVacant && !budget.take()) return yielded();
+                    selectThread(thread.name()); threadChosen = true; break;
+                }
+                if (!threadChosen) return finish(completed(Status.EXHAUSTED));
+            }
+            phase = 1;
+            restorePureProgress();
+            return null;
+        }
+
+        private MachineInstance hostOwner() { return host.owner(); }
+
+        private void restorePureProgress() {
+            if (pureProgress == null) return;
+            var progress = pureProgress;
+            pureProgress = null;
+            var saved = progress.saved;
+            phase = saved.phase;
+            recipe = saved.recipe; slot = saved.slot; checkingSlot = saved.checkingSlot;
+            slotCursor = saved.slotCursor; slotGroups = saved.slotGroups;
+            parentLimit = saved.parentLimit; parentValue = saved.parentValue;
+            sharedCapture = saved.sharedCapture; basis = saved.basis;
+            bound = saved.bound; boundCursor = saved.boundCursor;
+            amount = saved.amount; finalBest = saved.finalBest;
+            creation = saved.creation; process = saved.process; probe = saved.probe;
+            creationProof = saved.creationProof;
+            exhaustionValidation = saved.exhaustionValidation; exhaustionChecked = saved.exhaustionChecked;
+            if (saved.phase >= 4 && search == null) { discardPureCandidate(); phase = 2; }
+            if (creationProof != null && !creationProof.current()) {
+                discardPureCandidate(); search = null; phase = 2;
+            }
+            if (phase >= 2 && (progress.rosterRevision != host.owner().recipeRosterRevision() || !progress.family.current())) {
+                slot = null; checkingSlot = null; slotGroups = null;
+                slotCursor = mode == ControllerMode.MULTITHREAD ? selectedThreadIndex : 0;
+                parentValue = null; sharedCapture = null; basis = null; phase = 2;
             }
         }
+
+        private void discardPureCandidate() {
+            recipe = null; slot = null; checkingSlot = null; slotGroups = null;
+            parentValue = null; sharedCapture = null; basis = null;
+            creation = null; creationProof = null; process = null; probe = null;
+            clearExhaustionProof();
+        }
+
+        private void clearExhaustionProof() { exhaustionValidation = null; exhaustionChecked = false; }
 
         private void nextCandidate() {
             next();
             recipe = null;
             process = null;
-            slot = null;
+            slot = null; sharedCapture = null; basis = null;
+            exhaustionValidation = null; exhaustionChecked = false;
             parentValue = null;
             phase = 2;
+        }
+
+        private boolean nextLogicalThread() {
+            logicalVisited++;
+            nextThreadIndex = (selectedThreadIndex + 1) % host.slots().size();
+            threadChosen = false; recipe = null; process = null; slot = null;
+            checkingSlot = null; slotGroups = null; sharedCapture = null; basis = null;
+            phase = 0;
+            discoveryValidation = null; discoveryValidated = false;
+            clearExhaustionProof();
+            return logicalVisited < host.slots().size();
+        }
+
+        private Result completed(Status status) {
+            return new Result(lastAdmitted == null || status == Status.PAUSED ? status : Status.ADMITTED, lastAdmitted, examined, probes);
         }
 
         private Result yielded() { return result(Status.YIELDED, examined, probes); }
 
         private Result finish(Result result) {
-            if (result.status() == Status.YIELDED && !indexes.isEmpty()) {
-                if (discovery != null) discovery.restartLiveIndexes();
-                candidates = List.of();
-                cursor = 0;
-                search = null;
-            }
+            if (result.status() == Status.YIELDED && phase >= 1 && admission == null && pureProbe())
+                pureProgress = new PureProgress(this);
+            if (result.status() == Status.YIELDED && mode == ControllerMode.MULTITHREAD && threadChosen)
+                nextThreadIndex = (selectedThreadIndex + 1) % host.slots().size();
             finished = true;
             terminal = result;
             activeAttempt = null;
@@ -412,13 +630,17 @@ public final class RecipeScanner {
         public void releasePureYield() {
             requireOwner();
             if (hasObligations()) throw new IllegalStateException("Probe cleanup must finish before machine successors");
-            if (discovery != null) discovery.restartLiveIndexes();
             finish(yielded());
         }
 
         public boolean hasObligations() {
             requireOwner();
-            return !finished && (admission != null || probe != null && probe.hasObligations());
+            return !finished && (admission != null || !pureProbe());
+        }
+
+        private boolean pureProbe() {
+            return probe == null || !probe.hasObligations() && probe.computation() == null
+                && !probe.resolvingSources() && probe.sources().isEmpty();
         }
         public boolean finished() { requireOwner(); return finished; }
         public void cancel() { requireOwner(); stopping = true; if (probe != null) probe.cancel(); }
@@ -455,16 +677,35 @@ public final class RecipeScanner {
             selection = selectionCapture.result();
             selectionCapture = null;
         }
-        if (candidates.isEmpty()) { candidates = catalog.candidates(selection, groups, indexes); }
+        if (discovery != null) {
+            var validation = discovery.beginValidation();
+            while (!validation.advance(new RecipeWorkBudget(Long.MAX_VALUE))) { /* explicit synchronous caller */ }
+            if (!validation.current()) {
+                discovery.restartLiveIndexes(); candidates = List.of(); cursor = 0; search = null;
+            }
+        }
+        if (candidates.isEmpty()) {
+            if (discovery == null) discovery = catalog.beginCandidates(selection, passGroups(), indexes);
+            while (!discovery.advance(new RecipeWorkBudget(Long.MAX_VALUE))) {
+                if (!discovery.current()) discovery.restartLiveIndexes();
+            }
+            candidates = discovery.result(); }
         int examined = 0;
         int probes = 0;
         while (cursor < candidates.size() && examined < limits.candidates()) {
             if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             var recipe = candidates.get(cursor);
             examined++;
+            if (mode != ControllerMode.LEGACY) {
+                candidateBasis = host.sharedUsage(recipe);
+                if (candidateBasis.available() == 0) return result(Status.FULL, examined, probes);
+                if (candidateBasis.recipeThreads() >= recipe.maxConcurrentThreads()) { next(); continue; }
+            }
             var slot = eligibleSlot(recipe);
-            if (slot == null || running.contains(recipe.id())) { next(); continue; }
-            int parentLimit = Math.max(1, (int) Math.floor(host.owner().attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1)));
+            if (slot == null || mode == ControllerMode.LEGACY && running.contains(recipe.id())) { next(); continue; }
+            int parentLimit = mode == ControllerMode.LEGACY
+                ? Math.max(1, (int) Math.floor(host.owner().attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1)))
+                : (int) Math.min(Integer.MAX_VALUE, Objects.requireNonNull(candidateBasis).available());
             if (search == null || search.parentLimit != parentLimit) { search = begin(recipe, parentLimit); }
             if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             while (search.low <= search.high && probes < limits.probes()) {
@@ -501,6 +742,14 @@ public final class RecipeScanner {
         }
         if (workPaused()) { return result(Status.PAUSED, examined, probes); }
         if (cursor == candidates.size()) {
+            if (discovery != null) {
+                var finalProof = discovery.beginValidation();
+                while (!finalProof.advance(new RecipeWorkBudget(Long.MAX_VALUE))) { /* explicit synchronous caller */ }
+                if (!finalProof.current()) {
+                    discovery.restartLiveIndexes(); candidates = List.of(); cursor = 0; search = null;
+                    return result(Status.YIELDED, examined, probes);
+                }
+            }
             resetPass();
             return result(Status.EXHAUSTED, examined, probes);
         }
@@ -514,7 +763,7 @@ public final class RecipeScanner {
             if (bound < 0 || bound > limit) { throw new IllegalArgumentException("Invalid recipe parallelism bound"); }
             limit = bound;
         }
-        return new Search(parentLimit, limit, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
+        return new Search(recipe, parentLimit, limit, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
     }
 
     private RecipeProcess candidate(MachineRecipe recipe, int amount, Search current) {
@@ -530,6 +779,7 @@ public final class RecipeScanner {
         process.requirePersistenceBoundary();
         // amount includes the machine baseline, but NOT this process's local modifier operations.
         process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, amount);
+        recipe.parallelismSelection().select(process);
         return process;
     }
 
@@ -549,22 +799,101 @@ public final class RecipeScanner {
 
     private Result admit(WorkSlot slot, RecipeProcess process, int examined, int probes) {
         if (workPaused()) { return result(Status.PAUSED, examined, probes); }
-        if (!host.startIn(slot.name(), process, Objects.requireNonNull(selection))) {
+        boolean admitted = mode == ControllerMode.LEGACY ? host.startIn(slot.name(), process, Objects.requireNonNull(selection))
+            : host.startIn(slot.name(), process, Objects.requireNonNull(selection), Objects.requireNonNull(candidateBasis));
+        if (!admitted) {
             if (workPaused()) { return result(Status.PAUSED, examined, probes); }
             // Admission can change after a pure constraint only if the host configuration changed.
             search = null;
             return result(Status.YIELDED, examined, probes);
         }
-        resetPass();
+        if (mode == ControllerMode.CROSS_RECIPE) {
+            crossRoundAdmitted = true; crossRoundRecipe = process.recipe(); next();
+        } else resetPass();
         return new Result(Status.ADMITTED, process, examined, probes);
     }
 
     @Nullable
     private WorkSlot eligibleSlot(MachineRecipe recipe) {
+        if (mode == ControllerMode.MULTITHREAD) {
+            var slot = host.slots().get(selectedThreadIndex);
+            return slot.process() == null && slot.definition().accepts(recipe) ? slot : null;
+        }
         for (var slot : host.slots()) {
             if (slot.process() == null && slot.definition().accepts(recipe)) { return slot; }
         }
-        return null;
+        return mode == ControllerMode.CROSS_RECIPE ? host.dynamicScanSlot(recipe) : null;
+    }
+
+    private Result advanceController(ScanLimits limits) {
+        int examined = 0; int probes = 0; int visited = 0;
+        RecipeProcess admitted = null;
+        while (examined < limits.candidates() && probes < limits.probes()) {
+            if (mode == ControllerMode.MULTITHREAD) {
+                if (host.slots().isEmpty() || visited >= host.slots().size()) break;
+                selectedThreadIndex = Math.floorMod(nextThreadIndex, host.slots().size());
+                if (host.slots().get(selectedThreadIndex).process() != null) { nextThreadIndex++; visited++; continue; }
+                selectThread(host.slots().get(selectedThreadIndex).name());
+            }
+            var outcome = advance(new ScanLimits(limits.candidates() - examined, limits.probes() - probes));
+            examined += outcome.candidates(); probes += outcome.probes();
+            if (outcome.process() != null) admitted = outcome.process();
+            if (mode == ControllerMode.MULTITHREAD && (outcome.status() == Status.ADMITTED || outcome.status() == Status.EXHAUSTED)) {
+                nextThreadIndex = (selectedThreadIndex + 1) % host.slots().size(); visited++; continue;
+            }
+            if (mode == ControllerMode.CROSS_RECIPE && outcome.status() == Status.ADMITTED) continue;
+            if (mode == ControllerMode.CROSS_RECIPE && outcome.status() == Status.EXHAUSTED && crossRoundAdmitted) {
+                crossRoundAdmitted = false;
+                if (host.sharedUsage(Objects.requireNonNull(crossRoundRecipe)).available() > 0) continue;
+            }
+            if (mode == ControllerMode.MULTITHREAD && outcome.status() == Status.YIELDED)
+                nextThreadIndex = (selectedThreadIndex + 1) % host.slots().size();
+            return admitted == null ? new Result(outcome.status(), null, examined, probes)
+                : new Result(outcome.status() == Status.PAUSED ? Status.PAUSED : Status.ADMITTED, admitted, examined, probes);
+        }
+        return new Result(admitted == null ? Status.YIELDED : Status.ADMITTED, admitted, examined, probes);
+    }
+
+    private void selectThread(String thread) {
+        if (selectedThread != null) {
+            var state = threadStates.computeIfAbsent(selectedThread, _ -> new PassState());
+            state.candidates = candidates; state.cursor = cursor; state.search = search;
+            state.discovery = discovery; state.selection = selection; state.selectionCapture = selectionCapture;
+            state.discoveryValidation = discoveryValidation;
+            state.progress = pureProgress;
+        }
+        var state = threadStates.computeIfAbsent(thread, _ -> new PassState());
+        candidates = state.candidates; cursor = state.cursor; search = state.search;
+        discovery = state.discovery; selection = state.selection; selectionCapture = state.selectionCapture;
+        discoveryValidation = state.discoveryValidation;
+        pureProgress = state.progress;
+        selectedThread = thread;
+    }
+
+    private Set<ResourceLocation> passGroups() {
+        return mode == ControllerMode.MULTITHREAD ? host.slots().get(selectedThreadIndex).allowedRecipeGroups() : groups;
+    }
+
+    private static final class PassState {
+        private List<MachineRecipe> candidates = List.of();
+        private int cursor;
+        @Nullable private Search search;
+        @Nullable private RecipeCatalog.CandidatePass discovery;
+        @Nullable private RecipeCatalog.Selection selection;
+        @Nullable private RecipeCatalog.SelectionCapture selectionCapture;
+        @Nullable private RecipeCandidateIndex.Validation discoveryValidation;
+        @Nullable private PureProgress progress;
+    }
+
+    /** Unpublished host facts may survive a pure yield while the machine roster stays identical. */
+    private static final class Preflight {
+        private final long rosterRevision;
+        private final ObjectOpenHashSet<ResourceLocation> running = new ObjectOpenHashSet<>();
+        private int active;
+        private int cursor;
+        @Nullable private MachineAttributes.ValueCapture capacity;
+
+        private Preflight(long rosterRevision) { this.rosterRevision = rosterRevision; }
     }
 
     private void next() { cursor++; search = null; }
@@ -576,6 +905,8 @@ public final class RecipeScanner {
         selection = null;
         selectionCapture = null;
         discovery = null;
+        discoveryValidation = null;
+        pureProgress = null;
         candidates = List.of(); cursor = 0; search = null; }
     private static Result result(Status status, int examined, int probes) { return new Result(status, null, examined, probes); }
 
@@ -590,6 +921,7 @@ public final class RecipeScanner {
     public record Result(Status status, @Nullable RecipeProcess process, int candidates, int probes) { }
 
     private static final class Search {
+        private final MachineRecipe recipe;
         private final int parentLimit;
         private final boolean monotonic;
         private final long seed;
@@ -598,12 +930,26 @@ public final class RecipeScanner {
         private long high;
         private int best;
 
-        private Search(int parentLimit, int high, boolean monotonic, long seed, ProbabilityTuning tuning) {
+        private Search(MachineRecipe recipe, int parentLimit, int high, boolean monotonic, long seed, ProbabilityTuning tuning) {
+            this.recipe = recipe;
             this.parentLimit = parentLimit;
             this.high = high;
             this.monotonic = monotonic;
             this.seed = seed;
             this.tuning = tuning;
+        }
+    }
+
+    /** Only obligation-free cursors; no admission, START session, worker or source authority. */
+    private static final class PureProgress {
+        private final ScanAttempt saved;
+        private final long rosterRevision;
+        private final MachineAttributes.FamilyCapture family;
+
+        private PureProgress(ScanAttempt saved) {
+            this.saved = saved;
+            rosterRevision = saved.hostOwner().recipeRosterRevision();
+            family = saved.hostOwner().attributes().familyCapture();
         }
     }
 }

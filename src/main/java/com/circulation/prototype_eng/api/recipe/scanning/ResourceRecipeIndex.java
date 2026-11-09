@@ -291,6 +291,43 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         }
 
         @Override
+        @SuppressWarnings("ReturnOfInnerClass") // Validation retains this lookup's exact quantity observations.
+        public RecipeCandidateIndex.Validation beginValidation() {
+            return new RecipeCandidateIndex.Validation() {
+                private final int captureCount = captures.size() - (view != null && quantities == null ? 1 : 0);
+                private int cursor;
+                private boolean ownerChecked;
+                private boolean complete;
+
+                @Override
+                public boolean advance(RecipeWorkBudget budget) {
+                    Objects.requireNonNull(budget);
+                    if (complete) return true;
+                    if (stale) { complete = true; return true; }
+                    if (!ownerChecked) {
+                        if (!budget.take()) return false;
+                        ownerChecked = true;
+                        if (hatches != null && MachineHatches.get(machine).resources() != hatches) {
+                            stale = true; complete = true; return true;
+                        }
+                    }
+                    while (cursor < captureCount) {
+                        if (!budget.take()) return false;
+                        if (!captures.get(cursor++).current()) { stale = true; complete = true; return true; }
+                    }
+                    complete = true;
+                    return true;
+                }
+
+                @Override
+                public boolean current() {
+                    if (!complete) throw new IllegalStateException("Resource validation is incomplete");
+                    return !stale;
+                }
+            };
+        }
+
+        @Override
         public List<MachineRecipe> result() {
             if (phase != 5 || stale) throw new IllegalStateException("Resource opinion is incomplete or stale");
             return ObjectLists.unmodifiable(result);

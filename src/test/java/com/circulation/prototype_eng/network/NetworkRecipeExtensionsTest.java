@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class NetworkRecipeExtensionsTest {
     @Test void callbacksSeeEveryCanonicalRecipeOnceInIdPriorityAndRegistrationOrder() {
@@ -173,7 +174,7 @@ class NetworkRecipeExtensionsTest {
     }
 
     private static RecipeCatalog catalog(MachineRecipe... recipes) { return new RecipeCatalog(List.of(pool("pool", recipes))); }
-    private static RecipePool pool(String path, MachineRecipe... recipes) { return new RecipePool(id(path), "test.title", List.of(recipes)); }
+    private static RecipePool pool(String path, MachineRecipe... recipes) { return new DefaultRecipePool(id(path), "test.title", List.of(recipes)); }
     private static MachineRecipe recipe(String path) { return new MachineRecipe(id(path), 1, List.of()); }
     private static ResourceLocation id(String path) { return new ResourceLocation("recipe_extensions_test", path); }
 }

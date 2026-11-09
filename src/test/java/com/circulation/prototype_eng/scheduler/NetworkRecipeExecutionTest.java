@@ -39,7 +39,6 @@ import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -106,6 +105,12 @@ import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MultithreadController;
+import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
+import java.util.function.Function;
 
 class NetworkRecipeExecutionTest {
     private static final ResourceLocation SCANNING_ID = new RecipeScanningSystem(new ScanLimits(1, 1), _ -> true).id();
@@ -568,7 +573,7 @@ class NetworkRecipeExecutionTest {
             };
             var requirement = new RecipeRequirementType<>(id("source"), source).requirement(id("source"), "energy");
             recipe = customize.apply(new MachineRecipe(id("recipe"), duration, List.of(requirement)));
-            catalog = new RecipeCatalog(List.of(new RecipePool(id("pool"), "network_execution_test.pool", List.of(recipe))));
+            catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "network_execution_test.pool", List.of(recipe))));
             var extensions = new NetworkRecipeExtensions();
             extensions.publish(catalog, research, resources);
             work = NetworkRecipeWork.component(id("work"), role,
@@ -608,63 +613,131 @@ class NetworkRecipeExecutionTest {
         private void refresh() { onRefresh.run(); network.refresh(); }
 
         private Worker worker(boolean scanning, int capacity, ExecutionMode mode, Layout layout) {
+            return worker(scanning, capacity, mode, layout, MachineInstance::new, false); }
+
+        private Worker worker(boolean scanning, int capacity, ExecutionMode mode, Layout layout,
+                              Function<MachineType, MachineInstance> instanceFactory, boolean defaultScanner) {
             var events = new ObjectArrayList<String>();
             var before = new ComponentType<>(id("before"), _ -> events, List.of(new MachineSystem<ObjectArrayList<String>>() {
-                @Override public ResourceLocation id() { return NetworkRecipeExecutionTest.id("before_system"); }
-                @Override public Set<ResourceLocation> runBefore() { return ObjectSets.singleton(SCANNING_ID); }
-                @Override public void onPreTick(MachineInstance machine, ObjectArrayList<String> component) {
-                    requireOwner(); component.add("pre"); Objects.requireNonNull(workers.get(machine)).onPre.run();
+                @Override
+                public ResourceLocation id() {
+                    return NetworkRecipeExecutionTest.id("before_system");
                 }
-                @Override public void onTick(MachineInstance machine, ObjectArrayList<String> component) { requireOwner(); component.add("before"); }
-                @Override public void onPostTick(MachineInstance machine, ObjectArrayList<String> component) { requireOwner(); component.add("post"); }
+
+                @Override
+                public Set<ResourceLocation> runBefore() {
+                    return ObjectSets.singleton(SCANNING_ID);
+                }
+
+                @Override
+                public void onPreTick(MachineInstance machine, ObjectArrayList<String> component) {
+                    requireOwner();
+                    component.add("pre");
+                    Objects.requireNonNull(workers.get(machine)).onPre.run();
+                }
+
+                @Override
+                public void onTick(MachineInstance machine, ObjectArrayList<String> component) {
+                    requireOwner();
+                    component.add("before");
+                }
+
+                @Override
+                public void onPostTick(MachineInstance machine, ObjectArrayList<String> component) {
+                    requireOwner();
+                    component.add("post");
+                }
             }));
             var after = new ComponentType<>(id("after"), _ -> events, List.of(new MachineSystem<ObjectArrayList<String>>() {
-                @Override public ResourceLocation id() { return NetworkRecipeExecutionTest.id("after_system"); }
-                @Override public Set<ResourceLocation> runAfter() { return ObjectSets.singleton(WorkSlotProcessingSystem.ID); }
-                @Override public void onTick(MachineInstance machine, ObjectArrayList<String> component) {
-                    requireOwner(); component.add("after"); Objects.requireNonNull(workers.get(machine)).onAfter.run();
+                @Override
+                public ResourceLocation id() {
+                    return NetworkRecipeExecutionTest.id("after_system");
+                }
+
+                @Override
+                public Set<ResourceLocation> runAfter() {
+                    return ObjectSets.singleton(WorkSlotProcessingSystem.ID);
+                }
+
+                @Override
+                public void onTick(MachineInstance machine, ObjectArrayList<String> component) {
+                    requireOwner();
+                    component.add("after");
+                    Objects.requireNonNull(workers.get(machine)).onAfter.run();
                 }
             }));
-            var scan = RecipeScanning.component(id("scanner"), slots -> new RecipeScanner(slots, catalog,
+            var scan = defaultScanner ? RecipeScanning.component(id("scanner"), () -> catalog, new ScanLimits(10, 10))
+                : RecipeScanning.component(id("scanner"), slots -> new RecipeScanner(slots, catalog,
                 (machine, definition, seed, tuning) -> track(new RecipeProcess(machine, definition, seed, tuning)),
                 List.of(), List.of(), _ -> false, () -> 7), new ScanLimits(10, 10), _ -> true);
             var extra = new ComponentType<>(id("extra_slots"), machine -> layout == Layout.ALIAS
                 ? Objects.requireNonNull(machine.components().get(MachineWorkSlots.TYPE)) : new MachineWorkSlots(machine, List.of()),
                 MachineWorkSlots.TYPE.systems(), List.of(MachineWorkSlots.TYPE));
             var failing = new ComponentType<>(id("failing"), _ -> new Object(), List.of(new MachineSystem<>() {
-                @Override public ResourceLocation id() { return NetworkRecipeExecutionTest.id("failing_system"); }
-                @Override public Set<ResourceLocation> runBefore() { return ObjectSets.singleton(WorkSlotProcessingSystem.ID); }
-                @Override public void onTick(MachineInstance machine, Object component) {
+                @Override
+                public ResourceLocation id() {
+                    return NetworkRecipeExecutionTest.id("failing_system");
+                }
+
+                @Override
+                public Set<ResourceLocation> runBefore() {
+                    return ObjectSets.singleton(WorkSlotProcessingSystem.ID);
+                }
+
+                @Override
+                public void onTick(MachineInstance machine, Object component) {
                     assertTrue(Objects.requireNonNull(machine.lifecycle()).deferRecipeWork(Objects.requireNonNull(machine.components().get(MachineWorkSlots.TYPE))));
                     throw new IllegalStateException("failure after exact deferral");
                 }
             }));
-            var builder = type("worker_" + position).executionMode(mode).component(ownership).component(role).component(work).component(before)
-                .component(MachineWorkSlots.TYPE).component(after);
-            for (int index = 0; index < capacity; index++) { builder.workSlot(new WorkSlotDefinition("slot_" + index)); }
-            if (scanning) { builder.recipePool(id("pool")).component(scan); }
-            if (layout == Layout.ALIAS || layout == Layout.SECONDARY) { builder.component(extra); }
-            if (layout == Layout.FAIL_AFTER_DEFER) { builder.component(failing); }
+            var builder = type("worker_" + position).component(ownership).component(role).component(work).component(before)
+                                                    .component(MachineWorkSlots.TYPE).component(after);
+            if (mode != null) builder.executionMode(mode);
+            for (int index = 0; index < capacity; index++) {
+                builder.workSlot(new WorkSlotDefinition("slot_" + index));
+            }
+            if (scanning) {
+                builder.recipePool(id("pool")).component(scan);
+            }
+            if (layout == Layout.ALIAS || layout == Layout.SECONDARY) {
+                builder.component(extra);
+            }
+            if (layout == Layout.FAIL_AFTER_DEFER) {
+                builder.component(failing);
+            }
             var type = builder.build();
             var codec = new MachineWorkSlotsNbt("slots-v1", List.of(RecipeProcessNbt.builder(recipe, "recipe-v1").build()));
-            var assembly = MachineAssembly.builder(type, "worker-v1").component(ownership, MachineOwnership.CODEC)
-                .recreated(role, work, before, after).workSlots(codec);
-            if (scanning) { assembly.recreated(scan); }
-            if (layout == Layout.ALIAS) { assembly.recreated(extra); }
+            var assembly = MachineAssembly.builder(type, "worker-v1").instanceFactory(instanceFactory).component(ownership, MachineOwnership.CODEC)
+                                          .recreated(role, work, before, after).workSlots(codec);
+            if (scanning) {
+                assembly.recreated(scan);
+            }
+            if (layout == Layout.ALIAS) {
+                assembly.recreated(extra);
+            }
             if (layout == Layout.SECONDARY) {
                 assembly.component(extra, new MachineComponentCodec<>() {
-                    @Override public NBTTagCompound encode(MachineInstance machine, MachineWorkSlots slots) { return codec.encode(slots); }
-                    @Override public MachineWorkSlots restore(MachineInstance machine, MachineWorkSlots slots, NBTTagCompound saved) {
-                        codec.restore(slots, saved); return slots;
+                    @Override
+                    public NBTTagCompound encode(MachineInstance machine, MachineWorkSlots slots) {
+                        return codec.encode(slots);
+                    }
+
+                    @Override
+                    public MachineWorkSlots restore(MachineInstance machine, MachineWorkSlots slots, NBTTagCompound saved) {
+                        codec.restore(slots, saved);
+                        return slots;
                     }
                 });
             }
-            if (layout == Layout.FAIL_AFTER_DEFER) { assembly.recreated(failing); }
+            if (layout == Layout.FAIL_AFTER_DEFER) {
+                assembly.recreated(failing);
+            }
             var controller = new MachineController(assembly.build(), host(type.id()), scheduler, new MachineLifecycleRegistry());
             controller.load(null);
             var machine = Objects.requireNonNull(controller.machine());
             machine.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, capacity);
-            var energy = new EnergyBuffer(100, () -> { });
+            var energy = new EnergyBuffer(100, () -> {
+            });
             energy.receiveEnergy(100, Actionable.MODULATE);
             Objects.requireNonNull(machine.lifecycle()).form(new MachineHatches(List.of(), List.of(energy), List.of()));
             var worker = new Worker(controller, machine, Objects.requireNonNull(machine.components().get(MachineWorkSlots.TYPE)),
@@ -787,6 +860,30 @@ class NetworkRecipeExecutionTest {
 
     private static MachineType.Builder type(String name) { return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure")); }
     private static ResourceLocation id(String name) { return new ResourceLocation("network_execution_test", name); }
+
+    @Test
+    void defaultRecipeControllersActuallyDispatchBothAdmittedProcessesToOriginalParallelWorkers() {
+        for (var factory : List.<Function<MachineType, MachineInstance>>of(MultithreadController::new, CrossRecipeController::new)) {
+            try (var fixture = new Fixture(1, 20, 1, true, original -> new MachineRecipe(original.id(), original.durationTicks(),
+                original.orderedRequirements(), original.recipeGroups(), 2, RecipeParallelismSelection.fixed(1)))) {
+                var worker = fixture.worker(true, 2, null, Layout.ORDINARY, factory, true);
+                worker.machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
+                assertEquals(ExecutionMode.PLANNED_PARALLEL, worker.machine.executionMode());
+                assertEquals(ExecutionMode.PLANNED_PARALLEL, Objects.requireNonNull(worker.machine.components().get(MachineScheduling.TYPE)).mode());
+                fixture.tick();
+                assertEquals(0, fixture.pureEntered.getCount(), "Both processes on this actual assembled controller must overlap pure preparation");
+                assertEquals(2, fixture.pureThreads.size());
+                assertNotSame(fixture.owner, fixture.pureThreads.getFirst());
+                assertNotSame(fixture.owner, fixture.pureThreads.getLast());
+                assertNotSame(fixture.pureThreads.getFirst(), fixture.pureThreads.getLast());
+                assertEquals(80, worker.energy.savedEnergy());
+                assertEquals(2, worker.sourceApplies.get());
+                assertNotSame(fixture.owner, worker.sourceThread.get());
+                assertEquals(14, fixture.availableCompute(worker), "Both final-one processes share one machine lease and settle COMPUTE 3 each");
+                assertTrue(worker.slots.activeProcesses().isEmpty());
+            }
+        }
+    }
 
     @Test
     void realConcurrentControllersOverlapPurePreparationAndKeepOriginalOwnerAndSourceCallbacks() {

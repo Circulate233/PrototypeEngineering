@@ -6,7 +6,6 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
@@ -35,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class RecipeCandidateBudgetTest {
     private static final ResourceLocation FIRST = id("first");
@@ -47,7 +47,7 @@ class RecipeCandidateBudgetTest {
     }
 
     private static RecipeCatalog catalog(List<MachineRecipe> recipes) {
-        return new RecipeCatalog(List.of(new RecipePool(id("pool"), "budget.pool", recipes)));
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "budget.pool", recipes)));
     }
 
     private static List<MachineRecipe> recipes(int count) {

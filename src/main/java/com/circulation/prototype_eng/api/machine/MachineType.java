@@ -35,6 +35,7 @@ public final class MachineType {
     private final List<WorkSlotDefinition> workSlots;
     private final Object2DoubleMap<ResourceLocation> defaultAttributeBases;
     private final ExecutionMode executionMode;
+    private final boolean explicitExecutionMode;
     @Nullable private final ResourceLocation controllerModel;
 
     private MachineType(Builder builder) {
@@ -48,6 +49,7 @@ public final class MachineType {
         workSlots = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.workSlots.values()));
         defaultAttributeBases = Object2DoubleMaps.unmodifiable(new Object2DoubleLinkedOpenHashMap<>(builder.attributes));
         executionMode = builder.executionMode;
+        explicitExecutionMode = builder.explicitExecutionMode;
         controllerModel = builder.controllerModel;
     }
 
@@ -75,6 +77,11 @@ public final class MachineType {
     @SuppressWarnings("unused") // Assembly applies these public defaults after restoring persisted attributes.
     public Object2DoubleMap<ResourceLocation> defaultAttributeBases() { return defaultAttributeBases; }
     public ExecutionMode executionMode() { return executionMode; }
+
+    /** Explicit declaration overrides the actual runtime controller's default scheduling choice. */
+    public boolean hasExplicitExecutionMode() {
+        return explicitExecutionMode;
+    }
     @SuppressWarnings("unused") // Client model registration binds separately without loading client classes here.
     @Nullable public ResourceLocation controllerModel() { return controllerModel; }
 
@@ -89,6 +96,7 @@ public final class MachineType {
         private final Object2ObjectLinkedOpenHashMap<String, WorkSlotDefinition> workSlots = new Object2ObjectLinkedOpenHashMap<>();
         private final Object2DoubleLinkedOpenHashMap<ResourceLocation> attributes = new Object2DoubleLinkedOpenHashMap<>();
         private ExecutionMode executionMode = ExecutionMode.CONCURRENT;
+        private boolean explicitExecutionMode;
         @Nullable private ResourceLocation controllerModel;
 
         private Builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
@@ -136,7 +144,9 @@ public final class MachineType {
             return this;
         }
 
-        public Builder executionMode(ExecutionMode mode) { executionMode = Objects.requireNonNull(mode); return this; }
+        public Builder executionMode(ExecutionMode mode) { executionMode = Objects.requireNonNull(mode);
+            explicitExecutionMode = true;
+            return this; }
         @SuppressWarnings("unused") // Downstream declarations may supply a custom controller model.
         public Builder controllerModel(@Nullable ResourceLocation model) { controllerModel = model; return this; }
         public MachineType build() { return new MachineType(this); }

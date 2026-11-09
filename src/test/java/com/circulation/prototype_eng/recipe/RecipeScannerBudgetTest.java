@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
@@ -32,12 +31,14 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 
 class RecipeScannerBudgetTest {
     private static ResourceLocation id(String path) { return new ResourceLocation("scanner_budget_test", path); }
 
     private static RecipeCatalog catalog(List<MachineRecipe> recipes) {
-        return new RecipeCatalog(List.of(new RecipePool(id("pool"), "scanner.budget", recipes)));
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "scanner.budget", recipes)));
     }
 
     private static AtomicInteger capacityModifiers(MachineInstance machine) {
@@ -220,19 +221,31 @@ class RecipeScannerBudgetTest {
     void aLargeEmptyGroupScopeActuallyYieldsBeforeExhaustionAndTheSynchronousScanRemainsCompatible() {
         var recipes = new ObjectArrayList<MachineRecipe>();
         for (int index = 0; index < 500; index++) recipes.add(new MachineRecipe(id("foreign_" + index), 1, List.of(), Set.of(id("other"))));
+        var missingGroups = new ObjectLinkedOpenHashSet<ResourceLocation>();
+        for (int index = 0; index < 500; index++) missingGroups.add(id("missing_group_" + index));
         var machine = new MachineInstance();
-        var host = new MachineWorkSlots(machine, List.of(new WorkSlotDefinition("empty", Set.of(id("missing_group")))));
+        var host = new MachineWorkSlots(machine, List.of(new WorkSlotDefinition("empty", missingGroups)));
         var scanner = new RecipeScanner(host, catalog(recipes), () -> 17);
         var attempt = scanner.beginScan(new ScanLimits(1, 1));
         assertEquals(RecipeScanner.Status.YIELDED, attempt.advance(new RecipeWorkBudget(0), () -> true).status());
         for (int call = 0; call < 10; call++) assertEquals(RecipeScanner.Status.YIELDED, attempt.advance(new RecipeWorkBudget(1), () -> true).status());
         RecipeScanner.Result result = null;
-        for (int call = 0; call < 1000 && !attempt.finished(); call++) result = attempt.advance(new RecipeWorkBudget(1), () -> true);
+        for (int call = 0; call < 4 * missingGroups.size() && !attempt.finished(); call++) result = attempt.advance(new RecipeWorkBudget(1), () -> true);
         assertTrue(attempt.finished());
         assertEquals(RecipeScanner.Status.EXHAUSTED, Objects.requireNonNull(result).status());
         assertEquals(0, result.candidates());
         assertEquals(0, result.probes());
         assertEquals(RecipeScanner.Status.EXHAUSTED, scanner.scan(new ScanLimits(1, 1)).status());
         assertTrue(host.activeProcesses().isEmpty());
+        var smallOwner = new MachineInstance();
+        var smallHost = new MachineWorkSlots(smallOwner, List.of(new WorkSlotDefinition("small", Set.of(id("missing_group_0")))));
+        var smallScanner = new RecipeScanner(smallHost, catalog(recipes), () -> 17);
+        var small = smallScanner.beginScan(new ScanLimits(1, 1));
+        RecipeScanner.Result smallResult = null;
+        for (int call = 0; call < 32 && !small.finished(); call++) smallResult = small.advance(new RecipeWorkBudget(1), () -> true);
+        assertTrue(small.finished(), "A single missing group uses the frozen posting table without traversing foreign recipes");
+        assertEquals(RecipeScanner.Status.EXHAUSTED, Objects.requireNonNull(smallResult).status());
+        assertEquals(0, smallResult.candidates());
+        assertEquals(0, smallResult.probes());
     }
 }

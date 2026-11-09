@@ -25,6 +25,11 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import java.util.Iterator;
 import java.util.function.BooleanSupplier;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
 
 /**
  * PM's ordered work-slot host. One execution owner controls admission, tick, transfer and persistence;
@@ -38,12 +43,17 @@ public final class MachineWorkSlots {
 
     private static MachineWorkSlots fromDeclaration(MachineInstance owner) {
         var type = owner.type();
-        return type == null ? new MachineWorkSlots(owner, List.of())
-            : new MachineWorkSlots(owner, type.workSlots(), type.recipeGroups());
+        return type == null ? owner.createRecipeHost(List.of(), Set.of())
+            : owner.createRecipeHost(type.workSlots(), type.recipeGroups());
     }
 
     private final MachineInstance owner;
     private final List<WorkSlot> slots;
+    private final ObjectArrayList<WorkSlot> slotStorage;
+    private final boolean dynamicRoster;
+    private final int declaredSlotCount;
+    private final Set<ResourceLocation> dynamicGroups;
+    private long nextRuntimeSlot;
     private final Object2ObjectLinkedOpenHashMap<String, WorkSlot> byName = new Object2ObjectLinkedOpenHashMap<>();
     private final RecipeExecutor executor;
     private boolean executing;
@@ -64,17 +74,171 @@ public final class MachineWorkSlots {
      */
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups,
                             RecipeExecutor executor) {
+        this(owner, definitions, defaultGroups, executor, false); }
+
+    private MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> defaultGroups,
+                             RecipeExecutor executor, boolean dynamicRoster) {
         this.owner = Objects.requireNonNull(owner);
         this.executor = Objects.requireNonNull(executor);
         Objects.requireNonNull(defaultGroups);
-        var declared = definitions.isEmpty() ? List.of(new WorkSlotDefinition("main", defaultGroups)) : definitions;
+        this.dynamicRoster = dynamicRoster;
+        dynamicGroups = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(defaultGroups));
+        var declared = !dynamicRoster && definitions.isEmpty() ? List.of(new WorkSlotDefinition("main", defaultGroups)) : definitions;
+        declaredSlotCount = declared.size();
         var workSlots = new ObjectArrayList<WorkSlot>();
         for (var definition : declared) {
             var slot = new WorkSlot(Objects.requireNonNull(definition));
-            if (byName.putIfAbsent(slot.name(), slot) != null) { throw new IllegalArgumentException("Duplicate work slot: " + slot.name()); }
+            if (dynamicRoster && slot.name().startsWith("pe_cross/"))
+                throw new IllegalArgumentException("Declared slot uses the runtime slot namespace");
+            if (byName.putIfAbsent(slot.name(), slot) != null) {
+                throw new IllegalArgumentException("Duplicate work slot: " + slot.name());
+            }
             workSlots.add(slot);
         }
-        slots = ObjectLists.unmodifiable(workSlots);
+        slotStorage = workSlots;
+        slots = ObjectLists.unmodifiable(slotStorage);
+        owner.registerRecipeHost(this);
+    }
+
+    /** Explicit cross-recipe binding; legacy public constructors keep their complete fixed layout. */
+    public static MachineWorkSlots crossRecipe(MachineInstance owner, List<WorkSlotDefinition> definitions, Set<ResourceLocation> groups) {
+        return new MachineWorkSlots(owner, definitions, groups, RecipeExecutor.DEFAULT, true);
+    }
+
+    public boolean dynamicRoster() { return dynamicRoster; }
+    public Set<ResourceLocation> dynamicRecipeGroups() { return dynamicGroups; }
+    public long nextRuntimeSlot() { return nextRuntimeSlot; }
+
+    /** Allocate at most one vacant process slot during an admission search, never a JVM thread. */
+    @Nullable
+    public WorkSlot dynamicScanSlot(MachineRecipe recipe) {
+        requireBoundary();
+        if (!dynamicRoster) return null;
+        var rule = new WorkSlotDefinition("runtime", dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY);
+        if (!rule.accepts(recipe)) return null;
+        for (var slot : slots) if (slot.process() == null && slot.definition().accepts(recipe)) return slot;
+        return appendRuntimeSlot(recipe);
+    }
+
+    /** Called after the scanner has budgeted its complete vacancy search. No roster traversal. */
+    @Nullable
+    public WorkSlot appendRuntimeSlot(MachineRecipe recipe) {
+        requireBoundary();
+        if (!dynamicRoster || !new WorkSlotDefinition("runtime", dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY).accepts(recipe)) return null;
+        String name = "pe_cross/" + nextRuntimeSlot;
+        long next = Math.incrementExact(nextRuntimeSlot);
+        var slot = new WorkSlot(new WorkSlotDefinition(name, dynamicGroups, false, WorkSlotRestartPolicy.LOCKED_RETRY));
+        owner.recordRecipeHostLayoutChange(this);
+        nextRuntimeSlot = next;
+        slotStorage.add(slot); byName.put(name, slot); return slot;
+    }
+
+    public boolean acceptsRestoredDefinition(int index, WorkSlotDefinition definition) {
+        if (index < declaredSlotCount) return index < slots.size() && slots.get(index).definition().equals(definition);
+        if (!dynamicRoster || !definition.name().startsWith("pe_cross/") || definition.isCore()
+            || definition.restartPolicy() != WorkSlotRestartPolicy.LOCKED_RETRY || !definition.allowedRecipeGroups().equals(dynamicGroups)) return false;
+        var suffix = definition.name().substring("pe_cross/".length());
+        if (suffix.isEmpty() || suffix.length() > 19) return false;
+        long value = 0;
+        for (int i = 0; i < suffix.length(); i++) {
+            char digit = suffix.charAt(i);
+            if (digit < '0' || digit > '9' || value > (Long.MAX_VALUE - (digit - '0')) / 10L) return false;
+            value = value * 10L + digit - '0';
+        }
+        return definition.name().equals("pe_cross/" + value);
+    }
+
+    public void restoreRuntimeCounter(long next) {
+        requireBoundary();
+        if (!dynamicRoster || next < 0) throw new IllegalArgumentException("Invalid runtime slot counter");
+        for (int i = declaredSlotCount; i < slots.size(); i++) {
+            var name = slots.get(i).name();
+            if (!acceptsRestoredDefinition(i, slots.get(i).definition())) throw new IllegalArgumentException("Invalid runtime slot");
+            long id = 0;
+            for (int c = "pe_cross/".length(); c < name.length(); c++) id = id * 10 + name.charAt(c) - '0';
+            if (id >= next) throw new IllegalArgumentException("Runtime slot counter would reuse an identity");
+        }
+        nextRuntimeSlot = Math.max(nextRuntimeSlot, next);
+    }
+
+    public record SharedUsage(long occupied, long limit, int recipeThreads) {
+        public long available() { return Math.max(0L, limit - occupied); }
+    }
+
+    public interface UsageCapture {
+        boolean advance(RecipeWorkBudget work);
+        SharedUsage result();
+        boolean current();
+        default SharedUsage run() {
+            if (!advance(new RecipeWorkBudget(Long.MAX_VALUE))) throw new IllegalStateException("Shared usage capture is incomplete");
+            return result();
+        }
+    }
+
+    /** No execution permission is granted; a later admission always rechecks the actual machine. */
+    public SharedUsage sharedUsage(MachineRecipe recipe) {
+        return Objects.requireNonNull(beginSharedUsage(recipe, null).run());
+    }
+
+    public UsageCapture beginSharedUsage(MachineRecipe recipe) {
+        return beginSharedUsage(recipe, null);
+    }
+
+    private UsageCapture beginSharedUsage(MachineRecipe recipe, @Nullable Admission ignored) {
+        Objects.requireNonNull(recipe);
+        var hosts = owner.recipeHosts();
+        return new UsageCapture() {
+            @Nullable private SharedUsage result;
+            private final long rosterRevision = owner.recipeRosterRevision();
+            private final MachineAttributes.FamilyCapture family = owner.attributes().familyCapture();
+            private final MachineAttributes.ValueCapture proof = owner.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+            private int hostCursor;
+            private int slotCursor;
+            private long used;
+            private int threads;
+            private boolean pendingCounted;
+            @Nullable private MachineAttributes.ValueCapture amount;
+            @Nullable private RecipeProcess counting;
+            @Override public boolean advance(RecipeWorkBudget work) {
+                if (!current()) return false;
+                if (result != null) return true;
+                while (hostCursor < hosts.size()) {
+                    var host = hosts.get(hostCursor);
+                    while (slotCursor < host.slots.size()) {
+                        if (counting == null) {
+                            if (!work.take()) return false;
+                            counting = host.slots.get(slotCursor).process();
+                            if (counting == null) { slotCursor++; continue; }
+                            amount = counting.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+                        }
+                        if (!Objects.requireNonNull(amount).advance(work)) return false;
+                        count(counting, Math.max(1, (int) Math.floor(amount.result())));
+                        counting = null; amount = null; slotCursor++;
+                    }
+                    if (!pendingCounted) {
+                        if (!work.take()) return false;
+                        var pending = host.activeAdmission;
+                        if (pending != null && pending != ignored && pending.reserved && pending.process.host() == null)
+                            count(pending.process, RecipeParallelism.effective(pending.process));
+                        pendingCounted = true;
+                    }
+                    hostCursor++; slotCursor = 0; pendingCounted = false;
+                }
+                if (!proof.advance(work)) return false;
+                if (!work.take()) return false;
+                result = new SharedUsage(used, Math.max(0L, (long) Math.floor(proof.result())), threads); return true;
+            }
+            @Override public SharedUsage result() {
+                if (!current()) throw new IllegalStateException("Shared usage capture changed");
+                return Objects.requireNonNull(result, "Shared usage capture is incomplete");
+            }
+            @Override public boolean current() { return rosterRevision == owner.recipeRosterRevision() && family.current() && proof.current(); }
+            private void count(RecipeProcess process, int parallelism) {
+                if (process.owner() != owner) throw new IllegalStateException("Shared recipe host lost its machine");
+                used = Math.addExact(used, parallelism);
+                if (process.recipe().id().equals(recipe.id())) threads = Math.incrementExact(threads);
+            }
+        };
     }
 
     public MachineInstance owner() { return owner; }
@@ -88,7 +252,8 @@ public final class MachineWorkSlots {
 
     /** Live admission limit; lowering it leaves every existing process attached and runnable. */
     public int capacity() {
-        return Math.clamp((long) owner.attributes().value(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1), 0, slots.size());
+        return dynamicRoster ? Integer.MAX_VALUE
+            : Math.clamp((long) owner.attributes().value(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1), 0, slots.size());
     }
 
     public List<RecipeProcess> activeProcesses() {
@@ -112,7 +277,8 @@ public final class MachineWorkSlots {
         requireBoundary();
         validateUnattached(process);
         var slot = requireSlot(name);
-        if (workPaused() || slot.process() != null || activeCount() >= capacity() || !accepts(slot, process)) { return false; }
+        if (workPaused() || slot.process() != null || activeCount() >= capacity() || !accepts(slot, process)
+            || owner.recipeThreadCount(process.recipe().id()) >= process.recipe().maxConcurrentThreads()) { return false; }
         if (workPaused()) { return false; }
         process.attachTo(this);
         slot.setState(process, process.state().result());
@@ -126,10 +292,23 @@ public final class MachineWorkSlots {
         return Objects.requireNonNull(selection).accepts(owner, process.recipe()) && startIn(name, process);
     }
 
+    public boolean startIn(String name, RecipeProcess process, RecipeCatalog.Selection selection, SharedUsage basis) {
+        var current = sharedUsage(process.recipe());
+        return current.occupied() == basis.occupied() && current.limit() == basis.limit()
+            && startIn(name, process, selection);
+    }
+
     @SuppressWarnings("ReturnOfInnerClass") // The retained admission cursor belongs to this exact work-slot host.
     public Admission beginAdmission(String name, RecipeProcess process, RecipeCatalog.Selection selection) {
         Objects.requireNonNull(selection);
         return createAdmission(name, process, selection);
+    }
+
+    @SuppressWarnings("ReturnOfInnerClass") // Carries the scanner's shared allowance into the exact host admission.
+    public Admission beginAdmission(String name, RecipeProcess process, RecipeCatalog.Selection selection, SharedUsage basis) {
+        var admission = beginAdmission(name, process, selection);
+        admission.basis = Objects.requireNonNull(basis);
+        return admission;
     }
 
     private Admission createAdmission(String name, RecipeProcess process, @Nullable RecipeCatalog.Selection selection) {
@@ -162,6 +341,9 @@ public final class MachineWorkSlots {
         private boolean admitted;
         private boolean finished;
         private boolean advancing;
+        private boolean reserved;
+        @Nullable private SharedUsage basis;
+        @Nullable private UsageCapture finalUsage;
         @Nullable private RecipeCatalog.Selection selection;
         @Nullable private RecipeProcess permitted;
         @Nullable private MachineAttributes.ValueCapture capacityValue;
@@ -204,19 +386,30 @@ public final class MachineWorkSlots {
                     }
                     phase = 2;
                 }
-                if (capacityValue == null) capacityValue = owner.attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
-                if (!capacityValue.advance(budget)) {
+                if (!dynamicRoster && capacityValue == null) capacityValue = owner.attributes().beginValueCapture(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
+                if (!dynamicRoster && !Objects.requireNonNull(capacityValue).advance(budget)) {
                     if (!capacityValue.current()) capacityValue = null;
                     return false;
+                }
+                if (basis != null) {
+                    if (finalUsage == null) finalUsage = beginSharedUsage(process.recipe(), this);
+                    if (!finalUsage.advance(budget)) { if (!finalUsage.current()) finalUsage = null; return false; }
+                    var current = finalUsage.result();
+                    if (current.occupied() != basis.occupied() || current.limit() != basis.limit()) return finish(false);
                 }
                 if (!budget.take()) return false;
                 validateUnattached(process);
                 // Authorization is an extension callback: prove the captured attributes again after it.
                 if (!accepted || selection != null && !selection.accepts(owner, process.recipe())
                     || slot.process() != null || workPaused() || !authorization.getAsBoolean()) return finish(false);
-                if (!capacityValue.current()) { capacityValue = null; return false; }
+                if (!dynamicRoster && !Objects.requireNonNull(capacityValue).current()) { capacityValue = null; return false; }
                 validateUnattached(process);
-                if (active >= Math.clamp((long) capacityValue.result(), 0, slots.size()) || slot.process() != null || workPaused()) return finish(false);
+                if (!dynamicRoster && active >= Math.clamp((long) Objects.requireNonNull(capacityValue).result(), 0, slots.size()) || slot.process() != null || workPaused()
+                    || owner.recipeThreadCount(process.recipe().id()) >= process.recipe().maxConcurrentThreads()) return finish(false);
+                if (finalUsage != null && !finalUsage.current()) { finalUsage = null; return false; }
+                // First completed owner claim wins. Final quantities may exceed the base allowance.
+                owner.recordRecipeOccupant(process);
+                reserved = true;
                 process.attachTo(MachineWorkSlots.this);
                 slot.setState(process, process.state().result());
                 return finish(true);
@@ -236,6 +429,7 @@ public final class MachineWorkSlots {
             admitted = accepted;
             finished = true;
             activeAdmission = null;
+            if (reserved && process.host() == null) owner.releaseRecipeOccupant(process);
             return true;
         }
         private void requireOwner() {
@@ -849,16 +1043,25 @@ public final class MachineWorkSlots {
         requireBoundary();
         var previous = snapshot();
         var replacement = new ObjectArrayList<>(snapshot);
-        if (replacement.size() != slots.size()) { throw new IllegalArgumentException("Work slot layout size changed"); }
+        if (!dynamicRoster && replacement.size() != slots.size() || dynamicRoster && replacement.size() < declaredSlotCount) { throw new IllegalArgumentException("Work slot layout size changed"); }
         var processes = new ReferenceOpenHashSet<RecipeProcess>();
         var previousProcesses = new ReferenceOpenHashSet<RecipeProcess>();
+        var names = new ObjectOpenHashSet<String>();
+        long restoredNext = nextRuntimeSlot;
         for (var old : previous) {
             if (old.process() != null) { previousProcesses.add(old.process()); }
         }
         for (int i = 0; i < replacement.size(); i++) {
             var saved = Objects.requireNonNull(replacement.get(i));
-            var slot = slots.get(i);
-            if (!slot.definition().equals(saved.definition())) { throw new IllegalArgumentException("Work slot layout changed: " + slot.name()); }
+            if (!names.add(saved.definition().name())) throw new IllegalArgumentException("Duplicate restored slot name");
+            var slot = dynamicRoster ? new WorkSlot(saved.definition()) : slots.get(i);
+            if (!acceptsRestoredDefinition(i, saved.definition())) { throw new IllegalArgumentException("Work slot layout changed: " + saved.definition().name());
+            }
+            if (dynamicRoster && i >= declaredSlotCount) {
+                long id = 0;
+                var name = saved.definition().name();
+                for (int c = "pe_cross/".length(); c < name.length(); c++) id = id * 10 + name.charAt(c) - '0';
+                restoredNext = Math.max(restoredNext, Math.incrementExact(id)); }
             var process = saved.process();
             if (process == null) { continue; }
             validateProcess(process);
@@ -868,12 +1071,37 @@ public final class MachineWorkSlots {
             }
         }
         // Every operation after validation is local assignment under the same exclusive owner.
-        for (var old : previousProcesses) { old.detachFrom(this); }
+        owner.recordRecipeHostLayoutChange(this);
+        for (var old : previousProcesses) { old.detachFrom(this);
+        }
+        if (dynamicRoster) {
+            slotStorage.clear(); byName.clear();
+            for (var saved : replacement) {
+                var slot = new WorkSlot(saved.definition()); slotStorage.add(slot); byName.put(slot.name(), slot);
+            }
+        }
         for (int i = 0; i < replacement.size(); i++) {
             var saved = replacement.get(i);
             if (saved.process() != null) { saved.process().attachTo(this); }
             slots.get(i).setState(saved.process(), saved.result());
         }
+        nextRuntimeSlot = restoredNext;
+    }
+
+    /** Dynamic roster and its monotonic identity counter are validated before replacing any live slot. */
+    public void restore(List<SlotSnapshot> snapshot, long nextRuntimeSlot) {
+        requireBoundary();
+        if (!dynamicRoster || nextRuntimeSlot < 0) throw new IllegalArgumentException("Invalid runtime roster save");
+        for (int i = declaredSlotCount; i < snapshot.size(); i++) {
+            var definition = snapshot.get(i).definition();
+            if (!acceptsRestoredDefinition(i, definition)) throw new IllegalArgumentException("Invalid runtime slot");
+            long id = 0;
+            var name = definition.name();
+            for (int c = "pe_cross/".length(); c < name.length(); c++) id = id * 10 + name.charAt(c) - '0';
+            if (id >= nextRuntimeSlot) throw new IllegalArgumentException("Runtime slot counter would reuse an identity");
+        }
+        restore(snapshot);
+        this.nextRuntimeSlot = Math.max(this.nextRuntimeSlot, nextRuntimeSlot);
     }
 
     private int activeCount() {

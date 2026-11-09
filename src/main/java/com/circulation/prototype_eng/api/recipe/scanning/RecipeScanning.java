@@ -26,7 +26,7 @@ public final class RecipeScanning {
     public static ComponentType<MachineInstance, RecipeScanner> component(ResourceLocation id,
             Supplier<RecipeCatalog> catalog, ScanLimits limits) {
         Objects.requireNonNull(catalog, "catalog");
-        return component(id, host -> new RecipeScanner(host, Objects.requireNonNull(catalog.get(), "catalog result"),
+        return component(id, host -> host.owner().createRecipeScanner(host, Objects.requireNonNull(catalog.get(), "catalog result"),
             () -> ThreadLocalRandom.current().nextLong()), limits, _ -> true);
     }
 

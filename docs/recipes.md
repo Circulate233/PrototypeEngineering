@@ -341,3 +341,33 @@ R32 已实现并完成本阶段验证。新增 14 项行为；focused 37 tests /
 一个逻辑扫描 pass 捕获一次稳定只读池快照，池枚举与跨池 canonical 配方去重沿原 RecipeWorkBudget 续办；fresh 等价 List 不导致反复从零取样。选择枚举顺序不改 priority，仍用 catalog 既有冻结池/配方顺序。同一 pass 内动态变化在下一 pass 生效：ADMITTED、EXHAUSTED 或 `RecipeScanner.reset()` 后重新采样，FULL/PAUSED 保留纯游标但不续资源/执行权限。主动刷新先 cancel/结算旧 attempt 的 probe/source 义务，释放 active attempt 后才 reset；reset 拒绝仍活动、正在执行或 faulted 的 scanner。
 
 scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog.Selection` 交付原工位准入，检查选池成员与 canonical recipe；选择只限制本次新的目录准入。原无 catalog 的显式 start/startIn/beginAdmission 仍是外部直接进程操作和独立研究材料执行入口。旧运行、恢复、detach 或直接启动进程不因自动扫描范围变化被停止、重新归类或历史退款。资源、FE、研究、计算、多线程和来源结算继续原执行器。
+
+## 逻辑线程控制器与整机共享并行
+
+公开 `RecipeController`、`MultithreadController` 与 `CrossRecipeController` 是实际机器运行时基准；通过原 `MachineAssembly.instanceFactory(MultithreadController::new)` / `CrossRecipeController::new` 选择。`MachineWorkSlots.TYPE` 调用 owner 的 `createRecipeHost`，默认 `RecipeScanning.component` 调用 owner 的 `createRecipeScanner`。这两处 factory、控制器类和 protected `defaultExecutionMode()` 均保留继承扩展。普通 `MachineInstance` 默认仍为 CONCURRENT；两种具体控制器默认 PLANNED_PARALLEL，原自动 `MachineScheduling.TYPE` 装配/保存采用实际运行时选择。显式 `MachineType.Builder.executionMode(...)`、恢复的 scheduling component 和外部 override 优先，纯计算与 source work 使用既有 worker/lane/coordinator。
+
+多线程控制器为每个声明的 `WorkSlot` 保留独立 pool selection、group scope、candidate cursor、search seed 与纯 factory/check 游标。无权利的让步轮到后继工位；已经占用的工位和未成型门限继续沿原宿主规则处理。跨配方控制器按目录顺序继续 A、B 等候选，成功后仍完成当前轮；整轮有准入且仍有共享余量时开始下一轮并重新采样 pool selection，同一配方可在其逻辑线程上限内再次准入。整轮无新增可行准入才穷尽；candidates/probes/工作预算在所有工位和轮次间共享，不能每成功一次刷新预算。
+
+整机 `PROCESS_PARALLELISM` 是新候选的基础建议余额，所有已登记宿主的附着进程与已完成 pending claim 按真实 `RecipeParallelism.effective` 合计。`MachineRecipe.maxConcurrentThreads` 按同机器同 canonical recipe ID 的进程数控制准入；并行数量与逻辑进程数量分别计数，投机未完成候选不占 claim。`RecipeParallelismSelection.select(process)` 在基础建议绑定后、完整 START probe 前执行；`fixed(quantity)` 和自定义本地 callback 复用现有过程属性。事件或 factory modifier 最终数量超过基础余额仍可通过完整要求/资源/FE/PN 检查后准入，记录实际数量，使之后余额为零；不把最终数量裁回基础建议，也不在真实 START 重放此选择回调。
+
+普通 `MachineAttributes.ValueCapture` 只跟踪本层与读取过的祖先；兄弟进程的局部编辑不互相撤销。共享用量另捕获家族变化与整机 roster revision；变动时重捕实际用量，基础建议确实改变才重造纯 candidate tuple。纯让步只保留未发布目录、工位选择、factory/无权利 check 进度；START、预留、PN permit、source resolution 和未退出 worker 仍由原 attempt 收尾。目录穷尽前执行新的预算化 live proof，库存/绑定改变后重取候选，避免旧 subset 漏掉新增输入。
+
+跨配方宿主按需追加 `pe_cross/<counter>` 工位，公开 slots 视图不可修改；声明工位不使用该运行时命名空间。固定布局 codec 保留 Version 1，动态布局使用 Version 2、Dynamic 与 NextSlot，先解析与验证整组后发布，计数器保持单调；append 与公开 restore（包括恢复空列表）均撤销旧 vacancy/roster 证明。降低共享额度或工位容量不驱逐已有工作。RESCAN 与 isCore 的扩展策略仍按后续阶段处理。
+
+当前共同验证入口：`build/staging/controller-shared-parallel/`、`build/staging/recipe-pool-strategies/` 与 `build/staging/controller-pool-plan/review.md`。最终状态见实施进度；实际游戏 World/网络包未启动验收。
+
+## 配方池接口与简单配方索引
+
+`RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。
+
+`beginCandidates(machine, groups)` 是实际扫描调用的公开策略入口，返回原 `RecipeCandidateIndex.Cursor`。null（包括 cursor 的 null result）只回退本池完整且组兼容的配方，empty 表示本池无候选；外部结果须是本池 canonical 子集，且不得漏掉其职责下仍可能成功的配方。目录冻结时保存成员、组与原 priority；每个 pass 只采样所选 canonical 池，不先枚举它们的全量配方。各池意见先 union、准确去重并按原 priority 排序，再经过现有 external index intersection；只访问本池 fallback 或实际返回结果，不扫描全目录造 scope。`Selection.accepts` 保留目录、机器和准确配方成员约束；预算 yield 保留游标，`restartLiveIndexes` 同时重取池策略与外部索引的 live 观察。
+
+`SimpleRecipePool.Entry.create(id, durationTicks, input, output, groups)` 提供单个固定 START 输入 → 单个固定 END 输出的明确声明。输入/输出使用 `GenericStack` 的原 AEKey 与 long 数量，数量不固定为 1。该池不接受 TICK IO、概率/属性概率、随机输出、fuzzy/dynamic、checkpoint、selector 或其他需求；这些完整能力继续使用通用池。相同 AEKey 的多条配方保留原 priority；专用索引按真实库存键访问数量阈值 postings，不枚举不存在键对应的全部配方。最后仍进入原 factory、要求/事务、共享并行、研究/计算与 START 准入，索引不消费材料或授予执行权限。
+
+正常公开使用为 `registry.register(new SimpleRecipePool(poolId, titleKey, entries))`，并在原 `MachineAssembly.instanceFactory` 选择 `MultithreadController::new` 或 `CrossRecipeController::new`。三参池沿 owner 的 `supportsStableFixedInputLowerBounds()` 查询全部实际 registered scanner/输入路径：新默认控制器的已知标准安全配置可以启用索引；未知 factory、preparation、输入 provider/overlay 或可改变输入的 local callback 自动保留本池候选。四参 `Predicate<MachineInstance>` 供外部作者显式承担完整固定输入下界保证，必须覆盖 factory、概率、modifier、preparation、overlay 与先行 START 效果，不能只根据需求形状推断。事件和输入变换能力保持可用；不能证明稳定时走正常 fallback，缺失输入被实际 factory 改成 optional 的配方仍可准入。
+
+数量捕获复用原 `ResourceStorage.QuantityCapture`、共享 `StorageContext` 的同键 max 与不同 context 的饱和累加（`AEKey2LongMap.addTo`）。所有检查过的 hatch，包括当时 invalid/null/无效 storage 的跳过项，均参加最终 current proof；同列表中后来可用的输入会撤销旧意见。fresh 临时 adapter 按 `inputStorageIdentity`、context、有效性和原 quantity revision 核对，不要求每次返回同一 wrapper 对象。完整目录/JEI 与原静态机器绑定保持不裁剪。本阶段源码、准确 before 与实际行为/MCP/完整 build 验证证据见 `build/staging/recipe-pool-strategies/` 及 `build/staging/controller-shared-parallel/`；最终状态见本文末段与实施进度，真实 World、结构及 JEI 的后续验收保持独立。
+
+`RecipeCandidateIndex.Cursor.beginValidation()` 与 `RecipeCatalog.CandidatePass.beginValidation()` 返回可保留的 `Validation`：`advance(budget)` 返回 true 只表示核验结束，再读取 `current()` 判断本次证明是否仍有效。内置简单池与资源索引逐 binding/已完成 quantity capture 收取预算；外部旧 cursor 的默认实现以一个 credit 调用其 cooperative `current()`。尚未发布数量的 partial capture 由自己的 revision 游标继续或重取，不能把它的 incomplete 状态当作整池失效。未完成 discovery 在新 tick 续办核验，仍有效时保留 partial 索引进度；纯候选事实不授予来源权限，目录穷尽前再次预算化核验 live 意见，失效才清候选、search 和 cursor 并重取。纯让步必须先完整结束原 probe/kernel/source 义务，不能只丢弃已获得预留的 START session。
+
+本阶段最终行为与验证：两controller的真实worker并发及final over-cap资源/FE/PN、纯计算跨tick续办/公平轮换/live变更/空dynamic restore均已覆盖。focused70 tests/9 suites、实际完整build重跑1620 tests/206 suites全零；本机IDEA逐文件全级零和完整读回一致，最终MCP build成功。真实失败与最终日志/XML/最早before/精确提交见 `build/staging/controller-shared-parallel/` 与 `build/staging/recipe-pool-strategies/`。结构、JEI及RESCAN/isCore未据此验收；显式旧ResourceRecipeIndex同context临时adapter freshness另有待修P2，当前两默认scanner未配置该index。

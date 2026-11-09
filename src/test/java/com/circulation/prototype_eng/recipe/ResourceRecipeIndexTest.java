@@ -8,7 +8,6 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
@@ -53,6 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class ResourceRecipeIndexTest {
     private static final KeyType FIRST_TYPE = new KeyType("resource_index_first");
@@ -220,7 +220,7 @@ class ResourceRecipeIndexTest {
     }
 
     private static RecipeCatalog catalog(MachineRecipe... recipes) {
-        return new RecipeCatalog(List.of(new RecipePool(id("pool"), "resource.index.pool", List.of(recipes))));
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "resource.index.pool", List.of(recipes))));
     }
 
     private static SlottedResourceBuffer buffer(long capacity) {

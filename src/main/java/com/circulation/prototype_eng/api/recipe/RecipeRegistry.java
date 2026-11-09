@@ -25,14 +25,15 @@ public final class RecipeRegistry {
     public void register(RecipePool pool) {
         requireRegistration();
         Objects.requireNonNull(pool, "pool");
-        if (registrations.containsKey(pool.id())) {
-            throw new IllegalArgumentException("Duplicate recipe pool: " + pool.id());
+        var id = Objects.requireNonNull(pool.id(), "pool id");
+        if (registrations.containsKey(id)) {
+            throw new IllegalArgumentException("Duplicate recipe pool: " + id);
         }
-        registrations.put(pool.id(), new PoolRegistration(pool));
+        registrations.put(id, new PoolRegistration(pool));
     }
 
     public void registerPool(ResourceLocation id, String translationKey) {
-        register(new RecipePool(id, translationKey, ObjectLists.emptyList()));
+        register(new DefaultRecipePool(id, translationKey, ObjectLists.emptyList()));
     }
 
     /**
@@ -80,8 +81,14 @@ public final class RecipeRegistry {
         var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
         for (var entry : registrations.object2ObjectEntrySet()) {
             var registration = entry.getValue();
-            pools.put(entry.getKey(), new RecipePool(entry.getKey(), registration.translationKey,
-                new ObjectArrayList<>(registration.recipes.values()), users.getOrDefault(entry.getKey(), new ObjectArrayList<>())));
+            var recipes = ObjectLists.unmodifiable(new ObjectArrayList<>(registration.recipes.values()));
+            var boundMachines = ObjectLists.unmodifiable(new ObjectArrayList<>(users.getOrDefault(entry.getKey(), new ObjectArrayList<>())));
+            var pool = Objects.requireNonNull(registration.source.freeze(recipes, boundMachines), "Pool freeze result");
+            if (!entry.getKey().equals(pool.id()) || !registration.translationKey.equals(pool.translationKey())
+                || !sameInstances(recipes, pool.recipes()) || !sameInstances(boundMachines, pool.machines())) {
+                throw new IllegalArgumentException("Pool freeze changed canonical definition: " + entry.getKey());
+            }
+            pools.put(entry.getKey(), pool);
         }
         var ordered = new ObjectArrayList<>(pools.values());
         ordered.sort(Comparator.comparing(pool -> pool.id().toString()));
@@ -121,16 +128,28 @@ public final class RecipeRegistry {
         }
     }
 
+    private static boolean sameInstances(List<?> expected, List<?> actual) {
+        if (actual == null || expected.size() != actual.size()) return false;
+        for (int i = 0; i < expected.size(); i++) if (expected.get(i) != actual.get(i)) return false;
+        return true;
+    }
+
     private record Frozen(Map<ResourceLocation, RecipePool> pools, List<RecipePool> orderedPools, RecipeCatalog catalog) { }
 
     private static final class PoolRegistration {
+        final RecipePool source;
         final String translationKey;
         final Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe> recipes = new Object2ObjectLinkedOpenHashMap<>();
 
         PoolRegistration(RecipePool pool) {
+            source = pool;
             translationKey = pool.translationKey();
-            for (MachineRecipe recipe : pool.recipes()) {
-                recipes.put(recipe.id(), recipe);
+            if (translationKey == null || translationKey.isBlank())
+                throw new IllegalArgumentException("Pool title is required");
+            for (MachineRecipe recipe : Objects.requireNonNull(pool.recipes(), "pool recipes")) {
+                Objects.requireNonNull(recipe, "pool recipe");
+                if (recipes.putIfAbsent(recipe.id(), recipe) != null)
+                    throw new IllegalArgumentException("Duplicate recipe in pool " + pool.id() + ": " + recipe.id());
             }
         }
     }

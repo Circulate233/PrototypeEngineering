@@ -29,6 +29,7 @@ public final class MachineAttributes {
     private final @Nullable MachineAttributes parent;
     private final double defaultBase;
     private final AttributeEpoch epoch;
+    private volatile Object localMarker = new Object();
     private Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalState> local = new Object2ObjectLinkedOpenHashMap<>();
 
     /** Root attributes use zero as the base when only modifiers exist. */
@@ -85,10 +86,11 @@ public final class MachineAttributes {
     public final class ValueCapture {
         private final ResourceLocation id;
         private final double fallback;
-        private final Object capturedEpoch = epoch.marker;
+        private final Object capturedLocal = localMarker;
         private final ObjectArrayList<LayerValue> layers = new ObjectArrayList<>();
         private final Object2ObjectLinkedOpenHashMap<String, AttributeModifier> modifiers = new Object2ObjectLinkedOpenHashMap<>();
         private MachineAttributes next = MachineAttributes.this;
+        private Object nextMarker = capturedLocal;
         private Iterator<Map.Entry<String, AttributeModifier>> entries;
         private Iterator<AttributeModifier> applying;
         private int phase;
@@ -110,7 +112,7 @@ public final class MachineAttributes {
                 if (!budget.take()) return false;
                 var attributes = next;
                 var state = attributes.local.get(id);
-                layers.add(new LayerValue(attributes, state));
+                layers.add(new LayerValue(attributes, state, attributes.localMarker));
                 if (state != null) {
                     defined = true;
                     if (!baseFound && state.baseOverride != null) { base = state.baseOverride; baseFound = true; }
@@ -118,6 +120,7 @@ public final class MachineAttributes {
                     if (included == -1 && !state.inheritModifiers) included = layers.size() - 1;
                 }
                 next = attributes.parent;
+                if (next != null) nextMarker = next.localMarker;
             }
             if (phase == 0) {
                 if (!defined) { result = fallback; phase = 4; return current(); }
@@ -159,17 +162,47 @@ public final class MachineAttributes {
             return current();
         }
 
-        /** Any mutation in this shared attribute ancestry conservatively invalidates the capture. */
-        public boolean current() { return capturedEpoch == epoch.marker; }
+        /**
+         * Mutations to this layer or a captured ancestor invalidate the capture. Sibling overlays
+         * may independently advance their own recipe work without invalidating this value.
+         */
+        public boolean current() {
+            if (capturedLocal != localMarker) return false;
+            if (next != null && nextMarker != next.localMarker) return false;
+            for (var captured : layers) {
+                if (captured.marker != captured.attributes.localMarker) return false; }
+            return true;
+        }
         public double result() {
             if (phase != 4 || !current()) throw new IllegalStateException("Attribute value capture is incomplete or changed");
             return result;
         }
     }
 
-    private record LayerValue(MachineAttributes attributes, @Nullable LocalState state) { }
-    private static final class AttributeEpoch { private Object marker = new Object(); }
-    private void changed() { epoch.marker = new Object(); }
+    private record LayerValue(MachineAttributes attributes, @Nullable LocalState state, Object marker) { }
+    private static final class AttributeEpoch { private volatile Object marker = new Object(); }
+
+    public static final class FamilyCapture {
+        private final AttributeEpoch epoch;
+        private final Object marker;
+
+        private FamilyCapture(AttributeEpoch epoch) {
+            this.epoch = epoch;
+            marker = epoch.marker;
+        }
+
+        public boolean current() {
+            return marker == epoch.marker;
+        }
+    }
+    private void changed() {
+        localMarker = new Object();
+        epoch.marker = new Object(); }
+
+    /** Captures all related layers for aggregate quantities such as machine-wide parallel usage. */
+    public FamilyCapture familyCapture() {
+        return new FamilyCapture(epoch);
+    }
 
     public void setBase(ResourceLocation id, double base) {
         Objects.requireNonNull(id, "id");

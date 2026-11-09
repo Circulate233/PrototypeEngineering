@@ -13,7 +13,6 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -39,6 +38,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class MachineRetirementTest {
     private static final ResourceLocation GROUP = id("group");
@@ -217,7 +217,7 @@ class MachineRetirementTest {
         return new MachineRecipe(id(name), 1, List.of(requirement), Set.of(GROUP));
     }
     private static RecipeCatalog catalog(MachineRecipe recipe) {
-        return new RecipeCatalog(List.of(new RecipePool(id("pool"), "retirement.pool", List.of(recipe))));
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "retirement.pool", List.of(recipe))));
     }
     private static ResourceLocation id(String path) { return new ResourceLocation("retirement_test", path); }
 

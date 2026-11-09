@@ -23,53 +23,63 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import java.util.Iterator;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import it.unimi.dsi.fastutil.objects.AbstractObjectList;
+import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import org.jetbrains.annotations.Nullable;
 
-/**
- * Frozen canonical recipes in pool/declaration order. Instance pool selection defines the scope;
- * empty query groups impose no further restriction inside that scope.
- */
+/** Canonical pool/recipe identities and priority are frozen once. Each pool owns its discovery strategy. */
 public final class RecipeCatalog {
     private final Map<ResourceLocation, RecipePool> pools;
     private final List<RecipePool> orderedPools;
     private final Map<ResourceLocation, MachineRecipe> recipes;
     private final List<MachineRecipe> orderedRecipes;
-    private final Map<ResourceLocation, List<MachineRecipe>> byGroup;
+    private final Reference2ObjectOpenHashMap<RecipePool, PoolMembers> members = new Reference2ObjectOpenHashMap<>();
+    private final Reference2ObjectOpenHashMap<MachineRecipe, ObjectArrayList<RecipePool>> owners = new Reference2ObjectOpenHashMap<>();
+    private final Reference2IntOpenHashMap<MachineRecipe> priority = new Reference2IntOpenHashMap<>();
 
-    public RecipeCatalog(Collection<RecipePool> pools) {
-        Objects.requireNonNull(pools, "pools");
+    public RecipeCatalog(Collection<? extends RecipePool> pools) {
         var knownPools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
         var canonical = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
-        var groups = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<MachineRecipe>>();
-        for (var pool : pools) {
+        for (var pool : Objects.requireNonNull(pools, "pools")) {
             Objects.requireNonNull(pool, "pool");
-            if (knownPools.putIfAbsent(pool.id(), pool) != null) {
+            if (knownPools.putIfAbsent(Objects.requireNonNull(pool.id()), pool) != null)
                 throw new IllegalArgumentException("Duplicate catalog pool: " + pool.id());
-            }
-            for (var recipe : Objects.requireNonNull(pool, "pool").recipes()) {
+            var poolRecipes = new ObjectArrayList<MachineRecipe>();
+            var membership = new ReferenceOpenHashSet<MachineRecipe>();
+            var groups = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<MachineRecipe>>();
+            var ids = new ObjectLinkedOpenHashSet<ResourceLocation>();
+            for (var recipe : Objects.requireNonNull(pool.recipes(), "pool recipes")) {
+                Objects.requireNonNull(recipe, "pool recipe");
+                if (!ids.add(recipe.id()))
+                    throw new IllegalArgumentException("Duplicate recipe in pool: " + recipe.id());
                 var previous = canonical.putIfAbsent(recipe.id(), recipe);
-                if (previous != null) {
-                    if (previous != recipe) {
-                        throw new IllegalArgumentException("Different canonical recipes share catalog ID: " + recipe.id());
-                    }
-                    continue;
-                }
-                for (var group : recipe.recipeGroups()) {
+                if (previous != null && previous != recipe)
+                    throw new IllegalArgumentException("Different canonical recipes share catalog ID: " + recipe.id());
+                if (previous == null) priority.put(recipe, priority.size());
+                poolRecipes.add(recipe);
+                membership.add(recipe);
+                owners.computeIfAbsent(recipe, _ -> new ObjectArrayList<>()).add(pool);
+                for (var group : recipe.recipeGroups())
                     groups.computeIfAbsent(group, _ -> new ObjectArrayList<>()).add(recipe);
-                }
             }
+            var frozenGroups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>();
+            groups.forEach((group, rows) -> frozenGroups.put(group, ObjectLists.unmodifiable(rows)));
+            members.put(pool, new PoolMembers(ObjectLists.unmodifiable(poolRecipes), membership,
+                Object2ObjectMaps.unmodifiable(frozenGroups)));
         }
         this.pools = Object2ObjectMaps.unmodifiable(knownPools);
         orderedPools = ObjectLists.unmodifiable(new ObjectArrayList<>(knownPools.values()));
         recipes = Object2ObjectMaps.unmodifiable(canonical);
         orderedRecipes = ObjectLists.unmodifiable(new ObjectArrayList<>(canonical.values()));
-        var frozenGroups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>();
-        groups.forEach((group, members) -> frozenGroups.put(group, ObjectLists.unmodifiable(members)));
-        byGroup = Object2ObjectMaps.unmodifiable(frozenGroups);
+    }
+
+    private record PoolMembers(List<MachineRecipe> recipes, ReferenceOpenHashSet<MachineRecipe> identities,
+                               Map<ResourceLocation, List<MachineRecipe>> groups) {
     }
 
     public List<RecipePool> pools() { return orderedPools; }
 
-    /** Lazy immutable view: resolving static IDs is visited by the scanner's original work budget. */
+    /** Lazy immutable static-ID view, visited by the original work budget. */
     public List<RecipePool> poolsFor(MachineType type) {
         var ids = Objects.requireNonNull(type).recipePoolIds();
         return ObjectLists.unmodifiable(new AbstractObjectList<>() {
@@ -83,34 +93,37 @@ public final class RecipeCatalog {
         });
     }
 
-    /** Captures the actual instance override once; enumeration and recipe union share the caller budget. */
-    @SuppressWarnings("ReturnOfInnerClass") // The budget cursor resolves only this canonical catalog's pools.
+    @SuppressWarnings("ReturnOfInnerClass")
     public SelectionCapture beginSelection(MachineInstance machine) {
         return new SelectionCapture(machine);
     }
 
-    @SuppressWarnings({"ReturnOfInnerClass", "StatementWithEmptyBody"}) // Explicit synchronous capture of the same catalog-bound cursor.
+    @SuppressWarnings({"StatementWithEmptyBody", "ReturnOfInnerClass"})
     public Selection select(MachineInstance machine) {
         var capture = beginSelection(machine);
-        while (!capture.advance(new RecipeWorkBudget(Long.MAX_VALUE))) { /* synchronous explicit caller */ }
+        while (!capture.advance(new RecipeWorkBudget(Long.MAX_VALUE))) { /* explicit synchronous caller */ }
         return capture.result();
     }
 
-    /** Immutable recipe scope, without storage/formation/permission rights or authority over running work. */
+    /** Frozen selected pools identify membership; selection does not enumerate every recipe each pass. */
     public final class Selection {
         private final RecipeCatalog catalog = RecipeCatalog.this;
         private final MachineInstance machine;
-        private final ReferenceOpenHashSet<MachineRecipe> members;
+        private final List<RecipePool> selectedPools;
+        private final ReferenceOpenHashSet<RecipePool> selected;
 
-        private Selection(MachineInstance machine, ReferenceOpenHashSet<MachineRecipe> members) {
+        private Selection(MachineInstance machine, List<RecipePool> selectedPools, ReferenceOpenHashSet<RecipePool> selected) {
             this.machine = machine;
-            this.members = members;
+            this.selectedPools = ObjectLists.unmodifiable(new ObjectArrayList<>(selectedPools));
+            this.selected = selected;
         }
 
-        /** Pool and canonical identity restriction for a new catalog admission, never a processing gate. */
         public boolean accepts(MachineInstance owner, MachineRecipe recipe) {
             if (owner != machine) throw new IllegalArgumentException("Pool selection belongs to another machine");
-            return recipes.get(recipe.id()) == recipe && members.contains(recipe);
+            if (recipes.get(recipe.id()) != recipe) return false;
+            var recipeOwners = owners.get(recipe);
+            for (var pool : recipeOwners) if (selected.contains(pool)) return true;
+            return false;
         }
     }
 
@@ -118,9 +131,7 @@ public final class RecipeCatalog {
         private final MachineInstance machine;
         private final Iterator<RecipePool> input;
         private final ReferenceOpenHashSet<RecipePool> selected = new ReferenceOpenHashSet<>();
-        private final ReferenceOpenHashSet<MachineRecipe> members = new ReferenceOpenHashSet<>();
-        private Iterator<RecipePool> poolIterator;
-        private Iterator<MachineRecipe> recipeIterator;
+        private final ObjectArrayList<RecipePool> ordered = new ObjectArrayList<>();
         private Selection result;
 
         private SelectionCapture(MachineInstance machine) {
@@ -131,46 +142,27 @@ public final class RecipeCatalog {
         public boolean advance(RecipeWorkBudget budget) {
             Objects.requireNonNull(budget);
             if (result != null) return true;
-            if (poolIterator == null) {
-                while (input.hasNext()) {
+            while (input.hasNext()) {
                     if (!budget.take()) return false;
                     var pool = Objects.requireNonNull(input.next(), "Selected recipe pool");
                     if (pools.get(pool.id()) != pool) throw new IllegalArgumentException("Selected recipe pool is foreign or counterfeit: " + pool.id());
-                    selected.add(pool);
-                }
-                poolIterator = selected.iterator();
+                if (selected.add(pool)) ordered.add(pool);
             }
-            while (recipeIterator != null || poolIterator.hasNext()) {
-                if (recipeIterator == null) {
-                    if (!budget.take()) return false;
-                    recipeIterator = poolIterator.next().recipes().iterator();
-                }
-                while (recipeIterator.hasNext()) {
-                    if (!budget.take()) return false;
-                    members.add(recipeIterator.next());
-                }
-                recipeIterator = null;
-            }
-            result = new Selection(machine, members);
+            result = new Selection(machine, ordered, selected);
             return true;
         }
 
-        @SuppressWarnings("ReturnOfInnerClass") // A selection keeps its exact catalog and machine identity for admission.
+        @SuppressWarnings("ReturnOfInnerClass")
         public Selection result() {
             if (result == null) throw new IllegalStateException("Pool selection is incomplete");
             return result;
         }
     }
 
-    /** Canonical definitions in frozen pool/declaration order, for building external indexes. */
     public List<MachineRecipe> recipes() {
         return orderedRecipes;
     }
 
-    /**
-     * Empty groups select all canonical recipes in the selected pools, including ungrouped recipes.
-     * Nonempty groups select their union inside those pools. Every index sees that same immutable scope.
-     */
     public List<MachineRecipe> candidates(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
         return candidates(select(machine), groups, indexes);
             }
@@ -178,29 +170,22 @@ public final class RecipeCatalog {
     public List<MachineRecipe> candidates(Selection selection, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
         var pass = beginCandidates(selection, groups, indexes);
         var budget = new RecipeWorkBudget(Long.MAX_VALUE);
-        while (!pass.advance(budget)) {
-            if (!pass.current()) {
-                pass = beginCandidates(selection, groups, indexes);
-            }
-        }
+        while (!pass.advance(budget)) if (!pass.current()) pass = beginCandidates(selection, groups, indexes);
         return pass.result();
     }
 
-    /**
-     * Begins without copying or enumerating caller collections. They must remain unchanged until
-     * the pass freezes them. All library visits, including index output validation, use this budget.
-     */
-    @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
+    @SuppressWarnings("ReturnOfInnerClass")
     public CandidatePass beginCandidates(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
         return new CandidatePass(machine, groups, indexes, null);
     }
 
-    @SuppressWarnings("ReturnOfInnerClass") // The original discovery cursor remains bound to this canonical catalog.
+    @SuppressWarnings("ReturnOfInnerClass")
     public CandidatePass beginCandidates(Selection selection, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes) {
         if (Objects.requireNonNull(selection).catalog != this) throw new IllegalArgumentException("Foreign pool selection");
         return new CandidatePass(selection.machine, groups, indexes, selection);
     }
 
+    /** Pool opinions union first; existing external index opinions intersect that same ordered scope. */
     public final class CandidatePass {
         private Selection selection;
         private SelectionCapture selectionCapture;
@@ -209,44 +194,61 @@ public final class RecipeCatalog {
         private final Iterator<RecipeCandidateIndex> inputIndexes;
         private final ObjectLinkedOpenHashSet<ResourceLocation> groupCopy = new ObjectLinkedOpenHashSet<>();
         private final ObjectArrayList<RecipeCandidateIndex> indexCopy = new ObjectArrayList<>();
-        private final ReferenceOpenHashSet<MachineRecipe> scoped = new ReferenceOpenHashSet<>();
-        private final ObjectArrayList<MachineRecipe> orderedScope = new ObjectArrayList<>();
+        private ObjectArrayList<MachineRecipe> orderedScope = new ObjectArrayList<>();
         private Reference2IntOpenHashMap<MachineRecipe> agreements = new Reference2IntOpenHashMap<>();
         private ObjectArrayList<RecipeCandidateIndex.Cursor> observed = new ObjectArrayList<>();
         private ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
         private ReferenceOpenHashSet<MachineRecipe> accepted;
         private Set<ResourceLocation> frozenGroups;
         private List<MachineRecipe> scope;
-        private Iterator<ResourceLocation> groupIterator;
-        private List<MachineRecipe> members;
-        private int memberCursor;
-        private int canonicalCursor;
         private int indexCursor;
         private int outputCursor;
+        private RecipeCandidateIndex.Validation finalValidation;
         private int opinions;
         private RecipeCandidateIndex.Cursor lookup;
         private Iterator<MachineRecipe> opinion;
-        private int proofCursor;
         private int phase;
+        private int poolIndex;
+        private RecipePool pool;
+        private PoolMembers poolMembers;
+        private RecipeCandidateIndex.Cursor poolLookup;
+        private boolean poolReady;
+        private Iterator<ResourceLocation> fallbackGroups;
+        private Iterator<MachineRecipe> poolOpinion;
+        private MachineRecipe pendingRecipe;
+        private Iterator<ResourceLocation> pendingGroups;
+        private boolean groupAccepted;
+        private Int2ObjectAVLTreeMap<MachineRecipe> chosen = new Int2ObjectAVLTreeMap<>();
+        private ObjectArrayList<RecipeCandidateIndex.Cursor> poolObserved = new ObjectArrayList<>();
+        private Iterator<MachineRecipe> scopeIterator;
         private boolean stale;
 
-        private CandidatePass(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes, Selection selection) {
-            this.machine = Objects.requireNonNull(machine, "machine");
+        private CandidatePass(MachineInstance machine, Set<ResourceLocation> groups, List<RecipeCandidateIndex> indexes,
+                              @Nullable Selection selection) {
+            this.machine = Objects.requireNonNull(machine);
+            inputGroups = Objects.requireNonNull(groups).iterator();
+            inputIndexes = Objects.requireNonNull(indexes).iterator();
             this.selection = selection;
-            inputGroups = Objects.requireNonNull(groups, "groups").iterator();
-            inputIndexes = Objects.requireNonNull(indexes, "indexes").iterator();
         }
 
         public boolean advance(RecipeWorkBudget budget) {
             Objects.requireNonNull(budget);
-            if (phase == 6) {
-                return true;
-            }
-            if (stale) {
-                return false;
-            }
+            if (phase == 7) return true;
+            if (stale) return false;
             while (true) {
                 if (phase == 0) {
+                    while (inputGroups.hasNext()) {
+                        if (!budget.take()) return false;
+                        groupCopy.add(Objects.requireNonNull(inputGroups.next()));
+                    }
+                    while (inputIndexes.hasNext()) {
+                        if (!budget.take()) return false;
+                        indexCopy.add(Objects.requireNonNull(inputIndexes.next()));
+                    }
+                    frozenGroups = ObjectSets.unmodifiable(groupCopy);
+                    phase = 1;
+                }
+                if (phase == 1) {
                     if (selection == null) {
                         if (selectionCapture == null) {
                             if (!budget.take()) return false;
@@ -254,55 +256,73 @@ public final class RecipeCatalog {
                         }
                         if (!selectionCapture.advance(budget)) return false;
                         selection = selectionCapture.result();
-                        selectionCapture = null;
-                    }
-                    while (inputGroups.hasNext()) {
-                        if (!budget.take()) return false;
-                        groupCopy.add(Objects.requireNonNull(inputGroups.next(), "group"));
-                    }
-                    while (inputIndexes.hasNext()) {
-                        if (!budget.take()) return false;
-                        indexCopy.add(Objects.requireNonNull(inputIndexes.next(), "index"));
-                    }
-                    frozenGroups = ObjectSets.unmodifiable(groupCopy);
-                    groupIterator = groupCopy.iterator();
-                    if (selection.members.isEmpty()) {
-                        phase = 6;
-                        return true;
-                    }
-                    phase = 1;
-                }
-                if (phase == 1) {
-                    if (!groupCopy.isEmpty()) {
-                        while (members != null || groupIterator.hasNext()) {
-                            if (members == null) {
-                                if (!budget.take()) return false;
-                                members = byGroup.get(groupIterator.next());
-                                memberCursor = 0;
-                                if (members == null) continue;
-                            }
-                            while (memberCursor < members.size()) {
-                                if (!budget.take()) return false;
-                                var recipe = members.get(memberCursor++);
-                                if (selection.accepts(machine, recipe)) scoped.add(recipe);
-                            }
-                            members = null;
-                        }
                     }
                     phase = 2;
                 }
                 if (phase == 2) {
-                    while (canonicalCursor < orderedRecipes.size()) {
-                        if (!budget.take()) return false;
-                        var recipe = orderedRecipes.get(canonicalCursor++);
-                        if (groupCopy.isEmpty() && selection.accepts(machine, recipe)) scoped.add(recipe);
-                        if (scoped.contains(recipe)) orderedScope.add(recipe);
+                    while (pool != null || poolIndex < selection.selectedPools.size()) {
+                        if (pool == null) {
+                            if (!budget.take()) return false;
+                            pool = selection.selectedPools.get(poolIndex++);
+                            poolMembers = members.get(pool);
+                            poolLookup = pool.beginCandidates(machine, frozenGroups);
+                            poolReady = poolLookup == null;
+                            if (poolLookup != null) poolObserved.add(poolLookup);
+                            else fallback();
+                        }
+                        if (!poolReady) {
+                            if (!poolLookup.advance(budget)) {
+                                stale = !poolLookup.current();
+                                return false;
+                            }
+                            var values = poolLookup.result();
+                            if (values == null) fallback();
+                            else poolOpinion = values.iterator();
+                            poolReady = true;
                     }
-                    scope = ObjectLists.unmodifiable(orderedScope);
-                    phase = scope.isEmpty() ? 6 : 3;
-                    if (phase == 6) return true;
+                    while (pendingRecipe != null || poolOpinion != null || fallbackGroups != null) {
+                            if (pendingRecipe == null) {
+                                if (poolOpinion == null || !poolOpinion.hasNext()) {
+                                    poolOpinion = null;
+                                    if (fallbackGroups == null || !fallbackGroups.hasNext()) {
+                                        fallbackGroups = null;
+                                        break;
+                                    }
+                                    if (!budget.take()) return false;
+                                    var values = poolMembers.groups.get(fallbackGroups.next());
+                                    if (values != null) poolOpinion = values.iterator();
+                                    continue;
+                                }
+                                if (!budget.take()) return false;
+                                pendingRecipe = Objects.requireNonNull(poolOpinion.next(), "pool candidate");
+                                if (recipes.get(pendingRecipe.id()) != pendingRecipe || !poolMembers.identities.contains(pendingRecipe))
+                                    throw new IllegalArgumentException("Pool candidate is foreign or outside its pool: " + pendingRecipe.id());
+                                pendingGroups = pendingRecipe.recipeGroups().iterator();
+                                groupAccepted = frozenGroups.isEmpty();
+                            }
+                            while (!groupAccepted && pendingGroups.hasNext()) {
+                        if (!budget.take()) return false;
+                                groupAccepted = frozenGroups.contains(pendingGroups.next());
+                    }
+                            if (groupAccepted) chosen.put(priority.getInt(pendingRecipe), pendingRecipe);
+                            pendingRecipe = null;
+                        }
+                        pool = null;
+                        poolLookup = null;
+                        poolMembers = null;
+                    }
+                    scopeIterator = chosen.values().iterator();
+                    phase = 3;
                 }
                 if (phase == 3) {
+                    while (scopeIterator.hasNext()) {
+                        if (!budget.take()) return false;
+                        orderedScope.add(scopeIterator.next());
+                    }
+                    scope = ObjectLists.unmodifiable(orderedScope);
+                    phase = scope.isEmpty() ? 6 : 4;
+                }
+                if (phase == 4) {
                     while (indexCursor < indexCopy.size()) {
                         if (lookup == null) {
                             if (!budget.take()) return false;
@@ -327,49 +347,101 @@ public final class RecipeCatalog {
                         while (opinion.hasNext()) {
                             if (!budget.take()) return false;
                             var candidate = Objects.requireNonNull(opinion.next(), "indexed candidate");
-                            if (recipes.get(candidate.id()) != candidate || !scoped.contains(candidate)) {
-                                throw new IllegalArgumentException("Indexed recipe is foreign, counterfeit or outside its group scope: " + candidate.id());
-                            }
+                            if (recipes.get(candidate.id()) != candidate || !chosen.containsKey(priority.getInt(candidate)))
+                                throw new IllegalArgumentException("Indexed recipe is foreign or outside its group scope: " + candidate.id());
                             if (accepted.add(candidate)) agreements.addTo(candidate, 1);
                         }
                         opinion = null;
                         lookup = null;
                         indexCursor++;
                     }
-                    phase = 4;
+                    phase = 5;
                 }
-                if (phase == 4) {
+                if (phase == 5) {
                     while (outputCursor < scope.size()) {
                         if (!budget.take()) return false;
                         var recipe = scope.get(outputCursor++);
                         if (agreements.getInt(recipe) == opinions) result.add(recipe);
                     }
-                    phase = 5;
-                }
-                if (phase == 5) {
-                    while (proofCursor < observed.size()) {
-                        if (!budget.take()) return false;
-                        if (!observed.get(proofCursor++).current()) {
-                            stale = true;
-                            return false;
-                        }
-                    }
                     phase = 6;
+                }
+                if (phase == 6) {
+                        if (finalValidation == null) finalValidation = beginValidation();
+                    if (!finalValidation.advance(budget) || !finalValidation.current()) return false;
+                    phase = 7;
                     return true;
                 }
             }
+        }
+
+        private void fallback() {
+            if (frozenGroups.isEmpty()) poolOpinion = poolMembers.recipes.iterator();
+            else fallbackGroups = frozenGroups.iterator();
         }
 
         public boolean current() {
             return !stale;
         }
 
-        /**
-         * A later attempt may reuse only frozen catalog/scope facts. Every live index capture and
-         * partial opinion is discarded before reading a new tick; no old storage binding is a lease.
-         */
+        /** Rechecks every observed live opinion, preserving partial discovery while proofs stay current. */
+        @SuppressWarnings("ReturnOfInnerClass") // Validation retains the observations of this exact pass.
+        public RecipeCandidateIndex.Validation beginValidation() {
+            return new RecipeCandidateIndex.Validation() {
+                private final int poolChecks = poolObserved.size();
+                private final int externalChecks = observed.size();
+                private int cursor;
+                private RecipeCandidateIndex.Validation child;
+                private boolean complete;
+
+                @Override
+                public boolean advance(RecipeWorkBudget budget) {
+                    Objects.requireNonNull(budget);
+                    if (complete) return true;
+                    if (stale) { complete = true; return true; }
+                    while (cursor < poolChecks + externalChecks) {
+                        if (child == null) {
+                            if (!budget.take()) return false;
+                            var opinion = cursor < poolChecks ? poolObserved.get(cursor) : observed.get(cursor - poolChecks);
+                            child = Objects.requireNonNull(opinion.beginValidation());
+                        }
+                        if (!child.advance(budget)) return false;
+                        if (!child.current()) {
+                            stale = true;
+                            complete = true;
+                            return true;
+                        }
+                        child = null;
+                        cursor++;
+                    }
+                    complete = true;
+                    return true;
+                }
+
+                @Override
+                public boolean current() {
+                    if (!complete) throw new IllegalStateException("Candidate validation is incomplete");
+                    return !stale;
+                }
+            };
+        }
+
+        /** Keep selected pools/groups, but recapture both pool strategies and external live indexes. */
         public void restartLiveIndexes() {
-            if (phase < 3) return;
+            if (phase < 2) return;
+            poolIndex = 0;
+            pool = null;
+            poolMembers = null;
+            poolLookup = null;
+            poolReady = false;
+            fallbackGroups = null;
+            poolOpinion = null;
+            pendingRecipe = null;
+            pendingGroups = null;
+            chosen = new Int2ObjectAVLTreeMap<>();
+            poolObserved = new ObjectArrayList<>();
+            scopeIterator = null;
+            orderedScope = new ObjectArrayList<>();
+            scope = null;
             agreements = new Reference2IntOpenHashMap<>();
             observed = new ObjectArrayList<>();
             result = new ObjectArrayList<>();
@@ -378,14 +450,14 @@ public final class RecipeCatalog {
             opinion = null;
             indexCursor = 0;
             outputCursor = 0;
-            proofCursor = 0;
+            finalValidation = null;
             opinions = 0;
             stale = false;
-            phase = scope.isEmpty() ? 6 : 3;
+            phase = 2;
         }
 
         public List<MachineRecipe> result() {
-            if (phase != 6 || stale) throw new IllegalStateException("Candidate pass is incomplete or stale");
+            if (phase != 7 || stale) throw new IllegalStateException("Candidate pass is incomplete or stale");
             return ObjectLists.unmodifiable(result);
         }
     }

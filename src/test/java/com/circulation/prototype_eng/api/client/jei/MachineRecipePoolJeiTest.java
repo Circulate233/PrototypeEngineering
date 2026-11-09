@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.client.jei;
 
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
 import com.circulation.prototype_eng.localization.JeiText;
@@ -20,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class MachineRecipePoolJeiTest {
     private static ResourceLocation id(String value) { return new ResourceLocation("pool_jei_test", value); }
@@ -30,7 +30,7 @@ class MachineRecipePoolJeiTest {
         var user = MachineType.builder(id("bound"), RecipeText.Cancelled, id("shape")).recipePool(id("pool")).build();
         var unrelated = MachineType.builder(id("same_group"), RecipeText.Cancelled, id("shape")).recipeGroup(id("group")).build();
         var recipes = new RecipeRegistry();
-        recipes.register(new RecipePool(id("pool"), "pool.jei.test", List.of(recipe)));
+        recipes.register(new DefaultRecipePool(id("pool"), "pool.jei.test", List.of(recipe)));
         recipes.freeze(List.of(user, unrelated));
         var pool = Objects.requireNonNull(recipes.get(id("pool")));
         var displays = new RecipeJeiDisplays();

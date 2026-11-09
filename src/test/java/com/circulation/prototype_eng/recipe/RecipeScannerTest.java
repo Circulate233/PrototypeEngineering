@@ -14,7 +14,6 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
@@ -61,6 +60,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class RecipeScannerTest {
     private static final KeyType TYPE = new KeyType("scanner");
@@ -540,7 +540,7 @@ class RecipeScannerTest {
     }
 
     private static RecipeCatalog catalog(MachineRecipe... recipes) {
-        return new RecipeCatalog(List.of(new RecipePool(id("pool"), "scanner.pool", List.of(recipes))));
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "scanner.pool", List.of(recipes))));
     }
 
     private static SlottedResourceBuffer buffer() {

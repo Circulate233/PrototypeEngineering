@@ -13,7 +13,6 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
@@ -65,6 +64,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class FixedIoScanConstraintTest {
     private static final KeyType FIRST_TYPE = new KeyType("fixed_io_first");
@@ -108,7 +108,7 @@ class FixedIoScanConstraintTest {
         env.machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 4);
         env.output.insert(PRODUCT, 4, Actionable.MODULATE);
         var recipe = recipe("scan", 2, io("io", 2, 1, 0, 3, false), energy(3, 1, 0, 2, false));
-        var catalog = new RecipeCatalog(List.of(new RecipePool(id("pool"), "fixed.io.pool", List.of(recipe))));
+        var catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "fixed.io.pool", List.of(recipe))));
         var scanner = new RecipeScanner(env.host, catalog, () -> 17);
         var result = scanner.scan(new ScanLimits(1, 4));
         assertEquals(RecipeScanner.Status.ADMITTED, result.status());

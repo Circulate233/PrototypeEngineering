@@ -12,6 +12,7 @@ R31 物理基类修正：`MachineControllerBlock<T extends AEBaseTile & MachineC
 
 PostInit 在现有配方事件完成且配方注册表冻结后发布 `MachineRuntimeRegistrationEvent`。同步监听者用 `structure(definition)` 和 `assembly(assembly)` 收集绑定。事件结束后调用 `resolveRuntime`，整批校验结构引用、重复 ID、装配完整覆盖及规范类型对象身份，再同时发布结构与装配；失败不发布一半，不调用组件 factory。事件快照不可修改，后续收集不会改写已取得的快照。注册事件只在其同步发布期间用于声明，不是运行中追加入口。
 
+运行时装配可通过 `MachineAssembly.Builder.instanceFactory(MultithreadController::new)` 或 `CrossRecipeController::new` 绑定公开具体控制器，沿同一创建/恢复工厂与原物理宿主附着。声明仍显式包含 `MachineWorkSlots.TYPE`、默认 `RecipeScanning.component`、work-slot codec 与 recreated scanner；组件工厂分别调用实际 owner 的 `createRecipeHost/createRecipeScanner`。两类默认 `defaultExecutionMode()` 为 PLANNED_PARALLEL，装配自动创建/持久化原 `MachineScheduling.TYPE`，直接进入现有 `TaskScheduler` 的 owner coordination、纯 worker 与 source lanes。显式声明执行模式、恢复的 scheduling selection 和外部 override 仍优先；普通 MachineInstance 默认保持 CONCURRENT。工位独立扫描、跨配方轮次、整机余额/recipe thread cap 与事件最终数量见[配方](recipes.md#逻辑线程控制器与整机共享并行)。
 单独的 `resolveStructures` API 仍可用于独立库场景，但完成后不能再升级为完整 runtime 发布。游戏全局实例使用 `resolveRuntime`。结构/装配解析成功仍不代表 PN owner/team/研究/epoch 或 planned ready。
 
 ## 附着、NBT 与替换

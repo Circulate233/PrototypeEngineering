@@ -72,5 +72,38 @@ public interface RecipeCandidateIndex {
         default boolean current() {
             return true;
         }
+
+        /** Retained freshness proof. Built-in live cursors charge each inspected binding separately. */
+        @SuppressWarnings("ReturnOfInnerClass") // The retained proof belongs to this exact cursor observation.
+        default Validation beginValidation() {
+            return new Validation() {
+                private boolean complete;
+                private boolean valid;
+
+                @Override
+                public boolean advance(RecipeWorkBudget budget) {
+                    Objects.requireNonNull(budget);
+                    if (!complete) {
+                        if (!budget.take()) return false;
+                        valid = Cursor.this.current();
+                        complete = true;
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean current() {
+                    if (!complete) throw new IllegalStateException("Index validation is incomplete");
+                    return valid;
+                }
+            };
+        }
+    }
+
+    /** advance returning true means the proof finished; current then returns its captured verdict. */
+    interface Validation {
+        boolean advance(RecipeWorkBudget budget);
+
+        boolean current();
     }
 }

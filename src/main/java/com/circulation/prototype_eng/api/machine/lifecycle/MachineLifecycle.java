@@ -389,7 +389,7 @@ public final class MachineLifecycle {
         private boolean executing;
         private boolean finished;
         private boolean componentScope;
-        private boolean scanDispatched;
+        private final ReferenceOpenHashSet<RecipeScanner> dispatchedScanners = new ReferenceOpenHashSet<>();
         @Nullable private DeferredScan deferredScan;
         private final ReferenceOpenHashSet<MachineWorkSlots> completedDeferred = new ReferenceOpenHashSet<>();
         @Nullable private MachineWorkSlots deferred;
@@ -441,9 +441,11 @@ public final class MachineLifecycle {
         private boolean deferScan(RecipeScanner scanner, ScanLimits limits) {
             if (Thread.currentThread() != owner || !executing || !componentScope || finished) return false;
             if (scanner.host().owner() != lifecycle.machine) throw new IllegalArgumentException("Deferred scanner belongs to another machine");
-            if (scanDispatched) return true; // One actual scan/admission opportunity for this captured machine tick.
+            if (dispatchedScanners.contains(scanner)) return true;
+            if (deferredScan != null)
+                throw new IllegalStateException("One normal callback deferred multiple recipe scanners");
             if (deferred != null) throw new IllegalStateException("Work slots must settle before a later scan callback");
-            scanDispatched = true;
+            dispatchedScanners.add(scanner);
             deferredScan = new DeferredScan(scanner, limits);
             return true;
         }

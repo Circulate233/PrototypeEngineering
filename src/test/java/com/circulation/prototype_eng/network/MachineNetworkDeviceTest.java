@@ -25,7 +25,6 @@ import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
@@ -55,6 +54,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class MachineNetworkDeviceTest {
     private static final UUID OWNER = new UUID(0, 1);
@@ -227,7 +227,7 @@ class MachineNetworkDeviceTest {
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
         private final MachineRecipe firstRecipe = recipe("first_recipe");
         private final MachineRecipe secondRecipe = recipe("second_recipe");
-        private final RecipeCatalog catalog = new RecipeCatalog(List.of(new RecipePool(id("recipes"), "network_device_test.recipes",
+        private final RecipeCatalog catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("recipes"), "network_device_test.recipes",
             List.of(firstRecipe, secondRecipe))));
         private final ComponentType<MachineInstance, RecipeScanner> scannerType = RecipeScanning.component(id("scanner"),
             host -> new RecipeScanner(host, catalog, () -> 17), SCAN, _ -> true);

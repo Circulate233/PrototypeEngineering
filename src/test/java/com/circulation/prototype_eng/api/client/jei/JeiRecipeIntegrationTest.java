@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
@@ -109,7 +110,7 @@ class JeiRecipeIntegrationTest {
     }
 
     private static RecipePool pool(String name, MachineRecipe... recipes) {
-        return new RecipePool(id(name), "jei.test.pool", ObjectArrayList.of(recipes));
+        return new DefaultRecipePool(id(name), "jei.test.pool", ObjectArrayList.of(recipes));
     }
 
     @Test
@@ -264,7 +265,7 @@ class JeiRecipeIntegrationTest {
         var custom = new IndependentPage(pool);
         pages.register(pool.id(), custom);
         assertThrows(IllegalArgumentException.class, () -> pages.register(pool.id(), new IndependentPage(pool)));
-        var equivalent = new RecipePool(pool.id(), pool.translationKey(), pool.recipes());
+        var equivalent = new DefaultRecipePool(pool.id(), pool.translationKey(), pool.recipes());
         assertThrows(IllegalArgumentException.class, () -> pages.freeze(ObjectArrayList.of(equivalent), IndependentPage::new));
         assertThrows(IllegalStateException.class, pages::pages);
         pages.freeze(ObjectArrayList.of(pool), IndependentPage::new);

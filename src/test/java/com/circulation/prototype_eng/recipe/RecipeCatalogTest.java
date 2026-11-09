@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class RecipeCatalogTest {
     private static final ResourceLocation FIRST_GROUP = id("first_group");
@@ -164,7 +165,7 @@ class RecipeCatalogTest {
     }
 
     private static RecipePool pool(String name, MachineRecipe... recipes) {
-        return new RecipePool(id(name), "catalog.title", List.of(recipes));
+        return new DefaultRecipePool(id(name), "catalog.title", List.of(recipes));
     }
 
     private static ResourceLocation id(String path) {

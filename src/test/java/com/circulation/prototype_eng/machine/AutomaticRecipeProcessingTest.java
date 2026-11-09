@@ -14,7 +14,6 @@ import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -46,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class AutomaticRecipeProcessingTest {
     private static final ResourceLocation GROUP = id("group");
@@ -221,8 +221,8 @@ class AutomaticRecipeProcessingTest {
         var registry = new RecipeRegistry();
         var first = new MachineRecipe(id("conflict"), 4, List.of(), Set.of(GROUP));
         var second = new MachineRecipe(first.id(), 8, List.of(), Set.of(GROUP));
-        registry.register(new RecipePool(id("first_pool"), "first", List.of(first)));
-        registry.register(new RecipePool(id("second_pool"), "second", List.of(second)));
+        registry.register(new DefaultRecipePool(id("first_pool"), "first", List.of(first)));
+        registry.register(new DefaultRecipePool(id("second_pool"), "second", List.of(second)));
         assertThrows(IllegalArgumentException.class, registry::freeze);
         assertThrows(IllegalStateException.class, registry::catalog);
         assertThrows(IllegalStateException.class, registry::pools);
@@ -255,7 +255,7 @@ class AutomaticRecipeProcessingTest {
 
     private static RecipeRegistry registry(MachineRecipe... recipes) {
         var registry = new RecipeRegistry();
-        registry.register(new RecipePool(id("pool"), "pool", List.of(recipes)));
+        registry.register(new DefaultRecipePool(id("pool"), "pool", List.of(recipes)));
         return registry;
     }
 

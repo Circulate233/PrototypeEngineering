@@ -17,7 +17,6 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessAbortListener;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -42,6 +41,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 @SuppressWarnings("resource") // Fixture-local registries own these listeners for the whole scenario.
 class MachineLifecycleProcessTest {
@@ -328,7 +328,7 @@ class MachineLifecycleProcessTest {
             this.input = input;
             this.output = output;
             machine.components().put(MachineWorkSlots.TYPE, slots);
-            var catalog = new RecipeCatalog(List.of(new RecipePool(id("pool"), "lifecycle.pool", List.of(RECIPE))));
+            var catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "lifecycle.pool", List.of(RECIPE))));
             var scanner = new RecipeScanner(slots, catalog, () -> 1);
             var scanning = new RecipeScanningSystem(new ScanLimits(10, 10), _ -> { admissionChecks++; return true; });
             var scanType = new ComponentType<>(id("scanner"), _ -> scanner, List.of(scanning));

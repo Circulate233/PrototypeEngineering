@@ -45,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class MachineRecipePoolsTest {
     private static ResourceLocation id(String name) { return new ResourceLocation("machine_pool_test", name); }
@@ -56,7 +57,7 @@ class MachineRecipePoolsTest {
     }
 
     private static RecipePool pool(String name, MachineRecipe... recipes) {
-        return new RecipePool(id(name), "pool.test.title", ObjectArrayList.of(recipes));
+        return new DefaultRecipePool(id(name), "pool.test.title", ObjectArrayList.of(recipes));
     }
 
     private static MachineWorkSlots slots(MachineInstance machine) {

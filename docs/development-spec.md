@@ -433,6 +433,14 @@ com.circulation.prototype_eng
 
 组件拓扑、事件与生命周期、多工位和全部配方扩展效果属于必须保留的能力。可以合并只有一个实现的容器和数据类，但外部实现组件、系统及配方需求的入口必须保留。
 
+### 5.2.1 两种逻辑控制器与配方池
+
+公开 RecipeController 保留共同机制，MultithreadController 按逻辑线程独立扫描，CrossRecipeController 按模板组重复轮次准入；默认具体类可继承，实际 MachineAssembly.instanceFactory、工位与 scanner 工厂使用 owner 扩展入口。两类正常装配默认沿原 PLANNED_PARALLEL worker/source 协调执行；显式模式、恢复 selection 和自定义 override 优先。
+
+整机并行基数扣除全部宿主的有效运行/已登记pending占用；每配方可指定线程上限。事件或factory最终数量可超过控制器基数，物料、FE和PN按最终有效数量沿原事务计费；降低上限不驱逐已运行进程。预算让出保留纯计算游标，跨tick重新核授权与live候选，不能保存旧permit/lease/预留作为新授权。
+
+RecipePool 是独立公开接口，DefaultRecipePool 提供通用实现，SimpleRecipePool 仅索引受支持的固定START输入/END输出。freeze保留具体策略及canonical身份；选中池的候选先局部并集/稳定排序，再与外部索引相交。默认简单池使用实际owner的安全输入策略，未知输入改写回退；外部可承担明确stable-input契约。库存绑定、context/identity/revision及最终freshness沿同一预算续办，未完成捕获不发布意见。
+
 ### 5.3 Java API 与 CraftTweaker
 
 API 在核心功能开发时同步建立和验证，CT 的最后阶段负责脚本类型转换、调用适配和脚本错误报告。这样 CT 可直接使用已经稳定的机器、配方与研究契约，不需要再进入内部包寻找注册点。

@@ -32,7 +32,6 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -81,6 +80,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class NetworkRecipeWorkTest {
     @Test void parallelProcessesSpendSummedNumericDemandButShareOnlyOneMachineLease() {
@@ -457,7 +457,7 @@ class NetworkRecipeWorkTest {
         @Override public void requireServerThread() { }
     }
     private static MachineType.Builder type(String name) { return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure")); }
-    private static RecipeCatalog catalog(List<MachineRecipe> recipes) { return new RecipeCatalog(List.of(new RecipePool(id("recipes"), "network_work_test.recipes", recipes))); }
+    private static RecipeCatalog catalog(List<MachineRecipe> recipes) { return new RecipeCatalog(List.of(new DefaultRecipePool(id("recipes"), "network_work_test.recipes", recipes))); }
     private static Object2LongOpenHashMap<NetworkResourceType> demand() {
         var demand = new Object2LongOpenHashMap<NetworkResourceType>(); demand.put(NetworkResources.COMPUTE, 10); return demand;
     }

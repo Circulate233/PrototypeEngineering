@@ -314,6 +314,7 @@ public final class RecipeProcess {
         if (Objects.requireNonNull(newHost).owner() != owner || host != null) {
             throw new IllegalStateException("Process already attached or belongs to a different machine");
         }
+        owner.recordRecipeOccupant(this);
         host = newHost;
     }
 
@@ -321,6 +322,7 @@ public final class RecipeProcess {
         requirePersistenceBoundary();
         if (host == null || host != previousHost) { throw new IllegalStateException("Process is not attached to the expected host"); }
         host = null;
+        owner.releaseRecipeOccupant(this);
     }
 
     public MachineRecipe recipe() {

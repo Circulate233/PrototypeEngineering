@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 
 /**
  * Recipe definition migrated from PM: extensible requirements grouped by execution responsibility.
@@ -30,6 +31,8 @@ public final class MachineRecipe {
     private final Set<ResourceLocation> recipeGroups;
     private final Map<RecipeRequirementType<?>, List<RecipeRequirement<?>>> requirements;
     private final List<RecipeRequirement<?>> orderedRequirements;
+    private final int maxConcurrentThreads;
+    private final RecipeParallelismSelection parallelismSelection;
 
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements) {
         this(id, durationTicks, requirements, ObjectSets.emptySet());
@@ -37,11 +40,25 @@ public final class MachineRecipe {
 
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
                          Collection<ResourceLocation> recipeGroups) {
+        this(id, durationTicks, requirements, recipeGroups, Integer.MAX_VALUE);
+        }
+
+    /** Logical running processes of this canonical recipe on one machine, independent of parallel quantities. */
+    public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
+                         Collection<ResourceLocation> recipeGroups, int maxConcurrentThreads) {
+        this(id, durationTicks, requirements, recipeGroups, maxConcurrentThreads, RecipeParallelismSelection.NONE);
+    }
+
+    public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
+                         Collection<ResourceLocation> recipeGroups, int maxConcurrentThreads, RecipeParallelismSelection parallelismSelection) {
         this.id = Objects.requireNonNull(id);
         if (durationTicks < 0) {
             throw new IllegalArgumentException("Negative recipe duration");
         }
         this.durationTicks = durationTicks;
+        if (maxConcurrentThreads < 1) throw new IllegalArgumentException("Recipe thread limit must be positive");
+        this.maxConcurrentThreads = maxConcurrentThreads;
+        this.parallelismSelection = Objects.requireNonNull(parallelismSelection);
         var groups = new ObjectLinkedOpenHashSet<ResourceLocation>();
         for (var group : recipeGroups) {
             groups.add(Objects.requireNonNull(group));
@@ -96,4 +113,7 @@ public final class MachineRecipe {
     public List<RecipeRequirement<?>> orderedRequirements() {
         return orderedRequirements;
     }
+
+    public int maxConcurrentThreads() { return maxConcurrentThreads; }
+    public RecipeParallelismSelection parallelismSelection() { return parallelismSelection; }
 }

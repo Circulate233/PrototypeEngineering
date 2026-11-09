@@ -1,46 +1,36 @@
 package com.circulation.prototype_eng.api.recipe;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
-import java.util.Objects;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
+import java.util.Set;
+import org.jetbrains.annotations.Nullable;
 
-/** Server-safe pool definition. Client JEI pages bind to its id separately. */
-public final class RecipePool {
-    private final ResourceLocation id;
-    private final String translationKey;
-    private final List<MachineRecipe> recipes;
-    private final List<MachineType> machines;
+/**
+ * Server-safe pool and optional pure candidate strategy; client pages bind separately.
+ */
+public interface RecipePool {
+    ResourceLocation id();
 
-    public RecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes) {
-        this(id, translationKey, recipes, List.of());
+    String translationKey();
+
+    List<MachineRecipe> recipes();
+
+    List<MachineType> machines();
+
+    /** Create this implementation's immutable canonical definition with complete registrations and
+     * static reverse bindings. Retain strategy/configuration and exactly the supplied instances/order.
+     * Registry validates the result before publishing any pool or index. */
+    RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines);
+
+    /** Pure pool-local discovery. Null (including a cursor's null result) falls back only to this
+     * pool; empty rejects this pool. Return canonical members conservatively: never omit a recipe
+     * that could succeed under this strategy's responsibility or execute START/acquire/mutate.
+     * Meter internal visits and keep partial output private. Admission and permissions remain separate. */
+    default @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
+        return null;
     }
-
-    // Only RecipeRegistry derives static reverse bindings from the machine declarations it freezes.
-    RecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes, List<MachineType> machines) {
-        Objects.requireNonNull(id, "id");
-        if (translationKey == null || translationKey.isBlank()) { throw new IllegalArgumentException("Pool title is required"); }
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
-        var copy = new ObjectArrayList<MachineRecipe>(recipes.size());
-        for (MachineRecipe recipe : recipes) {
-            Objects.requireNonNull(recipe, "recipe");
-            if (!ids.add(recipe.id())) { throw new IllegalArgumentException("Duplicate recipe in pool " + id + ": " + recipe.id()); }
-            copy.add(recipe);
-        }
-        this.id = id;
-        this.translationKey = translationKey;
-        this.recipes = ObjectLists.unmodifiable(copy);
-        this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
-    }
-
-    public ResourceLocation id() { return id; }
-    public String translationKey() { return translationKey; }
-    public List<MachineRecipe> recipes() { return recipes; }
-
-    /** Registered canonical machine declarations, not all possible dynamic instance selections. */
-    public List<MachineType> machines() { return machines; }
 }

@@ -21,6 +21,15 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import java.util.List;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import java.util.function.LongSupplier;
+import net.minecraft.util.ResourceLocation;
 
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
@@ -29,6 +38,17 @@ import java.util.List;
  * they carry no world/scheduler permission. Scheduler registration and world matching remain external.
  */
 public class MachineInstance implements PlannedMachineTask {
+    private final ReferenceOpenHashSet<MachineWorkSlots> recipeHosts =
+        new ReferenceOpenHashSet<>();
+    private final ObjectArrayList<MachineWorkSlots> recipeHostOrder = new ObjectArrayList<>();
+    private final List<MachineWorkSlots> recipeHostView = ObjectLists.unmodifiable(recipeHostOrder);
+    private final ReferenceOpenHashSet<RecipeScanner> recipeScanners =
+        new ReferenceOpenHashSet<>();
+    private final ReferenceOpenHashSet<RecipeProcess> recipeOccupants =
+        new ReferenceOpenHashSet<>();
+    private final Object2IntOpenHashMap<ResourceLocation> recipeThreadCounts =
+        new Object2IntOpenHashMap<>();
+    private long recipeRosterRevision;
     private final ComponentMap<MachineInstance> components = new ComponentMap<>();
     private final MachineAttributes attributes = new MachineAttributes();
     @Nullable private final MachineType type;
@@ -44,6 +64,66 @@ public class MachineInstance implements PlannedMachineTask {
      * declared components; construction never invokes factories or reads an unattached world.
      */
     public MachineInstance(MachineType type) { this.type = Objects.requireNonNull(type); }
+
+    /** All logical hosts share this machine's allowance, including explicitly constructed external hosts. */
+    public void registerRecipeHost(MachineWorkSlots host) {
+        if (Objects.requireNonNull(host).owner() != this) throw new IllegalArgumentException("Foreign recipe host");
+        if (!recipeHosts.add(host)) return;
+        recipeHostOrder.add(host);
+        recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
+    }
+
+    public List<MachineWorkSlots> recipeHosts() {
+        return recipeHostView;
+    }
+
+    /** Layout replacements also revoke retained vacancy observations, including empty dynamic layouts. */
+    public final void recordRecipeHostLayoutChange(MachineWorkSlots host) {
+        if (!recipeHosts.contains(host)) throw new IllegalArgumentException("Unregistered recipe host");
+        recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
+    }
+
+    public MachineWorkSlots createRecipeHost(List<WorkSlotDefinition> definitions,
+                                            Set<ResourceLocation> groups) {
+        return new MachineWorkSlots(this, definitions, groups);
+    }
+
+    public RecipeScanner createRecipeScanner(MachineWorkSlots host,
+        RecipeCatalog catalog, LongSupplier seeds) {
+        if (host.owner() != this) throw new IllegalArgumentException("Foreign scanner host");
+        return new RecipeScanner(host, catalog, seeds);
+    }
+
+    public final void registerRecipeScanner(RecipeScanner scanner) {
+        if (scanner.host().owner() != this) throw new IllegalArgumentException("Foreign recipe scanner");
+        recipeScanners.add(scanner);
+    }
+
+    public final List<RecipeScanner> recipeScanners() {
+        return ObjectLists.unmodifiable(new ObjectArrayList<>(recipeScanners));
+    }
+
+    public boolean supportsStableFixedInputLowerBounds() { return false; }
+
+    public final int recipeThreadCount(ResourceLocation recipe) { return recipeThreadCounts.getInt(recipe); }
+    public final long recipeRosterRevision() { return recipeRosterRevision; }
+
+    /** Same owner publication as attach/detach; reservations and attached processes count once. */
+    public final void recordRecipeOccupant(RecipeProcess process) {
+        if (process.owner() != this) throw new IllegalArgumentException("Foreign recipe occupant");
+        if (recipeOccupants.contains(process)) return;
+        var id = process.recipe().id();
+        if (recipeThreadCounts.getInt(id) == Integer.MAX_VALUE) throw new ArithmeticException("Recipe thread count overflow");
+        recipeOccupants.add(process); recipeThreadCounts.addTo(id, 1);
+        recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
+    }
+
+    public final void releaseRecipeOccupant(RecipeProcess process) {
+        if (!recipeOccupants.remove(process)) return;
+        var id = process.recipe().id();
+        if (recipeThreadCounts.addTo(id, -1) == 1) recipeThreadCounts.removeInt(id);
+        recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
+    }
 
     @Nullable public MachineType type() { return type; }
 
@@ -111,7 +191,13 @@ public class MachineInstance implements PlannedMachineTask {
 
     @Override public ExecutionMode executionMode() {
         var scheduling = components.get(MachineScheduling.TYPE);
-        return scheduling != null ? scheduling.mode() : type != null ? type.executionMode() : ExecutionMode.CONCURRENT;
+        return scheduling != null ? scheduling.mode() : type != null && type.hasExplicitExecutionMode()
+            ? type.executionMode() : defaultExecutionMode();
+    }
+
+    /** Concrete runtimes select their normal scheduler path; explicit declarations remain authoritative. */
+    protected ExecutionMode defaultExecutionMode() {
+        return ExecutionMode.CONCURRENT;
     }
 
     /**
