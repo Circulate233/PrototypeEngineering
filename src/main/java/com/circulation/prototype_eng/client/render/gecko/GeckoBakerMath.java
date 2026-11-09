@@ -8,9 +8,17 @@ import software.bernie.geckolib3.geo.render.built.GeoCube;
 import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
 import java.util.ArrayDeque;
+import java.util.Objects;
+import jdk.incubator.vector.FloatVector;
+import jdk.incubator.vector.VectorSpecies;
 
 /** The original Gecko affine, pivot, Z/Y/X rotation and reflected-normal conventions. No GL calls. */
 public final class GeckoBakerMath {
+    private static final boolean FORCE_SCALAR = Boolean.getBoolean("prototype_eng.gecko.forceScalarTransform");
+    private static final boolean VECTOR_RESOLVED = ModuleLayer.boot().findModule("jdk.incubator.vector").isPresent();
+    // Keep the current scalar default until real Gecko batch/writer measurements select the crossover.
+    private static final int VECTOR_MIN_VERTICES = Math.max(4,
+        Integer.getInteger("prototype_eng.gecko.vectorMinVertices", Integer.MAX_VALUE));
     private GeckoBakerMath() {
     }
 
@@ -29,6 +37,80 @@ public final class GeckoBakerMath {
     private static int normalByte(float value) {
         float scaled = Math.clamp(value, -1f, 1f) * 127;
         return ((int) (scaled + (scaled >= 0 ? .5f : -.5f))) & 255;
+    }
+
+    /** Read-only cache inputs; writes only position bits into the existing seven-int vertex layout. */
+    static void packPositions(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f matrix,
+                              int vertexOffset, int count, int[] out, int outIntOffset) {
+        Objects.checkFromIndexSize(vertexOffset, count, cube.vertexCount());
+        Objects.checkFromIndexSize(outIntOffset, Math.multiplyExact(count, 7), out.length);
+        if (out == cube.uv()) throw new IllegalArgumentException("Packed output aliases cached UV data");
+        if (!FORCE_SCALAR && VECTOR_RESOLVED && count >= VECTOR_MIN_VERTICES)
+            packPositionsVector(cube, matrix, vertexOffset, count, out, outIntOffset);
+        else packPositionsScalar(cube, matrix, vertexOffset, count, out, outIntOffset);
+    }
+
+    /** Concrete scalar callee of the production selection; caller has already validated its ranges. */
+    static void packPositionsScalar(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f m,
+                                    int offset, int count, int[] out, int outIntOffset) {
+        int end = offset + count, o = outIntOffset;
+        for (int i = offset; i < end; i++, o += 7) {
+            float x = cube.xs()[i], y = cube.ys()[i], z = cube.zs()[i];
+            out[o] = Float.floatToRawIntBits(m.m00 * x + m.m01 * y + m.m02 * z + m.m03);
+            out[o + 1] = Float.floatToRawIntBits(m.m10 * x + m.m11 * y + m.m12 * z + m.m13);
+            out[o + 2] = Float.floatToRawIntBits(m.m20 * x + m.m21 * y + m.m22 * z + m.m23);
+        }
+    }
+
+    /** Production callee entered only after the module-resolution gate; no Vector type escapes it. */
+    static void packPositionsVector(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f matrix,
+                                    int offset, int count, int[] out, int outIntOffset) {
+        VectorPositions.pack(cube, matrix, offset, count, out, outIntOffset);
+    }
+
+    /** Lazy initialization keeps unresolved-module scalar launches free of Vector linkage. */
+    private static final class VectorPositions {
+        private static final VectorSpecies<Float> SPECIES = FloatVector.SPECIES_PREFERRED;
+        private static final int[] STRIDE_INDICES = strideIndices();
+
+        private static int[] strideIndices() {
+            int[] indices = new int[SPECIES.length()];
+            for (int i = 0; i < indices.length; i++) indices[i] = i * 7;
+            return indices;
+        }
+
+        static void pack(GeckoCubeQuadVertexCache.CubeData cube, Matrix4f m,
+                         int offset, int count, int[] out, int outIntOffset) {
+            var sp = SPECIES;
+            int bound = sp.loopBound(count), step = sp.length();
+            var m00 = FloatVector.broadcast(sp, m.m00);
+            var m01 = FloatVector.broadcast(sp, m.m01);
+            var m02 = FloatVector.broadcast(sp, m.m02);
+            var m03 = FloatVector.broadcast(sp, m.m03);
+            var m10 = FloatVector.broadcast(sp, m.m10);
+            var m11 = FloatVector.broadcast(sp, m.m11);
+            var m12 = FloatVector.broadcast(sp, m.m12);
+            var m13 = FloatVector.broadcast(sp, m.m13);
+            var m20 = FloatVector.broadcast(sp, m.m20);
+            var m21 = FloatVector.broadcast(sp, m.m21);
+            var m22 = FloatVector.broadcast(sp, m.m22);
+            var m23 = FloatVector.broadcast(sp, m.m23);
+            int i = 0;
+            for (; i < bound; i += step) {
+                int index = offset + i, o = outIntOffset + i * 7;
+                var x = FloatVector.fromArray(sp, cube.xs(), index);
+                var y = FloatVector.fromArray(sp, cube.ys(), index);
+                var z = FloatVector.fromArray(sp, cube.zs(), index);
+                // Loop fusion is distinct from floating FMA: preserve the original mul/add association.
+                var rx = x.mul(m00).add(y.mul(m01)).add(z.mul(m02)).add(m03);
+                var ry = x.mul(m10).add(y.mul(m11)).add(z.mul(m12)).add(m13);
+                var rz = x.mul(m20).add(y.mul(m21)).add(z.mul(m22)).add(m23);
+                rx.reinterpretAsInts().intoArray(out, o, STRIDE_INDICES, 0);
+                ry.reinterpretAsInts().intoArray(out, o + 1, STRIDE_INDICES, 0);
+                rz.reinterpretAsInts().intoArray(out, o + 2, STRIDE_INDICES, 0);
+            }
+            packPositionsScalar(cube, m, offset + i, count - i, out, outIntOffset + i * 7);
+        }
     }
 
     public static final class MatrixStack {

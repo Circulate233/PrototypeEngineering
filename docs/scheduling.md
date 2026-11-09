@@ -38,6 +38,14 @@ tick 开始只冻结本次主任务候选和一次性任务批次。主阶段尚
 
 `SchedulerConfig` 单独保存到 `prototype_eng/scheduler.cfg`，普通 worker 默认 `max(2, availableProcessors)`，lane 默认 `clamp(availableProcessors, 2, 8)`。planned 预算默认 5000ms，日志默认关闭、间隔 200 tick、采样窗口 400 tick。文件读取沿 PM sane 范围限制 workers 到处理器默认上限的两倍、lane 到 32、planned 毫秒到 1–60000、日志间隔到 1–1200、窗口到 20–6000。公共不可变 Settings 保留 Duration 精度；运行时请求在接受前验证正值及纳秒可表示性。
 
+## 直接并入的 Modern 线程选择
+
+Settings 的 workerStrategy 默认为 PLATFORM_POOL，旧两参/六参构造器保留默认与 Duration 精度。显式 VIRTUAL_PER_TASK 使用 Java 25 虚拟线程每任务执行器，workers 显示和保存但不限制其任务并发数；affinity/source 的有限 lane 仍使用单 worker 串行执行器，同一 key 的旧/新派发不会重叠。CPU 密集模型烘焙继续使用当前模型 FJP/fixed 管线。
+
+`pe_scheduler strategy PLATFORM_POOL|VIRTUAL_PER_TASK` 只创建原 requestSettings 请求，大小写不敏感；设置消息分别显示 effective 和 pending 各自策略，虚拟模式明确提示 workers 不是并发上限。metrics 与 strategy 的 Settings 派生保留其余值和精确 Duration；成功安装才更新当前真实 policyLabel 为 JAVA 或 JAVA/VIRTUAL_PER_TASK。workers/lane/strategy 任一改变均在原安全边界退休池，旧 pending/source/structure 必须先实际退出并完成 finished 与 FIFO；不改变登记、一次性队列、deadline 或会话身份。
+
+旧 PM ModernBackendPlatform 的 scheduler factory 确实由 Java/Coroutine backend 调用，scheduler 使用 per-task virtual、lane 使用 single virtual worker。renderBuildExecutor 仅暴露，无主源码调用；实际 RenderTaskExecutor 使用独立 CPU ForkJoinPool，coroutine render 选择也是 fixed platform pool 执行原任务。此真实调用链支持保留本工程 CPU render 策略，审计入口 `build/staging/modern-inline-integration/thread-path-readonly-review.md`。
+
 ## 统计与配置的实际边界
 
 TaskScheduler 的 effectiveSettings 与 pendingSettings 明确区分已生效与待应用设置。requestSettings 由 owner 只保存请求；即使 IDLE 请求也不调用立即排空的 runAtBoundary。每次真正 tick 入场冻结本次有资格安装的请求，先恢复旧 pending，确认所有接受的异步任务/source 实际退出及 finished，并排空旧 owner FIFO，再在新研究、ordinary、prepared capture 前安装。旧边界回调新请求覆盖已冻结请求时，新请求继续等待下一 tick；旧 pending 未结清、boundary 未证 quiescence、closing 或 faulted 都不能安装。
@@ -58,7 +66,9 @@ D04 已由用户确认直接完全并入：后续 Modern 的有效算法与线�
 
 逻辑测试使用真实 ExecutorService、latch 和公开 MachineInstance/存储接口，验证 worker 确实重叠、亲和组串行、受拒派发及中断后的 join、故障不复活和卸载后的门。没有初始化 Minecraft/Forge 注册环境；FML 事件时序与实际世界交互目前只有源码接线和编译检查，没有运行游戏证明。
 
-机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。真实网络机器组件游标、控制器登记和配方/研究预算消费者已接通。研究作为普通工作之前的 PlannedExecution，先持有再执行，旧 pending 未结清不放行普通捕获；见[服务器研究](server-research.md)。块一纯 prepare/需求工作预算与 2A 正式模式已接；结构预算已完成；统计/配置阶段已实现并验证，Modern 有效算法与线程策略的直接整合继续。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
+机器类型、附宿主装配/恢复和控制器运行时登记/自退出清理已接入。实际 TileEntity/Forge 调用、共同网络条件、真实 tick 账本与 owner WorkPermit 已接入；planned 执行基础已经具备有序结果和实际退出的独立证明。真实网络机器组件游标、控制器登记和配方/研究预算消费者已接通。研究作为普通工作之前的 PlannedExecution，先持有再执行，旧 pending 未结清不放行普通捕获；见[服务器研究](server-research.md)。块一纯 prepare/需求工作预算与 2A 正式模式已接；结构预算已完成；统计/配置与 Modern 有效算法及线程策略的直接整合已实现并验证，当前 CPU render 管线保持原选择。整体目标和其余结构/研究/渲染/JEI/CraftTweaker 范围保持不变。最终测试数量、逐文件本机 MCP 结果与提交记录见[实施进度](implementation-status.md)。
 
 
 2026-11-09 本阶段统一 focused `test --rerun-tasks --tests com.circulation.prototype_eng.scheduler.*` 为 120 tests/17 suites，全零、10任务全执行；最终正常 `build --rerun-tasks` 为 1648 tests/210 suites，全零、15任务全执行。首次完整构建在新生产文件 LF 的 Spotless 检查停止（编译通过、尚未跑全 test），只将四个新文件改为 CRLF，normalized 文本完全不变；最终重跑包含此格式修复。11 Java 逐文件本机 get_file_problems(errorsOnly:false) 全级零，完整 numbered readback 与 disk 逐行一致，MCP build isSuccess:true/problems:[]；post-MCP raw source hashes 不变。证据为 `build/staging/scheduler-statistics-config/{focused-result.json,full-first-result.json,line-endings-repair-result.json,full-v2-result.json,final-idea-checks.json,post-repair-idea-checks.json,final-readback-result.json,final-mcp-build.json,post-mcp-source-result.json}`。逻辑回归联合既有真实 pending/source/退出测试；可控 Retained 重载行为测试不冒充 Minecraft/实际 World 网络/FML 实机验收。阶段未推送或启动游戏/服务端。
+
+2026-11-09 Modern直接整合：首次combined focused178/28、primary scratch窄修后render focused54/10均全零，最终正常full build1658/212全零且15任务全执行；11 Java本机全级零、完整读回一致与MCP build成功。旧scheduler pending/source/structure物理退出、whole-post gate、有限同key虚拟worker不重叠及实际策略切换的行为测试保留；原模块错误19项经用户Gradle重载后的实查全零。Gecko真实旧/新CPU writer与三module/helper加载oracle一致；9pilot不用于门限，六关键场景2秒预热/3×500ms/3fork轮换支持不启用Vector默认，generic exact primary scratch窄修有真实before与3最终scalar fork的CPU/Java分配/GC日志。CPU时钟漂移、首次SoA20N payload+headers/native target未测、非JMH/游戏/TPS边界均明确。入口 `build/staging/modern-inline-integration/`、`build/staging/gecko-modern-math/`；精确本地候选/背景保护与提交按该stage恢复，未推送/启动游戏。

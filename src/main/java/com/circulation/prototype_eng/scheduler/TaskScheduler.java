@@ -170,7 +170,7 @@ public final class TaskScheduler implements AutoCloseable {
 
     public String policyLabel() {
         requireOwner();
-        return "JAVA";
+        return effectiveSettings.workerStrategy().policyLabel();
     }
 
     /** Real admission/cleanup state; a queued settings request is reported separately. */
@@ -201,7 +201,8 @@ public final class TaskScheduler implements AutoCloseable {
     private void applySettings(SchedulerConfig.Settings eligible, Failures failures) {
         if (pendingSettings != eligible || pendingExecution != null || !boundaryReady || closingRequested || faulted)
             return;
-        if (workerThreads != eligible.workerThreads() || laneCount != eligible.laneCount()) {
+        if (workerThreads != eligible.workerThreads() || laneCount != eligible.laneCount()
+            || effectiveSettings.workerStrategy() != eligible.workerStrategy()) {
             // This is retirement, not closure: registrations, submissions, boundaries and admission survive.
             boundaryReady = false;
             boundaryReady = stopExecutors(failures);
@@ -216,6 +217,7 @@ public final class TaskScheduler implements AutoCloseable {
         plannedTimeoutNanos = eligible.plannedTimeout().toNanos();
         metrics.resizeIfNeeded(eligible.metricsWindowTicks());
         effectiveSettings = eligible;
+        metrics.beginTick(policyLabel());
         pendingSettings = null;
     }
 
@@ -728,12 +730,18 @@ public final class TaskScheduler implements AutoCloseable {
     private void initializeExecutors() {
         if (workers != null && lanes != null) { return; }
         try {
-            workers = Executors.newFixedThreadPool(workerThreads,
-                Thread.ofPlatform().daemon().name("PrototypeEngineering-Scheduler-Worker-", 1).factory());
+            boolean virtual = effectiveSettings.workerStrategy() == SchedulerConfig.WorkerStrategy.VIRTUAL_PER_TASK;
+            var workerFactory = virtual
+                ? Thread.ofVirtual().name("PrototypeEngineering-Scheduler-Worker-", 1).factory()
+                : Thread.ofPlatform().daemon().name("PrototypeEngineering-Scheduler-Worker-", 1).factory();
+            workers = virtual ? Executors.newThreadPerTaskExecutor(workerFactory)
+                : Executors.newFixedThreadPool(workerThreads, workerFactory);
             lanes = new ExecutorService[laneCount];
             for (int lane = 0; lane < laneCount; lane++) {
-                lanes[lane] = Executors.newSingleThreadExecutor(
-                    Thread.ofPlatform().daemon().name("PrototypeEngineering-Scheduler-Lane-" + lane + "-", 1).factory());
+                var laneFactory = virtual
+                    ? Thread.ofVirtual().name("PrototypeEngineering-Scheduler-Lane-" + lane + "-", 1).factory()
+                    : Thread.ofPlatform().daemon().name("PrototypeEngineering-Scheduler-Lane-" + lane + "-", 1).factory();
+                lanes[lane] = Executors.newSingleThreadExecutor(laneFactory);
             }
         } catch (Throwable failure) {
             synchronized (submissionLock) { accepting = false; }

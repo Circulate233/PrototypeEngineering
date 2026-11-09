@@ -474,6 +474,10 @@ CraftTweaker 参数转换（最后）──┘
 
 保留双 barrier 所保障的 prepare/resolve 完成边界、source affinity 的共享源串行化、取消/超时/卸载后的迟到任务隔离，以及资源预留与补偿。多后端和独立 Modern Backend 可以重组实现，但不得用单线程执行器替代这些能力。普通容器并不因一个 volatile 字段就具备线程安全；结构修改与调度快照发布必须有真实的所有权/屏障协议。
 
+Modern 的有效策略直接进入现有 TaskScheduler：默认 PLATFORM_POOL 保持 CPU 固定工作池，显式 VIRTUAL_PER_TASK 使用每任务虚拟线程且 workers 不构成并发上限；有限 affinity/source lane 仍每 lane 一个串行 worker，按策略选择平台或虚拟线程。strategy 变更与 workers/lane 变更共同经过原 tick 的 pending/source/structure 实际退出、finished 与 owner FIFO 安全重配边界，不能通过 close/tryClose 重建会话。PM Modern 的实际 render consumer 是独立 CPU ForkJoinPool；其暴露的 renderBuildExecutor 在主源码无消费者，当前模型 CPU 管线维持已有 FJP/fixed 选择。
+
+Gecko 数学与 SoA 数据布局直接进入当前 baker/cache；公开矩阵和 primitive API 不暴露 Vector 类型。编译/测试/Javadoc 解析 jdk.incubator.vector，运行未解析模块时由显式 boot module gate 保持标量路径，forceScalarTransform 可强制标量；默认策略与阈值须以实际旧/新 CPU caller、真实 packed writer 和全属性输出等价证据决定。测量区分逐 bake Java thread allocation 与首次 cache/native target 成本，不代替 Minecraft、GPU 或整机 TPS 验收。
+
 ### 5.5 VarHandle 与 Java 25 实现原则
 
 确实需要字段级原子操作时，优先采用宿主对象中的 primitive/引用字段，以及在类初始化时查找并由 `private static final VarHandle` 共享的访问句柄。这样可避免为每个宿主实例的每个原子字段分别分配 Atomic 包装对象；不为每个实例创建句柄，也不再包一层自制原子对象。
@@ -551,7 +555,7 @@ GUI 验收检查具体界面直接复用 AEBaseGui，公共代码通过控件组
 | D01 | PN 研究、下载、特殊磁盘、奖励如何合并？ | 保留已有功能效果；核对定义、查询、执行与恢复契约，具体内容由使用方提供。 |
 | D02 | 是否继续使用 FTB 队伍；计算网络和 ME 网络如何关联？ | AE2 作为 API 基础已确认；物理连接及权限规则尚未确认。 |
 | D03 | 多工位、并行配方与后台计算的实现审查 | 均须迁移；先确认旧实现目的与同步保证，确有字段原子更新需要时优先采用 VarHandle。 |
-| D04 | Modern Backend 的组织形式 | 已确认直接完全并入：将有效算法与线程策略整合到 Java 25 主工程当前调度/渲染管线，不保留独立模组、双 Jar 或另一套独立后端；先完成统计/配置，再继续直接整合算法与线程策略。 |
+| D04 | Modern Backend 的组织形式 | 已确认直接完全并入：将有效算法与线程策略整合到 Java 25 主工程当前调度/渲染管线，不保留独立模组、双 Jar 或另一套独立后端；统计/配置与本轮直接整合均已完成；默认 CPU PLATFORM_POOL、显式 VIRTUAL_PER_TASK、有限串行 lane 与标量数学默认的依据见普通调度及实施进度。 |
 | D05 | 结构的 24 向、模板/切片、投影和复杂渲染如何迁移？ | 保留效果；重审缓存、线程、释放和资源所有权，GUI 编辑器除外。 |
 | D06 | 仓室/能源仓还需哪些过滤和侧面扩展？ | 三方向、十阶默认值、双缓存混合仓、每侧多类型、独立 FE 及 Applied-Flux FE Key 输入等效已确认；参数可配置，额外行为契约待核对。 |
 | D07 | 公开扩展职责如何划分？ | 保留组件、系统、需求、进程和调度扩展，以及仓室和 JEI 页面接口；允许 API 不兼容，不能删除对应能力。 |

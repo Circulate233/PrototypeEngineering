@@ -346,10 +346,10 @@ gui.prototype_eng.research.SourceReserved=Research source reserved by a download
 gui.prototype_eng.research.SourceMismatch=This research uses a different source
 gui.prototype_eng.research.InvalidLevelAction=Invalid target or research level
 
-scheduler.prototype_eng.Usage=/pe_scheduler status | report | reload | metrics <on|off>
+scheduler.prototype_eng.Usage=/pe_scheduler status | report | reload | metrics <on|off> | strategy <PLATFORM_POOL|VIRTUAL_PER_TASK>
 scheduler.prototype_eng.Effective=Effective
 scheduler.prototype_eng.Pending=Requested (pending owner boundary)
-scheduler.prototype_eng.Settings=%s: %s, workers=%s, lanes=%s, planned timeout=%s, metrics log=%s, log interval=%s ticks, window=%s ticks
+scheduler.prototype_eng.Settings=%s: %s, workers=%s, lanes=%s, planned timeout=%s, metrics log=%s, log interval=%s ticks, window=%s ticks, strategy=%s
 scheduler.prototype_eng.Report=Scheduler %s: %s/%s window samples, %s completed ticks
 scheduler.prototype_eng.Wall=%s wall time (avg/p95/max): %s µs
 scheduler.prototype_eng.Counts=%s (avg/p95/max): %s
@@ -369,3 +369,5 @@ scheduler.prototype_eng.CustomMainTasks=Custom main tasks
 scheduler.prototype_eng.CustomConcurrentTasks=Custom concurrent tasks
 scheduler.prototype_eng.AffinityGroups=Affinity groups
 scheduler.prototype_eng.Status=Scheduler %s: registered=%s, pending execution=%s, boundary ready=%s, closing=%s, faulted=%s, closed=%s
+scheduler.prototype_eng.StrategyRequested=Scheduler worker strategy %s requested; applies at the next safe tick boundary.
+scheduler.prototype_eng.UnboundedWorkers=VIRTUAL_PER_TASK creates one virtual thread per task; configured workers=%s does not cap concurrency. Affinity/source lanes remain serialized.

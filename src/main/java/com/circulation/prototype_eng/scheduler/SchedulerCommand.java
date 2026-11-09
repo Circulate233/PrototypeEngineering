@@ -54,13 +54,16 @@ public final class SchedulerCommand extends CommandBase {
         }
         String operation = arguments[0].toLowerCase(Locale.ROOT);
         boolean metrics = operation.equals("metrics");
+        boolean strategy = operation.equals("strategy");
         String toggle = arguments.length == 2 ? arguments[1].toLowerCase(Locale.ROOT) : "";
+        var requestedStrategy = strategy && arguments.length == 2 ? SchedulerConfig.WorkerStrategy.fromName(arguments[1]) : null;
         Boolean loggingEnabled = switch (toggle) {
             case "on", "true", "1", "enable", "enabled" -> true;
             case "off", "false", "0", "disable", "disabled" -> false;
             default -> null;
         };
         if (metrics ? arguments.length != 2 || loggingEnabled == null
+            : strategy ? arguments.length != 2 || requestedStrategy == null
             : arguments.length != 1 || !operation.equals("status") && !operation.equals("report") && !operation.equals("reload")) {
             sender.sendMessage(SchedulerText.Usage.text());
             return;
@@ -72,15 +75,15 @@ public final class SchedulerCommand extends CommandBase {
                     var status = current.status();
                     sender.sendMessage(SchedulerText.Status.text(status.policyLabel(), status.registeredCount(),
                         status.pendingExecution(), status.boundaryReady(), status.closing(), status.faulted(), status.closed()));
-                    settings(sender, SchedulerText.Effective, current.effectiveSettings(), current.policyLabel());
+                    settings(sender, SchedulerText.Effective, current.effectiveSettings());
                     var pending = current.pendingSettings();
-                    if (pending != null) settings(sender, SchedulerText.Pending, pending, current.policyLabel());
+                    if (pending != null) settings(sender, SchedulerText.Pending, pending);
                 }
                 case "report" -> report(sender, current.snapshotReport());
                 case "reload" -> {
                     var requested = Objects.requireNonNull(reload.apply(server));
                     sender.sendMessage(SchedulerText.ReloadRequested.text());
-                    settings(sender, SchedulerText.Pending, requested, current.policyLabel());
+                    settings(sender, SchedulerText.Pending, requested);
                 }
                 case "metrics" -> {
                     var base = current.pendingSettings();
@@ -88,7 +91,15 @@ public final class SchedulerCommand extends CommandBase {
                     var requested = base.withMetricsEnabled(loggingEnabled);
                     current.requestSettings(requested);
                     sender.sendMessage(SchedulerText.MetricsRequested.text(requested.metricsEnabled()));
-                    settings(sender, SchedulerText.Pending, requested, current.policyLabel());
+                    settings(sender, SchedulerText.Pending, requested);
+                }
+                case "strategy" -> {
+                    var base = current.pendingSettings();
+                    if (base == null) base = current.effectiveSettings();
+                    var requested = base.withWorkerStrategy(requestedStrategy);
+                    current.requestSettings(requested);
+                    sender.sendMessage(SchedulerText.StrategyRequested.text(requested.workerStrategy().name()));
+                    settings(sender, SchedulerText.Pending, requested);
                 }
                 default -> throw new AssertionError("Validated scheduler command");
             }
@@ -98,9 +109,12 @@ public final class SchedulerCommand extends CommandBase {
         }
     }
 
-    private static void settings(ICommandSender sender, SchedulerText state, SchedulerConfig.Settings settings, String policyLabel) {
-        sender.sendMessage(SchedulerText.Settings.text(state.text(), policyLabel, settings.workerThreads(), settings.laneCount(),
-            settings.plannedTimeout().toString(), settings.metricsEnabled(), settings.metricsLogIntervalTicks(), settings.metricsWindowTicks()));
+    private static void settings(ICommandSender sender, SchedulerText state, SchedulerConfig.Settings settings) {
+        sender.sendMessage(SchedulerText.Settings.text(state.text(), settings.workerStrategy().policyLabel(), settings.workerThreads(), settings.laneCount(),
+            settings.plannedTimeout().toString(), settings.metricsEnabled(), settings.metricsLogIntervalTicks(), settings.metricsWindowTicks(),
+            settings.workerStrategy().name()));
+        if (settings.workerStrategy() == SchedulerConfig.WorkerStrategy.VIRTUAL_PER_TASK)
+            sender.sendMessage(SchedulerText.UnboundedWorkers.text(settings.workerThreads()));
     }
 
     private static void report(ICommandSender sender, SchedulerReport report) {
@@ -131,9 +145,11 @@ public final class SchedulerCommand extends CommandBase {
     public @NotNull List<String> getTabCompletions(@NotNull MinecraftServer server, @NotNull ICommandSender sender,
                                                   String @NotNull [] arguments, @Nullable BlockPos targetPos) {
         if (arguments.length == 1)
-            return getListOfStringsMatchingLastWord(arguments, "status", "report", "reload", "metrics");
+            return getListOfStringsMatchingLastWord(arguments, "status", "report", "reload", "metrics", "strategy");
         if (arguments.length == 2 && arguments[0].equalsIgnoreCase("metrics"))
             return getListOfStringsMatchingLastWord(arguments, "on", "off");
+        if (arguments.length == 2 && arguments[0].equalsIgnoreCase("strategy"))
+            return getListOfStringsMatchingLastWord(arguments, "PLATFORM_POOL", "VIRTUAL_PER_TASK");
         return new ObjectArrayList<>();
     }
 }

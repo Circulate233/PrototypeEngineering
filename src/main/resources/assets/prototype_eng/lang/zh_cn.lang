@@ -346,10 +346,10 @@ gui.prototype_eng.research.SourceReserved=研究来源被下载预约
 gui.prototype_eng.research.SourceMismatch=研究来源类型不匹配
 gui.prototype_eng.research.InvalidLevelAction=目标或研究等级无效
 
-scheduler.prototype_eng.Usage=/pe_scheduler status | report | reload | metrics <on|off>
+scheduler.prototype_eng.Usage=/pe_scheduler status | report | reload | metrics <on|off> | strategy <PLATFORM_POOL|VIRTUAL_PER_TASK>
 scheduler.prototype_eng.Effective=当前生效
 scheduler.prototype_eng.Pending=已请求（等待 owner 边界）
-scheduler.prototype_eng.Settings=%s：%s，workers=%s，lanes=%s，planned 超时=%s，统计日志=%s，日志间隔=%s tick，窗口=%s tick
+scheduler.prototype_eng.Settings=%s：%s，workers=%s，lanes=%s，planned 超时=%s，统计日志=%s，日志间隔=%s tick，窗口=%s tick，线程策略=%s
 scheduler.prototype_eng.Report=调度器 %s：窗口样本 %s/%s，已完成 %s tick
 scheduler.prototype_eng.Wall=%s 实际经过时间（平均/p95/最大）：%s µs
 scheduler.prototype_eng.Counts=%s（平均/p95/最大）：%s
@@ -369,3 +369,5 @@ scheduler.prototype_eng.CustomMainTasks=自定义主线程任务
 scheduler.prototype_eng.CustomConcurrentTasks=自定义并行任务
 scheduler.prototype_eng.AffinityGroups=亲和组
 scheduler.prototype_eng.Status=调度器 %s：登记任务=%s，待退出执行=%s，边界就绪=%s，关闭请求=%s，故障=%s，已关闭=%s
+scheduler.prototype_eng.StrategyRequested=已请求线程策略 %s；将在下一安全 tick 边界应用。
+scheduler.prototype_eng.UnboundedWorkers=VIRTUAL_PER_TASK 为每个任务建立虚拟线程；配置 workers=%s 不限制并发数。亲和/来源 lane 仍串行。

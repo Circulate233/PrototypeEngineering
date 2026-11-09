@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 class SchedulerCommandTest {
     private static SchedulerConfig.Settings settings(int workers, int lanes, Duration timeout, int window) {
@@ -78,7 +79,7 @@ class SchedulerCommandTest {
         }
         assertEquals(8, sender.messages.size());
         for (int index = 0; index < sender.messages.size(); index++) message(sender, index, SchedulerText.Usage);
-        assertEquals(List.of("status", "report", "reload", "metrics"), completions(command, sender, ""));
+        assertEquals(List.of("status", "report", "reload", "metrics", "strategy"), completions(command, sender, ""));
         assertEquals(List.of("on", "off"), completions(command, sender, "METRICS", ""));
         assertTrue(completions(command, sender, "switch", "").isEmpty());
     }
@@ -119,7 +120,7 @@ class SchedulerCommandTest {
             var effective = message(sender, 1, SchedulerText.Settings).getFormatArgs();
             assertEquals(SchedulerText.Effective.getTranslationKey(),
                 assertInstanceOf(TextComponentTranslation.class, effective[0]).getKey());
-            assertArrayEquals(new Object[]{scheduler.policyLabel(), 1, 1, initial.plannedTimeout().toString(), false, 7, 4},
+            assertArrayEquals(new Object[]{scheduler.policyLabel(), 1, 1, initial.plannedTimeout().toString(), false, 7, 4, "PLATFORM_POOL"},
                 Arrays.copyOfRange(effective, 1, effective.length));
             var requested = message(sender, 2, SchedulerText.Settings).getFormatArgs();
             assertEquals(SchedulerText.Pending.getTranslationKey(),
@@ -182,6 +183,46 @@ class SchedulerCommandTest {
             execute(command, sender, "metrics", "on");
             assertEquals(fromDisk.withMetricsEnabled(true), scheduler.pendingSettings());
             assertFalse(scheduler.effectiveSettings().metricsEnabled());
+        }
+    }
+
+    @Test
+    void strategyRequestsKeepPendingSettingsDisplayTheRequestedModeAndChangeActualWorkersOnlyAtTick() {
+        var initial = settings(1, 1, Duration.ofNanos(1234567), 4);
+        var queued = settings(3, 2, Duration.ofNanos(987654321), 3);
+        var ranVirtual = new AtomicBoolean();
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), initial)) {
+            var command = new SchedulerCommand(_ -> scheduler, _ -> {
+                throw new AssertionError("Runtime strategy/toggle must preserve the queued request");
+            });
+            var sender = new Sender();
+            scheduler.requestSettings(queued);
+            execute(command, sender, "StRaTeGy", "virtual_per_task");
+            var selected = queued.withWorkerStrategy(SchedulerConfig.WorkerStrategy.VIRTUAL_PER_TASK);
+            assertEquals(selected, scheduler.pendingSettings());
+            assertSame(initial, scheduler.effectiveSettings());
+            message(sender, 0, SchedulerText.StrategyRequested);
+            var displayed = message(sender, 1, SchedulerText.Settings).getFormatArgs();
+            assertEquals("JAVA/VIRTUAL_PER_TASK", displayed[1]);
+            assertEquals("VIRTUAL_PER_TASK", displayed[8]);
+            assertEquals(3, message(sender, 2, SchedulerText.UnboundedWorkers).getFormatArgs()[0]);
+            execute(command, sender, "metrics", "TRUE");
+            assertEquals(selected.withMetricsEnabled(true), scheduler.pendingSettings());
+            scheduler.submit(() -> ranVirtual.set(Thread.currentThread().isVirtual()), ExecutionMode.CONCURRENT);
+            scheduler.tick();
+            assertTrue(ranVirtual.get());
+            assertEquals("JAVA/VIRTUAL_PER_TASK", scheduler.snapshotReport().policyLabel());
+            sender.messages.clear();
+            execute(command, sender, "strategy", "PLATFORM_POOL");
+            displayed = message(sender, 1, SchedulerText.Settings).getFormatArgs();
+            assertEquals("JAVA", displayed[1], "Pending display must describe its own future choice");
+            assertEquals("PLATFORM_POOL", displayed[8]);
+            assertTrue(scheduler.effectiveSettings().metricsEnabled());
+            scheduler.submit(() -> ranVirtual.set(Thread.currentThread().isVirtual()), ExecutionMode.CONCURRENT);
+            scheduler.tick();
+            assertFalse(ranVirtual.get());
+            assertTrue(scheduler.effectiveSettings().metricsEnabled());
+            assertEquals(List.of("PLATFORM_POOL", "VIRTUAL_PER_TASK"), completions(command, sender, "STRATEGY", ""));
         }
     }
 

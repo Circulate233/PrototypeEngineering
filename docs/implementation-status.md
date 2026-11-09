@@ -1,5 +1,11 @@
 # 实施进度
 
+- 2026-11-09 Modern 有效策略已直接并入当前 Java 25 scheduler/Gecko 管线并完成验证：默认 CPU PLATFORM_POOL 保留，显式 VIRTUAL_PER_TASK 的 per-task worker 不受 workers 上限约束，有限 affinity/source lane 仍单 worker 串行；原 pending/source/structure 实际退出、finished、owner FIFO、Registration、once queue 与 deadline 的安全重配义务保留。策略命令/配置与 effective/pending 自身标签已接入，未建立第二后端、SPI、Jar 或线程池层。
+- Gecko 当前 baker/cache 使用 read-only SoA 与每 cube 精确 packed 输出，任意有效顶点数量均可处理，mixed 52 顶点/1456 字节的三个真实输出一致；primitive/Matrix API 不泄漏 Vector 类型，私有 lazy helper 由 boot module gate 选择，无反射/异常能力回退。正常编译/测试/Javadoc 解析 jdk.incubator.vector；运行不解析模块或强制 scalar 均正常，只有显式 module+min4 验证实际链接 helper。当前硬件 Ryzen 7 7735H/AVX2/FloatSpecies 8lane 中 Vector scatter 写出及额外分配无稳定优势，默认 Integer.MAX_VALUE 保持标量；不宣称 GPU/整机 TPS 改善。
+- 验证：首次 combined focused178 tests/28 suites及修后 render focused54 tests/10 suites全零；最终正常 build --rerun-tasks 为1658 tests/212 suites全零、15任务全执行、14源码/脚本/语言输入 raw 不变。11 Java本机 get_file_problems(errorsOnly:false)错误/警告/弱警告全零，完整 numbered readback逐行等于磁盘，最终MCP build成功。初次IDE19项Vector modulegraph错误经用户明确Gradle reload后消失；原19诊断、tools/list、重载后实查与最早before完整保留。focused wrapper首次仅在成功结果/XML写出后打印尾日志因WindowsGBK失败，UTF8窄修记录保留，不把它冒充Gradle失败或重复构建。
+- 性能证据：原9pilot因短预热/未知用户reload及index边界全部不用于默认阈值；追加仅quad4/1、cube24/1、mixed/16×真实DirectIntBuffer/BufferBuilder六场景，2秒预热+3×500ms、3独立fork及旧/新顺序交替。长样本确认tiny eager map成本后仅通用primary exact array+其他distinct size lazy map窄修；保存真实修前/修后和三个最终scalar fork、GC原日志，未重复旧候选9mode。CPU跨fork/OS/GC时钟仍有漂移，逐bake Java allocation不包含首次cache/native target成本；SoA payload为20N字节加array/reference headers，不称cache免费。真实旧baseline仅class rename、全int属性checksum/正确性oracle保留；这是纯CPU harness，非JMH执行或游戏验收。
+- 最早thread15及math4+additional1路径before、初次/修后冻结、真实编译失败与UTF8 wrapper repair、测试XML/full日志、module/helper链接与benchmark raw、最终IDE/完整读回/MCP和18路径精确本地候选/背景保护入口 `build/staging/modern-inline-integration/` 与 `build/staging/gecko-modern-math/`。IDE模块重载由用户执行，未改IDE设置、未操作桌面；本阶段本地提交，不推送、不启动Minecraft/服务端/Bootstrap/FML。其余PM/PN迁移、工位契约/JEI/最后CraftTweaker与Applied-Flux暂缓按索引继续。
+
 需求依据：[开发文档](development-spec.md)。仅记录实际完成的工作与验证证据，不将设计目标标为已实现。
 
 项目定位为纯库：机器、配方、研究内容和玩法数值由使用方定义；内置仓室为通用组件，独立示例不进入主产物。

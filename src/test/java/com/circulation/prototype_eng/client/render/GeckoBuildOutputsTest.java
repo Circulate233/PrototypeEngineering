@@ -70,6 +70,68 @@ class GeckoBuildOutputsTest {
     }
 
     @Test
+    void mixedWholeCubeAndSingleFaceBatchesPreserveAllThreeOutputsByteCountsAndWorldBounds() throws Exception {
+        var resources = resources(ANIMATIONS);
+        resources.put(GEO, """
+            {"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.mixed","texture_width":64,"texture_height":64},
+            "bones":[{"name":"root","pivot":[0,0,0],"cubes":[
+            {"origin":[0,0,0],"size":[16,16,16],"uv":[0,0]},
+            {"origin":[16,0,0],"size":[16,0,16],"mirror":true,"uv":[0,0]},
+            {"origin":[0,16,0],"size":[16,16,16],"uv":{"west":{"uv":[0,0],"uv_size":[16,16]}}}]}]}]}
+            """);
+        var client = new ModelClientThread(Thread.currentThread(), Runnable::run);
+        var builders = new ModelBufferPool();
+        var direct = new DirectVertexBufferPool();
+        var gpu = new CapturingUploader(client);
+        try (var assets = new ModelAssets(client, resources, root)) {
+            assets.select(List.of(GEO, TEXTURE, ANIMATION));
+            var all = request(assets, new GeckoRenderRequest.Owner(), GeckoModelBaker.BakeMode.ALL, List.of("move"), 0);
+            var packed = request(assets, new GeckoRenderRequest.Owner(), GeckoModelBaker.BakeMode.ANIMATED_ONLY, List.of("move"), 0);
+            var mapped = request(assets, new GeckoRenderRequest.Owner(), GeckoModelBaker.BakeMode.ANIMATED_ONLY, List.of("move"), 0);
+            var ordinaryTask = task(all, assets, builders, direct, client, gpu, false);
+            var packedTask = task(packed, assets, builders, direct, client, gpu, false);
+            var mappedTask = task(mapped, assets, builders, direct, client, gpu, true);
+            try {
+                ordinaryTask.run();
+                packedTask.run();
+                mappedTask.run();
+                assertNull(ordinaryTask.failure());
+                assertNull(packedTask.failure());
+                assertNull(mappedTask.failure());
+                try (var ordinaryLease = Objects.requireNonNull(ordinaryTask.borrow());
+                     var packedLease = Objects.requireNonNull(packedTask.borrow());
+                     var mappedLease = Objects.requireNonNull(mappedTask.borrow())) {
+                    var buffer = ordinaryLease.buffers().builders().get(MachineRenderPass.DEFAULT);
+                    assertEquals(52, buffer.getVertexCount());
+                    int intCount = 52 * 7;
+                    var directBytes = packedLease.buffers().packed().get(MachineRenderPass.DEFAULT);
+                    assertEquals(intCount * 4, directBytes.limit());
+                    assertArrayEquals(ints(buffer.getByteBuffer(), intCount), ints(directBytes, intCount));
+                    assertArrayEquals(ints(buffer.getByteBuffer(), intCount), ints(gpu.mapped.get(MachineRenderPass.DEFAULT), intCount));
+                    for (var result : List.of(ordinaryLease.buffers(), packedLease.buffers(), mappedLease.buffers())) {
+                        var bounds = Objects.requireNonNull(result.bounds());
+                        assertEquals(-1.5, bounds.minX, 1e-6);
+                        assertEquals(.5, bounds.maxX, 1e-6);
+                        assertEquals(.01, bounds.minY, 1e-6);
+                        assertEquals(2.01, bounds.maxY, 1e-6);
+                        assertEquals(.5, bounds.minZ, 1e-6);
+                        assertEquals(1.5, bounds.maxZ, 1e-6);
+                    }
+                }
+            } finally {
+                ordinaryTask.retire();
+                packedTask.retire();
+                mappedTask.retire();
+                gpu.retire(mapped.owner());
+            }
+        } finally {
+            gpu.close();
+            builders.close();
+            direct.close();
+        }
+    }
+
+    @Test
     void loadedGeckoGeometryReachesOrdinaryPackedAndNativeWriterOutputsWithTheSameRoutedVertices() throws Exception {
         var client = new ModelClientThread(Thread.currentThread(), Runnable::run);
         var resources = resources(ANIMATIONS);

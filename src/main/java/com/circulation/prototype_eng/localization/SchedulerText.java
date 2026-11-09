@@ -7,7 +7,7 @@ import com.circulation.prototype_eng.Tags;
 public enum SchedulerText implements LocalizationEnum {
     Usage, Status, Effective, Pending, Settings, Report, Wall, Counts, ReloadRequested, MetricsRequested, OperationFailed,
     Total, Main, ConcurrentStage, JoinWait, Planned, Cleanup, StructureWorker,
-    MainTasks, ConcurrentTasks, CustomMainTasks, CustomConcurrentTasks, AffinityGroups;
+    MainTasks, ConcurrentTasks, CustomMainTasks, CustomConcurrentTasks, AffinityGroups, StrategyRequested, UnboundedWorkers;
 
     private final String key = "scheduler." + Tags.MOD_ID + "." + name();
 

@@ -11,8 +11,10 @@ import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
 import java.util.Set;
 import java.util.function.Function;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import org.jetbrains.annotations.Nullable;
 
-/** CPU-only hierarchy baker. Cached xyzuv and quad-sized primitive bulk writes serve all three output paths. */
+/** CPU-only hierarchy baker. Read-only SoA and cube-sized packed writes serve all three output paths. */
 public class GeckoModelBaker {
     private static final int WHITE = GeckoBakerMath.packColor(1, 1, 1, 1);
 
@@ -20,6 +22,7 @@ public class GeckoModelBaker {
 
     @FunctionalInterface
     public interface PackedVertexDataWriter {
+        /** Consume synchronously without retaining the borrowed array; a batch contains whole quads. */
         void write(int[] data, int offset, int length);
     }
 
@@ -48,7 +51,7 @@ public class GeckoModelBaker {
         int pass = route(bone.name, inheritedPass);
         if (emit(mode, dynamic, possible) && !bone.isHidden) {
             for (var cube : bone.childCubes) {
-                int count = cubes.get(cube).xyzuv().length / 5;
+                int count = cubes.get(cube).vertexCount();
                 out[pass] = Math.addExact(out[pass], count);
             }
         }
@@ -93,7 +96,7 @@ public class GeckoModelBaker {
             var builder = outputs.apply(pass);
             return (data, offset, length) -> {
                 if (offset != 0 || length != data.length)
-                    throw new IllegalArgumentException("Builder needs a whole packed quad");
+                    throw new IllegalArgumentException("Builder needs a whole packed batch");
                 builder.addVertexData(data);
             };
         }, active, mode, potential);
@@ -136,11 +139,14 @@ public class GeckoModelBaker {
 
     private void writeCube(GeoCube cube, GeckoBakerMath.MatrixStack stack, PackedVertexDataWriter writer, Scratch scratch) {
         var cached = cubes.get(cube);
+        int count = cached.vertexCount();
+        if (count == 0) return;
         scratch.model.mul(stack.model(), cached.model());
         scratch.normal.mul(stack.normal(), cached.normal());
-        var m = scratch.model;
+        int[] packed = scratch.packed(Math.multiplyExact(count, 7));
+        GeckoBakerMath.packPositions(cached, scratch.model, 0, count, packed, 0);
         var n = scratch.normal;
-        int base = 0;
+        int vertex = 0;
         for (var quad : cube.quads)
             if (quad != null) {
                 var normal = quad.normal;
@@ -152,24 +158,38 @@ public class GeckoModelBaker {
                 if ((cube.size.x == 0 || cube.size.y == 0) && nz < 0) nz = -nz;
                 int packedNormal = GeckoBakerMath.packNormal(nx, ny, nz);
                 for (int v = 0; v < 4; v++) {
-                    int i = base + v * 5, j = v * 7;
-                    float x = cached.xyzuv()[i], y = cached.xyzuv()[i + 1], z = cached.xyzuv()[i + 2];
-                    scratch.quad[j] = Float.floatToRawIntBits(m.m00 * x + m.m01 * y + m.m02 * z + m.m03);
-                    scratch.quad[j + 1] = Float.floatToRawIntBits(m.m10 * x + m.m11 * y + m.m12 * z + m.m13);
-                    scratch.quad[j + 2] = Float.floatToRawIntBits(m.m20 * x + m.m21 * y + m.m22 * z + m.m23);
-                    scratch.quad[j + 3] = Float.floatToRawIntBits(cached.xyzuv()[i + 3]);
-                    scratch.quad[j + 4] = Float.floatToRawIntBits(cached.xyzuv()[i + 4]);
-                    scratch.quad[j + 5] = WHITE;
-                    scratch.quad[j + 6] = packedNormal;
+                    int j = vertex * 7;
+                    packed[j + 3] = cached.uv()[vertex * 2];
+                    packed[j + 4] = cached.uv()[vertex * 2 + 1];
+                    packed[j + 5] = WHITE;
+                    packed[j + 6] = packedNormal;
+                    vertex++;
                 }
-                writer.write(scratch.quad, 0, 28);
-                base += 20;
             }
+                writer.write(packed, 0, packed.length);
     }
 
     protected static final class Scratch {
         final Matrix4f model = new Matrix4f();
         final Matrix3f normal = new Matrix3f();
-        final int[] quad = new int[28];
+        private int @Nullable [] primary;
+        private @Nullable Int2ObjectOpenHashMap<int[]> otherSizes;
+
+        int[] packed(int intCount) {
+            var data = primary;
+            if (data == null) {
+                data = new int[intCount];
+                primary = data;
+                return data;
+            }
+            if (data.length == intCount) return data;
+            // Only genuinely mixed counts need a table; each exact size remains private to this bake.
+            var sizes = otherSizes;
+            if (sizes == null) {
+                sizes = new Int2ObjectOpenHashMap<>();
+                otherSizes = sizes;
+            }
+            return sizes.computeIfAbsent(intCount, int[]::new);
+        }
     }
 }

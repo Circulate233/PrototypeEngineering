@@ -1,6 +1,18 @@
 // You may write any Gradle buildscript component in this file.
 // This file is automatically applied after build.gradle + dependencies.gradle.
 
+// Optional production Vector API code resolves only when the launch module is enabled.
+// Compilation and the normal logic-test runtime exercise that path; ordinary launches may use scalar.
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll(['--add-modules', 'jdk.incubator.vector'])
+}
+tasks.withType(Test).configureEach {
+    jvmArgs '--add-modules=jdk.incubator.vector'
+}
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption('-add-modules', 'jdk.incubator.vector')
+}
+
 tasks.withType(Javadoc).configureEach {
     // Both dev sync tasks write directories on the Javadoc classpath.
     dependsOn tasks.named('syncDevResourcesToClasses'), tasks.named('syncDevClassesToResources')
