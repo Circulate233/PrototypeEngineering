@@ -129,6 +129,8 @@ START 解析通过 `ResourceInputResolver` 计算保守 checkTimes，先计入�
 
 选择状态按完整路径归进程所有；后续 TICK/END 只派发已选子需求，外层统一结算其令牌。START rollback 撤销本次选择、已获取子业务和该选择自己安装的属性 modifier/需求 overlay 层；START commit 先应用子业务，再按声明顺序调用 SelectiveModifierDescriptor 绑定的真实 SelectiveModifier.apply，并标记提交。SelectiveContext 暴露机器、进程、选择路径、候选索引及 modifier 名称/序号，属性和需求 overlay 效果通过有效 apply 作用域中的 tracked put 记录所有权。内部 modifier/overlay layer ID 长度分帧并包含路径、descriptor 序号和名称，属性包装仍委托外部 AttributeModifier 行为；直接修改其他状态不自动获得该接口的补偿能力。
 
+Java 速度便捷入口直接复用上述效果链：SelectiveContext.addProcessSpeed(modifierId, amount) 添加 NumericAttributeModifier.ADDITION，mulProcessSpeed(modifierId, factor) 使用 MULTIPLY_TOTAL 的 factor−1，因此0.8变慢、1.2变快。独立 SelectiveModifiers.processSpeedAddition(id, modifierId, amount) / processSpeedMultiplier(id, modifierId, factor) 返回已绑定真实指令的 SelectiveModifierDescriptor，直接放入 SelectiveRequirement.modifiers，构造时验证非空名称/有限数值，无全局注册表。多个descriptor的同名modifier按已有内部ID隔离，同apply同名写保持替换；运算仍按ADDITION→MULTIPLY_BASE→MULTIPLY_TOTAL。零/负倍率允许沿原TICK进度max(0,PROCESS_SPEED)处理。START rollback、END complete/取消与严格numeric NBT恢复复用原局部所有权，恢复不重放指令；CT脚本桥仍最后接入。2026-11-09新增5项真实选择/进度/局部覆盖/故障回滚/恢复END与取消行为，受影响79/10、正常完整build1568/198、3 Java本机MCP全级零及完整读回一致，证据 `build/staging/java-recipe-presets/`。
+
 END 获取/业务 commit 保留选择的属性和需求 overlay 效果，到全部业务成功后的 complete 才完成子事务并清理本选择的局部效果；被阻塞或业务异常的 END 不提前清效果。子 complete 抛错时仍尝试选择清理，外层与检查点完成链继续其余 complete 和资源/FE token 完成，再报告聚合错误；已跨终态边界不回滚或重放。选择状态已接入严格 NBT 保存恢复并完成此前验证，扫描基础已验证，当前固定预筛/资源索引扩展已验证，当前显式取消与失败清理已接入，已通过本阶段构建与 MCP 检查。
 
 ## 每进程需求 overlay
