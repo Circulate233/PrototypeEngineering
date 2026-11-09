@@ -43,3 +43,9 @@ R32 机器绑定已实现验证：JEI 新增 1 项行为包含在 focused 37 tes
 PrototypeJeiPlugin注册实际StructurePreviewJeiCategory/Recipe；静态canonical MachineType.structureId关联独立机器结构页和已有controller catalyst，完整服务端客户端目录供view选择，不枚举世界实例或执行matcher。AutoLayoutRecipePage的嵌入预览使用公开concrete Panel/Scene；独立custom RecipePoolJeiPage可调用StructurePreviewScreens.panel，不继承默认实现。全屏viewer直接AEBaseGui，保留即时HEI父页和准确机器原容器返回。原生GuiOpen/InitPre/InitPost、取消与嵌套owner撤销保持；嵌入的Mouse/Keyboard事件仅消费实际绘制控件，拖拽跨draw继续且关闭后准确一次up不泄露到父槽位。
 
 材料层显示保持完整long BOM，代表项/子边occurrence切片独立；同一Scene复用D1真实原生模型和owned TESR-SNBT，唯一handleUpdateTag，不运行异常兼容回退。材料rows和native名称按状态/查询/过滤及resource/语言变化失效，稳定draw复用。原路径40 PNG与NOTICE保留；全部文案沿实现LocalizationEnum的StructurePreviewText。focused47/3、受影响82/8、最终正常完整build1486/183全过；41Java本机MCP全级零、完整项目读回/磁盘一致、MCP build成功，证据见build/staging/structure-preview-gui/verification。未启动Minecraft/服务端/Bootstrap/FML；真实HEI、GL/TESR和网络包实机未验收。D3成型模型/动画/Bloom/隐藏、其他未取消能力继续。
+
+## MUI 撤除约束（2026-11-09）
+
+用户明确撤除ModularUI及其依赖。当前JEI/HEI消费者没有MUI导入、Widget/Drawable调用或modularui资源ID；mezz.jei.api.gui.IDrawable属于实际HEI API，继续保留。项目全部Gradle configuration精确排除com.cleanroommc:modularui；实际9个compile/runtime/processor配置、135个Jar和当次主/dev/sources产物均无MUI，证据 `build/staging/mui-removal/`。
+
+后续绘制/控件只走AE或Minecraft原生Java，不采用MUI GUI基类、Widget/Drawable或替代UI框架，不依赖modularui资源命名空间。Arrow/Cycle历史3.0.6来源/许可证据仅保留在 `build/staging/jei-remaining-plan/modularui-3.0.6/`，不是项目依赖或主产物，不授权重新引入MUI；恢复后若实现效果须用AE/native Java。本次只完成排除约束与核验，不实现尚未迁的decorator。整体目标已由用户暂停，本块完成后停止。

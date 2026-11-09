@@ -28,3 +28,7 @@ PNG 原样复制，JSON 仅将资源命名空间改为 `prototype_eng`，默认 
 两个模型的主纹理引用为 `prototype_eng:items/wrench`；`wrench_e.png` 作为原配套素材保留，当前模型没有独立 emissive 引用，不凭文件存在宣称已接额外发光渲染。
 
 `advancements/cherish_tool.json` 保留 PM 成就的 parent、frame、toast/公告/可见性、impossible criterion 与工具图标，资源 ID 和本地化字段改为 `prototype_eng` / `OrientationToolText`。服务端关闭模式攻击授予 criterion。行为、配置和验证边界见[方向工具](orientation-tool.md)；纹理/模型及成就实际加载仍待游戏验证。
+
+## MUI 运行依赖排除（2026-11-09）
+
+当前具体GUI直接AEBaseGui，原素材通过本项目prototype_eng命名空间和AE/native Java绘制消费，不引用modularui资源ID或MUI Widget/Drawable/GUI基类。所有Gradle configuration精确排除com.cleanroommc:modularui，实际classpath和当次三个Jar检查无MUI；AE/HEI保留。旧PM/MUI素材来源与许可证据只作历史staging审计，不能由素材来源恢复MUI运行/编译依赖。此块不实现未来Arrow/Cycle或其他JEI decorator；用户暂停目标，本块后停止，验证见 `build/staging/mui-removal/`。

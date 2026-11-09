@@ -1,5 +1,11 @@
 apply from: 'gradle/scripts/helpers.gradle'
 
+// Concrete GUIs use AEBaseGui. Keep ModularUI out of every project configuration, including
+// development/runtime classpaths and any future transitive mod dependency.
+configurations.configureEach {
+    exclude group: 'com.cleanroommc', module: 'modularui'
+}
+
 dependencies {
     implementation "com.cleanroommc:cleanmix:0.7.4"
     modImplementation 'mezz:jei:4.35.1'

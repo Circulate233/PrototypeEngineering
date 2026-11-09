@@ -45,3 +45,9 @@ screen factory 的参数是 `(container, playerInventory)`。它通过声明的 
 `MachineGuiSnapshotTest` 覆盖跨宿主页、布局收缩 offset、快照不随活进度变化、失败原因保留、packet round-trip 及行/参数限制。实际 GUI 打开、玩家槽位操作、关闭重开和渲染仍无游戏内证据；构建与逐文件 MCP 的最终证据统一见[实施进度](implementation-status.md)。
 
 完整结构预览、投影、切片、BOM、复杂模型/动画与 PN 权限继续保留待迁移。控制器宿主入口见[世界接线](controller-integration.md)，自动配方入口见[配方扫描](recipes.md#自动扫描组件声明与恢复)，资源记录见[控制器资产](controller-assets.md)。
+
+## ModularUI 排除与当前停止点（2026-11-09）
+
+用户要求撤除MUI。当前MachineGui、ResourceHatchGui、EnergyHatchGui、ResearchGui和StructurePreviewGui均直接继承AEBaseGui；项目没有MUI GUI基类、Widget/Drawable调用或modularui资源命名空间。清理前实际直接/传递依赖已无MUI，现所有Gradle configuration精确排除com.cleanroommc:modularui，避免后续mod依赖重新引入。AE/HEI及必要核心依赖完整保留；after真实9个compile/runtime/processor配置与135个Jar检查、当次3个产物Jar均无MUI，见 `build/staging/mui-removal/`。
+
+GUI控件和绘制继续用AE或Minecraft标准Java，不引入第二GUI基类或替代UI框架。后续JEI的Arrow/Cycle效果同样用AE/native Java表达，不使用MUI Widget/Drawable、GUI类或modularui命名空间。旧素材来源和许可只保留staging审计；此块不新增尚未迁的decorator。用户已暂停整体目标，本块验证和本地提交后停止，结构WIP继续入口见 `build/staging/structure-async-budget/STOPPED-WIP.md`。

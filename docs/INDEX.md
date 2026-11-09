@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-09 用户已暂停完整迁移目标；本次仅完成 AE GUI/ModularUI 撤除约束并在本块后停止。当前五个具体 GUI 均直接继承 AEBaseGui，源码无 MUI GUI 基类、Widget/Drawable 调用或 modularui 资源命名空间；实际清理前直接依赖与9个真实编译/运行/处理器配置、135个classpath Jar 类/metadata均无MUI，未编造原有依赖删除。现以准确 com.cleanroommc:modularui 坐标在全部 configuration 排除防止后继依赖引回；after实际图/files与before完全一致，AE/HEI及必要依赖保留，当次主/dev/sources 3个Jar无MUI。正常完整build1579 tests/200 suites全零；五GUI本机 IDEA MCP errorsOnly:false全级零、完整项目读回/磁盘5/5一致、MCPbuild成功。证据/准确before/精确本地提交入口 `build/staging/mui-removal/`。此前结构20Java未完成WIP完整保留，冻结及原before/保护/待续入口 `build/staging/structure-async-budget/STOPPED-WIP.md`；编译通过不表示其异步/预算/首tick/收尾链完成，整体目标保持paused。原581背景、四个结构新增未跟踪Java与INDEX备份保留，未push/未启动游戏或服务端。后续GUI与JEI只走AE或Minecraft原生Java，禁止MUI依赖、Widget/Drawable/基类和资源命名空间；Arrow/Cycle历史来源/许可仅留staging审计，不恢复运行依赖，也不在本块实现未迁decorator。
+
 - 2026-11-09 PN 个人遗忘与管理员绝对等级本阶段实现和验证已完成：Java → 原 Server MAIN → 原 AE 容器/默认 GUI 已接；个人仅本人/当前队伍的普通 DATABASE_AND_ITEM，阈值 k 删除 k 及以上个人后缀；管理员操作员按 PLAYER/TEAM 来源绝对设置，0 删除，离线玩家与显式空/历史稳定队伍 ID 支持。保留完整领取资格/组/片段/时间，管理不创建资格或执行奖励/开始事件，无材料/FE/XP费用。下载预留和所有保留旧队伍的冻结完成保护，原协调先结算后 prune；precommit 异常准确 rollback，IO 故障保留 committed after 与原 pendingSave 并释放自身凭据。11新增行为，早期 focused10/3、最终扩大受影响497 tests/54 suites、正常完整build1579 tests/200 suites全过；13 Java 本机 IDEA MCP errorsOnly:false全级零、完整项目文件读回/磁盘13/13一致、MCP build成功，15 Java/语言源码资源完整构建及最终MCP后raw稳定。独立V5审计已闭合两来源guard清理与小窗口按钮重叠，无新增P1/P2。准确before、固定V1–V5、真实原失败/诊断、最终日志/XML/MCP/精确提交入口 `build/staging/research-actions/`，审计 `build/staging/research-actions-plan/audit-final-v5.md`，见[服务器研究](server-research.md)、[研究界面](research-gui.md)。581原tracked背景修改与INDEX备份保留，本阶段本地提交；未推送/未启动Minecraft或服务端，实机GUI/FTB/网络包未验收。整体目标继续：工位策略待用户契约，结构预算已确认两模式待落实，JEI剩余/性能后端继续，CT最后，Applied-Flux暂缓。
 
 - 2026-11-09 用户已恢复完整 PM/PN 迁移目标，D3 当时完成后停止仅是历史边界，整条模型链保持已完成。Java 选择器速度便捷预设本阶段已实现并验证：公开 SelectiveContext.addProcessSpeed/mulProcessSpeed 和 SelectiveModifiers 的直接 descriptor 加法/倍率工厂，复用原 tracked put、局部所有权、START rollback、END/取消清理与 numeric NBT codec，未新增注册表。旧倍率使用 MULTIPLY_TOTAL 的 factor−1，允许零/负值且成功 TICK 的进度由原消费者裁剪。focused5 tests /1 suite、受影响79 tests /10 suites、正常完整build1568 tests /198 suites全过；3 Java 本机 IDEA MCP errorsOnly:false全级零、完整项目文件读回/磁盘3/3一致、MCP build成功，构建与最终MCP后raw源码稳定。准确earliest-before、固定V1/V2、原诊断和最终日志/XML/MCP/精确本地提交入口 `build/staging/java-recipe-presets/`，见[配方](recipes.md)、[功能核对](recipe-feature-parity.md)、[事件专项](pm-recipe-events-audit.md)。581原tracked背景修改与INDEX备份保留，未推送/未启动游戏或服务端。下一步工位策略/结构预算/研究操作/JEI剩余/性能后端继续，CT最后，Applied-Flux暂缓；整体目标保持进行中。
@@ -60,6 +62,8 @@
 - 控制器、结构捕获/匹配、三方向十阶通用资源/独立 FE 仓、普通调度、扫描、默认/自定义 Java GUI 与方向工具已接入。GUI 直接 AEBaseGui，资源数量使用 AEKey2LongMap；实际边界按专题及实施进度核对。
 
 ## 下一步
+
+- 用户已暂停整体目标；本次MUI块结束后停止。恢复须先由用户恢复任务，再读最新检查点、`build/staging/mui-removal/REPORT.md` 和 `build/staging/structure-async-budget/STOPPED-WIP.md`。下列队列为保留续作范围，不表示当前继续执行。
 
 - 用户已恢复完整 PM/PN 迁移目标，D3 完成后停止只是历史边界；D2/D3/2B 已完成。当前研究操作本阶段已完成，恢复先读本检查点、[服务器研究](server-research.md)、[研究界面](research-gui.md)及 `build/staging/research-actions/exact-commit/verification-summary.json`。后续落实结构预算两模式及用户新增完整异步检查要求：具体方块读取/检查在原worker执行，先核区块已加载，不能触发异步chunk load；主线程最终完整fresh/proof/install，进入世界首tick完整同步处理，后继等待保留既有成型。默认切片准备允许同owner最终收尾超片并如实计量；可选严格模式暂停/要求预算，不安装未验证候选。工位策略待用户确认，JEI剩余与性能后端继续，CT最后，Applied-Flux暂缓；不自行启动游戏或服务端。
 
