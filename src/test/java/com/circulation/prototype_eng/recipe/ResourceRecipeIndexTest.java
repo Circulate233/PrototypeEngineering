@@ -53,6 +53,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.function.Consumer;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class ResourceRecipeIndexTest {
     private static final KeyType FIRST_TYPE = new KeyType("resource_index_first");
@@ -211,6 +214,147 @@ class ResourceRecipeIndexTest {
         assertThrows(IllegalArgumentException.class, () -> new Footprint(recipe, List.of(new GenericStack(A, 0))));
     }
 
+    @Test
+    void freshSameContextAdaptersFinishBoundedLookupAndValidateExactCapturedQuantities() {
+        var storage = buffer(100);
+        storage.insert(A, 5, Actionable.MODULATE);
+        var ports = new FreshPorts(storage);
+        var machine = new MachineInstance();
+        install(machine, ports);
+        var exact = recipe("fresh_exact", inputs(new GenericStack(A, 5)));
+        var missing = recipe("fresh_missing", inputs(new GenericStack(A, 6)));
+        var catalog = catalog(exact, missing);
+        var index = ResourceRecipeIndex.forFixedInputs(catalog, _ -> true);
+        var cursor = index.beginLookup(machine, Set.of(GROUP), catalog.recipes());
+        finish(cursor);
+        assertEquals(List.of(exact), cursor.result());
+        assertTrue(ports.views.size() > 1);
+        assertEquals(1, ports.views.stream().mapToInt(view -> view.snapshots).sum());
+        validate(cursor, true);
+        assertEquals(1, ports.views.stream().mapToInt(view -> view.snapshots).sum());
+        assertEquals(5, storage.availableAmount(A));
+    }
+
+    @Test
+    void changedQuantityContextIdentityAndAdapterValidityInvalidateOriginalCaptureWithoutResampling() {
+        for (Consumer<FreshPorts> change : List.<Consumer<FreshPorts>>of(
+            ports -> ports.source.extract(A, 1, Actionable.MODULATE),
+            ports -> { var replacement = buffer(100); replacement.insert(A, 5, Actionable.MODULATE); ports.source = replacement; },
+            ports -> ports.identity = new Object(),
+            ports -> ports.inputValid = false,
+            ports -> ports.views.getFirst().valid = false)) {
+            var storage = buffer(100);
+            storage.insert(A, 5, Actionable.MODULATE);
+            var ports = new FreshPorts(storage);
+            var machine = new MachineInstance();
+            install(machine, ports);
+            var exact = recipe("captured_exact", inputs(new GenericStack(A, 5)));
+            var catalog = catalog(exact);
+            var index = ResourceRecipeIndex.forFixedInputs(catalog, _ -> true);
+            var cursor = index.beginLookup(machine, Set.of(GROUP), catalog.recipes());
+            for (int step = 0; ports.views.stream().noneMatch(view -> view.snapshots > 0) && step < 100; step++) {
+                assertFalse(cursor.advance(new RecipeWorkBudget(1)));
+            }
+            assertEquals(1, ports.views.stream().mapToInt(view -> view.snapshots).sum());
+            change.accept(ports);
+            validate(cursor, false);
+            assertFalse(cursor.current());
+            assertThrows(IllegalStateException.class, cursor::result);
+            assertEquals(1, ports.views.stream().mapToInt(view -> view.snapshots).sum());
+            var fresh = index.beginLookup(machine, Set.of(GROUP), catalog.recipes());
+            finish(fresh);
+            boolean eligible = ports.inputValid && ports.source.availableAmount(A) >= 5;
+            assertEquals(eligible ? List.of(exact) : List.of(), fresh.result());
+        }
+    }
+
+    @Test
+    void skippedNullInvalidHatchAndInvalidAdapterCannotPublishAfterBecomingUsableBetweenSlices() {
+        for (int scenario = 0; scenario < 6; scenario++) {
+            int skipped = scenario % 3;
+            boolean completedBeforeChange = scenario >= 3;
+            var storage = buffer(100);
+            storage.insert(A, 5, Actionable.MODULATE);
+            var ports = new FreshPorts(storage);
+            ports.present = skipped != 0;
+            ports.valid = skipped != 1;
+            ports.inputValid = skipped != 2;
+            var machine = new MachineInstance();
+            install(machine, ports);
+            var exact = recipe("became_usable", inputs(new GenericStack(A, 5)));
+            var catalog = catalog(exact);
+            var index = ResourceRecipeIndex.forFixedInputs(catalog, _ -> true);
+            var cursor = index.beginLookup(machine, Set.of(GROUP), catalog.recipes());
+            for (int step = 0; ports.validReads == 0 && step < 100; step++) {
+                assertFalse(cursor.advance(new RecipeWorkBudget(1)));
+            }
+            assertTrue(ports.validReads > 0);
+            if (completedBeforeChange) {
+                finish(cursor);
+                assertEquals(List.of(), cursor.result());
+            }
+            ports.present = true; ports.valid = true; ports.inputValid = true;
+            if (completedBeforeChange) {
+                validate(cursor, false);
+            } else {
+                for (int step = 0; cursor.current() && step < 100; step++) {
+                    assertFalse(cursor.advance(new RecipeWorkBudget(1)));
+                }
+            }
+            assertFalse(cursor.current());
+            assertThrows(IllegalStateException.class, cursor::result);
+            var fresh = index.beginLookup(machine, Set.of(GROUP), catalog.recipes());
+            finish(fresh);
+            assertEquals(List.of(exact), fresh.result());
+            validate(fresh, true);
+        }
+    }
+
+    private static void finish(ResourceRecipeIndex.QuantityLookup cursor) {
+        for (int step = 0; step < 1000; step++) {
+            var budget = new RecipeWorkBudget(1);
+            if (cursor.advance(budget)) return;
+            assertTrue(budget.remaining() >= 0);
+            assertTrue(cursor.current(), "A stable owner must progress rather than restart");
+        }
+        throw new AssertionError("One-unit lookup did not finish");
+    }
+
+    private static void validate(ResourceRecipeIndex.QuantityLookup cursor, boolean expected) {
+        var validation = cursor.beginValidation();
+        for (int step = 0; step < 1000; step++) {
+            if (validation.advance(new RecipeWorkBudget(1))) {
+                assertEquals(expected, validation.current());
+                return;
+            }
+        }
+        throw new AssertionError("One-unit validation did not finish");
+    }
+
+    private static final class FreshPorts implements ResourceHatch {
+        private ResourceStorage source;
+        private Object identity = new Object();
+        private boolean valid = true;
+        private boolean present = true;
+        private boolean inputValid = true;
+        private int validReads;
+        private final ObjectArrayList<ReadOnlyView> views = new ObjectArrayList<>();
+
+        private FreshPorts(ResourceStorage source) { this.source = source; }
+
+        @Override public @Nullable ResourceStorage input() {
+            if (!present) return null;
+            var view = new ReadOnlyView(source, Set.of(A));
+            view.valid = inputValid;
+            views.add(view);
+            return view;
+        }
+
+        @Override public @Nullable ResourceStorage output() { return null; }
+        @Override public Object inputStorageIdentity() { return identity; }
+        @Override public boolean isValid() { validReads++; return valid; }
+    }
+
     private static RecipeRequirement<ResourceRequirement> inputs(GenericStack... stacks) {
         return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(List.of(stacks), List.of()));
     }
@@ -240,22 +384,68 @@ class ResourceRecipeIndexTest {
         @Override public boolean isValid() { return valid; }
     }
 
-    /** Different public views of one real buffer; any IO call would violate the pure index contract. */
-    private record ReadOnlyView(ResourceStorage delegate, Set<AEKey> visible) implements ResourceStorage {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public StorageSnapshot snapshot() {
+    /**
+     * Different public views of one real buffer; any IO call would violate the pure index contract.
+     */
+    private static final class ReadOnlyView implements ResourceStorage {
+        private final ResourceStorage delegate;
+        private final Set<AEKey> visible;
+        private boolean valid = true;
+        private int snapshots;
+
+        private ReadOnlyView(ResourceStorage delegate, Set<AEKey> visible) {
+            this.delegate = delegate;
+            this.visible = visible;
+        }
+
+        @Override public boolean isValid() { return valid && delegate.isValid(); }
+
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public StorageSnapshot snapshot() {
+            snapshots++;
             var snapshot = delegate.snapshot();
             var entries = new AEKey2LongMap.LinkdOpenHashMap();
             snapshot.available().object2LongEntrySet().forEach(entry -> {
-                if (visible.contains(entry.getKey())) { entries.put(entry.getKey(), entry.getLongValue()); }
+                if (visible.contains(entry.getKey())) {
+                    entries.put(entry.getKey(), entry.getLongValue());
+                }
             });
             return new StorageSnapshot(snapshot.context(), snapshot.revision(), entries);
         }
-        @Override public long amount(AEKey key) { throw new AssertionError("Index must use snapshots"); }
-        @Override public long availableAmount(AEKey key) { throw new AssertionError("Index must use snapshots"); }
-        @Override public long insert(AEKey key, long amount, Actionable mode) { throw new AssertionError("Index must not perform IO"); }
-        @Override public long extract(AEKey key, long amount, Actionable mode) { throw new AssertionError("Index must not perform IO"); }
-        @Override public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) { throw new AssertionError("Index must not reserve"); }
-        @Override public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) { throw new AssertionError("Index must not reserve"); }
+
+        @Override
+        public long amount(AEKey key) {
+            throw new AssertionError("Index must use snapshots");
+        }
+
+        @Override
+        public long availableAmount(AEKey key) {
+            throw new AssertionError("Index must use snapshots");
+        }
+
+        @Override
+        public long insert(AEKey key, long amount, Actionable mode) {
+            throw new AssertionError("Index must not perform IO");
+        }
+
+        @Override
+        public long extract(AEKey key, long amount, Actionable mode) {
+            throw new AssertionError("Index must not perform IO");
+        }
+
+        @Override
+        public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
+            throw new AssertionError("Index must not reserve");
+        }
+
+        @Override
+        public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
+            throw new AssertionError("Index must not reserve");
+        }
     }
 }

@@ -33,6 +33,7 @@ import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import java.util.Iterator;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Frozen AEKey-to-recipe postings for explicitly guaranteed START input lower bounds. This migrates
@@ -139,6 +140,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         private final Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap> byContext = new Reference2ObjectOpenHashMap<>();
         private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap();
         private final ObjectArrayList<CapturedView> captures = new ObjectArrayList<>();
+        private final ObjectArrayList<Binding> bindings = new ObjectArrayList<>();
         private final ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
         private List<ResourceHatch> hatches;
         private int scopeCursor;
@@ -155,6 +157,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         private int postingCursor;
         private int outputCursor;
         private int proofCursor;
+        private int bindingProofCursor;
         private boolean bindingsChecked;
         private int phase;
         private boolean stale;
@@ -201,11 +204,14 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                         if (view == null) {
                             if (!budget.take()) return false;
                             var hatch = hatches.get(hatchCursor++);
-                            if (!hatch.isValid()) continue;
-                            var storage = hatch.input();
-                            if (storage == null || !storage.isValid()) continue;
-                            var context = Objects.requireNonNull(storage.context(), "input context");
-                            view = new CapturedView(hatch, storage, context, Objects.requireNonNull(storage.beginQuantityCapture()));
+                            boolean valid = hatch.isValid();
+                            var storage = valid ? hatch.input() : null;
+                            var context = storage == null ? null : Objects.requireNonNull(storage.context(), "input context");
+                            var identity = storage == null ? null : Objects.requireNonNull(hatch.inputStorageIdentity(), "input identity");
+                            boolean storageValid = storage != null && storage.isValid();
+                            bindings.add(new Binding(hatch, valid, storage != null, identity, context, storageValid));
+                            if (!valid || storage == null || !storageValid) continue;
+                            view = new CapturedView(hatch, storage, context, identity, Objects.requireNonNull(storage.beginQuantityCapture()));
                             captures.add(view);
                         }
                         if (quantities == null) {
@@ -272,6 +278,13 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                             return false;
                         }
                     }
+                    while (bindingProofCursor < bindings.size()) {
+                        if (!budget.take()) return false;
+                        if (!bindings.get(bindingProofCursor++).current()) {
+                            stale = true;
+                            return false;
+                        }
+                    }
                     while (proofCursor < captures.size()) {
                         if (!budget.take()) return false;
                         if (!captures.get(proofCursor++).current()) {
@@ -295,7 +308,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         public RecipeCandidateIndex.Validation beginValidation() {
             return new RecipeCandidateIndex.Validation() {
                 private final int captureCount = captures.size() - (view != null && quantities == null ? 1 : 0);
+                private final int bindingCount = bindings.size();
                 private int cursor;
+                private int bindingCursor;
                 private boolean ownerChecked;
                 private boolean complete;
 
@@ -310,6 +325,10 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                         if (hatches != null && MachineHatches.get(machine).resources() != hatches) {
                             stale = true; complete = true; return true;
                         }
+                    }
+                    while (bindingCursor < bindingCount) {
+                        if (!budget.take()) return false;
+                        if (!bindings.get(bindingCursor++).current()) { stale = true; complete = true; return true; }
                     }
                     while (cursor < captureCount) {
                         if (!budget.take()) return false;
@@ -334,10 +353,25 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         }
     }
 
-    private record CapturedView(ResourceHatch hatch, ResourceStorage storage, StorageContext context,
+    private record CapturedView(ResourceHatch hatch, ResourceStorage storage, StorageContext context, Object identity,
                                 ResourceStorage.QuantityCapture capture) {
         private boolean current() {
-            return hatch.isValid() && hatch.input() == storage && storage.isValid() && storage.context() == context && capture.current();
+            if (!hatch.isValid()) return false;
+            var current = hatch.input();
+            return current != null && current.isValid() && current.context() == context
+                && hatch.inputStorageIdentity() == identity && storage.isValid() && storage.context() == context && capture.current();
+        }
+    }
+
+    /** Skipped null/invalid inputs also belong to the exact captured lookup opinion. */
+    private record Binding(ResourceHatch hatch, boolean valid, boolean present, @Nullable Object identity,
+                           @Nullable StorageContext context, boolean storageValid) {
+        private boolean current() {
+            if (hatch.isValid() != valid) return false;
+            if (!valid) return true;
+            var storage = hatch.input();
+            return present ? storage != null && storage.isValid() == storageValid && storage.context() == context
+                && hatch.inputStorageIdentity() == identity : storage == null;
         }
     }
 
