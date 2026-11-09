@@ -60,7 +60,8 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         public CandidateGroup(String name) { this(name, 1); }
     }
 
-    public record Energy(long amount, Role role) {
+    public record Energy(long amount, Role role, boolean perTick) {
+        public Energy(long amount, Role role) { this(amount, role, false); }
         public Energy {
             Objects.requireNonNull(role);
             if (amount <= 0) throw new IllegalArgumentException("Non-positive display energy");
@@ -151,7 +152,11 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         }
 
         public void energy(long amount, Role role, Text line) {
-            information(new Text(line.text(), line.arguments(), line.context(), new Energy(amount, role)));
+            energy(amount, role, false, line);
+        }
+
+        public void energy(long amount, Role role, boolean perTick, Text line) {
+            information(new Text(line.text(), line.arguments(), line.context(), new Energy(amount, role, perTick)));
         }
 
         public JeiRecipeDisplay build() {

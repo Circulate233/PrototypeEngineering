@@ -4,6 +4,9 @@
 
 ## 当前检查点
 
+- 2026-11-09 PM 缺失工具/旋转光照/能量 JEI：范围结构选择器和机械构建器及原 GUI/模型/124 张 PNG 已接入；控制器按实际顶点格式旋转法线与剔除方向；CleanMix 关闭运行依赖传递，实际测试 Gson 已从 2.2.4 恢复为 2.14.0。JEI 补回红石/荧石能量列表条目、透明提示/检索槽及方向/时机索引。完整1693 tests/221 suites全零，末次两项专项/build通过；33 Java、两语言、依赖脚本本机全级零，MCP build成功。证据 `build/staging/pm-tools-and-lighting/`，入口 [结构工具](structure-tools.md)、[控制器资源](controller-assets.md)、[JEI](jei.md)。真实游戏验收待用户，其余代理/总goal暂停。
+
+
 - 2026-11-09 默认JEI布局反馈：取消说明分页，固定两侧各4×4完整PM槽背景；实际字体换行/池级最大高度向Y展开，所有材料页显示完整说明，页脚与输入边界同步。文案改为加工时间、能量消耗/产出等玩家表达，移除默认技术介绍。专项33项、完整1682 tests/217 suites全零；12 Java及两语言本机全级零，MCP build成功。完整验证记录从`build/staging/jei-default-layout/`和[JEI说明](jei.md)进入。真实视觉待用户复验；其余迁移/代理/总goal保持暂停。
 
 - 2026-11-09 仓室再次反馈：擦除42张仓室纹理的升级槽装饰、修正主体宽度与材料交互仓Lv3/4输出区偏移；能源单向仓电池右移23px并拓宽左侧，交互仓两根电池/两行数量分别同步和提示。用户明确能源交互仓为双独立容器，已分开真实余额、机器/Forge方向、预留、NBT与生命周期；PM原实现单storage/单电池动态接线仅作调查事实。专项28项、完整1680 tests/216 suites全零，10 Java本机全级零。证据 `build/staging/hatch-io-layout/`；实机仍待用户复验，其他迁移/代理/总goal暂停。
@@ -16,6 +19,9 @@
 - 已完成阶段及证据从实施进度/专题恢复：研究下载、接口用户盘、材料破坏会话、个人遗忘/管理员绝对等级、结构 A/B/C/D1/D2/D3 与 AE GUI/ModularUI 撤除。历史暂停/停止均不替代当前恢复后的目标；不在本索引重复其测试记录。
 
 ## 下一步
+
+- 当前新增复验范围：用户自行运行 client，核对 CleanMix/Gson 启动、两件结构工具原 GUI 和实际建造/拆卸、控制器各朝向光照，以及红石/荧石能量 JEI 条目的提示/检索。具体操作从 [结构工具](structure-tools.md) 进入；构建和逻辑测试不替代游戏验收。
+
 
 - 当前优先级覆盖下方历史队列：按 [GUI 原效果修复](gui-parity.md) 等待用户实机复验：仓室/能源/控制器、结构预览、JEI 多可选材料轮播及普通/PEA 样板终端导入，其余迁移及总 goal 暂停；run 边界示例已交付并安装，按 `run/visual-examples/README.md` 的 build/stock/charge 命令测试实际成型与运行。
 
@@ -54,6 +60,7 @@
 | 配方池 JEI 默认/独立自定义页面 | [jei.md](jei.md) |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md) |
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md) |
+| 范围结构选择器/机械构建器 | [structure-tools.md](structure-tools.md) |
 | 机器声明/整批绑定 | [machine-types.md](machine-types.md) |
 | 装配/NBT/稳定边界 | [machine-persistence.md](machine-persistence.md) |
 | PN 持久身份/准确登记/后续授权 | [machine-identity.md](machine-identity.md)、[pn-identity-migration-audit.md](pn-identity-migration-audit.md) |

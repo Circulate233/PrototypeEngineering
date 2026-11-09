@@ -35,6 +35,7 @@ import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 /** Public concrete preview control for AEBaseGui and independent custom RecipePoolJeiPage composition. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewScene implements AutoCloseable {
@@ -180,6 +181,11 @@ public final class StructurePreviewScene implements AutoCloseable {
                     if (view.threeDimensional) frame.draw(ray.origin());
                     GlStateManager.disableTexture2D();
                     GlStateManager.disableLighting();
+                    if (!highlighted.isEmpty()) {
+                        GlStateManager.disableDepth();
+                        for (var position : highlighted) RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
+                        GlStateManager.enableDepth();
+                    }
                     var picked = view.picked();
                     if (!view.wireframe && picked != null && view.visible(picked)) {
                         GlStateManager.disableDepth();
@@ -296,9 +302,15 @@ public final class StructurePreviewScene implements AutoCloseable {
             font.drawString(text, px - font.getStringWidth(text) / 2, py - 4, i == 0 ? 0xff5555 : 0xffffff);
         }
     }
+
+    private Set<BlockPos> highlighted = Set.of();
+    public void highlighted(Set<BlockPos> positions) { highlighted = Set.copyOf(positions); }
     public boolean press(double x, double y, int button) { return camera.press(viewport, x, y, button); }
     public boolean drag(double x, double y) { var bounds = view.sceneBounds(); return bounds != null && camera.drag(x, y, bounds, viewport); }
     public boolean release(double x, double y, int button) { return camera.release(button) && view.choose(camera.pick(view, viewport, x, y)); }
+
+    /** Finish a read-only scanner drag without choosing a block. */
+    public void releaseWithoutPicking(int button) { camera.release(button); }
     public boolean wheel(double x, double y, int delta) { return camera.wheel(viewport, x, y, delta); }
     @Override public void close() {
         if (closed) return;

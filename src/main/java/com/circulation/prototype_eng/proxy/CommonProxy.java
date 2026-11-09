@@ -37,7 +37,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.common.network.IGuiHandler;
-
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
@@ -61,8 +60,10 @@ import net.minecraft.network.NetworkManager;
 import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.math.AxisAlignedBB;
 import com.circulation.prototype_eng.scheduler.SchedulerCommand;
-
-/** Shared lifecycle for dedicated and integrated servers, inherited by the client proxy. */
+import com.circulation.prototype_eng.container.StructureToolContainer;
+/**
+ * Shared lifecycle for dedicated and integrated servers, inherited by the client proxy.
+ */
 public class CommonProxy implements IGuiHandler {
     public AxisAlignedBB controllerRenderBounds(MachineControllerBlockEntity tile) {
         return new AxisAlignedBB(tile.getPos());
@@ -172,8 +173,15 @@ public class CommonProxy implements IGuiHandler {
 
     @Override
     public Object getServerGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
-        if (id == ResearchGuiAccess.GUI_ID) { return new ResearchContainer(player.inventory); }
-        if (id != 0 || !world.isBlockLoaded(new BlockPos(x, y, z))) { return null; }
+        if (id == StructureToolContainer.GUI_ID) {
+            return StructureToolContainer.open(player.inventory, x);
+        }
+        if (id == ResearchGuiAccess.GUI_ID) {
+            return new ResearchContainer(player.inventory);
+        }
+        if (id != 0 || !world.isBlockLoaded(new BlockPos(x, y, z))) {
+            return null;
+        }
         return switch (world.getTileEntity(new BlockPos(x, y, z))) {
             case MachineControllerHost machine -> MachineGuiRegistry.create(player.inventory, machine);
             case ResourceHatchGuiHost resource -> new ResourceHatchContainer(player.inventory, resource);

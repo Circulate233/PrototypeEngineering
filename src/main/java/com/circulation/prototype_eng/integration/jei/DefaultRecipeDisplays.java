@@ -171,7 +171,7 @@ public class DefaultRecipeDisplays {
         if (amount > 0) {
             var text = stage == JeiText.Tick ? (input ? JeiText.EnergyInputPerTick : JeiText.EnergyOutputPerTick)
                 : (input ? JeiText.EnergyInput : JeiText.EnergyOutput);
-            display.energy(amount, input ? INPUT : OUTPUT, of(text, amount));
+            display.energy(amount, input ? INPUT : OUTPUT, stage == JeiText.Tick, of(text, amount));
         }
     }
 }

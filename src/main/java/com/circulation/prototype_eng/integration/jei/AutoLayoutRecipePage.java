@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.integration.jei;
 
 import ae2.api.client.AEKeyRendering;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
+import com.circulation.prototype_eng.api.client.jei.JeiEnergyIngredients;
 import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeIngredients;
 import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
@@ -134,6 +135,9 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         recipe.layout = layout;
         recipe.ingredients().initialize(layout, inputLayout(), outputLayout(), renderOptions());
         recipe.refresh();
+        int energySlot = 0;
+        for (var paragraph : recipe.explanation.paragraphs()) if (paragraph.source().energy() != null)
+            JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 2, INFORMATION_Y + paragraph.y(), WIDTH - 4, paragraph.height());
         layout.setRecipeId(pool.id().getNamespace(), recipe.recipe().id());
     }
 

@@ -7,7 +7,10 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation "com.cleanroommc:cleanmix:0.7.4"
+    implementation("com.cleanroommc:cleanmix:0.7.4") {
+        // The game supplies Gson/Guava/ASM; CleanMix's old runtime dependencies shadow them in tests.
+        transitive = false
+    }
     modImplementation 'mezz:jei:4.35.1'
     // Keep the original Gecko coordinate; this repository delivers a jar whose VERSION field is 3.0.30.
     modImplementation 'software.bernie.geckolib:geckolib-forge-1.12.2:3.0.31'

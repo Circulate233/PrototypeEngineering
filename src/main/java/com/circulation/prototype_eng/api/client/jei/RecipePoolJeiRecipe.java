@@ -58,6 +58,7 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
     @Override
     public void getIngredients(IIngredients target) {
         ingredients.index(target);
+        JeiEnergyIngredients.index(target, display);
     }
 
     /** Call super when overriding drawInfo so the native Forge scroll bridge sees the drawn bounds. */

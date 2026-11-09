@@ -1,5 +1,12 @@
 # 实施进度
 
+- 2026-11-09 PM 工具/光照与 JEI 能量：主代理补入范围结构选择器、机械构建器，原模型及 124 张 PNG 原字节复用，AEBaseGui 保留 PM 原控件坐标、树/预览/按钮/提示。扫描选区、自动/手动原点和 24 朝向、当前 JSON 导出/唯一 id；构建器真实服务端建造/拆卸、材料/流体扣还、绑定失效、暂停/恢复与 Forge 事件已接线。原 PM 无导出算法的开关保留 UI/NBT，不冒充新功能。入口 [结构工具](structure-tools.md)。
+- 控制器旋转按真实 VertexFormat 转 POSITION/NORMAL，保留 UV/tint/sprite/diffuse；光照 face 与剔除桶分别旋转，null 桶不迁入方向桶，90°整轴旋转避免浮点漂移。四项模型测试通过。JEI 恢复 PM 的独立能量 ingredient：列表红石/荧石、方向×一次/逐 tick 四条目、数量无关查询索引、配方能源说明上的透明提示/检索槽；原材料 GenericStack 及样板导入分组保持。
+- CleanMix 的 implementation 关闭 transitive，注解处理器声明保留。dependencyInsight 原证据为 Gson 2.2.4 经 CleanMix 进入 testRuntimeClasspath；修复后实际测试 classpath 加载 gson 2.14.0，并以同一 classpath 成功调用 JsonParser.parseString。未通过游戏初始化规避依赖问题，未启动客户端；用户再次 runClient 的实际结果仍待复验。
+- 验证：光照专项4项、工具/光照专项11项、JEI能量合并专项10项均通过；完整 full-final 为 1693 tests / 221 suites，零失败/错误/跳过。最后 JEI 空值注解与 Renderer record 调整后两项专项和 build 成功；33 Java、两语言和 dependencies.gradle 本机 get_file_problems(errorsOnly:false) 全零，无超时，最终 MCP build isSuccess:true/problems:[]。首轮旧Gson NoSuchMethodError、早期编译修复及 IDEA 警告保留原证据；最终日志、XML与报告在 build/staging/pm-tools-and-lighting。
+- 本阶段用 before→final 增量生成独立提交候选，保留用户原暂存 PM 许可证删除、docs/INDEX.md~、未跟踪 JeiResourceReloadTest 与其他背景修改。精确提交及工作字节保护记录从 stage/exact-commit 进入。未推送、未启动 Minecraft/服务端/Bootstrap/FML；工具视觉/真实建造、旋转光照及 JEI 查询仍待用户复验，其他代理和总 goal 继续暂停。
+
+
 - 2026-11-09 默认JEI页修复：仅材料分页；两侧各16个PM空槽背景独立于ingredient数量绘制；说明不截断、不另开页，按实际Minecraft字体换行与池内最大高度扩展Y，能源图标与多行文字取较高者，页脚点击/悬停/滚轮同步。移除默认Definition/Runtime技术介绍；加工时间只画一次且参与换行，阶段/概率/候选/FE文案参考MMCE。GenericStack、同槽轮播、Tick×duration和全量样板导入保持。专项33 tests/8 suites、正常完整build的1682 tests/217 suites全部零失败/错误/跳过；12 Java及两语言的本机errorsOnly:false错误/警告/弱警告全零，MCP build成功。首次旧标签边界断言失败、固定参数清理遗漏导致编译失败、两份新Java行尾格式检查失败均修正并保留原记录。原有未跟踪JeiResourceReloadTest只适配无游戏字体fixture并保留未跟踪状态，不混入本地提交；用户原暂存删除和其他背景均保护。写前、日志/XML、本机MCP及精确提交在build/staging/jei-default-layout，未启动游戏。
 
 - 2026-11-09 交互仓/升级槽反馈：逐张检查42张原图，删除所有材料/能源仓的独立装饰槽栏；能源输入输出仓内部四格区域被移除，原电池整体右移23像素，标题/数量/速率框扩宽23像素，真实hit/clip区域同步。材料仓界面按主体像素宽度居中，修复交互仓Lv3/4输出左边界123→119、槽区顶部对齐24，保留槽数及双方真实存储。去掉穿过全宽标题的旧竖线，材料tooltip分别标明输入/输出，槽位使用占用槽数而非去重key数，容量/AEKey/容器提示继续沿原路径。

@@ -4,6 +4,15 @@
 
 ## 2026-11-09 默认布局实机反馈修复
 
+### 能量条目恢复
+
+PM 的 `EnergyJeiIngredientListRenderer` 在 JEI 列表借用红石表示消耗、荧石粉表示产出；实际注册的是自定义能量 ingredient，并未注册新的实体物品。其配方页默认文字、可选能量条负责外观，透明 `EnergyJeiIngredientSlotRenderer` 提供 tooltip、焦点和点击检索。原 `EnergyRequirementJeiRenderer` 顶部“energy is not a JEI ingredient type”注释已经与其实际 `declareJeiSlots` 接线不符，以代码为准。
+
+本项目通过 `JeiEnergyIngredients` 恢复这套能力：注册同一个 TYPE 和消耗/产出×一次性/逐 tick 四个列表条目；`RecipePoolJeiRecipe` 对完整能量数据建立索引，默认每条能源说明附透明 JEI 槽。Helper 的查询身份只含方向和时机，忽略数量；tooltip 保留真实 FE 或 FE/t 数量。自定义页面可调用同一 `slot` 方法。旧 `Energy(amount, role)` 与 Builder.energy 重载仍保留，默认一次性。
+
+该 FE 条目与原生物品/非物品 GenericStack 材料分组各自注册；材料候选和样板导入仍读取原分组，独立 FE 不伪装成可导入的物品。两项回归测试覆盖数量无关的检索身份以及完整能量索引，完整 1693 tests / 221 suites 全零，末次注解/record 修改后的专项两项及 build 通过。本机全级检查和 MCP build 成功；实际 JEI 点击查询待游戏验证。证据 `build/staging/pm-tools-and-lighting/`。
+
+
 用户截图中的第二页由“说明每页两条”产生，与材料溢出无关。本次取消说明分页：页数只按两侧材料组每页16槽计算，每个材料分页重复完整说明。输入、输出固定各4×4槽位，category在原生ingredient之前独立绘制全部PM plaid背景，不加入占位ingredient，也不污染查询或样板导入。
 
 参照MMCE的CategoryDynamicRecipe/DynamicRecipeWrapper，将说明实际换行所需高度计入分类。生产使用当前Minecraft FontRenderer的行高和listFormattedStringToWidth，同池取最大高度；保留160px最小高度，说明超过时向Y展开，页脚按钮、悬停与滚轮边界使用同一实例高度。能源图标留18×18，文字另留宽度，按图标与多行文字的较高者排版；所有说明不截断。语言/资源重载重建category时重测，不复用旧语言高度。加工时间只在说明区出现一次并参与换行，箭头保持原PM模块并对齐材料区中心；顶部适用机器标签居中完整显示。

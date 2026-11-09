@@ -24,6 +24,8 @@ import mcp.MethodsReturnNonnullByDefault;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import ae2.container.me.patternencode.ContainerPatternEncodingTerm;
 import ae2.container.me.patternencode.ContainerPEATerm;
+import com.circulation.prototype_eng.api.client.jei.JeiEnergyIngredients;
+import mezz.jei.api.ingredients.IModIngredientRegistration;
 /**
  * HEI 4.35.1 discovers this entry on the client; common mod initialization never references it.
  */
@@ -33,6 +35,7 @@ import ae2.container.me.patternencode.ContainerPEATerm;
 @MethodsReturnNonnullByDefault
 @SuppressWarnings("unused") // Discovered by HEI's @JEIPlugin scan on the client.
 public class PrototypeJeiPlugin implements IModPlugin {
+    @Override public void registerIngredients(IModIngredientRegistration registration) { JeiEnergyIngredients.register(registration); }
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration) {
         var pools = RecipeRegistry.INSTANCE.pools();

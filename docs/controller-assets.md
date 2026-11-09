@@ -1,5 +1,14 @@
 # 默认控制器美术与模型映射
 
+## 2026-11-09 工具补齐与旋转光照修复
+
+范围结构选择器、机械构建器的原模型和 124 张工具/状态 PNG 已接入，模型只改命名空间，两件工具都沿 PM 引用 construction_instrument。操作、原布局与验收边界见 [结构工具](structure-tools.md)。PNG 原字节证据在 `build/staging/pm-tools-and-lighting/original-assets.json`。
+
+控制器保留当前 PM 24 朝向映射，修正运行时旋转四边形时法线、顶点格式和剔除桶的处理。依据每个 quad 的实际 VertexFormat，通过 Forge LightUtil 解包/打包 POSITION 与 NORMAL 并作精确 90° 轴旋转；不再假定顶点步长或遗漏法线。光照面与剔除方向分别旋转，原 null 剔除桶保持 null；tint、sprite、diffuse、UV 及其他顶点元素保留。四项专项与完整构建通过，真实光照仍待用户复验。
+
+下文资源来源和早期迁移记录为历史；当前控制器 GUI 原图/交互以 [GUI 修复](gui-parity.md) 为准。
+
+
 资源来自 `F:/clone/PrototypeMachinery/src/main/resources/assets/prototypemachinery`，对应 PM 提交 `034541c593ee735312904e635c7ea17db1e376a1`；注册行为参考 `src/main/kotlin/client/registry/ModelRegisterer.kt`。
 
 默认控制器资源链为 `blockstates/default_controller.json` → `models/block/block_controller.json`，物品由 `models/item/default_controller.json` 引用同一方块模型。这部分复制的资源共 3 份模型/blockstate JSON、7 张 PNG 与 3 份外壳 CTM 元数据：

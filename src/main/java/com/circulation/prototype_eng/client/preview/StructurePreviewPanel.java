@@ -23,12 +23,18 @@ import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.init.SoundEvents;
 import java.util.Comparator;
 import com.circulation.prototype_eng.client.gui.GuiLabel;
+import java.util.function.BiConsumer;
 /** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewPanel implements AutoCloseable {
     public static final int WIDTH = 184, HEIGHT = 220;
     static final int SCENE_X = 6, SCENE_Y = 13;
     private final StructurePreviewView view;
+    private boolean construction;
+    public void construction() { construction = true; view.scan = true; }
+
+    private BiConsumer<StructureDisplay, Integer> alternativeSelected = (_, _) -> { };
+    public void onAlternativeSelected(BiConsumer<StructureDisplay, Integer> listener) { alternativeSelected = Objects.requireNonNull(listener); }
     private final StructurePreviewScene scene;
     private final EntityPlayer player;
     private final Object world, connection;
@@ -180,11 +186,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private void project() {
-        var anchor = StructurePreviewScreensAnchor.current();
+        var anchor = construction ? view.anchor() : StructurePreviewScreensAnchor.current();
         view.anchor(anchor);
         if (view.previews().project(view.id(), view.settings(), anchor,
             new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false, null, 2048, 0, 4096, 64)))
-            ProjectionInteractions.INSTANCE.follow();
+            if (!construction) ProjectionInteractions.INSTANCE.follow();
     }
 
     private void layerSlider() {
@@ -229,14 +235,21 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 int option = index;
                 slot("option" + index, alternative, x, 31 + row++ * 18, false,
                     List.of(PreviewUiText.Candidate.getLocal(alternative.getDisplayName()), PreviewUiText.ClickToSelect.getLocal(),
-                        PreviewUiText.Key.getLocal(optionKey(selected.options().get(index)))), () -> view.alternative(drawnToken, selected, option));
+                        PreviewUiText.Key.getLocal(optionKey(selected.options().get(index)))), () -> {
+                            if (view.alternative(drawnToken, selected, option)) alternativeSelected.accept(selected, option);
+                        });
             }
         });
         var model = view.model();
-        if (!view.materialsOpen || model == null) return;
+        if ((!view.materialsOpen && !(construction && selected != null)) || model == null) return;
         sprite("base_material_preview_ui", 29, 31, 134, 163);
         var bom = selected == null ? new ObjectArrayList<>(model.bom())
             : new ObjectArrayList<>(List.of(new StructurePreviewModel.BomLine(selected, 1)));
+        if (construction && selected == null && view.scan) {
+            bom.clear();
+            for (var material : view.materials(StructurePreviewPanel::shortName, PreviewUiText.Unknown.getLocal()))
+                if (material.mismatch() > 0) bom.add(new StructurePreviewModel.BomLine(material.display(), material.mismatch()));
+        }
         bom.sort(Comparator.comparingLong(StructurePreviewModel.BomLine::count).reversed());
         int row = 0;
         for (var line : bom) {
@@ -249,7 +262,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             var tooltip = new ObjectArrayList<String>();
             tooltip.add(stack.getDisplayName());
             if (selected == null) {
-                tooltip.add(PreviewUiText.Required.getLocal(count));
+                tooltip.add((construction ? PreviewUiText.Remaining : PreviewUiText.Required).getLocal(count));
                 tooltip.add(PreviewUiText.Key.getLocal(display.key()));
             } else {
                 tooltip.add(PreviewUiText.Requirement.getLocal(shortName(display)));

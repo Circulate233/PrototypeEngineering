@@ -16,6 +16,13 @@ public final class ClientStructureCatalog {
     @Nullable private Pending pending;
     private final ObjectArrayList<Invalidation> invalidations = new ObjectArrayList<>();
 
+    /** Detached, screen-owned world selection; never installed in the connected server directory. */
+    public static ClientStructureCatalog local(StructureCatalogView view) {
+        var catalog = new ClientStructureCatalog();
+        catalog.view = Objects.requireNonNull(view);
+        return catalog;
+    }
+
     public void connected(Object connection) {
         requireOwner(); Objects.requireNonNull(connection);
         if (this.connection == connection) return;

@@ -1,0 +1,82 @@
+package com.circulation.prototype_eng.localization;
+
+import ae2.core.localization.LocalizationEnum;
+import com.circulation.prototype_eng.Tags;
+
+/** PM tool labels and messages, shared by server translations and client tooltips. */
+public enum StructureToolText implements LocalizationEnum {
+    ScannerTitle,
+    BuilderTitle,
+    OriginSet,
+    CornerSet,
+    SelectCorner,
+    ExportHint,
+    BuildInstrumentOffset,
+    BuildInstrumentSliceSuffix,
+    BuildInstrumentSubstructureLabel,
+    BuildInstrumentSliceSlider,
+    BuildInstrumentMaterialsTitle,
+    BuildInstrumentMaterialsTitleWithCount,
+    BuildInstrumentMaterialAnyofEntry,
+    BuildInstrumentMaterialEntry,
+    BuildInstrumentMaterialOptionChoose,
+    BuildInstrumentMaterialOptionSelected,
+    BuildInstrumentReqAnyof,
+    BuildInstrumentReqDisplay,
+    BuildInstrumentReqNbtMarker,
+    BuildInstrumentReqNbtConstraints,
+    BuildInstrumentReqUnknown,
+    ScannerTooltipPreview,
+    ScannerTooltipLangName,
+    ScannerTooltipStructureId,
+    ScannerTooltipExpandedEnabled,
+    ScannerTooltipExpandedQuantity,
+    ScannerTooltipExpandedSpacing,
+    ScannerTooltipSubstructure,
+    ScannerTooltipMatchNbt,
+    ScannerTooltipAllowMirror,
+    ScannerTooltipExportOriginX,
+    ScannerTooltipExportOriginY,
+    ScannerTooltipExportOriginZ,
+    ScannerTooltipResetOriginInput,
+    ScannerTooltipSetOriginFromInput,
+    ScannerSizePreviewEmpty,
+    ScannerSizePreviewValue,
+    ScannerTooltipResetPreviewOrientation,
+    ScannerTooltipPreviewMirror,
+    ScannerTooltipPreviewFacingUp,
+    ScannerTooltipPreviewFacingDown,
+    ScannerTooltipPreviewFacingEast,
+    ScannerTooltipPreviewFacingWest,
+    ScannerTooltipPreviewFacingNorth,
+    ScannerTooltipPreviewFacingSouth,
+    ScannerTooltipPreviewRot0,
+    ScannerTooltipPreviewRot1,
+    ScannerTooltipPreviewRot2,
+    ScannerTooltipPreviewRot3,
+    ScannerTooltipPreviewRotOther,
+    ScannerTooltipClear,
+    ScannerTooltipReset,
+    ScannerTooltipExport,
+    Bound,
+    Unbound,
+    NeedSelection,
+    Exported,
+    ExportFailed,
+    Unloaded,
+    Build,
+    Disassemble,
+    Pause,
+    Resume,
+    Waiting,
+    Complete,
+    Unavailable,
+    ScanHint,
+    BuildHint;
+    private final String translationKey = "structure_tool." + Tags.MOD_ID + "." + name();
+
+    @Override
+    public String getTranslationKey() {
+        return translationKey;
+    }
+}

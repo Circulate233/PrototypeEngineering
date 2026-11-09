@@ -66,6 +66,9 @@ import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.client.event.ModelBakeEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
+import com.circulation.prototype_eng.client.gui.ScannerInstrumentGui;
+import com.circulation.prototype_eng.client.gui.BuilderInstrumentGui;
+import com.circulation.prototype_eng.container.StructureToolContainer;
 @SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
 public class ClientProxy extends CommonProxy {
     private ModelBuildCache modelBuilds;
@@ -355,6 +358,9 @@ public class ClientProxy extends CommonProxy {
     @Override
     public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         return switch (getServerGuiElement(id, player, world, x, y, z)) {
+            case StructureToolContainer tool -> tool.builder()
+                ? new BuilderInstrumentGui(tool, player.inventory)
+                : new ScannerInstrumentGui(tool, player.inventory);
             case ResearchContainer research -> new ResearchGui(research, player.inventory);
             case ResourceHatchContainer resource -> new ResourceHatchGui(resource, player.inventory);
             case EnergyHatchContainer energy -> new EnergyHatchGui(energy, player.inventory);

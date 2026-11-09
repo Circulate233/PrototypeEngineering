@@ -37,6 +37,14 @@ public final class StructurePreviewCamera {
         return Math.clamp(3.5 * Math.sqrt(size) / (2.6 * size), .25, 8);
     }
 
+    /** Retains the user's camera while the scanner replaces its detached selection model. */
+    public void copyViewFrom(StructurePreviewCamera previous) {
+        yaw=previous.yaw;pitch=previous.pitch;zoom=previous.zoom;
+        yawTarget=previous.yawTarget;pitchTarget=previous.pitchTarget;zoomTarget=previous.zoomTarget;
+        pan=previous.pan;panTarget=previous.panTarget;preparedBounds=previous.preparedBounds;
+        lastFrame=-1;dragButton=-1;
+    }
+
     public void reset() {
         yaw = yawTarget = -45;
         pitch = pitchTarget = 25;
