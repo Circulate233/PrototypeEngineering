@@ -1,12 +1,28 @@
 # PM 结构工具
 
+## 2026-11-10 无法打开及原 GUI 补漏
+
+用户实机日志 `run/logs/latest.log` 反复记录 `Client action structure_tool max payload length must be between 0 and 16384`，在 StructureToolContainer 构造阶段失败，因此两个 GUI 均无法打开。原声明写了32768；现改用AEBaseContainer的默认动作注册重载，由AE自身应用合法上限。原始日志保存在 `build/staging/pm-tool-gui-parity/runtime-before.log`；以前仅有源码/构建证据不能证明已经能打开。
+
+逐项对照 PM 的 ScannerInstrumentItem、ScannerInstrumentUi、ScannerInstrumentClientUi、ScannerSelectionRenderHandler、BuildInstrumentUi、BuildInstrumentClientUi、TreeDiagramWidget 与 BuildInstrumentProgressBarWidget：
+
+- 两个384×228面板、原底图裁切、选择器7个输入框/5个开关/滑条/方向转向按钮、构建器预览(4,2)/树(191,8)/进度条/状态按钮沿原布局。124张工具纹理再次逐字节核对原文件；没有引入MUI依赖。
+- 选择器补回主/副手世界选区轮廓：原点青色、角点黄色、范围绿色，16³以内显示非空气方块轮廓，原颜色/透明度/2px线宽；恢复重新选点、选区尺寸/体积、更新角点和大选区提示。
+- 预览指南针对回原34px背景、半径11、4px内距、阴影文字和中央加号。重设原点同步关闭自动原点；重设朝向按PM仅恢复北向/自动标志，在下次打开或导出时自动识别，不立即覆盖用户刚看到的重设结果。
+- 构建器树恢复根视图初始化与平移边界、连接线及交点覆盖、按数量降序的材料列表、原文字颜色、按钮完整命中矩形及滑块手柄悬停。节点选择只更新对应结构高亮，不擅自打开左侧材料选择；材料按钮才写回候选，已选按钮不重复执行。高亮只在选择/结构数据改变时重算。
+- 未绑定或缺少结构数据时显示PM原“No structure data”；撤去原PM未配置的任务按钮/进度条/树整行额外tooltip，任务按钮按原normal/hover分支绘制。左侧原预览控件提示保留。
+- 大选区按PM规则：不超过32768显示全部；超过时保留完整外表面。之前的稀疏采样会漏可见方块，现用惰性六面遍历并每帧读取4096坐标，完整结果就绪后发布，名称修改不重建预览、相机视图保留。新增逻辑用例验证完整表面、不重复、退化平面及int边界上的有界读取。
+
+完整1694 tests/221 suites全零；末次迭代器检查清理后的5项专项/build通过，10 Java及两语言本机全级零并全文读回与磁盘一致，MCP build成功。完整日志、原始失败、本机报告与精确本地提交在 `build/staging/pm-tool-gui-parity/`。未启动Minecraft/服务端/Bootstrap/FML；用户重新运行客户端后的视觉和实际建造仍需复验，不将这些结果称为视觉验收。
+
+
 本阶段恢复 PM 的范围结构选择器与机械构建器。入口为 `StructureToolItems`、`StructureToolItem`、`StructureToolContainer`、`structure/tool` 和两个对应的 AEBaseGui。它们属于通用库工具，主产物未新增示例机器或配方。
 
 ## 范围结构选择器
 
 注册名 `prototype_eng:scanner_instrument`，保留原 `pm_scanner` NBT。右键方块选择两角，潜行右键重选，跨维度重新开始；对空气右键打开界面。界面保留 PM 的原点、方向、转向、名称/ID、NBT 与其他原开关、滑条以及清空/初始化/导出按钮。
 
-自动原点/朝向读取选区内控制器，通过宿主稳定边界获取方向；导出等待该回调，陈旧选区或宿主不再有效时不继续。手动原点与 24 朝向同样支持。扫描预览使用独立本地结构目录，不覆盖服务器同步目录；大选区最多采样 32768 点并包含两端角点，修改名称不重置相机。
+自动原点/朝向读取选区内控制器，通过宿主稳定边界获取方向；导出等待该回调，陈旧选区或宿主不再有效时不继续。手动原点与 24 朝向同样支持。扫描预览使用独立本地结构目录，不覆盖服务器同步目录；32768格以内完整显示，超过时完整保留外表面、按帧预算读取，修改名称不重置相机。
 
 导出使用本项目现有 JSON schema，写入 `config/prototype_eng/structures/scanned`，每次容器更新最多处理 4096 个坐标。坐标和朝向转为模板空间，略过空气及原点；可选 NBT 排除世界 x/y/z。重复导出使用 `_2` 等后缀，同时修改文件内 id，已有文件不覆盖；完成后清空选区。当前 loader 读回测试已通过。
 

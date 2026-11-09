@@ -25,7 +25,6 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     private final BuilderStructureTree tree;
     private StructurePreviewPanel preview;
     private ResourceLocation id;
-    private boolean taskPressed;
     private String appliedSelections = "";
     private BlockOrientation orientation;
 
@@ -33,9 +32,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         super(container, player);
         xSize = 384;
         ySize = 228;
-        tree = new BuilderStructureTree(container, display -> {
-            if (preview != null) preview.view().select(display);
-        }, positions -> {
+        tree = new BuilderStructureTree(container, positions -> {
             if (preview != null) preview.scene().highlighted(positions);
         });
     }
@@ -43,7 +40,12 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     private void refresh() {
         var tag = container.snapshot();
         String name = tag.getString("BoundStructureId");
-        if (!tag.getBoolean("Bound") || name.isBlank()) return;
+        if (!tag.getBoolean("Bound") || name.isBlank()) {
+            if (preview != null) preview.close();
+            preview = null;
+            id = null;
+            return;
+        }
         var next = new ResourceLocation(name);
         var anchor = BuilderState.position(tag);
         var host = mc.world != null && mc.world.provider.getDimension() == tag.getInteger("BoundDim")
@@ -106,15 +108,14 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     public void drawFG(int x, int y, int mx, int my) {
-        if (id != null) {
-            GlStateManager.pushMatrix();
-            try {
-                GlStateManager.translate(191, 8, 0);
-                tree.draw(preview.view().previews().catalogView(), id, orientation, mx - x - 191, my - y - 8);
-            } finally {
-                GlStateManager.popMatrix();
-            }
-        } else fontRenderer.drawStringWithShadow(StructureToolText.Unbound.getLocal(), 10, 207, 0xffffff);
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(191, 8, 0);
+            tree.draw(preview == null ? null : preview.view().previews().catalogView(), id, orientation, mx - x - 191, my - y - 8);
+        } finally {
+            GlStateManager.popMatrix();
+        }
+        if (!container.snapshot().getBoolean("Bound")) fontRenderer.drawStringWithShadow(StructureToolText.Unbound.getLocal(), 10, 207, 0xffffff);
         var tag = container.snapshot();
         var state = BuilderState.state(tag);
         int done = BuilderState.done(tag), total = BuilderState.total(tag);
@@ -129,7 +130,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
             case PAUSED_BUILDING, PAUSED_DISASSEMBLING -> 30;
             case DISASSEMBLING -> 60;
         };
-        int u = taskPressed ? 42 : taskHover(mx, my) ? 21 : 0;
+        int u = taskHover(mx, my) ? 21 : 0;
         GuiAtlas.draw(GuiAtlas.texture("gui_build_instrument/button"), 357, 205, u, v, 20, 14, 80, 80);
     }
 
@@ -140,21 +141,13 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void drawScreen(int x, int y, float partial) {
         super.drawScreen(x, y, partial);
-        List<String> tip = List.of();
-        if (taskHover(x, y)) {
-            var state = BuilderState.state(container.snapshot());
-            tip = List.of((state.paused() ? StructureToolText.Resume : state == BuilderState.State.IDLE ? StructureToolText.Build : StructureToolText.Pause).getLocal());
-        } else if (x >= guiLeft + 192 && x < guiLeft + 352 && y >= guiTop + 207 && y < guiTop + 216)
-            tip = List.of(BuilderState.done(container.snapshot()) + " / " + BuilderState.total(container.snapshot()));
-        else if (x >= guiLeft + 191) tip = tree.tooltip(x - guiLeft - 191, y - guiTop - 8);
-        else if (preview != null) tip = preview.tooltip(x - guiLeft - 4, y - guiTop - 2);
+        List<String> tip = preview == null ? List.of() : preview.tooltip(x - guiLeft - 4, y - guiTop - 2);
         if (!tip.isEmpty()) drawHoveringText(tip, x, y);
     }
 
     @Override
     protected void mouseClicked(int x, int y, int button) throws IOException {
         if (button == 0 && taskHover(x, y)) {
-            taskPressed = true;
             container.action("task");
             return;
         }
@@ -172,7 +165,6 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     protected void mouseReleased(int x, int y, int button) {
-        taskPressed = false;
         tree.release(x - guiLeft - 191, y - guiTop - 8, button);
         if (preview != null) preview.release(x - guiLeft - 4, y - guiTop - 2, button);
         super.mouseReleased(x, y, button);

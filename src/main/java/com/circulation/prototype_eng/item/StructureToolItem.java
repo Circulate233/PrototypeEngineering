@@ -20,6 +20,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.NotNull;
 
+import java.math.BigInteger;
+
 /** PM's range selector and controller-bound construction instrument. */
 public final class StructureToolItem extends AEBaseItem {
     private final boolean builder;
@@ -70,9 +72,25 @@ public final class StructureToolItem extends AEBaseItem {
             }
         } else if (!world.isRemote) {
             var data = ScannerState.data(stack);
+            boolean hadCorner = ScannerState.position(data, "corner") != null;
             boolean fresh = ScannerState.select(data, pos, world.provider.getDimension(), player.isSneaking(), stack.getDisplayName());
-            player.sendMessage((fresh ? StructureToolText.OriginSet : StructureToolText.CornerSet).text(pos.getX(), pos.getY(), pos.getZ()));
-            player.sendMessage((fresh ? StructureToolText.SelectCorner : StructureToolText.ExportHint).text());
+            if (fresh) {
+                player.sendMessage((player.isSneaking() ? StructureToolText.OriginRestart : StructureToolText.OriginSet).text(pos.getX(), pos.getY(), pos.getZ()));
+                player.sendMessage(StructureToolText.SelectCorner.text());
+            } else if (hadCorner) {
+                player.sendMessage(StructureToolText.CornerUpdated.text(pos.getX(), pos.getY(), pos.getZ()));
+            } else {
+                player.sendMessage(StructureToolText.CornerSet.text(pos.getX(), pos.getY(), pos.getZ()));
+                var box = ScannerState.box(data);
+                if (box != null) {
+                    var min = box.min(); var max = box.max();
+                    var volume = BigInteger.valueOf(box.sizeX()).multiply(BigInteger.valueOf(box.sizeY())).multiply(BigInteger.valueOf(box.sizeZ()));
+                    player.sendMessage(StructureToolText.Selection.text(min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ(),
+                        box.sizeX(), box.sizeY(), box.sizeZ(), volume));
+                    if (box.exceeds(64 * 64 * 64)) player.sendMessage(StructureToolText.LargeSelection.text(volume));
+                }
+                player.sendMessage(StructureToolText.ExportHint.text());
+            }
             player.inventory.markDirty();
         }
         return EnumActionResult.SUCCESS;

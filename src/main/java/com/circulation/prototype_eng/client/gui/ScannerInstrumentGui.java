@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.client.preview.StructurePreviewScene;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import com.circulation.prototype_eng.container.StructureToolContainer;
@@ -29,6 +30,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Iterator;
 
 /** Original 384x228 PM selector, using its own textures and AE container transport. */
 public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer> {
@@ -40,6 +42,10 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
     private String pressed;
     private boolean sliding;
     private int mouseX, mouseY;
+    private Iterator<BlockPos> pendingCells;
+    private BlockPos pendingOrigin;
+    private StructureTransform pendingRotation;
+    private Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay> pendingDisplays;
 
     private record Input(ScannerState.Field field, GuiTextField widget, int x, int y, int width,
                          StructureToolText tip) {
@@ -104,7 +110,7 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
             GlStateManager.translate(x, y, 0);
             if (scene != null) {
                 scene.drawAtCurrentOrigin(10, 12, 171, 203, partial);
-                scene.compass(13, 15);
+                scene.compass(14, 16);
             }
         } finally {
             GlStateManager.popMatrix();
@@ -272,21 +278,33 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
         String next = ScannerState.position(tag, "origin") + "/" + ScannerState.position(tag, "corner") + "/" + ScannerState.origin(tag)
             + "/" + tag.getInteger("previewFacing") + "/" + tag.getInteger("previewRot")
             + "/" + tag.getBoolean(ScannerState.Field.PREVIEW_MIRROR.key) + "/" + tag.getInteger("dimension");
-        if (previewKey.equals(next)) return;
-        previewKey = next;
+        if (!previewKey.equals(next)) {
+            previewKey = next;
+            var box = ScannerState.box(tag);
+            var origin = ScannerState.origin(tag);
+            if (box == null || origin == null || mc.world == null || tag.getInteger("dimension") != mc.world.provider.getDimension()) {
+                pendingCells = null; pendingDisplays = null;
+                closePreview();
+                return;
+            }
+            pendingCells = box.previewCells();
+            pendingOrigin = origin;
+            pendingRotation = ScannerState.worldToTemplate(tag);
+            pendingDisplays = new Object2ObjectLinkedOpenHashMap<>();
+        }
+        if (pendingCells == null || mc.world == null) return;
+        for (int visited = 0; visited < 4096 && pendingCells.hasNext(); visited++) {
+            var pos = pendingCells.next();
+            if (!mc.world.isBlockLoaded(pos) || mc.world.isAirBlock(pos)) continue;
+            var cell = StructureToolExport.cell(mc.world, pos, pendingOrigin, pendingRotation, false);
+            pendingDisplays.put(cell.position(), new StructureDisplay(cell.block() + "@" + cell.meta(), List.of(new StructureDisplay.BlockOption(cell.block(), cell.meta(), Map.of())), null));
+        }
+        if (pendingCells.hasNext()) return;
+        pendingCells = null;
+        var displays = pendingDisplays;
+        pendingDisplays = null;
         var previousCamera = scene == null ? null : scene.camera();
         closePreview();
-        var box = ScannerState.box(tag);
-        var origin = ScannerState.origin(tag);
-        if (box == null || origin == null || mc.world == null || tag.getInteger("dimension") != mc.world.provider.getDimension())
-            return;
-        var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
-        var rotation = ScannerState.worldToTemplate(tag);
-        for (var pos : box.previewPositions(32768)) {
-            if (!mc.world.isBlockLoaded(pos) || mc.world.isAirBlock(pos)) continue;
-            var cell = StructureToolExport.cell(mc.world, pos, origin, rotation, false);
-            displays.put(cell.position(), new StructureDisplay(cell.block() + "@" + cell.meta(), List.of(new StructureDisplay.BlockOption(cell.block(), cell.meta(), Map.of())), null));
-        }
         var id = new ResourceLocation("prototype_eng", "scanner_preview");
         var north = BlockOrientation.get(EnumFacing.NORTH, EnumFacing.UP);
         var node = new StructureCatalogView.Node(id, north, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.copyOf(displays.keySet()), List.of());
@@ -308,6 +326,7 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void onGuiClosed() {
         commitFocused();
+        pendingCells = null; pendingDisplays = null;
         closePreview();
         super.onGuiClosed();
     }

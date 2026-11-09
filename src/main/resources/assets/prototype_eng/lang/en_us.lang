@@ -509,3 +509,8 @@ jei_energy.prototype_eng.Once=Once
 jei_energy.prototype_eng.PerTick=Per Tick
 jei_energy.prototype_eng.OnceAmount=%s FE
 jei_energy.prototype_eng.TickAmount=%s FE/t
+structure_tool.prototype_eng.NoStructureData=No structure data
+structure_tool.prototype_eng.OriginRestart=§b[PE]§r Set origin: %s,%s,%s (corner cleared)
+structure_tool.prototype_eng.CornerUpdated=§b[PE]§r Updated corner: %s,%s,%s (open GUI and click "Export")
+structure_tool.prototype_eng.Selection=§b[PE]§r Selection: min=%s,%s,%s max=%s,%s,%s size=%sx%sx%s blocks=%s
+structure_tool.prototype_eng.LargeSelection=§e[PE]§r Warning: large selection (blocks=%s); export may take time / lag the server.

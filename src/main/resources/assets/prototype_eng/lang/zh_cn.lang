@@ -509,3 +509,8 @@ jei_energy.prototype_eng.Once=一次性
 jei_energy.prototype_eng.PerTick=每 Tick
 jei_energy.prototype_eng.OnceAmount=%s FE
 jei_energy.prototype_eng.TickAmount=%s FE/t
+structure_tool.prototype_eng.NoStructureData=No structure data
+structure_tool.prototype_eng.OriginRestart=§b[PE]§r 已设置 origin: %s,%s,%s（corner 已清空）
+structure_tool.prototype_eng.CornerUpdated=§b[PE]§r 已更新 corner: %s,%s,%s（打开 GUI 点“导出”）
+structure_tool.prototype_eng.Selection=§b[PE]§r 选区: min=%s,%s,%s max=%s,%s,%s size=%sx%sx%s blocks=%s
+structure_tool.prototype_eng.LargeSelection=§e[PE]§r 警告：选区较大（blocks=%s），导出可能耗时/卡服。

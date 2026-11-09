@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -65,6 +66,28 @@ class StructureToolStateTest {
         assertTrue(points.contains(box.max()));
         var tiny = new ScannerState.Box(BlockPos.ORIGIN, new BlockPos(1, 2, 3));
         assertEquals(24, tiny.previewPositions(32768).size());
+    }
+
+    @Test
+    void scannerPreviewKeepsEveryBoundaryCellWithoutDuplicates() {
+        for (var end : List.of(new BlockPos(35, 36, 37), new BlockPos(0, 180, 190), new BlockPos(180, 0, 190), new BlockPos(180, 190, 0))) {
+            var box = new ScannerState.Box(BlockPos.ORIGIN, end);
+            var actual = new ObjectOpenHashSet<BlockPos>();
+            var cells = box.previewCells();
+            while (cells.hasNext()) assertTrue(actual.add(cells.next()));
+            for (var pos : BlockPos.getAllInBoxMutable(box.min(), box.max())) {
+                boolean boundary = pos.getX() == 0 || pos.getY() == 0 || pos.getZ() == 0
+                    || pos.getX() == end.getX() || pos.getY() == end.getY() || pos.getZ() == end.getZ();
+                assertEquals(boundary, actual.contains(pos));
+            }
+        }
+        var huge = new ScannerState.Box(new BlockPos(Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE),
+            new BlockPos(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+        assertTimeoutPreemptively(Duration.ofSeconds(2), () -> {
+            var cells = huge.previewCells();
+            assertEquals(huge.min(), cells.next());
+            for (int i = 1; i < 4096; i++) assertTrue(cells.hasNext() && cells.next() != null);
+        });
     }
 
     @Test

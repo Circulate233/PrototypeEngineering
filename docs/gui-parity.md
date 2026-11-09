@@ -1,5 +1,10 @@
 # GUI 原效果修复
 
+## 2026-11-10 两件工具继续修复
+
+范围结构选择器/机械构建器无法打开的实际异常为AE动作注册32768超过16384；已改用AE默认合法重载。对照PM原面板补回世界选区轮廓、指南针/树视图细节、完整边界预览、原点/朝向重设时机与原提示行为。具体逐项记录及验证见[结构工具](structure-tools.md)。用户已明确本块处理后返回总目标；总目标恢复不等于声称已经完成游戏视觉验收。
+
+
 ## 2026-11-09 控制器第二页与 JEI 补漏
 
 PM `DefaultMachineUI.buildMainPage` 将玩家背包挂在第一页，`buildExtensionPage` 只有内容区及扩展说明。PE 原先仅对 AppEngSlot 调用 setActive/setSlotEnabled，而 AEBaseContainer.addPlayerInventorySlots 实际创建普通 Slot，因此两处判断均未生效。

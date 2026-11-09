@@ -287,19 +287,25 @@ public final class StructurePreviewScene implements AutoCloseable {
             (color >> 8 & 255) / 255f, (color & 255) / 255f, (color >>> 24) / 255f);
     }
 
-    @SuppressWarnings("unused") // Optional custom-host overlay; PM's default preview does not enable it.
     public void compass(int x, int y) {
         var font = Minecraft.getMinecraft().fontRenderer;
-        Gui.drawRect(x, y, x + 36, y + 36, 0x66000000);
-        var right = camera.right();
-        var up = camera.up();
-        var texts = new StructurePreviewText[]{StructurePreviewText.North, StructurePreviewText.East, StructurePreviewText.South, StructurePreviewText.West};
-        int[] dx = {0, 1, 0, -1}, dz = {-1, 0, 1, 0};
-        for (int i = 0; i < 4; i++) {
-            var text = texts[i].getLocal();
-            int px = x + 18 + (int) ((dx[i] * right.x + dz[i] * right.z) * 12);
-            int py = y + 18 - (int) ((dx[i] * up.x + dz[i] * up.z) * 12);
-            font.drawString(text, px - font.getStringWidth(text) / 2, py - 4, i == 0 ? 0xff5555 : 0xffffff);
+        boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        GlStateManager.disableDepth();
+        try {
+            Gui.drawRect(x, y, x + 34, y + 34, 0x66000000);
+            var right = camera.right();
+            var up = camera.up();
+            var texts = new StructurePreviewText[]{StructurePreviewText.North, StructurePreviewText.East, StructurePreviewText.South, StructurePreviewText.West};
+            int[] dx = {0, 1, 0, -1}, dz = {-1, 0, 1, 0};
+            for (int i = 0; i < 4; i++) {
+                var text = texts[i].getLocal();
+                float px = x + 17 + (float) ((dx[i] * right.x + dz[i] * right.z) * 11);
+                float py = y + 17 - (float) ((dx[i] * up.x + dz[i] * up.z) * 11);
+                font.drawStringWithShadow(text, px - font.getStringWidth(text) / 2f, py - font.FONT_HEIGHT / 2f, i == 0 ? 0xffff5555 : 0xffececec);
+            }
+            font.drawStringWithShadow("+", x + 17 - font.getStringWidth("+") / 2f, y + 17 - font.FONT_HEIGHT / 2f, 0xffaaaaaa);
+        } finally {
+            if (depth) GlStateManager.enableDepth();
         }
     }
 

@@ -1,5 +1,11 @@
 # 实施进度
 
+- 2026-11-10 两件工具实际无法打开：日志已定位StructureToolContainer将AE动作最大消息设为32768，但API允许范围0..16384，构造即抛异常。改用AE默认注册重载；原始多次异常保留在build/staging/pm-tool-gui-parity/runtime-before.log，不再把已有GUI类当作运行通过。
+- 继续逐项对照PM原Scanner/BuildInstrument UI及TreeDiagram：补世界端点/选区/小范围方块轮廓，指南针34px/中央加号/阴影，原点重设关闭自动识别、朝向重设不立即重扫；树平移初始化/边界、节点高亮、材料排序/颜色/命中矩形、原连接线和无数据状态。撤去原PM没有的任务/进度/树整行附加tooltip。124张原纹理仍逐字节一致。大选区改为原完整外表面，六面惰性迭代每帧4096读取，替代会漏方块的稀疏采样。
+- 验证：完整1694 tests/221 suites全零；末次命名静态迭代器清理后的5项专项/build通过。10 Java及两语言本机errorsOnly:false全级零、全文读回与磁盘一致，MCP build成功。IDE旧缓存曾仍报已修复case block，经read_file实际刷新后全零；迭代器匿名/非static返回诊断已改具名static类，无压制检查。日志/XML/写前/原资源证据及精确提交均在build/staging/pm-tool-gui-parity。未启动游戏，真实视觉仍待用户重新运行客户端复验。
+- 用户已恢复总goal并要求本块完成后返回后续目标；本阶段本地提交后继续剩余Java能力迁移/核对，复验反馈优先处理。其他背景和原暂存许可证删除、INDEX.md~、未跟踪JeiResourceReloadTest全部保留，不推送。
+
+
 - 2026-11-09 JEI/控制器连续实机反馈：删除“适用机器”标题、悬停/选择面板，保留原生控制器催化剂、独立结构预览和静态绑定API。按PM JeiPanelRuntime/JeiBackgroundSpec恢复jei_base原PNG/2px九宫格背景，完整4×4双侧材料框保留，文字/图标/页脚让出边框。物品与GenericStack非物品共用阶段＋消耗/产出＋数量提示，去掉每单位1和独立阶段行，概率随role分开；候选/检查点与样板Tick语义保留。
 - 控制器第二页漏槽定位为原代码只处理AppEngSlot，而AE玩家槽是普通Slot。现以PlayerSlot页状态控制可见性与插入/取出，服务端PAGE验证和slotClick门控同向生效，原27＋9布局与物品保持。按PM DefaultMachineUI确认第二页仅为扩展内容区。没有启动游戏，不以纯测试证明视觉完全一致。
 - 验证：39 tests/10 suites专项，完整1693 tests/221 suites零失败/错误/跳过；12 Java及两语言本机get_file_problems(errorsOnly:false)全级零，最终MCP build成功。初版测试空格差异失败及传null的测试调用警告均已修正，日志保留。代码/语言、原背景字节、日志/XML、本机报告和精确提交入口build/staging/jei-catalyst-only。其他工作区背景、用户原暂存许可证删除、INDEX.md~与未跟踪JeiResourceReloadTest保留。

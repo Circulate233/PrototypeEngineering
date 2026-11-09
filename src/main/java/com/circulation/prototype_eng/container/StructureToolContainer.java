@@ -55,7 +55,7 @@ public final class StructureToolContainer extends AEBaseContainer {
         world = inventory.player.world;
         builder = ((StructureToolItem) tool.getItem()).builder();
         setGuiTitle((builder ? StructureToolText.BuilderTitle : StructureToolText.ScannerTitle).text());
-        registerClientAction("structure_tool", Action.class, 32768, this::accept);
+        registerClientAction("structure_tool", Action.class, this::accept);
         if (!world.isRemote) {
             if (!builder) autoInitialize();
             synchronize();
@@ -127,16 +127,16 @@ public final class StructureToolContainer extends AEBaseContainer {
             case "reset" -> ScannerState.reset(tag, tool.getDisplayName());
             case "originReset" -> {
                 var origin = ScannerState.origin(tag);
-                if (origin != null) ScannerState.origin(tag, origin);
+                if (origin != null) {
+                    ScannerState.origin(tag, origin);
+                    tag.setBoolean("exportOriginAuto", false);
+                }
             }
             case "originSet" -> {
                 ScannerState.origin(tag, new BlockPos(tag.getInteger(ScannerState.Field.X.key), tag.getInteger(ScannerState.Field.Y.key), tag.getInteger(ScannerState.Field.Z.key)));
                 tag.setBoolean("exportOriginAuto", false);
             }
-            case "orientationReset" -> {
-                ScannerState.resetOrientation(tag);
-                autoInitialize();
-            }
+            case "orientationReset" -> ScannerState.resetOrientation(tag);
             case "facing", "rotation" -> {
                 if (action.value.matches("[0-5]")) {
                     int value = Integer.parseInt(action.value);
