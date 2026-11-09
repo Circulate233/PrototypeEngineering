@@ -1,5 +1,7 @@
 # 实施进度
 
+- 2026-11-09 能量JEI截图复核：找到PM的io_test_jei.zs，自定义176×130布局显式使用18×18电池；DefaultJeiMachineLayout首个能量节点显式选1×3，之前仅从renderer默认值判断“默认文字”的表述已更正。当前默认页电池与原空/满图和输入/输出LED四图逐字节一致，仍按此前双侧4×4与完整说明要求排布。本次修正能量ingredient的交互区域，从整行说明收回实际18×18图标。随后按用户截图删除所有常驻说明文字及箭头加工时间的重复悬停提示；原生电池/材料和有用途的按钮提示保留。既有多页测试更新为验证说明/箭头不再返回重复tooltip，全文绘制及按字体扩展高度仍保留。13 tests/3 suites全零，build成功，2 Java本机errorsOnly:false全级零，MCP build成功。证据build/staging/jei-energy-hitbox；未启动游戏，仍不宣称整个布局与截图一致。
+
 - 2026-11-09 PM 工具/光照与 JEI 能量：主代理补入范围结构选择器、机械构建器，原模型及 124 张 PNG 原字节复用，AEBaseGui 保留 PM 原控件坐标、树/预览/按钮/提示。扫描选区、自动/手动原点和 24 朝向、当前 JSON 导出/唯一 id；构建器真实服务端建造/拆卸、材料/流体扣还、绑定失效、暂停/恢复与 Forge 事件已接线。原 PM 无导出算法的开关保留 UI/NBT，不冒充新功能。入口 [结构工具](structure-tools.md)。
 - 控制器旋转按真实 VertexFormat 转 POSITION/NORMAL，保留 UV/tint/sprite/diffuse；光照 face 与剔除桶分别旋转，null 桶不迁入方向桶，90°整轴旋转避免浮点漂移。四项模型测试通过。JEI 恢复 PM 的独立能量 ingredient：列表红石/荧石、方向×一次/逐 tick 四条目、数量无关查询索引、配方能源说明上的透明提示/检索槽；原材料 GenericStack 及样板导入分组保持。
 - CleanMix 的 implementation 关闭 transitive，注解处理器声明保留。dependencyInsight 原证据为 Gson 2.2.4 经 CleanMix 进入 testRuntimeClasspath；修复后实际测试 classpath 加载 gson 2.14.0，并以同一 classpath 成功调用 JsonParser.parseString。未通过游戏初始化规避依赖问题，未启动客户端；用户再次 runClient 的实际结果仍待复验。

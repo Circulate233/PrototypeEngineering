@@ -137,7 +137,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         recipe.refresh();
         int energySlot = 0;
         for (var paragraph : recipe.explanation.paragraphs()) if (paragraph.source().energy() != null)
-            JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 2, INFORMATION_Y + paragraph.y(), WIDTH - 4, paragraph.height());
+            JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 2, INFORMATION_Y + paragraph.y(), 18, 18);
         layout.setRecipeId(pool.id().getNamespace(), recipe.recipe().id());
     }
 
@@ -253,9 +253,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
                 }
                 return names;
             }
-            if (mouseX >= 78 && mouseX < 98 && mouseY >= 44 && mouseY < 62) {
-                return ObjectArrayList.of(JeiText.Duration.getLocal(recipe().durationTicks(), recipe().durationTicks() / 20.0));
-            }
             var fallback = resourceTooltip(panels.inputGroups(panel), owner.inputLayout(), mouseX, mouseY);
             if (!fallback.isEmpty()) {
                 return fallback;
@@ -263,11 +260,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             fallback = resourceTooltip(panels.outputGroups(panel), owner.outputLayout(), mouseX, mouseY);
             if (!fallback.isEmpty()) {
                 return fallback;
-            }
-            if (mouseX >= 0 && mouseX < WIDTH) {
-                for (var paragraph : explanation.paragraphs()) {
-                    if (paragraph.contains(mouseY - INFORMATION_Y)) return paragraph.lines();
-                }
             }
             if (panels.pageCount() > 1 && mouseX >= 0 && mouseX < WIDTH && mouseY >= owner.footerTop && mouseY < owner.height) {
                 return ObjectArrayList.of((mouseX < WIDTH / 2 ? JeiText.Previous : JeiText.Next).getLocal());

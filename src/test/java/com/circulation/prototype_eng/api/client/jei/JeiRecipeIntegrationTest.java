@@ -384,7 +384,9 @@ class JeiRecipeIntegrationTest {
         page.setRecipe(layout, wrapper, new JeiTestViews.Ingredients());
         int nearBottom = page.getBackground().getHeight() - 25;
         for (int i = 0; i < 3; i++) {
-            assertEquals(longLines, wrapper.getTooltipStrings(2, nearBottom));
+            assertTrue(wrapper.getTooltipStrings(2, nearBottom).isEmpty());
+            assertTrue(wrapper.getTooltipStrings(2, 94).isEmpty());
+            assertTrue(wrapper.getTooltipStrings(80, 50).isEmpty());
             assertFalse(wrapper.handleMouseScroll(10, page.getBackground().getHeight(), -1));
             assertTrue(wrapper.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
         }

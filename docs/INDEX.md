@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-09 能量JEI截图/重复提示：原18×18电池/LED四图逐字节一致，修正透明ingredient槽由整行收回图标范围，去掉已显示说明文字及箭头加工时间的重复悬停提示。截图对应PM自定义io_test布局，当前默认页仍遵守双侧4×4和完整说明要求；更正之前把renderer文字默认值当最终布局的描述。13项相关测试与build通过，2 Java本机全级零、MCP build成功；入口[JEI](jei.md)及`build/staging/jei-energy-hitbox/`，实机视觉未验收。
+
 - 2026-11-09 PM 缺失工具/旋转光照/能量 JEI：范围结构选择器和机械构建器及原 GUI/模型/124 张 PNG 已接入；控制器按实际顶点格式旋转法线与剔除方向；CleanMix 关闭运行依赖传递，实际测试 Gson 已从 2.2.4 恢复为 2.14.0。JEI 补回红石/荧石能量列表条目、透明提示/检索槽及方向/时机索引。完整1693 tests/221 suites全零，末次两项专项/build通过；33 Java、两语言、依赖脚本本机全级零，MCP build成功。证据 `build/staging/pm-tools-and-lighting/`，入口 [结构工具](structure-tools.md)、[控制器资源](controller-assets.md)、[JEI](jei.md)。真实游戏验收待用户，其余代理/总goal暂停。
 
 

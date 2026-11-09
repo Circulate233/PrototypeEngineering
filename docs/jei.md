@@ -6,7 +6,9 @@
 
 ### 能量条目恢复
 
-PM 的 `EnergyJeiIngredientListRenderer` 在 JEI 列表借用红石表示消耗、荧石粉表示产出；实际注册的是自定义能量 ingredient，并未注册新的实体物品。其配方页默认文字、可选能量条负责外观，透明 `EnergyJeiIngredientSlotRenderer` 提供 tooltip、焦点和点击检索。原 `EnergyRequirementJeiRenderer` 顶部“energy is not a JEI ingredient type”注释已经与其实际 `declareJeiSlots` 接线不符，以代码为准。
+用户截图复核：当前默认页同样使用 PM 原 18×18 `energy/1x1` 空/满电池纹理、输入/输出 LED 与同一填充比例；四张 PNG 已逐字节核对。当前排布遵守双侧4×4材料框和完整说明要求，不等同于截图中的自定义示例布局。本次将原本错误覆盖整个说明行的 JEI 能量交互槽收回电池自身 18×18 范围，说明文字区域不再触发能量 ingredient 检索。随后用户指出已显示的文本不应再悬停重复：删除整个说明区的重复 tooltip，并去掉箭头上重复的加工时间提示；保留页面上的完整文字、电池模块的原生能量条目提示/检索、材料说明和操作按钮提示。默认布局未替换。证据 `build/staging/jei-energy-hitbox/`；实际游戏视觉待用户复验。
+
+PM 的 `EnergyJeiIngredientListRenderer` 在 JEI 列表借用红石表示消耗、荧石粉表示产出；实际注册的是自定义能量 ingredient，并未注册新的实体物品。配方页由布局选择文字或能量模块：`DefaultJeiMachineLayout` 为首个能量节点明确选择 1×3 模块；用户截图对应的 `scripts/examples/io_test_jei.zs` 则明确选择 1×1 模块，输入/输出分别放在 (56,6)/(102,6)，逐 tick 放在下一行。只有未指定 variant 时才使用 renderer 的文字默认值。透明 `EnergyJeiIngredientSlotRenderer` 提供 tooltip、焦点和点击检索。原 `EnergyRequirementJeiRenderer` 顶部“energy is not a JEI ingredient type”注释已经与其实际 `declareJeiSlots` 接线不符，以代码为准。
 
 本项目通过 `JeiEnergyIngredients` 恢复这套能力：注册同一个 TYPE 和消耗/产出×一次性/逐 tick 四个列表条目；`RecipePoolJeiRecipe` 对完整能量数据建立索引，默认每条能源说明附透明 JEI 槽。Helper 的查询身份只含方向和时机，忽略数量；tooltip 保留真实 FE 或 FE/t 数量。自定义页面可调用同一 `slot` 方法。旧 `Energy(amount, role)` 与 Builder.energy 重载仍保留，默认一次性。
 
