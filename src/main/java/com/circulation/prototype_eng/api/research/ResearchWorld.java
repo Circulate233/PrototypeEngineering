@@ -63,6 +63,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
+import it.unimi.dsi.fastutil.ints.IntSets;
 
 /**
  * Authoritative world owner for research sources, queues, manual and station execution. Membership is captured
@@ -101,6 +103,10 @@ public final class ResearchWorld {
     private PlayerResearchState.RewardSession activeReward;
     @Nullable
     private ResearchDownloadSources.Prepared activeDownload;
+    @Nullable
+    private PlayerResearchState.Completion activePlayerLevel;
+    @Nullable
+    private TeamOwnedResearch.Completion activeTeamLevel;
 
     public ResearchWorld(ResearchRegistry registry, NetworkResourceRegistry resources,
                          ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
@@ -373,7 +379,9 @@ public final class ResearchWorld {
                 ? ResearchPlayerView.TeamStatus.AVAILABLE : ResearchPlayerView.TeamStatus.DENIED;
             var projectedTeam = new ResearchPlayerView.Team(status, teamId == null ? "" : teamId, viewDecision, queueDecision,
                 startDecision, blacklistDecision, sharedLevels, structuralTargets, blacklist, queueEpoch, queueRows, numericProgress, manualRows);
-            var result = new ResearchPlayerView(actor, serverTime, pendingSave != null, personalDecision, personalLevels, projectedTeam, claims);
+            var result = new ResearchPlayerView(actor, serverTime, pendingSave != null, personalDecision, personalLevels, projectedTeam, claims,
+                Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.FORGET_PERSONAL_RESEARCH, permission)),
+                Objects.requireNonNull(permissions.can(ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL, permission)));
             if (!current.getAsBoolean() || !sourcesCurrent(sourceSnapshots)) return null;
             if (team != null && (team.queue.busy() || team.research.busy() || team.manual.checkpointPending()
                 || !team.research.snapshot().equals(teamSnapshot) || !team.queue.snapshot().equals(queueSnapshot)
@@ -1326,6 +1334,175 @@ public final class ResearchWorld {
         });
     }
 
+    /** Forget the suffix starting at forgottenLevel; existing rewards and paid work are retained. */
+    public ResearchLevelResult forgetPersonal(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                              ResourceLocation id, int forgottenLevel, long time, BooleanSupplier current) {
+        return forgetPersonal(membership, permission, id, forgottenLevel, -1, time, current);
+    }
+
+    /** expectedBefore binds a displayed personal level; -1 is the ordinary Java API without a view. */
+    public ResearchLevelResult forgetPersonal(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                              ResourceLocation id, int forgottenLevel, int expectedBefore,
+                                              long time, BooleanSupplier current) {
+        return changePlayerLevel(membership, permission, id, forgottenLevel, expectedBefore, true, time, current);
+    }
+
+    /** Absolute personal source repair, including zero, without creating reward eligibility. */
+    public ResearchLevelResult setPlayerResearchLevel(OwnerTeamResolution target, ResearchPermissionContext permission,
+                                                      ResourceLocation id, int level, long time, BooleanSupplier current) {
+        return changePlayerLevel(target, permission, id, level, -1, false, time, current);
+    }
+
+    private ResearchLevelResult changePlayerLevel(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                                  ResourceLocation id, int level, int expectedBefore, boolean forget,
+                                                  long time, BooleanSupplier current) {
+        requireOwner();
+        requireHealthy();
+        Objects.requireNonNull(membership);
+        Objects.requireNonNull(permission);
+        Objects.requireNonNull(current);
+        if (expectedBefore < -1) throw new IllegalArgumentException("Invalid expected personal level");
+        if (activeTick != null && !executing) return ResearchLevelResult.RECOVERY_PENDING;
+        return operate(time, false, () -> {
+            var definition = registry.require(id);
+            var target = membership.ownerId();
+            if (!membership.accepted() || !membership.teamId().equals(permission.targetTeamId())
+                || !target.equals(permission.personalTarget()) || forget && !target.equals(permission.actorId())
+                || !current.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+            var action = forget ? ResearchPermissionPolicy.Action.FORGET_PERSONAL_RESEARCH : ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL;
+            if (permissions.can(action, permission) != ResearchPermissionPolicy.Decision.ALLOWED) return ResearchLevelResult.PERMISSION_DENIED;
+            if (definition.specialOnly() || definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                return ResearchLevelResult.SOURCE_MISMATCH;
+            if (level < (forget ? 1 : 0) || level > definition.maxLevel()) return ResearchLevelResult.OUT_OF_RANGE;
+            var previous = players.get(target);
+            int before = previous == null ? 0 : previous.completedLevel(id);
+            if (expectedBefore >= 0 && expectedBefore != before) return ResearchLevelResult.STALE_CONTEXT;
+            int after = forget ? Math.min(before, level - 1) : level;
+            if (after == before) return ResearchLevelResult.UNCHANGED;
+            if (levelWritersBusy()) return ResearchLevelResult.BUSY;
+            if (previous != null && previous.sourceReserved(id)) return ResearchLevelResult.SOURCE_RESERVED;
+            if (after < before && pendingLevelCompletion(id, target, null)) return ResearchLevelResult.BUSY;
+            var source = previous == null ? new PlayerResearchState(target) : previous;
+            var baseline = source.snapshot();
+            var receipt = after > before ? source.tryPrepareCompletion(id, true, after, IntSets.emptySet(), time)
+                : forget ? source.tryPrepareForgetResearch(id, level) : source.tryPrepareSourceMutation(id, before, after, null);
+            if (receipt == null) return ResearchLevelResult.BUSY;
+            activePlayerLevel = receipt;
+            try {
+                return applyLevelChange(receipt, () -> {
+                    if (!receipt.owns(source) || !baseline.equals(receipt.snapshot()))
+                        throw new IllegalStateException("Personal level operation lost its exact source baseline");
+                    return current.getAsBoolean()
+                        && permissions.can(action, permission) == ResearchPermissionPolicy.Decision.ALLOWED && players.get(target) == previous;
+                },
+                    () -> {
+                        if (previous == null) players.put(target, source);
+                        captureTeam(membership.teamId(), membership.members());
+                    });
+            } finally {
+                activePlayerLevel = null;
+            }
+        });
+    }
+
+    /** Explicit stable team IDs may repair an empty or historical direct source table. */
+    public ResearchLevelResult setTeamResearchLevel(String target, Collection<UUID> members, ResearchPermissionContext permission,
+                                                    ResourceLocation id, int level, long time, BooleanSupplier current) {
+        requireOwner();
+        requireHealthy();
+        Objects.requireNonNull(target);
+        Objects.requireNonNull(members);
+        Objects.requireNonNull(permission);
+        Objects.requireNonNull(current);
+        if (target.isBlank() || !target.equals(target.trim())) throw new IllegalArgumentException("Invalid target team");
+        var capturedMembers = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
+        for (var member : capturedMembers) Objects.requireNonNull(member);
+        if (activeTick != null && !executing) return ResearchLevelResult.RECOVERY_PENDING;
+        return operate(time, false, () -> {
+            var definition = registry.require(id);
+            if (!target.equals(permission.targetTeamId()) || permission.targetPlayerId() != null || !current.getAsBoolean())
+                return ResearchLevelResult.STALE_CONTEXT;
+            var action = ResearchPermissionPolicy.Action.MODIFY_ANY_RESEARCH_LEVEL;
+            if (permissions.can(action, permission) != ResearchPermissionPolicy.Decision.ALLOWED) return ResearchLevelResult.PERMISSION_DENIED;
+            if (definition.specialOnly() || definition.deliveryPolicy() != ResearchDownloadDeliveryPolicy.ITEM_ONLY)
+                return ResearchLevelResult.SOURCE_MISMATCH;
+            if (level < 0 || level > definition.maxLevel()) return ResearchLevelResult.OUT_OF_RANGE;
+            var previous = teams.get(target);
+            int before = previous == null ? 0 : previous.research.completedLevel(id);
+            if (level == before) return ResearchLevelResult.UNCHANGED;
+            if (levelWritersBusy()) return ResearchLevelResult.BUSY;
+            if (previous != null && previous.research.sourceReserved(id)) return ResearchLevelResult.SOURCE_RESERVED;
+            if (level < before && pendingLevelCompletion(id, null, target)) return ResearchLevelResult.BUSY;
+            var team = previous == null ? new TeamProgress(target, new TeamResearchQueue(registry, resources, target), players) : previous;
+            var source = team.research;
+            var baseline = source.snapshot();
+            var receipt = level > before ? source.tryPrepareCompletion(id, level) : source.tryPrepareSourceMutation(id, before, level, null);
+            if (receipt == null) return ResearchLevelResult.BUSY;
+            activeTeamLevel = receipt;
+            try {
+                return applyLevelChange(receipt, () -> {
+                    if (!receipt.owns(source) || !baseline.equals(receipt.snapshot()))
+                        throw new IllegalStateException("Team level operation lost its exact source baseline");
+                    return current.getAsBoolean()
+                        && permissions.can(action, permission) == ResearchPermissionPolicy.Decision.ALLOWED && teams.get(target) == previous;
+                },
+                    () -> {
+                        if (previous == null) teams.put(target, team);
+                        captureTeam(target, capturedMembers);
+                    });
+            } finally {
+                activeTeamLevel = null;
+            }
+        });
+    }
+
+    private boolean levelWritersBusy() {
+        for (var player : players.values())
+            if (player.busy() && (activePlayerLevel == null || !activePlayerLevel.owns(player))) return true;
+        for (var team : teams.values())
+            if (team.research.busy() && (activeTeamLevel == null || !activeTeamLevel.owns(team.research))
+                || team.queue.busy() || team.manual.checkpointPending() || team.station.pending()) return true;
+        return false;
+    }
+
+    private boolean pendingLevelCompletion(ResourceLocation id, @Nullable UUID player, @Nullable String teamId) {
+        for (var team : teams.values()) {
+            if (teamId != null && !teamId.equals(team.id)) continue;
+            if (team.manual.blocksSourceReduction(id, player)) return true;
+        }
+        return false;
+    }
+
+    /** An IO fault retains committed state and pendingSave; only precommit faults compensate. */
+    private ResearchLevelResult applyLevelChange(ReversibleTransaction receipt, BooleanSupplier current, Runnable publish) {
+        boolean committed = false;
+        try {
+            if (!current.getAsBoolean()) {
+                receipt.rollback();
+                return ResearchLevelResult.STALE_CONTEXT;
+            }
+            if (levelWritersBusy()) {
+                receipt.rollback();
+                return ResearchLevelResult.BUSY;
+            }
+            receipt.commit();
+            committed = true;
+            publish.run();
+            dirty = true;
+            persist();
+            receipt.complete();
+            return ResearchLevelResult.APPLIED;
+        } catch (RuntimeException | Error failure) {
+            try {
+                if (committed) receipt.complete();
+                else receipt.rollback();
+            } catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+    }
+
     /**
      * Persist a permission-checked blacklist; the next tick settles pending work before pruning it.
      */
@@ -1624,6 +1801,10 @@ public final class ResearchWorld {
     private ResearchWorldSnapshot snapshotState(@Nullable PlayerResearchState.RewardSession reward) {
         var playerSnapshots = new ObjectArrayList<PlayerResearchState.Snapshot>();
         for (var player : players.values()) {
+            if (activePlayerLevel != null && activePlayerLevel.owns(player)) {
+                playerSnapshots.add(activePlayerLevel.snapshot());
+                continue;
+            }
             if (activeDownload != null && activeDownload.owns(player)) {
                 playerSnapshots.add(activeDownload.snapshot(player));
                 continue;
@@ -1639,12 +1820,13 @@ public final class ResearchWorld {
         }
         var teamSnapshots = new ObjectArrayList<ResearchWorldSnapshot.Team>();
         for (var team : teams.values()) {
+            boolean changedLevel = activeTeamLevel != null && activeTeamLevel.owns(team.research);
             boolean downloaded = activeDownload != null && activeDownload.owns(team.research);
-            if (team.research.busy() && !downloaded) {
+            if (team.research.busy() && !downloaded && !changedLevel) {
                 throw new IllegalStateException("Cannot snapshot a pending team research mutation");
             }
             teamSnapshots.add(new ResearchWorldSnapshot.Team(team.id, team.knownMembers, team.blacklist,
-                downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions(), team.station.snapshot()));
+                changedLevel ? activeTeamLevel.snapshot() : downloaded ? activeDownload.snapshot(team.research) : team.research.snapshot(), team.queue.snapshot(), team.manual.sessions(), team.station.snapshot()));
         }
         return new ResearchWorldSnapshot(serverTime, playerSnapshots, teamSnapshots, new ObjectArrayList<>(downloads.values()), new ObjectArrayList<>(downloadReceipts.values()), new ObjectArrayList<>(diskImports.values()));
     }

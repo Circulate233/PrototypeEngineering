@@ -332,3 +332,16 @@ gui.prototype_eng.StructurePreview.Wireframe=Wireframe
 gui.prototype_eng.StructurePreview.FormedPreview=Formed model
 gui.prototype_eng.StructurePreview.MachineContextRequired=Open with an explicit machine type to preview its formed models
 gui.prototype_eng.StructurePreview.MachineContextMismatch=Unknown machine type or machine structure does not match
+
+gui.prototype_eng.research.ResearchActions=Actions
+gui.prototype_eng.research.ForgetFrom=Forget from level
+gui.prototype_eng.research.Forget=Forget
+gui.prototype_eng.research.AdminPlayer=Player
+gui.prototype_eng.research.AdminTeam=Team
+gui.prototype_eng.research.AdminTarget=Target UUID / stable team ID
+gui.prototype_eng.research.SetLevel=Set level (0 removes)
+gui.prototype_eng.research.LevelChanged=Research level changed
+gui.prototype_eng.research.LevelUnchanged=Research level unchanged
+gui.prototype_eng.research.SourceReserved=Research source reserved by a download
+gui.prototype_eng.research.SourceMismatch=This research uses a different source
+gui.prototype_eng.research.InvalidLevelAction=Invalid target or research level

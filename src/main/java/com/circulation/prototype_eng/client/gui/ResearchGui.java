@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.research.content.ResearchContentLoader;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.Item;
@@ -62,6 +63,15 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     private GuiButton primary;
     private GuiButton secondary;
     private GuiButton itemDownload;
+    private GuiButton operations;
+    private GuiButton forget;
+    private GuiButton adminKind;
+    private GuiButton adminSet;
+    private GuiTextField forgottenLevel;
+    private GuiTextField adminTarget;
+    private GuiTextField adminLevel;
+    private boolean showingOperations;
+    private boolean teamLevelTarget;
     @Nullable
     private UUID itemDatabase;
     private int itemMaterialSlot;
@@ -163,6 +173,16 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         primary = button(16, right, ySize - 34, columnWidth / 2, 18, "");
         secondary = button(17, right + columnWidth / 2, ySize - 34, columnWidth - columnWidth / 2, 18, "");
         itemDownload = button(18, right, ySize - 54, columnWidth, 18, "");
+        operations = button(19, right + columnWidth * 2 / 3, 84, columnWidth - columnWidth * 2 / 3, 18, ResearchGuiText.ResearchActions.getLocal());
+        description.width = columnWidth / 3;
+        details.x = guiLeft + right + columnWidth / 3;
+        details.width = columnWidth / 3;
+        forget = button(20, right + 70, 118, columnWidth - 70, 18, ResearchGuiText.Forget.getLocal());
+        adminKind = button(21, right, 152, 64, 18, "");
+        adminSet = button(22, right + 70, 184, columnWidth - 70, 18, ResearchGuiText.SetLevel.getLocal());
+        forgottenLevel = field(23, right, 118, 64, 10);
+        adminTarget = field(24, right + 70, 152, columnWidth - 70, 256);
+        adminLevel = field(25, right, 184, 64, 10);
         for (int i = 0; i < choices.length; i++) choices[i] = button(200 + i, right, 106 + i * 11, columnWidth, 11, "");
         descriptionRows = Math.max(1, (ySize - 74 - 106) / 10);
         descriptionScroll.setPosition(new Point(right + columnWidth - 12, 106));
@@ -177,10 +197,19 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return button;
     }
 
+    private GuiTextField field(int id, int x, int y, int width, int limit) {
+        var field = new GuiTextField(id, fontRenderer, guiLeft + x, guiTop + y, width, 18);
+        field.setMaxStringLength(limit);
+        return field;
+    }
+
     @Override
     public void updateScreen() {
         super.updateScreen();
         descriptionScroll.tick();
+        forgottenLevel.updateCursorCounter();
+        adminTarget.updateCursorCounter();
+        adminLevel.updateCursorCounter();
     }
 
     private void updateControls() {
@@ -190,7 +219,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             contents.clear();
             displayed = null;
         }
-        if (drawnDatabaseMode != container.databaseMode) displayed = null;
+        if (drawnDatabaseMode != container.databaseMode) { displayed = null; showingOperations = false; }
         drawnDatabaseMode = container.databaseMode;
         primary.width = drawnDatabaseMode ? columnWidth : columnWidth / 2;
         if (drawnDatabaseMode) {
@@ -202,6 +231,9 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         if (!Objects.equals(displayed, view.selected())) {
             displayed = view.selected();
             selectedGroup = entry == null ? null : entry.selectedGroup();
+            forgottenLevel.setText(Integer.toString(entry == null ? 1 : Math.max(1, entry.personalLevel())));
+            adminLevel.setText(Integer.toString(entry == null ? 0 : entry.personalLevel()));
+            adminTarget.setText(teamLevelTarget ? container.displayedTeam : mc.player.getUniqueID().toString());
             rebuildDescription(entry == null ? null : entry.id());
         }
         if (entry != null && entry.selectedGroup() != null) selectedGroup = entry.selectedGroup();
@@ -219,19 +251,19 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
         previous.enabled = view.offset() > 0;
         next.enabled = view.offset() + view.rows().size() < view.total();
-        description.enabled = !showingDescription && entry != null;
-        details.enabled = showingDescription && entry != null;
-        detailPrevious.visible = detailNext.visible = !showingDescription && entry != null;
+        description.enabled = (showingOperations || !showingDescription) && entry != null;
+        details.enabled = (showingOperations || showingDescription) && entry != null;
+        detailPrevious.visible = detailNext.visible = !showingOperations && !showingDescription && entry != null;
         detailPrevious.enabled = view.detailOffset() > 0;
         detailNext.enabled = view.detailOffset() + view.details().size() < view.detailTotal();
-        primary.visible = entry != null;
-        secondary.visible = entry != null && view.tab() == Tab.RESEARCH;
+        primary.visible = !showingOperations && entry != null;
+        secondary.visible = !showingOperations && entry != null && view.tab() == Tab.RESEARCH;
         actionEntry = entry;
         actionTab = view.tab();
         actionTeam = container.displayedTeam;
         itemDatabase = container.databaseSnapshot.dataCenterId();
         itemMaterialSlot = mc.player.inventory.currentItem;
-        itemDownload.visible = showingDescription && entry != null && view.tab() == Tab.RESEARCH;
+        itemDownload.visible = !showingOperations && showingDescription && entry != null && view.tab() == Tab.RESEARCH;
         itemDownload.enabled = entry != null && !container.actionQueued && ResearchContainer.canItemDownload(view, container.databaseSnapshot, entry)
             && actionTeam.equals(container.databaseSnapshot.teamId()) && !mc.player.getHeldItemMainhand().isEmpty();
         itemDownload.displayString = ResearchGuiText.ItemDownload.getLocal(entry == null ? 0 : entry.sharedLevel());
@@ -245,9 +277,28 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             secondary.displayString = (entry.blacklisted() ? ResearchGuiText.Unblacklist : ResearchGuiText.Blacklist).getLocal();
             secondary.enabled = !container.actionQueued && ResearchContainer.allowed(view, entry, ResearchContainer.Kind.BLACKLIST);
         }
+        operations.visible = entry != null && view.tab() == Tab.RESEARCH;
+        operations.enabled = !showingOperations;
+        boolean panel = showingOperations && operations.visible;
+        forgottenLevel.setVisible(panel);
+        forgottenLevel.setEnabled(panel && !container.actionQueued && view.forgetPermission() == Decision.ALLOWED);
+        forget.visible = panel;
+        forget.enabled = panel && entry != null && !container.actionQueued && ResearchContainer.allowed(view, entry, ResearchContainer.Kind.FORGET)
+            && validLevelInput(forgottenLevel, entry, 1);
+        boolean admin = panel && view.adminPermission() == Decision.ALLOWED;
+        adminKind.visible = admin;
+        adminKind.enabled = !container.actionQueued;
+        adminKind.displayString = (teamLevelTarget ? ResearchGuiText.AdminTeam : ResearchGuiText.AdminPlayer).getLocal();
+        adminTarget.setVisible(admin);
+        adminTarget.setEnabled(admin && !container.actionQueued);
+        adminLevel.setVisible(admin);
+        adminLevel.setEnabled(admin && !container.actionQueued);
+        adminSet.visible = admin;
+        adminSet.enabled = admin && entry != null && !container.actionQueued && validLevelInput(adminLevel, entry, 0)
+            && (teamLevelTarget ? ResearchContainer.teamTarget(adminTarget.getText()) : ResearchContainer.playerTarget(adminTarget.getText()));
         for (int i = 0; i < choices.length; i++) {
             var button = choices[i];
-            button.visible = !showingDescription && entry != null && i < view.details().size()
+            button.visible = !showingOperations && !showingDescription && entry != null && i < view.details().size()
                 && view.details().get(i).kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE;
             choiceSelections[i] = button.visible ? view.selected() : null;
             choiceGroups[i] = button.visible ? view.details().get(i).id() : null;
@@ -258,8 +309,17 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
     }
 
+    private static boolean validLevelInput(GuiTextField input, Entry entry, int minimum) {
+        int value = ResearchContainer.levelInput(input.getText());
+        return value >= minimum && value <= ResearchRegistry.INSTANCE.require(entry.id()).maxLevel();
+    }
+
     private void updateDatabaseControls() {
         itemDownload.visible = false;
+        operations.visible = forget.visible = adminKind.visible = adminSet.visible = false;
+        forgottenLevel.setVisible(false);
+        adminTarget.setVisible(false);
+        adminLevel.setVisible(false);
         var view = container.databaseSnapshot;
         drawnDatabase = view;
         var entry = databaseSelected();
@@ -284,10 +344,10 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         }
         previous.enabled = view.offset() > 0;
         next.enabled = view.offset() + view.rows().size() < view.total();
-        description.enabled = !showingDescription && entry != null;
-        details.enabled = showingDescription && entry != null;
+        description.enabled = (showingOperations || !showingDescription) && entry != null;
+        details.enabled = (showingOperations || showingDescription) && entry != null;
         detailPrevious.visible = detailNext.visible = false;
-        primary.visible = entry != null;
+        primary.visible = !showingOperations && entry != null;
         primary.displayString = ResearchGuiText.Download.getLocal();
         primary.enabled = entry != null && !container.actionQueued && view.canDownload(entry);
         secondary.visible = false;
@@ -360,6 +420,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         // still represents the last displayed identity, never the same index in a newer page.
         if (!button.visible || !button.enabled) return;
         if (button.id < tabs.length) {
+            showingOperations = false;
             showingDescription = button.id == 0 || button.id == 3;
             if (button.id == 3) container.requestDatabaseView(0, null);
             else container.requestView(Tab.values()[button.id], 0, null, 0);
@@ -402,8 +463,8 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                 case 10 ->
                     container.requestView(view.tab(), Math.max(0, view.offset() - ResearchGuiSnapshot.MAX_ROWS), null, 0);
                 case 11 -> container.requestView(view.tab(), view.offset() + view.rows().size(), null, 0);
-                case 12 -> showingDescription = true;
-                case 13 -> showingDescription = false;
+                case 12 -> { showingOperations = false; showingDescription = true; }
+                case 13 -> { showingOperations = false; showingDescription = false; }
                 case 14 ->
                     container.requestView(view.tab(), view.offset(), view.selected(), Math.max(0, view.detailOffset() - ResearchGuiSnapshot.MAX_DETAILS));
                 case 15 ->
@@ -417,6 +478,22 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                     var entry = selected();
                     if (entry != null && actionEntry != null && actionTab == view.tab() && entry.selection().equals(actionEntry.selection()))
                         container.requestAction(ResearchContainer.Kind.BLACKLIST, actionEntry, null, actionTeam);
+                }
+                case 19 -> showingOperations = true;
+                case 20, 22 -> {
+                    var entry = selected();
+                    if (entry != null && actionEntry != null && view.tab() == actionTab && actionTab == Tab.RESEARCH
+                        && entry.selection().equals(actionEntry.selection()) && entry.personalLevel() == actionEntry.personalLevel()) {
+                        var kind = button.id == 20 ? ResearchContainer.Kind.FORGET
+                            : teamLevelTarget ? ResearchContainer.Kind.ADMIN_TEAM : ResearchContainer.Kind.ADMIN_PLAYER;
+                        int value = ResearchContainer.levelInput((button.id == 20 ? forgottenLevel : adminLevel).getText());
+                        if (value >= (button.id == 20 ? 1 : 0) && value <= ResearchRegistry.INSTANCE.require(actionEntry.id()).maxLevel())
+                            container.requestLevelAction(kind, actionEntry, actionTeam, value, button.id == 20 ? "" : adminTarget.getText());
+                    }
+                }
+                case 21 -> {
+                    teamLevelTarget = !teamLevelTarget;
+                    adminTarget.setText(teamLevelTarget ? actionTeam : mc.player.getUniqueID().toString());
                 }
                 case 18 -> {
                     var entry = selected();
@@ -469,7 +546,13 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             : entry.targetLevel() == 0 ? ResearchGuiText.NotStartable.getLocal()
             : ResearchGuiText.TargetLevel.getLocal(entry.targetLevel()) + " / " + ResearchGuiText.Tier.getLocal(entry.tier());
         fontRenderer.drawString(fit(level, columnWidth), right, 73, 0x404040);
-        if (showingDescription) {
+        if (showingOperations && view.tab() == Tab.RESEARCH) {
+            fontRenderer.drawString(fit(ResearchGuiText.ForgetFrom.getLocal(), columnWidth), right, 106, 0x404040);
+            if (view.adminPermission() == Decision.ALLOWED) {
+                fontRenderer.drawString(fit(ResearchGuiText.AdminTarget.getLocal(), columnWidth), right, 141, 0x404040);
+                fontRenderer.drawString(fit(ResearchGuiText.SetLevel.getLocal(), columnWidth), right, 173, 0x404040);
+            }
+        } else if (showingDescription) {
             for (int i = 0; i < descriptionRows && i + descriptionScroll.getCurrentScroll() < descriptionLines.size(); i++) {
                 fontRenderer.drawString(descriptionLines.get(i + descriptionScroll.getCurrentScroll()), right, 106 + i * 10, 0x404040);
             }
@@ -535,6 +618,9 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         updateControls();
         super.drawScreen(mouseX, mouseY, partialTicks);
+        forgottenLevel.drawTextBox();
+        adminTarget.drawTextBox();
+        adminLevel.drawTextBox();
         if (container.databaseMode) {
             var database = container.databaseSnapshot;
             if (database.dataCenterId() != null && isPointInRegion(right, 8, columnWidth, 10, mouseX, mouseY)) {
@@ -609,14 +695,27 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
-        if (showingDescription && descriptionScroll.getBounds().contains(mouseX - guiLeft, mouseY - guiTop)
+        if (showingOperations && !container.databaseMode) {
+            forgottenLevel.mouseClicked(mouseX, mouseY, button);
+            adminTarget.mouseClicked(mouseX, mouseY, button);
+            adminLevel.mouseClicked(mouseX, mouseY, button);
+        }
+        if (!showingOperations && showingDescription && descriptionScroll.getBounds().contains(mouseX - guiLeft, mouseY - guiTop)
             && descriptionScroll.onMouseDown(new Point(mouseX - guiLeft, mouseY - guiTop), button)) return;
         super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
+    protected void keyTyped(char character, int keyCode) throws IOException {
+        if (showingOperations && !container.databaseMode
+            && (forgottenLevel.textboxKeyTyped(character, keyCode) || adminTarget.textboxKeyTyped(character, keyCode)
+                || adminLevel.textboxKeyTyped(character, keyCode))) return;
+        super.keyTyped(character, keyCode);
+    }
+
+    @Override
     protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
-        if (showingDescription && descriptionScroll.onMouseDrag(new Point(mouseX - guiLeft, mouseY - guiTop), button))
+        if (!showingOperations && showingDescription && descriptionScroll.onMouseDrag(new Point(mouseX - guiLeft, mouseY - guiTop), button))
             return;
         super.mouseClickMove(mouseX, mouseY, button, elapsed);
     }

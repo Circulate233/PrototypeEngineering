@@ -332,3 +332,16 @@ gui.prototype_eng.StructurePreview.Wireframe=线框
 gui.prototype_eng.StructurePreview.FormedPreview=成型模型
 gui.prototype_eng.StructurePreview.MachineContextRequired=请通过明确的机器类型打开预览以显示成型模型
 gui.prototype_eng.StructurePreview.MachineContextMismatch=机器类型未知或其结构与预览不匹配
+
+gui.prototype_eng.research.ResearchActions=研究操作
+gui.prototype_eng.research.ForgetFrom=从等级遗忘
+gui.prototype_eng.research.Forget=遗忘
+gui.prototype_eng.research.AdminPlayer=玩家
+gui.prototype_eng.research.AdminTeam=队伍
+gui.prototype_eng.research.AdminTarget=目标 UUID / 稳定队伍 ID
+gui.prototype_eng.research.SetLevel=设等级（0 清除）
+gui.prototype_eng.research.LevelChanged=研究等级已修改
+gui.prototype_eng.research.LevelUnchanged=研究等级未变化
+gui.prototype_eng.research.SourceReserved=研究来源被下载预约
+gui.prototype_eng.research.SourceMismatch=研究来源类型不匹配
+gui.prototype_eng.research.InvalidLevelAction=目标或研究等级无效

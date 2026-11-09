@@ -34,12 +34,12 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
                                   Decision personalPermission, Decision teamViewPermission, Decision queuePermission,
                                   Decision startPermission, Decision blacklistPermission, Tab tab, int total, int offset,
                                   ObjectList<Entry> rows, @Nullable Selection selected,
-                                  int detailTotal, int detailOffset, ObjectList<Detail> details) implements PacketWritable {
+                                  int detailTotal, int detailOffset, ObjectList<Detail> details, Decision forgetPermission, Decision adminPermission) implements PacketWritable {
     public static final int MAX_ROWS = 6;
     public static final int MAX_DETAILS = 6;
     public static final int MAX_PACKET_BYTES = 16384;
     private static final int MAX_ID_LENGTH = 256;
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final Comparator<ResourceLocation> ID_ORDER = Comparator.comparing(ResourceLocation::toString);
     public static final ResearchGuiSnapshot EMPTY = new ResearchGuiSnapshot(false, false, ResearchPlayerView.TeamStatus.UNAVAILABLE,
         Decision.MISSING_ACTOR_TEAM, Decision.MISSING_ACTOR_TEAM, Decision.MISSING_ACTOR_TEAM,
@@ -48,6 +48,8 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
     public ResearchGuiSnapshot {
         Objects.requireNonNull(teamStatus);
         Objects.requireNonNull(personalPermission);
+        Objects.requireNonNull(forgetPermission);
+        Objects.requireNonNull(adminPermission);
         Objects.requireNonNull(teamViewPermission);
         Objects.requireNonNull(queuePermission);
         Objects.requireNonNull(startPermission);
@@ -87,13 +89,24 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         }
     }
 
+    /** Older Java display callers cannot infer operation permissions from view permission. */
+    public ResearchGuiSnapshot(boolean initialized, boolean savePending, ResearchPlayerView.TeamStatus teamStatus,
+                               Decision personalPermission, Decision teamViewPermission, Decision queuePermission,
+                               Decision startPermission, Decision blacklistPermission, Tab tab, int total, int offset,
+                               ObjectList<Entry> rows, @Nullable Selection selected, int detailTotal, int detailOffset,
+                               ObjectList<Detail> details) {
+        this(initialized, savePending, teamStatus, personalPermission, teamViewPermission, queuePermission,
+            startPermission, blacklistPermission, tab, total, offset, rows, selected, detailTotal, detailOffset, details,
+            Decision.TARGET_PLAYER_MISMATCH, Decision.NOT_SERVER_OPERATOR);
+    }
+
     @SuppressWarnings("unused") // AE2 GuiSync constructs PacketWritable fields with this exact signature.
     public ResearchGuiSnapshot(ByteBuf data) { this(read(data)); }
 
     private ResearchGuiSnapshot(ResearchGuiSnapshot decoded) {
         this(decoded.initialized, decoded.savePending, decoded.teamStatus, decoded.personalPermission, decoded.teamViewPermission,
             decoded.queuePermission, decoded.startPermission, decoded.blacklistPermission, decoded.tab, decoded.total, decoded.offset,
-            decoded.rows, decoded.selected, decoded.detailTotal, decoded.detailOffset, decoded.details);
+            decoded.rows, decoded.selected, decoded.detailTotal, decoded.detailOffset, decoded.details, decoded.forgetPermission, decoded.adminPermission);
     }
 
     public enum Tab { RESEARCH, QUEUE, REWARDS }
@@ -211,7 +224,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         int detailOffset = pageOffset(matched ? request.detailOffset() : 0, allDetails.size(), MAX_DETAILS);
         return new ResearchGuiSnapshot(true, view.savePending(), view.team().status(), view.personalPermission(), view.team().viewPermission(),
             view.team().queuePermission(), view.team().startPermission(), view.team().blacklistPermission(), request.tab(), source.size(), offset,
-            rows, selectedRow == null ? null : selectedRow.selection(), allDetails.size(), detailOffset, page(allDetails, detailOffset, MAX_DETAILS));
+            rows, selectedRow == null ? null : selectedRow.selection(), allDetails.size(), detailOffset, page(allDetails, detailOffset, MAX_DETAILS), view.forgetPermission(), view.adminPermission());
     }
 
     private static Entry row(ResearchPlayerView view, ResearchDefinition definition, int target, long entryId,
@@ -281,7 +294,8 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
             var packet = new PacketBuffer(body);
             packet.writeByte(VERSION).writeBoolean(initialized).writeBoolean(savePending).writeByte(teamStatus.ordinal());
             packet.writeByte(personalPermission.ordinal()).writeByte(teamViewPermission.ordinal()).writeByte(queuePermission.ordinal())
-                .writeByte(startPermission.ordinal()).writeByte(blacklistPermission.ordinal()).writeByte(tab.ordinal());
+                .writeByte(startPermission.ordinal()).writeByte(blacklistPermission.ordinal())
+                  .writeByte(forgetPermission.ordinal()).writeByte(adminPermission.ordinal()).writeByte(tab.ordinal());
             packet.writeInt(total).writeInt(offset).writeByte(rows.size());
             for (var row : rows) {
                 packet.writeString(row.id().toString()).writeInt(row.personalLevel()).writeInt(row.sharedLevel()).writeInt(row.targetLevel())
@@ -317,6 +331,8 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         var teamStatus = readEnum(packet, ResearchPlayerView.TeamStatus.values());
         var personal = readEnum(packet, Decision.values()); var team = readEnum(packet, Decision.values());
         var queue = readEnum(packet, Decision.values()); var start = readEnum(packet, Decision.values()); var blacklist = readEnum(packet, Decision.values());
+        var forget = readEnum(packet, Decision.values());
+        var admin = readEnum(packet, Decision.values());
         var tab = readEnum(packet, Tab.values());
         int total = packet.readInt(), offset = packet.readInt(), count = packet.readUnsignedByte();
         if (count > MAX_ROWS) throw new IllegalArgumentException("Too many research GUI rows");
@@ -340,7 +356,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         for (int i = 0; i < detailCount; i++) details.add(new Detail(readEnum(packet, Kind.values()), readId(packet), packet.readInt(), packet.readLong(), packet.readLong()));
         if (packet.isReadable()) throw new IllegalArgumentException("Trailing research GUI packet data");
         return new ResearchGuiSnapshot(initialized, savePending, teamStatus, personal, team, queue, start, blacklist, tab,
-            total, offset, rows, selected, detailTotal, detailOffset, details);
+            total, offset, rows, selected, detailTotal, detailOffset, details, forget, admin);
     }
 
     private static boolean readBoolean(PacketBuffer packet) {

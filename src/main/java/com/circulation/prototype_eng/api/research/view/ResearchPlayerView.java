@@ -25,17 +25,27 @@ import org.jetbrains.annotations.Nullable;
 /** One player's detached display data; it contains no execution plans or recovery receipts. */
 public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean savePending,
                                  Decision personalPermission, Object2IntMap<ResourceLocation> personalLevels,
-                                 Team team, ObjectList<ClaimSummary> claims) {
+                                 Team team, ObjectList<ClaimSummary> claims, Decision forgetPermission, Decision adminPermission) {
     public ResearchPlayerView {
         Objects.requireNonNull(playerUuid);
         if (serverTime < 0) throw new IllegalArgumentException("Negative research view time");
         Objects.requireNonNull(personalPermission);
+        Objects.requireNonNull(forgetPermission);
+        Objects.requireNonNull(adminPermission);
         personalLevels = levels(personalLevels);
         Objects.requireNonNull(team);
         claims = list(claims);
         if (personalPermission != Decision.ALLOWED && (!personalLevels.isEmpty() || !claims.isEmpty())) {
             throw new IllegalArgumentException("Denied personal view contains private data");
         }
+    }
+
+    /** Compatibility constructor: an older detached view grants no new operation permissions. */
+    public ResearchPlayerView(UUID playerUuid, long serverTime, boolean savePending,
+                              Decision personalPermission, Object2IntMap<ResourceLocation> personalLevels,
+                              Team team, ObjectList<ClaimSummary> claims) {
+        this(playerUuid, serverTime, savePending, personalPermission, personalLevels, team, claims,
+            Decision.TARGET_PLAYER_MISMATCH, Decision.NOT_SERVER_OPERATOR);
     }
 
     public enum TeamStatus { AVAILABLE, MISSING_TEAM, UNAVAILABLE, DENIED }

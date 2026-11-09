@@ -87,6 +87,9 @@ public final class ResearchContainer extends AEBaseContainer {
                 && view.blacklistPermission() == Decision.ALLOWED;
             case TAKEOVER -> view.tab() == Tab.QUEUE && view.queuePermission() == Decision.ALLOWED
                 && entry.tier() == 0 && entry.manualStatus() == ManualResearchSession.Status.PAUSED;
+            case FORGET -> view.tab() == Tab.RESEARCH && view.personalPermission() == Decision.ALLOWED
+                && view.forgetPermission() == Decision.ALLOWED && entry.personalLevel() > 0;
+            case ADMIN_PLAYER, ADMIN_TEAM -> view.tab() == Tab.RESEARCH && view.adminPermission() == Decision.ALLOWED;
             case CLAIM -> view.tab() == Tab.REWARDS && view.personalPermission() == Decision.ALLOWED
                 && entry.claimStatus() != null && entry.claimStatus() != RewardClaim.Status.CLAIMED;
         };
@@ -107,6 +110,31 @@ public final class ResearchContainer extends AEBaseContainer {
     public void requestAction(Kind kind, Entry entry, @Nullable ResourceLocation group, String expectedTeam) {
         sendClientAction(ACT, new Action(kind, entry.id().toString(), entry.targetLevel(), entry.entryId(),
             group == null ? "" : group.toString(), !entry.blacklisted(), expectedTeam));
+    }
+
+    public void requestLevelAction(Kind kind, Entry entry, String expectedTeam, int operationLevel, String target) {
+        var action = new Action(kind, entry.id().toString(), entry.targetLevel(), entry.entryId(), "", false, expectedTeam);
+        action.operationLevel = operationLevel;
+        action.personalBefore = entry.personalLevel();
+        action.target = target;
+        sendClientAction(ACT, action);
+    }
+
+    /** Bounded decimal intent parsing; invalid input never reaches Integer.parseInt. */
+    public static int levelInput(@Nullable String text) {
+        if (text == null || !text.matches("[0-9]{1,10}") || text.length() == 10 && text.compareTo("2147483647") > 0) return -1;
+        return Integer.parseInt(text);
+    }
+
+    public static boolean playerTarget(@Nullable String text) {
+        return text != null && text.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+            && !text.equals("00000000-0000-0000-0000-000000000000");
+    }
+
+    public static boolean teamTarget(@Nullable String text) {
+        if (text == null || text.isBlank() || text.length() > 256 || !text.equals(text.trim())) return false;
+        for (int i = 0; i < text.length(); i++) if (Character.isISOControl(text.charAt(i))) return false;
+        return true;
     }
 
     public void requestDatabaseView(int offset, @Nullable DataCenterGuiSnapshot.Selection selected) {
@@ -193,6 +221,17 @@ public final class ResearchContainer extends AEBaseContainer {
             feedback = ResearchGuiText.Forbidden;
             return;
         }
+        if (action.kind == Kind.FORGET || action.kind == Kind.ADMIN_PLAYER || action.kind == Kind.ADMIN_TEAM) {
+            var definition = ResearchRegistry.INSTANCE.require(entry.id());
+            if (action.operationLevel == null || action.kind == Kind.FORGET && action.personalBefore == null
+                || action.operationLevel < (action.kind == Kind.FORGET ? 1 : 0) || action.operationLevel > definition.maxLevel()
+                || action.kind == Kind.FORGET && action.personalBefore != entry.personalLevel()
+                || action.kind == Kind.ADMIN_PLAYER && !playerTarget(action.target)
+                || action.kind == Kind.ADMIN_TEAM && !teamTarget(action.target)) {
+                feedback = ResearchGuiText.InvalidLevelAction;
+                return;
+            }
+        }
         ResourceLocation group = null;
         if (action.kind == Kind.CLAIM) {
             // Match canonical server IDs rather than parsing arbitrary client ResourceLocations.
@@ -207,7 +246,7 @@ public final class ResearchContainer extends AEBaseContainer {
                 return;
             }
         }
-        pendingAction = new PendingAction(action.kind, entry, group, action.blacklisted, displayedTeam);
+        pendingAction = new PendingAction(action.kind, entry, group, action.blacklisted, displayedTeam, action.operationLevel == null ? 0 : action.operationLevel, action.personalBefore == null ? 0 : action.personalBefore, action.target);
         actionQueued = true;
         feedback = ResearchGuiText.ActionQueued;
     }
@@ -369,30 +408,48 @@ public final class ResearchContainer extends AEBaseContainer {
         boundaryQueued = true;
         var actor = (EntityPlayerMP) getPlayer();
         var entry = action.entry;
+        try {
         switch (action.kind) {
+            case FORGET -> ServerResearch.requestForget(actor, entry.id(), action.operationLevel, action.team, action.personalBefore,
+                this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
+            case ADMIN_PLAYER -> ServerResearch.requestAdminPlayerLevel(actor, UUID.fromString(Objects.requireNonNull(action.target)), entry.id(),
+                action.operationLevel, action.team, this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
+            case ADMIN_TEAM -> ServerResearch.requestAdminTeamLevel(actor, Objects.requireNonNull(action.target), entry.id(), action.operationLevel,
+                action.team, this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
             case START ->
                 ServerResearch.requestStart(actor, entry.id(), entry.targetLevel(), action.team, this::current,
-                    result -> finished(ResearchGuiText.start(result.status())));
+                    result -> finished(ResearchGuiText.start(result.status())), this::actionFinished);
             case TAKEOVER ->
                 ServerResearch.requestTakeover(actor, entry.id(), entry.targetLevel(), action.team, entry.entryId(), this::current,
-                    result -> finished(ResearchGuiText.manual(result)));
+                    result -> finished(ResearchGuiText.manual(result)), this::actionFinished);
             case BLACKLIST ->
                 ServerResearch.requestBlacklist(actor, entry.id(), action.blacklisted, action.team, this::current,
-                    result -> finished(ResearchGuiText.permission(result)));
+                    result -> finished(ResearchGuiText.permission(result)), this::actionFinished);
             case CLAIM ->
                 ServerResearch.requestReward(actor, entry.id(), entry.targetLevel(), Objects.requireNonNull(action.group), this::current,
-                    result -> finished(ResearchGuiText.reward(result.status())));
+                    result -> finished(ResearchGuiText.reward(result.status())), this::actionFinished);
+        }
+        } catch (RuntimeException | Error failure) {
+            actionFinished();
+            throw failure;
         }
     }
 
     private void finished(ResearchGuiText result) {
-        if (current()) feedback = result;
+        try {
+            if (current()) feedback = result;
+        } finally {
+            actionFinished();
+        }
+    }
+
+    private void actionFinished() {
         boundaryQueued = false;
         actionQueued = false;
         refreshTicks = 0;
     }
 
-    public enum Kind {START, TAKEOVER, BLACKLIST, CLAIM}
+    public enum Kind {START, TAKEOVER, BLACKLIST, CLAIM, FORGET, ADMIN_PLAYER, ADMIN_TEAM}
 
     public static final class View {
         int tab;
@@ -424,6 +481,9 @@ public final class ResearchContainer extends AEBaseContainer {
         String group;
         boolean blacklisted;
         @Nullable String expectedTeam;
+        @Nullable Integer operationLevel;
+        @Nullable Integer personalBefore;
+        @Nullable String target;
 
         @SuppressWarnings("unused") // AE2's default Gson codec constructs and fills this wire DTO.
         public Action() {
@@ -475,7 +535,7 @@ public final class ResearchContainer extends AEBaseContainer {
     }
 
     private record PendingAction(Kind kind, Entry entry, @Nullable ResourceLocation group, boolean blacklisted,
-                                 String team) {
+                                 String team, int operationLevel, int personalBefore, @Nullable String target) {
     }
 
     private record PendingDatabaseAction(String team, UUID database, DataCenterGuiSnapshot.Entry entry) {

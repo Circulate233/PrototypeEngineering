@@ -1,6 +1,6 @@
 # 研究定义、资格、完成与奖励执行
 
-已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 玩家 Java 入队、服务器奖励领取与世界检查点已接；原生奖励物品保护已接，效果前 PREPARED/ISSUING 凭据和加载合并已接；研究界面/packet 已接入，见[研究界面](research-gui.md)；数据中心普通下载、自动同步及数据库页已接，见[数据中心](data-centers.md)；物品化下载和特殊磁盘消费恢复仍须完成。
+已迁移 PN 的研究定义、资格计算、权限与入队、队列推进、手动投料与恢复、完成传播和奖励领取逻辑。服务器世界存档、FTB 成员协调、tick、登录退出与 Java 手动开始/接管已接通，见[服务器研究](server-research.md)。普通配方研究/计算消费者与物理数据中心存储也已接入，见[配方消费者](network-recipes.md)。研究站材料/计算提交、自动推进与世界会话恢复已接通，见[研究站执行](research-stations.md)；正 tier 玩家 Java 入队、服务器奖励领取与世界检查点已接；原生奖励物品保护已接，效果前 PREPARED/ISSUING 凭据和加载合并已接；研究界面/packet 已接入，见[研究界面](research-gui.md)；数据中心普通下载、自动同步及数据库页已接，见[数据中心](data-centers.md)；普通物品转换与接口式用户盘共同导入此前已接；个人遗忘与管理员绝对等级本阶段已接。
 
 ## 定义与注册
 
@@ -26,6 +26,12 @@
 - `structurallyEligible` 供已有队列重建使用，只核对结构资格，不重新执行用户开始条件。
 
 沿 `TeamResearchViewCalculatorImpl` 的算法，把旧逐等级回退改为逐阶段回退。`calculateStructural` 为保留已有目标提供不执行 startCondition 的视图；`ResearchWorld` 已将其接到服务端 FTB 成员变化和队列协调。正 tier 消费者已从真实中心/站点取得工作证明，并在失效时先清理会话再 prune。
+
+## 个人遗忘与管理员来源修复
+
+PN个人遗忘与operator绝对等级已接Java、原MAIN及原AE默认GUI。普通DATABASE_AND_ITEM只对本人当前队伍个人源按min(before,k−1)删阈值后缀；管理PLAYER/TEAM按来源策略设置0..maxLevel，0移除，specialOnly拒绝。离线玩家和显式空/历史稳定队伍支持；服务器捕获实际FTB身份/角色，目标只是意图。没有费用、开始或奖励事件，原领取资格及全部组/片段/时间保持，上调不创造资格。
+
+下载预留、其他writer和所有保留旧队伍冻结completionIntent保护来源减少。原协调先结算会话后prune，无立即丢弃或退款；World原单writer/pendingSave用于准确IO恢复。默认GUI与V2有界快照/原ACT保持窗口与可见行绑定，普通旧ACT新增null字段由Gson省略。详见[服务器研究](server-research.md)、[研究界面](research-gui.md)及 `build/staging/research-actions/`；最终扩大受影响497/54、完整1579/200、13Java全级MCP/完整读回及MCPbuild通过，实机未验收。
 
 ## 实际入队与研究队列
 
@@ -63,7 +69,7 @@
 - 默认只把实际观察视为已交付；加载中的背包/实体扫描不能证明全局缺失。原生玩家操作、死亡重生、光标、掉落与漏斗保护已接；第三方直接改栈须遵守公开查询。内建恢复仅接受 live/UUID.dat/单人 Data.Player 完全一致的 PREPARED，加载合并保留任何 ISSUING 或缺失来源；外部缺失证明扩展仍默认返回 false。
 - 未运行 Minecraft 或服务端，游戏交互、标签移动及掉落恢复尚未做实机验证。
 
-来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。普通物品化下载事件已接真实服务器事务，特殊磁盘实际导入共同事务仍未完成，ISSUING 后缺失仍保留未知；CraftTweaker 按用户要求最后实现。
+来源：PN `PlayerResearchStateImpl`、`RewardClaimImpl`、`ResearchRewardClaimImpl` 和物品 delivery adapter。普通物品化下载事件已接真实服务器事务，接口式用户盘实际共同导入已接，ISSUING 后缺失仍保留未知；CraftTweaker 按用户要求最后实现。
 
 ## 验证
 

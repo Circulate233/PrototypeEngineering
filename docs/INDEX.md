@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-09 PN 个人遗忘与管理员绝对等级本阶段实现和验证已完成：Java → 原 Server MAIN → 原 AE 容器/默认 GUI 已接；个人仅本人/当前队伍的普通 DATABASE_AND_ITEM，阈值 k 删除 k 及以上个人后缀；管理员操作员按 PLAYER/TEAM 来源绝对设置，0 删除，离线玩家与显式空/历史稳定队伍 ID 支持。保留完整领取资格/组/片段/时间，管理不创建资格或执行奖励/开始事件，无材料/FE/XP费用。下载预留和所有保留旧队伍的冻结完成保护，原协调先结算后 prune；precommit 异常准确 rollback，IO 故障保留 committed after 与原 pendingSave 并释放自身凭据。11新增行为，早期 focused10/3、最终扩大受影响497 tests/54 suites、正常完整build1579 tests/200 suites全过；13 Java 本机 IDEA MCP errorsOnly:false全级零、完整项目文件读回/磁盘13/13一致、MCP build成功，15 Java/语言源码资源完整构建及最终MCP后raw稳定。独立V5审计已闭合两来源guard清理与小窗口按钮重叠，无新增P1/P2。准确before、固定V1–V5、真实原失败/诊断、最终日志/XML/MCP/精确提交入口 `build/staging/research-actions/`，审计 `build/staging/research-actions-plan/audit-final-v5.md`，见[服务器研究](server-research.md)、[研究界面](research-gui.md)。581原tracked背景修改与INDEX备份保留，本阶段本地提交；未推送/未启动Minecraft或服务端，实机GUI/FTB/网络包未验收。整体目标继续：工位策略待用户契约，结构预算已确认两模式待落实，JEI剩余/性能后端继续，CT最后，Applied-Flux暂缓。
+
 - 2026-11-09 用户已恢复完整 PM/PN 迁移目标，D3 当时完成后停止仅是历史边界，整条模型链保持已完成。Java 选择器速度便捷预设本阶段已实现并验证：公开 SelectiveContext.addProcessSpeed/mulProcessSpeed 和 SelectiveModifiers 的直接 descriptor 加法/倍率工厂，复用原 tracked put、局部所有权、START rollback、END/取消清理与 numeric NBT codec，未新增注册表。旧倍率使用 MULTIPLY_TOTAL 的 factor−1，允许零/负值且成功 TICK 的进度由原消费者裁剪。focused5 tests /1 suite、受影响79 tests /10 suites、正常完整build1568 tests /198 suites全过；3 Java 本机 IDEA MCP errorsOnly:false全级零、完整项目文件读回/磁盘3/3一致、MCP build成功，构建与最终MCP后raw源码稳定。准确earliest-before、固定V1/V2、原诊断和最终日志/XML/MCP/精确本地提交入口 `build/staging/java-recipe-presets/`，见[配方](recipes.md)、[功能核对](recipe-feature-parity.md)、[事件专项](pm-recipe-events-audit.md)。581原tracked背景修改与INDEX备份保留，未推送/未启动游戏或服务端。下一步工位策略/结构预算/研究操作/JEI剩余/性能后端继续，CT最后，Applied-Flux暂缓；整体目标保持进行中。
 
 - 2026-11-08 D3 B+C+D 整条成型模型渲染链实现与验证已完成，本轮按用户要求完成后停止。Gecko 资产/动画与 CPU bake、普通/packed/mapped owned 输出、原独立 worker 调度和跨机器共享 snapped-camera origin 合批、真实泛型 native TESR/边界与距离钩子、普通/透明/Bloom pass与透明排序/原生 Bloom/准确 CMH 隐藏，以及原 D2 GUI/JEI 的形成模型开关和可选机器上下文均已接入。focused53 tests /10 suites、受影响161 tests /19 suites、正常完整build1563 tests /197 suites全过；56 Java本机 IDEA MCP errorsOnly:false零错误/警告/弱警告，完整项目文件读回/磁盘56/56一致、MCP build成功，61源码资源构建及最终MCP后raw SHA稳定。准确最早before、固定V1/V2/V3/最终源码、几何/生命周期P2与原生SRG映射闭环、真实原失败与最终验证及64路径精确提交入口 `build/staging/machine-rendering/`，详见[结构定义](structures.md)。原572背景修改与 `docs/INDEX.md~` 保留；未推送、未启动Minecraft/服务端/Bootstrap/FML。真实World/网络包/GL/Bloom视觉和HEI输入实机尚未验收，整体库其他保留能力不计本轮完成。
@@ -59,14 +61,14 @@
 
 ## 下一步
 
-- D3 B+C+D 已完成并在本轮停止；恢复时先读[结构定义](structures.md)的 D3 B+C+D 和 `build/staging/machine-rendering/c/exact-commit/verification-summary.json`。外部 native TESR 继承 `MachineControllerRenderer<T>`，提供真实 `Class<T>` 和 typed view/snapshots/models/bounds/distance 入口后 `register()`；当前停止点不自动启动实机验收或其他阶段。
+- 用户已恢复完整 PM/PN 迁移目标，D3 完成后停止只是历史边界；D2/D3/2B 已完成。当前研究操作本阶段已完成，恢复先读本检查点、[服务器研究](server-research.md)、[研究界面](research-gui.md)及 `build/staging/research-actions/exact-commit/verification-summary.json`。后续落实结构预算两模式及用户新增完整异步检查要求：具体方块读取/检查在原worker执行，先核区块已加载，不能触发异步chunk load；主线程最终完整fresh/proof/install，进入世界首tick完整同步处理，后继等待保留既有成型。默认切片准备允许同owner最终收尾超片并如实计量；可选严格模式暂停/要求预算，不安装未验证候选。工位策略待用户确认，JEI剩余与性能后端继续，CT最后，Applied-Flux暂缓；不自行启动游戏或服务端。
 
 0. 扩展和 R30 接口式用户盘共同导入均已实现、验证并本地提交；盘物品/tier/布局由外部注册，无内置盘/等级表。永久破坏材料会话本阶段已接真实入口，最终证据见 `build/staging/research-station-destruction/`；背景修改及 `docs/INDEX.md~` 保留。
 
 1. 研究视图、领取、普通数据库下载、普通物品转换、接口式用户盘导入和永久破坏材料会话已接；未知结果继续保留原义务。块一真实网络/研究材料 pure prepare 与内置实际预算已完成；2A 正式 PLANNED_PARALLEL 与独立宿主已验证；2B 扫描内部预算与 R32 机器池声明/动态选择及静态 JEI 关联已接并验证；下一步按[配方功能核对](recipe-feature-parity.md)继续剩余 Java 功能与结构/渲染联动。Java 先完整，CT 最后。
 2. 保留已接的研究站成员核对、原 pending 所有权、numeric 独立、整机 lease 共享及准确原代补偿；下载的冻结原来源与确认片段持续用于恢复。R31/流体工作按各自专题及真实证据推进，不计为本下载阶段完成项。
-3. R32 本阶段实现与验证已完成；2B 已复用纯 kernel、实际预算游标、机器生命周期与 source lanes 接入扫描内部预算；外部合作回调仍遵守原稳定/纯契约。C、D1、D2与D3 B+C+D本轮已验证；JEI额外联动、实机验收和整体其他能力在后续授权下继续。
-4. 结构 A 启动期严格两阶段 JSON/共享注册及 B 运行中重载、准确宿主撤销/刷新与客户端权威目录/缓存同步已实现验证；C 基础预览/世界盒投影、切片/层/BOM/display override 消费本阶段实现与验证已完成。D2 AEBaseGui/JEI/代表项/TESR-NBT及D3成型模型/动画/Bloom/隐藏本轮已验证并停止；结构准备工作预算、JEI额外联动及其他未取消功能属于后续授权，最后CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
+3. R32 本阶段实现与验证已完成；2B 已复用纯 kernel、实际预算游标、机器生命周期与 source lanes 接入扫描内部预算；外部合作回调仍遵守原稳定/纯契约。C、D1、D2与D3 B+C+D本轮已验证；JEI剩余、结构预算及整体其他能力按已恢复目标继续；实机验收仍待用户启动。
+4. 结构 A 启动期严格两阶段 JSON/共享注册及 B 运行中重载、准确宿主撤销/刷新与客户端权威目录/缓存同步已实现验证；C 基础预览/世界盒投影、切片/层/BOM/display override 消费本阶段实现与验证已完成。D2 AEBaseGui/JEI/代表项/TESR-NBT及D3成型模型/动画/Bloom/隐藏已验证；结构准备工作预算两模式、JEI剩余及其他未取消功能按已恢复目标继续，最后CraftTweaker。Applied-Flux 继续暂缓，保留 v1.0.0:dev。
 
 ## 必须遵守
 

@@ -55,3 +55,13 @@
 - 完整材料不能简单同时 acquire 三个阶段再一起 commit：SelectiveRequirementSystem 在 START commit 才安装 modifier，后续 TICK/END 必须看到其效果。CheckpointRequirementSystem 的三阶段聚合也不能充当这种动态顺序已正确的证据。实际资源 apply 顺序、输出对后续输入的可见性和外部回调同样需要核对，不能只提前运行业务回调就声称完整等价。
 - 材料使用真实主站进程及冻结合摊来源，不改主站组件，不自动附加普通配方的 MachineRecipeRequirements。来源接口、准确阶段会话和 pending 恢复现已复用；START/TICK各自完成后才获取下一阶段，END同批提交grant/completion，历史成功阶段不重扣或退款。
 - 当前 ResourceReservation 只提供运行期终态证明，默认 storageIdentity 是 StorageContext；没有可持久材料回执。世界 writer 在队列/来源事务全部终态确认后才能保存。失败保留原 pendingSave；这不能宣称 vanilla chunk 库存与研究文件跨文件原子，更不能按余额相等猜重载结果。旧层本就没有这项原子保证，不为它凭空制造通用分布式存档框架。
+
+## 个人遗忘与管理员等级接线复核（2026-11-09）
+
+旧PN个人遗忘按阈值删除本人当前队伍个人后缀，不收费；管理员绝对等级独立于个人遗忘，PLAYER可离线，TEAM稳定ID可为空/历史，0删除。旧TeamForget同步文件为空，不据此发明命令或退料行为。新库本阶段按用户完整范围接Java→原Server MAIN→原AE容器/默认GUI，ordinary DATABASE_AND_ITEM→PLAYER、ITEM_ONLY→TEAM，specialOnly拒绝，实际operator/角色/owner proof由服务端核对。
+
+原source down-only/download预留契约不放宽；上调使用原completion receipt但不传个人奖励等级，不执行奖励/开始事件，完整原领取证据保留。ManualResearch.blocksSourceReduction读取真实完成意图与冻结recipients，World遍历保留旧队伍；效果前未知与付清后冻结传播仍走原恢复义务。等级调整不立刻prune/退款，原协调先结算后清除失效队列。
+
+V5准确receipt owns/baseline guard处于precommit rollback保护内，committed IO故障保留after与原pendingSave并释放自身receipt；原窗口finalized清理覆盖新旧所有ACT入队/异步/反馈失败。operations页隐藏重叠底部动作，原普通页仍可达；V2有界wire保护后续GuiSync，旧ACT可选Integer null省略保持原JSON。
+
+固定V1–V5/earliest-before、真实原失败/修正和最终497 tests/54 suites受影响、1579 tests/200 suites正常完整build、13Java本机IDEA MCP全级零/完整读回一致/MCPbuild证据见 `build/staging/research-actions/`。独立V5审计报告 `build/staging/research-actions-plan/audit-final-v5.md`，SHA 5DFDFB7977C77F9B5EEF420A52B18B4D4FAECEA86B71E67531DA861BCD771DA5；静态闭环不冒充实机World/FTB/GUI/packet验收，未启动Minecraft或服务端。

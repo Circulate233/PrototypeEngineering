@@ -88,6 +88,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import com.circulation.prototype_eng.api.research.ResearchLevelResult;
+import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
+import com.feed_the_beast.ftblib.lib.data.TeamType;
+import java.util.function.Supplier;
 
 /**
  * Authoritative server research session; its file has one writer and is never registered in MapStorage.
@@ -618,20 +622,24 @@ public final class ServerResearch {
     /**
      * Bind admission to the team displayed by the original server-owned container projection.
      */
-    @SuppressWarnings("resource")
     public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
                                     BooleanSupplier ownerCurrent, Consumer<TeamResearchStart.Result> result) {
+        requestStart(actor, id, target, expectedTeam, ownerCurrent, result, () -> {});
+        }
+
+    public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
+                                    BooleanSupplier ownerCurrent, Consumer<TeamResearchStart.Result> result, Runnable finalized) {
         var current = actorSession(actor);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(target);
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
-        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+        submitAction(current, () -> {
             if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
                 result.accept(staleStart());
                 return;
             }
             result.accept(startCurrent(current, actor, id, target, expectedTeam, ownerCurrent));
-        }, ExecutionMode.MAIN_THREAD);
+        }, finalized);
     }
 
     /**
@@ -645,15 +653,19 @@ public final class ServerResearch {
         requestReward(actor, id, level, group, () -> true, result);
     }
 
-    @SuppressWarnings("resource")
     public static void requestReward(EntityPlayerMP actor, ResourceLocation id, int level, ResourceLocation group,
                                      BooleanSupplier ownerCurrent, Consumer<ResearchRewardClaimer.Result> result) {
+        requestReward(actor, id, level, group, ownerCurrent, result, () -> {});
+        }
+
+    public static void requestReward(EntityPlayerMP actor, ResourceLocation id, int level, ResourceLocation group,
+                                     BooleanSupplier ownerCurrent, Consumer<ResearchRewardClaimer.Result> result, Runnable finalized) {
         var current = actorSession(actor);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id)).stageForLevel(level);
         Objects.requireNonNull(group);
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
-        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+        submitAction(current, () -> {
             if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
                 result.accept(new ResearchRewardClaimer.Result(ResearchRewardClaimer.Status.STALE_CONTEXT,
                     "Reward actor is no longer current", Optional.empty()));
@@ -661,7 +673,7 @@ public final class ServerResearch {
             }
             result.accept(current.world.claimReward(actor.getUniqueID(), id, level, group, operationTime(current),
                 new MinecraftItemDeliveryAdapter(actor), () -> currentActor(current, actor) && ownerCurrent.getAsBoolean()));
-        }, ExecutionMode.MAIN_THREAD);
+        }, finalized);
     }
 
     private static TeamResearchStart.Result startCurrent(Session current, EntityPlayerMP actor, ResourceLocation id, int target) {
@@ -738,17 +750,21 @@ public final class ServerResearch {
     /**
      * Team and queue entry belong to the displayed session, not merely its research ID and level.
      */
-    @SuppressWarnings("resource")
     public static void requestTakeover(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
                                        long expectedEntryId, BooleanSupplier ownerCurrent, Consumer<ManualResearch.Status> result) {
+        requestTakeover(actor, id, target, expectedTeam, expectedEntryId, ownerCurrent, result, () -> {});
+    }
+
+    public static void requestTakeover(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
+                                       long expectedEntryId, BooleanSupplier ownerCurrent, Consumer<ManualResearch.Status> result, Runnable finalized) {
         var current = actorSession(actor);
         requireManual(id, target);
         if (expectedEntryId < 0) throw new IllegalArgumentException("Invalid expected research queue entry");
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
-        ServerTaskSchedulers.forServer(current.server).submit(() -> result.accept(currentActor(current, actor) && ownerCurrent.getAsBoolean()
+        submitAction(current, () -> result.accept(currentActor(current, actor) && ownerCurrent.getAsBoolean()
                 ? takeoverCurrent(current, actor, id, target, expectedTeam, expectedEntryId, ownerCurrent) : ManualResearch.Status.STALE_CONTEXT),
-            ExecutionMode.MAIN_THREAD);
+            finalized);
     }
 
     @SuppressWarnings("unused") // Retained public Java operation for callers without a container projection.
@@ -757,14 +773,19 @@ public final class ServerResearch {
         requestBlacklist(actor, id, blacklisted, null, ownerCurrent, result);
     }
 
-    @SuppressWarnings("resource")
     public static void requestBlacklist(EntityPlayerMP actor, ResourceLocation id, boolean blacklisted, @Nullable String expectedTeam,
                                         BooleanSupplier ownerCurrent, Consumer<ResearchPermissionPolicy.Decision> result) {
+        requestBlacklist(actor, id, blacklisted, expectedTeam, ownerCurrent, result,
+                () -> {});
+        }
+
+    public static void requestBlacklist(EntityPlayerMP actor, ResourceLocation id, boolean blacklisted, @Nullable String expectedTeam,
+                                        BooleanSupplier ownerCurrent, Consumer<ResearchPermissionPolicy.Decision> result, Runnable finalized) {
         var current = actorSession(actor);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
         Objects.requireNonNull(ownerCurrent);
         Objects.requireNonNull(result);
-        ServerTaskSchedulers.forServer(current.server).submit(() -> {
+        submitAction(current, () -> {
             if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) return;
             var online = onlinePlayers(current);
             var captures = capture(current, Set.of(actor.getUniqueID()));
@@ -790,7 +811,172 @@ public final class ServerResearch {
             result.accept(current.world.setBlacklisted(membership, permission, id, blacklisted, operationTime(current),
                 () -> authority.getAsBoolean() && ownerCurrent.getAsBoolean()
                     && permission.equals(permission(current, actor, membership))));
-        }, ExecutionMode.MAIN_THREAD);
+        }, finalized);
+    }
+
+    @SuppressWarnings("unused") // Public Java callers need no container projection.
+    public static void requestForget(EntityPlayerMP actor, ResourceLocation id, int forgottenLevel,
+                                      BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
+        requestForget(actor, id, forgottenLevel, null, -1, ownerCurrent, result, () -> {});
+    }
+
+    public static void requestForget(EntityPlayerMP actor, ResourceLocation id, int forgottenLevel,
+                                      @Nullable String expectedTeam, int expectedBefore, BooleanSupplier ownerCurrent,
+                                      Consumer<ResearchLevelResult> result, Runnable finalized) {
+        var current = actorSession(actor);
+        ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
+        submitLevelAction(current, () -> levelCurrent(current, actor, expectedTeam, actor.getUniqueID(), null, ownerCurrent,
+            (membership, permission, proof) -> current.world.forgetPersonal(membership, permission, id, forgottenLevel,
+                expectedBefore, operationTime(current), proof)), result, finalized);
+    }
+
+    @SuppressWarnings("unused") // Public Java callers need no container projection.
+    public static void requestAdminPlayerLevel(EntityPlayerMP actor, UUID target, ResourceLocation id, int level,
+                                               BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
+        requestAdminPlayerLevel(actor, target, id, level, null, ownerCurrent, result, () -> {});
+    }
+
+    public static void requestAdminPlayerLevel(EntityPlayerMP actor, UUID target, ResourceLocation id, int level,
+                                               @Nullable String expectedTeam, BooleanSupplier ownerCurrent,
+                                               Consumer<ResearchLevelResult> result, Runnable finalized) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(target);
+        ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
+        submitLevelAction(current, () -> levelCurrent(current, actor, expectedTeam, target, null, ownerCurrent,
+            (membership, permission, proof) -> current.world.setPlayerResearchLevel(membership, permission, id, level,
+                operationTime(current), proof)), result, finalized);
+    }
+
+    @SuppressWarnings("unused") // Public Java callers need no container projection.
+    public static void requestAdminTeamLevel(EntityPlayerMP actor, String target, ResourceLocation id, int level,
+                                             BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
+        requestAdminTeamLevel(actor, target, id, level, null, ownerCurrent, result, () -> {});
+    }
+
+    public static void requestAdminTeamLevel(EntityPlayerMP actor, String target, ResourceLocation id, int level,
+                                             @Nullable String expectedTeam, BooleanSupplier ownerCurrent,
+                                             Consumer<ResearchLevelResult> result, Runnable finalized) {
+        var current = actorSession(actor);
+        Objects.requireNonNull(target);
+        if (target.isBlank() || target.length() > 256 || !target.equals(target.trim())) throw new IllegalArgumentException("Invalid target team");
+        ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
+        submitLevelAction(current, () -> levelCurrent(current, actor, expectedTeam, null, target, ownerCurrent,
+            (membership, permission, proof) -> current.world.setTeamResearchLevel(target,
+                membership == null ? Set.of() : membership.members(), permission, id, level, operationTime(current), proof)), result, finalized);
+    }
+
+    @FunctionalInterface
+    private interface LevelOperation {
+        ResearchLevelResult apply(@Nullable OwnerTeamResolution membership, ResearchPermissionContext permission, BooleanSupplier current);
+    }
+
+    private static ResearchLevelResult levelCurrent(Session current, EntityPlayerMP actor, @Nullable String expectedTeam,
+                                                    @Nullable UUID targetPlayer, @Nullable String targetTeam,
+                                                    BooleanSupplier ownerCurrent, LevelOperation operation) {
+        if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+        if (!Universe.loaded() || Universe.get().server != current.server) return ResearchLevelResult.RECOVERY_PENDING;
+        var online = onlinePlayers(current);
+        var seeds = new ObjectOpenHashSet<UUID>();
+        seeds.add(actor.getUniqueID());
+        if (targetPlayer != null) seeds.add(targetPlayer);
+        var liveTeam = targetTeam == null ? null : levelTeam(current, targetTeam);
+        if (liveTeam != null) {
+            for (var member : liveTeam.getMembers()) {
+                if (member == null || member.getId() == null) throw new IllegalStateException("Invalid target team member");
+                seeds.add(member.getId());
+            }
+        }
+        var captures = capture(current, seeds);
+        if (unavailable(captures)) return ResearchLevelResult.RECOVERY_PENDING;
+        var actorTeam = Objects.requireNonNull(captures.get(actor.getUniqueID()));
+        if (!actorTeam.accepted() || expectedTeam != null && !expectedTeam.equals(actorTeam.teamId())) return ResearchLevelResult.STALE_CONTEXT;
+        var actorPermission = permission(current, actor, actorTeam);
+        if (actorPermission == null) return ResearchLevelResult.STALE_CONTEXT;
+        OwnerTeamResolution membership = null;
+        String teamId = targetTeam;
+        var targetMembers = new ObjectOpenHashSet<UUID>();
+        if (targetPlayer != null) {
+            membership = Objects.requireNonNull(captures.get(targetPlayer));
+            if (!membership.accepted()) return ResearchLevelResult.STALE_CONTEXT;
+            teamId = membership.teamId();
+        } else if (liveTeam != null) {
+            for (var member : liveTeam.getMembers()) {
+                var resolution = captures.get(member.getId());
+                if (resolution == null || !resolution.accepted() || !targetTeam.equals(resolution.teamId()))
+                    throw new IllegalStateException("Target team capture contradicts its member");
+                if (membership != null && !sameTeam(membership, resolution))
+                    throw new IllegalStateException("Conflicting target team member capture");
+                membership = resolution;
+                targetMembers.add(member.getId());
+            }
+            if (membership != null && !membership.members().equals(targetMembers))
+                throw new IllegalStateException("Target team membership changed during capture");
+        }
+        var permission = new ResearchPermissionContext(actor.getUniqueID(), actorTeam.teamId(), targetPlayer, teamId,
+            actorPermission.teamLeader(), actorPermission.teamModerator(), actorPermission.serverOperator());
+        var authority = proof(current, captures, online);
+        var capturedTargetMembers = Set.copyOf(targetMembers);
+        BooleanSupplier valid = () -> authority.getAsBoolean() && currentActor(current, actor) && ownerCurrent.getAsBoolean()
+            && actorPermission.equals(permission(current, actor, actorTeam))
+            && (targetTeam == null || currentLevelTeam(current, targetTeam, liveTeam, capturedTargetMembers));
+        if (!valid.getAsBoolean()) return ResearchLevelResult.STALE_CONTEXT;
+        return operation.apply(membership, permission, valid);
+    }
+
+    private static @Nullable ForgeTeam levelTeam(Session current, String id) {
+        if (!Universe.loaded() || Universe.get().server != current.server) return null;
+        ForgeTeam found = null;
+        for (var team : Universe.get().getTeams()) {
+            if (!id.equals(team.getUIDCode())) continue;
+            if (found != null) throw new IllegalStateException("Duplicate target team identity");
+            if (team.universe != Universe.get() || !team.isValid() || team.type != TeamType.PLAYER && team.type != TeamType.SERVER)
+                throw new IllegalStateException("Invalid target team identity");
+            found = team;
+        }
+        return found;
+    }
+
+    private static boolean currentLevelTeam(Session current, String id, @Nullable ForgeTeam captured, Set<UUID> members) {
+        if (!Universe.loaded() || Universe.get().server != current.server || levelTeam(current, id) != captured) return false;
+        var now = new ObjectOpenHashSet<UUID>();
+        if (captured != null) {
+            for (var member : captured.getMembers()) {
+                if (member == null || member.getId() == null) throw new IllegalStateException("Invalid target team member");
+                now.add(member.getId());
+            }
+        }
+        return now.equals(members);
+    }
+
+    /** Both enqueue failures and asynchronous operation/feedback failures release the original UI owner. */
+    private static void submitLevelAction(Session current, Supplier<ResearchLevelResult> action,
+                                          Consumer<ResearchLevelResult> result, Runnable finalized) {
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(result);
+        submitAction(current, () -> result.accept(action.get()), finalized);
+    }
+
+    @SuppressWarnings("resource") // The server owns this shared scheduler.
+    private static void submitAction(Session current, Runnable action, Runnable finalized) {
+        Objects.requireNonNull(action);
+        Objects.requireNonNull(finalized);
+        try {
+            ServerTaskSchedulers.forServer(current.server).submit(() -> runFinalized(action, finalized), ExecutionMode.MAIN_THREAD);
+        } catch (RuntimeException | Error failure) {
+            try { finalized.run(); }
+            catch (RuntimeException | Error cleanup) { if (cleanup != failure) failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    public static void runFinalized(Runnable action, Runnable finalized) {
+        try { action.run(); }
+        catch (RuntimeException | Error failure) {
+            try { finalized.run(); }
+            catch (RuntimeException | Error cleanup) { if (cleanup != failure) failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+        finalized.run();
     }
 
     /**

@@ -484,6 +484,38 @@ class ManualResearchTest {
         }
     }
 
+    @Test
+    void pendingCompletionBlocksSourceReductionBeforeMaterialEffectsAndThroughRestoredSettlement() {
+        for (var boundary : List.of(ManualResearchSession.Status.MATERIAL_COMMIT_PENDING, ManualResearchSession.Status.MATERIAL_COMMITTED)) {
+            var fixture = fixture(1);
+            fixture.begin();
+            var inventory = new FakeInventory(FIRST, 10);
+            assertFalse(fixture.runtime.blocksSourceReduction(TARGET, FIRST));
+            fixture.checkpoints.failStatus = boundary;
+            assertSame(fixture.checkpoints.failure, assertThrows(IllegalStateException.class, () -> fixture.advance(2, inventory)));
+            assertNotNull(fixture.session().completionIntent());
+            assertTrue(fixture.runtime.blocksSourceReduction(TARGET, FIRST));
+            assertTrue(fixture.runtime.blocksSourceReduction(TARGET, SECOND));
+            assertTrue(fixture.runtime.blocksSourceReduction(TARGET, null));
+            assertFalse(fixture.runtime.blocksSourceReduction(TARGET, LATE));
+            fixture.runtime.retryCheckpoint();
+            fixture.reopen();
+            assertTrue(fixture.runtime.blocksSourceReduction(TARGET, FIRST));
+            if (boundary == ManualResearchSession.Status.MATERIAL_COMMIT_PENDING) {
+                assertEquals(ManualResearch.Status.RECOVERY_PENDING, fixture.advance(3, inventory));
+                assertEquals(0, inventory.consumed);
+                assertTrue(fixture.runtime.blocksSourceReduction(TARGET, FIRST));
+                continue;
+            }
+            assertEquals(ManualResearch.Status.COMPLETED, fixture.runtime.advance(fixture.entry.key().queueEntryId(),
+                context(3, Set.of(FIRST, LATE), Set.of(FIRST, LATE)), inventory));
+            assertEquals(1, inventory.consumed);
+            assertCompletion(fixture, FIRST, 1);
+            assertCompletion(fixture, SECOND, 1);
+            assertFalse(fixture.runtime.blocksSourceReduction(TARGET, FIRST));
+        }
+    }
+
     private static void checkPauseAndTakeover(ManualResearch.Context unavailable, ManualResearchSession.PauseReason reason) {
         var fixture = fixture(3, 2);
         fixture.begin();

@@ -14,6 +14,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
 
 import java.util.Objects;
+import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 
 /**
  * Shared feedback is synchronized as an enum; translation happens on the receiving client.
@@ -38,9 +39,23 @@ public enum ResearchGuiText implements LocalizationEnum {
     ItemDownload, ItemDownloaded, ItemDownloadAborted, ItemDownloadPending, ItemDownloadSourceRejected,
     ItemDownloadNoEvent, ItemDownloadEventRejected, ItemDownloadNonceConflict,
     ItemDownloadMaterial, ItemDownloadPersonalCost, ItemDownloadTeamCost,
-    DiskImportCompleted, DiskImportAborted, DiskImportUnsupportedStorage, DiskImportRejected, DiskImportNonceConflict, InvalidDisk;
+    DiskImportCompleted, DiskImportAborted, DiskImportUnsupportedStorage, DiskImportRejected, DiskImportNonceConflict, InvalidDisk, ResearchActions, ForgetFrom, Forget, AdminPlayer, AdminTeam, AdminTarget, SetLevel, LevelChanged, LevelUnchanged, SourceReserved, SourceMismatch, InvalidLevelAction;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".research." + name();
+
+    public static ResearchGuiText levelAction(ResearchLevelResult result) {
+        return switch (Objects.requireNonNull(result)) {
+            case APPLIED -> LevelChanged;
+            case UNCHANGED -> LevelUnchanged;
+            case PERMISSION_DENIED -> Forbidden;
+            case STALE_CONTEXT -> Stale;
+            case SOURCE_MISMATCH -> SourceMismatch;
+            case OUT_OF_RANGE -> InvalidLevelAction;
+            case SOURCE_RESERVED -> SourceReserved;
+            case BUSY -> Busy;
+            case RECOVERY_PENDING -> RecoveryPending;
+        };
+    }
 
     public static ResearchGuiText diskImport(ResearchDiskImportResult.Status status) {
         return switch (status) {

@@ -25,6 +25,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import net.minecraft.util.ResourceLocation;
 
 /**
  * PN's tier-zero execution, on the authoritative owner's thread. One instance owns a team's manual
@@ -76,6 +77,16 @@ public final class ManualResearch {
     public ObjectList<ManualResearchSession> sessions() {
         requireOwner();
         return ObjectLists.unmodifiable(new ObjectArrayList<>(sessions.values()));
+    }
+
+    /** Frozen recipients retain their paid completion baseline until the original session settles. */
+    public boolean blocksSourceReduction(ResourceLocation researchId, @Nullable UUID player) {
+        requireOwner();
+        Objects.requireNonNull(researchId);
+        for (var session : sessions.values())
+            if (session.queueKey().researchId().equals(researchId) && session.completionIntent() != null
+                && (player == null || session.completionIntent().baselines().containsKey(player))) return true;
+        return false;
     }
 
     @Nullable public ManualResearchSession session(long queueEntryId) { requireOwner(); return sessions.get(queueEntryId); }

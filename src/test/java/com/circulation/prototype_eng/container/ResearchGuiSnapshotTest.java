@@ -163,27 +163,27 @@ class ResearchGuiSnapshotTest {
         malformed(EMPTY, buffer -> buffer.setInt(0, MAX_PACKET_BYTES + 1));
         malformed(EMPTY, buffer -> buffer.setInt(0, buffer.getInt(0) + 1));
         malformed(EMPTY, buffer -> buffer.setInt(0, 1));
-        malformed(EMPTY, buffer -> buffer.setByte(4, 2)); // Protocol version.
+        malformed(EMPTY, buffer -> buffer.setByte(4, 255)); // Protocol version.
         malformed(EMPTY, buffer -> buffer.setByte(5, 2)); // Boolean initialized flag.
         malformed(EMPTY, buffer -> buffer.setByte(7, 255)); // Team status.
         malformed(EMPTY, buffer -> buffer.setByte(8, 255)); // Personal permission.
-        malformed(EMPTY, buffer -> buffer.setByte(13, 255)); // Tab.
-        malformed(EMPTY, buffer -> buffer.setByte(22, MAX_ROWS + 1));
-        malformed(EMPTY, buffer -> buffer.setByte(32, MAX_DETAILS + 1));
+        malformed(EMPTY, buffer -> buffer.setByte(15, 255)); // Tab.
+        malformed(EMPTY, buffer -> buffer.setByte(24, MAX_ROWS + 1));
+        malformed(EMPTY, buffer -> buffer.setByte(34, MAX_DETAILS + 1));
         var shortBuffer = Unpooled.buffer();
         try { shortBuffer.writeByte(0); assertThrows(IllegalArgumentException.class, () -> new ResearchGuiSnapshot(shortBuffer)); }
         finally { shortBuffer.release(); }
     }
 
     @Test void malformedCountersTruncatedBodiesAndTrailingBodyBytesCannotProduceASnapshot() {
-        malformed(EMPTY, buffer -> buffer.setInt(14, -1)); // Main total.
-        malformed(EMPTY, buffer -> buffer.setInt(18, 6)); // Main offset against an empty page.
-        malformed(EMPTY, buffer -> buffer.setInt(24, -1)); // Detail total.
+        malformed(EMPTY, buffer -> buffer.setInt(16, -1)); // Main total.
+        malformed(EMPTY, buffer -> buffer.setInt(20, 6)); // Main offset against an empty page.
+        malformed(EMPTY, buffer -> buffer.setInt(26, -1)); // Detail total.
         malformed(EMPTY, buffer -> buffer.writerIndex(buffer.writerIndex() - 1));
         malformed(EMPTY, buffer -> { buffer.writeByte(0); buffer.setInt(0, buffer.getInt(0) + 1); });
         var fixture = fixture();
         var page = capture(fixture.view(), fixture.registry(), new Request(Tab.RESEARCH, 0, null, 0));
-        malformed(page, buffer -> buffer.setInt(14, 1)); // Six rows cannot fit a declared one-row total.
+        malformed(page, buffer -> buffer.setInt(16, 1)); // Six rows cannot fit a declared one-row total.
     }
 
     @Test void requestsQuantitiesSelectionsAndIdsAreValidatedWithoutTruncatingIdentity() {
@@ -206,7 +206,7 @@ class ResearchGuiSnapshotTest {
         var fixture = fixture();
         var page = capture(fixture.view(), fixture.registry(), new Request(Tab.RESEARCH, 0, null, 0));
         // The bounded first ID is ASCII and uses a one-byte UTF length prefix.
-        malformed(page, buffer -> buffer.setInt(24 + page.rows().getFirst().id().toString().length(), -1));
+        malformed(page, buffer -> buffer.setInt(26 + page.rows().getFirst().id().toString().length(), -1));
         // The final detail ends with the current and required signed long values.
         malformed(page, buffer -> buffer.setLong(buffer.writerIndex() - Long.BYTES * 2, -1));
         malformed(page, buffer -> buffer.setLong(buffer.writerIndex() - Long.BYTES, -1));
