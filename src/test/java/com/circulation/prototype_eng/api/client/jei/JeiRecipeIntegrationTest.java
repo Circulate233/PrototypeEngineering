@@ -371,7 +371,7 @@ class JeiRecipeIntegrationTest {
         displays.freeze();
         var longLines = List.of("Line one", "Line two", "Line three", "Line four", "Line five", "Line six", "Last line");
         var font = new RecipeInformationLayout.Font(11, (text, width) -> {
-            assertEquals(170, width);
+            assertEquals(166, width);
             return text.arguments().contains("long") ? longLines : List.of("Short explanation");
         });
         var page = new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), font);
@@ -385,8 +385,8 @@ class JeiRecipeIntegrationTest {
         int nearBottom = page.getBackground().getHeight() - 25;
         for (int i = 0; i < 3; i++) {
             assertTrue(wrapper.getTooltipStrings(2, nearBottom).isEmpty());
-            assertTrue(wrapper.getTooltipStrings(2, 94).isEmpty());
-            assertTrue(wrapper.getTooltipStrings(80, 50).isEmpty());
+            assertTrue(wrapper.getTooltipStrings(4, 80).isEmpty());
+            assertTrue(wrapper.getTooltipStrings(80, 36).isEmpty());
             assertFalse(wrapper.handleMouseScroll(10, page.getBackground().getHeight(), -1));
             assertTrue(wrapper.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
         }

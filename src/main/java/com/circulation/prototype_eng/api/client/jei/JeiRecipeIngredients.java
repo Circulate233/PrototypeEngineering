@@ -197,8 +197,7 @@ public class JeiRecipeIngredients {
         if (AEKeyRendering.get(key.getType()) != null) {
             for (var line : AEKeyRendering.getTooltip(key)) lines.add(line.getFormattedText());
         } else lines.add(key.getDisplayName().getFormattedText());
-        lines.add(GuiText.CellViewAmount.getLocal(key.formatAmount(resource.stack().amount(), AmountFormat.FULL)));
-        for (var detail : resource.details()) lines.add(detail.local());
+        appendRecipeDetails(lines, resource, key.formatAmount(resource.stack().amount(), AmountFormat.FULL));
         var mod = Platform.getModName(key.getModId());
         if (!mod.isEmpty() && !lines.contains(mod)) lines.add(GuiText.CellViewMod.getLocal(mod));
         return lines;
@@ -207,11 +206,27 @@ public class JeiRecipeIngredients {
     public static List<String> tooltip(JeiRecipeDisplay.Resource resource) {
         var lines = new ObjectArrayList<String>();
         lines.add(resource.stack().what().getDisplayName().getFormattedText());
-        lines.add(JeiText.Amount.getLocal(Long.toString(resource.stack().amount()), resource.stack().what().getAmountPerUnit()));
-        for (var text : resource.details()) {
-            lines.add(text.local());
-        }
+        appendRecipeDetails(lines, resource, Long.toString(resource.stack().amount()));
         return lines;
+    }
+
+    private static void appendRecipeDetails(List<String> lines, JeiRecipeDisplay.Resource resource, String amount) {
+        JeiRecipeDisplay.Text timing = null;
+        for (var detail : resource.details()) if (isTiming(detail)) timing = detail;
+        boolean input = resource.role() == JeiRecipeDisplay.Role.INPUT;
+        lines.add(timing == null ? (input ? JeiText.Consume : JeiText.Produce).getLocal(amount)
+            : (input ? JeiText.ConsumeAt : JeiText.ProduceAt).getLocal(timing.local(), amount));
+        for (var detail : resource.details()) {
+            if (isTiming(detail)) continue;
+            if (detail.text() == JeiText.Chance) {
+                lines.add(new JeiRecipeDisplay.Text(input ? JeiText.ConsumeChance : JeiText.ProduceChance,
+                    detail.arguments(), detail.context(), detail.energy()).local());
+            } else lines.add(detail.local());
+        }
+    }
+
+    private static boolean isTiming(JeiRecipeDisplay.Text text) {
+        return text.text() == JeiText.Start || text.text() == JeiText.Tick || text.text() == JeiText.End;
     }
 
     /**

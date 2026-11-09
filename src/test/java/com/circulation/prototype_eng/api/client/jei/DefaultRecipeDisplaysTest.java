@@ -20,9 +20,11 @@ import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.client.resources.JeiTestLocale;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -59,6 +61,19 @@ class DefaultRecipeDisplaysTest {
                 JeiText.EnergyOutputPerTick, JeiText.EnergyOutput),
             result.information().stream().map(JeiRecipeDisplay.Text::text).toList());
         assertTrue(result.information().stream().anyMatch(line -> line.arguments().contains(Long.MAX_VALUE)));
+        JeiTestLocale.withTranslations(Map.of(
+            JeiText.Start.getTranslationKey(), "开始时", JeiText.Tick.getTranslationKey(), "每 Tick", JeiText.End.getTranslationKey(), "完成时",
+            JeiText.ConsumeAt.getTranslationKey(), "%s 消耗 %s", JeiText.ProduceAt.getTranslationKey(), "%s 产出 %s",
+            JeiText.ConsumeChance.getTranslationKey(), "消耗概率：%s%%", JeiText.ProduceChance.getTranslationKey(), "产出概率：%s%%"), () -> {
+            var tooltips = result.resources().stream().map(JeiRecipeIngredients::tooltip).toList();
+            assertEquals(List.of("开始时 消耗 " + Long.MAX_VALUE, "每 Tick 消耗 " + Long.MAX_VALUE, "每 Tick 产出 7", "完成时 产出 7"),
+                tooltips.stream().map(lines -> lines.get(1)).toList());
+            for (int i = 0; i < tooltips.size(); i++) {
+                var lines = tooltips.get(i);
+                assertEquals((i < 2 ? "消耗" : "产出") + "概率：100.0%", lines.get(2));
+                assertTrue(lines.stream().noneMatch(line -> line.contains("每单位") || line.equals("开始时") || line.equals("每 Tick") || line.equals("完成时")));
+            }
+        });
     }
 
     @Test

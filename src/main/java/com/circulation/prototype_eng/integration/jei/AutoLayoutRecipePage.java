@@ -42,12 +42,12 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 @MethodsReturnNonnullByDefault
 public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     private static final int WIDTH = 174;
-    private static final int MINIMUM_HEIGHT = 160;
-    private static final int INPUT_X = 2;
+    private static final int MINIMUM_HEIGHT = 148;
+    private static final int INPUT_X = 4;
     private static final int OUTPUT_X = 100;
-    private static final int RESOURCE_Y = 18;
+    private static final int RESOURCE_Y = 4;
     private static final int STRIDE = 18;
-    private static final int INFORMATION_Y = 94;
+    private static final int INFORMATION_Y = 80;
     private static final JeiVisuals.Texture EMPTY_SLOT = new JeiVisuals.Texture(JeiVisuals.texture("item_module/plaid_base"), 18, 18);
     private final int height;
     private final int footerTop;
@@ -55,7 +55,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     private final Reference2ObjectOpenHashMap<JeiRecipeDisplay, RecipeInformationLayout> information = new Reference2ObjectOpenHashMap<>();
     private final RecipePool pool;
     private final IDrawable background;
-    private final IDrawable machineBackground;
     private final JeiRenderOptions options;
     private final List<JeiSlot> inputLayout;
     private final List<JeiSlot> outputLayout;
@@ -83,14 +82,13 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             information.put(display, measured);
             informationHeight = Math.max(informationHeight, measured.height());
         }
-        height = Math.max(MINIMUM_HEIGHT, INFORMATION_Y + informationHeight + 24);
-        footerTop = height - 18;
-        background = guiHelper.createBlankDrawable(WIDTH, height);
-        machineBackground = new JeiVisuals.NineSlice(new JeiVisuals.Texture(JeiVisuals.texture("jei_base"), 184, 220), WIDTH, height, 2, false, 0xffffffff);
+        height = Math.max(MINIMUM_HEIGHT, INFORMATION_Y + informationHeight + 26);
+        footerTop = height - 20;
+        background = new JeiVisuals.NineSlice(new JeiVisuals.Texture(JeiVisuals.texture("jei_base"), 184, 220), WIDTH, height, 2, false, 0xffffffff);
         inputLayout = slots(INPUT_X);
         outputLayout = slots(OUTPUT_X);
         decorations = ObjectLists.unmodifiable(ObjectArrayList.of(
-            new JeiRecipeDecorator.Placement(78, 44, JeiVisuals.Progress.module(JeiVisuals.Module.RIGHT, JeiVisuals.Direction.RIGHT))));
+            new JeiRecipeDecorator.Placement(78, 30, JeiVisuals.Progress.module(JeiVisuals.Module.RIGHT, JeiVisuals.Direction.RIGHT))));
     }
 
     private static RecipeInformationLayout.Font minecraftFont() {
@@ -137,14 +135,12 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         recipe.refresh();
         int energySlot = 0;
         for (var paragraph : recipe.explanation.paragraphs()) if (paragraph.source().energy() != null)
-            JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 2, INFORMATION_Y + paragraph.y(), 18, 18);
+            JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 4, INFORMATION_Y + paragraph.y(), 18, 18);
         layout.setRecipeId(pool.id().getNamespace(), recipe.recipe().id());
     }
 
     @Override
     public void drawExtras(Minecraft minecraft) {
-        var machines = JeiText.Machines.getLocal(pool.machines().size());
-        minecraft.fontRenderer.drawString(machines, (WIDTH - minecraft.fontRenderer.getStringWidth(machines)) / 2, 2, 0x404040);
         for (var slot : inputLayout()) EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
         for (var slot : outputLayout()) EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
     }
@@ -167,8 +163,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         private final RecipeInformationLayout explanation;
         private int panel;
         private IRecipeLayout layout;
-        private boolean choosingMachine;
-        private int machineOffset;
 
         public AutoLayoutRecipe(AutoLayoutRecipePage owner, MachineRecipe recipe, JeiRecipeDisplay display,
                                 JeiRecipeIngredients ingredients) {
@@ -195,7 +189,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             for (var paragraph : explanation.paragraphs()) {
                 int y = INFORMATION_Y + paragraph.y();
                 var energy = paragraph.source().energy();
-                if (energy != null) JeiVisuals.Energy.ONE_1.draw(minecraft, 2, y, 18, 18,
+                if (energy != null) JeiVisuals.Energy.ONE_1.draw(minecraft, 4, y, 18, 18,
                     energy.role(), owner.renderOptions().energyLedYOffset());
                 int textY = y + (paragraph.height() - paragraph.lines().size() * owner.font.lineHeight()) / 2;
                 for (var line : paragraph.lines()) {
@@ -212,18 +206,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
                 minecraft.fontRenderer.drawString(pageText, (WIDTH - minecraft.fontRenderer.getStringWidth(pageText)) / 2,
                     owner.footerTop + 5, 0x404040);
             }
-            if (choosingMachine) {
-                owner.machineBackground.draw(minecraft);
-                minecraft.fontRenderer.drawString(JeiText.Machines.getLocal(owner.pool.machines().size()), 4, 4, 0xffffff);
-                int visible = 7;
-                machineOffset = Math.clamp(machineOffset, 0, Math.max(0, owner.pool.machines().size() - visible));
-                for (int row = 0; row < visible && machineOffset + row < owner.pool.machines().size(); row++) {
-                    var machine = owner.pool.machines().get(machineOffset + row);
-                    int y = 20 + row * 16;
-                    if (mouseX >= 2 && mouseX < WIDTH - 2 && mouseY >= y && mouseY < y + 15) Gui.drawRect(2, y, WIDTH - 2, y + 15, 0xff4080aa);
-                    minecraft.fontRenderer.drawString(minecraft.fontRenderer.trimStringToWidth(machine.displayName().getLocal(), WIDTH - 8), 4, y + 4, 0xffffff);
-                }
-            }
         }
 
         private void resources(Minecraft minecraft, List<List<JeiRecipeDisplay.Resource>> resources, List<JeiSlot> slots) {
@@ -237,22 +219,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public List<String> getTooltipStrings(int mouseX, int mouseY) {
-            if (choosingMachine) {
-                int row = (mouseY - 20) / 16;
-                if (mouseY >= 20 && row < 7 && machineOffset + row < owner.pool.machines().size()) {
-                    var machine = owner.pool.machines().get(machineOffset + row);
-                    return ObjectArrayList.of(machine.displayName().getLocal(), machine.id().toString(), StructurePreviewText.Open.getLocal());
-                }
-                return ObjectArrayList.of();
-            }
-            if (mouseX >= 2 && mouseX < WIDTH - 2 && mouseY >= 0 && mouseY < 14) {
-                var names = new ObjectArrayList<String>();
-                names.add(JeiText.Machines.getLocal(owner.pool.machines().size()));
-                for (var machine : owner.pool.machines()) {
-                    names.add(machine.displayName().getLocal() + " (" + machine.id() + ")");
-                }
-                return names;
-            }
             var fallback = resourceTooltip(panels.inputGroups(panel), owner.inputLayout(), mouseX, mouseY);
             if (!fallback.isEmpty()) {
                 return fallback;
@@ -289,21 +255,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public boolean handleClick(Minecraft minecraft, int mouseX, int mouseY, int mouseButton) {
-            if (mouseButton == 0 && choosingMachine) {
-                int row = (mouseY - 20) / 16;
-                if (mouseX >= 0 && mouseX < WIDTH && mouseY >= 20 && row < 7 && machineOffset + row < owner.pool.machines().size()) {
-                    var machine = owner.pool.machines().get(machineOffset + row);
-                    choosingMachine = false;
-                    StructurePreviewJeiScreens.open(machine);
-                    return true;
-                }
-                choosingMachine = false;
-                return true;
-            }
-            if (mouseButton == 0 && mouseX >= 2 && mouseX < WIDTH - 2 && mouseY >= 0 && mouseY < 14 && !owner.pool.machines().isEmpty()) {
-                choosingMachine = true;
-                return true;
-            }
             if (mouseButton != 0 || panels.pageCount() <= 1 || mouseY < owner.footerTop || mouseY >= owner.height) {
                 return false;
             }
@@ -320,10 +271,6 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
         @Override
         public boolean handleMouseScroll(int mouseX, int mouseY, int scrollDelta) {
-            if (choosingMachine && scrollDelta != 0 && mouseX >= 0 && mouseX < WIDTH && mouseY >= 0 && mouseY < owner.height) {
-                machineOffset = Math.clamp(machineOffset + (scrollDelta > 0 ? -1 : 1), 0, Math.max(0, owner.pool.machines().size() - 7));
-                return true;
-            }
             if (panels.pageCount() <= 1 || scrollDelta == 0 || mouseX < 0 || mouseX >= WIDTH || mouseY < 0 || mouseY >= owner.height) {
                 return false;
             }

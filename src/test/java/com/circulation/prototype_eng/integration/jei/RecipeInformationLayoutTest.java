@@ -19,7 +19,7 @@ class RecipeInformationLayoutTest {
         builder.energy(1000, JeiRecipeDisplay.Role.OUTPUT, JeiRecipeDisplay.Text.of(JeiText.EnergyOutput, 1000));
         var fullText = List.of("First line", "Second line", "Third line");
         var font = new RecipeInformationLayout.Font(10, (text, width) -> {
-            assertEquals(text.energy() == null ? 170 : 148, width);
+            assertEquals(text.energy() == null ? 166 : 144, width);
             return text.text() == JeiText.EnergyOutput ? fullText : List.of("Short text");
         });
         var layout = RecipeInformationLayout.measure(builder.build().information(), 174, font);

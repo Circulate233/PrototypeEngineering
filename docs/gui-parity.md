@@ -1,5 +1,14 @@
 # GUI 原效果修复
 
+## 2026-11-09 控制器第二页与 JEI 补漏
+
+PM `DefaultMachineUI.buildMainPage` 将玩家背包挂在第一页，`buildExtensionPage` 只有内容区及扩展说明。PE 原先仅对 AppEngSlot 调用 setActive/setSlotEnabled，而 AEBaseContainer.addPlayerInventorySlots 实际创建普通 Slot，因此两处判断均未生效。
+
+MachineContainer 现使用随页显隐的普通 PlayerSlot，保持27格背包/9格快捷栏、原坐标和 AE SlotSemantics。客户端选择页面立即更新可见性，服务器验证同一个 PAGE 动作后禁止第二页插入、取出、槽位点击；已有锁定槽限制保留。库存槽和物品不删除、不重建。MachineGui 去掉无效的 AppEngSlot 循环，仍使用 PM 原 A/B 背景和页面内容。没有擅加新仓室槽或改造原扩展页面。
+
+JEI 原背景、材料提示与重复机器标签的修正见[JEI说明](jei.md)。专项39项/完整1693项通过，12 Java与两语言本机全级零，MCP build成功；证据 `build/staging/jei-catalyst-only/`。真实第二页显隐、切回第一页和游戏内拖放仍待用户复验。
+
+
 2026-11-09 用户实机否决当前 GUI 迁移效果。迁移总 goal 已由用户暂停，主代理已中断全部子代理；当前仅处理本页范围。此前构建/纯逻辑检查不证明 GUI 已等价。未经本阶段修复，不恢复其他迁移或子代理工作。
 
 用户要求：原本已实现的 GUI 保持完全一致的布局、尺寸、纹理、控件、交互和本地化效果；通用输入仓槽位采用 AE 实现，兼容非 AEItemKey。用户后续明确能源数值解析也直接复用 AE 已有实现，不依赖或复制 EvalEx。继续遵守直接 AEBaseGui、无 ModularUI 运行依赖；这不授权替换 PM 原纹理或重设计界面。

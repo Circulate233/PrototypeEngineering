@@ -12,7 +12,6 @@ import org.lwjgl.input.Mouse;
 import java.io.IOException;
 import java.util.Objects;
 import net.minecraft.client.gui.GuiButton;
-import ae2.container.slot.AppEngSlot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
@@ -46,7 +45,6 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
 
     @Override public void initGui() {
         super.initGui();
-        updatePage();
         updateView();
     }
 
@@ -58,10 +56,6 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
             requestedOffset = scrollIndex;
             container.requestView(scrollIndex, MachineGuiSnapshot.MAX_ROWS);
         }
-    }
-
-    private void updatePage() {
-        for (var slot : container.inventorySlots) if (slot instanceof AppEngSlot aeSlot) aeSlot.setActive(page == 0);
     }
 
     @Override public void updateScreen() { super.updateScreen(); updateView(); }
@@ -139,7 +133,6 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         if (button instanceof PageTab) {
             page = button.id;
             dragging = false;
-            updatePage();
             container.selectPage(page);
         } else super.actionPerformed(button);
     }

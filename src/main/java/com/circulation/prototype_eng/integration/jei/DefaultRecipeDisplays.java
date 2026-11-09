@@ -143,7 +143,7 @@ public class DefaultRecipeDisplays {
             var groupId = requirement.id() + "/dynamic/" + groupIndex++;
             var dynamic = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId))
                 .scoped(of(JeiText.Dynamic, groupId, group.matcher().id()));
-            dynamic.information(of(JeiText.Amount, group.amount(), group.pattern().getAmountPerUnit()));
+            dynamic.information(of(JeiText.Consume, group.amount()));
             // Only explicitly supplied examples are indexed; pattern and callbacks are not inferred outputs.
             for (var key : group.displayedCandidates()) {
                 dynamic.resource(new GenericStack(key, group.amount()), INPUT, of(JeiText.Start));

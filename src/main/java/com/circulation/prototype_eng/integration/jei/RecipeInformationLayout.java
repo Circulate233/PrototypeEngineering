@@ -24,8 +24,8 @@ public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
         var paragraphs = new ObjectArrayList<Paragraph>();
         int y = 0;
         for (var source : information) {
-            int x = source.energy() == null ? 2 : 24;
-            var lines = List.copyOf(font.wrap().apply(source, width - x - 2));
+            int x = source.energy() == null ? 4 : 26;
+            var lines = List.copyOf(font.wrap().apply(source, width - x - 4));
             int height = Math.max(source.energy() == null ? 0 : 18, lines.size() * font.lineHeight());
             paragraphs.add(new Paragraph(source, lines, x, y, height));
             y += height + 3;

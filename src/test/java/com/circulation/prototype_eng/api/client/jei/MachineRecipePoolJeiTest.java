@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.client.jei;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
-import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.localization.RecipeText;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.client.resources.JeiTestLocale;
@@ -24,7 +23,7 @@ class MachineRecipePoolJeiTest {
     private static ResourceLocation id(String value) { return new ResourceLocation("pool_jei_test", value); }
 
     @Test
-    void actualDefaultPageTooltipConsumesStaticBindingsWithoutPhysicalItemsOrGroupGuessing() {
+    void defaultPageKeepsStaticBindingsWithoutADuplicateMachineList() {
         var recipe = new MachineRecipe(id("recipe"), 10, List.of(), Set.of(id("group")));
         var user = MachineType.builder(id("bound"), RecipeText.Cancelled, id("shape")).recipePool(id("pool")).build();
         var unrelated = MachineType.builder(id("same_group"), RecipeText.Cancelled, id("shape")).recipeGroup(id("group")).build();
@@ -39,16 +38,10 @@ class MachineRecipePoolJeiTest {
         var page = pages.pages().getFirst();
         var display = displays.describe(recipe);
         var wrapper = page.createRecipe(recipe, display, new JeiRecipeIngredients(display, List.of(), List.of(), new JeiQueryIdentityIndex()));
-        JeiTestLocale.withTranslations(Map.of(JeiText.Machines.getTranslationKey(), "Machines (%s)",
-            RecipeText.Cancelled.getTranslationKey(), "Unavailable"), () -> {
-            var tooltip = wrapper.getTooltipStrings(50, 5);
-            assertSame(pool, page.pool());
-            assertEquals(List.of(user), page.pool().machines());
-            assertEquals("Machines (1)", tooltip.getFirst());
-            assertEquals("Unavailable (" + user.id() + ")", tooltip.get(1));
-            assertFalse(tooltip.stream().anyMatch(line -> line.contains(unrelated.id().toString())));
-            assertTrue(wrapper.getTooltipStrings(0, 5).isEmpty());
-        });
+        assertSame(pool, page.pool());
+        assertEquals(List.of(user), page.pool().machines());
+        assertTrue(wrapper.getTooltipStrings(50, 5).isEmpty());
+        assertFalse(wrapper.handleMouseScroll(50, 5, -1));
     }
 
 }

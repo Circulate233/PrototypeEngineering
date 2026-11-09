@@ -1,5 +1,11 @@
 # 实施进度
 
+- 2026-11-09 JEI/控制器连续实机反馈：删除“适用机器”标题、悬停/选择面板，保留原生控制器催化剂、独立结构预览和静态绑定API。按PM JeiPanelRuntime/JeiBackgroundSpec恢复jei_base原PNG/2px九宫格背景，完整4×4双侧材料框保留，文字/图标/页脚让出边框。物品与GenericStack非物品共用阶段＋消耗/产出＋数量提示，去掉每单位1和独立阶段行，概率随role分开；候选/检查点与样板Tick语义保留。
+- 控制器第二页漏槽定位为原代码只处理AppEngSlot，而AE玩家槽是普通Slot。现以PlayerSlot页状态控制可见性与插入/取出，服务端PAGE验证和slotClick门控同向生效，原27＋9布局与物品保持。按PM DefaultMachineUI确认第二页仅为扩展内容区。没有启动游戏，不以纯测试证明视觉完全一致。
+- 验证：39 tests/10 suites专项，完整1693 tests/221 suites零失败/错误/跳过；12 Java及两语言本机get_file_problems(errorsOnly:false)全级零，最终MCP build成功。初版测试空格差异失败及传null的测试调用警告均已修正，日志保留。代码/语言、原背景字节、日志/XML、本机报告和精确提交入口build/staging/jei-catalyst-only。其他工作区背景、用户原暂存许可证删除、INDEX.md~与未跟踪JeiResourceReloadTest保留。
+- 用户又指出两件结构工具GUI无法打开并要求完全迁移。后续日志已定位StructureToolContainer显式32768动作上限超过AE16384导致创建即失败；GUI源码存在不能当作已可运行证据。该独立后续修复从build/staging/pm-tool-gui-parity恢复，未列为本阶段完成；其余代理/总goal保持暂停。
+
+
 - 2026-11-09 能量JEI截图复核：找到PM的io_test_jei.zs，自定义176×130布局显式使用18×18电池；DefaultJeiMachineLayout首个能量节点显式选1×3，之前仅从renderer默认值判断“默认文字”的表述已更正。当前默认页电池与原空/满图和输入/输出LED四图逐字节一致，仍按此前双侧4×4与完整说明要求排布。本次修正能量ingredient的交互区域，从整行说明收回实际18×18图标。随后按用户截图删除所有常驻说明文字及箭头加工时间的重复悬停提示；原生电池/材料和有用途的按钮提示保留。既有多页测试更新为验证说明/箭头不再返回重复tooltip，全文绘制及按字体扩展高度仍保留。13 tests/3 suites全零，build成功，2 Java本机errorsOnly:false全级零，MCP build成功。证据build/staging/jei-energy-hitbox；未启动游戏，仍不宣称整个布局与截图一致。
 
 - 2026-11-09 PM 工具/光照与 JEI 能量：主代理补入范围结构选择器、机械构建器，原模型及 124 张 PNG 原字节复用，AEBaseGui 保留 PM 原控件坐标、树/预览/按钮/提示。扫描选区、自动/手动原点和 24 朝向、当前 JSON 导出/唯一 id；构建器真实服务端建造/拆卸、材料/流体扣还、绑定失效、暂停/恢复与 Forge 事件已接线。原 PM 无导出算法的开关保留 UI/NBT，不冒充新功能。入口 [结构工具](structure-tools.md)。

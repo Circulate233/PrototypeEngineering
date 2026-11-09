@@ -78,7 +78,7 @@ class JeiCandidateDisplayTest {
         assertEquals(2, indexed.getInputs(INGREDIENT).size());
         assertEquals(display.resources(), panels.inputs(0));
         var copied = new GenericStack(group.values.get(0).getLast().what(), 1);
-        JeiTestLocale.withTranslations(Map.of(JeiText.Amount.getTranslationKey(), "Units %s (%s)"), () -> {
+        JeiTestLocale.withTranslations(Map.of(JeiText.Consume.getTranslationKey(), "Consume %s"), () -> {
             var tooltip = new ObjectArrayList<String>();
             group.tooltips.getFirst().onTooltip(0, true, copied, tooltip);
             assertTrue(tooltip.getFirst().contains(Long.toString(Long.MAX_VALUE)));
@@ -112,7 +112,7 @@ class JeiCandidateDisplayTest {
         ingredients.showGroups(layout, panels.inputGroups(0), panels.outputGroups(0), 2, 1);
         var group = layout.group(INGREDIENT);
         assertEquals(2, group.values.get(2).size());
-        JeiTestLocale.withTranslations(Map.of(JeiText.Amount.getTranslationKey(), "Units %s (%s)"), () -> {
+        JeiTestLocale.withTranslations(Map.of(JeiText.Produce.getTranslationKey(), "Produce %s"), () -> {
             for (int i = 0; i < 2; i++) {
                 var tooltip = new ObjectArrayList<String>();
                 group.tooltips.getFirst().onTooltip(2, false, group.values.get(2).get(i), tooltip);

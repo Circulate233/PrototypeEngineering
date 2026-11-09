@@ -5,7 +5,11 @@ import ae2.container.guisync.GuiSync;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import ae2.container.slot.AppEngSlot;
+import ae2.container.SlotSemantics;
+import net.minecraft.inventory.ClickType;
+import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
+import org.jetbrains.annotations.NotNull;
 /**
  * Default real player inventory and a read-only machine page, synchronized through AE2.
  */
@@ -16,16 +20,22 @@ public final class MachineContainer extends AEBaseContainer {
     private int requestedOffset;
     private int visibleRows = MachineGuiSnapshot.MAX_ROWS;
     private boolean captureQueued;
+    private boolean inventoryVisible = true;
 
     public MachineContainer(InventoryPlayer player, MachineControllerHost tile) {
         super(player, tile.blockEntity());
         this.tile = tile;
         setGuiTitle(tile.type().displayName().text());
         // PM's 4x4 grid is an unimplemented placeholder. Keep its artwork without accepting real items.
-        addPlayerInventorySlots(216, 172);
+        for (int row = 0; row < 3; row++) for (int column = 0; column < 9; column++) {
+            addSlotToContainer(new PlayerSlot(player, 9 + row * 9 + column, 216 + column * 18, 172 + row * 18), SlotSemantics.PLAYER_INVENTORY);
+        }
+        for (int column = 0; column < 9; column++) {
+            addSlotToContainer(new PlayerSlot(player, column, 216 + column * 18, 230), SlotSemantics.PLAYER_HOTBAR);
+        }
         registerClientAction(PAGE, Integer.class, page -> {
             if (page == null || page < 0 || page > 1 || !canInteractWith(getPlayer())) return;
-            for (var slot : inventorySlots) if (slot instanceof AppEngSlot aeSlot) aeSlot.setSlotEnabled(page == 0);
+            inventoryVisible = page == 0;
         });
         registerClientAction(VIEW, View.class, 80, view -> {
             if (view != null && canInteractWith(getPlayer()) && view.offset >= 0 && view.rows >= 1 && view.rows <= MachineGuiSnapshot.MAX_ROWS) {
@@ -38,7 +48,30 @@ public final class MachineContainer extends AEBaseContainer {
 
     public void requestView(int offset, int rows) { sendClientAction(VIEW, new View(offset, rows)); }
 
-    public void selectPage(int page) { sendClientAction(PAGE, page); }
+    public void selectPage(int page) {
+        if (page < 0 || page > 1) return;
+        inventoryVisible = page == 0;
+        sendClientAction(PAGE, page);
+    }
+
+    @Override
+    public @NotNull ItemStack slotClick(int slotId, int dragType, @NotNull ClickType clickType, @NotNull EntityPlayer player) {
+        if (!inventoryVisible && slotId >= 0) return ItemStack.EMPTY;
+        return super.slotClick(slotId, dragType, clickType, player);
+    }
+
+    /** Ordinary player slots need a page gate too; AE's player inventory is not made of AppEngSlot. */
+    private final class PlayerSlot extends Slot {
+        private PlayerSlot(InventoryPlayer inventory, int index, int x, int y) { super(inventory, index, x, y); }
+
+        @Override public boolean isEnabled() { return inventoryVisible; }
+        @Override public boolean isItemValid(@NotNull ItemStack stack) {
+            return inventoryVisible && !isPlayerInventorySlotLocked(getSlotIndex()) && super.isItemValid(stack);
+        }
+        @Override public boolean canTakeStack(@NotNull EntityPlayer player) {
+            return inventoryVisible && !isPlayerInventorySlotLocked(getSlotIndex()) && super.canTakeStack(player);
+        }
+    }
 
     @Override
     public boolean canInteractWith(EntityPlayer player) {
