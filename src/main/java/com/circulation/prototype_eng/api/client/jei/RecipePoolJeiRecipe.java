@@ -10,6 +10,8 @@ import java.util.Objects;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 import mcp.MethodsReturnNonnullByDefault;
+import com.circulation.prototype_eng.integration.jei.JeiRecipeInputs;
+import net.minecraft.client.Minecraft;
 
 /**
  * Native wrapper extension; immutable source data is shared by default and independent custom pages.
@@ -52,5 +54,16 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
     @Override
     public void getIngredients(IIngredients target) {
         ingredients.index(target);
+    }
+
+    /** Call super when overriding drawInfo so the native Forge scroll bridge sees the drawn bounds. */
+    @Override
+    public void drawInfo(Minecraft minecraft, int recipeWidth, int recipeHeight, int mouseX, int mouseY) {
+        JeiRecipeInputs.drawn(minecraft, this, recipeWidth, recipeHeight, mouseX, mouseY);
+    }
+
+    /** Current JEI has no native wrapper wheel callback; the Forge bridge forwards drawn bounds here. */
+    public boolean handleMouseScroll(int mouseX, int mouseY, int scrollDelta) {
+        return false;
     }
 }

@@ -26,6 +26,12 @@ import java.util.Collection;
 import javax.annotation.ParametersAreNonnullByDefault;
 
 import mcp.MethodsReturnNonnullByDefault;
+import ae2.api.client.AEKeyRendering;
+import ae2.api.stacks.AEKey;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import java.util.Locale;
+import mezz.jei.plugins.vanilla.ingredients.fluid.FluidStackRenderer;
+import net.minecraftforge.fluids.FluidStack;
 
 /**
  * AE2S converter bridge. Indexes all declared rows, independently of the current visible panel.
@@ -80,6 +86,18 @@ public class JeiRecipeIngredients {
         return queryConflicts.contains(resource);
     }
 
+    /** Native alternatives must use one ingredient type and unambiguous exact keys. */
+    public boolean canCombine(List<JeiRecipeDisplay.Resource> rows) {
+        if (rows.isEmpty()) return false;
+        var bucket = converted.get(rows.getFirst());
+        if (bucket == null) return false;
+        var keys = new ObjectOpenHashSet<AEKey>();
+        for (var row : rows) {
+            if (converted.get(row) != bucket || !keys.add(row.stack().what())) return false;
+        }
+        return true;
+    }
+
     public void index(IIngredients ingredients) {
         for (var bucket : buckets) {
             bucket.index(ingredients);
@@ -91,9 +109,19 @@ public class JeiRecipeIngredients {
      */
     public void initialize(IRecipeLayout layout, int inputSlots, int outputSlots, int columns,
                            int inputX, int outputX, int y, int stride) {
-        for (var bucket : buckets) {
-            bucket.initialize(layout, inputSlots, outputSlots, columns, inputX, outputX, y, stride, nativeRegistry);
+        var inputs = new ObjectArrayList<JeiSlot>();
+        var outputs = new ObjectArrayList<JeiSlot>();
+        for (int i = 0; i < inputSlots + outputSlots; i++) {
+            boolean input = i < inputSlots;
+            int relative = input ? i : i - inputSlots;
+            (input ? inputs : outputs).add(new JeiSlot((input ? inputX : outputX) + relative % columns * stride,
+                y + relative / columns * stride, 16, 16, 0, JeiSlot.PLAIN));
         }
+        initialize(layout, inputs, outputs, JeiRenderOptions.defaults());
+        }
+
+    public void initialize(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
+        for (var bucket : buckets) bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
     }
 
     /**
@@ -101,6 +129,16 @@ public class JeiRecipeIngredients {
      */
     public void show(IRecipeLayout layout, List<JeiRecipeDisplay.Resource> inputs, List<JeiRecipeDisplay.Resource> outputs,
                      int inputSlots, int outputSlots) {
+        var inputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
+        var outputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
+        for (var row : inputs) inputGroups.add(ObjectArrayList.of(row));
+        for (var row : outputs) outputGroups.add(ObjectArrayList.of(row));
+        showGroups(layout, inputGroups, outputGroups, inputSlots, outputSlots);
+        }
+
+    /** Candidates cycle inside native groups; index() still contains every original candidate. */
+    public void showGroups(IRecipeLayout layout, List<List<JeiRecipeDisplay.Resource>> inputs,
+                           List<List<JeiRecipeDisplay.Resource>> outputs, int inputSlots, int outputSlots) {
         if (inputs.size() > inputSlots || outputs.size() > outputSlots) {
             throw new IllegalArgumentException("JEI panel exceeds initialized slot capacity");
         }
@@ -132,12 +170,49 @@ public class JeiRecipeIngredients {
         }
     }
 
+    public static void renderChance(Minecraft minecraft, int x, int y, JeiRecipeDisplay.Resource resource, JeiRenderOptions options) {
+        var chance = resource.chance();
+        if (!options.chanceOverlay() || chance == null || chance.percent() == 100 && !chance.attributeDriven()) return;
+        String percent = String.format(Locale.ROOT, "%.2f", chance.percent());
+        while (percent.endsWith("0")) percent = percent.substring(0, percent.length() - 1);
+        if (percent.endsWith(".")) percent = percent.substring(0, percent.length() - 1);
+        String label = percent + "%" + (chance.attributeDriven() ? "*" : "");
+        GlStateManager.disableDepth(); GlStateManager.disableLighting();
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(x + 1, y + 1, 0); GlStateManager.scale(.6, .6, 1);
+            minecraft.fontRenderer.drawString(label, 0, 0, 0xffead76c, true);
+        } finally { GlStateManager.popMatrix(); GlStateManager.enableBlend(); }
+    }
+
+    /** Same layer order for a key without an exact native query converter. */
+    public static void renderFallback(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource, JeiRenderOptions options) {
+        slot.skin().background(minecraft, slot, resource);
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(slot.x() + slot.inset(), slot.y() + slot.inset(), 0);
+            GlStateManager.scale((slot.width() - slot.inset() * 2) / 16.0, (slot.height() - slot.inset() * 2) / 16.0, 1);
+            if (AEKeyRendering.get(resource.stack().what().getType()) != null) {
+                AEKeyRendering.drawInGui(minecraft, 0, 0, resource.stack().what());
+            } else {
+                minecraft.fontRenderer.drawString("?", 4, 4, 0xaa2222);
+            }
+        } finally { GlStateManager.popMatrix(); }
+        foreground(minecraft, slot, resource, options);
+    }
+
+    private static void foreground(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource row, JeiRenderOptions options) {
+        slot.skin().foreground(minecraft, slot, row);
+        renderChance(minecraft, slot.x(), slot.y(), row, options);
+        renderAmount(minecraft, slot.x() + slot.width() - slot.inset() - 16, slot.y() + slot.height() - slot.inset() - 16, row);
+    }
+
     private static class Bucket<T> {
         private final IngredientConverter<T> converter;
         private final Reference2ObjectOpenHashMap<JeiRecipeDisplay.Resource, T> entries = new Reference2ObjectOpenHashMap<>();
         private final ObjectArrayList<List<T>> inputs = new ObjectArrayList<>();
         private final ObjectArrayList<List<T>> outputs = new ObjectArrayList<>();
-        private final ObjectArrayList<JeiRecipeDisplay.Resource> visible = new ObjectArrayList<>();
+        private final ObjectArrayList<List<JeiRecipeDisplay.Resource>> visible = new ObjectArrayList<>();
 
         Bucket(IngredientConverter<T> converter) {
             this.converter = converter;
@@ -170,39 +245,63 @@ public class JeiRecipeIngredients {
             ingredients.setOutputLists(converter.getIngredientType(), outputs);
         }
 
-        void initialize(IRecipeLayout layout, int inputSlots, int outputSlots, int columns,
-                        int inputX, int outputX, int y, int stride, @Nullable IIngredientRegistry registry) {
+        void initialize(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs,
+                        @Nullable IIngredientRegistry registry, JeiRenderOptions options) {
             var group = converter.getIngredientGroup(layout);
-            for (int i = 0; i < inputSlots + outputSlots; i++) {
-                boolean input = i < inputSlots;
-                int relative = input ? i : i - inputSlots;
-                int x = (input ? inputX : outputX) + relative % columns * stride;
-                int py = y + relative / columns * stride;
+            for (int i = 0; i < inputs.size() + outputs.size(); i++) {
+                boolean input = i < inputs.size();
+                var slot = input ? inputs.get(i) : outputs.get(i - inputs.size());
                 if (registry == null) {
-                    group.init(i, input, x, py);
+                    group.init(i, input, slot.x() + slot.inset(), slot.y() + slot.inset());
                 } else {
                     // HEI draws ingredients after wrapper.drawInfo; amounts must overlay in the native renderer.
-                    group.init(i, input, renderer(registry.getIngredientRenderer(converter.getIngredientType()), i),
-                        x, py, 16, 16, 0, 0);
+                    group.init(i, input, renderer(registry.getIngredientRenderer(converter.getIngredientType()), i, slot, options),
+                        slot.x(), slot.y(), slot.width(), slot.height(), 0, 0);
                 }
             }
-            group.addTooltipCallback((slot, _, _, lines) -> {
-                if (slot >= 0 && slot < visible.size() && visible.get(slot) != null) {
-                    var details = tooltip(visible.get(slot));
+            group.addTooltipCallback((slot, _, ingredient, lines) -> {
+                var row = displayed(slot, ingredient);
+                if (row != null) {
+                    var details = tooltip(row);
                     lines.addAll(details.subList(1, details.size()));
                 }
             });
         }
 
-        private IIngredientRenderer<T> renderer(IIngredientRenderer<T> original, int slot) {
+        @Nullable private JeiRecipeDisplay.Resource displayed(int slot, T ingredient) {
+            if (slot < 0 || slot >= visible.size()) return null;
+            for (var row : visible.get(slot)) if (entries.get(row) == ingredient) return row;
+            var stack = converter.getStackFromIngredient(ingredient);
+            if (stack != null) {
+                for (var row : visible.get(slot)) if (row.stack().what().equals(stack.what())) return row;
+            }
+            return null;
+        }
+
+        private IIngredientRenderer<T> renderer(IIngredientRenderer<T> original, int index, JeiSlot slot, JeiRenderOptions options) {
+            // The converter retains a one-unit query identity. Capacity one fills the entire native
+            // panel and tiles the still sprite at its real dimensions, without narrowing the row's long amount.
+            var fluid = new FluidStackRenderer(1, false,
+                slot.width() - slot.inset() * 2, slot.height() - slot.inset() * 2, null);
             return new IIngredientRenderer<>() {
                 @Override
                 public void render(Minecraft minecraft, int x, int y, @Nullable T ingredient) {
                     if (ingredient != null) {
-                        original.render(minecraft, x, y, ingredient);
-                        if (slot < visible.size() && visible.get(slot) != null) {
-                            renderAmount(minecraft, x, y, visible.get(slot));
-                        }
+                        var row = displayed(index, ingredient);
+                        // Native coordinates include the category origin, while skin slots are category-relative.
+                        var located = new JeiSlot(x, y, slot.width(), slot.height(), slot.inset(), slot.skin());
+                        if (row != null) located.skin().background(minecraft, located, row);
+                        GlStateManager.pushMatrix();
+                        try {
+                            GlStateManager.translate(x + slot.inset(), y + slot.inset(), 0);
+                            if (ingredient instanceof FluidStack stack) {
+                                fluid.render(minecraft, 0, 0, stack);
+                            } else {
+                                GlStateManager.scale((slot.width() - slot.inset() * 2) / 16.0, (slot.height() - slot.inset() * 2) / 16.0, 1);
+                                original.render(minecraft, 0, 0, ingredient);
+                            }
+                        } finally { GlStateManager.popMatrix(); }
+                        if (row != null) foreground(minecraft, located, row, options);
                     }
                 }
 
@@ -218,25 +317,28 @@ public class JeiRecipeIngredients {
             };
         }
 
-        void show(IRecipeLayout layout, List<JeiRecipeDisplay.Resource> inputRows, List<JeiRecipeDisplay.Resource> outputRows,
+        void show(IRecipeLayout layout, List<List<JeiRecipeDisplay.Resource>> inputRows, List<List<JeiRecipeDisplay.Resource>> outputRows,
                   int inputSlots, int outputSlots) {
             var group = converter.getIngredientGroup(layout);
             visible.clear();
             for (int i = 0; i < inputSlots + outputSlots; i++) {
-                visible.add(null);
+                visible.add(ObjectArrayList.of());
                 group.set(i, (T) null);
             }
             fill(group, inputRows, 0);
             fill(group, outputRows, inputSlots);
         }
 
-        private void fill(IGuiIngredientGroup<T> group, List<JeiRecipeDisplay.Resource> rows, int offset) {
+        private void fill(IGuiIngredientGroup<T> group, List<List<JeiRecipeDisplay.Resource>> rows, int offset) {
             for (int i = 0; i < rows.size(); i++) {
-                var ingredient = entries.get(rows.get(i));
-                if (ingredient != null) {
-                    visible.set(offset + i, rows.get(i));
-                    group.set(offset + i, ingredient);
+                var values = new ObjectArrayList<T>();
+                var shown = new ObjectArrayList<JeiRecipeDisplay.Resource>();
+                for (var row : rows.get(i)) {
+                    var ingredient = entries.get(row);
+                    if (ingredient != null) { values.add(ingredient); shown.add(row); }
                 }
+                visible.set(offset + i, shown);
+                if (!values.isEmpty()) group.set(offset + i, values);
             }
         }
     }

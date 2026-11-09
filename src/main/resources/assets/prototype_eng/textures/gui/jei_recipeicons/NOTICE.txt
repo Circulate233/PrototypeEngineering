@@ -1,0 +1,6 @@
+JEI recipe module artwork copied from PrototypeMachinery, retaining original PNG basenames and pixels.
+Upstream: https://github.com/KasumiNova/PrototypeMachinery
+Source checkout: 034541c593ee735312904e635c7ea17db1e376a1, src/main/resources/assets/prototypemachinery/textures/gui/jei_recipeicons/
+License: MIT, Copyright (c) 2022 CleanroomMC. Full license is packaged at META-INF/licenses/PrototypeMachinery-LICENSE.
+Only the resource namespace changes to prototype_eng; the source audit is in build/staging/jei-remaining-plan/asset-manifest.json.
+The native arrow/cycle shapes are drawn in Java and do not use ModularUI code or artwork.
