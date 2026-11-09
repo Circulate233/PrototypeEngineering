@@ -20,19 +20,22 @@ import net.minecraft.client.util.ITooltipFlag;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Collection;
 import javax.annotation.ParametersAreNonnullByDefault;
-
 import mcp.MethodsReturnNonnullByDefault;
 import ae2.api.client.AEKeyRendering;
 import ae2.api.stacks.AEKey;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.Locale;
 import mezz.jei.plugins.vanilla.ingredients.fluid.FluidStackRenderer;
 import net.minecraftforge.fluids.FluidStack;
-
+import ae2.api.stacks.AEItemKey;
+import ae2.core.localization.GuiText;
+import ae2.util.Platform;
+import mezz.jei.api.ingredients.VanillaTypes;
+import mezz.jei.api.recipe.IIngredientType;
+import net.minecraft.item.ItemStack;
+import java.util.function.Predicate;
 /**
  * AE2S converter bridge. Indexes all declared rows, independently of the current visible panel.
  */
@@ -48,31 +51,12 @@ public class JeiRecipeIngredients {
 
     public JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
                                 IIngredientRegistry registry, JeiQueryIdentityIndex identities) {
-        this(display, converters, registry.getRegisteredIngredientTypes(), registry, identities);
+        this(display, converters, registry.getRegisteredIngredientTypes(), registry, identities, new WrappedIngredientConverter(), AEItemKey.class::isInstance);
     }
 
     JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
                          Collection<?> registeredTypes, JeiQueryIdentityIndex identities) {
-        this(display, converters, registeredTypes, null, identities);
-    }
-
-    private JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
-                                 Collection<?> registeredTypes, @Nullable IIngredientRegistry registry,
-                                 JeiQueryIdentityIndex identities) {
-        nativeRegistry = registry;
-        for (var converter : converters) {
-            if (registeredTypes.contains(converter.getIngredientType())) {
-                buckets.add(new Bucket<>(converter));
-            }
-        }
-        for (var row : display.resources()) {
-            for (var bucket : buckets) {
-                if (bucket.add(row, identities, queryConflicts)) {
-                    converted.put(row, bucket);
-                    break;
-                }
-            }
-        }
+        this(display, converters, registeredTypes, null, identities, null, _ -> true);
     }
 
     /**
@@ -86,14 +70,13 @@ public class JeiRecipeIngredients {
         return queryConflicts.contains(resource);
     }
 
-    /** Native alternatives must use one ingredient type and unambiguous exact keys. */
+    /** Native alternatives must use one ingredient type; equal keys retain their individual rows. */
     public boolean canCombine(List<JeiRecipeDisplay.Resource> rows) {
         if (rows.isEmpty()) return false;
         var bucket = converted.get(rows.getFirst());
         if (bucket == null) return false;
-        var keys = new ObjectOpenHashSet<AEKey>();
         for (var row : rows) {
-            if (converted.get(row) != bucket || !keys.add(row.stack().what())) return false;
+            if (converted.get(row) != bucket) return false;
         }
         return true;
     }
@@ -147,6 +130,80 @@ public class JeiRecipeIngredients {
         }
     }
 
+    JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
+                         Collection<?> registeredTypes, JeiQueryIdentityIndex identities, IngredientConverter<?> fallback) {
+        this(display, converters, registeredTypes, null, identities, fallback, _ -> true);
+    }
+
+    JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
+                         Collection<?> registeredTypes, JeiQueryIdentityIndex identities, IngredientConverter<?> fallback,
+                         Predicate<AEKey> nativeKeys) {
+        this(display, converters, registeredTypes, null, identities, fallback, nativeKeys);
+    }
+
+    private JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
+                                 Collection<?> registeredTypes, @Nullable IIngredientRegistry registry,
+                                 JeiQueryIdentityIndex identities, @Nullable IngredientConverter<?> fallback, Predicate<AEKey> nativeKeys) {
+        nativeRegistry = registry;
+        for (var converter : converters) {
+            if (registeredTypes.contains(converter.getIngredientType())) {
+                buckets.add(new Bucket<>(converter));
+            }
+        }
+        for (var row : display.resources()) {
+            if (!nativeKeys.test(row.stack().what())) continue;
+            for (var bucket : buckets) {
+                if (bucket.add(row, identities, queryConflicts)) {
+                    converted.put(row, bucket);
+                    break;
+                }
+            }
+        }
+        if (fallback != null && registeredTypes.contains(fallback.getIngredientType())) addFallback(display, fallback);
+    }
+
+    @SuppressWarnings("unchecked") // The exact IIngredientType binding also owns the native group's generic type.
+    private <T> void addFallback(JeiRecipeDisplay display, IngredientConverter<T> fallback) {
+        Bucket<T> target = null;
+        for (var bucket : buckets) if (bucket.converter.getIngredientType() == fallback.getIngredientType()) {
+            target = (Bucket<T>) bucket;
+            break;
+        }
+        if (target == null) {
+            target = new Bucket<>(fallback);
+            buckets.add(target);
+        }
+        target.fallback = fallback;
+        for (var row : display.resources()) if (!converted.containsKey(row)) {
+            // Like AE2S CellViewRecipe: preserve the actual key and long amount in its wrapped ingredient.
+            var ingredient = fallback.getIngredientFromStack(row.stack());
+            if (ingredient != null) {
+                target.put(row, ingredient);
+                target.wrapped.add(row);
+                converted.put(row, target);
+            }
+        }
+    }
+
+    private static final class WrappedIngredientConverter implements IngredientConverter<ItemStack> {
+        @Override public IIngredientType<ItemStack> getIngredientType() { return VanillaTypes.ITEM; }
+        @Override public ItemStack getIngredientFromStack(GenericStack stack) { return GenericStack.wrapInItemStack(stack); }
+        @Override public @Nullable GenericStack getStackFromIngredient(ItemStack ingredient) { return GenericStack.unwrapItemStack(ingredient); }
+    }
+
+    private static List<String> genericTooltip(JeiRecipeDisplay.Resource resource) {
+        var key = resource.stack().what();
+        var lines = new ObjectArrayList<String>();
+        if (AEKeyRendering.get(key.getType()) != null) {
+            for (var line : AEKeyRendering.getTooltip(key)) lines.add(line.getFormattedText());
+        } else lines.add(key.getDisplayName().getFormattedText());
+        lines.add(GuiText.CellViewAmount.getLocal(key.formatAmount(resource.stack().amount(), AmountFormat.FULL)));
+        for (var detail : resource.details()) lines.add(detail.local());
+        var mod = Platform.getModName(key.getModId());
+        if (!mod.isEmpty() && !lines.contains(mod)) lines.add(GuiText.CellViewMod.getLocal(mod));
+        return lines;
+    }
+
     public static List<String> tooltip(JeiRecipeDisplay.Resource resource) {
         var lines = new ObjectArrayList<String>();
         lines.add(resource.stack().what().getDisplayName().getFormattedText());
@@ -197,7 +254,13 @@ public class JeiRecipeIngredients {
             } else {
                 minecraft.fontRenderer.drawString("?", 4, 4, 0xaa2222);
             }
-        } finally { GlStateManager.popMatrix(); }
+        } finally {
+            GlStateManager.popMatrix();
+            GlStateManager.enableBlend();
+            GlStateManager.disableDepth();
+            GlStateManager.disableLighting();
+            GlStateManager.color(1, 1, 1, 1);
+        }
         foreground(minecraft, slot, resource, options);
     }
 
@@ -209,6 +272,8 @@ public class JeiRecipeIngredients {
 
     private static class Bucket<T> {
         private final IngredientConverter<T> converter;
+        @Nullable private IngredientConverter<T> fallback;
+        private final ReferenceOpenHashSet<JeiRecipeDisplay.Resource> wrapped = new ReferenceOpenHashSet<>();
         private final Reference2ObjectOpenHashMap<JeiRecipeDisplay.Resource, T> entries = new Reference2ObjectOpenHashMap<>();
         private final ObjectArrayList<List<T>> inputs = new ObjectArrayList<>();
         private final ObjectArrayList<List<T>> outputs = new ObjectArrayList<>();
@@ -235,9 +300,13 @@ public class JeiRecipeIngredients {
                 }
                 return false;
             }
+            put(resource, ingredient);
+            return true;
+        }
+
+        private void put(JeiRecipeDisplay.Resource resource, T ingredient) {
             entries.put(resource, ingredient);
             (resource.role() == JeiRecipeDisplay.Role.INPUT ? inputs : outputs).add(ObjectArrayList.of(ingredient));
-            return true;
         }
 
         void index(IIngredients ingredients) {
@@ -262,8 +331,13 @@ public class JeiRecipeIngredients {
             group.addTooltipCallback((slot, _, ingredient, lines) -> {
                 var row = displayed(slot, ingredient);
                 if (row != null) {
-                    var details = tooltip(row);
-                    lines.addAll(details.subList(1, details.size()));
+                    if (wrapped.contains(row)) {
+                        lines.clear();
+                        lines.addAll(genericTooltip(row));
+                    } else {
+                        var details = tooltip(row);
+                        lines.addAll(details.subList(1, details.size()));
+                    }
                 }
             });
         }
@@ -271,7 +345,8 @@ public class JeiRecipeIngredients {
         @Nullable private JeiRecipeDisplay.Resource displayed(int slot, T ingredient) {
             if (slot < 0 || slot >= visible.size()) return null;
             for (var row : visible.get(slot)) if (entries.get(row) == ingredient) return row;
-            var stack = converter.getStackFromIngredient(ingredient);
+            var stack = fallback == null ? null : fallback.getStackFromIngredient(ingredient);
+            if (stack == null) stack = converter.getStackFromIngredient(ingredient);
             if (stack != null) {
                 for (var row : visible.get(slot)) if (row.stack().what().equals(stack.what())) return row;
             }
@@ -290,6 +365,10 @@ public class JeiRecipeIngredients {
                         var row = displayed(index, ingredient);
                         // Native coordinates include the category origin, while skin slots are category-relative.
                         var located = new JeiSlot(x, y, slot.width(), slot.height(), slot.inset(), slot.skin());
+                        if (row != null && wrapped.contains(row)) {
+                            renderFallback(minecraft, located, row, options);
+                            return;
+                        }
                         if (row != null) located.skin().background(minecraft, located, row);
                         GlStateManager.pushMatrix();
                         try {
@@ -307,11 +386,15 @@ public class JeiRecipeIngredients {
 
                 @Override
                 public List<String> getTooltip(Minecraft minecraft, T ingredient, ITooltipFlag tooltipFlag) {
+                    var row = displayed(index, ingredient);
+                    if (row != null && wrapped.contains(row)) return ObjectArrayList.of();
                     return original.getTooltip(minecraft, ingredient, tooltipFlag);
                 }
 
                 @Override
                 public FontRenderer getFontRenderer(Minecraft minecraft, T ingredient) {
+                    var row = displayed(index, ingredient);
+                    if (row != null && wrapped.contains(row)) return minecraft.fontRenderer;
                     return original.getFontRenderer(minecraft, ingredient);
                 }
             };

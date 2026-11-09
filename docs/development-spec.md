@@ -282,6 +282,8 @@ FE 消耗仍参与机器工作的一致性判断。一次工作需要物料与 F
 
 ### 4.5 GUI：直接基于 AEBaseGui
 
+2026-11-09 用户明确要求：原 PM/PN 已实现界面的布局、尺寸、原纹理、控件、文字及交互保持一致，不借重实现擅自设计。通用输入仓以 PM 物品仓 GUI 为原型，仅槽位改用 AE 原生多类型实现以支持非 AEItemKey。能源速率框的表达式解析按用户后续指定直接复用 AE `MathExpressionParser`，不引入独立 EvalEx 库或复制整个库；这项选择不授权改变输入框外观。
+
 机器和仓室界面以具体 Java 类直接继承 `ae2.client.gui.AEBaseGui` 重实现，配合 `AEBaseContainer` 组织服务端容器、槽位和交互。AEBaseGui 已承担的界面生命周期、控件管理与交互能力直接复用；不另建 `PrototypeBaseGui`、`BaseMachineGui` 等覆盖全项目的中间基类，也不复制一份 AEBaseGui 源码作为新框架。
 
 确有重复的槽位布局、按钮组和资源显示可通过普通辅助类或组合控件复用；不要求这些类都接口化。具体界面仍由标准 Java 编写。客户端绘制放在客户端包，服务端容器验证和真实状态修改不依赖客户端类。
@@ -325,6 +327,8 @@ Applied-Flux FE Key 的资源视图与能源视图共享同一余额。一次工
 
 #### 4.7.2 默认生成行为及 MMCE 参考
 
+2026-11-09 用户最终确认：保留自动生成与溢出可达，使用 PM 原槽位、能源及进度纹理，不再重画灰色页面。物品使用原生物品 ingredient，所有非物品使用 AE2S 元件详情页同样的 GenericStack 包装/AEKeyRendering。样板终端导入使用完整显示分组，概率、多可选材料等按展示导入，不附加拒绝策略；多可选材料使用 JEI 同槽候选轮播，具体选择交给 AE2S 的导入优先级；逐 tick 资源按配方 durationTicks×数量导入。保持实际候选关系与 long 数量，不因页面切换丢项；容量与算术溢出在写入前明确检查。
+
 已检查 `F:/clone/ModularMachinery-Community-Edition` 本地工作区的 `CategoryDynamicRecipe`、`DynamicRecipeWrapper`、`RecipeLayoutPart`、`JEIComponentEnergy` 与 `ModIntegrationJEI`。调查时 HEAD 为 `e1d80aeaeaff55ef6482f9a9734fa1d5d8d16082`；本轮未运行该工程。其默认生成思路可作为本项目默认实例的参考：
 
 - 扫描同组可展示配方，按输入/输出及展示内容统计槽位需求，以组内所需的最大数量形成共用布局。
@@ -351,7 +355,7 @@ Applied-Flux FE Key 的资源视图与能源视图共享同一余额。一次工
 
 默认生成、自定义接口实例及配方池关联均为已确认需求，随配方池功能实现，不等待 CraftTweaker。自定义页面用 Java 编写，CT 最后接入时仍使用同一配方池和配方注册 API，不扩展为页面 DSL。
 
-文中“JEI”指配方浏览集成；当前环境的 HEI 与 `mezz.jei.api` 兼容性、具体依赖版本需在接入时核验。配方转移/一键填充、额外书签操作、结构预览页及其他特殊联动尚未因此确认。
+文中“JEI”指配方浏览集成，当前使用与 AE2S 对应的 HEI 4.35.1 和 `mezz.jei.api`。用户已确认样板终端导入及原有结构预览迁移；样板导入沿显示分组、完整数量与 AE2S 候选优先级处理。额外书签操作和其他新增联动仍不由此自动确认。
 
 ## 5. 代码组织与 API 边界
 

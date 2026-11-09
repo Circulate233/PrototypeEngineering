@@ -12,8 +12,12 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.localization.JeiText;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+
+import java.util.List;
 
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role.INPUT;
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role.OUTPUT;
@@ -58,12 +62,18 @@ public class DefaultRecipeDisplays {
             if (selective.candidates().isEmpty()) {
                 display.information(of(JeiText.NoCandidates, requirement.id()));
             }
+            var inputs = new ObjectArrayList<JeiRecipeDisplay.CandidateGroup>();
+            var outputs = new ObjectArrayList<JeiRecipeDisplay.CandidateGroup>();
             for (int i = 0; i < selective.candidates().size(); i++) {
-                var nested = display.scoped(of(JeiText.Alternative, requirement.id(), i + 1, selective.candidates().size()));
+                var nested = new JeiRecipeDisplay.Builder().scoped(of(JeiText.Alternative, requirement.id(), i + 1, selective.candidates().size()));
                 if (!selective.modifiers().isEmpty()) {
                     nested = nested.scoped(of(JeiText.Modifiers));
                 }
                 describe(recipe, selective.candidates().get(i), nested, extensions);
+                var candidate = nested.build();
+                appendAlternative(display, candidate, INPUT, inputs, requirement.id().toString());
+                appendAlternative(display, candidate, OUTPUT, outputs, requirement.id().toString());
+                for (var line : candidate.information()) display.information(line);
             }
         } else if (requirement.type() == RecipeRequirements.ATTRIBUTES) {
             var attribute = (AttributeRequirement) requirement.payload();
@@ -71,6 +81,32 @@ public class DefaultRecipeDisplays {
                 attribute.applyAtStart(), attribute.removeAtEnd()));
         } else {
             display.information(of(JeiText.CustomRequirement, requirement.type().id(), requirement.id()));
+        }
+    }
+
+    /** Corresponding input/output slots share JEI candidate lists, including nested fuzzy groups. */
+    private static void appendAlternative(JeiRecipeDisplay.Builder display, JeiRecipeDisplay candidate,
+                                          JeiRecipeDisplay.Role role, List<JeiRecipeDisplay.CandidateGroup> slots, String name) {
+        var assigned = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, List<JeiRecipeDisplay.CandidateGroup>>();
+        int nextSlot = 0;
+        for (var row : candidate.resources()) {
+            if (row.role() != role) continue;
+            var source = row.candidates();
+            var targets = source == null ? null : assigned.get(source);
+            if (targets == null) {
+                targets = new ObjectArrayList<>();
+                int count = source == null ? 1 : source.alternativeSlots();
+                for (int pick = 0; pick < count; pick++) {
+                    if (nextSlot == slots.size()) slots.add(new JeiRecipeDisplay.CandidateGroup(name + "/" + role + "/" + nextSlot));
+                    targets.add(slots.get(nextSlot++));
+                }
+                if (source != null) assigned.put(source, targets);
+            }
+            for (var target : targets) {
+                var output = display.candidates(target);
+                if (row.chance() != null) output = output.chance(row.chance().percent(), row.chance().attributeDriven());
+                output.resource(row.stack(), role, row.details().toArray(JeiRecipeDisplay.Text[]::new));
+            }
         }
     }
 

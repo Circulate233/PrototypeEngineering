@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
-
 /** PM's 45 degree orbit, exponential smoothing and world-space panning, without native GL state. */
 public final class StructurePreviewCamera {
     public record Viewport(double x, double y, double width, double height) {
@@ -24,22 +23,45 @@ public final class StructurePreviewCamera {
     private int dragButton = -1;
     private double startX, startY, lastX, lastY;
     private boolean dragged;
+    private StructureBounds preparedBounds;
+
+    public void prepare(StructureBounds bounds) {
+        if (bounds.equals(preparedBounds)) return;
+        if (preparedBounds == null) zoom = zoomTarget = initialZoom(bounds);
+        preparedBounds = bounds;
+        pan = panTarget = Vec3d.ZERO;
+    }
+
+    private static double initialZoom(StructureBounds bounds) {
+        double size = maxSize(bounds);
+        return Math.clamp(3.5 * Math.sqrt(size) / (2.6 * size), .25, 8);
+    }
 
     public void reset() {
-        yaw = yawTarget = -45; pitch = pitchTarget = 25; zoom = zoomTarget = 1;
-        pan = panTarget = Vec3d.ZERO; lastFrame = -1; dragButton = -1;
+        yaw = yawTarget = -45;
+        pitch = pitchTarget = 25;
+        zoom = zoomTarget = preparedBounds == null ? 1 : initialZoom(preparedBounds);
+        pan = panTarget = preparedBounds == null ? Vec3d.ZERO : new Vec3d(
+            ((double) preparedBounds.min().getX() + preparedBounds.max().getX()) / 2,
+            ((double) preparedBounds.min().getY() + preparedBounds.max().getY()) / 2,
+            ((double) preparedBounds.min().getZ() + preparedBounds.max().getZ()) / 2);
+        lastFrame = -1;
+        dragButton = -1;
     }
     public double yaw() { return yaw; }
     public double pitch() { return pitch; }
+
     public double distance(StructureBounds bounds) {
-        double size = Math.max((double) bounds.max().getX() - bounds.min().getX() + 1,
-            Math.max((double) bounds.max().getY() - bounds.min().getY() + 1, (double) bounds.max().getZ() - bounds.min().getZ() + 1));
-        return Math.max(1, size) * 2.6 * zoom;
+        return maxSize(bounds) * 2.6 * zoom;
     }
-    public Vec3d center(StructureBounds bounds) {
-        return new Vec3d(((double) bounds.min().getX() + bounds.max().getX() + 1) / 2,
-            ((double) bounds.min().getY() + bounds.max().getY() + 1) / 2,
-            ((double) bounds.min().getZ() + bounds.max().getZ() + 1) / 2).add(pan);
+
+    private static double maxSize(StructureBounds bounds) {
+        return Math.max(1, Math.max((double) bounds.max().getX() - bounds.min().getX() + 1,
+            Math.max((double) bounds.max().getY() - bounds.min().getY() + 1, (double) bounds.max().getZ() - bounds.min().getZ() + 1)));
+    }
+
+    public Vec3d center(@SuppressWarnings("unused") StructureBounds bounds) {
+        return new Vec3d(.5, .5, .5).add(pan);
     }
     public void frame(long now) {
         frame(now, false);
@@ -52,18 +74,28 @@ public final class StructurePreviewCamera {
         yaw += (yawTarget - yaw) * alpha; pitch += (pitchTarget - pitch) * alpha; zoom += (zoomTarget - zoom) * alpha;
         pan = pan.add(panTarget.subtract(pan).scale(alpha));
     }
+
     public boolean press(Viewport viewport, double x, double y, int button) {
-        if (!viewport.contains(x, y) || button < 0 || button > 2) return false;
-        dragButton = button; startX = lastX = x; startY = lastY = y; dragged = false; return true;
+        if (!viewport.contains(x, y) || button < 0 || button > 1) return false;
+        dragButton = button;
+        startX = lastX = x;
+        startY = lastY = y;
+        dragged = false;
+        return true;
     }
+
     public boolean drag(double x, double y, StructureBounds bounds, Viewport viewport) {
         if (dragButton < 0) return false;
         double dx = x - lastX, dy = y - lastY;
-        lastX = x; lastY = y;
-        dragged |= Math.hypot(x - startX, y - startY) > 3;
-        if (dragButton == 0) { yawTarget += dx * 0.6; pitchTarget = Math.clamp(pitchTarget + dy * 0.6, -89, 89); }
-        else {
-            double unit = 2 * distance(bounds) * Math.tan(Math.toRadians(22.5)) / viewport.height;
+        lastX = x;
+        lastY = y;
+        dragged |= Math.abs(x - startX) > 3 || Math.abs(y - startY) > 3;
+        if (Math.abs(dx) > 200 || Math.abs(dy) > 200) return true;
+        if (dragButton == 0) {
+            yawTarget += dx * 0.65;
+            pitchTarget = Math.clamp(pitchTarget + dy * 0.65, -89, 89);
+        } else {
+            double unit = 2 * distance(bounds) * Math.tan(Math.toRadians(22.5)) / viewport.height * .25;
             panTarget = panTarget.add(right().scale(-dx * unit)).add(up().scale(dy * unit));
         }
         return true;
@@ -72,9 +104,11 @@ public final class StructurePreviewCamera {
         if (dragButton != button) return false;
         dragButton = -1; return button == 0 && !dragged;
     }
+
     public boolean wheel(Viewport viewport, double x, double y, int delta) {
         if (delta == 0 || !viewport.contains(x, y)) return false;
-        zoomTarget = Math.clamp(zoomTarget * Math.pow(1.12, -Integer.signum(delta)), 0.12, 12); return true;
+        zoomTarget = Math.clamp(zoomTarget * Math.pow(1.08, -Integer.signum(delta)), .25, 8);
+        return true;
     }
     public Vec3d right() { double y = Math.toRadians(yaw); return new Vec3d(Math.cos(y), 0, Math.sin(y)); }
     public Vec3d up() {
@@ -93,6 +127,7 @@ public final class StructurePreviewCamera {
         var direction = backward.scale(-1).add(right().scale(nx * tangent * viewport.width / viewport.height)).add(up().scale(ny * tangent)).normalize();
         return new Ray(center(bounds).add(backward.scale(distance(bounds))), direction);
     }
+
     public @Nullable StructurePreviewView.Click pick(StructurePreviewView view, Viewport viewport, double x, double y) {
         var model = view.model();
         var bounds = view.sceneBounds();
@@ -101,11 +136,19 @@ public final class StructurePreviewCamera {
         if (ray == null) return null;
         double best = Double.POSITIVE_INFINITY;
         StructurePreviewModel.Cell hit = null;
+        var controller = view.controllerCell();
+        if (controller != null && view.visible(controller)) {
+            best = intersect(ray, 0, 0, 0);
+            if (Double.isFinite(best)) hit = controller;
+        }
         for (var cell : model.cells()) {
             if (!view.visible(cell)) continue;
             var pos = cell.position();
             double distance = intersect(ray, pos.getX(), pos.getY(), pos.getZ());
-            if (distance < best) { best = distance; hit = cell; }
+            if (distance < best) {
+                best = distance;
+                hit = cell;
+            }
         }
         return hit == null ? null : new StructurePreviewView.Click(view.token(), hit);
     }

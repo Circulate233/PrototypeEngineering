@@ -10,7 +10,6 @@ import ae2.container.slot.AppEngSlot;
 import ae2.helpers.InventoryAction;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
-import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.storage.HatchGuiInventory;
 import com.circulation.prototype_eng.storage.HatchSlotActions;
 import net.minecraft.entity.player.EntityPlayer;
@@ -21,22 +20,24 @@ import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Objects;
-
 import ae2.api.stacks.AEFluidKey;
-import ae2.api.stacks.AEKeyType;
 import ae2.container.guisync.GuiSync;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
-
+import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
+import com.circulation.prototype_eng.api.storage.HatchTier;
+import com.circulation.prototype_eng.localization.HatchGuiTitle;
 public final class ResourceHatchContainer extends AEBaseContainer {
-    private static final String FLUID_INPUT_RATE = "fluidInputRate";
-    private static final String FLUID_OUTPUT_RATE = "fluidOutputRate";
-    private static final String CLEAR_FLUIDS = "clearFluids";
+    private static final String AUTO_INPUT = "autoInput";
+    private static final String AUTO_OUTPUT = "autoOutput";
     public final int columns;
     public final int guiWidth;
+    public final int guiHeight;
+    public final int textureWidth;
+    public final int visibleRows;
+    public final int resourceTop;
     public final int playerTop;
     public final int rows;
     public final int outputLeft;
@@ -45,83 +46,56 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     private final int inputSlots;
     private final int resourceSlots;
     @Nullable
+    private final ResourceHatchSettings settings;
+    @Nullable
     private final FluidHatchSettings fluidSettings;
     @GuiSync(0)
-    public long fluidInputRate;
+    public boolean autoInput;
     @GuiSync(1)
-    public long fluidOutputRate;
+    public boolean autoOutput;
 
     public ResourceHatchContainer(InventoryPlayer player, ResourceHatchGuiHost tile) {
         super(player, tile.blockEntity());
         this.tile = tile;
-        fluidSettings = tile instanceof FluidHatchSettings settings ? settings : null;
+        settings = tile instanceof ResourceHatchSettings hatchSettings ? hatchSettings : null;
+        fluidSettings = tile instanceof FluidHatchSettings hatchSettings ? hatchSettings : null;
         hatch = tile.storage();
         SlottedResourceStorage input = hatch.input();
         SlottedResourceStorage output = hatch.output();
         inputSlots = input == null ? 0 : input.size();
         resourceSlots = inputSlots + (output == null ? 0 : output.size());
         boolean mixed = tile.mode() == HatchMode.MIXED;
-        int slotsPerSide = Math.max(inputSlots, output == null ? 0 : output.size());
-        columns = mixed ? (slotsPerSide <= 9 ? 3 : 6) : 9;
-        // Reserve a thin AE2 scrollbar beside each resource grid.
-        guiWidth = mixed ? (columns == 6 ? 258 : 176) : 188;
-        rows = (slotsPerSide + columns - 1) / columns;
-        playerTop = 50 + Math.min(rows, 5) * 18 + controlsHeight();
-        outputLeft = mixed ? guiWidth - 18 - columns * 18 : 8;
-        addBuffer(input, true, 8);
+        int level = tile.tier().level();
+        visibleRows = level <= 2 ? 3 : level <= 4 ? 4 : 7;
+        columns = mixed ? (level <= 4 ? 4 : 5) : (level <= 2 ? 8 : 9);
+        guiWidth = mixed ? (level <= 4 ? 251 : 245) : (level <= 2 ? 225 : level <= 4 ? 243 : 213);
+        guiHeight = level <= 2 ? 168 : level <= 4 ? 186 : mixed ? 240 : 239;
+        textureWidth = mixed && level >= 5 ? 304 : 256;
+        resourceTop = mixed ? 24 : 25;
+        rows = (Math.max(inputSlots, resourceSlots - inputSlots) + columns - 1) / columns;
+        playerTop = guiHeight - 84;
+        outputLeft = mixed ? (level <= 2 ? 114 : level <= 4 ? 123 : 137) : 26;
+        addBuffer(input, true, 26);
         addBuffer(output, false, outputLeft);
-        addPlayerInventorySlots((guiWidth - 162) / 2, playerTop);
-        setGuiTitle(GuiText.resourceHatch(tile.mode()).text(tile.tier().level()));
-        syncFluidSettings();
-        registerClientAction(FLUID_INPUT_RATE, Long.class, 20, value -> {
-            if (value != null && canChangeFluids() && fluidSettings != null && tile.mode().hasInput()) {
-                fluidSettings.setMaxFluidInputRate(value);
-            }
+        addPlayerInventorySlots(27, playerTop);
+        setGuiTitle(HatchGuiTitle.of(false, tile.mode(), tile.tier()).text());
+        syncSettings();
+        registerClientAction(AUTO_INPUT, () -> {
+            if (canChangeSettings() && settings != null && tile.mode().hasInput()) settings.setAutoInput(!settings.autoInput());
         });
-        registerClientAction(FLUID_OUTPUT_RATE, Long.class, 20, value -> {
-            if (value != null && canChangeFluids() && fluidSettings != null && tile.mode().hasOutput()) {
-                fluidSettings.setMaxFluidOutputRate(value);
-            }
-        });
-        registerClientAction(CLEAR_FLUIDS, () -> {
-            if (canChangeFluids()) {
-                var inputStorage = hatch.input();
-                var outputStorage = hatch.output();
-                boolean changed = false;
-                if (inputStorage != null) {
-                    changed = HatchSlotActions.clearAvailable(inputStorage, AEKeyType.fluids());
-                }
-                if (outputStorage != null) {
-                    changed |= HatchSlotActions.clearAvailable(outputStorage, AEKeyType.fluids());
-                }
-                if (changed) {
-                    sync(getPlayer());
-                }
-            }
+        registerClientAction(AUTO_OUTPUT, () -> {
+            if (canChangeSettings() && settings != null && tile.mode().hasOutput()) settings.setAutoOutput(!settings.autoOutput());
         });
     }
 
-    public boolean hasFluidSettings() {
-        return fluidSettings != null;
-    }
+    public int inputRows() { return (inputSlots + columns - 1) / columns; }
+    public HatchTier tier() { return tile.tier(); }
+    public int outputRows() { return (resourceSlots - inputSlots + columns - 1) / columns; }
+    public boolean hasAutomationSettings() { return settings != null; }
+    public void toggleInput() { sendClientAction(AUTO_INPUT); }
+    public void toggleOutput() { sendClientAction(AUTO_OUTPUT); }
 
-    public int controlsHeight() {
-        return hasFluidSettings() ? 80 : 24;
-    }
-
-    public void setFluidInputRate(long value) {
-        sendClientAction(FLUID_INPUT_RATE, value);
-    }
-
-    public void setFluidOutputRate(long value) {
-        sendClientAction(FLUID_OUTPUT_RATE, value);
-    }
-
-    public void clearFluids() {
-        sendClientAction(CLEAR_FLUIDS);
-    }
-
-    private boolean canChangeFluids() {
+    private boolean canChangeSettings() {
         var player = getPlayer();
         var server = player.world.getMinecraftServer();
         return isServerSide() && server != null && server.isCallingFromMinecraftThread()
@@ -129,18 +103,15 @@ public final class ResourceHatchContainer extends AEBaseContainer {
             && player.world.isBlockModifiable(player, tile.blockEntity().getPos());
     }
 
-    private void syncFluidSettings() {
-        if (fluidSettings != null) {
-            fluidInputRate = fluidSettings.maxFluidInputRate();
-            fluidOutputRate = fluidSettings.maxFluidOutputRate();
+    private void syncSettings() {
+        if (settings != null) {
+            autoInput = settings.autoInput();
+            autoOutput = settings.autoOutput();
         }
     }
 
-    @Override
-    public void broadcastChanges() {
-        if (isServerSide()) {
-            syncFluidSettings();
-        }
+    @Override public void broadcastChanges() {
+        if (isServerSide()) syncSettings();
         super.broadcastChanges();
     }
 
@@ -181,7 +152,7 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         }
         var display = new HatchGuiInventory(inv, isClientSide());
         for (int i = 0; i < inv.size(); i++) {
-            var slot = new AppEngSlot(display, i, left + (i % columns) * 18, 32 + (i / columns) * 18) {
+            var slot = new AppEngSlot(display, i, left + (i % columns) * 18 + 1, resourceTop + (i / columns) * 18 + 1) {
                 @Override
                 public boolean isItemValid(ItemStack stack) {
                     var key = AEItemKey.of(stack);

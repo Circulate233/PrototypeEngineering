@@ -13,6 +13,7 @@ import net.minecraftforge.client.MinecraftForgeClient;
 
 import java.nio.ByteOrder;
 import java.util.List;
+import java.util.Arrays;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -32,6 +33,8 @@ final class PreviewBlockQuadCursor {
     private List<BakedQuad> quads;
     private int layer, face, quad;
     private boolean initialized, complete;
+    private int[] nativeVertices;
+    private int nativeOffset;
 
     @FunctionalInterface
     interface QuadSink {
@@ -57,7 +60,7 @@ final class PreviewBlockQuadCursor {
             initialized = true;
             state = access == null ? PreviewBlockStates.first(model, cell) : access.represented(cell.position());
             if (state != null && access != null) state = state.getActualState(access, cell.position());
-            complete = state == null;
+            complete = state == null || access != null && !access.visible(cell.position());
             return complete;
         }
         if (layer == LAYERS.length) {
@@ -70,6 +73,19 @@ final class PreviewBlockQuadCursor {
         var previous = MinecraftForgeClient.getRenderLayer();
         try {
             ForgeHooksClient.setRenderLayer(LAYERS[layer]);
+            if (access != null) {
+                if (nativeVertices == null) {
+                    if (!state.getBlock().canRenderInLayer(state, LAYERS[layer])) { layer++; return false; }
+                    nativeVertices = access.renderLayer(state, cell.position());
+                    nativeOffset = 0;
+                    return false;
+                }
+                if (nativeOffset == nativeVertices.length) { nativeVertices = null; layer++; return false; }
+                if (!current.getAsBoolean()) return false;
+                sink.put(layer, Arrays.copyOfRange(nativeVertices, nativeOffset, nativeOffset + 28));
+                nativeOffset += 28;
+                return false;
+            }
             if (baked == null) {
                 boolean supported = state.getBlock().canRenderInLayer(state, LAYERS[layer]);
                 if (!current.getAsBoolean()) return false;

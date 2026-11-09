@@ -3,21 +3,20 @@ package com.circulation.prototype_eng.integration.jei;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-
 import java.util.List;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeIngredients;
 import com.circulation.prototype_eng.api.client.jei.JeiRenderOptions;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
-
+import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
 /**
  * Stable panel splitting; no resource or explanation is discarded when a pool exceeds JEI's viewport.
  */
 public class RecipePanelLayout {
     public static final int COLUMNS = 4;
     public static final int RESOURCE_CAPACITY = 16;
-    public static final int INFORMATION_CAPACITY = 4;
+    public static final int INFORMATION_CAPACITY = 2;
     private final List<JeiRecipeDisplay.Text> information;
     private final int pageCount;
     private final List<List<JeiRecipeDisplay.Resource>> inputGroups;
@@ -85,6 +84,10 @@ public class RecipePanelLayout {
 
     public int pageCount() {
         return pageCount;
+    }
+
+    public JeiPatternRecipe patternRecipe(long durationTicks) {
+        return JeiPatternRecipe.fromGroups(inputGroups, outputGroups, durationTicks);
     }
 
     public int inputSlots() {

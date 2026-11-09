@@ -9,8 +9,8 @@ import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import com.circulation.prototype_eng.client.preview.PreviewScreenTransitions;
 import com.circulation.prototype_eng.client.preview.PreviewBackRequest;
 import com.circulation.prototype_eng.container.StructurePreviewContainer;
-import com.circulation.prototype_eng.localization.StructurePreviewText;
 import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -33,24 +33,27 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
         this(parent.getContainer(), parent.getContainer().getPlayerInventory(), view, navigation);
     }
     private StructurePreviewGui(AEBaseContainer container, InventoryPlayer inventory, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
-        super(container, inventory); this.view = view; this.navigation = navigation; xSize = 384; ySize = 280;
+        super(container, inventory); this.view = view; this.navigation = navigation; xSize = 184; ySize = 220;
         // A canceled native InitPre still leaves a displayed GUI. Its resources and local input
         // must already exist; a canceled/replaced GuiOpen releases this panel through Session.
         panel = new StructurePreviewPanel(view);
     }
     @Override public void initGui() {
         if (!navigation.initCurrent(this)) { releasePreview(); return; }
-        xSize = Math.clamp(width - 8, 174, 384); ySize = Math.clamp(height - 8, 200, 280);
         super.initGui();
         if (!navigation.initCurrent(this)) { releasePreview(); return; }
         if (panel == null || panel.closed()) panel = new StructurePreviewPanel(view);
-        buttonList.add(new GuiButton(0, guiLeft + xSize - 50, guiTop - 19, 48, 18, StructurePreviewText.Back.getLocal()));
+        addButton(new PreviewCloseButton(guiLeft + 170, guiTop + 4));
     }
-    @Override public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {}
-    @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
+    @Override public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         if (!navigation.viewerCurrent(this) || panel == null || panel.closed()) return;
-        panel.draw(xSize, ySize, mouseX - guiLeft, mouseY - guiTop, mc.getRenderPartialTicks(), false);
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(x, y, 0);
+            panel.draw(xSize, ySize, mouseX - guiLeft, mouseY - guiTop, partialTicks, false);
+        } finally { GlStateManager.popMatrix(); }
     }
+    @Override public void drawFG(int x, int y, int mouseX, int mouseY) {}
     @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         if (!navigation.viewerCurrent(this) || panel == null || panel.closed()) return;
         super.drawScreen(mouseX, mouseY, partialTicks);
@@ -65,17 +68,15 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
         if (!navigation.viewerCurrent(this)) return;
         if (key == Keyboard.KEY_ESCAPE || mc.gameSettings.keyBindInventory.isActiveAndMatches(key)) {
             backRequest.keyPress();
-            return;
         }
-        if (inputCurrent()) panel.key(typed, key);
     }
     @Override protected void mouseClicked(int x, int y, int button) {
         if (!navigation.viewerCurrent(this)) return;
-        if (inputCurrent() && panel.press(x - guiLeft, y - guiTop, button)) return;
-        if (button != 0) return;
-        for (var control : buttonList) if (control.mousePressed(mc, x, y)) {
+        // PM's close button accepts both buttons and sits above the scene at their shared edge.
+        if (button == 0 || button == 1) for (var control : buttonList) if (control.mousePressed(mc, x, y)) {
             control.playPressSound(mc.getSoundHandler()); actionPerformed(control); return;
         }
+        if (inputCurrent()) panel.press(x - guiLeft, y - guiTop, button);
     }
     @Override protected void mouseClickMove(int x, int y, int button, long elapsed) {
         if (inputCurrent()) panel.drag(x - guiLeft, y - guiTop);

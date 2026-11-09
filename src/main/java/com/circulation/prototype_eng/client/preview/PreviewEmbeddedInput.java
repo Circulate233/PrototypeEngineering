@@ -8,7 +8,6 @@ import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 import java.util.function.BiPredicate;
@@ -97,11 +96,6 @@ public final class PreviewEmbeddedInput {
         }
     }
     @SubscribeEvent(priority = EventPriority.HIGHEST) public void key(GuiScreenEvent.KeyboardInputEvent.Pre event) {
-        if (PreviewScreenTransitions.blocked(event.getGui())) { event.setCanceled(true); return; }
-        if (!Keyboard.getEventKeyState()) return;
-        for (int index = active.size() - 1; index >= 0; index--) {
-            var entry = active.get(index);
-            if (fresh(entry) && entry.host == event.getGui() && entry.panel.key(Keyboard.getEventCharacter(), Keyboard.getEventKey())) { event.setCanceled(true); return; }
-        }
+        if (PreviewScreenTransitions.blocked(event.getGui())) event.setCanceled(true);
     }
 }

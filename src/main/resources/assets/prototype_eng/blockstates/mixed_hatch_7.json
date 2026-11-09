@@ -2,6 +2,9 @@
   "variants": {
     "normal": {
       "model": "prototype_eng:item_hatch/io/lv7"
+    },
+    "inventory": {
+      "model": "prototype_eng:item/mixed_hatch_7"
     }
   }
 }

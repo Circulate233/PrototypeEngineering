@@ -16,7 +16,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -24,7 +23,6 @@ import java.util.Objects;
 import java.util.function.Function;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
-
 /** One viewer/wrapper's choices and bounded observations; all geometry is supplied by the C service. */
 public final class StructurePreviewView {
     public enum Sort {ISSUES, COUNT, NAME}
@@ -63,11 +61,13 @@ public final class StructurePreviewView {
     private BlockPos anchor = BlockPos.ORIGIN;
     private StructureDisplay selected;
     private StructurePreviewModel.Cell picked;
+    private StructurePreviewModel.Cell controllerCell;
+    private BlockPos restorePick;
     public String search = "";
     public Sort sort = Sort.ISSUES;
     public boolean showMatch = true, showMismatch = true, showUnloaded = true, showUnknown = true;
-    public boolean scan, threeDimensional = true, materialsOpen = true, alternativesOpen, occurrencesOpen;
-    public boolean autoRotate, wireframe = true, optionsOpen;
+    public boolean scan, threeDimensional = true, materialsOpen;
+    public boolean autoRotate, wireframe = true;
     public int layer;
 
     public StructurePreviewView(StructurePreviews previews, ResourceLocation id, StructurePreviewSettings settings) {
@@ -106,7 +106,7 @@ public final class StructurePreviewView {
     /** Include the independent controller only in 3D framing; complete geometry/BOM stay authoritative. */
     public @Nullable StructureBounds sceneBounds() {
         var complete = model();
-        return complete == null ? null : threeDimensional && machine != null ? controllerBounds : complete.bounds();
+        return complete == null ? null : controllerBounds;
     }
 
     public boolean formedPreview(Object expected, boolean next) {
@@ -128,6 +128,14 @@ public final class StructurePreviewView {
     }
     public @Nullable StructureDisplay selected() { return selected; }
     public @Nullable StructurePreviewModel.Cell picked() { return picked; }
+
+    void controllerDisplay(StructureDisplay display) {
+        if (controllerCell != null && display.equals(controllerCell.display())) return;
+        controllerCell = new StructurePreviewModel.Cell(BlockPos.ORIGIN, StructurePreviewPath.ROOT, -1, -1, display, false);
+        token = new Object();
+    }
+
+    @Nullable StructurePreviewModel.Cell controllerCell() { return controllerCell; }
     public BlockPos anchor() { return anchor; }
     public void anchor(BlockPos next) {
         if (!anchor.equals(next)) { anchor = next.toImmutable(); resetObservations(); }
@@ -140,9 +148,15 @@ public final class StructurePreviewView {
 
     public void advance(int visits) {
         if (visits < 0) throw new IllegalArgumentException("Negative index visits");
-        if (previews.closed()) { forgetModel(); return; }
+        if (previews.closed()) {
+            forgetModel();
+            return;
+        }
         var next = previews.request(id, settings);
-        if (next != request) { request = next; forgetModel(); }
+        if (next != request) {
+            request = next;
+            forgetModel();
+        }
         if (next == null || next.state() == StructurePreviews.State.FAILED) return;
         int remaining = visits - next.advance(visits);
         var completed = next.model();
@@ -155,16 +169,19 @@ public final class StructurePreviewView {
                 var bounds = completed.bounds();
                 controllerBounds = new StructureBounds(new BlockPos(Math.min(0, bounds.min().getX()), Math.min(0, bounds.min().getY()), Math.min(0, bounds.min().getZ())),
                     new BlockPos(Math.max(0, bounds.max().getX()), Math.max(0, bounds.max().getY()), Math.max(0, bounds.max().getZ())));
-                layer = Math.clamp(layer, completed.bounds().min().getY(), completed.bounds().max().getY());
+                layer = Math.clamp(controllerBounds.min().getY() + (controllerBounds.max().getY() - controllerBounds.min().getY() + 1) / 2,
+                    completed.bounds().min().getY(), completed.bounds().max().getY());
             }
         }
         if (completed == null || indexed) return;
         while (remaining > 0 && cellCursor < completed.cells().size()) {
             var cell = completed.cells().get(cellCursor++);
-            cells.put(cell.position(), cell); remaining--;
+            cells.put(cell.position(), cell);
+            remaining--;
         }
         while (remaining > 0 && bomCursor < completed.bom().size()) {
-            membership.add(completed.bom().get(bomCursor++).display()); remaining--;
+            membership.add(completed.bom().get(bomCursor++).display());
+            remaining--;
         }
         if (cellCursor != completed.cells().size() || bomCursor != completed.bom().size()) return;
         if (prune == null) prune = alternatives.keySet().iterator();
@@ -174,6 +191,11 @@ public final class StructurePreviewView {
         }
         if (prune.hasNext()) return;
         if (selected != null && !membership.contains(selected)) selected = null;
+        if (restorePick != null) {
+            picked = cells.get(restorePick);
+            selected = picked == null ? null : picked.display();
+            restorePick = null;
+        }
         indexed = true;
     }
 
@@ -225,6 +247,7 @@ public final class StructurePreviewView {
     }
 
     public int alternative(@Nullable StructureDisplay display) { return display == null ? 0 : alternatives.getInt(display); }
+
     public boolean alternative(Object expected, StructureDisplay display, int option) {
         var complete = model();
         if (expected != token || complete == null || option < 0 || option >= display.options().size()
@@ -233,7 +256,9 @@ public final class StructurePreviewView {
         var options = new Object2ObjectOpenHashMap<>(settings.displayOptions());
         options.put(display, option);
         settings = new StructurePreviewSettings(settings.orientation(), settings.sliceCounts(), settings.maxOccurrences(), settings.maxCellVisits(), options);
-        request = null; forgetModel();
+        request = null;
+        restorePick = picked == null ? null : picked.position();
+        forgetModel();
         return true;
     }
     public boolean slices(Object expected, StructurePreviewPath path, int count) {
@@ -251,14 +276,23 @@ public final class StructurePreviewView {
         }
         return false;
     }
+
     public boolean choose(Click click) {
-        if (click == null || click.token() != token || model() == null || !visible(click.cell()) || cells.get(click.cell().position()) != click.cell()) return false;
-        picked = click.cell(); selected = picked.display(); materialsOpen = true;
+        if (click == null || click.token() != token || model() == null || !visible(click.cell())
+            || click.cell() != controllerCell && cells.get(click.cell().position()) != click.cell())
+            return false;
+        picked = picked != null && picked.position().equals(click.cell().position()) ? null : click.cell();
+        selected = picked == null ? null : picked.display();
         return true;
     }
     public void select(@Nullable StructureDisplay display) { selected = display; picked = null; }
-    public boolean visible(StructurePreviewModel.Cell cell) { return (threeDimensional || cell.position().getY() == layer)
-            && (!formingModelsVisible() || !rootHideWorldBlocks && !cell.hideWorldBlocks()); }
+
+    public boolean visible(StructurePreviewModel.Cell cell) {
+        if (cell == controllerCell) return threeDimensional || layer == 0;
+        if (controllerCell != null && cell.position().equals(BlockPos.ORIGIN)) return false;
+        return (threeDimensional || cell.position().getY() == layer)
+            && (!formingModelsVisible() || !rootHideWorldBlocks && !cell.hideWorldBlocks());
+    }
     public List<StructurePreviewModel.Cell> sceneSamples(int visits) {
         return sample(visits, false);
     }
@@ -280,6 +314,13 @@ public final class StructurePreviewView {
         return result;
     }
     public @Nullable StructurePreviewModel.Cell at(BlockPos position) { return model() == null ? null : cells.get(position); }
+
+    @Nullable StructureProjectionState.Status observation(int index) { return statuses.get(index); }
+
+    @Nullable StructureProjectionState.Status pickedStatus() {
+        var complete = model();
+        return picked == null || complete == null ? null : statuses.get(complete.cells().indexOf(picked));
+    }
 
     /** Full-structure counts deliberately never use the visible layer. Counts remain long throughout. */
     public List<Material> materials(Function<StructureDisplay, String> names, String unknownName) {

@@ -14,7 +14,11 @@ import net.minecraft.world.biome.Biome;
 import org.jetbrains.annotations.Nullable;
 import javax.annotation.ParametersAreNonnullByDefault;
 import mcp.MethodsReturnNonnullByDefault;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import org.lwjgl.opengl.GL11;
+import java.nio.ByteOrder;
 /** Owned representative state neighborhood, never a World or a matcher. Preparation resumes per cell. */
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
@@ -23,6 +27,20 @@ public final class PreviewBlockAccess implements IBlockAccess {
     private final Object token;
     private final Object2ObjectOpenHashMap<BlockPos, IBlockState> states = new Object2ObjectOpenHashMap<>();
     private int cursor;
+    @Nullable private IBlockState controllerOverride;
+    private final BufferBuilder renderScratch = new BufferBuilder(1024);
+
+    /** PM's GUI uses Forge's real block renderer, including extended state, tint, face lighting and CTM. */
+    int[] renderLayer(IBlockState state, BlockPos pos) {
+        renderScratch.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+        try {
+            Minecraft.getMinecraft().getBlockRendererDispatcher().renderBlock(state, pos, this, renderScratch);
+        } finally { renderScratch.finishDrawing(); }
+        int[] data = new int[renderScratch.getVertexCount() * 7];
+        renderScratch.getByteBuffer().duplicate().order(ByteOrder.nativeOrder()).asIntBuffer().get(data);
+        renderScratch.reset();
+        return data;
+    }
 
     public PreviewBlockAccess(StructurePreviewView view) { this.view = view; token = view.token(); }
     public boolean current() { return token == view.token() && view.model() != null; }
@@ -44,12 +62,19 @@ public final class PreviewBlockAccess implements IBlockAccess {
     /** Independent registered controller state for 3D neighbors; never a preview cell or tile. */
     public void controllerState(@Nullable IBlockState state) {
         if (!current()) return;
-        if (state == null) states.remove(BlockPos.ORIGIN);
-        else states.put(BlockPos.ORIGIN, state);
+        controllerOverride = state;
     }
     public boolean visible(BlockPos pos) { var cell = view.at(pos); return cell != null && view.visible(cell); }
-    public @Nullable IBlockState represented(BlockPos pos) { return states.get(pos); }
-    @Override public IBlockState getBlockState(BlockPos pos) { return states.getOrDefault(pos, Blocks.AIR.getDefaultState()); }
+
+    public @Nullable IBlockState represented(BlockPos pos) {
+        return pos.equals(BlockPos.ORIGIN) && controllerOverride != null ? controllerOverride : states.get(pos);
+    }
+
+    @Override
+    public IBlockState getBlockState(BlockPos pos) {
+        var state = represented(pos);
+        return state == null ? Blocks.AIR.getDefaultState() : state;
+    }
     @Override public @Nullable TileEntity getTileEntity(BlockPos pos) { return null; }
     @Override public int getCombinedLight(BlockPos pos, int lightValue) { return 0x00f000f0; }
     @Override public Biome getBiome(BlockPos pos) { return Biomes.PLAINS; }

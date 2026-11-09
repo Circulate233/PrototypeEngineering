@@ -1,65 +1,203 @@
 {
   "variants": {
-    "inventory": { "model": "prototype_eng:item/default_controller" },
-
-    "facing=north,formed=false,spin=0": { "model": "prototype_eng:block_controller" },
-    "facing=north,formed=false,spin=1": { "model": "prototype_eng:block_controller" },
-    "facing=north,formed=false,spin=2": { "model": "prototype_eng:block_controller" },
-    "facing=north,formed=false,spin=3": { "model": "prototype_eng:block_controller" },
-
-    "facing=south,formed=false,spin=0": { "model": "prototype_eng:block_controller", "y": 180 },
-    "facing=south,formed=false,spin=1": { "model": "prototype_eng:block_controller", "y": 180 },
-    "facing=south,formed=false,spin=2": { "model": "prototype_eng:block_controller", "y": 180 },
-    "facing=south,formed=false,spin=3": { "model": "prototype_eng:block_controller", "y": 180 },
-
-    "facing=east,formed=false,spin=0": { "model": "prototype_eng:block_controller", "y": 90 },
-    "facing=east,formed=false,spin=1": { "model": "prototype_eng:block_controller", "y": 90 },
-    "facing=east,formed=false,spin=2": { "model": "prototype_eng:block_controller", "y": 90 },
-    "facing=east,formed=false,spin=3": { "model": "prototype_eng:block_controller", "y": 90 },
-
-    "facing=west,formed=false,spin=0": { "model": "prototype_eng:block_controller", "y": 270 },
-    "facing=west,formed=false,spin=1": { "model": "prototype_eng:block_controller", "y": 270 },
-    "facing=west,formed=false,spin=2": { "model": "prototype_eng:block_controller", "y": 270 },
-    "facing=west,formed=false,spin=3": { "model": "prototype_eng:block_controller", "y": 270 },
-
-    "facing=up,formed=false,spin=0": { "model": "prototype_eng:block_controller", "x": 270 },
-    "facing=up,formed=false,spin=1": { "model": "prototype_eng:block_controller", "x": 270, "y": 90 },
-    "facing=up,formed=false,spin=2": { "model": "prototype_eng:block_controller", "x": 270, "y": 180 },
-    "facing=up,formed=false,spin=3": { "model": "prototype_eng:block_controller", "x": 270, "y": 270 },
-
-    "facing=down,formed=false,spin=0": { "model": "prototype_eng:block_controller", "x": 90 },
-    "facing=down,formed=false,spin=1": { "model": "prototype_eng:block_controller", "x": 90, "y": 270 },
-    "facing=down,formed=false,spin=2": { "model": "prototype_eng:block_controller", "x": 90, "y": 180 },
-    "facing=down,formed=false,spin=3": { "model": "prototype_eng:block_controller", "x": 90, "y": 90 },
-
-    "facing=north,formed=true,spin=0": { "model": "prototype_eng:block_controller" },
-    "facing=north,formed=true,spin=1": { "model": "prototype_eng:block_controller" },
-    "facing=north,formed=true,spin=2": { "model": "prototype_eng:block_controller" },
-    "facing=north,formed=true,spin=3": { "model": "prototype_eng:block_controller" },
-
-    "facing=south,formed=true,spin=0": { "model": "prototype_eng:block_controller", "y": 180 },
-    "facing=south,formed=true,spin=1": { "model": "prototype_eng:block_controller", "y": 180 },
-    "facing=south,formed=true,spin=2": { "model": "prototype_eng:block_controller", "y": 180 },
-    "facing=south,formed=true,spin=3": { "model": "prototype_eng:block_controller", "y": 180 },
-
-    "facing=east,formed=true,spin=0": { "model": "prototype_eng:block_controller", "y": 90 },
-    "facing=east,formed=true,spin=1": { "model": "prototype_eng:block_controller", "y": 90 },
-    "facing=east,formed=true,spin=2": { "model": "prototype_eng:block_controller", "y": 90 },
-    "facing=east,formed=true,spin=3": { "model": "prototype_eng:block_controller", "y": 90 },
-
-    "facing=west,formed=true,spin=0": { "model": "prototype_eng:block_controller", "y": 270 },
-    "facing=west,formed=true,spin=1": { "model": "prototype_eng:block_controller", "y": 270 },
-    "facing=west,formed=true,spin=2": { "model": "prototype_eng:block_controller", "y": 270 },
-    "facing=west,formed=true,spin=3": { "model": "prototype_eng:block_controller", "y": 270 },
-
-    "facing=up,formed=true,spin=0": { "model": "prototype_eng:block_controller", "x": 270 },
-    "facing=up,formed=true,spin=1": { "model": "prototype_eng:block_controller", "x": 270, "y": 90 },
-    "facing=up,formed=true,spin=2": { "model": "prototype_eng:block_controller", "x": 270, "y": 180 },
-    "facing=up,formed=true,spin=3": { "model": "prototype_eng:block_controller", "x": 270, "y": 270 },
-
-    "facing=down,formed=true,spin=0": { "model": "prototype_eng:block_controller", "x": 90 },
-    "facing=down,formed=true,spin=1": { "model": "prototype_eng:block_controller", "x": 90, "y": 270 },
-    "facing=down,formed=true,spin=2": { "model": "prototype_eng:block_controller", "x": 90, "y": 180 },
-    "facing=down,formed=true,spin=3": { "model": "prototype_eng:block_controller", "x": 90, "y": 90 }
+    "inventory": {
+      "model": "prototype_eng:item/default_controller"
+    },
+    "facing=north,formed=false,spin=0": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=north,formed=false,spin=3": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=north,formed=false,spin=2": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=north,formed=false,spin=1": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=south,formed=false,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=south,formed=false,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=south,formed=false,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=south,formed=false,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=east,formed=false,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=east,formed=false,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=east,formed=false,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=east,formed=false,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=west,formed=false,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=west,formed=false,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=west,formed=false,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=west,formed=false,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=up,formed=false,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "x": 270
+    },
+    "facing=up,formed=false,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "x": 270,
+      "y": 90
+    },
+    "facing=up,formed=false,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "x": 270,
+      "y": 180
+    },
+    "facing=up,formed=false,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "x": 270,
+      "y": 270
+    },
+    "facing=down,formed=false,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "x": 90
+    },
+    "facing=down,formed=false,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "x": 90,
+      "y": 270
+    },
+    "facing=down,formed=false,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "x": 90,
+      "y": 180
+    },
+    "facing=down,formed=false,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "x": 90,
+      "y": 90
+    },
+    "facing=north,formed=true,spin=0": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=north,formed=true,spin=3": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=north,formed=true,spin=2": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=north,formed=true,spin=1": {
+      "model": "prototype_eng:block_controller"
+    },
+    "facing=south,formed=true,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=south,formed=true,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=south,formed=true,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=south,formed=true,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "y": 180
+    },
+    "facing=east,formed=true,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=east,formed=true,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=east,formed=true,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=east,formed=true,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "y": 90
+    },
+    "facing=west,formed=true,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=west,formed=true,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=west,formed=true,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=west,formed=true,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "y": 270
+    },
+    "facing=up,formed=true,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "x": 270
+    },
+    "facing=up,formed=true,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "x": 270,
+      "y": 90
+    },
+    "facing=up,formed=true,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "x": 270,
+      "y": 180
+    },
+    "facing=up,formed=true,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "x": 270,
+      "y": 270
+    },
+    "facing=down,formed=true,spin=2": {
+      "model": "prototype_eng:block_controller",
+      "x": 90
+    },
+    "facing=down,formed=true,spin=1": {
+      "model": "prototype_eng:block_controller",
+      "x": 90,
+      "y": 270
+    },
+    "facing=down,formed=true,spin=0": {
+      "model": "prototype_eng:block_controller",
+      "x": 90,
+      "y": 180
+    },
+    "facing=down,formed=true,spin=3": {
+      "model": "prototype_eng:block_controller",
+      "x": 90,
+      "y": 90
+    }
   }
 }

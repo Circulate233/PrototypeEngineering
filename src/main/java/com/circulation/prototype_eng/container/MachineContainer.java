@@ -4,12 +4,16 @@ import ae2.container.AEBaseContainer;
 import ae2.container.guisync.GuiSync;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
-
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-
-/** Default real player inventory and a read-only machine page, synchronized through AE2. */
+import ae2.container.SlotSemantics;
+import ae2.container.slot.AppEngSlot;
+import ae2.util.inv.AppEngInternalInventory;
+/**
+ * Default real player inventory and a read-only machine page, synchronized through AE2.
+ */
 public final class MachineContainer extends AEBaseContainer {
     private static final String VIEW = "view";
+    private static final String PAGE = "page";
     private final MachineControllerHost tile;
     private int requestedOffset;
     private int visibleRows = MachineGuiSnapshot.MAX_ROWS;
@@ -19,7 +23,16 @@ public final class MachineContainer extends AEBaseContainer {
         super(player, tile.blockEntity());
         this.tile = tile;
         setGuiTitle(tile.type().displayName().text());
-        addPlayerInventorySlots(214, 204);
+        // PM's original 4x4 placeholder is a per-screen inventory, with no machine storage role.
+        var placeholder = new AppEngInternalInventory(16);
+        for (int i = 0; i < 16; i++) {
+            addSlot(new AppEngSlot(placeholder, i, 139 + i % 4 * 18, 174 + i / 4 * 18), SlotSemantics.STORAGE);
+        }
+        addPlayerInventorySlots(216, 172);
+        registerClientAction(PAGE, Integer.class, page -> {
+            if (page == null || page < 0 || page > 1 || !canInteractWith(getPlayer())) return;
+            for (var slot : inventorySlots) if (slot instanceof AppEngSlot aeSlot) aeSlot.setSlotEnabled(page == 0);
+        });
         registerClientAction(VIEW, View.class, 80, view -> {
             if (view != null && canInteractWith(getPlayer()) && view.offset >= 0 && view.rows >= 1 && view.rows <= MachineGuiSnapshot.MAX_ROWS) {
                 requestedOffset = view.offset;
@@ -30,6 +43,8 @@ public final class MachineContainer extends AEBaseContainer {
     @GuiSync(0) public MachineGuiSnapshot snapshot = MachineGuiSnapshot.EMPTY;
 
     public void requestView(int offset, int rows) { sendClientAction(VIEW, new View(offset, rows)); }
+
+    public void selectPage(int page) { sendClientAction(PAGE, page); }
 
     @Override
     public boolean canInteractWith(EntityPlayer player) {

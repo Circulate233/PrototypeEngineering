@@ -1,6 +1,18 @@
 # JEI 配方池页面
 
-本阶段对应 [开发文档](development-spec.md) R18/R19 与 4.7。当前用户依赖为 JEI `curse.maven:jei-238222:9407746` 和 AE2S `v1.1.1:dev`，直接使用 `mezz.jei.api` 原生分类、包装、ingredient 与 Forge 输入生命周期。下文早期 HEI 4.35.1 / AE2S v1.1.0 验证记录是历史证据，不能替代当前平台的验证。没有新增正式机器、配方或玩法数值。
+本阶段对应 [开发文档](development-spec.md) R18/R19 与 4.7。当前已恢复 AE2S 所需 HEI `mezz:jei:4.35.1`，直接使用 `mezz.jei.api` 原生分类、包装、ingredient 与 Forge 输入生命周期。下文各阶段验证记录是历史证据，最新 GUI/样板导入边界以下节为准。没有新增正式机器、配方或玩法数值。
+
+## 2026-11-09 GUI 修复后的最终显示与样板导入
+
+保留按池最大槽数、候选分组和全量分页；移除重画灰底/槽框及 Input/Output 标题，恢复 PM item plaid、18×18 进度模块、原能源图标。为能源图标保留原尺寸，信息每页两项；资源仍每侧每页最多 16 项。没有改变每池默认/自定义实例的公开边界。
+
+用户最终指示覆盖早先 converter-first 方案：仅物品走原生物品 ingredient，所有非物品统一 GenericStack.wrapInItemStack，按 AE2S 元件详情页使用 AEKeyRendering、StackSizeRenderer 和 AE tooltip。包装资源和原生物品共享 ITEM bucket，索引/清理一次完成，不互相覆盖。自定义流体皮肤 API 仍可用，但默认不再切回原生流体槽。下文历史“无 converter 仅展示/不能查询”的描述已由包装槽位接线替代；实际查询仍沿 AE/HEI 自身的包装与 helper 语义。
+
+AE2S 原导入链可以解包 GenericStack，但 PE 旧一单位查询图标及只暴露当前分页会导致导入数量为 1 或漏掉其他页。本轮按池为普通样板终端和 PEA 终端注册 PatternRecipeTransfer；从当前实际 wrapper 的完整显示分组构建 JeiPatternRecipe，复用 AE 的候选优先级/书签、导入事件、SET_FILTER 包、窗口校验和加工样板元数据。无需新 Mixin；读取 wrapper 使用 AE2S 已有 AccessorRecipeLayout。
+
+用户明确按展示导入：概率/多可选材料/动态示例不额外阻止；多可选材料使用 JEI 同槽候选轮播，对应输入/输出槽按声明顺序对齐，嵌套候选继续归入同一材料槽，导入交由 AE2S 的候选优先级选择；逐 tick 资源数量乘配方 durationTicks，概率不折算，不执行 matcher。合并输入遵从终端开关，候选交集合并沿 AE 规则；超出当前终端输入/输出槽或 long 算术范围时，在任何写入前返回明确错误。自定义页可通过 wrapper.patternRecipe() 提供与其显示一致的分组。
+
+证据入口 `build/staging/gui-original-parity/`：pattern-displayed-focused 的 29 tests/7 suites、最终 displayed-full-build、idea-complete-final 与 idea-displayed-final。本机源码核对从 GenericIngredientHelper/ItemIngredientConverter/GenericStack，到 InventoryActionPacket/ConfigGuiInventory/PatternEncodingLogic/AEProcessingPattern；真实客户端、网络及样板编码尚待用户实机复验。
 
 ## 注册与外部扩展
 
@@ -14,17 +26,17 @@
 
 ## 默认显示与查询边界
 
-默认页面按池内配方的输入/输出最大槽数排布两侧四列资源区与加工箭头；每侧每页最多 16 项，信息每页最多 4 项。每个 wrapper 自持分页状态，按钮与原生 Forge wheel bridge 可遍历内容。每次切换配方或分页先清空已初始化的全部类型/槽位；索引使用所有分页数据。长说明缩略后有完整悬停文本，scope 随每条资源/信息保存，FE 参数与所属阶段不拆开。
+默认页面按池内配方的输入/输出最大槽数排布两侧四列资源区与加工箭头；每侧每页最多 16 项，信息每页最多 2 项。每个 wrapper 自持分页状态，按钮与原生 Forge wheel bridge 可遍历内容。每次切换配方或分页先清空已初始化的全部类型/槽位；索引使用所有分页数据。长说明缩略后有完整悬停文本，scope 随每条资源/信息保存，FE 参数与所属阶段不拆开。
 
-`DefaultRecipeDisplays` 只读已知准确 built-in type 的定义，展示 duration、START/TICK/END 资源、独立 FE 参数、概率/属性乘数、fuzzy 候选、dynamic 显式示例、weighted 权重/无放回/pickCount、selector 条件分支、checkpoint 完整子生命周期/时间缩放、属性与 void 输出语义。它不执行 matcher、modifier apply、随机采样、运行阶段或未知 children 回调，也不把选择分支当作必然产物。
+`DefaultRecipeDisplays` 只读已知准确 built-in type 的定义，展示 duration、START/TICK/END 资源、独立 FE 参数、概率/属性乘数、fuzzy 候选、dynamic 显式示例、weighted 权重/无放回/pickCount、selector 多可选材料、checkpoint 完整子生命周期/时间缩放、属性与 void 输出语义。它不执行 matcher、modifier apply、随机采样、运行阶段或未知 children 回调，多可选材料保持同槽候选关系。
 
-资源以 AEKey/GenericStack 保存真实 long 数量。AE2S converter 仅转换一个单位的身份图标，数量标签使用 AE2 格式器，tooltip 提供精确原始单位；FE 是独立说明，不引入虚拟能量物品或 Applied-Flux 重复需求。
+资源以 AEKey/GenericStack 保存真实 long 数量。原生物品 converter 转换一个单位的身份图标，非物品包装保留真实 long 数量，数量标签使用 AE2 格式器，tooltip 提供精确原始单位；FE 是独立说明，不引入虚拟能量物品或 Applied-Flux 重复需求。
 
-显示能力与查询能力分别判断：已注册 ingredient type、converter 精确 AEKey 往返、原生 helper UID 已知集合检查全部满足后，资源才进入原生 ingredient 槽位和配方/用途索引。`JeiQueryIdentityIndex` 先捕获所有池描述与所有当前已注册 ingredient，在任何池 wrapper/index 发布前完成 UID→AEKey 碰撞检查。同 UID 涉及不同精确 key 时，所有相关 key 一致降级为仅展示，保留原图标、long 数量和条件并提示查询身份冲突。缺少 converter/注册类型或不准确转换的资源用 AEKeyRendering 展示；缺少 renderer 有明确占位说明。
+原生物品转换仍核对准确 AEKey 往返和已知 helper UID；其余资源统一使用包装 GenericStack 进入 ITEM 槽位及索引，渲染走 AEKeyRendering，缺少 renderer 时保留明确占位。JeiQueryIdentityIndex 保留已知集合的碰撞诊断；包装资源不再因缺少原生 converter 被限制为仅展示。
 
 正常查询仍使用 JEI 原生 helper 匹配语义。已知集合碰撞检查不证明未知后续 NBT 变体的全域单射：若以后出现未枚举变体，而第三方 helper 忽略其 NBT，它仍可能按该 helper 语义匹配已有配方。本阶段没有解析 UID、反射或覆盖其他模组全局 subtype 规则。
 
-## 验证与保留范围
+## 初次接入的历史验证与范围
 
 最终验证：17 Java 本机 IDEA MCP `errorsOnly:false` 零错误/警告/弱警告，逐文件完整 `read_file` 项目文本与磁盘一致；两个 suite 12 项行为全通过，完整正常 `gradlew.bat build --console=plain` 为 1259 tests / 159 suites，零失败/错误/跳过。MCP `build_project` 返回 `isSuccess:true`、`problems:[]`，19 源码资源构建前后 SHA 稳定，17 Java 在 MCP 验证后无变化。此读回不声称未保存 Document buffer。语言最终仅恢复原 CRLF，统一 LF 文本完全相同；MCP build 在行尾恢复前成功，17 Java 未变，证据 `language-line-ending-equivalence.json`。证据位于 `build/staging/jei-pool-migration/` 的 `verified-jei-tests-result.json`、`verified-full-build-result.json` 与对应 XML 目录、`mcp-final-problems.json`、`mcp-final-read-disk-consistency.json`、`mcp-verified-build-project.json`、`verified-*-sha.json`；精确基线/22 路径最终清单与不可变快照为 `formal-baseline.json`、`docs-write-baseline.json`、`final-manifest.json`、`final-verified/`。
 
@@ -36,7 +48,7 @@
 
 R32 机器绑定已实现验证：JEI 新增 1 项行为包含在 focused 37 tests / 4 suites 中，完整 build 为 1391 tests / 176 suites 全通过；19 个变更 Java 的本机 MCP 全级零诊断、完整读回/磁盘一致及 MCP build 成功，21 源码资源构建前后/最终 MCP SHA 稳定。证据见 `build/staging/machine-recipe-pools/verification/`。`PrototypeJeiPlugin.register` 直接消费池 `machines()` 列表并绑定实际 canonical controller 的原生 catalyst，空池也保留静态绑定。运行时动态选择不重写该列表或分类，不枚举世界实例。
 
-默认 `AutoLayoutRecipePage` 在输入/输出标题中间显示本地化机器数量，悬停列出静态关联机器的本地化名称与 ID；没有 Item 代表的合法 MachineType 仍能被说明，不虚构物品或输出。自定义页直接使用实际 `page.pool().machines()` 接口。新增文案沿 `JeiText.Machines` / LocalizationEnum，两语言各追加 1 键。必要轻量 fixture 验证实际默认 wrapper tooltip 消费准确关联，并排除只有同 group 的无绑定机器；未初始化 FML/Bootstrap/nativeItem，也不代表 OpenGL 或原生 catalyst 实机验收。
+默认 `AutoLayoutRecipePage` 在顶部显示本地化机器数量，悬停列出静态关联机器的本地化名称与 ID；没有 Item 代表的合法 MachineType 仍能被说明，不虚构物品或输出。自定义页直接使用实际 `page.pool().machines()` 接口。新增文案沿 `JeiText.Machines` / LocalizationEnum，两语言各追加 1 键。必要轻量 fixture 验证实际默认 wrapper tooltip 消费准确关联，并排除只有同 group 的无绑定机器；未初始化 FML/Bootstrap/nativeItem，也不代表 OpenGL 或原生 catalyst 实机验收。
 
 ## D2 结构预览联动
 
@@ -56,9 +68,9 @@ PrototypeJeiPlugin注册实际StructurePreviewJeiCategory/Recipe；静态canonic
 
 191 张 PM 原 PNG 以原 basename/像素保留到 `prototype_eng/textures/gui/jei_recipeicons`，NOTICE 指向 PM MIT 来源。只迁入实际有消费者的显示组合；95 张残留资源的存在不代表新模块功能。当前 `mezz.jei.api.gui.IDrawable` 是 JEI 原生接口，未新增 MUI 依赖、资源命名空间或 GUI/Widget/Drawable 基类。
 
-原生 JEI 的 `RecipeLayout.drawRecipe` 在 wrapper 之后绘制 ingredient，因此 skin background → ingredient → skin foreground → chance → long amount 都在实际 ingredient renderer 内消费，category-relative slot 转为当前 native absolute 坐标。流体查询仍传一单位 identity，流体显示使用当前 JEI 原生 `FluidStackRenderer(1, false, innerWidth, innerHeight, null)`，按真实面板 inset 尺寸平铺 full still sprite；不把真实 long 数量写回 int。18×72 面板的内区为 16×70，小量与大 long 使用相同满填充，overlay/概率/数量继续覆盖在其上。没有准确 native query converter 的 key 沿 AEKeyRendering fallback 和相同 foreground/数量顺序绘制。
+原生 JEI 的 `RecipeLayout.drawRecipe` 在 wrapper 之后绘制 ingredient，因此 skin background → ingredient → skin foreground → chance → long amount 都在实际 ingredient renderer 内消费，category-relative slot 转为当前 native absolute 坐标。当前默认页所有非物品均使用 GenericStack 包装和 AEKeyRendering；原生流体渲染分支仅供显式自定义桥接使用，默认页不使用它。
 
-fuzzy、dynamic 显式候选和 weighted 都使用独立身份 `CandidateGroup`；只有同一准确 native type、无重复 exact key 的组可用 ALTERNATIVES 合并。dynamic 不补 pattern、不执行 matcher；weighted ALTERNATIVES 每个 declared pick 一个轮播槽，EXPANDED 仍只逐候选显示，完整 index 始终收录原始候选一次。重复 key/数量歧义、unsupported 候选或 UID 冲突保留展开及 fallback，不丢 long、scope 和解释。候选超过视口或多个 pick 继续按原分页访问。
+fuzzy、dynamic 显式候选、weighted 和 selective 多可选材料均使用独立身份 CandidateGroup。默认 ALTERNATIVES 交给 JEI 同槽候选列表轮播；相同 key 的不同数量仍保留各自的行、数量和提示，不额外展开。多可选材料按各候选的输入/输出槽顺序对齐，嵌套 fuzzy/selective 候选保持同一槽，多个 weighted pick 保留各自槽位。每个槽的原始候选及 long 数量直接用于样板导入，AE2S 自己决定候选优先级。显式 EXPANDED 自定义布局仍按其显示分组导入。候选超出视口继续按原分页访问。
 
 wheel observation 仅来自当前 draw 的实际 wrapper bounds。DrawScreen.Pre、GuiOpen、InitGui.Pre、KeyboardInput.Pre 和 MouseInput.Pre 的按钮 press/release 撤销旧授权；未被 PE 消费或在 PE bounds 以外的 wheel 也撤销，因为 JEI 可在同一 RecipesGui 内直接 `updateLayout`。下一次 draw 前的后继 buffered wheel 不再命中已经撤权的旧页；被 PE 消费的内部 panel wheel 可在当前绘制 scope 内继续翻页。当前 API 没有 wrapper drag/release，D2 结构预览已有原生输入 owner 继续使用原链。
 

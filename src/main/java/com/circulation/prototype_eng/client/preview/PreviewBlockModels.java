@@ -18,12 +18,11 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL15;
-
 import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-
+import java.nio.ByteOrder;
 /**
  * Concrete PM BLOCK_MODEL path. Every Minecraft model callback and GL operation stays on the client owner.
  */
@@ -153,7 +152,10 @@ public final class PreviewBlockModels implements AutoCloseable {
         if (model == null || !access.ready() || !current(model)) return;
         Integer layer = view.threeDimensional ? null : view.layer;
         if (sceneToken != view.token() || !Objects.equals(sceneLayer, layer) || sceneAccess != access) {
-            invalidate(); sceneToken = view.token(); sceneLayer = layer; sceneAccess = access;
+            invalidate();
+            sceneToken = view.token();
+            sceneLayer = layer;
+            sceneAccess = access;
         }
         var token = sceneToken;
         BooleanSupplier valid = () -> !closed && token == view.token() && access.current() && current(model);
@@ -161,10 +163,13 @@ public final class PreviewBlockModels implements AutoCloseable {
             layer == null ? null : new StructurePreviewModel.Layer(layer), 2048, 0, 4096, Double.MAX_VALUE, 4096, 96, 128);
         var intent = new StructurePreviews.Projection(model.structureId(), model.settings(), BlockPos.ORIGIN, options);
         PreviewBlockModelCache.Ready ready = null;
-        if (OpenGlHelper.useVbo() && layer == null && !view.formingModelsVisible()) {
+        if (layer == null) {
             bakingModel = model;
-            try { ready = cache.advance(model, options.blockModelBuildVisitsPerFrame()); }
-            finally { bakingModel = null; }
+            try {
+                ready = cache.advance(model, options.blockModelBuildVisitsPerFrame());
+            } finally {
+                bakingModel = null;
+            }
             if (ready == null) return;
         }
         if (!valid.getAsBoolean()) return;
@@ -175,9 +180,16 @@ public final class PreviewBlockModels implements AutoCloseable {
             GlStateManager.pushMatrix();
             try {
                 GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
-                GlStateManager.enableTexture2D(); GlStateManager.disableLighting(); GlStateManager.disableCull();
-                GlStateManager.enableBlend(); GlStateManager.enableDepth(); GlStateManager.depthMask(true);
-                GlStateManager.enableAlpha(); GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1f);
+                GlStateManager.enableTexture2D();
+                GlStateManager.disableLighting();
+                GlStateManager.enableCull();
+                GlStateManager.disableBlend();
+                GlStateManager.enablePolygonOffset();
+                GlStateManager.doPolygonOffset(-1, -10);
+                GlStateManager.enableDepth();
+                GlStateManager.depthMask(true);
+                GlStateManager.enableAlpha();
+                GlStateManager.alphaFunc(GL11.GL_GREATER, 0.1f);
                 GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
                 Minecraft.getMinecraft().getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
                 if (ready != null) drawChunks(ready, intent, cameraX, cameraY, cameraZ, valid);
@@ -187,11 +199,22 @@ public final class PreviewBlockModels implements AutoCloseable {
                         samples.add(new StructureProjectionState.Sample(cell, cell.position(), StructureProjectionState.Status.UNKNOWN));
                     drawSamples(model, samples, intent, cache.epochToken(), cameraX, cameraY, cameraZ, valid);
                 }
-            } finally { GlStateManager.popMatrix(); }
-        } catch (RuntimeException | Error caught) { failure = caught; }
-        finally {
-            try { before.restore(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
-            if (failure != null) try { invalidate(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
+            } finally {
+                GlStateManager.popMatrix();
+            }
+        } catch (RuntimeException | Error caught) {
+            failure = caught;
+        } finally {
+            try {
+                before.restore();
+            } catch (RuntimeException | Error caught) {
+                failure = PreviewBlockModelCache.merge(failure, caught);
+            }
+            if (failure != null) try {
+                invalidate();
+            } catch (RuntimeException | Error caught) {
+                failure = PreviewBlockModelCache.merge(failure, caught);
+            }
             PreviewBlockModelCache.rethrow(failure);
         }
     }
@@ -209,11 +232,16 @@ public final class PreviewBlockModels implements AutoCloseable {
         int visits = ready.chunks().size() <= options.blockModelRenderAllChunksIfUnder()
             ? ready.chunks().size() : options.blockModelChunkVisitsPerFrame();
         var selected = cache.select(ready, visits, intent.anchor(), x, y, z, options.maxDistance());
-        if (sceneAccess == null) GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
+        if (sceneAccess == null)
+            GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
         // Native client-array stack preserves the caller's pointers/enables/texture-coordinate units.
         GL11.glPushClientAttrib(GL11.GL_CLIENT_VERTEX_ARRAY_BIT);
         int oldArrayBuffer = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
         try {
+            if (sceneAccess != null) {
+                GlStateManager.disableBlend();
+                GlStateManager.depthMask(true);
+            }
             GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
             GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
             OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
@@ -227,6 +255,10 @@ public final class PreviewBlockModels implements AutoCloseable {
                     var drawable = mesh.layers[layer];
                     if (drawable != null) drawable.draw();
                 }
+            }
+            if (sceneAccess != null) {
+                GlStateManager.enableBlend();
+                GlStateManager.depthMask(false);
             }
             for (var mesh : PreviewBlockModelCache.translucentOrder(selected, intent.anchor(), x, y, z)) {
                 if (!cache.valid(ready) || !guard.getAsBoolean()) return;
@@ -351,14 +383,22 @@ public final class PreviewBlockModels implements AutoCloseable {
             var buffer = layerBuffers[layer];
             layerBuffers[layer] = null;
             if (buffer == null) return null;
-            Vbo created = null;
+            PreviewBlockModelCache.LayerMesh created = null;
             Throwable failure = null;
             int oldArrayBuffer = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
             try {
                 buffer.finishDrawing();
                 if (buffer.getVertexCount() > 0 && valid()) {
-                    created = new Vbo(new VertexBuffer(DefaultVertexFormats.BLOCK));
-                    created.buffer.bufferData(buffer.getByteBuffer());
+                    if (OpenGlHelper.useVbo()) {
+                        @SuppressWarnings("resource") // Transferred to created, then returned to the cache or closed below.
+                        var vbo = new Vbo(new VertexBuffer(DefaultVertexFormats.BLOCK));
+                        created = vbo;
+                        vbo.buffer.bufferData(buffer.getByteBuffer());
+                    } else {
+                        int[] data = new int[buffer.getVertexCount() * 7];
+                        buffer.getByteBuffer().duplicate().order(ByteOrder.nativeOrder()).asIntBuffer().get(data);
+                        created = new CpuMesh(data);
+                    }
                     if (!valid()) {
                         var obsolete = created;
                         created = null;
@@ -472,6 +512,22 @@ public final class PreviewBlockModels implements AutoCloseable {
             failure = PreviewBlockModelCache.merge(failure, caught);
         }
         PreviewBlockModelCache.rethrow(failure);
+    }
+
+    private final class CpuMesh implements PreviewBlockModelCache.LayerMesh {
+        private int[] vertices;
+        private CpuMesh(int[] vertices) { this.vertices = vertices; }
+        @Override public void draw() {
+            var buffer = buffers.borrow();
+            try {
+                OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
+                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+                buffer.addVertexData(Objects.requireNonNull(vertices));
+                buffer.finishDrawing();
+                uploader.draw(buffer);
+            } finally { buffers.recycle(buffer); }
+        }
+        @Override public void close() { vertices = null; }
     }
 
     /**

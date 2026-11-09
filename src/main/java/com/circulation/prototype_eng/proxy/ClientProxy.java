@@ -20,9 +20,7 @@ import net.minecraftforge.client.model.ModelLoader;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-
 import java.util.Objects;
-
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
@@ -66,7 +64,8 @@ import com.circulation.prototype_eng.client.render.ModelClientThread;
 import com.circulation.prototype_eng.client.render.ReusableModelVboUploader;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
-
+import net.minecraftforge.client.event.ModelBakeEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 @SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
 public class ClientProxy extends CommonProxy {
     private ModelBuildCache modelBuilds;
@@ -346,6 +345,11 @@ public class ClientProxy extends CommonProxy {
         }
         MachineControllerModels.registerModels();
         OrientationToolModels.registerModels();
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOW)
+    public void bakeControllerModels(ModelBakeEvent event) {
+        MachineControllerModels.bakeModels(event);
     }
 
     @Override

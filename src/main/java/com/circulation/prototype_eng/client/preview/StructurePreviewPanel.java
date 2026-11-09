@@ -1,36 +1,32 @@
 package com.circulation.prototype_eng.client.preview;
 
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
-import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import com.circulation.prototype_eng.localization.StructurePreviewText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Objects;
-
-/** Composable read-only scene/material control, with native text field, folding menus and visual feedback. */
+import com.circulation.prototype_eng.client.gui.GuiAtlas;
+import com.circulation.prototype_eng.client.gui.GuiClip;
+import com.circulation.prototype_eng.localization.PreviewUiText;
+import net.minecraft.client.audio.PositionedSoundRecord;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.init.SoundEvents;
+import java.util.Comparator;
+/** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewPanel implements AutoCloseable {
-    static final int SCENE_X = 4, SCENE_Y = 22;
-    private static final ResourceLocation BASE = texture("base");
+    public static final int WIDTH = 184, HEIGHT = 220;
+    static final int SCENE_X = 6, SCENE_Y = 13;
     private final StructurePreviewView view;
     private final StructurePreviewScene scene;
     private final EntityPlayer player;
@@ -38,23 +34,23 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private final Container container;
     private final int window;
     private GuiScreen host;
-    private GuiTextField search;
-    private int searchWidth;
+    private final GuiClip clip = new GuiClip();
     private final ObjectArrayList<Action> actions = new ObjectArrayList<>();
-    private final Object2ObjectOpenHashMap<Action, List<String>> tooltips = new Object2ObjectOpenHashMap<>();
-    private int width, height, materialOffset, occurrenceOffset;
-    private int sceneHeight;
+    private String pressed;
     private int mouseX, mouseY;
     private Object drawnToken;
-    private boolean closed;
-    private double materialsAmount = 1;
-    private long frameTime;
-    private StructurePreviewText pressedText;
-    private long pressedUntil;
-    private record Action(int x, int y, int width, int height, StructurePreviewText text, boolean selected,
-                          boolean enabled, Runnable run) {
-        boolean contains(int px, int py) { return px >= x && px < x + width && py >= y && py < y + height; }
+    private boolean closed, collapsed, layerDragging;
+    private float collapseNow, sidebarNow = 1;
+    private long frameTime = -1;
+    private Rect currentClip;
+
+    private record Rect(float x, float y, float width, float height) {
+        boolean contains(int px, int py) { return px >= x && py >= y && px < x + width && py < y + height; }
     }
+    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run) {
+        boolean contains(int x, int y) { return bounds.contains(x, y) && (clip == null || clip.contains(x, y)); }
+    }
+
     public StructurePreviewPanel(StructurePreviewView view) {
         this.view = Objects.requireNonNull(view);
         var mc = Minecraft.getMinecraft();
@@ -62,8 +58,6 @@ public final class StructurePreviewPanel implements AutoCloseable {
         container = player == null ? null : player.openContainer;
         window = container == null ? -1 : container.windowId;
         scene = new StructurePreviewScene(view);
-        search = new GuiTextField(0, Minecraft.getMinecraft().fontRenderer, 4, 0, 100, 12);
-        search.setMaxStringLength(256); search.setText(view.search);
     }
     public StructurePreviewView view() { return view; }
     public StructurePreviewScene scene() { return scene; }
@@ -75,225 +69,277 @@ public final class StructurePreviewPanel implements AutoCloseable {
             && (host == null || mc.currentScreen == host);
     }
     public boolean inputCurrent() { return host != null && ownerCurrent() && drawnToken == view.token() && view.inputCurrent(); }
-    public void tick() { if (!ownerCurrent()) close(); else search.updateCursorCounter(); }
-    private static ResourceLocation texture(String name) { return new ResourceLocation(Tags.MOD_ID, "textures/gui/gui_structure_preview/" + name + ".png"); }
+    public void tick() { if (!ownerCurrent()) close(); }
 
-    /** Draw using the host's current GUI origin; JEI already translates to its recipe origin. */
+    /** Width/height are retained in the public host contract; PM's panel itself has a fixed size. */
     public void draw(int width, int height, int mouseX, int mouseY, float partialTicks, boolean embedded) {
+        if (width <= 0 || height <= 0) return;
         if (!ownerCurrent()) { close(); return; }
         if (host == null) host = Minecraft.getMinecraft().currentScreen;
         if (host == null) { close(); return; }
-        this.width = width; this.height = height; this.mouseX = mouseX; this.mouseY = mouseY;
-        actions.clear(); tooltips.clear();
-        var mc = Minecraft.getMinecraft(); var font = mc.fontRenderer;
-        mc.getTextureManager().bindTexture(BASE); GlStateManager.color(1, 1, 1, 1);
-        Gui.drawScaledCustomSizeModalRect(0, 0, 0, 0, 184, 220, width, height, 184, 220);
-        long now = System.currentTimeMillis();
-        double dt = frameTime == 0 ? 0 : Math.clamp((now - frameTime) / 1000.0, 0, 0.25); frameTime = now;
-        materialsAmount += ((view.materialsOpen ? 1 : 0) - materialsAmount) * (1 - Math.exp(-dt / 0.1));
-        sceneHeight = Math.max(42, height - 50 - (int) ((height * 0.42) * materialsAmount));
-        scene.drawAtCurrentOrigin(4, 22, Math.max(1, width - 8), sceneHeight, partialTicks);
-        if (embedded) PreviewEmbeddedInput.INSTANCE.mark(mc.currentScreen, this);
+        this.mouseX = mouseX; this.mouseY = mouseY;
+        actions.clear();
+        sprite("base", 0, 0, WIDTH, HEIGHT);
+        scene.drawAtCurrentOrigin(SCENE_X, SCENE_Y, 171, 200, partialTicks);
+        if (embedded) PreviewEmbeddedInput.INSTANCE.mark(host, this);
         drawnToken = view.token();
-        var model = view.model();
-        var localizedTitle = model == null ? null : model.title();
-        String title = localizedTitle != null ? localizedTitle.getLocal() : view.id().toString();
-        font.drawString(font.trimStringToWidth(title, width - 102), 4, 5, 0xeeeeee);
-        button(width - 96, 2, 46, 16, StructurePreviewText.ViewOptions, view.optionsOpen, () -> view.optionsOpen = !view.optionsOpen);
-        button(width - 48, 2, 44, 16, StructurePreviewText.Reset, false, () -> scene.camera().reset());
-        int controlY = 23 + sceneHeight;
-        int slot = Math.max(28, (width - 8) / 5);
-        button(4, controlY, slot, 16, StructurePreviewText.View3D, view.threeDimensional, () -> view.threeDimensional = !view.threeDimensional);
-        button(4 + slot, controlY, slot, 16, StructurePreviewText.Materials, view.materialsOpen, () -> view.materialsOpen = !view.materialsOpen);
-        button(4 + slot * 2, controlY, slot, 16, StructurePreviewText.Scan, view.scan, () -> view.scan = !view.scan);
-        button(4 + slot * 3, controlY, slot, 16, StructurePreviewText.Alternatives, view.alternativesOpen, () -> { view.alternativesOpen = !view.alternativesOpen; view.occurrencesOpen = false; view.materialsOpen = true; });
-        button(4 + slot * 4, controlY, width - 8 - slot * 4, 16, StructurePreviewText.Slices, view.occurrencesOpen, () -> { view.occurrencesOpen = !view.occurrencesOpen; view.alternativesOpen = false; view.materialsOpen = true; });
-        int top = controlY + 19;
-        if (model == null) {
-            var state = view.state();
-            font.drawString((state == StructurePreviews.State.BUILDING ? StructurePreviewText.Building
-                : state == StructurePreviews.State.FAILED ? StructurePreviewText.Failed : StructurePreviewText.Unavailable).getLocal(), 4, top, 0xffffff);
-        } else if (materialsAmount > 0.8) {
-            if (view.occurrencesOpen) occurrences(top);
-            else if (view.alternativesOpen) alternatives(top);
-            else materials(top);
-        }
-        if (model != null && !view.threeDimensional) {
-            int y = 24;
-            button(width - 62, y, 18, 16, StructurePreviewText.Layers, false, () -> view.layer = Math.max(model.bounds().min().getY(), view.layer - 1));
-            font.drawString(Integer.toString(view.layer), width - 40, y + 4, 0xffffff);
-            button(width - 22, y, 18, 16, StructurePreviewText.Layers, true, () -> view.layer = Math.min(model.bounds().max().getY(), view.layer + 1));
-        }
-        if (view.optionsOpen) {
-            button(width - 96, 43, 92, 16, StructurePreviewText.AutoRotate, view.autoRotate, () -> view.autoRotate = !view.autoRotate);
-            button(width - 96, 61, 92, 16, StructurePreviewText.Wireframe, view.wireframe, () -> view.wireframe = !view.wireframe);
-            var expected = view.token();
-            button(width - 96, 79, 92, 16, StructurePreviewText.FormedPreview, view.formedPreview(), view.machine() != null,
-                () -> view.formedPreview(expected, !view.formedPreview()));
-        }
-        button(4, height - 20, (width - 12) / 2, 16, StructurePreviewText.Project, false,
-            () -> { var anchor = StructurePreviewScreensAnchor.current(); view.anchor(anchor);
-                if (view.previews().project(view.id(), view.settings(), anchor,
-                new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false,
-                    view.threeDimensional ? null : new StructurePreviewModel.Layer(view.layer), 2048, view.scan ? 2048 : 0, 4096, 64))) ProjectionInteractions.INSTANCE.follow(); });
-        button(width / 2 + 2, height - 20, width / 2 - 6, 16, StructurePreviewText.Stop, false, () -> view.previews().stopProjection());
-    }
-    private void button(int x, int y, int w, int h, StructurePreviewText text, boolean selected, Runnable callback) {
-        button(x, y, w, h, text, selected, true, callback);
+        long now = Minecraft.getSystemTime();
+        double dt = frameTime < 0 ? 0 : Math.clamp((now - frameTime) / 1000.0, 0, .25);
+        frameTime = now;
+        float alpha = (float) (1 - Math.exp(-dt / .10));
+        collapseNow = animate(collapseNow, collapsed ? 1 : 0, alpha);
+        sidebarNow = animate(sidebarNow, view.picked() == null ? 1 : 0, alpha);
+        topBar();
+        materials();
+        if (!view.threeDimensional) layerSlider();
+        bottomBar();
     }
 
-    private void button(int x, int y, int w, int h, StructurePreviewText text, boolean selected, boolean enabled, Runnable callback) {
-        var action = new Action(x, y, w, h, text, selected, enabled, callback);
-        actions.add(action);
-        if (!enabled)
-            tooltips.put(action, List.of(text.getLocal(), StructurePreviewText.MachineContextRequired.getLocal()));
-        var mc = Minecraft.getMinecraft();
-        String name = pressedText == text && System.currentTimeMillis() < pressedUntil ? "self_resetting_press"
-            : action.contains(mouseX, mouseY) ? "self_resetting_selected" : "self_resetting_default";
-        mc.getTextureManager().bindTexture(texture("top_button/" + name));
+    private static float animate(float value, float target, float alpha) {
+        float next = value + (target - value) * alpha;
+        return Math.abs(target - next) < .0005f ? target : next;
+    }
+
+    private static void sprite(String path, float x, float y, int width, int height) {
+        Minecraft.getMinecraft().getTextureManager().bindTexture(GuiAtlas.texture("gui_structure_preview/" + path));
         GlStateManager.color(1, 1, 1, 1);
-        Gui.drawScaledCustomSizeModalRect(x, y, 0, 0, 13, 5, w, h, 13, 5);
-        var label = mc.fontRenderer.trimStringToWidth(text.getLocal(), Math.max(0, w - 2));
-        mc.fontRenderer.drawString(label, x + Math.max(1, (w - mc.fontRenderer.getStringWidth(label)) / 2), y + 4, !enabled ? 0x777777 : selected ? 0x80d8ff : 0xffffff);
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(x, y, 0);
+            Gui.drawModalRectWithCustomSizedTexture(0, 0, 0, 0, width, height, width, height);
+        } finally { GlStateManager.popMatrix(); }
     }
-    private void materials(int top) {
-        var font = Minecraft.getMinecraft().fontRenderer;
-        if (search.y != top || searchWidth != Math.max(30, width - 72)) {
-            boolean focused = search.isFocused();
-            searchWidth = Math.max(30, width - 72);
-            search = new GuiTextField(0, font, 4, top, searchWidth, 12);
-            search.setMaxStringLength(256); search.setText(view.search); search.setFocused(focused);
-        }
-        search.drawTextBox();
-        button(width - 65, top, 61, 14, switch (view.sort) {
-            case ISSUES -> StructurePreviewText.SortIssues; case COUNT -> StructurePreviewText.SortCount; case NAME -> StructurePreviewText.SortName;
-        }, false, () -> { view.sort = StructurePreviewView.Sort.values()[(view.sort.ordinal() + 1) % 3]; materialOffset = 0; });
-        var flags = new boolean[] {view.showMatch, view.showMismatch, view.showUnloaded, view.showUnknown};
-        var texts = new StructurePreviewText[] {StructurePreviewText.Match, StructurePreviewText.Mismatch, StructurePreviewText.Unloaded, StructurePreviewText.Unknown};
-        int stride = (width - 8) / 4;
-        for (int i = 0; i < 4; i++) {
-            int flag = i;
-            button(4 + i * stride, top + 16, stride, 14, texts[i], flags[i], () -> {
-                switch (flag) { case 0 -> view.showMatch = !view.showMatch; case 1 -> view.showMismatch = !view.showMismatch;
-                    case 2 -> view.showUnloaded = !view.showUnloaded; case 3 -> view.showUnknown = !view.showUnknown; }
-                materialOffset = 0;
-            });
-        }
-        var rows = view.materials(this::displayName, StructurePreviewText.Unknown.getLocal());
-        int visible = Math.max(0, (height - 23 - top - 32) / 18);
-        materialOffset = Math.clamp(materialOffset, 0, Math.max(0, rows.size() - visible));
-        for (int i = 0; i < visible && materialOffset + i < rows.size(); i++) {
-            var row = rows.get(materialOffset + i); int y = top + 32 + i * 18;
-            if (Objects.equals(view.selected(), row.display())) Gui.drawRect(4, y, width - 4, y + 17, 0x884080aa);
-            var stack = stack(row.display());
-            if (!stack.isEmpty()) Minecraft.getMinecraft().getRenderItem().renderItemAndEffectIntoGUI(stack, 4, y);
-            var count = Long.toString(row.count()); int cw = font.getStringWidth(count);
-            font.drawString(font.trimStringToWidth(row.name(), Math.max(1, width - cw - 28)), 23, y + 4, 0xffffff);
-            font.drawString(count, width - cw - 5, y + 4, 0xffffff);
-            var token = drawnToken;
-            var action = new Action(4, y, width - 8, 17, StructurePreviewText.Selected, false, true,
-                () -> { if (token == view.token() && view.model() != null) view.select(row.display()); });
-            actions.add(action);
-            tooltips.put(action, List.of(row.name(), StructurePreviewText.Counts.getLocal(row.count()), StructurePreviewText.Issues.getLocal(row.mismatch(), row.unloaded(), row.unknown())));
-        }
+
+    private void clipped(float x, float y, int width, int height, Runnable content) {
+        currentClip = new Rect(x, y, width, height);
+        try { clip.draw(x, y, width, height, content); } finally { currentClip = null; }
     }
-    private void alternatives(int top) {
-        var selected = view.selected();
-        if (selected == null) { Minecraft.getMinecraft().fontRenderer.drawString(StructurePreviewText.Selected.getLocal(), 4, top, 0xffffff); return; }
-        int columns = Math.max(1, (width - 8) / 22);
-        int visibleRows = Math.max(1, (height - 23 - top) / 22);
-        materialOffset = Math.clamp(materialOffset, 0, Math.max(0, (selected.options().size() + columns - 1) / columns - visibleRows));
-        for (int index = materialOffset * columns; index < selected.options().size(); index++) {
-            int px = 4 + index % columns * 22, py = top + (index / columns - materialOffset) * 22;
-            if (py + 20 > height - 23) break;
-            int choice = index; var token = drawnToken;
-            Gui.drawRect(px, py, px + 20, py + 20, choice == representative(selected) ? 0xff4080aa : 0xff777777);
+
+    private void area(String id, float x, float y, int width, int height, List<String> tooltip, @Nullable Runnable run) {
+        actions.add(new Action(id, new Rect(x, y, width, height), currentClip, tooltip, run));
+    }
+
+    private void button(String id, String normal, String hover, String down, float x, float y, int width, int height,
+                        boolean selected, boolean enabled, PreviewUiText text, Runnable run) {
+        var action = new Action(id, new Rect(x, y, width, height), currentClip, List.of(text.getLocal()), enabled ? run : null);
+        boolean hovered = action.contains(mouseX, mouseY);
+        sprite(hovered && id.equals(pressed) ? down : selected || hovered ? hover : normal, x, y, width, height);
+        actions.add(action);
+    }
+
+    private void topBar() {
+        clipped(7, 10, 115, 18, () -> {
+            float y = 10 - 16 * collapseNow;
+            sprite("top_machine_prefix_name_base", 7, y, 115, 18);
+            var model = view.model();
+            var titleText = model == null ? null : model.title();
+            String title = titleText == null ? view.id().toString() : titleText.getLocal();
+            Minecraft.getMinecraft().fontRenderer.drawString(title, 10, y + 6, 0xffffff, false);
+        });
+        clipped(123, 10, 17, 19, () -> {
+            float y = 10 - 15 * collapseNow;
+            sprite("top_button_base_preview_reset", 123, y, 17, 17);
+            button("reset", "top_button/self_resetting_default", "top_button/self_resetting_selected", "top_button/self_resetting_press",
+                126, y + 15, 13, 5, false, true, PreviewUiText.Reset, scene.camera()::reset);
+        });
+        clipped(141, 10, 17, 19, () -> {
+            float y = 10 - 15 * collapseNow;
+            sprite("top_button_base_structural_forming_" + (view.formedPreview() ? "on" : "off"), 141, y, 17, 17);
+            area("formingBase", 141, y, 17, 17, List.of(PreviewUiText.Formed.getLocal()), null);
+            button("forming", "top_button/self_locking_default", "top_button/self_locking_selected", "top_button/self_locking_pressed",
+                144, y + 15, 13, 5, view.formedPreview(), true, PreviewUiText.Formed,
+                () -> view.formedPreview(drawnToken, !view.formedPreview()));
+        });
+        clipped(159, 10, 17, 18, () -> {
+            float y = 10 - 15 * collapseNow;
+            sprite("top_button_base_structural_information", 159, y, 17, 18);
+            area("info", 159, y, 17, 18, List.of(PreviewUiText.Structure.getLocal(view.id()), PreviewUiText.Scan.getLocal(PreviewUiText.onOff(view.scan)),
+                PreviewUiText.Mode.getLocal((view.threeDimensional ? PreviewUiText.ThreeD : PreviewUiText.Slice).getLocal()),
+                PreviewUiText.Layer.getLocal(view.layer), PreviewUiText.Forming.getLocal(PreviewUiText.onOff(view.formedPreview()))), null);
+        });
+    }
+
+    private void bottomBar() {
+        clipped(98, 195, 78, 16, () -> {
+            float x = 98 + 57 * collapseNow;
+            sprite("down_button_base_on", x, 198, 62, 13);
+            sprite(collapsed ? "down_button_base_on-led" : "down_button_base_off-led", x + 2, 201, 1, 7);
+            bottomButton("place_projection", x + 5, 195, false, !collapsed, PreviewUiText.Project, this::project);
+            bottomButton("material_preview_ui", x + 18, 195, view.materialsOpen, !collapsed, PreviewUiText.Materials, () -> view.materialsOpen = !view.materialsOpen);
+            bottomButton("replace_block", x + 31, 195, view.wireframe, !collapsed, PreviewUiText.Wireframe, () -> view.wireframe = !view.wireframe);
+            bottomButton("layer_preview", x + 44, 195, !view.threeDimensional, !collapsed, PreviewUiText.LayerPreview, () -> view.threeDimensional = !view.threeDimensional);
+            bottomButton("component_switch", 165, 197, collapsed, true, PreviewUiText.Collapse, () -> collapsed = !collapsed);
+        });
+    }
+
+    private void bottomButton(String id, float x, float y, boolean selected, boolean enabled, PreviewUiText text, Runnable run) {
+        button(id, "down_button_default/" + id + "_default", "down_button_selected/" + id + "_selected", "down_button_pressed/" + id + "_pressed",
+            x, y, 12, 14, selected, enabled, text, run);
+    }
+
+    private void project() {
+        var anchor = StructurePreviewScreensAnchor.current();
+        view.anchor(anchor);
+        if (view.previews().project(view.id(), view.settings(), anchor,
+            new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false, null, 2048, 0, 4096, 64)))
+            ProjectionInteractions.INSTANCE.follow();
+    }
+
+    private void layerSlider() {
+        var model = view.model();
+        if (model == null) return;
+        sprite("right_layer_selection", 165, 33, 10, 158);
+        int maximum = model.bounds().max().getY() - model.bounds().min().getY();
+        int index = Math.clamp(view.layer - model.bounds().min().getY(), 0, maximum);
+        int y = 44 + (int) Math.round(maximum == 0 ? 0 : 124.0 * index / maximum);
+        boolean hover = new Rect(165, 33, 10, 158).contains(mouseX, mouseY);
+        sprite(layerDragging ? "slider_press" : hover ? "slider_selected" : "slider_default", 167, y, 7, 12);
+        area("layer", 165, 33, 10, 158, List.of(PreviewUiText.SliceY.getLocal(view.layer)), null);
+    }
+
+    private void updateLayer(int y) {
+        var model = view.model();
+        if (model == null) return;
+        int min = model.bounds().min().getY(), max = model.bounds().max().getY();
+        view.layer = min + (int) Math.round(Math.clamp(y - 33 - 11 - 6, 0, 124) / 124.0 * (max - min));
+    }
+
+    private void materials() {
+        var selected = view.picked() == null ? null : view.picked().display();
+        clipped(9, 31, 18, 181, () -> {
+            float x = 9 - 18 * Math.max(collapseNow, sidebarNow);
+            sprite("left_replace_preview", x, 31, 18, 181);
+            if (selected == null) {
+                slot("none", ItemStack.EMPTY, x, 31, false, List.of(PreviewUiText.NoSelection.getLocal(), PreviewUiText.SelectHint.getLocal()), null);
+                return;
+            }
+            int choice = representative(selected);
             var stack = optionStack(selected.options().get(choice));
-            if (!stack.isEmpty()) Minecraft.getMinecraft().getRenderItem().renderItemAndEffectIntoGUI(stack, px + 2, py + 2);
-            var action = new Action(px, py, 20, 20, StructurePreviewText.Alternatives, false, true, () -> view.alternative(token, selected, choice));
-            actions.add(action);
-            var option = selected.options().get(choice);
-            tooltips.put(action, List.of(stack.isEmpty() ? option.blockId().toString() : stack.getDisplayName(), option.blockId() + " @ " + option.meta()));
+            boolean any = selected.options().size() > 1;
+            slot("selected", stack, x, 31, false, any
+                ? List.of(PreviewUiText.CurrentSelection.getLocal(stack.getDisplayName()), PreviewUiText.ChooseOne.getLocal(selected.options().size()), PreviewUiText.Key.getLocal(selected.key()))
+                : List.of(stack.isEmpty() ? PreviewUiText.Empty.getLocal() : stack.getDisplayName(), PreviewUiText.Requirement.getLocal(shortName(selected)), PreviewUiText.Key.getLocal(selected.key())), null);
+            int row = 1;
+            for (int index = 0; index < selected.options().size() && row <= 9; index++) {
+                if (index == choice) continue;
+                var alternative = optionStack(selected.options().get(index));
+                if (alternative.isEmpty()) continue;
+                int option = index;
+                slot("option" + index, alternative, x, 31 + row++ * 18, false,
+                    List.of(PreviewUiText.Candidate.getLocal(alternative.getDisplayName()), PreviewUiText.ClickToSelect.getLocal(),
+                        PreviewUiText.Key.getLocal(optionKey(selected.options().get(index)))), () -> view.alternative(drawnToken, selected, option));
+            }
+        });
+        var model = view.model();
+        if (!view.materialsOpen || model == null) return;
+        sprite("base_material_preview_ui", 29, 31, 134, 163);
+        var bom = selected == null ? new ObjectArrayList<>(model.bom())
+            : new ObjectArrayList<>(List.of(new StructurePreviewModel.BomLine(selected, 1)));
+        bom.sort(Comparator.comparingLong(StructurePreviewModel.BomLine::count).reversed());
+        int row = 0;
+        for (var line : bom) {
+            var display = line.display();
+            if (display == null || selected != null && !selected.equals(display)) continue;
+            var stack = optionStack(display.options().get(representative(display)));
+            if (stack.isEmpty()) continue;
+            int count = selected == null ? (int) Math.min(Integer.MAX_VALUE, line.count()) : 1;
+            stack.setCount(count);
+            var tooltip = new ObjectArrayList<String>();
+            tooltip.add(stack.getDisplayName());
+            if (selected == null) {
+                tooltip.add(PreviewUiText.Required.getLocal(count));
+                tooltip.add(PreviewUiText.Key.getLocal(display.key()));
+            } else {
+                tooltip.add(PreviewUiText.Requirement.getLocal(shortName(display)));
+                var status = view.pickedStatus();
+                if (status != null) tooltip.add(PreviewUiText.Status.getLocal(switch (status) {
+                    case DISPLAY_MATCH -> PreviewUiText.Match.getLocal();
+                    case MISSING -> PreviewUiText.Missing.getLocal();
+                    case DIFFERENT -> PreviewUiText.Wrong.getLocal();
+                    case UNLOADED -> PreviewUiText.Unloaded.getLocal();
+                    case UNKNOWN -> PreviewUiText.Unknown.getLocal();
+                }));
+                tooltip.add(PreviewUiText.Count.getLocal(count));
+            }
+            if (display.options().size() > 1) tooltip.add(PreviewUiText.Replaceable.getLocal(display.options().size()));
+            slot("material" + row, stack, 33, 35 + row * 20, true, tooltip, null);
+            if (++row >= 24) break;
         }
     }
-    private void occurrences(int top) {
-        var model = view.model(); if (model == null) return;
-        var slices = new ObjectArrayList<StructurePreviewModel.Occurrence>();
-        for (var occurrence : model.occurrences()) if (model.generation().nodes().get(occurrence.node()).kind() == StructurePreviewProvider.Kind.SLICE) slices.add(occurrence);
-        int visible = Math.max(0, (height - 23 - top) / 20);
-        occurrenceOffset = Math.clamp(occurrenceOffset, 0, Math.max(0, slices.size() - visible));
-        for (int i = 0; i < visible && occurrenceOffset + i < slices.size(); i++) {
-            var occurrence = slices.get(occurrenceOffset + i); var node = model.generation().nodes().get(occurrence.node());
-            int y = top + i * 20; var token = drawnToken;
-            String title = node.id() + " " + path(occurrence.path());
-            Minecraft.getMinecraft().fontRenderer.drawString(Minecraft.getMinecraft().fontRenderer.trimStringToWidth(title, width - 64), 4, y + 4, 0xffffff);
-            button(width - 62, y, 18, 16, StructurePreviewText.Slices, false, () -> view.slices(token, occurrence.path(), Math.max(node.minCount(), occurrence.selectedSlices() - 1)));
-            Minecraft.getMinecraft().fontRenderer.drawString(Integer.toString(occurrence.selectedSlices()), width - 40, y + 4, 0xffffff);
-            button(width - 22, y, 18, 16, StructurePreviewText.Slices, true, () -> view.slices(token, occurrence.path(), Math.min(node.maxCount(), occurrence.selectedSlices() + 1)));
-        }
+
+    private void slot(String id, ItemStack stack, float x, float y, boolean amount, List<String> tooltip, @Nullable Runnable run) {
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(x, y, 0);
+            GuiAtlas.state(0, 0, 73, 0, 18, 18);
+            if (!stack.isEmpty()) {
+                RenderHelper.enableGUIStandardItemLighting();
+                Minecraft.getMinecraft().getRenderItem().renderItemAndEffectIntoGUI(stack, 1, 1);
+                RenderHelper.disableStandardItemLighting();
+                if (amount) PreviewAmountText.draw(Minecraft.getMinecraft().fontRenderer, stack.getCount());
+            }
+        } finally { GlStateManager.popMatrix(); }
+        area(id, x, y, 18, 18, tooltip, run);
     }
-    public static String path(StructurePreviewPath path) {
-        var edges = new IntArrayList();
-        for (var p = path; p.parent() != null; p = p.parent()) edges.add(p.childIndex());
-        var result = new StringBuilder("/");
-        for (int i = edges.size() - 1; i >= 0; i--) { if (i != edges.size() - 1) result.append('/'); result.append(edges.getInt(i)); }
-        return result.toString();
-    }
-    private int representative(StructureDisplay display) {
-        var explicit = view.settings().displayOptions().get(display);
-        if (explicit != null) return explicit;
-        for (int index = 0; index < display.options().size(); index++) {
-            var option = display.options().get(index);
-            if (ForgeRegistries.BLOCKS.containsKey(option.blockId())
-                && ForgeRegistries.BLOCKS.getValue(option.blockId()) != null) return index;
-        }
-        return 0;
-    }
-    private ItemStack stack(@Nullable StructureDisplay display) { return display == null ? ItemStack.EMPTY : optionStack(display.options().get(representative(display))); }
+
+    private int representative(StructureDisplay display) { return view.settings().displayOptions().getOrDefault(display, 0); }
     private static ItemStack optionStack(StructureDisplay.BlockOption option) {
-        if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) return ItemStack.EMPTY;
         var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
         return block == null ? ItemStack.EMPTY : new ItemStack(block, 1, option.meta());
     }
-    private String displayName(StructureDisplay display) { var stack = stack(display); return stack.isEmpty() ? display.key() : stack.getDisplayName(); }
-    public boolean press(int x, int y, int button) {
-        if (!inputCurrent() || x < 0 || y < 0 || x >= width || y >= height) return false;
-        if (button == 0) {
-            search.mouseClicked(x, y, button);
-            for (var action : actions) if (action.contains(x, y)) {
-                pressedText = action.text; pressedUntil = System.currentTimeMillis() + 120;
-                if (action.enabled && drawnToken == view.token()) action.run.run(); return true;
-            }
-        }
-        var rect = scene.viewport();
-        return scene.press(rect.x() + x - 4, rect.y() + y - 22, button);
+    private static String shortName(StructureDisplay display) {
+        if (display.options().size() != 1) return display.key();
+        var option = display.options().getFirst();
+        return option.blockId() + (option.meta() == 0 ? "" : "@" + option.meta());
     }
-    public boolean drag(int x, int y) { if (!inputCurrent()) return false; var rect = scene.viewport(); return scene.drag(rect.x() + x - 4, rect.y() + y - 22); }
-    public boolean release(int x, int y, int button) { if (!inputCurrent()) return false; var rect = scene.viewport(); return scene.release(rect.x() + x - 4, rect.y() + y - 22, button); }
-    public boolean wheel(int x, int y, int delta) {
-        if (!inputCurrent() || delta == 0 || x < 0 || y < 0 || x >= width || y >= height) return false;
-        var rect = scene.viewport();
-        if (scene.wheel(rect.x() + x - 4, rect.y() + y - 22, delta)) return true;
-        if (view.materialsOpen && y > sceneHeight + 40 && y < height - 23) {
-            if (view.occurrencesOpen) occurrenceOffset = Math.max(0, occurrenceOffset - Integer.signum(delta));
-            else materialOffset = Math.max(0, materialOffset - Integer.signum(delta));
+
+    private static String optionKey(StructureDisplay.BlockOption option) {
+        return "state:" + option.blockId() + ":" + option.meta();
+    }
+
+    public boolean press(int x, int y, int button) {
+        if (!inputCurrent()) return false;
+        for (int i = actions.size() - 1; i >= 0; i--) {
+            var action = actions.get(i);
+            if (!action.contains(x, y)) continue;
+            if (button == 0 && action.id.equals("layer")) { layerDragging = true; updateLayer(y); }
+            else if (button == 0 && action.run != null) pressed = action.id;
+            if (button == 0 && (layerDragging || action.run != null))
+                Minecraft.getMinecraft().getSoundHandler().playSound(PositionedSoundRecord.getMasterRecord(SoundEvents.UI_BUTTON_CLICK, 1));
             return true;
         }
-        return false;
+        if (view.materialsOpen && new Rect(29, 31, 134, 163).contains(x, y)) return true;
+        var rect = scene.viewport();
+        return scene.press(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
     }
-    public boolean key(char typed, int key) {
-        if (!inputCurrent() || !search.isFocused() || !view.materialsOpen || view.alternativesOpen || view.occurrencesOpen) return false;
-        if (!search.textboxKeyTyped(typed, key)) return false;
-        view.search = search.getText(); materialOffset = 0; return true;
+    public boolean drag(int x, int y) {
+        if (!inputCurrent()) return false;
+        if (layerDragging) { updateLayer(y); return true; }
+        if (pressed != null) return true;
+        var rect = scene.viewport();
+        return scene.drag(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y);
+    }
+    public boolean release(int x, int y, int button) {
+        if (!inputCurrent()) { pressed = null; layerDragging = false; return false; }
+        if (button == 0 && layerDragging) { layerDragging = false; updateLayer(y); return true; }
+        if (button == 0 && pressed != null) {
+            String previous = pressed; pressed = null;
+            for (var action : actions) if (previous.equals(action.id) && action.contains(x, y) && action.run != null) { action.run.run(); break; }
+            return true;
+        }
+        var rect = scene.viewport();
+        return scene.release(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
+    }
+    public boolean wheel(int x, int y, int delta) {
+        if (!inputCurrent() || delta == 0) return false;
+        for (var action : actions) if (action.contains(x, y)) return true;
+        if (view.materialsOpen && new Rect(29, 31, 134, 163).contains(x, y)) return true;
+        var rect = scene.viewport();
+        return scene.wheel(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, delta);
     }
     public List<String> tooltip(int x, int y) {
         if (!inputCurrent()) return List.of();
-        for (var action : actions) if (action.contains(x, y)) return tooltips.getOrDefault(action, List.of(action.text.getLocal()));
-        var selected = view.picked();
-        if (selected != null && y >= 22 && y < sceneHeight + 22) {
-            var p = selected.position();
-            return List.of(StructurePreviewText.Position.getLocal(p.getX(), p.getY(), p.getZ()), selected.display() == null ? StructurePreviewText.Unknown.getLocal() : displayName(selected.display()));
-        }
+        for (int i = actions.size() - 1; i >= 0; i--) if (actions.get(i).contains(x, y)) return actions.get(i).tooltip;
         return List.of();
     }
     @Override public void close() { if (closed) return; closed = true; PreviewEmbeddedInput.INSTANCE.remove(this); scene.close(); }

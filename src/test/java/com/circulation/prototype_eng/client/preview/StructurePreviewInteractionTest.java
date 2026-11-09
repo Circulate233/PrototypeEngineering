@@ -22,6 +22,37 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class StructurePreviewInteractionTest {
+    @Test void controllerAtOriginIsPickedOnceAndUsesItsOwnDisplay() {
+        try (var f = fixture()) {
+            var ui = f.first;
+            ui.controllerDisplay(B);
+            var controller = Objects.requireNonNull(ui.controllerCell());
+            var camera = new StructurePreviewCamera();
+            var viewport = new StructurePreviewCamera.Viewport(0, 0, 171, 200);
+            camera.prepare(Objects.requireNonNull(ui.sceneBounds()));
+            var click = Objects.requireNonNull(camera.pick(ui, viewport, 85.5, 100));
+            assertSame(controller, click.cell());
+            assertTrue(ui.choose(click));
+            assertSame(B, ui.selected());
+            assertTrue(ui.choose(new StructurePreviewView.Click(ui.token(), controller)));
+            assertNull(ui.picked());
+            ui.threeDimensional = false;
+            ui.layer = 1;
+            assertFalse(ui.visible(controller));
+        }
+    }
+
+    @Test void changingAnAlternativeRestoresTheSelectedPositionAfterRebuild() {
+        try (var f = fixture()) {
+            var ui = f.first;
+            var cell = Objects.requireNonNull(ui.model()).cells().getFirst();
+            assertTrue(ui.choose(new StructurePreviewView.Click(ui.token(), cell)));
+            assertTrue(ui.alternative(ui.token(), Objects.requireNonNull(cell.display()), 1));
+            ui.advance(1000);
+            assertEquals(cell.position(), Objects.requireNonNull(ui.picked()).position());
+            assertEquals(1, ui.alternative(cell.display()));
+        }
+    }
     private static final ResourceLocation ROOT = new ResourceLocation("preview_ui_test", "root");
     private static final ResourceLocation CHILD = new ResourceLocation("preview_ui_test", "shared");
     private static final StructureDisplay A = display("a"), B = display("b");
@@ -100,7 +131,6 @@ class StructurePreviewInteractionTest {
             assertEquals(3, occurrences.stream().filter(o -> o.path().equals(right)).findFirst().orElseThrow().selectedSlices());
             assertEquals(new BlockPos(3, 0, 0), occurrences.stream().filter(o -> o.path().equals(left)).findFirst().orElseThrow().origin());
             assertEquals(new BlockPos(3, -1, 1), occurrences.stream().filter(o -> o.path().equals(left.child(0))).findFirst().orElseThrow().origin());
-            assertEquals("/0", StructurePreviewPanel.path(left)); assertEquals("/1", StructurePreviewPanel.path(right));
         }
     }
     @Test void alternativeInvalidatesDrawnClickAndDoesNotMutateOtherWrapperOrWorldIntent() {

@@ -18,13 +18,12 @@ import net.minecraft.item.ItemStack;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-
 import java.util.Objects;
 import javax.annotation.ParametersAreNonnullByDefault;
-
 import mcp.MethodsReturnNonnullByDefault;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
-
+import ae2.container.me.patternencode.ContainerPatternEncodingTerm;
+import ae2.container.me.patternencode.ContainerPEATerm;
 /**
  * HEI 4.35.1 discovers this entry on the client; common mod initialization never references it.
  */
@@ -78,6 +77,10 @@ public class PrototypeJeiPlugin implements IModPlugin {
         registration.addRecipes(structures, StructurePreviewJeiCategory.UID);
         for (var page : pages.pages()) {
             var wrappers = new ObjectArrayList<>();
+            var transfer = registration.getRecipeTransferRegistry();
+            var helper = registration.getJeiHelpers().recipeTransferHandlerHelper();
+            transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPatternEncodingTerm.class, helper), page.getUid());
+            transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPEATerm.class, helper), page.getUid());
             for (var recipe : page.pool().recipes()) {
                 var display = displays.describe(recipe);
                 var ingredients = new JeiRecipeIngredients(display, converters, registration.getIngredientRegistry(), identities);

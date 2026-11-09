@@ -225,12 +225,73 @@ class JeiRecipeIntegrationTest {
         assertTrue(layout.group(FLUID_INGREDIENT).values.isEmpty());
         assertEquals(35, indexed.getInputs(ITEM_INGREDIENT).size());
         var all = new ObjectArrayList<JeiRecipeDisplay.Resource>();
+        var importSource = Objects.requireNonNull(wrapper.patternRecipe());
+        assertEquals(35, importSource.inputs().size());
+        assertEquals(19, importSource.outputs().size());
+        assertEquals(inputStacks.get(20), importSource.inputs().get(20).getFirst());
         var panels = new RecipePanelLayout(display);
         for (int i = 0; i < panels.pageCount(); i++) {
             all.addAll(panels.inputs(i));
             all.addAll(panels.outputs(i));
         }
         assertEquals(54, all.size());
+    }
+
+    @Test
+    void nativeConversionWinsAndFallbackSharesItsIngredientGroupWithoutReplacingNativeEntries() {
+        var nativeInput = stack(ITEM, "native", 7);
+        var genericInput = stack(FLUID, "generic", Long.MAX_VALUE);
+        var genericOutput = stack(FLUID, "generic_output", Long.MAX_VALUE - 1);
+        var display = displays().describe(recipe("fallback", List.of(nativeInput, genericInput), List.of(genericOutput)));
+        var converters = List.<IngredientConverter<?>>of(converter(ITEM, ITEM_INGREDIENT), converter(FLUID, FLUID_INGREDIENT));
+        var fallbackCalls = new ObjectArrayList<GenericStack>();
+        // Exercise routing/indexing with a pure carrier. Production uses AE2S GenericStack.wrapInItemStack.
+        var fallback = new IngredientConverter<GenericStack>() {
+            @Override public IIngredientType<GenericStack> getIngredientType() { return ITEM_INGREDIENT; }
+            @Override public GenericStack getIngredientFromStack(GenericStack stack) {
+                fallbackCalls.add(stack);
+                return stack;
+            }
+            @Override public GenericStack getStackFromIngredient(GenericStack stack) { return stack; }
+        };
+        var bridge = new JeiRecipeIngredients(display, converters, List.of(ITEM_INGREDIENT, FLUID_INGREDIENT), identities(display, converters),
+            fallback, key -> key.getType() == ITEM);
+        assertEquals(List.of(genericInput, genericOutput), fallbackCalls);
+        assertTrue(display.resources().stream().allMatch(bridge::supports));
+        var indexed = new JeiTestViews.Ingredients();
+        bridge.index(indexed);
+        assertEquals(2, indexed.getInputs(ITEM_INGREDIENT).size());
+        assertTrue(indexed.getInputs(FLUID_INGREDIENT).isEmpty());
+        assertEquals(1, indexed.getInputs(ITEM_INGREDIENT).getFirst().getFirst().amount());
+        assertEquals(Long.MAX_VALUE, indexed.getInputs(ITEM_INGREDIENT).getLast().getFirst().amount());
+        assertEquals(List.of(List.of(genericOutput)), indexed.getOutputs(ITEM_INGREDIENT));
+        var layout = new JeiTestViews.Layout();
+        bridge.initialize(layout, 2, 1, 2, 0, 100, 20, 18);
+        bridge.show(layout, display.resources().subList(0, 2), display.resources().subList(2, 3), 2, 1);
+        assertEquals(3, layout.group(ITEM_INGREDIENT).values.size());
+        assertSame(nativeInput.what(), layout.group(ITEM_INGREDIENT).values.get(0).getFirst().what());
+        assertEquals(genericInput, layout.group(ITEM_INGREDIENT).values.get(1).getFirst());
+        assertEquals(genericOutput, layout.group(ITEM_INGREDIENT).values.get(2).getFirst());
+        bridge.show(layout, List.of(display.resources().getFirst()), List.of(), 2, 1);
+        assertEquals(1, layout.group(ITEM_INGREDIENT).values.size());
+    }
+
+    @Test
+    void fallbackCreatesItsGroupWhenNoNativeConverterAcceptsTheKey() {
+        var source = stack(FLUID, "fallback_only", Long.MAX_VALUE);
+        var display = displays().describe(recipe("fallback_only", List.of(source), List.of()));
+        var fallback = converter(FLUID, ITEM_INGREDIENT);
+        var bridge = new JeiRecipeIngredients(display, List.of(), List.of(ITEM_INGREDIENT), new JeiQueryIdentityIndex(), fallback);
+        var indexed = new JeiTestViews.Ingredients();
+        bridge.index(indexed);
+        assertTrue(bridge.supports(display.resources().getFirst()));
+        assertEquals(List.of(List.of(source)), indexed.getInputs(ITEM_INGREDIENT));
+        var layout = new JeiTestViews.Layout();
+        bridge.initialize(layout, 1, 0, 1, 0, 100, 20, 18);
+        bridge.show(layout, display.resources(), List.of(), 1, 0);
+        assertEquals(source, layout.group(ITEM_INGREDIENT).values.get(0).getFirst());
+        bridge.show(layout, List.of(), List.of(), 1, 0);
+        assertTrue(layout.group(ITEM_INGREDIENT).values.isEmpty());
     }
 
     @Test

@@ -20,17 +20,15 @@ import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
 import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import java.util.Objects;
-
-public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings {
+import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
+public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings {
     private static final VarHandle STORAGE_DIRTY;
 
     static {
@@ -52,6 +50,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private BufferedResourceHatch hatch;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
+    private boolean autoInput;
+    private boolean autoOutput;
     private volatile long maxFluidInputRate;
     private volatile long maxFluidOutputRate;
 
@@ -150,6 +150,11 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         return slots;
     }
 
+    @Override public boolean autoInput() { return autoInput; }
+    @Override public boolean autoOutput() { return autoOutput; }
+    @Override public void setAutoInput(boolean value) { if (autoInput != value) { autoInput = value; markDirty(); } }
+    @Override public void setAutoOutput(boolean value) { if (autoOutput != value) { autoOutput = value; markDirty(); } }
+
     @Override
     public long maxFluidInputRate() {
         return maxFluidInputRate;
@@ -227,6 +232,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         tag.setString("Mode", mode.name());
         tag.setInteger("Tier", tier.level());
         tag.setInteger("Slots", slots);
+        tag.setBoolean("AutoInput", autoInput);
+        tag.setBoolean("AutoOutput", autoOutput);
         tag.setLong("MaxFluidInRate", maxFluidInputRate);
         tag.setLong("MaxFluidOutRate", maxFluidOutputRate);
         storage().save(tag);
@@ -239,6 +246,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     public void loadTag(@NotNull NBTTagCompound tag) {
         pendingConfiguration = false;
         super.loadTag(tag);
+        autoInput = tag.getBoolean("AutoInput");
+        autoOutput = tag.getBoolean("AutoOutput");
         maxFluidInputRate = Math.max(0, tag.getLong("MaxFluidInRate"));
         maxFluidOutputRate = Math.max(0, tag.getLong("MaxFluidOutRate"));
         if (hatch != null) {

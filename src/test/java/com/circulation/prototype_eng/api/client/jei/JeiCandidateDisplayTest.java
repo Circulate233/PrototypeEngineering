@@ -11,6 +11,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
 import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
 import com.circulation.prototype_eng.localization.JeiText;
@@ -89,7 +91,7 @@ class JeiCandidateDisplayTest {
     }
 
     @Test
-    void duplicateExactKeysOrUnsupportedCandidatesStayExpandedRatherThanLoseAmountsOrFallbackRows() {
+    void duplicateExactKeysCycleWithTheirOwnAmountsWhileUnsupportedCandidatesRemainVisible() {
         var builder = new JeiRecipeDisplay.Builder();
         var candidates = builder.candidates(new JeiRecipeDisplay.CandidateGroup("weighted"));
         candidates.resource(stack("same", 7), JeiRecipeDisplay.Role.OUTPUT);
@@ -101,10 +103,69 @@ class JeiCandidateDisplayTest {
         var ingredients = ingredients(display);
         var panels = new RecipePanelLayout(display, ALTERNATIVES, ingredients);
         assertEquals(2, panels.inputSlots());
-        assertEquals(2, panels.outputSlots());
+        assertEquals(1, panels.outputSlots());
         assertEquals(7, panels.outputs(0).getFirst().stack().amount());
         assertEquals(19, panels.outputs(0).getLast().stack().amount());
         assertSame(display.resources().getLast(), panels.inputs(0).getLast());
+        var layout = new JeiTestViews.Layout();
+        ingredients.initialize(layout, 2, 1, 2, 0, 100, 20, 18);
+        ingredients.showGroups(layout, panels.inputGroups(0), panels.outputGroups(0), 2, 1);
+        var group = layout.group(INGREDIENT);
+        assertEquals(2, group.values.get(2).size());
+        JeiTestLocale.withTranslations(Map.of(JeiText.Amount.getTranslationKey(), "Units %s (%s)"), () -> {
+            for (int i = 0; i < 2; i++) {
+                var tooltip = new ObjectArrayList<String>();
+                group.tooltips.getFirst().onTooltip(2, false, group.values.get(2).get(i), tooltip);
+                assertTrue(tooltip.getFirst().contains(i == 0 ? "7" : "19"));
+            }
+        });
+    }
+
+    @Test
+    void selectiveMaterialsShareCorrespondingJeiSlotsAndPatternCandidatesKeepAmountsAndPhases() {
+        var first = RecipeRequirements.RESOURCES.requirement(new ResourceLocation("jei_test", "first"),
+            new ResourceRequirement(List.of(stack("a", 2), stack("catalyst_a", 1)), List.of(stack("out_a", 3))));
+        var second = RecipeRequirements.RESOURCES.requirement(new ResourceLocation("jei_test", "second"),
+            new ResourceRequirement(List.of(stack("b", 5)), List.of(stack("catalyst_b", 4)),
+                List.of(stack("out_b", 2)), List.of(), false));
+        var selection = RecipeRequirements.SELECTIVE.requirement(new ResourceLocation("jei_test", "materials"),
+            new SelectiveRequirement(List.of(first, second)));
+        var descriptions = new RecipeJeiDisplays();
+        descriptions.freeze();
+        var display = descriptions.describe(new MachineRecipe(new ResourceLocation("jei_test", "selective"), 80, List.of(selection)));
+        var ingredients = ingredients(display);
+        var panels = new RecipePanelLayout(display, ALTERNATIVES, ingredients);
+        var layout = new JeiTestViews.Layout();
+        ingredients.initialize(layout, 2, 1, 2, 0, 100, 20, 18);
+        ingredients.showGroups(layout, panels.inputGroups(0), panels.outputGroups(0), 2, 1);
+        for (var values : layout.group(INGREDIENT).values.values()) assertEquals(2, values.size());
+        var pattern = panels.patternRecipe(80);
+        assertEquals(List.of(List.of(stack("a", 2), stack("b", 5)),
+            List.of(stack("catalyst_a", 1), stack("catalyst_b", 320))), pattern.inputs());
+        assertEquals(List.of(List.of(stack("out_a", 3), stack("out_b", 160))), pattern.outputs());
+        for (var row : display.resources()) assertTrue(row.details().stream().anyMatch(line -> line.text() == JeiText.Alternative));
+    }
+
+    @Test
+    void nestedSelectiveAndFuzzyCandidatesRemainOneMaterialSlot() {
+        var fuzzy = RecipeRequirements.RESOURCES.requirement(new ResourceLocation("jei_test", "fuzzy"),
+            new ResourceRequirement(List.of(), List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS, null,
+                List.of(new FuzzyInputGroup(List.of(stack("a", 1).what(), stack("b", 1).what()), 7)), List.of()));
+        var fixed = RecipeRequirements.RESOURCES.requirement(new ResourceLocation("jei_test", "fixed"),
+            new ResourceRequirement(List.of(stack("c", 9)), List.of()));
+        var nested = RecipeRequirements.SELECTIVE.requirement(new ResourceLocation("jei_test", "nested"),
+            new SelectiveRequirement(List.of(fuzzy, fixed)));
+        var last = RecipeRequirements.RESOURCES.requirement(new ResourceLocation("jei_test", "last"),
+            new ResourceRequirement(List.of(stack("d", Long.MAX_VALUE)), List.of()));
+        var outer = RecipeRequirements.SELECTIVE.requirement(new ResourceLocation("jei_test", "outer"),
+            new SelectiveRequirement(List.of(nested, last)));
+        var descriptions = new RecipeJeiDisplays();
+        descriptions.freeze();
+        var display = descriptions.describe(new MachineRecipe(new ResourceLocation("jei_test", "nested_materials"), 20, List.of(outer)));
+        var panels = new RecipePanelLayout(display, ALTERNATIVES, ingredients(display));
+        assertEquals(1, panels.inputSlots());
+        assertEquals(List.of(List.of(stack("a", 7), stack("b", 7), stack("c", 9), stack("d", Long.MAX_VALUE))),
+            panels.patternRecipe(20).inputs());
     }
 
     @Test

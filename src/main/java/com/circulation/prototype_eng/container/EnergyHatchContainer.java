@@ -3,14 +3,12 @@ package com.circulation.prototype_eng.container;
 import ae2.container.AEBaseContainer;
 import ae2.container.guisync.GuiSync;
 import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.localization.GuiText;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
-
 import com.circulation.prototype_eng.api.energy.EnergyHatch;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.api.storage.HatchTier;
-
+import com.circulation.prototype_eng.localization.HatchGuiTitle;
 public final class EnergyHatchContainer extends AEBaseContainer {
     private static final String INPUT_RATE = "inputRate";
     private static final String OUTPUT_RATE = "outputRate";
@@ -31,12 +29,12 @@ public final class EnergyHatchContainer extends AEBaseContainer {
         storage = tile.storage();
         syncFields();
         registerClientAction(INPUT_RATE, Long.class, 20, value -> {
-            if (canInteractWith(getPlayer()) && tile.mode().hasInput()) {
+            if (canInteractWith(getPlayer())) {
                 tile.setMaxInputRate(value);
             }
         });
         registerClientAction(OUTPUT_RATE, Long.class, 20, value -> {
-            if (canInteractWith(getPlayer()) && tile.mode().hasOutput()) {
+            if (canInteractWith(getPlayer())) {
                 tile.setMaxOutputRate(value);
             }
         });
@@ -50,8 +48,8 @@ public final class EnergyHatchContainer extends AEBaseContainer {
                 tile.setAutoOutput(!tile.autoOutput());
             }
         });
-        addPlayerInventorySlots(8, 162);
-        setGuiTitle(GuiText.energyHatch(tile.mode()).text(tile.tier().level()));
+        addPlayerInventorySlots(27, 84);
+        setGuiTitle(HatchGuiTitle.of(true, tile.mode(), tile.tier()).text());
     }
 
     public HatchMode mode() { return tile.mode(); }

@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.api.client.jei;
 
-import ae2.api.stacks.AEFluidKey;
-import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.localization.JeiText;
 import mezz.jei.api.gui.IDrawable;
 import net.minecraft.client.Minecraft;
@@ -133,7 +131,7 @@ public final class JeiVisuals {
         }
 
         public static Progress module(Module module, Direction direction) {
-            return new Progress(Objects.requireNonNull(module), Shape.ARROW, direction, 18, 18, 0, false, 0xffffffff, 0xffffffff);
+            return new Progress(Objects.requireNonNull(module), Shape.ARROW, direction, 18, 18, 0, true, 0xffffffff, 0xffffffff);
         }
 
         @Override public void draw(Minecraft minecraft, RecipePoolJeiRecipe recipe, int x, int y) {
@@ -292,14 +290,7 @@ public final class JeiVisuals {
     }
 
     private static final ItemSkin ITEM_SKIN = new ItemSkin(Plaid.ITEM);
-    private static final FluidSkin FLUID_SKIN = new FluidSkin(Fluid.PLAID);
-    public static final JeiSlot.Skin AUTOMATIC = new JeiSlot.Skin() {
-        private JeiSlot.Skin skin(JeiRecipeDisplay.Resource resource) {
-            return resource.stack().what() instanceof AEItemKey ? ITEM_SKIN : resource.stack().what() instanceof AEFluidKey ? FLUID_SKIN : JeiSlot.PLAIN;
-        }
-        @Override public void background(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) { skin(resource).background(minecraft, slot, resource); }
-        @Override public void foreground(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) { skin(resource).foreground(minecraft, slot, resource); }
-    };
+    public static final JeiSlot.Skin AUTOMATIC = ITEM_SKIN;
 
     public enum Energy {
         DEFAULT("default_in", 22, 72), ONE_1("1_1", 18, 18), ONE_2("1_2", 18, 36), ONE_3("1_3", 18, 54), ONE_4("1_4", 18, 72),

@@ -5,14 +5,13 @@ import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.recipe.IRecipeWrapper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-
 import java.util.Objects;
 import javax.annotation.ParametersAreNonnullByDefault;
-
 import mcp.MethodsReturnNonnullByDefault;
 import com.circulation.prototype_eng.integration.jei.JeiRecipeInputs;
 import net.minecraft.client.Minecraft;
-
+import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
+import org.jetbrains.annotations.Nullable;
 /**
  * Native wrapper extension; immutable source data is shared by default and independent custom pages.
  */
@@ -49,6 +48,11 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
 
     public JeiRecipeIngredients ingredients() {
         return ingredients;
+    }
+
+    /** Complete displayed resources, independent of the visible page; custom wrappers can supply their own grouping. */
+    public @Nullable JeiPatternRecipe patternRecipe() {
+        return new RecipePanelLayout(display, JeiRenderOptions.defaults(), ingredients).patternRecipe(recipe.durationTicks());
     }
 
     @Override
