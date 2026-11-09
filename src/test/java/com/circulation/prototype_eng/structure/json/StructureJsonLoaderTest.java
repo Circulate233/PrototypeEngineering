@@ -44,6 +44,7 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 class StructureJsonLoaderTest {
     private static final StructureQuery<Token> STATE = new StructureQuery<>(id("fake_state"),
@@ -66,6 +67,35 @@ class StructureJsonLoaderTest {
     private static boolean matches(MachineStructure shape, FakeSource source, BlockOrientation orientation) {
         var plan = new StructurePlan(shape, BlockPos.ORIGIN, orientation);
         return plan.match(StructureSnapshot.capture(plan.reads(), source)) != null;
+    }
+
+    @Test
+    void jsonDefaultTemplateAndSliceKeepTheirRotatedCursorsAcrossOneUnitSlices() {
+        var loader = StructureJsonLoader.readSources(Map.of(
+            "parent.json", """
+                {"id":"test:parent","type":"template","pattern":[],"children":["test:child"]}
+                """,
+            "child.json", """
+                {"id":"test:child","type":"slice","offset":{"x":1,"y":0,"z":0},
+                 "minCount":1,"maxCount":3,"sliceOffset":{"x":1,"y":0,"z":0},
+                 "pattern":[{"pos":{"x":0,"y":0,"z":0},"blockId":"test:first"}]}
+                """));
+        var shape = definition(loader.resolve(emptyCatalog(), builtins(), new FakeBlocks()), "parent").shape();
+        var planning = StructurePlan.beginCreate(shape, BlockPos.ORIGIN, BlockOrientation.EAST_UP);
+        int slices = 0;
+        while (!planning.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 1000);
+        assertTrue(slices > 10, "The actual JSON default transform/declaration is retained and split");
+        var plan = Objects.requireNonNull(planning.result());
+        var source = new FakeSource();
+        source.put(STATE, new BlockPos(0, 0, 1), new Token(id("first"), 0));
+        source.put(STATE, new BlockPos(0, 0, 2), new Token(id("first"), 0));
+        source.put(STATE, new BlockPos(0, 0, 3), new Token(id("second"), 0));
+        var evaluation = plan.beginEvaluate(StructureSnapshot.capture(plan.reads(), source));
+        slices = 0;
+        while (!evaluation.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 1000);
+        var match = Objects.requireNonNull(Objects.requireNonNull(evaluation.result()).match());
+        assertEquals(2, match.children().getFirst().repetitions());
+        assertEquals(List.of(new BlockPos(0, 0, 1), new BlockPos(0, 0, 2)), match.allBlocks());
     }
 
     @Test

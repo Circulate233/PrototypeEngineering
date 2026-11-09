@@ -20,4 +20,22 @@ public interface MachineStructure {
     MachineStructure transform(StructureTransform rotation);
     void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller);
     @Nullable StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller);
+
+    /** Unknown shapes retain their exact existing virtual operations as cooperative callbacks. */
+    default StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
+        return StructureOperation.call(() -> transform(rotation));
+    }
+
+    default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+        return StructureOperation.call(() -> { collectReads(plan, anchor, controller); return null; });
+    }
+
+    default StructureOperation<StructureMatchResult> beginMatch(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+        return StructureOperation.call(() -> {
+            long unavailable = snapshot.unavailableVisits();
+            var result = match(snapshot, anchor, controller);
+            if (result != null) return StructureMatchResult.matched(result);
+            return snapshot.unavailableVisits() == unavailable ? StructureMatchResult.mismatch() : StructureMatchResult.unavailable();
+        });
+    }
 }

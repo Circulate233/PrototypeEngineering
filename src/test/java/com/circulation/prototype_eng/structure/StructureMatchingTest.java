@@ -23,6 +23,12 @@ import java.util.Set;
 import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.StructureMatch;
+import com.circulation.prototype_eng.api.structure.StructureReadPlan;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.Objects;
 
 class StructureMatchingTest {
     private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"), (_, _) -> {
@@ -170,6 +176,59 @@ class StructureMatchingTest {
                                         StructurePredicate predicate, List<MachineStructure> children) {
         return new SliceStructure(id(name), BlockOrientation.NORTH_UP, offset, false,
             new StructurePattern(Map.of(BlockPos.ORIGIN, predicate)), min, max, step, List.of(), children);
+    }
+
+    @Test
+    void namedDefaultParentRetainsLegacyShapeAndPredicateVirtualCallbacks() {
+        var calls = new ObjectArrayList<String>();
+        var first = new BlockPos(1, 0, 0);
+        var second = new BlockPos(2, 0, 0);
+        var legacyTemplate = new TemplateStructure(id("legacy_template"), BlockOrientation.NORTH_UP, first, false,
+            new StructurePattern(Map.of(BlockPos.ORIGIN, marker("template"))), List.of(), List.of()) {
+            @Override public TemplateStructure transform(StructureTransform rotation) { calls.add("template transform"); return this; }
+            @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+                calls.add("template collect"); super.collectReads(plan, anchor, controller);
+            }
+            @Override public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+                calls.add("template match"); return super.match(snapshot, anchor, controller);
+            }
+        };
+        var legacySlice = new SliceStructure(id("legacy_slice"), BlockOrientation.NORTH_UP, second, false,
+            new StructurePattern(Map.of(BlockPos.ORIGIN, marker("slice"))), 1, 1, first, List.of(), List.of()) {
+            @Override public SliceStructure transform(StructureTransform rotation) { calls.add("slice transform"); return this; }
+            @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+                calls.add("slice collect"); super.collectReads(plan, anchor, controller);
+            }
+            @Override public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+                calls.add("slice match"); return super.match(snapshot, anchor, controller);
+            }
+        };
+        var legacyPredicate = new StructurePredicate() {
+            @Override public StructurePredicate transform(StructureTransform rotation) { calls.add("predicate transform"); return this; }
+            @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+                calls.add("predicate collect"); plan.read(position, MARKER);
+            }
+            @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+                calls.add("predicate match"); return "validator".equals(snapshot.read(MARKER, position));
+            }
+        };
+        var root = TemplateStructure.create(id("default_parent"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
+            false, new StructurePattern(Map.of()), List.of(legacyPredicate), List.of(legacyTemplate, legacySlice));
+        var planning = StructurePlan.beginCreate(root, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
+        int slices = 0;
+        while (!planning.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 200);
+        var source = new Source();
+        source.values.put(first, "template"); source.values.put(second, "slice"); source.values.put(BlockPos.ORIGIN, "validator");
+        var plan = Objects.requireNonNull(planning.result());
+        var evaluation = plan.beginEvaluate(StructureSnapshot.capture(plan.reads(), source));
+        slices = 0;
+        while (!evaluation.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 200);
+        var match = Objects.requireNonNull(Objects.requireNonNull(evaluation.result()).match());
+        assertSame(legacyTemplate, match.children().get(0).structure());
+        assertSame(legacySlice, match.children().get(1).structure());
+        assertEquals(List.of(first, second), match.allBlocks());
+        assertTrue(calls.containsAll(List.of("template transform", "template collect", "template match",
+            "slice transform", "slice collect", "slice match", "predicate transform", "predicate collect", "predicate match")));
     }
 
     private static final class Source implements StructureReadSource {

@@ -18,13 +18,19 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.StructureMatchResult;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
+import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
+import java.util.Collections;
+import java.util.Iterator;
 
 /**
  * Greedy consecutive slices. Validators run once at the base; children run once at the last matched
  * slice, with zero matches placing children one sliceOffset before the base. Child failure does not
  * retry a shorter length. An unavailable attempted slice fails the whole structure.
  */
-@SuppressWarnings({"unused", "ClassCanBeRecord"}) // Definitions use identity, not recursive structural equality.
+@SuppressWarnings("unused") // Public extensible definitions use identity, not recursive structural equality.
 public class SliceStructure implements MachineStructure, StructurePreviewProvider {
     private final ResourceLocation id;
     private final BlockOrientation orientation;
@@ -36,10 +42,20 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     private final BlockPos sliceOffset;
     private final List<StructurePredicate> validators;
     private final List<MachineStructure> children;
+    private final boolean budgeted;
 
     public SliceStructure(ResourceLocation id, BlockOrientation orientation, BlockPos offset,
                           boolean hideWorldBlocks, StructurePattern pattern, int minCount, int maxCount,
                           BlockPos sliceOffset, List<StructurePredicate> validators, List<MachineStructure> children) {
+        this(id, orientation, offset, hideWorldBlocks, pattern, minCount, maxCount, sliceOffset, validators, children, false, false);
+    }
+
+    /** Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks. */
+    public static SliceStructure create(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, int minCount, int maxCount, BlockPos sliceOffset, List<StructurePredicate> validators, List<MachineStructure> children) {
+        return new SliceStructure(id, orientation, offset, hideWorldBlocks, pattern, minCount, maxCount, sliceOffset, validators, children, true, false);
+    }
+
+    private SliceStructure(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, int minCount, int maxCount, BlockPos sliceOffset, List<StructurePredicate> validators, List<MachineStructure> children, boolean budgeted, boolean owned) {
         if (minCount < 0 || maxCount < minCount) {
             throw new IllegalArgumentException("Slice counts must satisfy 0 <= minCount <= maxCount");
         }
@@ -51,54 +67,98 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         this.minCount = minCount;
         this.maxCount = maxCount;
         this.sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
-        this.validators = List.copyOf(validators);
-        this.children = List.copyOf(children);
+        this.validators = owned ? Collections.unmodifiableList(validators) : List.copyOf(validators);
+        this.children = owned ? Collections.unmodifiableList(children) : List.copyOf(children);
+        this.budgeted = budgeted;
     }
 
-    @Override public ResourceLocation id() { return id; }
-    @Override public BlockOrientation orientation() { return orientation; }
-    public BlockPos offset() { return offset; }
-    @Override public boolean hideWorldBlocks() { return hideWorldBlocks; }
-    public StructurePattern pattern() { return pattern; }
-    public int minCount() { return minCount; }
-    public int maxCount() { return maxCount; }
-    public BlockPos sliceOffset() { return sliceOffset; }
-    public List<StructurePredicate> validators() { return validators; }
-    public List<MachineStructure> children() { return children;
+    @Override
+    public ResourceLocation id() {
+        return id;
     }
 
-    @Override public Geometry previewGeometry() {
+    @Override
+    public BlockOrientation orientation() {
+        return orientation;
+    }
+
+    public BlockPos offset() {
+        return offset;
+    }
+
+    @Override
+    public boolean hideWorldBlocks() {
+        return hideWorldBlocks;
+    }
+
+    public StructurePattern pattern() {
+        return pattern;
+    }
+
+    public int minCount() {
+        return minCount;
+    }
+
+    public int maxCount() {
+        return maxCount;
+    }
+
+    public BlockPos sliceOffset() {
+        return sliceOffset;
+    }
+
+    public List<StructurePredicate> validators() {
+        return validators;
+    }
+
+    public List<MachineStructure> children() {
+        return children;
+    }
+
+    @Override
+    public Geometry previewGeometry() {
         return new Geometry(Kind.SLICE, offset, minCount, maxCount, sliceOffset,
-            new ObjectArrayList<>(pattern.blocks().keySet()), children); }
+            new ObjectArrayList<>(pattern.blocks().keySet()), children);
+    }
 
     @Override
     public SliceStructure transform(StructureTransform rotation) {
+        if (budgeted) return (SliceStructure) Objects.requireNonNull(beginTransform(rotation).run());
         Objects.requireNonNull(rotation);
         BlockOrientation transformedOrientation = BlockOrientation.get(
-                rotation.apply(orientation.getSide(RelativeSide.FRONT)),
-                rotation.apply(orientation.getSide(RelativeSide.TOP)));
+            rotation.apply(orientation.getSide(RelativeSide.FRONT)),
+            rotation.apply(orientation.getSide(RelativeSide.TOP)));
         var transformedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
-        for (StructurePredicate validator : validators) { transformedValidators.add(validator.transform(rotation)); }
+        for (StructurePredicate validator : validators) {
+            transformedValidators.add(validator.transform(rotation));
+        }
         var transformedChildren = new ObjectArrayList<MachineStructure>(children.size());
-        for (MachineStructure child : children) { transformedChildren.add(child.transform(rotation)); }
+        for (MachineStructure child : children) {
+            transformedChildren.add(child.transform(rotation));
+        }
         return new SliceStructure(id, transformedOrientation, rotation.apply(offset), hideWorldBlocks,
-                pattern.transform(rotation), minCount, maxCount, rotation.apply(sliceOffset),
-                transformedValidators, transformedChildren);
+            pattern.transform(rotation), minCount, maxCount, rotation.apply(sliceOffset),
+            transformedValidators, transformedChildren);
     }
 
     @Override
     public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+        if (budgeted) { beginCollectReads(plan, anchor, controller).run(); return; }
         Objects.requireNonNull(plan);
         Objects.requireNonNull(controller);
         BlockPos origin = StructurePattern.add(anchor, offset);
         for (long index = 0; index < maxCount; index++) {
             pattern.collectReads(plan, sliceOrigin(origin, Math.toIntExact(index)), controller);
         }
-        for (StructurePredicate validator : validators) { validator.collectReads(plan, origin); }
+        for (StructurePredicate validator : validators) {
+            validator.collectReads(plan, origin);
+        }
         if (!children.isEmpty()) {
             for (long count = minCount; count <= maxCount; count++) {
                 BlockPos childOrigin = sliceOrigin(origin, Math.toIntExact(count - 1));
-                for (MachineStructure child : children) { child.collectReads(plan, childOrigin, controller); }
+                for (MachineStructure child : children) {
+                    child.collectReads(plan, childOrigin, controller);
+                }
             }
         }
     }
@@ -106,6 +166,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     @Override
     @Nullable
     public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+        if (budgeted) return Objects.requireNonNull(beginMatch(snapshot, anchor, controller).run()).match();
         Objects.requireNonNull(snapshot);
         Objects.requireNonNull(controller);
         BlockPos origin = StructurePattern.add(anchor, offset);
@@ -114,24 +175,36 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
         while (count < maxCount) {
             BlockPos current = sliceOrigin(origin, count);
             // Unloaded is a fatal attempted branch, never the greedy pattern-mismatch stop condition.
-            if (!snapshot.isAreaLoaded(pattern.at(current))) { return null; }
-            if (!pattern.matches(snapshot, current, controller)) { break; }
+            if (!snapshot.isAreaLoaded(pattern.at(current))) {
+                return null;
+            }
+            if (!pattern.matches(snapshot, current, controller)) {
+                break;
+            }
             for (BlockPos relative : pattern.blocks().keySet()) {
                 BlockPos position = StructurePattern.add(current, relative);
-                if (!position.equals(controller)) { blocks.add(position); }
+                if (!position.equals(controller)) {
+                    blocks.add(position);
+                }
             }
             count++;
         }
-        if (count < minCount) { return null; }
+        if (count < minCount) {
+            return null;
+        }
         for (StructurePredicate validator : validators) {
-            if (!validator.matches(snapshot, origin)) { return null; }
+            if (!validator.matches(snapshot, origin)) {
+                return null;
+            }
         }
         var matchedChildren = new ObjectArrayList<StructureMatch>(children.size());
         if (!children.isEmpty()) {
             BlockPos childOrigin = sliceOrigin(origin, Math.toIntExact((long) count - 1));
             for (MachineStructure child : children) {
                 StructureMatch result = child.match(snapshot, childOrigin, controller);
-                if (result == null) { return null; }
+                if (result == null) {
+                    return null;
+                }
                 matchedChildren.add(result);
             }
         }
@@ -140,5 +213,188 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
     private BlockPos sliceOrigin(BlockPos origin, int index) {
         return StructurePattern.add(origin, StructurePattern.multiply(sliceOffset, index));
+    }
+
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // This private default cursor retains immutable definition data only.
+    public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
+        Objects.requireNonNull(rotation);
+        if (!budgeted) return MachineStructure.super.beginTransform(rotation);
+        return new StructureOperation<>() {
+            private final StructureOperation<StructurePattern> patternWork = pattern.beginTransform(rotation);
+            private final ObjectArrayList<StructurePredicate> transformedValidators = new ObjectArrayList<>();
+            private final ObjectArrayList<MachineStructure> transformedChildren = new ObjectArrayList<>();
+            @Nullable private StructureOperation<StructurePredicate> validator;
+            @Nullable private StructureOperation<MachineStructure> child;
+            private int validatorIndex, childIndex;
+
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
+                Objects.requireNonNull(work);
+                if (complete()) return true;
+                if (!patternWork.advance(work)) return false;
+                while (validatorIndex < validators.size()) {
+                    if (validator == null) {
+                        if (!work.take()) return false;
+                        validator = validators.get(validatorIndex).beginTransform(rotation);
+                    }
+                    if (!validator.advance(work)) return false;
+                    transformedValidators.add(Objects.requireNonNull(validator.result()));
+                    validator = null; validatorIndex++;
+                }
+                while (childIndex < children.size()) {
+                    if (child == null) {
+                        if (!work.take()) return false;
+                        child = children.get(childIndex).beginTransform(rotation);
+                    }
+                    if (!child.advance(work)) return false;
+                    transformedChildren.add(Objects.requireNonNull(child.result()));
+                    child = null; childIndex++;
+                }
+                if (!work.take()) return false;
+                var actualOrientation = BlockOrientation.get(rotation.apply(orientation.getSide(RelativeSide.FRONT)),
+                    rotation.apply(orientation.getSide(RelativeSide.TOP)));
+                finish(new SliceStructure(id, actualOrientation, rotation.apply(offset), hideWorldBlocks,
+                    Objects.requireNonNull(patternWork.result()), minCount, maxCount, rotation.apply(sliceOffset), transformedValidators, transformedChildren, true, true));
+                return true;
+            }
+        };
+    }
+
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // The default cursor retains its immutable declaration and private builder.
+    public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+        Objects.requireNonNull(plan); Objects.requireNonNull(anchor); Objects.requireNonNull(controller);
+        if (!budgeted) return MachineStructure.super.beginCollectReads(plan, anchor, controller);
+        var origin = StructurePattern.add(anchor, offset);
+        return new StructureOperation<>() {
+            @Nullable private StructureOperation<Void> pending;
+            private long patternIndex;
+            private int validatorIndex, childIndex;
+            private long childCount = minCount;
+            private boolean patternsComplete, begun;
+
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
+                Objects.requireNonNull(work);
+                if (complete()) return true;
+                if (!begun) {
+                    if (!work.take()) return false;
+                    begun = true;
+                }
+                while (!patternsComplete) {
+                    if (patternIndex == maxCount) { patternsComplete = true; break; }
+                    if (pending == null) {
+                        if (!work.take()) return false;
+                        pending = pattern.beginCollectReads(plan, sliceOrigin(origin, Math.toIntExact(patternIndex)), controller);
+                    }
+                    if (!pending.advance(work)) return false;
+                    pending = null; patternIndex++;
+                }
+                while (validatorIndex < validators.size()) {
+                    if (pending == null) {
+                        if (!work.take()) return false;
+                        pending = validators.get(validatorIndex).beginCollectReads(plan, origin);
+                    }
+                    if (!pending.advance(work)) return false;
+                    pending = null; validatorIndex++;
+                }
+                while (!children.isEmpty() && childCount <= maxCount) {
+                    while (childIndex < children.size()) {
+                        if (pending == null) {
+                            if (!work.take()) return false;
+                            pending = children.get(childIndex).beginCollectReads(plan, sliceOrigin(origin, Math.toIntExact(childCount - 1)), controller);
+                        }
+                        if (!pending.advance(work)) return false;
+                        pending = null; childIndex++;
+                    }
+                    childIndex = 0; childCount++;
+                }
+                finish(null);
+                return true;
+            }
+        };
+    }
+
+    @Override
+    @SuppressWarnings("ReturnOfInnerClass") // Only the explicit private default instance owns this greedy matching cursor.
+    public StructureOperation<StructureMatchResult> beginMatch(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+        Objects.requireNonNull(snapshot); Objects.requireNonNull(anchor); Objects.requireNonNull(controller);
+        if (!budgeted) return MachineStructure.super.beginMatch(snapshot, anchor, controller);
+        var origin = StructurePattern.add(anchor, offset);
+        return new StructureOperation<>() {
+            private final ObjectLinkedOpenHashSet<BlockPos> matchedBlocks = new ObjectLinkedOpenHashSet<>();
+            private final ObjectArrayList<StructureMatch> matchedChildren = new ObjectArrayList<>();
+            @Nullable private StructureOperation<StructurePredicateResult> patternWork;
+            @Nullable private StructureOperation<StructurePredicateResult> validator;
+            @Nullable private StructureOperation<StructureMatchResult> child;
+            @Nullable private StructureOperation<StructureMatch> freeze;
+            @Nullable private Iterator<BlockPos> positions;
+            @Nullable private BlockPos currentOrigin;
+            private int count, validatorIndex, childIndex;
+            private boolean patternsComplete;
+
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
+                Objects.requireNonNull(work);
+                if (complete()) return true;
+                while (!patternsComplete) {
+                    if (count == maxCount) { patternsComplete = true; break; }
+                    if (patternWork == null) {
+                        if (!work.take()) return false;
+                        currentOrigin = sliceOrigin(origin, count);
+                        if (!snapshot.isAreaLoaded(pattern.at(currentOrigin))) {
+                            finish(StructureMatchResult.unavailable()); return true;
+                        }
+                        patternWork = pattern.beginMatch(snapshot, currentOrigin, controller);
+                    }
+                    if (!patternWork.advance(work)) return false;
+                    var status = Objects.requireNonNull(patternWork.result());
+                    if (status == StructurePredicateResult.UNAVAILABLE) {
+                        finish(StructureMatchResult.unavailable()); return true;
+                    }
+                    if (status == StructurePredicateResult.MISMATCH) { patternsComplete = true; break; }
+                    if (positions == null) positions = pattern.blocks().keySet().iterator();
+                    while (positions.hasNext()) {
+                        if (!work.take()) return false;
+                        var position = StructurePattern.add(Objects.requireNonNull(currentOrigin), positions.next());
+                        if (!position.equals(controller)) matchedBlocks.add(position);
+                    }
+                    patternWork = null; positions = null; count++;
+                }
+                if (count < minCount) { finish(StructureMatchResult.mismatch()); return true; }
+                while (validatorIndex < validators.size()) {
+                    if (validator == null) {
+                        if (!work.take()) return false;
+                        validator = validators.get(validatorIndex).beginMatch(snapshot, origin);
+                    }
+                    if (!validator.advance(work)) return false;
+                    var status = Objects.requireNonNull(validator.result());
+                    if (status != StructurePredicateResult.MATCHED) {
+                        finish(new StructureMatchResult(status, null)); return true;
+                    }
+                    validator = null; validatorIndex++;
+                }
+                while (childIndex < children.size()) {
+                    if (child == null) {
+                        if (!work.take()) return false;
+                        var childOrigin = sliceOrigin(origin, Math.toIntExact((long) count - 1));
+                        child = children.get(childIndex).beginMatch(snapshot, childOrigin, controller);
+                    }
+                    if (!child.advance(work)) return false;
+                    var outcome = Objects.requireNonNull(child.result());
+                    if (outcome.status() != StructurePredicateResult.MATCHED) { finish(outcome); return true; }
+                    matchedChildren.add(Objects.requireNonNull(outcome.match()));
+                    child = null; childIndex++;
+                }
+                if (freeze == null) {
+                    if (!work.take()) return false;
+                    freeze = StructureMatch.beginCreate(SliceStructure.this, origin, count, matchedBlocks, matchedChildren);
+                }
+                if (!freeze.advance(work)) return false;
+                finish(StructureMatchResult.matched(Objects.requireNonNull(freeze.result())));
+                return true;
+            }
+        };
     }
 }

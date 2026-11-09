@@ -20,6 +20,9 @@ import java.util.function.Supplier;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
+import com.circulation.prototype_eng.api.component.ComponentMap;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
 
 /**
  * Server-side machine boundaries migrated from PM. Attach once, after world attachment and before
@@ -52,6 +55,7 @@ public final class MachineLifecycle {
     private volatile int gate = IDLE;
     private volatile State state = State.CREATED;
     private volatile boolean formed;
+    private volatile boolean structureReady = true;
     private long formationGeneration;
     private volatile boolean broken;
     private volatile boolean faulted;
@@ -104,7 +108,17 @@ public final class MachineLifecycle {
 
     /** Readiness for ordinary recipe systems, not a transferable worker permission. */
     public boolean processingAllowed() {
-        return formed && schedulingAllowed();
+        return formed && structureReady && schedulingAllowed();
+    }
+
+    /** Temporary inconclusive checks preserve accepted formation, components and every work slot. */
+    public void structureReadiness(boolean ready) {
+        enterTransition();
+        try {
+            requireLoaded();
+            requireQuiescent(capture());
+            structureReady = ready;
+        } finally { leave(); }
     }
 
     /** Ordinary components may run before formation, but never after unload, break or a fault. */
@@ -193,7 +207,8 @@ public final class MachineLifecycle {
             }
             var captured = capture();
             requireQuiescent(captured);
-            installStructure(hatches, null, StructureComponents.EMPTY, captured);
+            if (!installStructure(hatches, null, StructureComponents.EMPTY, captured, new RecipeWorkBudget(Long.MAX_VALUE)))
+                throw new IllegalStateException("Structure installation exceeds the synchronous work range");
         } finally {
             leave();
         }
@@ -207,6 +222,11 @@ public final class MachineLifecycle {
      * Rechecks authority after discovery callbacks, before installing or notifying listeners.
      */
     public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare) {
+        return refreshStructure(applicable, prepare, new RecipeWorkBudget(Long.MAX_VALUE));
+                    }
+
+    /** All preparation is budgeted before the indivisible accepted-state and notification tail. */
+    public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare, RecipeWorkBudget work) {
         Objects.requireNonNull(applicable);
         Objects.requireNonNull(prepare);
         enterTransition();
@@ -215,18 +235,21 @@ public final class MachineLifecycle {
                 return false;
             }
             requireHealthy();
-            if (!applicable.getAsBoolean() || retired) {
+            if (!work.take() || !applicable.getAsBoolean() || retired) {
                 return false;
             }
-            var captured = capture();
-            requireQuiescent(captured);
+            var captured = capture(work);
+            if (captured == null) return false;
+            for (var slots : captured.workSlots()) {
+                if (!work.take()) return false;
+                slots.requireQuiescent();
+            }
             try {
                 var assembly = prepare.get();
-                if (assembly == null || !applicable.getAsBoolean() || retired) {
+                if (assembly == null || !work.take() || !applicable.getAsBoolean() || retired) {
                     return false;
                 }
-                installStructure(assembly.hatches(), assembly.match(), assembly.components(), captured);
-                return true;
+                return installStructure(assembly.hatches(), assembly.match(), assembly.components(), captured, work);
             } catch (RuntimeException | Error failure) {
                 // A failed obsolete attempt still reports its exception, but cannot poison the
                 // replacement generation. Failure to determine authority is itself unrecoverable.
@@ -247,33 +270,57 @@ public final class MachineLifecycle {
         }
     }
 
-    private void installStructure(@Nullable MachineHatches hatches, @Nullable StructureMatch match,
-                                  StructureComponents ports, Captured captured) {
+    private boolean installStructure(@Nullable MachineHatches hatches, @Nullable StructureMatch match,
+                                     StructureComponents ports, Captured captured, RecipeWorkBudget work) {
         boolean previous = formed;
         long generation = hatches != null && !previous ? Math.incrementExact(formationGeneration) : formationGeneration;
         for (var binding : ports.bindings()) {
+            if (!work.take()) return false;
             if (binding.context().machine() != machine || binding.context().formationGeneration() != generation) {
                 throw new IllegalArgumentException("Structure ports belong to a different machine or formation generation");
             }
         }
+        var prepared = new ObjectArrayList<ComponentMap<MachineInstance>.PreparedPut>();
+        if (hatches != null) {
+            var hatchPut = machine.components().preparePut(MachineHatches.TYPE, hatches, work);
+            if (hatchPut == null) return false;
+            var portsPut = machine.components().preparePut(StructureComponents.TYPE, ports, work);
+            if (portsPut == null) return false;
+            prepared.add(hatchPut); prepared.add(portsPut);
+        }
+        // Both component-map writes, accepted state and its listener sequence are indivisible.
+        // Callbacks remain cooperative once admitted; a partial notification cannot yield a tick.
+        boolean nextFormed = hatches != null;
+        long installationCost = 3L + (previous != nextFormed ? captured.listeners().size() : 0);
+        var accounting = work instanceof StructureCheckPolicy.Work actual ? actual : null;
+        if (accounting == null ? !work.take(installationCost) : !accounting.reserveAtomic(installationCost)) return false;
         if (hatches == null) {
+            if (accounting != null) accounting.completeReserved();
             machine.components().remove(MachineHatches.TYPE);
+            if (accounting != null) accounting.completeReserved();
             machine.components().remove(StructureComponents.TYPE);
         } else {
-            machine.components().put(MachineHatches.TYPE, hatches);
-            machine.components().put(StructureComponents.TYPE, ports);
+            machine.components().installPuts(prepared);
+            if (accounting != null) { accounting.completeReserved(); accounting.completeReserved(); }
         }
+        if (accounting != null) accounting.completeReserved();
         formationGeneration = generation;
         structureMatch = match;
         formed = hatches != null;
+        structureReady = true;
         if (previous != formed) {
             try {
-                publish(new MachineLifecycleEvent.FormedChanged(context(), previous), captured.listeners());
+                var event = new MachineLifecycleEvent.FormedChanged(context(), previous);
+                for (var listener : captured.listeners()) {
+                    if (accounting != null) accounting.completeReserved();
+                    invoke(event, listener);
+                }
             } catch (RuntimeException | Error failure) {
                 faulted = true;
                 throw failure;
             }
         }
+        return true;
     }
 
     /**
@@ -570,20 +617,39 @@ public final class MachineLifecycle {
     private MachineLifecycleContext context() { return new MachineLifecycleContext(machine, identity, host, formed); }
 
     private Captured capture() {
+        return Objects.requireNonNull(capture(new RecipeWorkBudget(Long.MAX_VALUE))); }
+
+    @Nullable
+    private Captured capture(RecipeWorkBudget work) {
         var listeners = new ObjectArrayList<MachineLifecycleListener>();
         var workSlots = new ObjectArrayList<MachineWorkSlots>();
         var seenSlots = new ReferenceOpenHashSet<MachineWorkSlots>();
-        for (var binding : machine.components().orderedBindings()) {
-            if (binding.component() instanceof MachineLifecycleListener listener) { listeners.add(listener); }
+        var ordered = machine.components().orderedBindings(work);
+        if (ordered == null) return null;
+        for (var binding : ordered) {
+            if (!work.take()) return null;
+            if (binding.component() instanceof MachineLifecycleListener listener) {
+                listeners.add(listener);
+            }
             if (binding.component() instanceof MachineWorkSlots slots && seenSlots.add(slots)) {
-                if (slots.owner() != machine) { throw new IllegalStateException("Foreign work slots installed on machine"); }
+                if (slots.owner() != machine) {
+                    throw new IllegalStateException("Foreign work slots installed on machine");
+                }
                 workSlots.add(slots);
             }
         }
         // Retain only owned components for corrupt-graph cleanup. Global subscriptions can be
         // cancelled independently and must not be kept alive or resurrected by this machine.
-        lastCaptured = new Captured(new ObjectArrayList<>(listeners), workSlots);
-        listeners.addAll(registry.snapshot());
+        var ownedListeners = new ObjectArrayList<MachineLifecycleListener>();
+        for (var listener : listeners) {
+            if (!work.take()) return null;
+            ownedListeners.add(listener);
+        }
+        for (var listener : registry.snapshot()) {
+            if (!work.take()) return null;
+            listeners.add(listener);
+        }
+        lastCaptured = new Captured(ownedListeners, workSlots);
         return new Captured(listeners, workSlots);
     }
 

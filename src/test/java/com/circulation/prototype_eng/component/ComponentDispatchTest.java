@@ -19,8 +19,44 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.Objects;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class ComponentDispatchTest {
+    @Test
+    void preparedInsertionsChargePendingEdgesAndRejectAStaleGroupBeforeAnyWrite() {
+        var map = new ComponentMap<MachineInstance>();
+        var first = new ComponentType<MachineInstance, String>(id("prepared_first"), _ -> "unused", List.of());
+        var second = new ComponentType<MachineInstance, String>(id("prepared_second"), _ -> "unused", List.of());
+        var dependency = new ComponentType<MachineInstance, String>(id("prepared_dependency"), _ -> "unused", List.of());
+        var removed = new ComponentType<MachineInstance, String>(id("removed_dependency"), _ -> "unused", List.of());
+        map.addDependency(second, dependency); map.addDependency(second, removed); map.removeDependency(second, removed);
+        var firstPut = Objects.requireNonNull(map.preparePut(first, "first", new RecipeWorkBudget(1)));
+        assertNull(map.preparePut(second, "second", new RecipeWorkBudget(1)));
+        assertNull(map.get(first)); assertNull(map.get(second));
+        var secondPut = Objects.requireNonNull(map.preparePut(second, "second", new RecipeWorkBudget(2)));
+        map.put(dependency, "dependency");
+        var previous = map.orderedBindings();
+        assertThrows(IllegalStateException.class, () -> map.installPuts(List.of(firstPut, secondPut)));
+        assertNull(map.get(first)); assertNull(map.get(second));
+        assertEquals(List.of("dependency"), previous.stream().map(ComponentMap.SavedBinding::component).toList());
+        var currentFirst = Objects.requireNonNull(map.preparePut(first, "first", new RecipeWorkBudget(1)));
+        var currentSecond = Objects.requireNonNull(map.preparePut(second, "second", new RecipeWorkBudget(2)));
+        map.installPuts(List.of(currentFirst, currentSecond));
+        assertNotNull(map.get(first)); assertNotNull(map.get(second));
+        assertEquals(List.of("dependency", "first", "second"), map.orderedBindings().stream().map(ComponentMap.SavedBinding::component).toList());
+        assertEquals(Set.of(dependency), map.orderedBindings().getLast().dependencies());
+        var canonical = new ComponentType<MachineInstance, String>(id("prepared_id"), _ -> "unused", List.of());
+        var counterfeit = new ComponentType<MachineInstance, String>(canonical.id(), _ -> "unused", List.of());
+        var canonicalPut = Objects.requireNonNull(map.preparePut(canonical, "canonical", new RecipeWorkBudget(1)));
+        var counterfeitPut = Objects.requireNonNull(map.preparePut(counterfeit, "counterfeit", new RecipeWorkBudget(1)));
+        assertThrows(IllegalArgumentException.class, () -> map.installPuts(List.of(canonicalPut, counterfeitPut)));
+        assertNull(map.get(canonical)); assertNull(map.get(counterfeit));
+        map.put(canonical, "legitimate successor");
+        assertEquals("legitimate successor", map.get(canonical));
+    }
     @Test
     void declarationValidationFindsTheLiveSystemCycleWithoutCreatingComponents() {
         var log = new ObjectArrayList<String>();

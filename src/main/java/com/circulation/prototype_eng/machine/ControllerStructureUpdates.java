@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.machine;
 
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineController;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.structure.StructureRefresh;
@@ -16,6 +15,13 @@ import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import java.util.function.BooleanSupplier;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.structure.StructureAssembly;
+import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
+import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
+import com.circulation.prototype_eng.api.structure.StructureSnapshot;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 
 /**
  * PM's controller cadence and concurrent matching, owned by one loaded controller generation.
@@ -36,6 +42,16 @@ public class ControllerStructureUpdates {
     private long nextCheckAt;
     private long lastTick;
     private boolean detached;
+    private boolean firstCheckPending = true;
+    private boolean advanced;
+    private long advancedAt;
+    private StructureCheckPolicy policy = StructureCheckPolicy.DEFAULT;
+    private StructureCheckPolicy.Status status = StructureCheckPolicy.Status.IDLE;
+    private long lastWorkUnits;
+    private long totalWorkUnits;
+    private long lastElapsedNanos;
+    private long requiredAtomicUnits;
+    @Nullable private StructureConfiguration budgetBlockedConfiguration;
 
     public ControllerStructureUpdates(MachineController controller, MachineStructureHost host,
                                       TaskScheduler scheduler, Runnable changed) {
@@ -79,8 +95,15 @@ public class ControllerStructureUpdates {
     public void tick(long now) {
         host.requireServerThread();
         lastTick = now;
-        if (!canRefresh() || checked && now < nextCheckAt) { return; }
+        if (!canRefresh() || current == null && checked && now < nextCheckAt) { return; }
         scheduler.runAtBoundary(() -> checkAtBoundary(now));
+    }
+
+    /** The native load continuation belongs to the first real update and already holds the boundary. */
+    public void firstTickAtBoundary(long now) {
+        host.requireServerThread();
+        lastTick = now;
+        if (firstCheckPending) checkAtBoundary(now);
     }
 
     /**
@@ -91,6 +114,8 @@ public class ControllerStructureUpdates {
         host.requireServerThread();
         current = null;
         checked = false;
+        status = StructureCheckPolicy.Status.IDLE;
+        budgetBlockedConfiguration = null;
         if (!canRefresh()) { return; }
         refresh.invalidate();
         changed.run();
@@ -150,6 +175,8 @@ public class ControllerStructureUpdates {
         host.requireServerThread();
         if (!reloadCurrent(reload)) throw new IllegalStateException("Reload host configuration changed after preflight");
         current = null; checked = false;
+        status = StructureCheckPolicy.Status.IDLE;
+        budgetBlockedConfiguration = null;
         reload.host.installStructureConfiguration(null);
     }
 
@@ -167,8 +194,29 @@ public class ControllerStructureUpdates {
         changed.run();
         // Match only the new generation; submission still belongs to the original scheduler.
         checked = false;
-        checkAtBoundary(lastTick);
+        nextCheckAt = lastTick;
     }
+
+    /** Local policy changes grant a new allowance, without restoring any candidate execution right. */
+    public void checkPolicy(StructureCheckPolicy policy) {
+        host.requireServerThread();
+        this.policy = Objects.requireNonNull(policy);
+        current = null;
+        checked = false;
+        status = StructureCheckPolicy.Status.IDLE;
+        budgetBlockedConfiguration = null;
+    }
+
+    @SuppressWarnings("unused") // Public host policy diagnostics.
+    public StructureCheckPolicy checkPolicy() { return policy; }
+    public StructureCheckPolicy.Status checkStatus() { return status; }
+    public long lastWorkUnits() { return lastWorkUnits; }
+    @SuppressWarnings("unused") // Public host work diagnostics include every actual slice and tail.
+    public long totalWorkUnits() { return totalWorkUnits; }
+    @SuppressWarnings("unused") // Public host elapsed diagnostics include actual worker joins and cleanup.
+    public long lastElapsedNanos() { return lastElapsedNanos; }
+    /** Minimum indivisible live operation observed when the policy explicitly cannot progress. */
+    public long requiredAtomicUnits() { return requiredAtomicUnits; }
 
     public static final class Reload {
         private final ControllerStructureUpdates owner;
@@ -180,65 +228,128 @@ public class ControllerStructureUpdates {
         }
     }
 
+    private static final class Attempt {
+        private final StructureConfiguration configuration;
+        private final PlannedDeadline deadline;
+        @Nullable private StructureOperation<StructureRefresh.Request> preparation;
+        @Nullable private StructureRefresh.Request request;
+        @Nullable private StructureOperation<StructureRefresh.Result> evaluation;
+        @Nullable private StructureOperation<StructureAssembly> discovery;
+        private boolean stopped;
+        private Attempt(StructureConfiguration configuration, PlannedDeadline deadline) {
+            this.configuration = configuration;
+            this.deadline = deadline;
+        }
+    }
+
     private void checkAtBoundary(long now) {
         host.requireServerThread();
-        if (!canRefresh() || checked && now < nextCheckAt) { return; }
-        checked = true;
+        if (!canRefresh() || advanced && advancedAt == now) return;
+        if (status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) {
+            if (budgetBlockedConfiguration == host.structureConfiguration()) return;
+            status = StructureCheckPolicy.Status.IDLE; checked = false; budgetBlockedConfiguration = null;
+        }
+        if (current == null && checked && now < nextCheckAt) return;
+        var configuration = host.structureConfiguration();
+        if (configuration == null) return;
+        advanced = true;
+        advancedAt = now;
+        boolean first = firstCheckPending;
+        if (current == null) {
+            checked = true;
         nextCheckAt = now + (lifecycle.formed() ? 20L : 5L);
-        if (current != null) { return; }
-        var request = refresh.prepare();
-        if (request == null) { return; }
-        var attempt = new Attempt(request);
-        current = attempt;
+            current = new Attempt(configuration, PlannedDeadline.after(policy.timeout()));
+        }
+        var attempt = current;
+        if (attempt.configuration != configuration || attempt.deadline.expired(System.nanoTime())) {
+            current = null;
+            status = StructureCheckPolicy.Status.EXPIRED;
+            lifecycle.structureReadiness(false);
+            return; }
+        long started = System.nanoTime();
+        var work = new StructureCheckPolicy.Work(policy.workUnits(), attempt.deadline, policy.sliceTime(),
+            first && policy.finalMode() == StructureCheckPolicy.FinalMode.COOPERATIVE);
+        StructureCheckPolicy.Work tail = null;
         try {
-            scheduler.submit(() -> evaluate(attempt), ExecutionMode.CONCURRENT);
-        } catch (RuntimeException | Error failure) {
-            failAtBoundary(attempt, failure);
-        }
-    }
-
-    private void evaluate(Attempt attempt) {
-        StructureRefresh.Result result;
-        try { result = attempt.request.evaluate(); }
-        catch (RuntimeException | Error failure) {
-            try { scheduler.runAtBoundary(() -> failAtBoundary(attempt, failure)); }
-            catch (RuntimeException | Error completionFailure) {
-                if (failure != completionFailure) { failure.addSuppressed(completionFailure); }
+            var worker = first ? null : worker(attempt);
+            if (attempt.preparation == null) attempt.preparation = refresh.beginPrepare(worker);
+            if (!attempt.preparation.advance(work)) {
+                status = first || work.spent() == 0 || work.needsAtomicTime() || work.atomicMinimum() > policy.workUnits()
+                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
+                lifecycle.structureReadiness(false);
+                return;
             }
-            throw failure;
-        }
-        scheduler.runAtBoundary(() -> publishAtBoundary(attempt, result));
-    }
-
-    private void failAtBoundary(Attempt attempt, Throwable failure) {
-        host.requireServerThread();
-        if (current == attempt) { current = null; }
-        try { refresh.fail(attempt.request, failure); }
-        catch (RuntimeException | Error completionFailure) {
-            if (failure != completionFailure) { failure.addSuppressed(completionFailure); }
-        }
-        // Even an obsolete failure must remain visible to its owner. A current failure additionally
-        // faults the lifecycle through StructureRefresh's request/configuration authority check.
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
-        throw new IllegalStateException("Structure worker failed", failure);
-    }
-
-    private void publishAtBoundary(Attempt attempt, StructureRefresh.Result result) {
-        host.requireServerThread();
-        if (current != attempt) { return; }
-        if (!canRefresh()) { current = null; return; }
-        boolean published = refresh.publish(result);
-        // External publication callbacks may revoke this controller or enqueue configuration work.
-        if (current != attempt) { return; }
+            if (attempt.request == null) attempt.request = attempt.preparation.result();
+        if (attempt.request == null || attempt.stopped) { stopAttempt(attempt); return; }
+            if (attempt.evaluation == null) attempt.evaluation = attempt.request.beginEvaluate();
+            boolean[] evaluated = { false };
+            Runnable action = () -> evaluated[0] = Objects.requireNonNull(attempt.evaluation).advance(work);
+            if (worker == null) action.run();
+            else if (!worker.run(action)) { stopAttempt(attempt); return; }
+            if (!evaluated[0]) {
+                status = first || work.spent() == 0 || work.atomicMinimum() > policy.workUnits()
+                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
+                lifecycle.structureReadiness(false);
+                return; }
+        var result = Objects.requireNonNull(attempt.evaluation.result());
+            if (attempt.discovery == null) attempt.discovery = refresh.beginDiscovery(result);
+            if (!attempt.discovery.advance(work)) {
+                status = first || work.spent() == 0 || work.atomicMinimum() > policy.workUnits()
+                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
+                lifecycle.structureReadiness(false);
+                return;
+            }
+            tail = work.tail(policy.finalMode() == StructureCheckPolicy.FinalMode.COOPERATIVE);
+            boolean published = refresh.publish(result, tail, worker);
+            if (current != attempt) return;
         current = null;
-        if (published) { changed.run(); }
-        else if (canRefresh()) {
-            checked = false;
-            refresh.invalidate();
-            changed.run();
-        }
+            if (published) {
+                firstCheckPending = false;
+                status = refresh.publicationStatus() == StructurePredicateResult.MATCHED
+                    ? StructureCheckPolicy.Status.MATCHED : StructureCheckPolicy.Status.MISMATCH;
+                changed.run();
+            } else {
+                status = tail.expired() || attempt.stopped ? StructureCheckPolicy.Status.EXPIRED
+                    : policy.finalMode() == StructureCheckPolicy.FinalMode.STRICT && tail.exhausted()
+                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.UNAVAILABLE;
+                lifecycle.structureReadiness(false);
+                checked = false;
+                if (status == StructureCheckPolicy.Status.UNAVAILABLE) firstCheckPending = false;
+            }
+        } catch (RuntimeException | Error failure) {
+            current = null;
+            if (attempt.request != null) refresh.fail(attempt.request, failure);
+            throw failure;
+        } finally {
+            lastWorkUnits = work.spent() + (tail == null ? 0 : tail.spent());
+            totalWorkUnits = Math.addExact(totalWorkUnits, lastWorkUnits);
+            lastElapsedNanos = System.nanoTime() - started;
+            requiredAtomicUnits = Math.max(work.atomicMinimum(), tail == null ? 0 : tail.atomicMinimum());
+            if (attempt.deadline.expired(System.nanoTime()) && status == StructureCheckPolicy.Status.YIELD) stopAttempt(attempt);
+            if (status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) {
+                current = null; budgetBlockedConfiguration = attempt.configuration;
+            }
+    }
     }
 
-    private record Attempt(StructureRefresh.Request request) {}
+    private StructureSnapshot.JoinedWorker worker(Attempt attempt) {
+        return action -> {
+            var result = scheduler.runStructureWorker(() -> { action.run(); return Boolean.TRUE; }, attempt.deadline);
+            if (result instanceof PlannedTaskExecutor.Success<Boolean>) return true;
+            if (result instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) {
+                if (cause instanceof RuntimeException runtime) throw runtime;
+                if (cause instanceof Error error) throw error;
+                throw new IllegalStateException("Structure worker failed", cause);
+            }
+            attempt.stopped = true;
+            return false;
+        };
+    }
+
+    private void stopAttempt(Attempt attempt) {
+        if (current == attempt) current = null;
+        status = StructureCheckPolicy.Status.EXPIRED;
+        checked = false;
+        lifecycle.structureReadiness(false);
+    }
 }

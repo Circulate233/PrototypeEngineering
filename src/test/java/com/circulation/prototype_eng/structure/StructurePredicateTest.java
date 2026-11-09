@@ -29,8 +29,37 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
+import java.util.Objects;
 
 class StructurePredicateTest {
+    @Test
+    void nestedBuiltInOffsetsAndNbtEntriesAdvanceWithoutAnEagerUnbudgetedWalk() {
+        StructurePredicate predicate = StructurePredicates.nbt(Map.of("first", "one", "second", "two", "third", "three"));
+        for (int index = 0; index < 20; index++) predicate = StructurePredicates.at(new BlockPos(1, 0, 0), predicate);
+        var transform = predicate.beginTransform(StructureTransform.of(BlockOrientation.EAST_UP));
+        assertFalse(transform.advance(new RecipeWorkBudget(1)));
+        int slices = 1;
+        while (!transform.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 100);
+        var transformed = Objects.requireNonNull(transform.result());
+        var builder = new StructureReadPlan.Builder();
+        var declaration = transformed.beginCollectReads(builder, BlockPos.ORIGIN);
+        slices = 0;
+        while (!declaration.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 100);
+        assertTrue(slices >= 20);
+        var tag = new NBTTagCompound();
+        tag.setString("first", "one"); tag.setString("second", "two"); tag.setString("third", "three");
+        var source = new FakeSource();
+        source.put(StructureQueries.TILE_NBT, new BlockPos(0, 0, 20), tag);
+        var matching = transformed.beginMatch(StructureSnapshot.capture(builder.build(), source), BlockPos.ORIGIN);
+        slices = 0;
+        while (!matching.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 100);
+        assertTrue(slices >= 23);
+        assertEquals(StructurePredicateResult.MATCHED, matching.result());
+    }
     @Test
     void rootNbtUsesBareStringsAndTypedSnbtAndFreezesExternalConstraints() {
         BlockPos position = new BlockPos(3, 4, 5);

@@ -26,8 +26,85 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
+import com.circulation.prototype_eng.api.structure.StructureReadWindow;
+import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 
 class StructureSnapshotTest {
+    @Test
+    void explicitFiniteBlockReadsRunInTheOriginalJoinedWorkerAndTheirPortsCloseBeforeReturn() {
+        var owner = Thread.currentThread();
+        var position = new BlockPos(17, 0, 1);
+        var whole = new StructureBounds(position, position.add(64, 0, 0));
+        var windows = new ObjectArrayList<StructureReadWindow<?>>();
+        var areas = new ObjectArrayList<StructureBounds>();
+        var blocks = new AtomicInteger();
+        var descriptor = new StructureQuery<>(new ResourceLocation("test", "finite_block_port"),
+            (_, _) -> fail("Explicitly safe block reads must not use the World callback"), UnaryOperator.identity(),
+            String::equals, (states, requested) -> { states.getBlockState(requested); return "body"; });
+        var source = new StructureReadSource() {
+            @Override public void requireServerThread() { assertSame(owner, Thread.currentThread()); }
+            @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); areas.add(bounds); return true; }
+            @Override public <T> T read(StructureQuery<T> query, BlockPos requested) { return fail("An explicit finite port owns this read"); }
+            @Override public <T> StructureReadWindow<T> beginWorkerRead(StructureQuery<T> query, BlockPos requested) {
+                requireServerThread(); assertEquals(position, requested);
+                var window = query.beginWorkerCapture(bound -> {
+                    assertNotSame(owner, Thread.currentThread()); assertEquals(position, bound);
+                    blocks.incrementAndGet(); return null;
+                }, requested);
+                windows.add(window); return window;
+            }
+        };
+        try (var scheduler = new TaskScheduler(owner, 2, 2)) {
+            var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
+            var work = new StructureCheckPolicy.Work(20, deadline, Duration.ofSeconds(5), false);
+            var capture = StructureSnapshot.beginCapture(new StructureReadPlan.Builder().area(whole).read(position, descriptor).build(), source,
+                action -> scheduler.runStructureWorker(() -> { action.run(); return true; }, deadline)
+                    instanceof PlannedTaskExecutor.Success<Boolean>);
+            scheduler.runAtBoundary(() -> assertTrue(capture.advance(work)));
+            assertEquals("body", Objects.requireNonNull(capture.result()).read(descriptor, position));
+            assertEquals(1, blocks.get());
+            assertTrue(areas.contains(whole), "The actual whole-area virtual check remains visible");
+            assertEquals(1, windows.size());
+            assertThrows(IllegalStateException.class, windows.getFirst()::close);
+            assertTrue(work.spent() > 3, "Capture and mandatory port closure both contribute actual cost");
+        }
+    }
+    @Test
+    void retainedCaptureRechecksLoadingBeforeTheActualLegacyReadOnANewSlice() {
+        var descriptor = query("slice_loading", UnaryOperator.<String>identity());
+        var position = new BlockPos(1, 0, 0);
+        var plan = new StructureReadPlan.Builder().read(position, descriptor).build();
+        var source = new FakeSource();
+        source.put(descriptor, position, "must not be read after unload");
+        var capture = StructureSnapshot.beginCapture(plan, source, null);
+        assertFalse(capture.advance(new RecipeWorkBudget(2)));
+        source.area(StructureBounds.at(position), () -> false);
+        assertTrue(capture.advance(new RecipeWorkBudget(20)));
+        var snapshot = Objects.requireNonNull(capture.result());
+        assertFalse(snapshot.isAreaLoaded(StructureBounds.at(position)));
+        assertEquals(0, source.readCount(descriptor, position));
+    }
+
+    @Test
+    void stoppedBorrowTerminatesTheCaptureWithoutPublishingMissingFacts() {
+        var descriptor = query("stopped_borrow", UnaryOperator.<String>identity());
+        var position = new BlockPos(1, 0, 0);
+        var source = new FakeSource();
+        source.put(descriptor, position, "captured on the real owner");
+        var capture = StructureSnapshot.beginCapture(new StructureReadPlan.Builder().read(position, descriptor).build(), source, _ -> false);
+        assertTrue(capture.advance(new RecipeWorkBudget(20)));
+        assertTrue(capture.complete());
+        assertNull(capture.result());
+        assertEquals(1, source.readCount(descriptor, position));
+    }
     @Test
     void unavailableOptionalBranchesDoNotPreventRequiredReadsOrReadUnloadedPositions() {
         StructureQuery<String> query = query("block", UnaryOperator.identity());

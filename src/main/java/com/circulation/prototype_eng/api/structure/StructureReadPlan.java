@@ -8,6 +8,8 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import java.util.Collections;
 
 /**
  * Frozen potential reads, including optional slices and validator positions outside the pattern.
@@ -18,9 +20,9 @@ public final class StructureReadPlan {
     private final List<StructureBounds> areas;
     private final List<Read<?>> reads;
 
-    private StructureReadPlan(Builder builder) {
-        areas = List.copyOf(builder.areas);
-        reads = List.copyOf(builder.reads);
+    private StructureReadPlan(List<StructureBounds> areas, List<Read<?>> reads) {
+        this.areas = Collections.unmodifiableList(areas);
+        this.reads = Collections.unmodifiableList(reads);
     }
 
     public List<StructureBounds> areas() { return areas; }
@@ -52,6 +54,34 @@ public final class StructureReadPlan {
             return this;
         }
 
-        public StructureReadPlan build() { return new StructureReadPlan(this); }
+        public StructureReadPlan build() { return Objects.requireNonNull(beginBuild().run()); }
+
+        /** The builder must remain unchanged until this private freeze computation completes. */
+        @SuppressWarnings("ReturnOfInnerClass") // The private freeze cursor owns its builder traversal until completion.
+        public StructureOperation<StructureReadPlan> beginBuild() {
+            var areaIterator = areas.iterator();
+            var readIterator = reads.iterator();
+            return new StructureOperation<>() {
+                private final ObjectArrayList<StructureBounds> frozenAreas = new ObjectArrayList<>();
+                private final ObjectArrayList<Read<?>> frozenReads = new ObjectArrayList<>();
+
+                @Override
+                public boolean advance(RecipeWorkBudget work) {
+                    Objects.requireNonNull(work);
+                    if (complete()) return true;
+                    while (areaIterator.hasNext()) {
+                        if (!work.take()) return false;
+                        frozenAreas.add(areaIterator.next());
+                    }
+                    while (readIterator.hasNext()) {
+                        if (!work.take()) return false;
+                        frozenReads.add(readIterator.next());
+                    }
+                    if (!work.take()) return false;
+                    finish(new StructureReadPlan(frozenAreas, frozenReads));
+                    return true;
+                }
+            };
+        }
     }
 }

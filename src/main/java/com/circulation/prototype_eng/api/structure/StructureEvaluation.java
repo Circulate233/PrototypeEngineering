@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.structure;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /** A detached match and its actual read proof; neither contains permission to publish a machine. */
 public final class StructureEvaluation {
@@ -10,21 +11,36 @@ public final class StructureEvaluation {
     private final StructureSnapshot snapshot;
     private final StructureReadPlan used;
     @Nullable private final StructureMatch match;
+    private final StructurePredicateResult status;
 
-    StructureEvaluation(StructurePlan plan, StructureSnapshot snapshot, StructureReadPlan used, @Nullable StructureMatch match) {
+    StructureEvaluation(StructurePlan plan, StructureSnapshot snapshot, StructureReadPlan used, StructureMatchResult result) {
         this.plan = plan;
         this.snapshot = snapshot;
         this.used = used;
-        this.match = match;
+        match = result.match();
+        status = result.status();
     }
 
     @Nullable public StructureMatch match() { return match; }
+
+    public StructurePredicateResult status() {
+        return status;
+    }
     public List<StructureSnapshot.Failure> failures() { return snapshot.failures(); }
 
     /** Only reads that actually affected this attempt are rechecked; unvisited branches are irrelevant. */
     public boolean isCurrent(StructureReadSource source) {
         return snapshot.equivalent(StructureSnapshot.capture(used, source), used);
     }
+
+    /** Null explicitly denotes an incomplete proof; prefixes from different ticks never prove current. */
+    @Nullable
+    public Boolean isCurrent(StructureReadSource source, RecipeWorkBudget work) {
+        var captured = StructureSnapshot.capture(used, source, work);
+        return captured == null ? null : snapshot.equivalent(captured, used, work);
+    }
+
+    public StructurePlan plan() { return plan; }
 
     /**
      * Reuses the worker result when its proof still holds. Changed facts need a fresh capture/match:

@@ -1,5 +1,19 @@
 # 结构定义、快照与匹配
 
+## 2026-11-09：原 worker 读取、预算与完整安装
+
+默认 Java 定义使用 `TemplateStructure.create` / `SliceStructure.create`，JSON resolver 选择同类增量工厂；原 public 构造器及旧 shape/predicate 的 transform、collectReads、match virtual 合作调用保持。transform 后仍保留默认 binding，child 和 predicate 使用其真实 begin hook，不反射识别覆盖、不封闭继承点。转换、最大潜在声明、AND/OR/offset/NBT/property、事实捕获、匹配树冻结、实际 occurrence DFS、discovery、位置 merge sort、仓室/port 索引冻结都逐项记 units，在下一真实 host tick 续办。
+
+原 TaskScheduler 在 ordinary/source 实际退出后持有 exclusive owner boundary。具体默认 controller 通过真实可覆盖 host factory 显式选择 native reader：owner 只从现有 loadedChunks 绑定有限 Chunk 引用，不清 unloadQueued、不强加载；原 worker 真正调用这些 Chunk 的 getBlockState 并检查 BLOCK_STATE/NON_AIR/HAS_TILE_ENTITY。worker 不查 provider/map、World 或 TileEntity。通用 source/host 仍在 owner 捕获实际 this.read，NBT、capability、biome/custom World 回调默认留在 owner；外部可通过公开 read port 明确承担 safe worker 责任。每片都实际 join 后关闭全部 read ports，deadline/异常不跳过强制关闭，原 primary 与后继 cleanup suppressed 保持；live 引用不跨 tick。
+
+准备完成包括真实 discovery，但任何准备前缀和仓室/port 候选都不授权安装。默认 cooperative 的最终尾部在同一个 owner 窗口重新执行完整实际 host capture、原 worker rematch/实际退出、used facts 与真实 whole-area virtual、provider/absence/capability/isValid、准确配置/attachment 证明，再通过原 lifecycle gate 单次安装完整树、仓室、ports 与成型通知。成功和真实失配都先完成证明；改变事实的旧失配不能清 accepted formation。图节点的 declared/pending soft edges 先无权逐项准备，整组 owner/type ID/revision 预检在任何写之前完成，同 ID counterfeit 或 stale group 不得部分安装。原普通 map、dependency order cache、cleanup、reload/retire/join 路径保持。
+
+`StructureCheckPolicy.DEFAULT` 为每软片4096 units/5 ms、同一次 attempt固定5秒 deadline。默认 finalMode COOPERATIVE 允许首真实 tick 和完整 final tail 超过软片，记录实际 load/bind/capture、比较、发现、复制、安装、listener、强制 close 的阶段成本与真实等待耗时，不更新原 deadline。STRICT 保留合法 accepted 状态，不装未验证树，额度/时间不足明确 NEEDS_MORE_BUDGET；三单位 live read 原子最小量由 `requiredAtomicUnits()` 报告，没有事实进展的过短借用窗口也明确不足。未知公开 reader/copier/comparator/provider/listener 是实际执行的合作边界，不能强制中断或用异常 yield。
+
+首检查机会属于准确 loaded/configured host、world 和 lifecycle attachment，不以 world time==0 判定；第一个实际 tick 在 owner 完整处理，先于普通工作与成型广播，load-era UNAVAILABLE 不消耗该机会。UNAVAILABLE、YIELD、NEEDS_MORE_BUDGET 保留合法 accepted 树/formed/hatches/slots，通过独立 structure readiness 暂停配方，不用会取消 process 的 recipeWorkAllowed=false。只有真实已加载失配或真正 owner/config/world 撤权走原撤销；当前 pre-Request planning/capture 异常精确故障本 preparation owner，旧失败不污染 replacement。
+
+验证包括实际 JSON 默认旋转/贪心 slice、旧 Template/Slice/predicate virtual、嵌套 offset/NBT 的 one-unit cursor，原 scheduler finite block read/实际退出/port关闭，首非零 tick、strict不足、accepted process 暂停/恢复、改变失配事实、eager failure exact owner、stale/same-ID prepared group与原子通知预算。结构扩大 focused218 tests/25 suites全过；最终正常完整 `build --rerun-tasks`1636 tests/207 suites全零、全部15任务实际执行，含最终成本与身份修正。39结构 Java 本机 IDEA MCP全级零、完整源文读回39/39一致、MCP build成功；证据 `build/staging/structure-async-budget/continued-full-result.json`、`continued-idea-final.json` 与原日志/XML。未启动游戏/服务端/Bootstrap/FML；native World/chunk与实际 GUI/GL 运行仍须实机验收。
+
 已迁入 PM 模板/切片的 Java 定义、24 向旋转、声明读取、脱离世界的事实快照和独立匹配结果，并接入宿主发布复核、公开仓室发现、实际控制器和调度器。2026-11-08 已补齐 A 启动期严格两阶段 JSON 与共享目录/机器装配原子发布，以及 B 运行中重载、准确宿主配置代撤销/刷新和客户端权威目录/缓存同步，C 基础预览模型、切片/层/BOM 消费与实际世界盒投影。源码依据和未迁完内容见[结构审计](structure-migration-audit.md)；库不内置正式机器或配方。
 
 ## 朝向与定义

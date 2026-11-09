@@ -13,89 +13,86 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.function.Function;
+import net.minecraft.nbt.NBTTagCompound;
+import org.jetbrains.annotations.Nullable;
 
 /** Built-in PM predicate behavior composed over declared, detached queries. */
-@SuppressWarnings("unused") // Public Java definition factories, also consumed by the future JSON loader.
+@SuppressWarnings({"unused", "ReturnOfInnerClass"}) // Public factories; private retained cursors own their detached predicate data.
 public final class StructurePredicates {
-    private StructurePredicates() {}
+    private StructurePredicates() {
+    }
 
-    /** Query descriptors must be reused by identity when the same fact is referenced repeatedly. */
+    /**
+     * Query descriptors must be reused by identity when the same fact is referenced repeatedly.
+     */
     public static <T> StructurePredicate test(StructureQuery<T> query, Predicate<? super T> condition) {
         Objects.requireNonNull(query);
         Objects.requireNonNull(condition);
         return new StructurePredicate() {
-            @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { plan.read(position, query); }
-            @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+            @Override
+            public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+                plan.read(position, query);
+            }
+
+            @Override
+            public boolean matches(StructureSnapshot snapshot, BlockPos position) {
                 return snapshot.isAreaLoaded(StructureBounds.at(position)) && condition.test(snapshot.read(query, position));
             }
         };
     }
 
-    public static StructurePredicate all(Collection<? extends StructurePredicate> predicates) { return new Composite(List.copyOf(predicates), true); }
-    public static StructurePredicate any(Collection<? extends StructurePredicate> predicates) { return new Composite(List.copyOf(predicates), false); }
+    public static StructurePredicate all(Collection<? extends StructurePredicate> predicates) {
+        return new Composite(List.copyOf(predicates), true);
+    }
 
-    /** Local validator offsets rotate together with both capture declarations and matching. */
-    public static StructurePredicate at(BlockPos offset, StructurePredicate predicate) { return new Offset(offset, predicate); }
+    public static StructurePredicate any(Collection<? extends StructurePredicate> predicates) {
+        return new Composite(List.copyOf(predicates), false);
+    }
 
-    public static StructurePredicate notAir() { return test(StructureQueries.NON_AIR, Boolean.TRUE::equals); }
-    public static StructurePredicate hasTileEntity() { return test(StructureQueries.HAS_TILE_ENTITY, Boolean.TRUE::equals); }
+    /**
+     * Local validator offsets rotate together with both capture declarations and matching.
+     */
+    public static StructurePredicate at(BlockPos offset, StructurePredicate predicate) {
+        return new Offset(offset, predicate);
+    }
 
-    /** Block regex expansion belongs to definition loading; matching uses this frozen membership. */
+    public static StructurePredicate notAir() {
+        return test(StructureQueries.NON_AIR, Boolean.TRUE::equals);
+    }
+
+    public static StructurePredicate hasTileEntity() {
+        return test(StructureQueries.HAS_TILE_ENTITY, Boolean.TRUE::equals);
+    }
+
+    /**
+     * Block regex expansion belongs to definition loading; matching uses this frozen membership.
+     */
     public static StructurePredicate blocks(Collection<Block> blocks) {
         var accepted = new ReferenceOpenHashSet<Block>();
-        for (var block : blocks) { accepted.add(Objects.requireNonNull(block)); }
+        for (var block : blocks) {
+            accepted.add(Objects.requireNonNull(block));
+        }
         return test(StructureQueries.BLOCK_STATE, state -> state != null && accepted.contains(state.getBlock()));
     }
 
-    public static StructurePredicate state(IBlockState state) { return new State(Objects.requireNonNull(state)); }
+    public static StructurePredicate state(IBlockState state) {
+        return new State(Objects.requireNonNull(state));
+    }
 
     public static StructurePredicate stateWithNbt(IBlockState state, Map<String, String> expected) {
         return expected.isEmpty() ? state(state) : all(List.of(state(state), nbt(expected)));
     }
 
-    /** PM's shallow root fields: strings use their value, other tags use their SNBT representation. */
+    /**
+     * PM's shallow root fields: strings use their value, other tags use their SNBT representation.
+     */
     public static StructurePredicate nbt(Map<String, String> expected) {
-        var constraints = Map.copyOf(expected);
-        return test(StructureQueries.TILE_NBT, tag -> {
-            if (tag == null) { return false; }
-            for (var entry : constraints.entrySet()) {
-                var value = tag.getTag(entry.getKey());
-                if (value == null) { return false; }
-                String actual = value instanceof NBTTagString string ? string.getString() : value.toString();
-                if (!actual.equals(entry.getValue())) { return false; }
-            }
-            return true;
-        });
-    }
-
-    private record Composite(List<StructurePredicate> children, boolean all) implements StructurePredicate {
-        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
-            for (var child : children) { child.collectReads(plan, position); }
-        }
-        @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) {
-            for (var child : children) {
-                if (child.matches(snapshot, position) != all) { return !all; }
-            }
-            return all;
-        }
-        @Override public StructurePredicate transform(StructureTransform rotation) {
-            return new Composite(children.stream().map(child -> child.transform(rotation)).toList(), all);
-        }
-    }
-
-    private record Offset(BlockPos offset, StructurePredicate predicate) implements StructurePredicate {
-        private Offset { offset = Objects.requireNonNull(offset).toImmutable(); Objects.requireNonNull(predicate); }
-        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { predicate.collectReads(plan, StructurePattern.add(position, offset)); }
-        @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) { return predicate.matches(snapshot, StructurePattern.add(position, offset)); }
-        @Override public StructurePredicate transform(StructureTransform rotation) { return new Offset(rotation.apply(offset), predicate.transform(rotation)); }
-    }
-
-    private record State(IBlockState expected) implements StructurePredicate {
-        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { plan.read(position, StructureQueries.BLOCK_STATE); }
-        @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) {
-            return snapshot.isAreaLoaded(StructureBounds.at(position)) && snapshot.read(StructureQueries.BLOCK_STATE, position) == expected;
-        }
-        @Override public StructurePredicate transform(StructureTransform rotation) { return new State(rotateState(expected, rotation)); }
+        return new Nbt(Map.copyOf(expected));
     }
 
     @SuppressWarnings("unchecked") // Minecraft's property valueClass validates each typed access.
@@ -105,7 +102,9 @@ public final class StructurePredicates {
             if (property.getValueClass() == EnumFacing.class) {
                 var facing = (IProperty<EnumFacing>) property;
                 var transformed = rotation.apply(state.getValue(facing));
-                if (facing.getAllowedValues().contains(transformed)) { result = result.withProperty(facing, transformed); }
+                if (facing.getAllowedValues().contains(transformed)) {
+                    result = result.withProperty(facing, transformed);
+                }
             } else if (property.getValueClass() == EnumFacing.Axis.class) {
                 var axis = (IProperty<EnumFacing.Axis>) property;
                 var representative = switch (state.getValue(axis)) {
@@ -114,9 +113,246 @@ public final class StructurePredicates {
                     case Z -> EnumFacing.NORTH;
                 };
                 var transformed = rotation.apply(representative).getAxis();
-                if (axis.getAllowedValues().contains(transformed)) { result = result.withProperty(axis, transformed); }
+                if (axis.getAllowedValues().contains(transformed)) {
+                    result = result.withProperty(axis, transformed);
+                }
             }
         }
         return result;
+    }
+
+    private record Composite(List<StructurePredicate> children, boolean all) implements StructurePredicate {
+        @Override
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            return visit(child -> child.beginCollectReads(plan, position));
+        }
+
+        private StructureOperation<Void> visit(Function<StructurePredicate, StructureOperation<Void>> factory) {
+            return new StructureOperation<>() {
+                private int index;
+                @Nullable private StructureOperation<Void> current;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    while (index < children.size()) {
+                        if (current == null) { if (!work.take()) return false; current = factory.apply(children.get(index)); }
+                        if (!current.advance(work)) return false;
+                        current = null; index++;
+                    }
+                    finish(null); return true;
+                }
+            };
+        }
+
+        @Override
+        public StructureOperation<StructurePredicate> beginTransform(StructureTransform rotation) {
+            return new StructureOperation<>() {
+                private final ObjectArrayList<StructurePredicate> transformed = new ObjectArrayList<>();
+                private int index;
+                @Nullable private StructureOperation<StructurePredicate> current;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    while (index < children.size()) {
+                        if (current == null) { if (!work.take()) return false; current = children.get(index).beginTransform(rotation); }
+                        if (!current.advance(work)) return false;
+                        transformed.add(Objects.requireNonNull(current.result())); current = null; index++;
+                    }
+                    if (!work.take()) return false;
+                    finish(new Composite(Collections.unmodifiableList(transformed), all)); return true;
+                }
+            };
+        }
+
+        @Override
+        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+            return new StructureOperation<>() {
+                private int index;
+                private boolean unavailable;
+                @Nullable private StructureOperation<StructurePredicateResult> current;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    while (index < children.size()) {
+                        if (current == null) { if (!work.take()) return false; current = children.get(index).beginMatch(snapshot, position); }
+                        if (!current.advance(work)) return false;
+                        var result = Objects.requireNonNull(current.result()); current = null; index++;
+                        if (all && result != StructurePredicateResult.MATCHED || !all && result == StructurePredicateResult.MATCHED) {
+                            finish(result); return true;
+                        }
+                        unavailable |= result == StructurePredicateResult.UNAVAILABLE;
+                    }
+                    finish(unavailable ? StructurePredicateResult.UNAVAILABLE : all ? StructurePredicateResult.MATCHED : StructurePredicateResult.MISMATCH);
+                    return true;
+                }
+            };
+        }
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            for (var child : children) {
+                child.collectReads(plan, position);
+            }
+        }
+
+        @Override
+        public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+            for (var child : children) {
+                if (child.matches(snapshot, position) != all) {
+                    return !all;
+                }
+            }
+            return all;
+        }
+
+        @Override
+        public StructurePredicate transform(StructureTransform rotation) {
+            return new Composite(children.stream().map(child -> child.transform(rotation)).toList(), all);
+        }
+    }
+
+    private record Offset(BlockPos offset, StructurePredicate predicate) implements StructurePredicate {
+        private Offset {
+            offset = Objects.requireNonNull(offset).toImmutable();
+            Objects.requireNonNull(predicate);
+        }
+
+        @Override public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            return new StructureOperation<>() {
+                @Nullable private StructureOperation<Void> child;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (child == null) {
+                        if (!work.take()) return false;
+                        child = predicate.beginCollectReads(plan, StructurePattern.add(position, offset));
+                    }
+                    if (!child.advance(work)) return false;
+                    finish(null); return true;
+                }
+            };
+        }
+        @Override public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+            return new StructureOperation<>() {
+                @Nullable private StructureOperation<StructurePredicateResult> child;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (child == null) {
+                        if (!work.take()) return false;
+                        child = predicate.beginMatch(snapshot, StructurePattern.add(position, offset));
+                    }
+                    if (!child.advance(work)) return false;
+                    finish(child.result()); return true;
+                }
+            };
+        }
+        @Override public StructureOperation<StructurePredicate> beginTransform(StructureTransform rotation) {
+            return new StructureOperation<>() {
+                @Nullable private StructureOperation<StructurePredicate> child;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (child == null) {
+                        if (!work.take()) return false;
+                        child = predicate.beginTransform(rotation);
+                    }
+                    if (!child.advance(work) || !work.take()) return false;
+                    finish(new Offset(rotation.apply(offset), Objects.requireNonNull(child.result()))); return true;
+                }
+            };
+        }
+
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            predicate.collectReads(plan, StructurePattern.add(position, offset));
+        }
+
+        @Override
+        public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+            return predicate.matches(snapshot, StructurePattern.add(position, offset));
+        }
+
+        @Override
+        public StructurePredicate transform(StructureTransform rotation) {
+            return new Offset(rotation.apply(offset), predicate.transform(rotation));
+        }
+    }
+
+    private record State(IBlockState expected) implements StructurePredicate {
+        @Override
+        public StructureOperation<StructurePredicate> beginTransform(StructureTransform rotation) {
+            var properties = expected.getPropertyKeys().iterator();
+            return new StructureOperation<>() {
+                private IBlockState transformed = expected;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    while (properties.hasNext()) {
+                        if (!work.take()) return false;
+                        transformed = rotateProperty(transformed, properties.next(), rotation);
+                    }
+                    if (!work.take()) return false;
+                    finish(new State(transformed)); return true;
+                }
+            };
+        }
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            plan.read(position, StructureQueries.BLOCK_STATE);
+        }
+
+        @Override
+        public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+            return snapshot.isAreaLoaded(StructureBounds.at(position)) && snapshot.read(StructureQueries.BLOCK_STATE, position) == expected;
+        }
+
+        @Override
+        public StructurePredicate transform(StructureTransform rotation) {
+            return new State(rotateState(expected, rotation));
+        }
+    }
+
+    @SuppressWarnings("unchecked") // Minecraft valueClass binds the same property to its Enum type.
+    private static IBlockState rotateProperty(IBlockState state, IProperty<?> property, StructureTransform rotation) {
+        if (property.getValueClass() == EnumFacing.class) {
+            var facing = (IProperty<EnumFacing>) property;
+            var transformed = rotation.apply(state.getValue(facing));
+            return facing.getAllowedValues().contains(transformed) ? state.withProperty(facing, transformed) : state;
+        }
+        if (property.getValueClass() == EnumFacing.Axis.class) {
+            var axis = (IProperty<EnumFacing.Axis>) property;
+            var representative = switch (state.getValue(axis)) {
+                case X -> EnumFacing.EAST;
+                case Y -> EnumFacing.UP;
+                case Z -> EnumFacing.NORTH;
+            };
+            var transformed = rotation.apply(representative).getAxis();
+            return axis.getAllowedValues().contains(transformed) ? state.withProperty(axis, transformed) : state;
+        }
+        return state;
+    }
+
+    private record Nbt(Map<String, String> expected) implements StructurePredicate {
+        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { plan.read(position, StructureQueries.TILE_NBT); }
+        @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+            return beginMatch(snapshot, position).run() == StructurePredicateResult.MATCHED;
+        }
+        @Override public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+            return new StructureOperation<>() {
+                private final Iterator<Map.Entry<String, String>> entries = expected.entrySet().iterator();
+                @Nullable private NBTTagCompound tag;
+                private boolean captured;
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (!captured) {
+                        if (!work.take()) return false;
+                        if (!snapshot.isAreaLoaded(StructureBounds.at(position))) { finish(StructurePredicateResult.UNAVAILABLE); return true; }
+                        tag = snapshot.read(StructureQueries.TILE_NBT, position); captured = true;
+                        if (tag == null) { finish(StructurePredicateResult.MISMATCH); return true; }
+                    }
+                    while (entries.hasNext()) {
+                        if (!work.take()) return false;
+                        var entry = entries.next(); var value = Objects.requireNonNull(tag).getTag(entry.getKey());
+                        if (value == null || !entry.getValue().equals(value instanceof NBTTagString string ? string.getString() : value.toString())) {
+                            finish(StructurePredicateResult.MISMATCH); return true;
+                        }
+                    }
+                    finish(StructurePredicateResult.MATCHED); return true;
+                }
+            };
+        }
     }
 }

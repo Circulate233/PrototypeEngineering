@@ -86,6 +86,44 @@ public final class ComponentMap<E> {
         components.add(type, new Binding<>(type, component), type.dependencies());
     }
 
+    /** Capture a complete insertion's declared and pending edges before an atomic publication. */
+    @Nullable
+    @SuppressWarnings("ReturnOfInnerClass") // The candidate belongs to this exact component map and graph revision.
+    public <C> PreparedPut preparePut(ComponentType<E, C> type, C component, RecipeWorkBudget work) {
+        Objects.requireNonNull(type); Objects.requireNonNull(component);
+        var previous = types.get(type.id());
+        if (previous != null && previous != type)
+            throw new IllegalArgumentException("Different component types share id " + type.id());
+        var candidate = components.prepareAdd(type, new Binding<>(type, component), type.dependencies(), work);
+        return candidate == null ? null : new PreparedPut(type, candidate);
+    }
+
+    /** The caller has admitted every map write and holds its owner until the whole group installs. */
+    public void installPuts(List<PreparedPut> prepared) {
+        var candidates = new ObjectArrayList<TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>>>();
+        var unique = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>();
+        var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
+        for (var put : prepared) {
+            if (put.owner != this || !unique.add(put.type)) throw new IllegalArgumentException("Foreign or duplicate prepared component insertion");
+            requireTypeIdentity(identities, put.type);
+            var previous = types.get(put.type.id());
+            if (previous != null && previous != put.type)
+                throw new IllegalArgumentException("Different component types share id " + put.type.id());
+            candidates.add(put.candidate);
+        }
+        components.installPrepared(candidates);
+        for (var put : prepared) types.put(put.type.id(), put.type);
+    }
+
+    public final class PreparedPut {
+        private final ComponentMap<E> owner = ComponentMap.this;
+        private final ComponentType<E, ?> type;
+        private final TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>> candidate;
+        private PreparedPut(ComponentType<E, ?> type, TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>> candidate) {
+            this.type = type; this.candidate = candidate;
+        }
+    }
+
     /** Used when restoring an immutable component; preserves the existing node and effective graph. */
     public <C> void replaceValue(ComponentType<E, C> type, C component) {
         Objects.requireNonNull(type);
@@ -353,9 +391,18 @@ public final class ComponentMap<E> {
 
     /** Captures component dependency order, independently of assembly order, for lifecycle cleanup. */
     public List<SavedBinding<E, ?>> orderedBindings() {
+        return Objects.requireNonNull(orderedBindings(new RecipeWorkBudget(Long.MAX_VALUE)));
+        }
+
+    /** Original component dependency order, charged before each current publication visit. */
+    @Nullable
+    public List<SavedBinding<E, ?>> orderedBindings(RecipeWorkBudget work) {
         var result = new ObjectArrayList<SavedBinding<E, ?>>();
-        for (var node : components.orderedComponents()) {
-            result.add(node.component().saved(node.dependencies()));
+        var ordered = components.orderedComponents(work);
+        if (ordered == null) return null;
+        for (var node : ordered) {
+            if (!work.take()) return null;
+            result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
         }
         return ObjectLists.unmodifiable(result);
     }

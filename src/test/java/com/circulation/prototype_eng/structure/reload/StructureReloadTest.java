@@ -87,6 +87,7 @@ class StructureReloadTest {
             assertNull(fixture.machine.components().get(MachineHatches.TYPE));
             assertFalse(refresh.publish(oldResult)); refresh.fail(oldRequest, new IllegalStateException("obsolete failure"));
             assertTrue(fixture.lifecycle.schedulingAllowed());
+            fixture.updates.tick(1);
             fixture.scheduler.tick();
             assertEquals(List.of(fixture.host.second), MachineHatches.get(fixture.machine).resources());
             assertSame(originalAssembly, fixture.registry.assembly(fixture.type));
@@ -128,18 +129,27 @@ class StructureReloadTest {
 
     @Test void queuedReloadCannotPublishUntilTheRealMatchingWorkerHasExited() throws Exception {
         try (var fixture = new Fixture(); var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
+            fixture.updates.tick(0);
+            fixture.scheduler.tick();
+            assertEquals(List.of(fixture.host.first), MachineHatches.get(fixture.machine).resources());
             var started = new CountDownLatch(1); var release = new CountDownLatch(1); var exited = new CountDownLatch(1);
-            var slow = shape("shape", 1, () -> { started.countDown(); try { await(release); } finally { exited.countDown(); } });
-            fixture.host.configuration = new StructureConfiguration(slow, BlockOrientation.NORTH_UP);
-            fixture.updates.tick(0); fixture.next.set(catalog(shape("shape", 2, () -> {})));
+            var slow = shape("shape", 1, () -> {
+                assertNotSame(fixture.host.owner, Thread.currentThread());
+                started.countDown(); try { await(release); } finally { exited.countDown(); } });
+            fixture.host.configuration = new StructureConfiguration(slow, BlockOrientation.NORTH_UP); fixture.next.set(catalog(shape("shape", 2, () -> {})));
             var before = fixture.registry.structureCatalog();
             var request = observer.submit(() -> {
-                await(started); fixture.coordinator.reload(result -> { assertEquals(0, exited.getCount()); fixture.result.set(result); });
+                await(started); fixture.coordinator.reload(result -> {
+                    assertSame(fixture.host.owner, Thread.currentThread());
+                    assertEquals(0, exited.getCount()); fixture.result.set(result); });
                 assertSame(before, fixture.registry.structureCatalog()); release.countDown();
             });
-            try { fixture.scheduler.tick(); request.get(5, TimeUnit.SECONDS); }
+            try {
+                fixture.updates.tick(5);
+                fixture.scheduler.tick(); request.get(5, TimeUnit.SECONDS); }
             finally { release.countDown(); }
             assertTrue(fixture.result.get().published()); assertSame(fixture.registry.structure(fixture.type), fixture.host.configuration.definition());
+            fixture.updates.tick(6);
             fixture.scheduler.tick(); assertEquals(List.of(fixture.host.second), MachineHatches.get(fixture.machine).resources());
         }
     }
@@ -217,6 +227,7 @@ class StructureReloadTest {
                 fixture.loadFailure = null; fixture.next.set(catalog(shape("shape", 2, () -> {})));
                 fixture.coordinator.reload(fixture.result::set); assertTrue(fixture.result.get().published());
                 assertSame(fixture.registry.structureCatalog(), host.configuration.catalog());
+                fixture.coordinator.tickLoaded(21);
                 fixture.scheduler.tick(); assertEquals(List.of(host.second), MachineHatches.get(machine).resources());
             } finally { fixture.coordinator.unloaded(lifecycle); lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
         }
@@ -249,7 +260,8 @@ class StructureReloadTest {
                 fixture.coordinator.unloaded(fixture.lifecycle); fixture.registration.close();
                 assertSame(replacement, fixture.coordinator.updates(lifecycle)); assertSame(before, fixture.host.configuration);
                 fixture.next.set(catalog(shape("shape", 2, () -> {}))); fixture.coordinator.reload(fixture.result::set);
-                assertTrue(fixture.result.get().published()); fixture.scheduler.tick();
+                assertTrue(fixture.result.get().published()); fixture.coordinator.tickLoaded(1);
+                fixture.scheduler.tick();
                 assertEquals(List.of(fixture.host.second), MachineHatches.get(machine).resources());
                 assertNull(fixture.machine.components().get(MachineHatches.TYPE));
             } finally { fixture.coordinator.unloaded(lifecycle); lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }

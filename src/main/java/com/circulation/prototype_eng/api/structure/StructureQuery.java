@@ -21,6 +21,8 @@ public final class StructureQuery<T> {
     private final BiFunction<World, BlockPos, T> reader;
     private final UnaryOperator<T> copier;
     private final BiPredicate<T, T> equivalence;
+    @Nullable
+    private final BiFunction<StructureReadWindow.BlockStates, BlockPos, T> workerReader;
 
     /**
      * Equivalence must imply indistinguishable values for every consumer of this descriptor.
@@ -30,10 +32,18 @@ public final class StructureQuery<T> {
      */
     public StructureQuery(ResourceLocation id, BiFunction<World, BlockPos, T> reader, UnaryOperator<T> copier,
                           BiPredicate<T, T> equivalence) {
+        this(id, reader, copier, equivalence, null);
+    }
+
+    /** An explicit block-only reader is valid solely inside a source's physically joined window. */
+    public StructureQuery(ResourceLocation id, BiFunction<World, BlockPos, T> reader, UnaryOperator<T> copier,
+                          BiPredicate<T, T> equivalence,
+                          @Nullable BiFunction<StructureReadWindow.BlockStates, BlockPos, T> workerReader) {
         this.id = Objects.requireNonNull(id);
         this.reader = Objects.requireNonNull(reader);
         this.copier = Objects.requireNonNull(copier);
         this.equivalence = Objects.requireNonNull(equivalence);
+        this.workerReader = workerReader;
     }
 
     public ResourceLocation id() { return id; }
@@ -47,6 +57,18 @@ public final class StructureQuery<T> {
             throw new IllegalStateException("Structure facts must be captured on their server thread");
         }
         return reader.apply(world, Objects.requireNonNull(position));
+    }
+
+    public boolean supportsWorkerBlocks() {
+        return workerReader != null;
+    }
+
+    /** The source has already bound finite loaded references on the owner before this operation. */
+    public StructureReadWindow<T> beginWorkerCapture(StructureReadWindow.BlockStates blocks, BlockPos position) {
+        Objects.requireNonNull(blocks);
+        var callback = Objects.requireNonNull(workerReader, "Query has no explicit block-only worker reader");
+        var immutable = Objects.requireNonNull(position).toImmutable();
+        return StructureReadWindow.joined(() -> callback.apply(blocks, immutable));
     }
 
     @Nullable

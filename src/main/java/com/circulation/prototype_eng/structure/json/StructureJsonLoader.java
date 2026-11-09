@@ -228,8 +228,8 @@ public final class StructureJsonLoader {
         for (var spec : data.validators) validators.add(factories.create(spec.identifier, spec.parameters, blocks));
         var orientation = BlockOrientation.get(EnumFacing.NORTH, EnumFacing.UP);
         MachineStructure shape = data.type.equals("template")
-            ? new TemplateStructure(data.id, orientation, data.offset, data.hide, new StructurePattern(pattern), validators, children)
-            : new SliceStructure(data.id, orientation, data.offset, data.hide, new StructurePattern(pattern), data.min, data.max, data.sliceOffset, validators, children);
+            ? TemplateStructure.create(data.id, orientation, data.offset, data.hide, new StructurePattern(pattern), validators, children)
+            : SliceStructure.create(data.id, orientation, data.offset, data.hide, new StructurePattern(pattern), data.min, data.max, data.sliceOffset, validators, children);
         return new StructureDefinition(shape, data.translationKey, displays);
     }
 

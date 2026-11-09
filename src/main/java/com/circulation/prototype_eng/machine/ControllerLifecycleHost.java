@@ -24,6 +24,8 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
+import com.circulation.prototype_eng.api.structure.StructureReadWindow;
 
 /** Binds an already attached server-side controller without registering a block or a scheduler. */
 @SuppressWarnings("unused") // Public adapter for downstream controller tile entities.
@@ -34,6 +36,7 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     @Nullable
     private final ResourceLocation controllerBlockId;
     private final WorldStructureSource structureSource;
+    private final boolean nativeWorkerBlocks;
     @Nullable private final UUID placementPlayer;
     @Nullable private StructureConfiguration configuration;
 
@@ -49,13 +52,38 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     /** Terminal hosts may supply no block provenance after vanilla has replaced the old block. */
     public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer,
                                    @Nullable ResourceLocation controllerBlockId) {
+        this(machineType, controller, placementPlayer, controllerBlockId, false);
+    }
+
+    private ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer,
+                                    @Nullable ResourceLocation controllerBlockId, boolean nativeWorkerBlocks) {
         this.controller = Objects.requireNonNull(controller);
         this.placementPlayer = placementPlayer;
         world = Objects.requireNonNull(controller.getWorld(), "Machine controller has no world");
         identity = new MachineIdentity(machineType, world.provider.getDimension(), controller.getPos());
         this.controllerBlockId = controllerBlockId;
         structureSource = new WorldStructureSource(this);
+        this.nativeWorkerBlocks = nativeWorkerBlocks;
         requireServerThread();
+    }
+
+    /** Concrete entities explicitly select this native binding; public legacy hosts keep virtual reads. */
+    public static ControllerLifecycleHost nativeHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID player,
+                                                      @Nullable ResourceLocation blockId) {
+        return new ControllerLifecycleHost(machineType, controller, player, blockId, true);
+    }
+
+    @Override
+    @Nullable
+    public <T> StructureReadWindow<T> beginWorkerRead(StructureQuery<T> query, BlockPos position) {
+        requireServerThread();
+        return nativeWorkerBlocks ? structureSource.beginNativeWorkerRead(query, position)
+            : ReloadableStructureHost.super.beginWorkerRead(query, position);
+    }
+
+    @Override
+    public StructureOperation<Boolean> beginWorkerAreaRead(StructureBounds bounds) {
+        return nativeWorkerBlocks ? structureSource.beginNativeAreaRead(bounds) : beginAreaRead(bounds);
     }
 
     @Override public MachineIdentity identity() { return identity; }

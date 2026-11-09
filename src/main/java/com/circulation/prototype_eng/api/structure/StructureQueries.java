@@ -18,25 +18,31 @@ import java.util.function.BiFunction;
 import java.util.function.UnaryOperator;
 
 /**
- * Detached facts for built-in structure predicates and validators. The capture source invokes readers
- * on the server thread only after checking that their position is loaded. Merely loading this class
+ * Detached facts for built-in structure predicates and validators. General world readers remain on the owner; explicit block-only readers may use loaded references
+ * in the original scheduler's physically joined owner window after checking position availability. Merely loading this class
  * creates descriptors; block, tile and biome access occurs only when a reader is invoked.
  */
 @SuppressWarnings("unused")
 public final class StructureQueries {
     /** Minecraft block states are immutable and may be shared with snapshot readers. */
     public static final StructureQuery<IBlockState> BLOCK_STATE = new StructureQuery<>(id("block_state"),
-        World::getBlockState, UnaryOperator.identity(), (first, second) -> first == second);
+        World::getBlockState, UnaryOperator.identity(), (first, second) -> first == second, StructureReadWindow.BlockStates::getBlockState);
 
     /** Preserves PM's block identity and material checks rather than invoking a custom isAir hook. */
     public static final StructureQuery<Boolean> NON_AIR = immutable("non_air", (world, position) -> {
         IBlockState state = world.getBlockState(position);
+        return state.getBlock() != Blocks.AIR && state.getMaterial() != Material.AIR;
+    }, (blocks, position) -> {
+        IBlockState state = blocks.getBlockState(position);
         return state.getBlock() != Blocks.AIR && state.getMaterial() != Material.AIR;
     });
 
     /** Describes whether the block state declares a tile, independently of an instantiated tile. */
     public static final StructureQuery<Boolean> HAS_TILE_ENTITY = immutable("has_tile_entity", (world, position) -> {
         IBlockState state = world.getBlockState(position);
+        return state.getBlock().hasTileEntity(state);
+    }, (blocks, position) -> {
+        IBlockState state = blocks.getBlockState(position);
         return state.getBlock().hasTileEntity(state);
     });
 
@@ -92,6 +98,11 @@ public final class StructureQueries {
 
     private static <T> StructureQuery<T> immutable(String path, BiFunction<World, BlockPos, T> reader) {
         return new StructureQuery<>(id(path), reader, UnaryOperator.identity(), Objects::equals);
+    }
+
+    private static <T> StructureQuery<T> immutable(String path, BiFunction<World, BlockPos, T> reader,
+                                                   BiFunction<StructureReadWindow.BlockStates, BlockPos, T> workerReader) {
+        return new StructureQuery<>(id(path), reader, UnaryOperator.identity(), Objects::equals, workerReader);
     }
 
     private static ResourceLocation id(String path) { return new ResourceLocation(Tags.MOD_ID, path); }

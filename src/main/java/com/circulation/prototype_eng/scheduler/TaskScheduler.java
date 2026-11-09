@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
+import java.util.function.Supplier;
 
 /**
  * Owned ordinary worker pool and serialized affinity lanes. Every tick joins all accepted tasks
@@ -182,6 +183,48 @@ public final class TaskScheduler implements AutoCloseable {
                 drainBoundary(failures, false);
             } finally { failures.restoreInterrupt(); }
             failures.throwIfPresent();
+        }
+    }
+
+    /**
+     * Executes one explicitly safe structure computation through the existing planned worker runner.
+     * Only the exclusive owner boundary may borrow loaded references. The owner does not resume any
+     * World/source/ordinary work until every accepted action has physically exited, including after
+     * stopped/failed dispatch or interruption. The exact batch is retained before dispatch.
+     */
+    public <T> PlannedTaskExecutor.Result<T> runStructureWorker(Supplier<? extends T> action, PlannedDeadline deadline) {
+        requireOwner();
+        Objects.requireNonNull(action); Objects.requireNonNull(deadline);
+        if (state != State.BOUNDARY || !boundaryReady)
+            throw new IllegalStateException("Structure worker requires the exclusive joined owner boundary");
+        requireHealthy();
+        initializeExecutors();
+        if (plannedTasks == null) plannedTasks = new PlannedTaskExecutor(workers, lanes);
+        class Borrow {
+            private PlannedTaskExecutor.Batch<T> batch;
+        }
+        var borrowed = new Borrow();
+        boundaryReady = false;
+        Throwable primary = null;
+        try {
+            plannedTasks.runPrepare(List.of(new PlannedTaskExecutor.Job<T>(null, action)), deadline, batch -> borrowed.batch = batch);
+            var result = Objects.requireNonNull(borrowed.batch).results().getFirst();
+            if (result instanceof PlannedTaskExecutor.Failure<T>(var failure)) primary = failure;
+            return result;
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
+        } finally {
+            try {
+                if (borrowed.batch != null) borrowed.batch.awaitQuiescence();
+            } catch (RuntimeException | Error cleanup) {
+                if (primary == null) throw cleanup;
+                if (primary != cleanup) primary.addSuppressed(cleanup);
+            } finally {
+                // awaitQuiescence reports interruption only after actual exit. Never release an
+                // uncertain live read merely because the ordered batch result became terminal.
+                boundaryReady = borrowed.batch == null || borrowed.batch.quiescent();
+            }
         }
     }
 

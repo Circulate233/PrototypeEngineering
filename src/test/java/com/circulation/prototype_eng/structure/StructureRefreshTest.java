@@ -55,8 +55,44 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.MachineStructure;
+import com.circulation.prototype_eng.api.structure.StructureAssembly;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class StructureRefreshTest {
+    @Test
+    void insufficientAtomicNotificationBudgetKeepsTheAcceptedTreeAndEmitsNoPartialEvent() {
+        var fixture = new Fixture();
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        var accepted = fixture.lifecycle.structureMatch();
+        var hatches = fixture.machine.components().get(MachineHatches.TYPE);
+        fixture.machine.components().orderedBindings();
+        var notifications = new AtomicInteger();
+        var subscriptions = new ObjectArrayList<MachineLifecycleRegistry.Subscription>();
+        try {
+        for (int index = 0; index < 30; index++) subscriptions.add(fixture.registry.register(new MachineLifecycleListener() {
+            @Override public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) { notifications.incrementAndGet(); }
+        }));
+        var prepared = new AtomicBoolean();
+        assertFalse(fixture.lifecycle.refreshStructure(() -> true, () -> {
+            prepared.set(true); return StructureAssembly.UNFORMED;
+        }, new RecipeWorkBudget(60)));
+        assertTrue(prepared.get());
+        assertTrue(fixture.lifecycle.formed());
+        assertSame(accepted, fixture.lifecycle.structureMatch());
+        assertSame(hatches, fixture.machine.components().get(MachineHatches.TYPE));
+        assertEquals(0, notifications.get());
+        assertTrue(fixture.lifecycle.refreshStructure(() -> true, () -> StructureAssembly.UNFORMED));
+        assertEquals(30, notifications.get());
+        assertFalse(fixture.lifecycle.formed());
+        } finally {
+            for (var subscription : subscriptions) subscription.close();
+        }
+    }
     private static final BlockPos FIRST = new BlockPos(1, 0, 0);
     private static final BlockPos SECOND = new BlockPos(2, 0, 0);
     private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"),
@@ -286,6 +322,56 @@ class StructureRefreshTest {
 
     private static StructureComponentProvider.Entry<ExternalPort> entry(String portId, ExternalPort port) {
         return new StructureComponentProvider.Entry<>(PORT, portId, port);
+    }
+
+    @Test
+    void aMismatchChangedByItsRealPredicateCannotRevokeTheAcceptedFormation() {
+        var fixture = new Fixture();
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        var accepted = fixture.lifecycle.structureMatch();
+        var predicate = StructurePredicates.test(MARKER, value -> {
+            if (!"body".equals(value)) fixture.host.values.put(FIRST, "body");
+            return "body".equals(value);
+        });
+        fixture.host.configuration = new StructureConfiguration(TemplateStructure.create(id("changing_mismatch"),
+            BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, predicate)),
+            List.of(), List.of()), BlockOrientation.NORTH_UP);
+        var result = fixture.result();
+        fixture.host.values.put(FIRST, "changed");
+        assertFalse(fixture.refresh.publish(result));
+        assertTrue(fixture.lifecycle.formed());
+        assertSame(accepted, fixture.lifecycle.structureMatch());
+        assertTrue(fixture.refresh.publish(fixture.result()));
+    }
+
+    @Test
+    void eagerLegacyPlanningFailureFaultsOnlyItsExactCurrentPreparation() {
+        var current = new Fixture();
+        var failure = new AssertionError("real legacy planning failure");
+        current.host.configuration = planningFailure(failure, () -> { });
+        var operation = current.refresh.beginPrepare(null);
+        assertSame(failure, assertThrows(AssertionError.class, () -> operation.advance(new RecipeWorkBudget(100))));
+        assertFalse(current.lifecycle.schedulingAllowed());
+
+        var revoked = new Fixture();
+        var replacement = revoked.host.configuration;
+        revoked.host.configuration = planningFailure(failure, () -> revoked.host.configuration = replacement);
+        var obsolete = revoked.refresh.beginPrepare(null);
+        assertSame(failure, assertThrows(AssertionError.class, () -> obsolete.advance(new RecipeWorkBudget(100))));
+        assertTrue(revoked.lifecycle.schedulingAllowed());
+        assertTrue(revoked.refresh.publish(revoked.result()));
+    }
+
+    private static StructureConfiguration planningFailure(AssertionError failure, Runnable beforeFailure) {
+        return new StructureConfiguration(new TemplateStructure(id("legacy_planning_failure"), BlockOrientation.NORTH_UP,
+            BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, StructurePredicates.test(MARKER, "body"::equals))),
+            List.of(), List.of()) {
+            @Override
+            public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
+                beforeFailure.run();
+                throw failure;
+            }
+        }, BlockOrientation.NORTH_UP);
     }
 
     @Test

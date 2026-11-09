@@ -5,14 +5,14 @@
 ## 当前检查点
 
 - 2026-11-09 控制器与配方池阶段已实现并验证：可继承的 MultithreadController/CrossRecipeController、正常装配默认 PLANNED_PARALLEL、整机并行余额/配方线程上限、事件最终数量覆盖、通用/简单池接口及预算化 live freshness。focused70 tests/9 suites、实际完整重跑1620 tests/206 suites均零失败/错误/跳过；42 Java 本机 IDEA 全级零、完整读回一致，最终 MCP build 成功。最早 before、真实失败/最终日志、独立审查和精确本地提交见 `build/staging/controller-shared-parallel/`、`build/staging/recipe-pool-strategies/`、`build/staging/controller-pool-plan/review.md`。
-- 整体 PM/PN 迁移目标继续。结构异步/预算/首真实tick链仍为未验收 WIP，独立四文件兼容修复仅通过当前完整build gate，未纳入控制器/配方池提交。续点 [结构说明](structures.md) 及 `build/staging/structure-async-budget/CHECKPOINT-CONTROLLER-PRIORITY.md`、`build/staging/structure-async-budget/FULL-BUILD-REPAIRS.md`；已有 earliest-before 和全部背景保留。
+- 结构异步/预算/首真实tick、JEI原生装饰与显式ResourceRecipeIndex freshness 本轮完成并验证，保留原scheduler/默认PLANNED_PARALLEL及旧virtual扩展。正常完整重跑1636 tests/207 suites全零、15任务全执行；结构39/JEI13/index2 Java本机MCP全级零与完整读回一致，MCP build成功。JEI/Resource已本地提交5ac7908/2d3237e，精确提交及背景保护记录见对应stage；入口 [结构说明](structures.md)、[JEI说明](jei.md) 和 `build/staging/structure-async-budget/continued-full-result.json`，earliest-before、四repair与背景均保留。整体 PM/PN 迁移继续。
 - 已完成阶段及证据从实施进度/专题恢复：研究下载、接口用户盘、材料破坏会话、个人遗忘/管理员绝对等级、结构 A/B/C/D1/D2/D3 与 AE GUI/ModularUI 撤除。历史暂停/停止均不替代当前恢复后的目标；不在本索引重复其测试记录。
 
 ## 下一步
 
-1. 继续 [配方功能核对](recipe-feature-parity.md)：工位 RESCAN/isCore 策略待契约，入口 `build/staging/workslot-restart-plan/facts-and-contract.md`。旧显式 ResourceRecipeIndex 的同context临时adapter freshness P2仍待修，两默认scanner未使用此external index。
-2. 结构完成 discovery 接入、极小预算进度/原子最小量、完整时间成本与最终安装权限、原生loaded chunk及legacy virtual coverage，再取得专项验收证据；结构两种预算合同见 `build/staging/structure-budget-plan/policies.md`。
-3. JEI 原生装饰剩余、调度后端及其他未取消能力继续；入口 [jei.md](jei.md)、`build/staging/jei-native-decorators/review.md`、`build/staging/scheduler-backend-plan/handoff.md`。Java 完整后最后接 CraftTweaker；Applied-Flux 暂缓。
+1. 继续 [配方功能核对](recipe-feature-parity.md)：工位 RESCAN/isCore 策略待契约，入口 `build/staging/workslot-restart-plan/facts-and-contract.md`。
+2. 调度后端及其余未取消能力继续，入口 `build/staging/scheduler-backend-plan/handoff.md`；结构预算公开合同见 `build/staging/structure-budget-plan/policies.md`。
+3. Java 完整后最后接 CraftTweaker；Applied-Flux 暂缓。精确本地提交与原背景保护记录按实施进度进入对应stage。
 4. 实机 World/网络包/GUI/GL/Bloom/HEI验收待用户自行启动；构建和纯逻辑测试不代替这些证据。
 
 ## 必须遵守

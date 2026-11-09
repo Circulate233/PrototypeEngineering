@@ -25,6 +25,11 @@ import java.util.Objects;
 import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import java.util.function.BooleanSupplier;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.StructureMatch;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
+import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
+import java.util.Iterator;
 
 /**
  * PM's capture/worker/apply flow, with current-world validation and public hatch discovery.
@@ -39,6 +44,8 @@ public final class StructureRefresh {
     @Nullable private Request pending;
     private boolean active;
     private List<StructureSnapshot.Failure> diagnostics = List.of();
+    private StructurePredicateResult publicationStatus = StructurePredicateResult.UNAVAILABLE;
+    private Object preparationOwner = new Object();
 
     public StructureRefresh(MachineLifecycle lifecycle, MachineStructureHost host) {
         this(lifecycle, host, () -> true); }
@@ -57,19 +64,49 @@ public final class StructureRefresh {
     /** Captures one detached request. Starting a newer attempt permanently retires older results. */
     @Nullable
     public Request prepare() {
+        return beginPrepare(null).run();
+    }
+
+    /** Retained planning and capture keep one configuration; no live read window crosses advance. */
+    @SuppressWarnings("ReturnOfInnerClass") // The retained cursor owns exact configuration and preparation authority.
+    public StructureOperation<Request> beginPrepare(@Nullable StructureSnapshot.JoinedWorker worker) {
         enter();
         try {
-            pending = null;
-            var configuration = host.structureConfiguration();
-            if (lifecycle.state() != MachineLifecycle.State.LOADED || configuration == null || !attachmentCurrent.getAsBoolean()) { return null; }
-            var plan = new StructurePlan(configuration.definition(), host.identity().controllerPos(), configuration.orientation());
-            var snapshot = StructureSnapshot.capture(plan.reads(), host);
-            diagnostics = snapshot.failures();
-            // Observational external readers must not change configuration, but do not publish if they do.
-            if (!configurationCurrent(configuration)) { return null; }
-            var request = new Request(configuration, plan, snapshot);
-            pending = request;
-            return request;
+        var owner = new Object();
+        preparationOwner = owner;
+        pending = null;
+        var configuration = host.structureConfiguration();
+        if (lifecycle.state() != MachineLifecycle.State.LOADED || configuration == null || !attachmentCurrent.getAsBoolean())
+            return StructureOperation.call(() -> null);
+        return new StructureOperation<>() {
+            @Nullable private StructureOperation<StructurePlan> planning;
+            @Nullable private StructureOperation<StructureSnapshot> capture;
+            @Override public boolean advance(RecipeWorkBudget work) {
+                enter();
+                try {
+                    if (complete()) return true;
+                    if (preparationOwner != owner || !configurationCurrent(configuration)) { finish(null); return true; }
+                    if (planning == null) {
+                        if (!work.take()) return false;
+                        planning = StructurePlan.beginCreate(configuration.definition(), host.identity().controllerPos(), configuration.orientation());
+                    }
+                    if (!planning.advance(work)) return false;
+                    var plan = Objects.requireNonNull(planning.result());
+                    if (capture == null) { if (!work.take()) return false; capture = StructureSnapshot.beginCapture(plan.reads(), host, worker); }
+                    if (!capture.advance(work)) return false;
+                    var snapshot = capture.result();
+                    if (snapshot == null) { finish(null); return true; }
+                    diagnostics = snapshot.failures();
+                    if (preparationOwner != owner || !configurationCurrent(configuration)) { finish(null); return true; }
+                    pending = new Request(configuration, plan, snapshot); finish(pending); return true;
+                } catch (RuntimeException | Error failure) {
+                    lifecycle.refreshStructure(() -> preparationOwner == owner && configurationCurrent(configuration), () -> {
+                        throw failure;
+                    });
+                    throw failure;
+                } finally { active = false; }
+            }
+        };
         } finally { active = false; }
     }
 
@@ -78,6 +115,7 @@ public final class StructureRefresh {
         enter();
         try {
             pending = null;
+            preparationOwner = new Object();
             if (lifecycle.state() == MachineLifecycle.State.LOADED) { lifecycle.invalidateStructure(); }
         } finally { active = false; }
     }
@@ -88,24 +126,37 @@ public final class StructureRefresh {
      * The scheduler must finish/retry the current refresh before releasing its publication boundary.
      */
     public boolean publish(Result result) {
+        return publish(result, new RecipeWorkBudget(Long.MAX_VALUE), null);
+                }
+
+    /** A complete actual owner capture, match, both proofs and install occupy this one transition. */
+    public boolean publish(Result result, RecipeWorkBudget work, @Nullable StructureSnapshot.JoinedWorker worker) {
         Objects.requireNonNull(result);
         enter();
         try {
             boolean applied = lifecycle.refreshStructure(
                 () -> pending == result.request && configurationCurrent(result.request.configuration),
                 () -> {
-                    var current = result.evaluation.refresh(host);
+                    var current = fresh(result.request.plan, work, worker);
+                    if (current == null) return null;
+                    publicationStatus = current.status();
                     diagnostics = current.failures();
-                    return assemble(current);
-                });
-            if (applied && pending == result.request) { pending = null; }
+                    return assemble(current, work, worker);
+                }, work);
+            if (applied && pending == result.request) {
+                pending = null;
+            }
             return applied;
-        } finally { active = false; }
+        } finally {
+            active = false;
+        }
     }
 
     /** Includes unused-branch failures from the latest capture or publication recheck for reporting. */
     @SuppressWarnings("unused") // Scheduler diagnostics must include capture and fallback failures.
     public List<StructureSnapshot.Failure> diagnostics() { host.requireServerThread(); return diagnostics; }
+
+    public StructurePredicateResult publicationStatus() { host.requireServerThread(); return publicationStatus; }
 
     /**
      * Server-side completion for a failed worker. Its owner reports the original task error even if
@@ -134,66 +185,192 @@ public final class StructureRefresh {
         return attachmentCurrent.getAsBoolean() && host.structureConfiguration() == configuration;
     }
 
+    /** Preparation really discovers each binding and port; none of these candidates authorizes work. */
+    @SuppressWarnings("ReturnOfInnerClass") // The discovery cursor retains exact request authority without granting publication.
+    public StructureOperation<StructureAssembly> beginDiscovery(Result result) {
+        Objects.requireNonNull(result); host.requireServerThread();
+        var operation = new AssemblyOperation(result.evaluation);
+        return new StructureOperation<>() {
+            @Override public boolean advance(RecipeWorkBudget work) {
+                enter();
+                try {
+                    if (complete()) return true;
+                    if (pending != result.request || !configurationCurrent(result.request.configuration)) { finish(null); return true; }
+                    if (!operation.advance(work)) return false;
+                    finish(operation.result()); return true;
+                } finally { active = false; }
+            }
+        };
+    }
+
     @Nullable
-    private StructureAssembly assemble(StructureEvaluation evaluation) {
-        var match = evaluation.match();
-        if (match == null) {
-            return StructureAssembly.UNFORMED;
-        }
-        var positions = new ObjectArrayList<>(match.allBlocks());
-        positions.remove(host.identity().controllerPos());
-        positions.sort(Comparator.comparingInt(BlockPos::getX).thenComparingInt(BlockPos::getY).thenComparingInt(BlockPos::getZ));
-        var bindings = new ObjectArrayList<StructureHatchBinding>(positions.size());
-        var providers = new ObjectArrayList<StructureComponentProvider>(positions.size());
-        var ports = new ObjectArrayList<StructureComponents.Binding<?>>();
-        long generation = lifecycle.formed() ? lifecycle.formationGeneration() : Math.incrementExact(lifecycle.formationGeneration());
-        var resources = new ObjectArrayList<ResourceHatch>();
-        var inputs = new ObjectArrayList<EnergyInput>();
-        var outputs = new ObjectArrayList<EnergyOutput>();
-        var seenResources = new ReferenceOpenHashSet<ResourceHatch>();
-        var seenInputs = new ReferenceOpenHashSet<EnergyInput>();
-        var seenOutputs = new ReferenceOpenHashSet<EnergyOutput>();
-        for (var position : positions) {
-            // External shapes also need a loaded, currently present discovery position.
-            if (!host.isAreaLoaded(StructureBounds.at(position))) {
-                return null;
-            }
-            var binding = Objects.requireNonNull(host.hatchesAt(position));
-            bindings.add(binding);
-            var provider = host.structureComponentsAt(position);
-            providers.add(provider);
-            if (provider != null) {
-                var context = new StructureComponentProvider.Context(lifecycle.machine(), position, generation);
-                for (var entry : Objects.requireNonNull(provider.createStructureComponents(context))) {
-                    ports.add(new StructureComponents.Binding<>(context, Objects.requireNonNull(entry)));
-                }
-            }
-            if (binding.resource() != null && seenResources.add(binding.resource())) {
-                resources.add(binding.resource());
-            }
-            if (binding.energyInput() != null && seenInputs.add(binding.energyInput())) {
-                inputs.add(binding.energyInput());
-            }
-            if (binding.energyOutput() != null && seenOutputs.add(binding.energyOutput())) {
-                outputs.add(binding.energyOutput());
-            }
-        }
-        var verified = evaluation.refresh(host);
-        diagnostics = verified.failures();
-        if (verified != evaluation) {
+    private StructureAssembly assemble(StructureEvaluation evaluation, RecipeWorkBudget work, @Nullable StructureSnapshot.JoinedWorker worker) {
+        var operation = new AssemblyOperation(evaluation);
+        if (!operation.advance(work)) return null;
+        var assembly = operation.result();
+        if (assembly == null) return null;
+        var proof = evaluation.isCurrent(host, work);
+        if (proof == null) return null;
+        if (!proof) {
+            var verified = fresh(evaluation.plan(), work, worker);
+            if (verified != null) diagnostics = verified.failures();
             return null;
         }
-        // Capabilities are external callbacks. A provider swap/invalidated contract cannot leave a
-        // partial candidate; recheck absent providers as well as the hatches that were discovered.
-        for (int index = 0; index < positions.size(); index++) {
-            var position = positions.get(index);
-            if (!host.isAreaLoaded(StructureBounds.at(position))
-                || !bindings.get(index).isCurrent(host.hatchesAt(position))
-                || providers.get(index) != host.structureComponentsAt(position)) {
-                return null;
-            }
+        if (assembly.match() == null) return assembly;
+        for (int index = 0; index < operation.orderedPositions.size(); index++) {
+            var position = operation.orderedPositions.get(index);
+            if (!work.take()) return null;
+            if (!host.isAreaLoaded(StructureBounds.at(position))) return null;
+            if (!work.take()) return null;
+            if (!operation.bindings.get(index).isCurrent(host.hatchesAt(position))) return null;
+            if (!work.take()) return null;
+            if (operation.providers.get(index) != host.structureComponentsAt(position)) return null;
         }
-        return new StructureAssembly(match, new MachineHatches(resources, inputs, outputs), new StructureComponents(ports));
+        return assembly;
+    }
+
+    private final class AssemblyOperation extends StructureOperation<StructureAssembly> {
+        private final StructureEvaluation evaluation;
+        @Nullable private final StructureMatch match;
+        @Nullable private final StructureOperation<List<BlockPos>> collect;
+        private final ObjectArrayList<BlockPos> positions = new ObjectArrayList<>();
+        private List<BlockPos> orderedPositions = List.of();
+        private final ObjectArrayList<StructureHatchBinding> bindings = new ObjectArrayList<>();
+        private final ObjectArrayList<StructureComponentProvider> providers = new ObjectArrayList<>();
+        private final ObjectArrayList<StructureComponents.Binding<?>> ports = new ObjectArrayList<>();
+        private final ObjectArrayList<ResourceHatch> resources = new ObjectArrayList<>();
+        private final ObjectArrayList<EnergyInput> inputs = new ObjectArrayList<>();
+        private final ObjectArrayList<EnergyOutput> outputs = new ObjectArrayList<>();
+        private final ReferenceOpenHashSet<ResourceHatch> seenResources = new ReferenceOpenHashSet<>();
+        private final ReferenceOpenHashSet<EnergyInput> seenInputs = new ReferenceOpenHashSet<>();
+        private final ReferenceOpenHashSet<EnergyOutput> seenOutputs = new ReferenceOpenHashSet<>();
+        private final long generation;
+        private int copyIndex;
+        private int index;
+        private int phase;
+        @Nullable private StructureOperation<List<BlockPos>> sort;
+        @Nullable private Iterator<StructureComponentProvider.Entry<?>> entries;
+        @Nullable private StructureComponentProvider.Context context;
+        @Nullable private StructureOperation<MachineHatches> freezeHatches;
+        @Nullable private StructureOperation<StructureComponents> freezePorts;
+
+        private AssemblyOperation(StructureEvaluation evaluation) {
+            this.evaluation = evaluation;
+            match = evaluation.match();
+            collect = match == null ? null : match.beginAllBlocks();
+            generation = lifecycle.formed() ? lifecycle.formationGeneration() : Math.incrementExact(lifecycle.formationGeneration());
+        }
+
+        @Override public boolean advance(RecipeWorkBudget work) {
+            if (complete()) return true;
+            if (evaluation.status() == StructurePredicateResult.UNAVAILABLE) { finish(null); return true; }
+            if (match == null) { if (!work.take()) return false; finish(StructureAssembly.UNFORMED); return true; }
+            if (!Objects.requireNonNull(collect).advance(work)) return false;
+            var covered = Objects.requireNonNull(collect.result());
+            while (copyIndex < covered.size()) {
+                if (!work.take()) return false;
+                var position = covered.get(copyIndex++);
+                if (!position.equals(host.identity().controllerPos())) positions.add(position);
+            }
+            if (sort == null) sort = sortPositions(positions);
+            if (!sort.advance(work)) return false;
+            var ordered = Objects.requireNonNull(sort.result());
+            orderedPositions = ordered;
+            while (index < ordered.size()) {
+                var position = ordered.get(index);
+                if (phase == 0) {
+                    if (!work.take()) return false;
+                    if (!host.isAreaLoaded(StructureBounds.at(position))) { finish(null); return true; }
+                    phase = 1;
+                }
+                if (phase == 1) {
+                    if (!work.take()) return false;
+                    bindings.add(Objects.requireNonNull(host.hatchesAt(position))); phase = 2;
+                }
+                if (phase == 2) {
+                    if (!work.take()) return false;
+                    providers.add(host.structureComponentsAt(position)); phase = 3;
+                }
+                if (phase == 3) {
+                    if (!work.take()) return false;
+                    var provider = providers.get(index);
+                    if (provider != null) {
+                        context = new StructureComponentProvider.Context(lifecycle.machine(), position, generation);
+                        entries = Objects.requireNonNull(provider.createStructureComponents(context)).iterator();
+                    }
+                    phase = 4;
+                }
+                if (entries != null) {
+                    while (entries.hasNext()) {
+                        if (!work.take()) return false;
+                        ports.add(new StructureComponents.Binding<>(Objects.requireNonNull(context), Objects.requireNonNull(entries.next())));
+                    }
+                    entries = null; context = null;
+                }
+                if (!work.take()) return false;
+                var binding = bindings.get(index);
+                if (binding.resource() != null && seenResources.add(binding.resource())) resources.add(binding.resource());
+                if (binding.energyInput() != null && seenInputs.add(binding.energyInput())) inputs.add(binding.energyInput());
+                if (binding.energyOutput() != null && seenOutputs.add(binding.energyOutput())) outputs.add(binding.energyOutput());
+                index++; phase = 0;
+            }
+            if (freezeHatches == null) freezeHatches = MachineHatches.beginCreate(resources, inputs, outputs);
+            if (!freezeHatches.advance(work)) return false;
+            if (freezePorts == null) freezePorts = StructureComponents.beginCreate(ports);
+            if (!freezePorts.advance(work) || !work.take()) return false;
+            finish(new StructureAssembly(match, Objects.requireNonNull(freezeHatches.result()), Objects.requireNonNull(freezePorts.result())));
+            return true;
+        }
+    }
+
+    /** Merge comparisons and output visits resume independently, including one-unit slices. */
+    private static StructureOperation<List<BlockPos>> sortPositions(List<BlockPos> positions) {
+        return new StructureOperation<>() {
+            private List<BlockPos> source = positions;
+            private ObjectArrayList<BlockPos> output = new ObjectArrayList<>();
+            private int width = 1;
+            private int left;
+            private int first;
+            private int second;
+            private int middle;
+            private int end;
+            private boolean merging;
+            @Override public boolean advance(RecipeWorkBudget work) {
+                if (complete()) return true;
+                if (source.size() < 2) { finish(source); return true; }
+                while (true) {
+                    while (left < source.size()) {
+                        if (!merging) {
+                            first = left; middle = (int) Math.min(source.size(), (long) left + width);
+                            second = middle; end = (int) Math.min(source.size(), (long) left + 2L * width); merging = true;
+                        }
+                        while (first < middle || second < end) {
+                            if (!work.take()) return false;
+                            boolean chooseFirst = second == end || first < middle && POSITION_ORDER.compare(source.get(first), source.get(second)) <= 0;
+                            output.add(source.get(chooseFirst ? first++ : second++));
+                        }
+                        left = end; merging = false;
+                    }
+                    source = output;
+                    if (width >= (source.size() + 1L) / 2L) { finish(source); return true; }
+                    width *= 2; left = 0; output = new ObjectArrayList<>();
+                }
+            }
+        };
+    }
+
+    private static final Comparator<BlockPos> POSITION_ORDER = Comparator.comparingInt(BlockPos::getX)
+        .thenComparingInt(BlockPos::getY).thenComparingInt(BlockPos::getZ);
+    @Nullable
+    private StructureEvaluation fresh(StructurePlan plan, RecipeWorkBudget work, @Nullable StructureSnapshot.JoinedWorker worker) {
+        var captured = StructureSnapshot.capture(plan.reads(), host, work);
+        if (captured == null) return null;
+        var evaluation = plan.beginEvaluate(captured);
+        boolean[] completed = { false };
+        Runnable action = () -> completed[0] = evaluation.advance(work);
+        if (worker == null) action.run();
+        else if (!worker.run(action)) return null;
+        return completed[0] ? Objects.requireNonNull(evaluation.result()) : null;
     }
 
     /** This task contains no host, World, TileEntity, lifecycle or active hatch contract. */
@@ -213,6 +390,18 @@ public final class StructureRefresh {
 
         /** Only this operation belongs on a worker. Match failures propagate to its task owner. */
         public Result evaluate() { return new Result(this, plan.evaluate(snapshot)); }
+
+        @SuppressWarnings("ReturnOfInnerClass") // The cursor retains only this detached request and evaluation.
+        public StructureOperation<Result> beginEvaluate() {
+            var evaluation = plan.beginEvaluate(snapshot);
+            return new StructureOperation<>() {
+                @Override public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (!evaluation.advance(work) || !work.take()) return false;
+                    finish(new Result(Request.this, Objects.requireNonNull(evaluation.result()))); return true;
+                }
+            };
+        }
     }
 
     /** Only evaluation can create a result, so a result cannot substitute another request's proof. */
@@ -224,5 +413,7 @@ public final class StructureRefresh {
             this.request = request;
             this.evaluation = evaluation;
         }
+
+        public StructurePredicateResult status() { return evaluation.status(); }
     }
 }

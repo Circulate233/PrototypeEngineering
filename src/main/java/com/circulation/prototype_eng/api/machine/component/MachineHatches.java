@@ -13,6 +13,9 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
+import java.util.Collections;
 
 /**
  * Immutable discovered hatch bindings, installed by the host at its machine ownership boundary.
@@ -27,6 +30,31 @@ public final class MachineHatches {
     private final List<ResourceHatch> resources;
     private final List<EnergyInput> energyInputs;
     private final List<EnergyOutput> energyOutputs;
+
+    private MachineHatches(List<ResourceHatch> resources, List<EnergyInput> inputs, List<EnergyOutput> outputs) {
+        this.resources = Collections.unmodifiableList(resources);
+        energyInputs = Collections.unmodifiableList(inputs);
+        energyOutputs = Collections.unmodifiableList(outputs);
+    }
+
+    /** Owned immutable copies freeze incrementally; no later constructor traverses them again. */
+    public static StructureOperation<MachineHatches> beginCreate(Collection<? extends ResourceHatch> resources,
+        Collection<? extends EnergyInput> inputs, Collection<? extends EnergyOutput> outputs) {
+        var resourceIterator = resources.iterator(); var inputIterator = inputs.iterator(); var outputIterator = outputs.iterator();
+        return new StructureOperation<>() {
+            private final ObjectArrayList<ResourceHatch> frozenResources = new ObjectArrayList<>();
+            private final ObjectArrayList<EnergyInput> frozenInputs = new ObjectArrayList<>();
+            private final ObjectArrayList<EnergyOutput> frozenOutputs = new ObjectArrayList<>();
+            @Override public boolean advance(RecipeWorkBudget work) {
+                if (complete()) return true;
+                while (resourceIterator.hasNext()) { if (!work.take()) return false; frozenResources.add(Objects.requireNonNull(resourceIterator.next())); }
+                while (inputIterator.hasNext()) { if (!work.take()) return false; frozenInputs.add(Objects.requireNonNull(inputIterator.next())); }
+                while (outputIterator.hasNext()) { if (!work.take()) return false; frozenOutputs.add(Objects.requireNonNull(outputIterator.next())); }
+                if (!work.take()) return false;
+                finish(new MachineHatches(frozenResources, frozenInputs, frozenOutputs)); return true;
+            }
+        };
+    }
 
     public MachineHatches(Collection<? extends ResourceHatch> resources,
                           Collection<? extends EnergyInput> energyInputs,

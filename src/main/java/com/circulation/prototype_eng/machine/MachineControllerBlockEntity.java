@@ -243,6 +243,12 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         markDirty();
     }
 
+    /** Actual creation hook used by normal attachment and terminal cleanup. */
+    protected ControllerLifecycleHost createLifecycleHost(ResourceLocation type, @Nullable UUID player,
+                                                          @Nullable ResourceLocation blockId) {
+        return ControllerLifecycleHost.nativeHost(type, this, player, blockId);
+    }
+
     private void attachAtBoundary() {
         queuedLoad = false;
         if (!wantsLoad || !isAttached()) { return; }
@@ -272,7 +278,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             actor = placement.player;
             placement = null;
         }
-        var bound = new ControllerLifecycleHost(type.id(), this, actor);
+        var bound = createLifecycleHost(type.id(), actor, world.getBlockState(pos).getBlock().getRegistryName());
         var created = new MachineController(MachineTypeRegistry.INSTANCE.assembly(type), bound, scheduler());
         host = bound;
         controller = created;
@@ -293,6 +299,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
                 replacementData = false;
                 bound.configureStructure(MachineTypeRegistry.INSTANCE.structureCatalog(), MachineTypeRegistry.INSTANCE.structure(type), orientation());
                 structures = new ControllerStructureUpdates(created, bound, scheduler(), this::changed);
+                structures.firstTickAtBoundary(lastTick);
                 applyState();
                 changed();
             } catch (RuntimeException | Error failure) {
@@ -390,7 +397,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             requireServer();
             var type = Objects.requireNonNull(MachineTypeRegistry.INSTANCE.get(data.type()), "Saved controller type is not registered");
             var assembly = MachineTypeRegistry.INSTANCE.assembly(type);
-            var bound = new ControllerLifecycleHost(data.type(), this, null, null);
+            var bound = createLifecycleHost(data.type(), null, null);
             var saved = controller != null && !replacementData ? controller.save() : data.runtime();
             if (saved != null) {
                 scheduler().runAtBoundary(() -> {
