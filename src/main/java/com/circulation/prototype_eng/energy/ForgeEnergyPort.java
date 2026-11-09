@@ -4,27 +4,32 @@ import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.energy.EnergyHatch;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import net.minecraftforge.energy.IEnergyStorage;
-
 import java.util.Objects;
-
-/** PM energy hatch's input/output/IO capability routing and configurable per-operation limits. */
+import org.jetbrains.annotations.Nullable;
+/**
+ * PM energy hatch's input/output/IO capability routing and configurable per-operation limits.
+ */
 public final class ForgeEnergyPort implements IEnergyStorage {
-    private final EnergyHatch storage;
-    private final HatchMode mode;
+    private final @Nullable EnergyHatch input;
+    private final @Nullable EnergyHatch output;
 
     public ForgeEnergyPort(EnergyHatch storage, HatchMode mode) {
-        this.storage = Objects.requireNonNull(storage);
-        this.mode = Objects.requireNonNull(mode);
+        this(mode.hasInput() ? Objects.requireNonNull(storage) : null,
+            mode.hasOutput() ? Objects.requireNonNull(storage) : null);
     }
 
     @Override
     public int receiveEnergy(int amount, boolean simulate) {
-        if (!mode.hasInput() || amount <= 0) { return 0; }
-        var context = storage.context();
+        if (input == null || amount <= 0) {
+            return 0;
+        }
+        var context = input.context();
         context.lock();
         try {
-            if (!storage.isValid()) { return 0; }
-            return checkedTransfer(storage.receiveEnergy(amount, simulate ? Actionable.SIMULATE : Actionable.MODULATE), amount);
+            if (!input.isValid()) {
+                return 0;
+            }
+            return checkedTransfer(input.receiveEnergy(amount, simulate ? Actionable.SIMULATE : Actionable.MODULATE), amount);
         } finally {
             context.unlock();
         }
@@ -32,15 +37,26 @@ public final class ForgeEnergyPort implements IEnergyStorage {
 
     @Override
     public int extractEnergy(int amount, boolean simulate) {
-        if (!mode.hasOutput() || amount <= 0) { return 0; }
-        var context = storage.context();
+        if (output == null || amount <= 0) {
+            return 0;
+        }
+        var context = output.context();
         context.lock();
         try {
-            if (!storage.isValid()) { return 0; }
-            return checkedTransfer(storage.extractEnergy(amount, simulate ? Actionable.SIMULATE : Actionable.MODULATE), amount);
+            if (!output.isValid()) {
+                return 0;
+            }
+            return checkedTransfer(output.extractEnergy(amount, simulate ? Actionable.SIMULATE : Actionable.MODULATE), amount);
         } finally {
             context.unlock();
         }
+    }
+
+    /** Receives only into the input balance and extracts only from the output balance. */
+    public ForgeEnergyPort(@Nullable EnergyHatch input, @Nullable EnergyHatch output) {
+        if (input == null && output == null) throw new IllegalArgumentException("No energy direction");
+        this.input = input;
+        this.output = output;
     }
 
     private static int checkedTransfer(long amount, int requested) {
@@ -50,22 +66,43 @@ public final class ForgeEnergyPort implements IEnergyStorage {
         return (int) amount;
     }
 
-    @Override public int getEnergyStored() { return (int) Math.min(Integer.MAX_VALUE, storage.storedEnergy()); }
-    @Override public int getMaxEnergyStored() { return (int) Math.min(Integer.MAX_VALUE, storage.capacity()); }
-    @Override public boolean canExtract() {
-        var context = storage.context();
+    @Override
+    public int getEnergyStored() {
+        return combinedAmount(false);
+    }
+
+    @Override
+    public int getMaxEnergyStored() {
+        return combinedAmount(true);
+    }
+
+    // Forge exposes one informational meter; transfers and machine identities stay separate.
+    private int combinedAmount(boolean capacity) {
+        long amount = input == null ? 0 : Math.min(Integer.MAX_VALUE, capacity ? input.capacity() : input.storedEnergy());
+        if (output != null && output != input)
+            amount += Math.min(Integer.MAX_VALUE, capacity ? output.capacity() : output.storedEnergy());
+        return (int) Math.min(Integer.MAX_VALUE, amount);
+    }
+
+    @Override
+    public boolean canExtract() {
+        if (output == null) return false;
+        var context = output.context();
         context.lock();
         try {
-            return storage.isValid() && mode.hasOutput() && storage.energySnapshot().maxExtract() > 0;
+            return output.isValid() && output.energySnapshot().maxExtract() > 0;
         } finally {
             context.unlock();
         }
     }
-    @Override public boolean canReceive() {
-        var context = storage.context();
+
+    @Override
+    public boolean canReceive() {
+        if (input == null) return false;
+        var context = input.context();
         context.lock();
         try {
-            return storage.isValid() && mode.hasInput() && storage.energySnapshot().maxReceive() > 0;
+            return input.isValid() && input.energySnapshot().maxReceive() > 0;
         } finally {
             context.unlock();
         }

@@ -8,6 +8,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ForgeEnergyPortTest {
     @Test
+    void splitPortKeepsSimulationCapacityAndLongTotalsIndependent() {
+        var input = new EnergyBuffer(Long.MAX_VALUE, () -> {});
+        var output = new EnergyBuffer(Long.MAX_VALUE, () -> {});
+        var port = new ForgeEnergyPort(input, output);
+        input.restore(Long.MAX_VALUE);
+        assertEquals(0, port.receiveEnergy(100, false));
+        assertEquals(0, port.extractEnergy(100, false));
+        output.restore(Long.MAX_VALUE);
+        assertEquals(Integer.MAX_VALUE, port.getEnergyStored());
+        assertEquals(Integer.MAX_VALUE, port.getMaxEnergyStored());
+        assertEquals(100, port.extractEnergy(100, true));
+        assertEquals(Long.MAX_VALUE, output.storedEnergy());
+        assertEquals(100, port.extractEnergy(100, false));
+        assertEquals(Long.MAX_VALUE, input.storedEnergy());
+        assertEquals(Long.MAX_VALUE - 100, output.storedEnergy());
+        input.invalidate();
+        assertEquals(0, port.receiveEnergy(100, false));
+        assertEquals(100, port.extractEnergy(100, false));
+    }
+
+    @Test
     void physicalDirectionsAllowReverseMachineOperationsOnTheSameBalance() {
         var input = new EnergyBuffer(100, 20, 20, () -> {});
         var inputPort = new ForgeEnergyPort(input, HatchMode.INPUT);

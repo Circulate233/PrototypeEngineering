@@ -8,19 +8,20 @@ import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.input.Keyboard;
 import org.jetbrains.annotations.NotNull;
 
-/** PM's borderless field keeps its full 97-pixel hit area and four-pixel horizontal text padding. */
+/** Borderless rate field with a matching hit/clip area and four-pixel horizontal text padding. */
 final class HatchRateField extends GuiTextField {
-    private final int left, top;
+    private final int left, top, areaWidth;
     private int selectionAnchor;
     private long lastClick;
     private int blink;
     private final FontRenderer font;
     private final GuiClip clip = new GuiClip();
 
-    HatchRateField(int id, FontRenderer font, int left, int top) {
-        super(id, font, left + 4, top, 89, 10);
+    HatchRateField(int id, FontRenderer font, int left, int top, int areaWidth) {
+        super(id, font, left + 4, top, areaWidth - 8, 10);
         this.left = left;
         this.top = top;
+        this.areaWidth = areaWidth;
         this.font = font;
         setEnableBackgroundDrawing(false);
         setTextColor(0xffffff);
@@ -28,7 +29,7 @@ final class HatchRateField extends GuiTextField {
     }
 
     @Override public boolean mouseClicked(int mouseX, int mouseY, int button) {
-        boolean inside = mouseX >= left && mouseX < left + 97 && mouseY >= top && mouseY < top + 10;
+        boolean inside = mouseX >= left && mouseX < left + areaWidth && mouseY >= top && mouseY < top + 10;
         setFocused(inside);
         if (!inside) return false;
         if (button == 1) setText("");
@@ -113,7 +114,7 @@ final class HatchRateField extends GuiTextField {
 
     @Override public void drawTextBox() {
         if (!getVisible()) return;
-        clip.draw(left + 1, top + 1, 95, 8, () -> {
+        clip.draw(left + 1, top + 1, areaWidth - 2, 8, () -> {
             String text = getText();
             float startX = left + 4 - font.getStringWidth(text.substring(0, lineScrollOffset));
             int y = top + Math.round((10 - font.FONT_HEIGHT) / 2f);

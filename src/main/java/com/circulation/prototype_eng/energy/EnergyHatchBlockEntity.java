@@ -12,16 +12,17 @@ import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.energy.CapabilityEnergy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Objects;
-
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.block.EnergyHatchBlock;
-
-/** PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions. */
+import com.circulation.prototype_eng.api.storage.StorageContext;
+import java.util.List;
+/**
+ * PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions.
+ */
 public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGuiHost {
     private static final VarHandle STORAGE_DIRTY;
 
@@ -39,6 +40,8 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     private boolean pendingConfiguration;
     private HatchMode mode;
     private EnergyBuffer buffer;
+    private EnergyBuffer outputBuffer;
+    private List<StorageContext> contexts;
     private ForgeEnergyPort port;
     private long maxInputRate;
     private long maxOutputRate;
@@ -67,17 +70,19 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         }
     }
 
-    /** Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative. */
+    /**
+     * Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative.
+     */
     protected void initializeConfiguration(HatchMode mode, HatchTier tier) {
         if (!pendingConfiguration) {
             return;
         }
-        buffer.invalidate();
+        invalidateStorage();
         this.mode = Objects.requireNonNull(mode);
         this.tier = Objects.requireNonNull(tier);
         createStorage();
         if (isInvalid()) {
-            buffer.invalidate();
+            invalidateStorage();
         }
         pendingConfiguration = false;
     }
@@ -93,10 +98,12 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     }
 
     private void createStorage() {
-        // Physical directions are enforced by capability routing, not by disabling the
-        // reverse machine operation on the shared balance as PM's backend did.
         buffer = new EnergyBuffer(HatchConfig.energyCapacity(tier), effectiveInputRate(), effectiveOutputRate(), this::requestStorageSave);
-        port = new ForgeEnergyPort(buffer, mode);
+        outputBuffer = mode == HatchMode.MIXED
+            ? new EnergyBuffer(HatchConfig.energyCapacity(tier), effectiveInputRate(), effectiveOutputRate(), this::requestStorageSave)
+            : mode == HatchMode.OUTPUT ? buffer : null;
+        contexts = mode == HatchMode.MIXED ? List.of(buffer.context(), outputBuffer.context()) : List.of(buffer.context());
+        port = new ForgeEnergyPort(inputStorage(), outputStorage());
     }
 
     private void requestStorageSave() {
@@ -115,7 +122,39 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         }
     }
 
-    public EnergyBuffer storage() { return buffer; }
+    /** Compatibility access to the input balance, or the sole output balance on output hatches. */
+    @Override
+    public EnergyBuffer storage() {
+        return buffer;
+    }
+
+    @Override
+    public @Nullable EnergyBuffer inputStorage() {
+        return mode.hasInput() ? buffer : null;
+    }
+
+    @Override
+    public @Nullable EnergyBuffer outputStorage() {
+        return outputBuffer;
+    }
+
+    private void invalidateStorage() {
+        locked(() -> {
+            buffer.invalidate();
+            if (outputBuffer != null && outputBuffer != buffer) outputBuffer.invalidate();
+        });
+    }
+
+    private void locked(Runnable action) {
+        // The input context is constructed before the independent output context.
+        StorageContext.lockAll(contexts);
+        try {
+            action.run();
+        } finally {
+            for (int i = contexts.size() - 1; i >= 0; i--) contexts.get(i).unlockDeferred();
+            for (var context : contexts) context.publishChanges();
+        }
+    }
     public HatchTier tier() { return tier; }
     public HatchMode mode() { return mode; }
     public long maxInputRate() { return maxInputRate; }
@@ -137,7 +176,11 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     public void setAutoOutput(boolean value) { autoOutput = value; settingsChanged(); }
 
     private void updateTransferLimits() {
-        buffer.setTransferLimits(effectiveInputRate(), effectiveOutputRate());
+        locked(() -> {
+            buffer.setTransferLimits(effectiveInputRate(), effectiveOutputRate());
+            if (outputBuffer != null && outputBuffer != buffer)
+                outputBuffer.setTransferLimits(effectiveInputRate(), effectiveOutputRate());
+        });
     }
 
     private void settingsChanged() {
@@ -157,9 +200,15 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @Nullable
     public <T> T getCapability(@NotNull Capability<T> capability, @Nullable EnumFacing side) {
         if (!isInvalid()) {
-            if (capability == HatchCapabilities.ENERGY_INPUT && mode.hasInput()) { return HatchCapabilities.ENERGY_INPUT.cast(buffer); }
-            if (capability == HatchCapabilities.ENERGY_OUTPUT && mode.hasOutput()) { return HatchCapabilities.ENERGY_OUTPUT.cast(buffer); }
-            if (capability == CapabilityEnergy.ENERGY) { return CapabilityEnergy.ENERGY.cast(port); }
+            if (capability == HatchCapabilities.ENERGY_INPUT && mode.hasInput()) {
+                return HatchCapabilities.ENERGY_INPUT.cast(buffer);
+            }
+            if (capability == HatchCapabilities.ENERGY_OUTPUT && mode.hasOutput()) {
+                return HatchCapabilities.ENERGY_OUTPUT.cast(outputBuffer);
+            }
+            if (capability == CapabilityEnergy.ENERGY) {
+                return CapabilityEnergy.ENERGY.cast(port);
+            }
         }
         return super.getCapability(capability, side);
     }
@@ -169,7 +218,17 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         super.saveAdditional(tag);
         tag.setInteger("Tier", tier.level());
         tag.setString("Mode", mode.name());
-        tag.setLong("Energy", buffer.savedEnergy());
+        locked(() -> {
+            if (mode == HatchMode.MIXED) {
+                tag.setLong("InputEnergy", buffer.savedEnergy());
+                tag.setLong("OutputEnergy", outputBuffer.savedEnergy());
+                tag.removeTag("Energy");
+            } else {
+                tag.setLong("Energy", buffer.savedEnergy());
+                tag.removeTag("InputEnergy");
+                tag.removeTag("OutputEnergy");
+            }
+        });
         tag.setLong("MaxInRate", maxInputRate);
         tag.setLong("MaxOutRate", maxOutputRate);
         tag.setBoolean("AutoInput", autoInput);
@@ -180,7 +239,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     public void loadTag(@NotNull NBTTagCompound tag) {
         pendingConfiguration = false;
         super.loadTag(tag);
-        buffer.invalidate();
+        invalidateStorage();
         tier = tag.hasKey("Tier", 3) ? HatchTier.of(tag.getInteger("Tier")) : tier;
         mode = tag.hasKey("Mode", 8) ? HatchMode.valueOf(tag.getString("Mode")) : mode;
         maxInputRate = Math.max(0, tag.getLong("MaxInRate"));
@@ -189,22 +248,27 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         autoOutput = tag.getBoolean("AutoOutput");
         createStorage();
         // PM reloads the current tier config, then clamps the saved balance if capacity was reduced.
-        buffer.restore(Math.clamp(tag.getLong("Energy"), 0, buffer.capacity()));
+        // Legacy mixed hatches had one Energy value. Keep it only on the input side, never duplicate it.
+        long saved = mode == HatchMode.MIXED && tag.hasKey("InputEnergy", 4)
+            ? tag.getLong("InputEnergy") : tag.getLong("Energy");
+        buffer.restore(Math.clamp(saved, 0, buffer.capacity()));
+        if (mode == HatchMode.MIXED)
+            outputBuffer.restore(Math.clamp(tag.getLong("OutputEnergy"), 0, outputBuffer.capacity()));
         if (isInvalid()) {
-            buffer.invalidate();
+            invalidateStorage();
         }
     }
 
     @Override
     protected void setRemoved() {
-        buffer.invalidate();
+        invalidateStorage();
         flushStorageChanges();
         super.setRemoved();
     }
 
     @Override
     protected void onChunkUnloaded() {
-        buffer.invalidate();
+        invalidateStorage();
         flushStorageChanges();
         super.onChunkUnloaded();
     }
@@ -214,8 +278,11 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         super.clearRemoved();
         if (!buffer.isValid()) {
             long saved = buffer.savedEnergy();
+            long savedOutput = outputBuffer == null ? 0 : outputBuffer.savedEnergy();
             createStorage();
             buffer.restore(Math.clamp(saved, 0, buffer.capacity()));
+            if (mode == HatchMode.MIXED)
+                outputBuffer.restore(Math.clamp(savedOutput, 0, outputBuffer.capacity()));
         }
     }
     @Override public @NotNull NBTTagCompound getUpdateTag() { return writeToNBT(new NBTTagCompound()); }

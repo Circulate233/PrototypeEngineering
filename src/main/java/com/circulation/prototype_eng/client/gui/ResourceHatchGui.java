@@ -165,7 +165,9 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
             if (AEKeyRendering.get(key.getType()) != null) lines.addAll(AEKeyRendering.getTooltip(key));
             else lines.add(key.getDisplayName());
             lines.add(new TextComponentString(""));
-            lines.add(GuiText.ResourceTypes.text(container.usedTypes(container.isInputSlot(slot.slotNumber)),
+            if (container.mode() == HatchMode.MIXED)
+                lines.add((container.isInputSlot(slot.slotNumber) ? GuiText.Input : GuiText.Output).text());
+            lines.add(GuiText.ResourceTypes.text(container.usedSlots(container.isInputSlot(slot.slotNumber)),
                 container.typeSlots(container.isInputSlot(slot.slotNumber))));
             lines.add(GuiText.ResourceStored.text(key.formatAmount(resource.getGenericDisplayAmount(), AmountFormat.FULL),
                 key.formatAmount(container.capacity(slot.slotNumber, key), AmountFormat.FULL)));

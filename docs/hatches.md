@@ -18,11 +18,17 @@
 
 核心读写重入同一个 context 锁，变更回调在外层释放后发布。`ResourceHatchBlockEntity` 的回调只通过共享 VarHandle 标记待保存，服务端 tick 及失效/卸载回调调用 `markDirty()`，不让 worker 直接操作世界状态。
 
+## 当前仓室 GUI（2026-11-09）
+
+按最新实机反馈修正：仓室没有升级槽，所有材料/能源仓相关装饰已从PNG擦除；能源输入/输出仓电池右移并扩展左侧字段。材料交互仓修正Lv3/4输出区偏移，按实际主体宽度居中；tooltip显示所属方向、占用槽数、当前量/容量和AE资源提示。后文早期Java界面176×214、流体清空/限额等布局说明不代表当前界面；当前以[GUI修复记录](gui-parity.md)为准。
+
 ## 独立 FE
 
 `api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量契约。外部实现可以只提供需要的职责。`EnergyBuffer` 用 long 余额与输入/输出 holds 保存数量，在共享 StorageContext 锁下访问；模拟不修改余额或通知。EnergySnapshot 包含 context、revision、未预留余额/空间及 maxReceive/maxExtract；reserveExtractEnergy/reserveReceiveEnergy 取得精确令牌，与资源和业务需求共同应用、完成或补偿。真实 planned lane 和生命周期集成仍须后续完成。
 
-当前三方向适配使用 `ForgeEnergyPort(storage, mode)`：输入仓允许外部充入，输出仓允许外部抽取，混合仓允许两者；机器使用对应的 EnergyInput/EnergyOutput 职责访问同一余额。适配器不再额外持有读取 TileEntity 普通字段的速率 supplier，速率和预留限制由同一核心约束；普通转移不分配能量快照。Forge 的 int 查询值饱和到 Integer.MAX_VALUE，内部余额仍为 long，传输返回值表示本次实际数量。
+默认能源输入仓允许外部充入、机器消耗；输出仓允许机器产出、外部抽取。能源交互仓按用户最新要求分别创建输入/输出EnergyBuffer与StorageContext，每侧沿用该阶容量和原操作限额；机器的EnergyInput/EnergyOutput capability分别返回对应余额，不能相互借用。ForgeEnergyPort(input, output)接收只访问输入，抽取只访问输出；Forge单表查询提供两侧信息性汇总并饱和到Integer.MAX_VALUE，操作仍返回实际数量。旧ForgeEnergyPort(storage, mode)构造保留供明确共享单缓存的外部适配使用。
+
+能源GUI宿主增加inputStorage()/outputStorage()，默认方法兼容既有单storage外部实现；内置实体覆写为真实独立侧。原storage()在交互仓指输入侧，单输出仓指其唯一输出侧。GuiSync分别传输输入/输出电量和容量；两根电池、两行数量、两个tooltip各读自己的侧。NBT双侧写InputEnergy/OutputEnergy，并在有序双锁内保存/失效；旧单Energy仅迁入输入，不复制。
 
 能源实体已接入模式、等级、输入/输出限额及自动标志，并写入 NBT 的 `Mode`、`Tier`、`MaxInRate`、`MaxOutRate`、`AutoInput`、`AutoOutput`。每次操作限额同时约束机器与 Forge，修改后会动态更新机器访问视图；设置为零恢复配置默认限额。PM 的 EnergyStorageImpl 也按每次操作限制 maxReceive/maxExtract，旧配置的 FE/t 标签不构成累计 tick 预算。PM 自动标志尚未找到邻居 tick 传输调用链；本项目保留标志的设置/保存，不据此宣称已实现邻居自动传输。
 

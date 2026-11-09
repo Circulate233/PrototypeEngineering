@@ -69,13 +69,13 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         int level = tile.tier().level();
         visibleRows = level <= 2 ? 3 : level <= 4 ? 4 : 7;
         columns = mixed ? (level <= 4 ? 4 : 5) : (level <= 2 ? 8 : 9);
-        guiWidth = mixed ? (level <= 4 ? 251 : 245) : (level <= 2 ? 225 : level <= 4 ? 243 : 213);
+        guiWidth = mixed ? (level <= 2 ? 204 : level <= 4 ? 209 : 245) : (level <= 2 ? 195 : 213);
         guiHeight = level <= 2 ? 168 : level <= 4 ? 186 : mixed ? 240 : 239;
         textureWidth = mixed && level >= 5 ? 304 : 256;
-        resourceTop = mixed ? 24 : 25;
+        resourceTop = 24;
         rows = (Math.max(inputSlots, resourceSlots - inputSlots) + columns - 1) / columns;
         playerTop = guiHeight - 84;
-        outputLeft = mixed ? (level <= 2 ? 114 : level <= 4 ? 123 : 137) : 26;
+        outputLeft = mixed ? (level <= 2 ? 114 : level <= 4 ? 119 : 137) : 26;
         addBuffer(input, true, 26);
         addBuffer(output, false, outputLeft);
         addPlayerInventorySlots(27, playerTop);
@@ -187,6 +187,8 @@ public final class ResourceHatchContainer extends AEBaseContainer {
 
     public int typeSlots(boolean input) { return input ? inputSlots : resourceSlots - inputSlots; }
 
+    /** Retained for callers interested in distinct keys, rather than occupied slots. */
+    @SuppressWarnings("unused")
     public int usedTypes(boolean input) {
         var keys = new ObjectOpenHashSet<AEKey>();
         int start = input ? 0 : inputSlots, end = input ? inputSlots : resourceSlots;
@@ -195,6 +197,15 @@ public final class ResourceHatchContainer extends AEBaseContainer {
             if (key != null) keys.add(key);
         }
         return keys.size();
+    }
+
+    public int usedSlots(boolean input) {
+        int used = 0;
+        int start = input ? 0 : inputSlots, end = input ? inputSlots : resourceSlots;
+        for (int i = start; i < end; i++) {
+            if (((AppEngSlot) inventorySlots.get(i)).getGenericDisplayKey() != null) used++;
+        }
+        return used;
     }
 
     public long capacity(int index, AEKey key) { return buffer(index).getMaxAmount(key); }
