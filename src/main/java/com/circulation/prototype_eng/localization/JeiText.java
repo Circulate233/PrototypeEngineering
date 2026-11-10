@@ -9,7 +9,7 @@ public enum JeiText implements LocalizationEnum {
     Weighted, Alternative, Fuzzy, Dynamic, NoCandidates, CheckpointScaled, CheckpointUnscaled,
     Modifiers, Attribute, AttributeAdded, AttributeRemoved, EnergyInput, EnergyOutput, EnergyInputPerTick, EnergyOutputPerTick, VoidExcess, CustomRequirement, Runtime,
     UnsupportedIngredient, QueryIdentityConflict, MissingRenderer, Page, Previous, Next, More, Machines,
-    PatternNoResources, PatternAmountOverflow, PatternCapacity;
+    PatternNoResources, PatternAmountOverflow, PatternCapacity, PatternStructureUnavailable, PatternStructureName;
 
     private final String translationKey = "jei." + Tags.MOD_ID + "." + name();
 

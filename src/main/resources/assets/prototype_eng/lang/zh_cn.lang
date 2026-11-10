@@ -529,3 +529,5 @@ structure_tool.prototype_eng.BuilderUsageAir=右键空气打开构造界面。
 structure_tool.prototype_eng.BuilderUsageProjection=放置的结构投影持续 30 秒。
 structure_tool.prototype_eng.BuilderUsageProjectionLayer=手持构造器时，按住 Shift 并滚动鼠标滚轮，循环切换投影片层与完整投影。
 structure_tool.prototype_eng.ScannerUsageExport=选择两个角点后，打开界面调整范围并导出结构。
+jei.prototype_eng.PatternStructureUnavailable=请等待完整结构预览及所选材料就绪后再导入样板。
+jei.prototype_eng.PatternStructureName=%s-结构

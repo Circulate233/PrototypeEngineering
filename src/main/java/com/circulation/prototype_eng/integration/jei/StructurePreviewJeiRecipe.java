@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.integration.jei;
 
 import ae2.api.orientation.BlockOrientation;
+import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -16,6 +19,8 @@ import net.minecraft.item.ItemStack;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import org.jetbrains.annotations.Nullable;
 
 /** One machine's native controller R output. Each wrapper has independent camera, choices and owned meshes. */
 @ParametersAreNonnullByDefault
@@ -63,6 +68,22 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         if (panel != null) panel.close();
         panel = null;
     }
+
+    @Nullable Pattern patternRecipe() {
+        if (panel == null || panel.closed() || view == null || view.model() == null) return null;
+        var scene = panel.scene();
+        var materials = scene.materials();
+        if (materials == null) return null;
+        var output = controllers.stream().filter(stack -> !stack.isEmpty()).findFirst().orElse(ItemStack.EMPTY).copy();
+        if (output.isEmpty()) return null;
+        output.setCount(1);
+        var key = AEItemKey.of(output);
+        if (key == null) return null;
+        var recipe = new JeiPatternRecipe(materials.stream().map(List::of).toList(), List.of(List.of(new GenericStack(key, 1))));
+        return new Pattern(recipe, () -> panel != null && !panel.closed() && panel.scene() == scene && scene.materialsCurrent(materials));
+    }
+
+    record Pattern(JeiPatternRecipe recipe, BooleanSupplier current) { }
 
     @Override
     public void close() {

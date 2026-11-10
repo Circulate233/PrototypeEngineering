@@ -529,3 +529,5 @@ structure_tool.prototype_eng.BuilderUsageAir=Right-click air to open the builder
 structure_tool.prototype_eng.BuilderUsageProjection=The placed structure projection lasts 30 seconds.
 structure_tool.prototype_eng.BuilderUsageProjectionLayer=Hold the builder and use Shift + mouse wheel to cycle projection layers and the complete projection.
 structure_tool.prototype_eng.ScannerUsageExport=Select two corners, then open the GUI to adjust the range and export the structure.
+jei.prototype_eng.PatternStructureUnavailable=Wait for the complete structure preview and its selected materials to become available before importing.
+jei.prototype_eng.PatternStructureName=%s-Structure

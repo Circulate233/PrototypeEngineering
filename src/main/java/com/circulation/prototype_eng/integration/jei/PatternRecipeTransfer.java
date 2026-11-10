@@ -101,13 +101,27 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
     public @Nullable IRecipeTransferError transferRecipe(@NotNull C container, @NotNull IRecipeLayout layout,
                                                          @NotNull EntityPlayer player, boolean maxTransfer, boolean doTransfer) {
         // AE2S already supplies this accessor; no new mixin or global "last drawn recipe" state is needed.
-        if (!(layout instanceof AccessorRecipeLayout accessor) || !(accessor.ae2$getRecipeWrapper() instanceof RecipePoolJeiRecipe recipe)
-            || layout.getRecipeCategory() != recipe.page() || !recipe.isCurrent()) return errors.createInternalError();
+        if (!(layout instanceof AccessorRecipeLayout accessor)) return errors.createInternalError();
+        var category = layout.getRecipeCategory();
         final JeiPatternRecipe source;
+        final BooleanSupplier current;
         try {
-            source = recipe.patternRecipe();
+            var wrapper = accessor.ae2$getRecipeWrapper();
+            if (wrapper instanceof RecipePoolJeiRecipe recipe && category == recipe.page()) {
+                if (!recipe.isCurrent()) return errors.createInternalError();
+                source = recipe.patternRecipe();
+                current = recipe::isCurrent;
+            } else if (wrapper instanceof StructurePreviewJeiRecipe recipe && category instanceof StructurePreviewJeiCategory) {
+                var snapshot = recipe.patternRecipe();
+                if (snapshot == null) return errors.createUserErrorWithTooltip(JeiText.PatternStructureUnavailable.getLocal());
+                source = snapshot.recipe();
+                current = snapshot.current();
+            } else return errors.createInternalError();
         } catch (ArithmeticException overflow) {
             return errors.createUserErrorWithTooltip(JeiText.PatternAmountOverflow.getLocal());
+        } catch (RuntimeException failure) {
+            AELog.error(failure, "Could not prepare pattern resources for " + category.getUid());
+            return errors.createInternalError();
         }
         if (source == null || source.inputs().isEmpty() || source.outputs().isEmpty()) {
             return errors.createUserErrorWithTooltip(JeiText.PatternNoResources.getLocal());
@@ -119,20 +133,20 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         if (inputs == null || outputs == null)
             return errors.createUserErrorWithTooltip(JeiText.PatternAmountOverflow.getLocal());
         if (!fits(inputs, outputs, container)) return capacityError(inputs, outputs, container);
-        if (!recipe.isCurrent()) return errors.createInternalError();
+        if (!current.getAsBoolean()) return errors.createInternalError();
         if (!doTransfer) return null;
 
-        var event = new PatternRecipeTransferEvent(container, EncodingMode.PROCESSING, recipe.page().getUid(),
-            recipe.page().getTitle(), null, inputs, outputs);
+        var event = new PatternRecipeTransferEvent(container, EncodingMode.PROCESSING, category.getUid(),
+            category.getTitle(), null, inputs, outputs);
         try {
-            var outcome = dispatch(recipe::isCurrent, () -> MinecraftForge.EVENT_BUS.post(event));
+            var outcome = dispatch(current, () -> MinecraftForge.EVENT_BUS.post(event));
             if (outcome == EventOutcome.CANCELLED) return null;
             if (outcome == EventOutcome.STALE) return errors.createInternalError();
         } catch (RuntimeException failure) {
-            AELog.error(failure, "Pattern recipe transfer listener failed for " + recipe.page().getUid());
+            AELog.error(failure, "Pattern recipe transfer listener failed for " + category.getUid());
             return errors.createInternalError();
         }
-        if (!recipe.isCurrent()) return errors.createInternalError();
+        if (!current.getAsBoolean()) return errors.createInternalError();
         inputs = PatternTransferPlan.packedSlots(inputs);
         outputs = PatternTransferPlan.packedSlots(outputs);
         if (inputs.isEmpty() || outputs.isEmpty())
@@ -142,8 +156,8 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         var inputPackets = packets(container, container.getProcessingInputSlots(), inputs);
         var outputPackets = packets(container, container.getProcessingOutputSlots(), outputs);
         var candidateTags = PatternTransferPlan.serializeCandidateKeyTags(inputs);
-        var categoryUid = recipe.page().getUid();
-        if (!recipe.isCurrent()) return errors.createInternalError();
+        var categoryUid = category.getUid();
+        if (!current.getAsBoolean()) return errors.createInternalError();
         container.setMode(EncodingMode.PROCESSING);
         for (var packet : inputPackets) InitNetwork.sendToServer(packet);
         for (var packet : outputPackets) InitNetwork.sendToServer(packet);

@@ -1,11 +1,19 @@
 package com.circulation.prototype_eng.client.preview;
 
+import ae2.api.stacks.AEFluidKey;
+import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
+import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
+import net.minecraft.init.Blocks;
 import com.circulation.prototype_eng.block.MachineControllerBlock;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
@@ -33,6 +41,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
+import net.minecraftforge.fluids.FluidRegistry;
+import net.minecraftforge.fluids.Fluid;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -67,6 +77,8 @@ public final class StructurePreviewScene implements AutoCloseable {
     private StructurePickWorld pickWorld;
     private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectOpenHashMap<>();
     private final Map<StructureDisplay, BlockPos> representativePositions = new Object2ObjectOpenHashMap<>();
+    private boolean materialsPrepared;
+    private @Nullable List<GenericStack> materialStacks;
     private double pointerX, pointerY;
     private boolean pointerEnabled;
     private StructurePreviewView.Click hovered;
@@ -134,6 +146,8 @@ public final class StructurePreviewScene implements AutoCloseable {
         pickWorld = null;
         itemChoices.clear();
         representativePositions.clear();
+        materialsPrepared = false;
+        materialStacks = null;
         hovered = null;
         token = null;
         boundaryCells.clear();
@@ -457,6 +471,87 @@ public final class StructurePreviewScene implements AutoCloseable {
     }
 
     private record ItemChoice(StructureDisplay display, int option, BlockPos position) { }
+
+    /** Complete selected construction resources; the layer, scan and visibility filters are presentation only. */
+    public @Nullable List<GenericStack> materials() {
+        var mc = Minecraft.getMinecraft();
+        var model = view.model();
+        var currentAccess = access;
+        var expected = token;
+        if (closed || model == null || mc.player == null || mc.world == null || world != mc.world
+            || expected != view.token() || currentAccess == null || !currentAccess.ready()) return null;
+        if (materialsPrepared) return materialStacks;
+        materialsPrepared = true;
+        var quantities = new Object2LongLinkedOpenHashMap<MaterialChoice>();
+        var positions = new Object2ObjectOpenHashMap<MaterialChoice, BlockPos>();
+        for (var cell : model.cells()) {
+            if (cell.position().equals(BlockPos.ORIGIN)) continue;
+            var display = cell.display();
+            if (display == null || !display.complete()) return null;
+            int option = model.settings().option(cell);
+            if (model.settings().explicitOption(cell) == null) {
+                var represented = currentAccess.represented(cell.position());
+                option = -1;
+                for (int index = 0; index < display.options().size(); index++) {
+                    var candidate = PreviewBlockStates.selected(model, cell, index);
+                    if (candidate != null && candidate.equals(represented)) {
+                        option = index;
+                        break;
+                    }
+                }
+                if (option < 0) return null;
+            }
+            var choice = new MaterialChoice(display, option);
+            quantities.addTo(choice, 1);
+            positions.putIfAbsent(choice, cell.position());
+        }
+        var root = model.generation().entries().get(model.structureId());
+        var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
+        AEKey2LongMap totals = new AEKey2LongMap.LinkdOpenHashMap();
+        // The native pick context contains every layer, even while the GUI renders only one of them.
+        try (var picks = new StructurePickWorld(mc.world, position -> {
+            var state = currentAccess.represented(position);
+            return state == null ? Blocks.AIR.getDefaultState() : state;
+        }, position -> {
+            var cell = view.at(position);
+            return cell == null || cell.display() == null ? null : cell.display().tileNbt();
+        })) {
+            for (var entry : quantities.object2LongEntrySet()) {
+                var choice = entry.getKey();
+                var state = PreviewBlockStates.resolve(choice.display.options().get(choice.option), rotation);
+                if (state == null) return null;
+                if (state.getMaterial() == Material.AIR) continue;
+                var fluid = FluidRegistry.lookupFluidForBlock(state.getBlock());
+                if (fluid == null && state.getMaterial() == Material.WATER) fluid = FluidRegistry.WATER;
+                if (fluid == null && state.getMaterial() == Material.LAVA) fluid = FluidRegistry.LAVA;
+                AEKey key;
+                long amount = entry.getLongValue();
+                if (fluid != null) {
+                    key = AEFluidKey.of(fluid);
+                    amount = Math.multiplyExact(amount, Fluid.BUCKET_VOLUME);
+                } else {
+                    var stack = picks.pick(state, positions.get(choice), mc.player, choice.display.tileNbt());
+                    key = AEItemKey.of(stack);
+                    if (key == null) return null;
+                }
+                if (totals.getLong(key) > Long.MAX_VALUE - amount) throw new ArithmeticException("Structure material amount overflow");
+                totals.addTo(key, amount);
+            }
+        }
+        if (closed || view.model() != model || view.token() != expected || access != currentAccess || world != mc.world) return null;
+        var result = new ObjectArrayList<GenericStack>(totals.size());
+        totals.forEachEntry((key, amount) -> result.add(new GenericStack(key, amount)));
+        materialStacks = List.copyOf(result);
+        return materialStacks;
+    }
+
+    /** A transfer snapshot is revoked by choices, catalog/world changes, resource reload or panel closure. */
+    public boolean materialsCurrent(List<GenericStack> expected) {
+        return !closed && expected == materialStacks && token == view.token() && view.model() != null
+            && world == Minecraft.getMinecraft().world;
+    }
+
+    private record MaterialChoice(StructureDisplay display, int option) { }
 
     /** Finish a read-only scanner drag without choosing a block. */
     public void releaseWithoutPicking(int button) {

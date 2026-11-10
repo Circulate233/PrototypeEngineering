@@ -384,6 +384,10 @@ public class PrototypeJeiPlugin implements IModPlugin {
     }
 
     private static void registerStructures(IModRegistry registration) {
+        var transfer = registration.getRecipeTransferRegistry();
+        var helper = registration.getJeiHelpers().recipeTransferHandlerHelper();
+        transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPatternEncodingTerm.class, helper), StructurePreviewJeiCategory.UID);
+        transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPEATerm.class, helper), StructurePreviewJeiCategory.UID);
         var structures = new ObjectArrayList<StructurePreviewJeiRecipe>();
         for (var machine : MachineTypeRegistry.INSTANCE.types()) {
             var controllers = new ObjectArrayList<ItemStack>();
