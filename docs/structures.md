@@ -1,5 +1,15 @@
 # 结构定义、快照与匹配
 
+## 2026-11-10：原生物品与准确预览选择
+
+预览代表物品不再使用 `ItemStack(block, 1, stateMeta)`。完整properties解析及朝向旋转后的state，沿公共StructurePickWorld调用Block.getPickBlock；拥有独立state/TE上下文及作者显式tile NBT，不临时替换真实世界方块，也不扫描meta猜物品。预览图标、构建器树名称/图标和服务器实际用料共用该规则，空结果保持未就绪，不以错误物品代替。
+
+预览面板以本地只读展示Slot调用实际GuiContainer.drawSlot，AE宿主的原生覆写继续生效；HEI普通GuiScreen使用正常RenderItem及其overlay。物品tooltip直接走宿主renderToolTip和Forge物品提示事件，不再拼接需求ID、内部key等单独提示；按钮文本提示仍保留。候选及材料列表分别滚动并裁剪，列表上滚轮不缩放场景，当前代表项不随候选列表滚走。
+
+修正相机逆变换的pitch纵轴符号，使射线与绘制矩阵一致。按原准备预算建立16格section粗筛，再对射线相关格执行原生collisionRayTrace，取最近非负实际命中；不按登记顺序取格，不在每帧对所有方块调用原生几何钩子。悬停与点击共用同一命中逻辑；原生selected bounding box以较粗亮线绘制，悬停与已选均关闭深度测试/写入，可穿透看清。点击另一格直接替换选择，重复点击同格保留，空画布才清除；原owner/token/代次及cell身份校验保留。
+
+这批依据源码与本机MCP检查、必要构建完成；按用户最新指示撤去可静态判断的新增测试。原生GL、HEI提示及模组getPickBlock实际调用仍待用户复验；现有Mixin新增方法需要重启客户端，不能仅资源重载。
+
 ## 2026-11-10：结构声明与预览同源
 
 `StructurePredicates.blocks/state/stateWithNbt` 保存具体匹配事实，组合谓词从同一事实树派生只读 `StructureDisplay`；自定义 query 可使用带 display 的 `test` 重载。未知自定义谓词也可实现 `display()`，但库不会执行 condition/matches 或反射推断。`StructurePattern.displays()` 惰性缓存，Template/Slice 的 `MachineStructure.displays()` 直接沿用；shape-only `new StructureDefinition(shape)` 即可取得表示，逐格显式 displays 覆盖仍优先。几何规划和预算变换不提前求展示。

@@ -30,6 +30,8 @@ PM 原源码的 expanded、substructure、allowMirror 等字段没有对应的�
 
 ## 机械构建器
 
+2026-11-10 实际材料解析与预览统一使用原生创造中键的Block.getPickBlock：完整state/properties先正确旋转，再在独立代表上下文取得真实物品及其meta/NBT。树的名称/图标不再从state meta制造物品，服务器payment也不再仅用damageDropped推断；支付按真实item/meta/tag确认。非物品的既有1000mB流体付款路径保留，未扩大自动写入TileNBT的能力。预览候选可滚动，悬停和已选线框与最近实际射线命中一致；真实材料扣取、放置和原生显示仍需游戏复验。
+
 2026-11-10 结构显示改为从同一匹配声明派生后，构建计划直接消费准确Node的intrinsic displays，显式Entry覆盖继续优先。材料键独立编码完整properties和浅NBT，放置按meta恢复properties后再旋转；未决complete=false、未知方块和无效properties跳过并提示未知要求，不能把partial代表当成确定可建造块。全部新候选均未决时保持IDLE；已知部分仍沿原任务处理。原有显式完整NBT展示继续只放blockstate，不新增TileNBT写入或把任务完成当成结构匹配成功。
 
 注册名 `prototype_eng:build_instrument`，右键控制器绑定，对空气右键打开。保留原绑定 NBT、状态、进度和材料选择；未成型时建造，已成型时拆卸，按钮支持暂停/恢复。服务端每玩家一项任务，每 tick 最多八次尝试；普通方块先于流体/重力方块，拆卸倒序且保留控制器。

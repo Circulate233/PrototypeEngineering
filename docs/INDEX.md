@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-10 结构预览截图反馈已修：预览/构建树/实际用料统一原生getPickBlock；本地原生Slot及正常物品tooltip；候选/材料各自滚动；悬停和已选亮线框无深度遮挡；相机pitch射线纠正，最近实际命中直接切换选择。17Java本机MCP全级零/完整读回、必要构建与MCP build通过。按最新指示撤去全部新增静态测试，仅更新既有选择预期；细节与真实验证轨迹见[实施进度](implementation-status.md)。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-native-items/`，源码已本地提交 `a1aa5f1`，未推送。需重启客户端复验新增Mixin桥，未自行启动游戏。
+
 - 2026-11-10 仓室破坏掉落已按新要求修复：输入/输出/交互资源仓沿AE附加掉落路径弹出材料；大数量及非物品资源用AE资源包。仓室物品只留配置与空库存，避免重新放置复制；活动事务保留到准确提交/补偿后在服务器线程掉出最终余额。专项49/7、完整1898 tests/252 suites全零，7Java本机MCP全级零、完整读回与MCP build通过；背景字节/暂存保持。入口 [仓室](hatches.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-drops/`。源码已本地提交 `5f87ce7`，未推送、未启动游戏。
 
 - 2026-11-10 接续上一对话完成三项实机反馈的源码修复与验证：JEI 静态回退共享同代 descriptions/布局量测身份；具体 block/state 与结构匹配同源派生预览，不再要求示例另注册显示表；仓室 tooltip 仅客户端 owner 查询同步 actor，非 owner 保留完整物品配置或明确未就绪，数值格式器按线程隔离。入口 [JEI](jei.md)、[结构](structures.md)、[仓室](hatches.md)。
@@ -20,7 +22,7 @@
 
 ## 下一步
 
-- 新实机反馈优先：由用户重新启动客户端，复验资源仓三方向破坏/扳手拆卸材料掉落、资源包拾取及仓室重新放置空库存；同时复验示例配方、具体方块结构预览、机械构建器及退出世界。具体方块同源显示已修，不应再给示例补第二份显示注册。
+- 新实机反馈优先：由用户重启客户端，复验预览原生图标/tooltip、候选滚动、悬停/已选线框、最近命中切换和真实搭建用料；同时复验资源仓掉落/资源包拾取/重新放置空库存及退出世界。新增Mixin方法不能仅F3+T应用。具体方块同源显示已修，不应再给示例补第二份显示注册。
 
 1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
 2. 先复验仓室方块/物品在无 CTM、仅 CTM、CTM+Lumenized 下的颜色、透明覆盖及局部发光；未自行启动游戏。总体 Goal 暂停，恢复后再按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等 Java 前提，再接 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。
@@ -29,6 +31,7 @@
 
 ## 必须遵守
 
+- 可静态推断的公式、限位、getter/赋值不另增测试；优先源码核对、本机IDEA检查和必要构建，仅为静态不能确认的真实行为补必要测试。
 - 纯库 `prototype_eng` / `com.circulation.prototype_eng`；不添加正式机器、配方或玩法数值。先审查 PM/PN 的实际目的和实现，再复用/修正；保留未明确取消的效果及多线程能力。
 - Java 25；API按真实外部职责划分，不制造 XxxImpl 镜像。集合优先fastutil，AEKey数量用AEKey2LongMap，累加/扣减优先addTo，保留溢出及事务预检；必要原子字段优先共享VarHandle，不用非必要反射或异常控制流。
 - AEKey/AEKeyType负责身份，核心不用MEStorage；资源/FE仓保留十阶、三方向及公开扩展，混合仓两侧独立且各侧支持多类型，FE独立。
