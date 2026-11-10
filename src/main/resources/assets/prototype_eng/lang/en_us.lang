@@ -514,3 +514,10 @@ structure_tool.prototype_eng.OriginRestart=§b[PE]§r Set origin: %s,%s,%s (corn
 structure_tool.prototype_eng.CornerUpdated=§b[PE]§r Updated corner: %s,%s,%s (open GUI and click "Export")
 structure_tool.prototype_eng.Selection=§b[PE]§r Selection: min=%s,%s,%s max=%s,%s,%s size=%sx%sx%s blocks=%s
 structure_tool.prototype_eng.LargeSelection=§e[PE]§r Warning: large selection (blocks=%s); export may take time / lag the server.
+tooltip.prototype_eng.hatch.Slots=Slot count: %s
+tooltip.prototype_eng.hatch.ItemEquivalentCapacity=Slot capacity: %s
+tooltip.prototype_eng.hatch.UndeclaredCapacity=Not declared
+tooltip.prototype_eng.hatch.AwaitingConfiguration=Waiting for server hatch configuration
+tooltip.prototype_eng.hatch.EnergyCapacity=%s: %s FE
+tooltip.prototype_eng.hatch.EnergyOperationLimit=%s limit: %s FE per operation
+tooltip.prototype_eng.hatch.InvalidSavedData=Saved hatch data is invalid

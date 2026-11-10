@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng;
 
-import ae2.api.behaviors.GenericSlotCapacities;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.storage.HatchMode;
@@ -8,66 +7,159 @@ import com.circulation.prototype_eng.api.storage.HatchTier;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import net.minecraftforge.common.config.Configuration;
-
 import java.io.File;
-
-/** Tier defaults migrated directly from PM's item/fluid/energy hatch configurations. */
+import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
+import com.circulation.prototype_eng.api.storage.HatchConfiguration;
+import com.circulation.prototype_eng.api.storage.HatchConfigurationUpdates;
+import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
+import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+/** File defaults and explicit script targets are published as a single immutable generation. */
 public final class HatchConfig {
-    private static final int[] SLOTS = new int[10];
-    private static final int[] MIXED_SLOTS = new int[10];
-    private static final long[] ITEMS = new long[10];
-    private static final long[] FLUIDS = new long[10];
-    private static final long[] ENERGY = new long[10];
-    private static final long[] TRANSFER = new long[10];
-
-    static {
-        for (var tier : HatchTier.values()) {
-            int i = tier.ordinal();
-            SLOTS[i] = tier.slotsPerSide(HatchMode.INPUT);
-            MIXED_SLOTS[i] = tier.slotsPerSide(HatchMode.MIXED);
-            ITEMS[i] = tier.itemsPerSlot();
-            FLUIDS[i] = tier.fluidPerSlot();
-            ENERGY[i] = tier.energyCapacity();
-            TRANSFER[i] = tier.energyTransfer();
-        }
-    }
+    private static volatile State state = new State(0, defaults(), Map.of());
 
     private HatchConfig() {}
 
-    public static void load(File directory) {
-        var config = new Configuration(new File(directory, Tags.MOD_ID + "/hatches.cfg"));
-        config.load();
-        for (var tier : HatchTier.values()) {
-            int i = tier.ordinal();
-            String category = "tier" + tier.level();
-            SLOTS[i] = config.getInt("slots", category, tier.slotsPerSide(HatchMode.INPUT), 1, 81, "Input/output resource slots.");
-            MIXED_SLOTS[i] = config.getInt("mixedSlotsPerSide", category, tier.slotsPerSide(HatchMode.MIXED), 1, 81, "Independent slots on each mixed-hatch side.");
-            ITEMS[i] = positiveLong(config, category, "itemsPerSlot", tier.itemsPerSlot());
-            FLUIDS[i] = positiveLong(config, category, "fluidPerSlot", tier.fluidPerSlot());
-            ENERGY[i] = positiveLong(config, category, "energyCapacity", tier.energyCapacity());
-            TRANSFER[i] = positiveLong(config, category, "energyTransfer", tier.energyTransfer());
-        }
-        if (config.hasChanged()) { config.save(); }
+    private static List<Defaults> defaults() {
+        return Arrays.stream(HatchTier.values()).map(tier -> new Defaults(
+            tier.slotsPerSide(HatchMode.INPUT), tier.slotsPerSide(HatchMode.MIXED), tier.itemsPerSlot(),
+            tier.energyCapacity(), tier.energyTransfer())).toList();
     }
 
-    private static long positiveLong(Configuration config, String category, String name, long fallback) {
-        long value = Long.parseLong(config.getString(name, category, Long.toString(fallback), "Positive long value; restart required."));
-        if (value <= 0) { throw new IllegalArgumentException(category + "." + name + " must be positive"); }
+    public static synchronized void load(File directory) {
+        ServerHatchConfigurations.requireConfigurationOwner();
+        var config = new Configuration(new File(directory, Tags.MOD_ID + "/hatches.cfg"));
+        config.load();
+        var before = state;
+        var next = new ObjectArrayList<Defaults>();
+        for (var tier : HatchTier.values()) {
+            var old = before.defaults.get(tier.ordinal());
+            String category = "tier" + tier.level();
+            next.add(new Defaults(positiveInt(config, category, "slots", old.slots),
+                positiveInt(config, category, "mixedSlotsPerSide", old.mixedSlots),
+                itemEquivalent(config, category, old.items),
+                positiveLong(config, category, "energyCapacity", old.energy), positiveLong(config, category, "energyTransfer", old.transfer)));
+        }
+        if (config.hasChanged()) config.save();
+        // Script targets set before the Forge file load keep their explicit precedence.
+        state = new State(Math.incrementExact(before.revision), List.copyOf(next), before.overrides);
+        ServerHatchConfigurations.changed();
+    }
+
+    private static long itemEquivalent(Configuration config, String category, long fallback) {
+        long value = Long.parseLong(config.getString("itemsPerSlot", category, Long.toString(fallback),
+            "Per-slot item-equivalent capacity. Each type uses value * AEKeyType.getAmountPerUnit(); fluids use mB (1000 per bucket). Legacy fluidPerSlot is ignored for new targets; saved effective capacities remain unchanged."));
+        if (value <= 0) throw new IllegalArgumentException(category + ".itemsPerSlot must be positive");
         return value;
     }
 
-    public static int slotsPerSide(HatchTier tier, HatchMode mode) { return (mode == HatchMode.MIXED ? MIXED_SLOTS : SLOTS)[tier.ordinal()]; }
-    public static long energyCapacity(HatchTier tier) { return ENERGY[tier.ordinal()]; }
-    public static long energyTransfer(HatchTier tier) { return TRANSFER[tier.ordinal()]; }
+    private static int positiveInt(Configuration config, String category, String name, int fallback) {
+        int value = Integer.parseInt(config.getString(name, category, Integer.toString(fallback), "Positive logical slot count."));
+        if (value <= 0) throw new IllegalArgumentException(category + "." + name + " must be positive");
+        return value;
+    }
 
+    private static long positiveLong(Configuration config, String category, String name, long fallback) {
+        long value = Long.parseLong(config.getString(name, category, Long.toString(fallback), "Positive long value."));
+        if (value <= 0) throw new IllegalArgumentException(category + "." + name + " must be positive");
+        return value;
+    }
+
+    public static synchronized long installTargets(List<HatchConfigurationUpdates.Target> targets) {
+        ServerHatchConfigurations.requireConfigurationOwner();
+        var before = state;
+        var next = new Object2ObjectOpenHashMap<>(before.overrides);
+        for (var target : List.copyOf(targets))
+            next.put(Key.of(target.tier(), target.configuration()), target.configuration());
+        long revision = Math.incrementExact(before.revision);
+        state = new State(revision, before.defaults, Map.copyOf(next));
+        ServerHatchConfigurations.changed();
+        return revision;
+    }
+
+    public static boolean hasTarget(HatchTier tier, HatchConfiguration configuration) {
+        return state.overrides.containsKey(Key.of(tier, configuration));
+    }
+
+    public static long targetRevision() {
+        return state.revision;
+    }
+
+    public static synchronized HatchConfigurationSnapshot snapshot(UUID session) {
+        var profiles = new ObjectArrayList<HatchConfiguration>();
+        for (var tier : HatchTier.values())
+            for (var mode : HatchMode.values()) {
+                profiles.add(resourceConfiguration(tier, mode));
+                profiles.add(energyConfiguration(tier, mode));
+            }
+        return new HatchConfigurationSnapshot(session, state.revision, profiles);
+    }
+
+    public static ResourceHatchConfiguration resourceConfiguration(HatchTier tier, HatchMode mode) {
+        var current = state;
+        var override = current.overrides.get(new Key(tier, mode, false));
+        if (override instanceof ResourceHatchConfiguration resource) return resource;
+        var values = current.defaults.get(tier.ordinal());
+        var side = ResourceHatchConfiguration.Side.fromItemEquivalent(mode == HatchMode.MIXED ? values.mixedSlots : values.slots, values.items, AEKeyTypes.getAll());
+        return new ResourceHatchConfiguration(mode.hasInput() ? side : null, mode.hasOutput() ? side : null);
+    }
+
+    public static EnergyHatchConfiguration energyConfiguration(HatchTier tier, HatchMode mode) {
+        var current = state;
+        var override = current.overrides.get(new Key(tier, mode, true));
+        if (override instanceof EnergyHatchConfiguration energy) return energy;
+        var values = current.defaults.get(tier.ordinal());
+        return EnergyHatchConfiguration.symmetric(mode, values.energy, values.transfer);
+    }
+
+    public static int slotsPerSide(HatchTier tier, HatchMode mode) {
+        var current = state;
+        var override = current.overrides.get(new Key(tier, mode, false));
+        if (override instanceof ResourceHatchConfiguration(var input, var output))
+            return Objects.requireNonNull(input == null ? output : input).slots();
+        var values = current.defaults.get(tier.ordinal());
+        return mode == HatchMode.MIXED ? values.mixedSlots : values.slots;
+    }
+
+    public static long energyCapacity(HatchTier tier) {
+        return state.defaults.get(tier.ordinal()).energy;
+    }
+
+    public static long energyTransfer(HatchTier tier) {
+        return state.defaults.get(tier.ordinal()).transfer;
+    }
+
+    @SuppressWarnings("unused") // Existing addon capacity query.
     public static Reference2LongMap<AEKeyType> resourceCapacities(HatchTier tier) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        for (AEKeyType type : AEKeyTypes.getAll()) {
-            long registered = GenericSlotCapacities.getMap().getLong(type);
-            capacities.put(type, registered > 0 ? registered : Math.multiplyExact(Math.max(1L, type.getAmountPerUnit()), 64));
+        return capacities(state.defaults.get(tier.ordinal()));
+    }
+
+    private static Reference2LongMap<AEKeyType> capacities(Defaults values) {
+        var side = ResourceHatchConfiguration.Side.fromItemEquivalent(1, values.items, AEKeyTypes.getAll());
+        return new Reference2LongArrayMap<>(side.capacities());
+    }
+
+    private record Defaults(int slots, int mixedSlots, long items, long energy, long transfer) {
+        @SuppressWarnings("ResultOfMethodCallIgnored")
+        // Checked addition validates both mixed sides before state publication.
+        private Defaults {
+            Math.addExact(mixedSlots, mixedSlots); // Validate the native combined int slot view before publication.
         }
-        capacities.put(AEKeyType.items(), ITEMS[tier.ordinal()]);
-        capacities.put(AEKeyType.fluids(), FLUIDS[tier.ordinal()]);
-        return capacities;
+    }
+
+    private record Key(HatchTier tier, HatchMode mode, boolean energy) {
+        private static Key of(HatchTier tier, HatchConfiguration configuration) {
+            return new Key(tier, configuration.mode(), configuration instanceof EnergyHatchConfiguration);
+        }
+    }
+
+    private record State(long revision, List<Defaults> defaults, Map<Key, HatchConfiguration> overrides) {
     }
 }

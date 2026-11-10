@@ -9,14 +9,12 @@ import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.util.ResourceLocation;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.structure.StructureOperation;
 import java.util.Collections;
-
 /**
  * Immutable discovered hatch bindings, installed by the host at its machine ownership boundary.
  * Discovery belongs to the server thread; recipe execution uses only the captured public contracts.
@@ -25,7 +23,7 @@ import java.util.Collections;
 public final class MachineHatches {
     private static final MachineHatches EMPTY = new MachineHatches(List.of(), List.of(), List.of());
     public static final ComponentType<MachineInstance, MachineHatches> TYPE =
-        new ComponentType<>(new ResourceLocation(Tags.MOD_ID, "hatches"), _ -> EMPTY, ObjectLists.emptyList());
+        new ComponentType<>(new ResourceLocation(Tags.MOD_ID, "hatches"), _ -> MachineHatches.EMPTY, ObjectLists.emptyList());
 
     private final List<ResourceHatch> resources;
     private final List<EnergyInput> energyInputs;

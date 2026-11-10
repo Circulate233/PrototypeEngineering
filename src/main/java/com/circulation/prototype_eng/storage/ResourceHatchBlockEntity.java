@@ -2,20 +2,16 @@ package com.circulation.prototype_eng.storage;
 
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
-import ae2.api.stacks.AEKeyType;
-import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
-import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
@@ -30,7 +26,13 @@ import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
 import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import java.util.Objects;
 import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
-public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings {
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.storage.HatchConfiguration;
+import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
+import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
+import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import net.minecraftforge.items.CapabilityItemHandler;
+public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
     private static final VarHandle STORAGE_DIRTY;
 
     static {
@@ -40,6 +42,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             throw new ExceptionInInitializerError(failure);
         }
     }
+    private final HatchConfigurationRequest configurationRequest = new HatchConfigurationRequest();
+    private final HatchAutoTransfer autoTransfer = new HatchAutoTransfer();
 
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
@@ -47,8 +51,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private final Reference2ObjectMap<Capability<?>, Object> adapters = new Reference2ObjectOpenHashMap<>();
     private HatchMode mode;
     private HatchTier tier;
-    private int slots;
-    private Reference2LongMap<AEKeyType> capacities;
+    private ResourceHatchConfiguration effective;
+    private long observedTargetRevision = -1;
+    private boolean configurationNotification;
     private BufferedResourceHatch hatch;
     @Nullable private String allocationLocation;
     private HatchInventoryPort port;
@@ -70,7 +75,6 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     public ResourceHatchBlockEntity(HatchMode mode, HatchTier tier) {
         this.mode = mode;
         this.tier = tier;
-        slots = HatchConfig.slotsPerSide(tier, mode);
     }
 
     @Override
@@ -82,6 +86,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             initializeConfiguration(block.mode(), block.tier());
         }
         bindSourceIdentities();
+        observeConfigurationTarget();
     }
 
     /** Physical labels are captured only once the world owns this tile at its final position. */
@@ -114,7 +119,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         super.setWorld(nextWorld);
     }
 
-    /** Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative. */
+    /**
+     * Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative.
+     */
     protected void initializeConfiguration(HatchMode mode, HatchTier tier) {
         if (!pendingConfiguration) {
             return;
@@ -124,10 +131,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         }
         hatch = null;
         adapters.clear();
-        capacities = null;
+        effective = null;
         this.mode = Objects.requireNonNull(mode);
         this.tier = Objects.requireNonNull(tier);
-        slots = HatchConfig.slotsPerSide(tier, mode);
         pendingConfiguration = false;
     }
 
@@ -147,8 +153,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     public BufferedResourceHatch storage() {
         if (hatch == null) {
             allocationLocation = null;
-            capacities = capacities == null ? HatchConfig.resourceCapacities(tier) : capacities;
-            hatch = new BufferedResourceHatch(mode, slots, capacities, this::requestStorageSave);
+            effective = effective == null ? HatchConfig.resourceConfiguration(tier, mode) : effective;
+            hatch = new BufferedResourceHatch(effective, this::requestStorageSave);
             port = new HatchInventoryPort(hatch, true, true);
             fluids = new HatchFluidHandler(hatch, this);
             if (isInvalid()) {
@@ -166,7 +172,14 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     @Override
     public void update() {
         super.update();
+        observeConfigurationTarget();
+        queueConfiguration();
+        if ((mode.hasInput() && autoInput || mode.hasOutput() && autoOutput)
+            && world != null && !world.isRemote && !isInvalid()
+            && world.isBlockLoaded(pos) && world.getTileEntity(pos) == this)
+            autoTransfer.tickResources(this);
         flushStorageChanges();
+        notifyConfiguration();
     }
 
     private void flushStorageChanges() {
@@ -183,7 +196,81 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @SuppressWarnings("unused") // Public downstream layout query; the default GUI reads each side's actual size.
     public int slotsPerSide() {
-        return slots;
+        if (effective == null) return HatchConfig.slotsPerSide(tier, mode);
+        return Objects.requireNonNull(effective.input() == null ? effective.output() : effective.input()).slots();
+    }
+
+    @Override
+    public ResourceHatchConfiguration effectiveConfiguration() {
+        storage();
+        return effective;
+    }
+
+    @Override
+    public HatchReconfigurationStatus configurationStatus() {
+        return configurationRequest.status();
+    }
+
+    @Override
+    public HatchReconfigurationStatus requestConfiguration(HatchConfiguration configuration) {
+        var boundary = configurationBoundary();
+        if (boundary != null) boundary.requireOwner();
+        if (!(configuration instanceof ResourceHatchConfiguration resource) || resource.mode() != mode)
+            throw new IllegalArgumentException("Resource profile must preserve physical hatch direction");
+        configurationRequest.accept(resource, effectiveConfiguration());
+        observedTargetRevision = HatchConfig.targetRevision();
+        queueConfiguration(boundary);
+        return configurationRequest.status();
+    }
+
+    private void observeConfigurationTarget() {
+        if (world != null && !world.isRemote && !isInvalid() && observedTargetRevision != HatchConfig.targetRevision())
+            requestConfiguration(HatchConfig.resourceConfiguration(tier, mode));
+    }
+
+    /** Addon hosts may supply an owner scheduler while preserving the public request admission checks. */
+    protected @Nullable HatchConfigurationRequest.Boundary configurationBoundary() {
+        return world == null ? null : HatchConfigurationRequest.boundary(this);
+    }
+
+    private void queueConfiguration() {
+        if (isInvalid() || world != null && world.isRemote) return;
+        queueConfiguration(configurationBoundary());
+    }
+
+    private void queueConfiguration(@Nullable HatchConfigurationRequest.Boundary boundary) {
+        configurationRequest.queue(boundary, this::applyConfiguration, () -> {
+            configurationNotification = true;
+            requestStorageSave();
+            notifyConfiguration();
+        });
+    }
+
+    private HatchReplacement applyConfiguration() {
+        var target = (ResourceHatchConfiguration) Objects.requireNonNull(configurationRequest.target());
+        var old = storage();
+        var location = allocationLocation();
+        return old.replace(target, location, this::requestStorageSave,
+            () -> hatch == old && configurationRequest.target() == target && !isInvalid(), candidate -> {
+                var nextPort = new HatchInventoryPort(candidate, true, true);
+                var nextFluids = new HatchFluidHandler(candidate, this);
+                return () -> {
+                    hatch = candidate;
+                    effective = target;
+                    port = nextPort;
+                    fluids = nextFluids;
+                    adapters.clear();
+                    allocationLocation = location;
+                };
+            });
+    }
+
+    private void notifyConfiguration() {
+        if (!configurationNotification || world == null || world.isRemote) return;
+        markDirty();
+        var state = world.getBlockState(pos);
+        world.notifyBlockUpdate(pos, state, state, 3);
+        configurationNotification = false;
     }
 
     @Override public boolean autoInput() { return autoInput; }
@@ -250,7 +337,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             }
             Object adapter = adapters.get(capability);
             if (adapter == null && GenericInternalInventoryAdapters.hasAdapter(capability)) {
-                adapter = GenericInternalInventoryAdapters.getCapability(port, capability);
+                adapter = capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY
+                    ? new HatchItemHandler(port) : GenericInternalInventoryAdapters.getCapability(port, capability);
                 if (adapter != null) {
                     adapters.put(capability, adapter);
                 }
@@ -267,54 +355,68 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         super.saveAdditional(tag);
         tag.setString("Mode", mode.name());
         tag.setInteger("Tier", tier.level());
-        tag.setInteger("Slots", slots);
+        tag.setTag("EffectiveProfile", HatchConfigurationNbt.resource(effectiveConfiguration()));
+        tag.removeTag("Slots");
+        tag.removeTag("Capacities");
         tag.setBoolean("AutoInput", autoInput);
         tag.setBoolean("AutoOutput", autoOutput);
         tag.setLong("MaxFluidInRate", maxFluidInputRate);
         tag.setLong("MaxFluidOutRate", maxFluidOutputRate);
         storage().save(tag);
-        var limits = new NBTTagCompound();
-        capacities.forEach((type, capacity) -> limits.setLong(type.getId().toString(), capacity));
-        tag.setTag("Capacities", limits);
     }
 
     @Override
     public void loadTag(@NotNull NBTTagCompound tag) {
-        pendingConfiguration = false;
+        if (hasTransferReservation())
+            throw new IllegalStateException("Cannot reload resource hatch with an unresolved external transfer");
+        boolean modern = tag.hasKey("EffectiveProfile");
+        var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(StrictNbt.requireString(tag, "Mode")) : mode;
+        var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(StrictNbt.requireInt(tag, "Tier")) : tier;
+        if (modern) {
+            if (!nextMode.hasInput() && tag.hasKey("Input") || !nextMode.hasOutput() && tag.hasKey("Output"))
+                throw new IllegalArgumentException("Saved resource sides differ from physical hatch direction");
+            StrictNbt.requireLong(tag, "MaxFluidInRate");
+            StrictNbt.requireLong(tag, "MaxFluidOutRate");
+        }
+        boolean nextAutoInput = modern ? StrictNbt.requireBoolean(tag, "AutoInput") : tag.getBoolean("AutoInput");
+        boolean nextAutoOutput = modern ? StrictNbt.requireBoolean(tag, "AutoOutput") : tag.getBoolean("AutoOutput");
+        ResourceHatchConfiguration profile;
+        if (tag.hasKey("EffectiveProfile")) {
+            profile = HatchConfigurationNbt.resource(StrictNbt.requireCompound(tag, "EffectiveProfile"), nextMode);
+            if (nextMode.hasInput()) StrictNbt.requireList(tag, "Input", 10);
+            if (nextMode.hasOutput()) StrictNbt.requireList(tag, "Output", 10);
+        } else if (tag.hasKey("Slots") || tag.hasKey("Capacities")) {
+            var side = HatchConfigurationNbt.resourceSide(tag);
+            profile = new ResourceHatchConfiguration(nextMode.hasInput() ? side : null, nextMode.hasOutput() ? side : null);
+        } else {
+            profile = HatchConfig.resourceConfiguration(nextTier, nextMode);
+        }
+        long nextInputRate = HatchConfigurationNbt.nonnegative(tag, "MaxFluidInRate");
+        long nextOutputRate = HatchConfigurationNbt.nonnegative(tag, "MaxFluidOutRate");
+        var changes = new HatchStorageChanges(this::requestStorageSave);
+        var candidate = new BufferedResourceHatch(profile, changes);
+        candidate.load(tag); // Both sides validate before the old live instance is retired.
+        var nextPort = new HatchInventoryPort(candidate, true, true);
+        var nextFluids = new HatchFluidHandler(candidate, this);
+        if (isInvalid()) candidate.invalidate();
+        if (hatch != null) hatch.invalidate();
         super.loadTag(tag);
-        autoInput = tag.getBoolean("AutoInput");
-        autoOutput = tag.getBoolean("AutoOutput");
-        maxFluidInputRate = Math.max(0, tag.getLong("MaxFluidInRate"));
-        maxFluidOutputRate = Math.max(0, tag.getLong("MaxFluidOutRate"));
-        if (hatch != null) {
-            hatch.invalidate();
-        }
-        hatch = null;
+        pendingConfiguration = false;
+        mode = nextMode;
+        tier = nextTier;
+        effective = profile;
+        hatch = candidate;
+        port = nextPort;
+        fluids = nextFluids;
+        allocationLocation = null;
         adapters.clear();
-        if (tag.hasKey("Mode", 8)) {
-            mode = HatchMode.valueOf(tag.getString("Mode"));
-        }
-        tier = tag.hasKey("Tier", 3) ? HatchTier.of(tag.getInteger("Tier")) : tier;
-        if (tag.hasKey("Slots", 3)) {
-            slots = tag.getInteger("Slots");
-            if (slots < 1 || slots > 81) {
-                throw new IllegalArgumentException("Invalid resource hatch slot count: " + slots);
-            }
-        }
-        var saved = HatchConfig.resourceCapacities(tier);
-        NBTTagCompound limits = tag.getCompoundTag("Capacities");
-        for (String id : limits.getKeySet()) {
-            AEKeyType type = AEKeyTypes.get(new ResourceLocation(id));
-            long capacity = limits.getLong(id);
-            if (capacity <= 0) {
-                throw new IllegalArgumentException("Invalid saved hatch capacity for " + id);
-            }
-            if (type != null) {
-                saved.put(type, capacity);
-            }
-        }
-        capacities = saved;
-        storage().load(tag);
+        autoInput = nextAutoInput;
+        autoOutput = nextAutoOutput;
+        maxFluidInputRate = nextInputRate;
+        maxFluidOutputRate = nextOutputRate;
+        configurationRequest.reset();
+        observedTargetRevision = -1;
+        changes.enable();
     }
 
     @Override
@@ -340,12 +442,17 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     @Override
     protected void clearRemoved() {
         super.clearRemoved();
+        if (hasTransferReservation()) return;
         if (hatch != null && !hatch.isValid()) {
             // A reattached tile gets new views; previously returned capability references stay invalid.
             var saved = new NBTTagCompound();
             saveAdditional(saved);
             loadTag(saved);
         }
+    }
+
+    private boolean hasTransferReservation() {
+        return hatch != null && hatch.hasTransferReservation();
     }
 
     @Override

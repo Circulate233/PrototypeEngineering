@@ -219,7 +219,7 @@ class MachineNetworkDeviceTest {
         private final List<AssembledMachine> machines = new ObjectArrayList<>();
         private boolean rejected;
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
-        private final NetworkRuntime network = new NetworkRuntime(identities, resources(), owner -> rejected
+        private final NetworkRuntime network = new NetworkRuntime(identities, resources(), owner -> this.rejected
             ? OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "test owner has no team")
             : OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()),
             this::requireOwner);

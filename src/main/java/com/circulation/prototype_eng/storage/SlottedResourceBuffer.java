@@ -23,6 +23,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import java.util.Iterator;
 import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 /**
  * Independent multi-type slots. Every view and reservation shares one balance and lock.
  */
@@ -40,6 +41,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final BitSet freeSlots;
     private final BitSet changedSlots;
     private int activeReservations;
+    private int externalReservations;
 
     public SlottedResourceBuffer(int slots, Map<AEKeyType, Long> capacities, Runnable onChanged) {
         if (slots <= 0 || capacities.isEmpty()) {
@@ -342,6 +344,45 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         return reserve(snapshot, key, amount, true);
     }
 
+    public @Nullable NativeTransferReservation reserveTransfer(AEKey key, long amount, boolean insert) {
+        return reserveTransfer(-1, key, amount, insert);
+    }
+
+    /** A nonnegative slot limits the offer to one slot; -1 retains the aggregate native allocation. */
+    @SuppressWarnings("ReturnOfInnerClass") // The public receipt must retain its exact private native token.
+    public @Nullable NativeTransferReservation reserveTransfer(int slot, AEKey key, long amount, boolean insert) {
+        context.requireOrdinaryLock();
+        if (externalReservations == Integer.MAX_VALUE)
+            throw new IllegalStateException("Too many active external resource transfers");
+        if (slot < -1) throw new IllegalArgumentException("Invalid external transfer slot");
+        if (slot >= 0) checkSlot(slot);
+        var result = reserve(null, key, amount, insert, slot);
+        var token = (Reservation) result.reservation();
+        if (token == null) return null;
+        if (!insert) token.apply();
+        externalReservations++;
+        return new NativeTransferReservation() {
+            @Override
+            public long amount() {
+                return amount;
+            }
+
+            @Override
+            public void complete(long actual) {
+                token.completeTransfer(actual);
+            }
+        };
+    }
+
+    public boolean hasTransferReservation() {
+        context.lock();
+        try {
+            return externalReservations != 0;
+        } finally {
+            context.unlock();
+        }
+    }
+
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     public ReservationCapture beginReserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
@@ -534,6 +575,10 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     private ReservationResult reserve(StorageSnapshot snapshot, AEKey key, long amount, boolean insert) {
         Objects.requireNonNull(snapshot);
+        return reserve(snapshot, key, amount, insert, -1);
+    }
+
+    private ReservationResult reserve(@Nullable StorageSnapshot snapshot, AEKey key, long amount, boolean insert, int onlySlot) {
         Objects.requireNonNull(key);
         if (amount <= 0) {
             throw new IllegalArgumentException("A reservation needs a positive amount");
@@ -543,13 +588,14 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (!context.isValid()) {
                 return rejected(ReservationResult.Status.INVALID_STORAGE);
             }
-            if (snapshot.context() != context || !context.current(snapshot.revision())) {
+            if (snapshot != null && (snapshot.context() != context || !context.current(snapshot.revision()))) {
                 return rejected(ReservationResult.Status.STALE_SNAPSHOT);
             }
             if (insert && amount > insertionHeadroom(key)) {
                 return rejected(ReservationResult.Status.INSUFFICIENT);
             }
-            Allocation allocation = allocate(key, amount, insert);
+            Allocation allocation = onlySlot < 0 ? allocate(key, amount, insert)
+                : new Allocation(new int[]{onlySlot}, new long[]{amount}, slotTransferable(onlySlot, key, amount, insert));
             if (allocation.total != amount) {
                 return rejected(ReservationResult.Status.INSUFFICIENT);
             }
@@ -712,6 +758,19 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             changedSlots.set(slot);
         }
         context.changed();
+    }
+
+    boolean idleForReplacement() {
+        context.requireLock();
+        return activeReservations == 0 && context.idleForReplacement();
+    }
+
+    List<GenericStack> committedContents() {
+        context.requireLock();
+        var result = new ObjectArrayList<GenericStack>(keys.length);
+        for (int slot = 0; slot < keys.length; slot++)
+            result.add(keys[slot] == null ? null : new GenericStack(keys[slot], amounts[slot]));
+        return result;
     }
 
     private void requireRestorable() {
@@ -880,7 +939,9 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     private enum State { PENDING, APPLIED, EXPOSED, COMMITTED, ROLLED_BACK }
 
-    /** One exact allocation journal; legacy calls synchronously drain this same native cursor. */
+    /**
+     * One exact allocation journal; legacy calls synchronously drain this same native cursor.
+     */
     private final class Reservation implements ResourceReservation {
         private final AEKey key;
         private final Allocation allocation;
@@ -944,6 +1005,55 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
         @Override
         public void complete() { drain(WorkKind.COMPLETE); }
+
+        private void completeTransfer(long actual) {
+            context.requireOrdinaryLock();
+            requireState(insert ? State.PENDING : State.APPLIED);
+            if (actual < 0 || actual > allocation.total)
+                throw new IllegalArgumentException("External resource result is outside its reservation");
+            if (ambiguous || journal || work != null || mutationFence != null || exposedFence != null
+                || !initialized || reservedParts != allocation.slots.length || activeReservations <= 0 || externalReservations <= 0)
+                throw new IllegalStateException("External transfer lost its synchronous native reservation");
+            context.requireReservedChange(revisionChanges);
+            long addition = insert ? actual : allocation.total - actual;
+            long nextTotal = checkedNonnegative(Math.addExact(totals.getLong(key), addition));
+            long nextInsert = checkedNonnegative(Math.subtractExact(insertHolds.getLong(key), allocation.total));
+            long remaining = actual;
+            for (int part = 0; part < allocation.slots.length; part++) {
+                int slot = allocation.slots[part];
+                long portion = allocation.amounts[part];
+                long accepted = Math.min(remaining, portion);
+                requireHold(slot, reservedInsert, portion);
+                checkedSlotChange(slot, key, insert ? accepted : portion - accepted, true);
+                remaining -= accepted;
+            }
+            // Held slot and aggregate capacity make every addition valid even after reentrant access.
+            ambiguous = true;
+            context.beginDeferredMutation();
+            journal = true;
+            addAmount(totals, key, addition, nextTotal);
+            addAmount(insertHolds, key, -allocation.total, nextInsert);
+            remaining = actual;
+            for (int part = 0; part < allocation.slots.length; part++) {
+                int slot = allocation.slots[part];
+                long portion = allocation.amounts[part];
+                long accepted = Math.min(remaining, portion);
+                amounts[slot] += insert ? accepted : portion - accepted;
+                reservedInsert[slot] -= portion;
+                cleanSlot(slot);
+                changedSlots.set(slot);
+                remaining -= accepted;
+            }
+            context.reservedChanged(revisionChanges, true);
+            revisionChanges = 0;
+            reservedParts = appliedParts = 0;
+            appliedAmount = 0;
+            activeReservations--;
+            externalReservations--;
+            state = State.COMMITTED;
+            endJournal();
+            ambiguous = false;
+        }
 
         @Override
         public void rollback() { drain(WorkKind.ROLLBACK);

@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageFence;
+import com.circulation.prototype_eng.storage.NativeTransferReservation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -21,6 +22,7 @@ public final class EnergyBuffer implements EnergyHatch {
     private long reservedExtract;
     private long reservedReceive;
     private int activeReservations;
+    private int externalReservations;
 
     public EnergyBuffer(long capacity, Runnable onChanged) {
         this(capacity, capacity, capacity, onChanged);
@@ -47,11 +49,8 @@ public final class EnergyBuffer implements EnergyHatch {
         checkLimits(maxReceive, maxExtract);
         context.lock();
         try {
-            if (!context.isValid()) {
-                throw new IllegalStateException("Cannot update invalid energy storage");
-            }
+            requireTransferLimits(maxReceive, maxExtract);
             if (this.maxReceive != maxReceive || this.maxExtract != maxExtract) {
-                requireChange();
                 this.maxReceive = maxReceive;
                 this.maxExtract = maxExtract;
                 context.changed();
@@ -59,6 +58,13 @@ public final class EnergyBuffer implements EnergyHatch {
         } finally {
             context.unlock();
         }
+    }
+
+    void requireTransferLimits(long maxReceive, long maxExtract) {
+        checkLimits(maxReceive, maxExtract);
+        context.requireLock();
+        if (!context.isValid()) throw new IllegalStateException("Cannot update invalid energy storage");
+        if (this.maxReceive != maxReceive || this.maxExtract != maxExtract) requireChange();
     }
 
     @Override
@@ -132,6 +138,39 @@ public final class EnergyBuffer implements EnergyHatch {
         return reserve(snapshot, amount, true);
     }
 
+    /** Reserve before the external callback; the caller keeps this context locked through settlement. */
+    @SuppressWarnings("ReturnOfInnerClass") // The public receipt must retain its exact private native token.
+    public @Nullable NativeTransferReservation reserveTransfer(long amount, boolean receive) {
+        context.requireOrdinaryLock();
+        if (externalReservations == Integer.MAX_VALUE)
+            throw new IllegalStateException("Too many active external energy transfers");
+        var result = reserve(energySnapshot(), amount, receive);
+        var token = (Reservation) result.reservation();
+        if (token == null) return null;
+        if (!receive) token.apply();
+        externalReservations++;
+        return new NativeTransferReservation() {
+            @Override
+            public long amount() {
+                return amount;
+            }
+
+            @Override
+            public void complete(long actual) {
+                token.completeTransfer(actual);
+            }
+        };
+    }
+
+    public boolean hasTransferReservation() {
+        context.lock();
+        try {
+            return externalReservations != 0;
+        } finally {
+            context.unlock();
+        }
+    }
+
     private ReservationResult reserve(EnergySnapshot snapshot, long amount, boolean receive) {
         Objects.requireNonNull(snapshot);
         if (amount <= 0) {
@@ -199,6 +238,11 @@ public final class EnergyBuffer implements EnergyHatch {
     @Override
     public boolean isValid() {
         return context.isValid();
+    }
+
+    boolean idleForReplacement() {
+        context.requireLock();
+        return activeReservations == 0 && context.idleForReplacement();
     }
 
     public void invalidate() {
@@ -311,6 +355,27 @@ public final class EnergyBuffer implements EnergyHatch {
             release(false);
             state = State.COMMITTED;
             releaseSequentialPin();
+        }
+
+        private void completeTransfer(long actual) {
+            context.requireOrdinaryLock();
+            requireState(receive ? State.PENDING : State.APPLIED);
+            if (actual < 0 || actual > amount)
+                throw new IllegalArgumentException("External energy result is outside its reservation");
+            context.requireReservedChange(revisionChanges);
+            if (activeReservations <= 0 || externalReservations <= 0)
+                throw new IllegalStateException("Energy reservation count is inconsistent");
+            long addition = receive ? actual : amount - actual;
+            long nextStored = Math.addExact(stored, addition);
+            long nextReceive = Math.subtractExact(reservedReceive, amount);
+            validateBalance(nextStored, reservedExtract, nextReceive);
+            stored = nextStored;
+            reservedReceive = nextReceive;
+            activeReservations--;
+            externalReservations--;
+            context.reservedChanged(revisionChanges, true);
+            revisionChanges = 0;
+            state = State.COMMITTED;
         }
 
         @Override

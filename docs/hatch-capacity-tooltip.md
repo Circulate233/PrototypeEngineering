@@ -1,0 +1,17 @@
+# 材料仓物品等价容量与服务器提示
+
+用户最新要求将资源仓提示收敛为每有效侧仅“槽位数量：xxx”“槽位容量：xxx”；只有交互仓额外以输入/输出标题区分两侧。不列物品/流体/其他类型分项、原生单位、理论整侧总容量或等价容量说明。能源仓继续显示每侧FE容量及有效输入/输出单次操作上限（FE per operation，非FE/t）。文案全部走LocalizationEnum。
+
+资源新默认以HatchTier.itemsPerSlot / itemsPerSlot为物品等价容量，再乘各AEKeyType.getAmountPerUnit得到原生容量；物品比例1，流体1000，其他类型同样随阶级扩容。Side.fromItemEquivalent接受明确ratioOverrides并检查正值、类型、不可变及乘法溢出。FE独立，不参与资源换算。
+
+Side现在保留CapacityBasis：明确的itemEquivalent及各类型实际ratio。fromItemEquivalent生成准确basis；构造时校验basis×ratio严格等于native容量。NBT保存ItemEquivalent/CapacityRatios，服务器快照同样传输。native-only二参profile无明确base/ratio事实时basis为null，即使数值恰好符合AE默认比例也不倒推，槽位容量显示“未声明”。旧EffectiveProfile/Slots/Capacities仍按保存原生容量恢复，比例目标不足仍由原安全迁移拒绝。
+
+物品有保存EffectiveProfile时优先自身有效值。裸物品及需要基础容量的旧FE档使用当前服务器完整只读快照；专服本地文件差异不会泄漏为客户端提示。连接上尚未收到快照时显示等待服务器配置，离线界面才用本地默认。保存profile的算术溢出在保存解码边界转成带字段上下文的IllegalArgumentException，显示保存数据无效；公共profile API仍正常以checked arithmetic拒绝溢出。
+
+沿现有StructureNetwork通道新增独立S2C discriminator1，保留结构消息内容和职责。CommonProxy真实服务器生命周期启动/停止ServerHatchConfigurations；登录及每次HatchConfig发布变化通过准确server的原scheduler边界发完整60个tier/mode/family profile。消息16KiB分片、完整payload受8MiB校验；client使用现有NetworkManager连接钩子、session UUID和单调generation，拒绝旧连接/旧会话/旧序号，全部片到齐并完整解码后一次发布。断线清除准确连接缓存，晚到旧包不能污染新连接。这只是显示值，不作为存储权限或迁移入口。
+
+能源用户操作限额MaxInRate/MaxOutRate默认-1，表示不追加用户限制，0禁止相应传输，正值与有效侧transfer配置上限取min；不存在的方向不展示。tooltip显示最终有效数值，不把-1显示为可突破配置上限的无限量。现代保存profile缺速率、错误类型或小于-1明确拒绝；legacy缺字段默认-1，显式保存0保留禁止语义。十阶默认配置上限仍为32、128、512、2048、8192、32768、131072、524288、2097152、8388608 FE每次操作。
+
+测试覆盖十阶默认/自定义ratio/安全缩容/现代旧档/简化提示/FE速率，追加HatchConfigurationSyncTest真实完整codec、packet分片和client缓存路径验证服务器新目标驱动裸物品、保存basis优先、乱序不部分发布、旧连接/会话/序号拒绝及坏槽数溢出。没有创建Minecraft、FML或Bootstrap。当前统一清单与证据在build/staging/hatch-reconfiguration，原hatch-capacity-tooltip仅为历史子阶段。
+
+最终完整构建1814 tests / 237 suites全零（failures/errors/skipped均0、staleXml与formatChanged均为空），证据为`build/staging/chat-goal-recovery-2026-11-10/full-resumed-results/`。仓室主阶段49Java本机MCP全级零且全文读回匹配；源码、语言资源与本专题均纳入统一53文件manifest，详细收尾入口见`build/staging/hatch-reconfiguration/final-core-handoff.md`。

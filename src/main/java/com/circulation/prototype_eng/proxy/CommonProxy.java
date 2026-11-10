@@ -61,6 +61,8 @@ import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.math.AxisAlignedBB;
 import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
 /**
  * Shared lifecycle for dedicated and integrated servers, inherited by the client proxy.
  */
@@ -111,18 +113,22 @@ public class CommonProxy implements IGuiHandler {
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {
         ServerTaskSchedulers.start(event.getServer());
         try {
+            ServerHatchConfigurations.start(event.getServer());
             ServerMachineIdentities.start(event.getServer());
             ServerNetworkRuntime.start(event.getServer());
             ServerStructureReloads.start(event.getServer(), structureDirectory, javaStructures, structureFactories);
-        }
-        catch (RuntimeException | Error failure) {
+        } catch (RuntimeException | Error failure) {
             try {
                 ServerTaskSchedulers.stop();
+                ServerHatchConfigurations.stop();
                 ServerStructureReloads.stop();
                 ServerNetworkRuntime.stop();
                 ServerMachineIdentities.stop();
+            } catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) {
+                    failure.addSuppressed(cleanup);
+                }
             }
-            catch (RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
             throw failure;
         }
     }
@@ -139,10 +145,18 @@ public class CommonProxy implements IGuiHandler {
 
     public void serverStopped() {
         ServerTaskSchedulers.stop();
+        ServerHatchConfigurations.stop();
         ServerStructureReloads.stop();
         ServerResearch.stop();
         ServerNetworkRuntime.stop();
         ServerMachineIdentities.stop();
+    }
+
+    /**
+     * Client override schedules onto the actual client thread; common class loads no client API.
+     */
+    public void receiveHatchConfiguration(HatchConfigurationPacket packet, Object connection) {
+        throw new IllegalStateException("Server proxy cannot receive client hatch display configuration");
     }
 
     /** Client override schedules onto the actual client thread; common class loads no client API. */

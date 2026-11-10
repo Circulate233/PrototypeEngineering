@@ -222,6 +222,13 @@ public final class StorageContext {
         }
     }
 
+    /** Native synchronous external transfers cannot borrow a recipe fence or a budget capability. */
+    public void requireOrdinaryLock() {
+        StorageFence.requireOutsideAccess();
+        requireLock();
+        if (fence() != null) throw new IllegalStateException("External transfer requires an ordinary storage lock");
+    }
+
     /** Exact transferable isolation proof for exposing reversible effects to later sequence steps. */
     public StorageFence requireFenceAccess() {
         requireLock();
@@ -350,6 +357,19 @@ public final class StorageContext {
         if (publish) {
             onChanged.run();
         }
+    }
+
+    /** Must be checked under the exact old fence before preparing replacement storage. */
+    public boolean idleForReplacement() {
+        requireLock();
+        return valid && deferredMutations == 0 && reservedChanges == 0;
+    }
+
+    /** Preflight every side before the first one-way retirement. */
+    public void requireRetirement() {
+        requireLock();
+        if (!idleForReplacement() || Long.MAX_VALUE - revision <= reservedChanges)
+            throw new IllegalStateException("Storage cannot retire with unresolved ownership or exhausted revision");
     }
 
     /** One-way invalidation. Replacement hosts must create a new context. */

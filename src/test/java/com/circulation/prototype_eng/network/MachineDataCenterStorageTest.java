@@ -206,7 +206,7 @@ class MachineDataCenterStorageTest {
         private final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
         private final ComponentType<MachineInstance, MachineDataCenterStorage> storage = MachineDataCenterStorage.component(id("storage"),
-            ownership, 1, 2, research, _ -> dirty++, this::persistDisk);
+            ownership, 1, 2, research, _ -> this.dirty++, this::persistDisk);
         private final ComponentType<MachineInstance, MachineNetworkDevice> dataRole = MachineNetworkDevice.capturedComponent(id("data_role"),
             ownership, (owner, identity) -> Objects.requireNonNull(owner.components().get(storage)).networkCapture(identity,
                 Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);

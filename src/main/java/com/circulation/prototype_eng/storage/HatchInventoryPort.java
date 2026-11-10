@@ -41,7 +41,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
 
     @Override
     public int size() {
-        return inputSize() + (output == null ? 0 : output.size());
+        return Math.addExact(inputSize(), output == null ? 0 : output.size());
     }
 
     private SlottedResourceStorage inventory(int slot) {
@@ -83,21 +83,22 @@ public final class HatchInventoryPort implements GenericInternalInventory {
         return stack == null ? 0 : stack.amount();
     }
 
-    @Nullable
-    private SlottedResourceStorage anyInventory() {
-        return input != null ? input : output;
-    }
-
     @Override
     public long getMaxAmount(AEKey key) {
-        SlottedResourceStorage inv = anyInventory();
-        return inv == null || !inv.isSupportedType(key.getType()) ? 0 : inv.getMaxAmount(key);
+        return Math.max(input == null || !input.isSupportedType(key.getType()) ? 0 : input.getMaxAmount(key),
+            output == null || !output.isSupportedType(key.getType()) ? 0 : output.getMaxAmount(key));
     }
 
+    /** Without a slot, AE requests a capacity estimate: the maximum of either supported side. */
     @Override
     public long getCapacity(AEKeyType type) {
-        SlottedResourceStorage inv = anyInventory();
-        return inv == null || !inv.isSupportedType(type) ? 0 : inv.getCapacity(type);
+        return Math.max(input == null || !input.isSupportedType(type) ? 0 : input.getCapacity(type),
+            output == null || !output.isSupportedType(type) ? 0 : output.getCapacity(type));
+    }
+
+    public long getCapacity(int slot, AEKeyType type) {
+        var side = inventory(slot);
+        return side.isSupportedType(type) ? side.getCapacity(type) : 0;
     }
 
     @Override
@@ -112,8 +113,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
 
     @Override
     public boolean isSupportedType(AEKeyType type) {
-        SlottedResourceStorage inv = anyInventory();
-        return inv != null && inv.isSupportedType(type);
+        return input != null && input.isSupportedType(type) || output != null && output.isSupportedType(type);
     }
 
     @Override

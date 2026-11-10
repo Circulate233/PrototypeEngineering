@@ -69,6 +69,9 @@ import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import com.circulation.prototype_eng.client.gui.ScannerInstrumentGui;
 import com.circulation.prototype_eng.client.gui.BuilderInstrumentGui;
 import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
+import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 @SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
 public class ClientProxy extends CommonProxy {
     private ModelBuildCache modelBuilds;
@@ -78,6 +81,7 @@ public class ClientProxy extends CommonProxy {
     private AutoCloseable modelRenderListener;
     private MachineRenderOptions modelRenderOptions = MachineRenderOptions.defaults();
     private ClientStructureCatalog structures;
+    private ClientHatchConfigurations hatchConfigurations;
     private StructurePreviews previews;
     private WorldProjectionManager projectionManager;
     private MachineRenderBindings renderBindings;
@@ -295,6 +299,33 @@ public class ClientProxy extends CommonProxy {
     });
     }
 
+    private ClientHatchConfigurations hatchConfigurations() {
+        if (!Minecraft.getMinecraft().isCallingFromMinecraftThread())
+            throw new IllegalStateException("Hatch tooltip requires client owner");
+        if (hatchConfigurations == null) hatchConfigurations = new ClientHatchConfigurations();
+        return hatchConfigurations;
+    }
+
+    public @Nullable HatchConfigurationSnapshot hatchConfiguration() {
+        var handler = Minecraft.getMinecraft().getConnection();
+        if (handler == null) return null;
+        var display = hatchConfigurations();
+        return display.connectedTo(handler.getNetworkManager()) ? display.view() : null;
+    }
+
+    @Override
+    public void receiveHatchConfiguration(HatchConfigurationPacket packet, Object connection) {
+        Minecraft.getMinecraft().addScheduledTask(() -> {
+            if (!(connection instanceof NetHandlerPlayClient handler) || Minecraft.getMinecraft().getConnection() != handler)
+                return;
+            try {
+                hatchConfigurations().receive(handler.getNetworkManager(), packet);
+            } catch (RuntimeException invalid) {
+                PrototypeEngineering.LOGGER.error("Cannot install authoritative hatch configuration", invalid);
+            }
+        });
+    }
+
     @Override public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
             var minecraft = Minecraft.getMinecraft();
@@ -305,19 +336,25 @@ public class ClientProxy extends CommonProxy {
         });
     }
 
-    @SubscribeEvent public void connected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
+    @SubscribeEvent
+    public void connected(FMLNetworkEvent.ClientConnectedToServerEvent event) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
             var current = Minecraft.getMinecraft().getConnection();
-            if (event.getManager().isChannelOpen() && (current == null || current.getNetworkManager() == event.getManager()))
+            if (event.getManager().isChannelOpen() && (current == null || current.getNetworkManager() == event.getManager())) {
                 structures().connected(event.getManager());
+                hatchConfigurations().connected(event.getManager());
+            }
         });
     }
 
-    @SubscribeEvent public void disconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
+    @SubscribeEvent
+    public void disconnected(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
         Minecraft.getMinecraft().addScheduledTask(() -> modelCleanup(() -> {
                 if (structures().connectedTo(event.getManager())) retireModelBuilds();
             },
-            () -> structures().disconnected(event.getManager())));
+            () -> structures().disconnected(event.getManager()),
+            () -> hatchConfigurations().disconnected(event.getManager())));
+
     }
     @Override
     public void preInit(FMLPreInitializationEvent event) {
