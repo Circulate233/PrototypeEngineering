@@ -1,5 +1,9 @@
 # 实施进度
 
+- 2026-11-10 修复层预览完全空白：Scene把meshes.renderScene与tiles.draw限制在threeDimensional，导致已有层过滤渲染根本未调用；现两模式共用原入口，整机成型模型继续只在三维绘制。独立控制器允许在层模式解析、零层绘制，使用formingModelsVisible避免沿用隐藏的成型控制器状态。PreviewBlockAccess在层模式把隐藏Y层作为空气，恢复切面顶/底面的可见性；原layer缓存失效逻辑不变。
+- 层线框在原有2048准备访问预算中建立Y索引，包含内部截面格而非仅三维全局边界；树高亮遵守Y过滤。滑块用sceneBounds而非仅材料bounds，包含独立控制器零层。源码仅改Scene/BlockAccess/Panel三个文件，未改GUI布局、匹配/网络/库存或资源。按用户要求未新增测试、未执行测试；Spotless、compileTestJava/build -x test通过，最终控制器显示细化后的build -x test也通过。3Java本机MCP errorsOnly:false错误/警告/弱警告均零、完整源码读回一致；MCP build isSuccess:true/problems:[]。
+- 写前、冻结源码、原日志、MCP/读回及源码复核在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-layer/`。背景依赖、两语言、原暂存JeiResourceReloadTest及INDEX.md~字节/索引保持。未启动Minecraft/服务端、Bootstrap/FML或桌面IDE，真实GL层画面待用户复验。源码已本地提交 `edfff6b`，未推送，总体Goal仍暂停。
+
 - 2026-11-10 按用户截图修复结构预览与构建器：Panel/Tree原先将state meta直接当物品damage，服务器payment另用damageDropped；现三处均沿StructurePickWorld调用原生getPickBlock，保留完整state/properties、独立代表state/TE与作者tile NBT，不扫描meta、不反射、不替换真实方块；支付核对实际item/meta/tag。原非物品流体付款保留。
 - 左侧物品通过本地展示Slot调用实际宿主drawSlot（保留AE覆写）；HEI RecipesGui是GuiScreen，使用其正常原生RenderItem/overlay。原GuiScreenPreviewMixin增加renderToolTip桥，独立GUI/构建器/HEI均消费正常物品tooltip与Forge事件，撤去物品上的自定义Requirement/Key提示。候选与材料各自滚动、裁剪和命中，列表滚轮不传给相机，当前代表保持固定。
 - 相机back向量pitch的Y分量与GL绘制逆矩阵相反已更正；原准备预算内建立section粗筛，按同一射线原生collisionRayTrace取最近实际命中。悬停与点击共用该路径，hover与selected均用原生selected bounding box、较粗亮线及关闭深度测试/写入；换格直接切换，同格重复点击不清空，空画布清选。原代次、owner、可见性及准确cell身份门保持。
