@@ -1,12 +1,24 @@
 # 结构定义、快照与匹配
 
+## 2026-11-10：纯结构计划与朝向复用
+
+`MachineStructure.planReusable()` 与 `StructurePredicate.planReusable()` 默认 false。扩展显式声明 true 时，几何、变换和读声明必须终身稳定，变换结果也遵守相同合同；多个宿主可以并发使用同一实例，各次 begin/match 的游标、builder 和 scratch 必须独立。实际 query capture、condition、freshness 与 matcher 每轮重新执行。默认 Template/Slice 的 `create` 工厂仅在 pattern、validators 和 children 全部合格时复用；普通公开构造器与未知扩展保留原 virtual 路径。资格在原复制及增量变换循环中累计，读取资格不重新扫描结构树。JSON 外部工厂返回未知谓词时，同样沿这些组合规则回退。
+
+`StructureCatalog` 以 canonical shape 对象身份与目标24向保存完成的纯变换；目录对象本身隔离 reload 代。短同步段只查询或安装完成值，扩展回调和增量构造在锁外执行。并发 miss 各自推进独立游标，允许重复计算，后续采用一份完成结果。`StructurePlan` 的 configuration 重载消费该 memo；原 definition/controller/orientation 三参入口保留每次执行原 hook 的语义。
+
+每个 `StructureRefresh` 只保留一个完整计划，准确 key 为 configuration 对象身份与不可变控制器位置。同步与并行准备共用同一选择/记忆入口；规划全部完成且 preparation owner、生命周期、配置和位置仍准确时才入槽，invalidate 显式清除。无 catalog 的独立宿主也可复用自己的完成计划。位置、配置 ABA、同 ID 新定义或新目录都不能采用旧绝对计划。命中仅省去纯规划，每轮仍创建新 Request、snapshot、匹配结果并执行完整最终捕获/匹配和原权限复核；世界失配不会成为负缓存。
+
+首次 miss 仍沿原 transform→collectReads→freeze 增量构造，命中消耗实际常量预算；原 attempt deadline、首真实 tick 的 COOPERATIVE/STRICT 行为及 capture/关闭/发布成本保持。新增行为用例覆盖默认贪心 slice 的变化事实、完成形状的并发独立匹配与读取证明、并发 miss、失败变换、one-unit 前缀、未知 virtual 路径、配置/位置/目录隔离、两种准备入口、无 catalog 的未完成计划与过期预算。
+
+最终 full-resumed 已实际完成 **1814 tests / 237 suites，零失败、零错误、零跳过**，无陈旧 XML、无格式变化。已按最早 before 对照方法名，逐项核对保存 XML：StructurePlanReuseTest 的 8 个新增用例、StructureRefreshTest 的 3 个新增用例全部运行通过（后者整类 23 项也全通过）。原阶段 before/frozen 与清单保留在 `build/staging/structure-plan-cache/`；早期格式化后的当前 11 个 Java 已重新逐文件 read_file→get_file_problems(errorsOnly:false)，全级零且完整读回一致，新冻结清单与验证位于 `build/staging/chat-goal-recovery-2026-11-10/cache-final/`。旧 frozen 到当前仅格式、导入和成员声明顺序变化，未修改逻辑；当前证据不复用旧字节的 IDEA 结果。
+
 ## 2026-11-10：周期结构检查的跨控制器批次
 
 实际控制器和自动登记宿主现通过 `ControllerStructureUpdates.enqueueTick` 将周期检查加入原 TaskScheduler 的相邻结构队列项；首真实 tick 仍在 owner 完整检查。原公开 `tick` 保留即时边界调用。控制器的准确 attachment epoch 渲染状态观察附在同一个结构队列项完成后执行，避免每台 TE 的独立观察边界提前冲刷队列、使实际路径重新串行。
 
 每批最多原 `workerThreads` 个宿主，遇到 reload、retire 等原 FIFO 普通边界即截断。同一准确宿主的积压项不进入同一个批次，原队列项和观察顺序全部保留；不得跨边界去重或同时续办同一捕获游标。`StructureSnapshot.Capture` 将原算法拆为 owner 的 area/加载复核/最多256个 read-port 绑定、原 worker 的实际读/复制、全批实际退出后的 owner 强制关闭。各宿主完成捕获后进入同一批次的 detached matcher；阶段续办共用该宿主本软片的 work/deadline，不重置5ms软片或5秒attempt。短deadline不会取消其他宿主；worker超时、拒绝、异常和撤权均先按原 Batch 证明实际退出，再清理已借用窗口。旧 `beginCapture(..., JoinedWorker)` 同步入口复用同一 capture 算法。
 
-完整 freshness recapture/rematch、实际 discovery、binding/provider复核和 lifecycle 原子发布仍逐 owner执行。普通/source/pending 未退出或未完成确认时不进入结构边界；准备前缀、缓存事实和阶段完成均不新增安装授权。未知 shape/predicate 的原 virtual 调用保持，纯计划/朝向缓存尚未接入，仍是已确认的后继性能缺口。
+完整 freshness recapture/rematch、实际 discovery、binding/provider复核和 lifecycle 原子发布仍逐 owner执行。普通/source/pending 未退出或未完成确认时不进入结构边界；准备前缀、缓存事实和阶段完成均不新增安装授权。未知 shape/predicate 的原 virtual 调用保持；该批次之后的纯计划/朝向缓存进展见上节。
 
 新增源码测试覆盖双控制器原生端口读取与匹配同时进入、准确 owner 观察在批次完成后执行、撤权仍关闭窗口、FIFO边界、独立deadline、pending确认、失败及超时后的真实退出。独立复核后共新增10项行为测试，包括全批owner完成之后才开启下一轮窗口、运行中短job独立deadline。最终完整1744 tests/224 suites全零；9个所属Java本机全级零、完整读回一致，MCP build成功。首次修改前内容与复核证据位于 `build/staging/structure-parallel-reuse/`，统一构建日志/XML见 `build/staging/resumed-goal-plan/unified/third-results/`。
 

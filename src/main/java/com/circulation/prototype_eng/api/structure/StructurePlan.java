@@ -3,11 +3,11 @@ package com.circulation.prototype_eng.api.structure;
 import ae2.api.orientation.BlockOrientation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Objects;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-
-/** One transformed definition, controller anchor and complete declaration of potential reads. */
+/**
+ * One transformed definition, controller anchor and complete declaration of potential reads.
+ */
 public final class StructurePlan {
     private final MachineStructure structure;
     private final BlockPos controller;
@@ -28,14 +28,59 @@ public final class StructurePlan {
 
     /** Transform, maximal declaration and freeze each resume through the actual selected hooks. */
     public static StructureOperation<StructurePlan> beginCreate(MachineStructure definition, BlockPos controller, BlockOrientation orientation) {
-        Objects.requireNonNull(definition); Objects.requireNonNull(orientation);
+        Objects.requireNonNull(definition);
+        Objects.requireNonNull(orientation);
         var actual = Objects.requireNonNull(controller).toImmutable();
         var rotation = StructureTransform.between(definition.orientation(), orientation);
+        return beginCreate(actual, definition.beginTransform(rotation));
+    }
+
+    /** Configured hosts may share completed canonical transforms; standalone calls keep their virtual path. */
+    public static StructureOperation<StructurePlan> beginCreate(StructureConfiguration configuration, BlockPos controller) {
+        Objects.requireNonNull(configuration);
+        Objects.requireNonNull(controller);
+        var definition = configuration.definition();
+        var orientation = configuration.orientation();
+        var catalog = configuration.catalog();
+        if (catalog == null || !definition.planReusable()) return beginCreate(definition, controller, orientation);
+        var canonical = catalog.get(definition.id());
+        if (canonical == null || canonical.shape() != definition)
+            throw new IllegalArgumentException("Plan definition is not canonical in its catalog generation");
+        var rotation = StructureTransform.between(definition.orientation(), orientation);
+        var transform = new StructureOperation<MachineStructure>() {
+            @Nullable
+            private StructureOperation<MachineStructure> pending;
+
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
+                Objects.requireNonNull(work);
+                if (complete()) return true;
+                if (pending == null) {
+                    if (!work.take()) return false;
+                    var cached = catalog.cachedTransform(definition, orientation);
+                    if (cached != null) {
+                        finish(cached);
+                        return true;
+                    }
+                    pending = definition.beginTransform(rotation);
+                }
+                if (!pending.advance(work) || !work.take()) return false;
+                var result = Objects.requireNonNull(pending.result());
+                finish(result.planReusable() ? catalog.rememberTransform(definition, orientation, result) : result);
+                return true;
+            }
+        };
+        return beginCreate(controller, transform);
+    }
+
+    private static StructureOperation<StructurePlan> beginCreate(BlockPos controller, StructureOperation<MachineStructure> transform) {
+        var actual = Objects.requireNonNull(controller).toImmutable();
         return new StructureOperation<>() {
             private final StructureReadPlan.Builder builder = new StructureReadPlan.Builder();
-            private final StructureOperation<MachineStructure> transform = definition.beginTransform(rotation);
-            @Nullable private StructureOperation<Void> declaration;
-            @Nullable private StructureOperation<StructureReadPlan> freeze;
+            @Nullable
+            private StructureOperation<Void> declaration;
+            @Nullable
+            private StructureOperation<StructureReadPlan> freeze;
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
@@ -60,6 +105,11 @@ public final class StructurePlan {
     }
 
     public StructureReadPlan reads() { return reads; }
+
+    /** Whether the actual transformed definition is safe to retain across independent attempts. */
+    public boolean planReusable() {
+        return structure.planReusable();
+    }
 
     /** Independent attempts cannot retain a successful tree after a later failed match. */
     @Nullable

@@ -43,6 +43,12 @@ public final class StructureRefresh {
     private List<StructureSnapshot.Failure> diagnostics = List.of();
     private StructurePredicateResult publicationStatus = StructurePredicateResult.UNAVAILABLE;
     private Object preparationOwner = new Object();
+    @Nullable
+    private StructureConfiguration cachedConfiguration;
+    @Nullable
+    private BlockPos cachedController;
+    @Nullable
+    private StructurePlan cachedPlan;
 
     public StructureRefresh(MachineLifecycle lifecycle, MachineStructureHost host) {
         this(lifecycle, host, () -> true); }
@@ -69,42 +75,64 @@ public final class StructureRefresh {
     public StructureOperation<Request> beginPrepare(@Nullable StructureSnapshot.JoinedWorker worker) {
         enter();
         try {
-        var owner = new Object();
-        preparationOwner = owner;
-        pending = null;
-        var configuration = host.structureConfiguration();
-        if (lifecycle.state() != MachineLifecycle.State.LOADED || configuration == null || !attachmentCurrent.getAsBoolean())
-            return StructureOperation.call(() -> null);
-        return new StructureOperation<>() {
-            @Nullable private StructureOperation<StructurePlan> planning;
-            @Nullable private StructureOperation<StructureSnapshot> capture;
-            @Override public boolean advance(RecipeWorkBudget work) {
-                enter();
-                try {
-                    if (complete()) return true;
-                    if (preparationOwner != owner || !configurationCurrent(configuration)) { finish(null); return true; }
-                    if (planning == null) {
-                        if (!work.take()) return false;
-                        planning = StructurePlan.beginCreate(configuration.definition(), host.identity().controllerPos(), configuration.orientation());
-                    }
-                    if (!planning.advance(work)) return false;
-                    var plan = Objects.requireNonNull(planning.result());
-                    if (capture == null) { if (!work.take()) return false; capture = StructureSnapshot.beginCapture(plan.reads(), host, worker); }
-                    if (!capture.advance(work)) return false;
-                    var snapshot = capture.result();
-                    if (snapshot == null) { finish(null); return true; }
-                    diagnostics = snapshot.failures();
-                    if (preparationOwner != owner || !configurationCurrent(configuration)) { finish(null); return true; }
-                    pending = new Request(configuration, plan, snapshot); finish(pending); return true;
-                } catch (RuntimeException | Error failure) {
-                    lifecycle.refreshStructure(() -> preparationOwner == owner && configurationCurrent(configuration), () -> {
+            var owner = new Object();
+            preparationOwner = owner;
+            pending = null;
+            var configuration = host.structureConfiguration();
+            if (lifecycle.state() != MachineLifecycle.State.LOADED || configuration == null || !attachmentCurrent.getAsBoolean())
+                return StructureOperation.call(() -> null);
+            return new StructureOperation<>() {
+                @Nullable
+                private StructureOperation<StructurePlan> planning;
+                @Nullable
+                private StructureOperation<StructureSnapshot> capture;
+
+                @Override
+                public boolean advance(RecipeWorkBudget work) {
+                    enter();
+                    try {
+                        if (complete()) return true;
+                        if (preparationOwner != owner || !configurationCurrent(configuration)) {
+                            finish(null);
+                            return true;
+                        }
+                        if (planning == null) {
+                            if (!work.take()) return false;
+                            planning = beginPlan(owner, configuration);
+                        }
+                        if (!planning.advance(work)) return false;
+                        var plan = Objects.requireNonNull(planning.result());
+                        if (capture == null) {
+                            if (!work.take()) return false;
+                            capture = StructureSnapshot.beginCapture(plan.reads(), host, worker);
+                        }
+                        if (!capture.advance(work)) return false;
+                        var snapshot = capture.result();
+                        if (snapshot == null) {
+                            finish(null);
+                            return true;
+                        }
+                        diagnostics = snapshot.failures();
+                        if (preparationOwner != owner || !configurationCurrent(configuration)) {
+                            finish(null);
+                            return true;
+                        }
+                        pending = new Request(configuration, plan, snapshot);
+                        finish(pending);
+                        return true;
+                    } catch (RuntimeException | Error failure) {
+                        lifecycle.refreshStructure(() -> preparationOwner == owner && configurationCurrent(configuration), () -> {
+                            throw failure;
+                        });
                         throw failure;
-                    });
-                    throw failure;
-                } finally { active = false; }
-            }
-        };
-        } finally { active = false; }
+                    } finally {
+                        active = false;
+                    }
+                }
+            };
+        } finally {
+            active = false;
+        }
     }
 
     /** Same authority and planning as beginPrepare, with an explicit externally joined read phase. */
@@ -135,15 +163,18 @@ public final class StructureRefresh {
         public boolean complete() { host.requireServerThread(); return complete; }
         @Nullable public Request result() { host.requireServerThread(); return result; }
 
-        @Nullable public Runnable prepareWorker(RecipeWorkBudget work) {
+        @Nullable
+        public Runnable prepareWorker(RecipeWorkBudget work) {
             enter();
             try {
                 if (complete) return null;
-                if (!current()) { complete = true; return null; }
+                if (!current()) {
+                    complete = true;
+                    return null;
+                }
                 if (planning == null) {
                     if (!work.take()) return null;
-                    planning = StructurePlan.beginCreate(Objects.requireNonNull(configuration).definition(),
-                        host.identity().controllerPos(), configuration.orientation());
+                    planning = beginPlan(owner, Objects.requireNonNull(configuration));
                 }
                 if (!planning.advance(work)) return null;
                 var plan = Objects.requireNonNull(planning.result());
@@ -162,8 +193,12 @@ public final class StructureRefresh {
                     result = pending;
                 }
                 return null;
-            } catch (RuntimeException | Error failure) { failPreparation(failure); throw failure; }
-            finally { active = false; }
+            } catch (RuntimeException | Error failure) {
+                failPreparation(failure);
+                throw failure;
+            } finally {
+                active = false;
+            }
         }
 
         /** Cleanup is unconditional, even when another owner's preparation revoked this request. */
@@ -192,14 +227,21 @@ public final class StructureRefresh {
         }
     }
 
-    /** Revokes pending results and pauses existing bindings, at the scheduler's exclusive boundary. */
+    /**
+     * Revokes pending results and pauses existing bindings, at the scheduler's exclusive boundary.
+     */
     public void invalidate() {
         enter();
         try {
             pending = null;
             preparationOwner = new Object();
-            if (lifecycle.state() == MachineLifecycle.State.LOADED) { lifecycle.invalidateStructure(); }
-        } finally { active = false; }
+            clearPlan();
+            if (lifecycle.state() == MachineLifecycle.State.LOADED) {
+                lifecycle.invalidateStructure();
+            }
+        } finally {
+            active = false;
+        }
     }
 
     /**
@@ -265,6 +307,40 @@ public final class StructureRefresh {
 
     private boolean configurationCurrent(StructureConfiguration configuration) {
         return attachmentCurrent.getAsBoolean() && host.structureConfiguration() == configuration;
+    }
+
+    /** One owner-only slot; both preparation paths use the same exact generation and position checks. */
+    private StructureOperation<StructurePlan> beginPlan(Object owner, StructureConfiguration configuration) {
+        var controller = host.identity().controllerPos().toImmutable();
+        boolean reusable = configuration.definition().planReusable();
+        var cached = cachedPlan;
+        if (reusable && cached != null && cachedConfiguration == configuration && controller.equals(cachedController))
+            return StructureOperation.call(() -> cached);
+        clearPlan();
+        var planning = StructurePlan.beginCreate(configuration, controller);
+        return new StructureOperation<>() {
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
+                if (complete()) return true;
+                if (!planning.advance(work)) return false;
+                var plan = Objects.requireNonNull(planning.result());
+                if (reusable && plan.planReusable() && preparationOwner == owner && lifecycle.state() == MachineLifecycle.State.LOADED
+                    && !lifecycle.retired() && configurationCurrent(configuration)
+                    && controller.equals(host.identity().controllerPos())) {
+                    cachedConfiguration = configuration;
+                    cachedController = controller;
+                    cachedPlan = plan;
+                }
+                finish(plan);
+                return true;
+            }
+        };
+    }
+
+    private void clearPlan() {
+        cachedConfiguration = null;
+        cachedController = null;
+        cachedPlan = null;
     }
 
     /** Preparation really discovers each binding and port; none of these candidates authorizes work. */

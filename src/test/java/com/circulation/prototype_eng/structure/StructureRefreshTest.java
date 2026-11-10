@@ -25,7 +25,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,8 +34,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
-
-
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
@@ -62,8 +59,100 @@ import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureDefinition;
+import com.circulation.prototype_eng.api.structure.StructurePredicate;
+import com.circulation.prototype_eng.api.structure.StructureReadPlan;
+import com.circulation.prototype_eng.api.structure.StructureSnapshot;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import java.time.Duration;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 class StructureRefreshTest {
+
+    @Test
+    void anIncompletePlanCannotBeAdoptedByANewerPreparationEvenWithoutACatalog() {
+        var fixture = new Fixture();
+        var declarations = new AtomicInteger();
+        var transforms = new AtomicInteger();
+        fixture.host.configuration = new StructureConfiguration(reusableDefinition(declarations, transforms), BlockOrientation.NORTH_UP);
+        var obsolete = fixture.refresh.beginPrepare(null);
+        int slices = 0;
+        while (declarations.get() == 0) {
+            assertFalse(obsolete.advance(new RecipeWorkBudget(1)));
+            assertTrue(++slices < 1000);
+        }
+        assertFalse(obsolete.complete());
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        assertEquals(2, transforms.get());
+        assertEquals(2, declarations.get(), "The unfinished declaration/freeze is not a reusable full plan");
+        assertTrue(obsolete.advance(new RecipeWorkBudget(Long.MAX_VALUE)));
+        assertNull(obsolete.result());
+        assertTrue(fixture.refresh.publish(parallelRequest(fixture).evaluate()));
+        assertEquals(2, transforms.get(), "A standalone host also retains its completed plan");
+        assertEquals(2, declarations.get());
+    }
+
+    @Test
+    void synchronousAndParallelPreparationReuseOnlyThePurePlanWhileWorldFactsKeepChanging() {
+        var fixture = new Fixture();
+        var declarations = new AtomicInteger();
+        var transforms = new AtomicInteger();
+        var shape = reusableDefinition(declarations, transforms);
+        var catalog = new StructureCatalog(List.of(new StructureDefinition(shape)));
+        fixture.host.configuration = new StructureConfiguration(catalog, shape, BlockOrientation.NORTH_UP);
+        var first = fixture.request();
+        assertTrue(fixture.refresh.publish(first.evaluate()));
+        int initialReads = fixture.host.reads;
+        fixture.host.values.put(FIRST, "missing");
+        var second = parallelRequest(fixture);
+        assertTrue(fixture.refresh.publish(second.evaluate()));
+        assertFalse(fixture.lifecycle.formed());
+        assertTrue(fixture.host.reads > initialReads);
+        assertEquals(1, declarations.get());
+        assertEquals(1, transforms.get());
+        fixture.host.values.put(FIRST, "body");
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        assertTrue(fixture.lifecycle.formed());
+        assertEquals(1, declarations.get());
+        fixture.refresh.invalidate();
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        assertEquals(2, declarations.get(), "Explicit invalidation clears the one-host plan slot");
+        assertEquals(1, transforms.get(), "The canonical pure rotation remains reusable");
+    }
+
+    @Test
+    void hostPositionConfigurationAbaAndCatalogReplacementCannotReuseAnOldAbsolutePlan() {
+        var fixture = new Fixture();
+        var declarations = new AtomicInteger();
+        var transforms = new AtomicInteger();
+        var shape = reusableDefinition(declarations, transforms);
+        var catalog = new StructureCatalog(List.of(new StructureDefinition(shape)));
+        fixture.host.configuration = new StructureConfiguration(catalog, shape, BlockOrientation.NORTH_UP);
+        var obsolete = fixture.result();
+        fixture.host.controllerPosition = new BlockPos(10, 0, 0);
+        fixture.host.values.put(new BlockPos(11, 0, 0), "body");
+        fixture.request();
+        assertEquals(2, declarations.get());
+        assertEquals(1, transforms.get());
+        assertEquals(new BlockPos(11, 0, 0), fixture.host.observedReads.getLast());
+        fixture.host.configuration = new StructureConfiguration(catalog, shape, BlockOrientation.SOUTH_UP);
+        fixture.request();
+        fixture.host.configuration = new StructureConfiguration(catalog, shape, BlockOrientation.NORTH_UP);
+        fixture.request();
+        assertEquals(4, declarations.get());
+        assertEquals(2, transforms.get());
+        fixture.host.configuration = new StructureConfiguration(new StructureCatalog(List.of(new StructureDefinition(shape))), shape, BlockOrientation.NORTH_UP);
+        fixture.request();
+        assertEquals(5, declarations.get());
+        assertEquals(3, transforms.get());
+        var replacement = reusableDefinition(declarations, transforms);
+        fixture.host.configuration = new StructureConfiguration(new StructureCatalog(List.of(new StructureDefinition(replacement))), replacement, BlockOrientation.NORTH_UP);
+        fixture.request();
+        assertEquals(6, declarations.get());
+        assertEquals(4, transforms.get());
+        assertFalse(fixture.refresh.publish(obsolete));
+    }
     @Test
     void insufficientAtomicNotificationBudgetKeepsTheAcceptedTreeAndEmitsNoPartialEvent() {
         var fixture = new Fixture();
@@ -558,6 +647,54 @@ class StructureRefreshTest {
         }
     }
 
+    private static MachineStructure reusableDefinition(AtomicInteger declarations, AtomicInteger transforms) {
+        StructurePredicate predicate = new StructurePredicate() {
+            @Override
+            public boolean planReusable() {
+                return true;
+            }
+
+            @Override
+            public StructurePredicate transform(StructureTransform rotation) {
+                transforms.incrementAndGet();
+                return this;
+            }
+
+            @Override
+            public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+                declarations.incrementAndGet();
+                plan.read(position, MARKER);
+            }
+
+            @Override
+            public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+                return "body".equals(snapshot.read(MARKER, position));
+            }
+        };
+        return TemplateStructure.create(id("reusable"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
+            new StructurePattern(Map.of(FIRST, predicate)), List.of(), List.of());
+    }
+
+    private static StructureRefresh.Request parallelRequest(Fixture fixture) {
+        var preparation = fixture.refresh.beginParallelPrepare();
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1)) {
+            scheduler.runAtBoundary(() -> {
+                while (!preparation.complete()) {
+                    var action = preparation.prepareWorker(new RecipeWorkBudget(Long.MAX_VALUE));
+                    if (action != null) {
+                        var result = scheduler.runStructureWorker(() -> {
+                            action.run();
+                            return true;
+                        }, PlannedDeadline.after(Duration.ofSeconds(5)));
+                        assertInstanceOf(PlannedTaskExecutor.Success.class, result);
+                        preparation.finishWorker(true, null);
+                    }
+                }
+            });
+        }
+        return Objects.requireNonNull(preparation.result());
+    }
+
     private static StructureHatchBinding binding(ResourceHatch hatch) { return new StructureHatchBinding(new Object(), hatch, null, null); }
     private static ResourceLocation id(String path) { return new ResourceLocation("structure_refresh_test", path); }
 
@@ -585,6 +722,8 @@ class StructureRefreshTest {
         private final Map<BlockPos, String> values = new Object2ObjectOpenHashMap<>();
         private final Map<BlockPos, StructureHatchBinding> bindings = new Object2ObjectOpenHashMap<>();
         private final Map<BlockPos, StructureComponentProvider> providers = new Object2ObjectOpenHashMap<>();
+        private final ObjectArrayList<BlockPos> observedReads = new ObjectArrayList<>();
+        private BlockPos controllerPosition = BlockPos.ORIGIN;
         private StructureConfiguration configuration = new StructureConfiguration(
             new SliceStructure(id("shape"), BlockOrientation.NORTH_UP, FIRST, false,
                 new StructurePattern(Map.of(BlockPos.ORIGIN, StructurePredicates.test(MARKER, "body"::equals))),
@@ -595,19 +734,29 @@ class StructureRefreshTest {
         private Consumer<BlockPos> onDiscovery = _ -> {};
 
         private Host() { values.put(FIRST, "body"); }
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
+
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, controllerPosition);
+        }
         @Override public World world() { throw new UnsupportedOperationException("No World in logic tests"); }
         @Override public void requireServerThread() {
             if (Thread.currentThread() != serverThread) { throw new IllegalStateException("Not the owner thread"); }
         }
         @Override @Nullable public StructureConfiguration structureConfiguration() { requireServerThread(); return present ? configuration : null; }
         @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); return present; }
-        @Override @Nullable @SuppressWarnings("unchecked") // Only this String descriptor belongs to the fixture.
+
+        @Override
+        @Nullable
+        @SuppressWarnings("unchecked") // Only this String descriptor belongs to the fixture.
         public <T> T read(StructureQuery<T> query, BlockPos position) {
             requireServerThread();
             assertSame(MARKER, query);
             reads++;
-            if (readFailure != null) { throw readFailure; }
+            observedReads.add(position);
+            if (readFailure != null) {
+                throw readFailure;
+            }
             return (T) values.get(position);
         }
         @Override public StructureHatchBinding hatchesAt(BlockPos position) {

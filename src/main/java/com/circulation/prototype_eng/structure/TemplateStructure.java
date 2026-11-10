@@ -13,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Objects;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
@@ -23,8 +22,9 @@ import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import java.util.Collections;
 import java.util.Iterator;
-
-/** Immutable fixed pattern, followed by base validators and children anchored at its offset origin. */
+/**
+ * Immutable fixed pattern, followed by base validators and children anchored at its offset origin.
+ */
 @SuppressWarnings("unused") // Public extensible definitions use identity, not recursive structural equality.
 public class TemplateStructure implements MachineStructure, StructurePreviewProvider {
     private final ResourceLocation id;
@@ -35,27 +35,51 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
     private final List<StructurePredicate> validators;
     private final List<MachineStructure> children;
     private final boolean budgeted;
+    private final boolean planReusable;
 
     public TemplateStructure(ResourceLocation id, BlockOrientation orientation, BlockPos offset,
                              boolean hideWorldBlocks, StructurePattern pattern,
                              List<StructurePredicate> validators, List<MachineStructure> children) {
-        this(id, orientation, offset, hideWorldBlocks, pattern, validators, children, false, false);
+        this(id, orientation, offset, hideWorldBlocks, pattern, validators, children, false, false, false);
     }
 
-    /** Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks. */
-    public static TemplateStructure create(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, List<StructurePredicate> validators, List<MachineStructure> children) {
-        return new TemplateStructure(id, orientation, offset, hideWorldBlocks, pattern, validators, children, true, false);
-    }
-
-    private TemplateStructure(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, List<StructurePredicate> validators, List<MachineStructure> children, boolean budgeted, boolean owned) {
+    private TemplateStructure(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, List<StructurePredicate> validators, List<MachineStructure> children, boolean budgeted, boolean owned, boolean reusable) {
         this.id = Objects.requireNonNull(id);
         this.orientation = Objects.requireNonNull(orientation);
         this.offset = Objects.requireNonNull(offset).toImmutable();
         this.hideWorldBlocks = hideWorldBlocks;
         this.pattern = Objects.requireNonNull(pattern);
-        this.validators = owned ? Collections.unmodifiableList(validators) : List.copyOf(validators);
-        this.children = owned ? Collections.unmodifiableList(children) : List.copyOf(children);
         this.budgeted = budgeted;
+        if (owned) {
+            this.validators = Collections.unmodifiableList(validators);
+            this.children = Collections.unmodifiableList(children);
+            planReusable = reusable;
+        } else {
+            var copiedValidators = new ObjectArrayList<StructurePredicate>(validators.size());
+            var copiedChildren = new ObjectArrayList<MachineStructure>(children.size());
+            boolean stable = budgeted && pattern.planReusable();
+            for (var validator : validators) {
+                copiedValidators.add(Objects.requireNonNull(validator));
+                stable = stable && validator.planReusable();
+            }
+            for (var child : children) {
+                copiedChildren.add(Objects.requireNonNull(child));
+                stable = stable && child.planReusable();
+            }
+            this.validators = Collections.unmodifiableList(copiedValidators);
+            this.children = Collections.unmodifiableList(copiedChildren);
+            planReusable = stable;
+        }
+    }
+
+    /** Explicit default Java factory; ordinary constructor subclasses retain all old virtual hooks. */
+    public static TemplateStructure create(ResourceLocation id, BlockOrientation orientation, BlockPos offset, boolean hideWorldBlocks, StructurePattern pattern, List<StructurePredicate> validators, List<MachineStructure> children) {
+        return new TemplateStructure(id, orientation, offset, hideWorldBlocks, pattern, validators, children, true, false, false);
+    }
+
+    @Override
+    public boolean planReusable() {
+        return planReusable;
     }
 
     @Override
@@ -171,15 +195,19 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
             private final StructureOperation<StructurePattern> patternWork = pattern.beginTransform(rotation);
             private final ObjectArrayList<StructurePredicate> transformedValidators = new ObjectArrayList<>();
             private final ObjectArrayList<MachineStructure> transformedChildren = new ObjectArrayList<>();
-            @Nullable private StructureOperation<StructurePredicate> validator;
-            @Nullable private StructureOperation<MachineStructure> child;
+            @Nullable
+            private StructureOperation<StructurePredicate> validator;
+            @Nullable
+            private StructureOperation<MachineStructure> child;
             private int validatorIndex, childIndex;
+            private boolean reusable = planReusable;
 
             @Override
             public boolean advance(RecipeWorkBudget work) {
                 Objects.requireNonNull(work);
                 if (complete()) return true;
                 if (!patternWork.advance(work)) return false;
+                reusable = reusable && Objects.requireNonNull(patternWork.result()).planReusable();
                 while (validatorIndex < validators.size()) {
                     if (validator == null) {
                         if (!work.take()) return false;
@@ -187,7 +215,9 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                     }
                     if (!validator.advance(work)) return false;
                     transformedValidators.add(Objects.requireNonNull(validator.result()));
-                    validator = null; validatorIndex++;
+                    reusable = reusable && Objects.requireNonNull(validator.result()).planReusable();
+                    validator = null;
+                    validatorIndex++;
                 }
                 while (childIndex < children.size()) {
                     if (child == null) {
@@ -196,13 +226,15 @@ public class TemplateStructure implements MachineStructure, StructurePreviewProv
                     }
                     if (!child.advance(work)) return false;
                     transformedChildren.add(Objects.requireNonNull(child.result()));
-                    child = null; childIndex++;
+                    reusable = reusable && Objects.requireNonNull(child.result()).planReusable();
+                    child = null;
+                    childIndex++;
                 }
                 if (!work.take()) return false;
                 var actualOrientation = BlockOrientation.get(rotation.apply(orientation.getSide(RelativeSide.FRONT)),
                     rotation.apply(orientation.getSide(RelativeSide.TOP)));
                 finish(new TemplateStructure(id, actualOrientation, rotation.apply(offset), hideWorldBlocks,
-                    Objects.requireNonNull(patternWork.result()), transformedValidators, transformedChildren, true, true));
+                    Objects.requireNonNull(patternWork.result()), transformedValidators, transformedChildren, true, true, reusable));
                 return true;
             }
         };

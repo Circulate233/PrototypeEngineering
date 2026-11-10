@@ -5,15 +5,17 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
-
-/** Immutable complete candidate generation, including shapes not directly referenced by machines. */
-@SuppressWarnings("ClassCanBeRecord") // Object identity denotes a catalog generation, including A -> B -> A.
+import ae2.api.orientation.BlockOrientation;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+/**
+ * Immutable complete candidate generation, including shapes not directly referenced by machines.
+ */
 public final class StructureCatalog {
     private final Map<ResourceLocation, StructureDefinition> definitions;
+    private final Reference2ObjectOpenHashMap<MachineStructure, MachineStructure[]> transformed = new Reference2ObjectOpenHashMap<>();
 
     public StructureCatalog(Collection<StructureDefinition> definitions) {
         var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureDefinition>();
@@ -43,5 +45,18 @@ public final class StructureCatalog {
 
     public Map<ResourceLocation, StructureDefinition> definitions() {
         return definitions;
+    }
+
+    /** Pure completed values only; callers validate canonical identity and eligibility outside this lock. */
+    synchronized @Nullable MachineStructure cachedTransform(MachineStructure definition, BlockOrientation orientation) {
+        var orientations = transformed.get(definition);
+        return orientations == null ? null : orientations[orientation.ordinal()];
+    }
+
+    synchronized MachineStructure rememberTransform(MachineStructure definition, BlockOrientation orientation, MachineStructure result) {
+        var orientations = transformed.computeIfAbsent(definition, _ -> new MachineStructure[BlockOrientation.values().length]);
+        int index = orientation.ordinal();
+        if (orientations[index] == null) orientations[index] = result;
+        return orientations[index];
     }
 }

@@ -12,13 +12,27 @@ public interface StructurePredicate {
     void collectReads(StructureReadPlan.Builder plan, BlockPos position);
     boolean matches(StructureSnapshot snapshot, BlockPos position);
 
+    /**
+     * Explicit, stable O(1) promise that transforms and read declarations (including query descriptor
+     * identities) are immutable and their results can be shared across requests.
+     * Concurrent begin/match calls at different positions
+     * must own independent cursors and scratch; no mutable attempt state belongs to this instance.
+     * Query capture, condition evaluation and freshness checks still run for every attempt.
+     */
+    default boolean planReusable() {
+        return false;
+    }
+
     /** Existing external predicate overrides remain the actual callback used by a budgeted plan. */
     default StructureOperation<StructurePredicate> beginTransform(StructureTransform rotation) {
         return StructureOperation.call(() -> transform(rotation));
     }
 
     default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
-        return StructureOperation.call(() -> { collectReads(plan, position); return null; });
+        return StructureOperation.call(() -> {
+            collectReads(plan, position);
+            return null;
+        });
     }
 
     default StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {

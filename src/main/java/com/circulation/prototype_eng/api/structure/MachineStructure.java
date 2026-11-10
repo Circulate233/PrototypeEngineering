@@ -21,13 +21,28 @@ public interface MachineStructure {
     void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller);
     @Nullable StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller);
 
+    /**
+     * Explicit opt-in to sharing completed transformed definitions and read declarations. Geometry,
+     * transforms and declarations must remain stable for this object's lifetime, including every
+     * transformed result. This flag is stable and O(1). Independent requests may concurrently use
+     * the same instance at different anchors: each begin call must own its cursor, builder and
+     * scratch. Matching still consumes each request's fresh snapshot. Unknown extensions stay on
+     * their original virtual path; mutable definitions must not opt in.
+     */
+    default boolean planReusable() {
+        return false;
+    }
+
     /** Unknown shapes retain their exact existing virtual operations as cooperative callbacks. */
     default StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
         return StructureOperation.call(() -> transform(rotation));
     }
 
     default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
-        return StructureOperation.call(() -> { collectReads(plan, anchor, controller); return null; });
+        return StructureOperation.call(() -> {
+            collectReads(plan, anchor, controller);
+            return null;
+        });
     }
 
     default StructureOperation<StructureMatchResult> beginMatch(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
