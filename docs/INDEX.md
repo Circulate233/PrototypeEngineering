@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-10 用户实机反馈已只读确认两项未修问题：JEI 静态基线副本无显示缓存，回退生成新 display 却复用旧 reference-key 测量，触发 `Display was not measured for this category` 后隐藏整批池配方；示例只有 shape 注册，未发布 `StructureDefinition.displays`，因此几何位置存在但预览只呈现控制器与未知线框。代码修复尚未开始，总体 Goal 仍暂停。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-empty-diagnosis/`；可用日志运行 @63518f6，相关 JEI/结构源码到当前版本无差异。
+
 - 总体 Goal 保持暂停。本次单独处理用户仓室方块/物品白灰及 Lumenized 物品发暗反馈，源码已本地提交 `16640be`，未推送。44 模型/52 发光元素关闭方向漫反射并改为外壳先绘制；30 标记元数据缺 BLOOM 时仅复制回退 CUTOUT，保留 light=15，有原生层时保留 Bloom；共享仓室 CUTOUT 保透明覆盖。专项4/1、完整1872/248均全零，4 Java 与 Mixin 配置本机全级零、MCP build 成功。入口 [仓室美术](assets.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-model-parity/`；需重启客户端复验，新 Mixin 不能仅靠资源刷新应用。
 
 - 2026-11-10 局部定义替换 A–E、外部 JEI 页面绑定和 AE 网络包结构已完成本轮实现与验证。专项 67 tests/12 suites、完整构建 1868 tests/247 suites，失败/错误/跳过均为零；67 Java 本机 MCP 全级零、完整读回匹配，MCP build 成功。源码已本地提交 `644e710`，未推送。入口 [定义替换](recipe-definition-replacement.md)，新证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/unified-final/`。
@@ -13,6 +15,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 新实机反馈优先：修复静态回退的同代 display/布局测量身份一致性，并为可视示例补完整结构显示映射、重新编译示例；保持旧自定义页静态兼容和动态声明安全门。当前仅完成问题确认，没有启动游戏或改动实现。
 
 1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
 2. 先复验仓室方块/物品在无 CTM、仅 CTM、CTM+Lumenized 下的颜色、透明覆盖及局部发光；未自行启动游戏。总体 Goal 暂停，恢复后再按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等 Java 前提，再接 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。

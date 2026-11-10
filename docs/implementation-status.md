@@ -1,5 +1,8 @@
 # 实施进度
 
+- 2026-11-10 用户反馈“预览mod配方全部消失、结构只有控制器和线框”已只读确认，尚未修源码/重编示例/运行新验证。JEI：`PrototypeJeiPlugin` 的 localStaticBaseline 使用 `RecipeJeiDisplays.frozenCopy()`，仅 provider 无 descriptions；该基线的 snapshot 虽复制缓存仍为空，生成新 display。原 AutoLayout data 按 registration display 引用键量测，STATIC initialPagesMatch 只检 pool 后 initialUpdates 复用旧量测，构造器209查新对象失败；rejectGeneration 撤 token 并隐藏全部旧/候选池wrapper。这是 PE 静态回退缺陷；server gen0/keynull 发 declarationRequired=false 本应允许静态，missing-key警告本身不能定因。
+- 结构：可视示例全部沿 `VisualExamples.install` 调用 shape-only runtime structure 注册，`StructureDefinition(shape)` 的 displays 默认为空；catalog/预览保留 positions/bounds，但无可绘方块表示，只剩未知线框和独立controller anchor。匹配结构实际有内容，缺的是显示映射。现装示例Jar及五源码与其 build-result 来源一致，最近日志运行 PE@63518f6，与当前 relevant JEI/结构文件无差异；不是把旧游戏当成已验证新仓室修复。具体链与出处在 build外 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-empty-diagnosis/`。总体Goal保持paused，后续优先修这两项并补真实同代描述/测量行为覆盖，不用此前1872测试代表本次实机链通过。
+
 - 2026-11-10 仓室颜色/物品发暗单项反馈已修复，源码本地提交 `16640be`，未推送；总体 Goal 仍暂停，未继续命名回调/ZSData/CT。现场未 Lumenized 日志有30次未知 BLOOM 元数据错误，CTM回退无light/专层的普通纹理；原发光面shade=true使item仍参加方向漫反射。现44模型/52发光元素shade=false且外壳先绘制、30自有metadata布尔标记经精确typed CTM optional Mixin：真实BLOOM存在原对象不变，否则deepCopy仅改layer为CUTOUT，保light15。共享HatchBlock CUTOUT保plain Forge alpha测试，不变opaque/fullCube/存储行为。全部163PNG、6动画、UV/几何/credit/父链/普通外壳AO保持，独立逐字段审查通过。
 - 本次fresh专项4 tests/1 suite、完整build（含Spotless）1872 tests/248 suites，0 failures/errors/skipped；4Java+Mixin配置5文件本机MCP errorsOnly:false全级零、完整首读/读回匹配，MCP build成功。79源码/资源当前bytes仍等同构建前snapshot，5项背景（含用户Gradle依赖修改）bytes保持；没有Minecraft、Bootstrap/FML或native GL运行。新原日志/XML/MCP及before/after来自build外 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-model-parity/`，实机重启后验收无CTM/仅CTM/加Lumenized组合；不能仅F3+T应用新Mixin。
 
