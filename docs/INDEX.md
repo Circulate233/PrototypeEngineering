@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 用户补充日志已确认第三项独立缺陷：关世界时 Forge 在 Server thread 的 registry remap 回调里重建客户端搜索索引，仓室 tooltip 无条件读取 ClientProxy 同步配置 actor，触发 `Hatch tooltip requires client owner`。资源/能源两类共用该入口；应保留 actor 线程门，仅 owner 查询同步 view，非 owner 使用纯物品保存配置/明确默认或未就绪路径。仅记录，尚未修实现；与 JEI 静态身份错误、结构显示映射缺失分别处理。原日志/核对在 `preview-empty-diagnosis/user-tooltip-shutdown.log` 和 `tooltip-thread.md`。
+
 - 2026-11-10 用户实机反馈已只读确认两项未修问题：JEI 静态基线副本无显示缓存，回退生成新 display 却复用旧 reference-key 测量，触发 `Display was not measured for this category` 后隐藏整批池配方；示例只有 shape 注册，未发布 `StructureDefinition.displays`，因此几何位置存在但预览只呈现控制器与未知线框。代码修复尚未开始，总体 Goal 仍暂停。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-empty-diagnosis/`；可用日志运行 @63518f6，相关 JEI/结构源码到当前版本无差异。
 
 - 总体 Goal 保持暂停。本次单独处理用户仓室方块/物品白灰及 Lumenized 物品发暗反馈，源码已本地提交 `16640be`，未推送。44 模型/52 发光元素关闭方向漫反射并改为外壳先绘制；30 标记元数据缺 BLOOM 时仅复制回退 CUTOUT，保留 light=15，有原生层时保留 Bloom；共享仓室 CUTOUT 保透明覆盖。专项4/1、完整1872/248均全零，4 Java 与 Mixin 配置本机全级零、MCP build 成功。入口 [仓室美术](assets.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-model-parity/`；需重启客户端复验，新 Mixin 不能仅靠资源刷新应用。
