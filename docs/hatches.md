@@ -1,5 +1,9 @@
 # 仓室核心与扩展接入
 
+2026-11-10 破坏掉落按用户新要求改为AE原生路径：资源仓的 `addAdditionalDrops` 接住输入/输出/交互三种方向的全部材料，经AEKey掉落；大数量物品及流体等非物品资源沿AE资源包，原long数量不裁剪。仓室物品的BlockEntityTag只保存profile、槽位/容量、自动IO和限额等配置，两侧库存列表为空，重新放置不会再恢复已掉出的材料。普通世界存档仍保存真实库存，独立FE仓原有保存行为保持。
+
+销毁在原两侧有序锁下单向失效旧引用，每侧只交付一次。没有未结算token的侧立即清空并掉落；存在预留、已应用输入、临时产物或外部传输回执的侧保留原记录，最后提交/补偿完成后再交付最终余额，不能提前清空或把未确认产物掉出。延后回调在物理锁/fence退出后发布，worker只安排服务器线程产生掉落实体。AE原生挖掘、创造破坏、爆炸及扳手拆卸共用同一入口，未增加第二套世界破坏事件。纯行为及源码核对完成，真实掉落实体/资源包拾取仍待用户游戏复验。
+
 2026-11-10 退出世界提示修复：Forge可在Server thread恢复注册表时调用物品tooltip。资源和能源提示仅在真实客户端owner读取同步配置actor与connection；非owner保留纯物品完整EffectiveProfile/资源legacy配置，缺少目标则明确AwaitingConfiguration。未取消actor线程门，也不用本地默认冒充远端同步事实。数字格式器按线程保存独立实例，避免搜索索引和GUI并发使用可变NumberFormat。源码/纯行为验证完成，真实退出链复验见[实施进度](implementation-status.md)。
 
 2026-11-10 仓室模型反馈已落实窄修：普通外壳保持原光照，彩色发光面单独关闭方向漫反射并后绘制；CUTOUT 处理透明像素。CTM 缺少原生 BLOOM 枚举时，仅自有标记元数据回退 CUTOUT 并保留 light=15；安装 Lumenized 时保留原 BLOOM 层。方块/物品继续同源，不改贴图、动画、外壳 AO 或实体存储。原因、可选组合和证据见 [仓室美术来源](assets.md)。
@@ -60,7 +64,7 @@ AE 的 final `createNewTileEntity` 通过真实 `Class<T>` 的 public 无参构�
 
 能源实体按模式暴露公开 EnergyInput/EnergyOutput，并使用 ForgeEnergyPort 暴露 Forge ENERGY。卸载/失效使已取得的转移引用失效；重新挂载时创建新视图，旧引用不会重新激活。保存仍可读取失效核心的实际内容；三方向、动态限额、重载和旧引用失效已由能源逻辑用例验证。
 
-方块掉落以 BlockEntityTag 携带缓存、方向、槽位和容量；挖掘路径保留实体至生成掉落之后，再移除方块。重新放置使用 AEBaseBlockItem 的标准 NBT 恢复路径。丝触走同样的内容掉落规则。
+资源仓掉落以BlockEntityTag携带方向、槽位、容量及配置，缓存材料由AE附加掉落入口独立掉出；挖掘路径保留实体至捕获配置和交付掉落之后，再移除方块。重新放置使用AEBaseBlockItem标准NBT恢复配置，库存为空；丝触沿同一材料掉落规则。独立FE仓仍按原方块物品数据保存电量。
 
 PM `FluidHatchBlockEntity` 与混合 `FluidIOHatchBlockEntity` 的真实每次 fill/drain 限额已恢复到可选 `FluidHatchSettings`：输入/输出分别为非负 long，0 不限，正数限制每次操作的 mB 数量。`HatchFluidHandler` 对整个模拟或实际请求先裁剪，混合两侧仍分别访问；`ResourceHatchContainer` 的手持容器填充/倒入也仅对 AEFluidKey 应用对应限额，失败填充的完整补偿不受限额裁剪。配方直接访问 ResourceStorage 不受自动化限额影响，物品及其它 key 保持原转移语义；没有把每次操作限额改成累计 tick 预算。设置保存为 `MaxFluidInRate/MaxFluidOutRate`，GUI 使用 GuiSync 同步，不为每次设置替换客户端正在使用的存储视图。
 

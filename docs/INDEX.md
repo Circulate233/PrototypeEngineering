@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-10 仓室破坏掉落已按新要求修复：输入/输出/交互资源仓沿AE附加掉落路径弹出材料；大数量及非物品资源用AE资源包。仓室物品只留配置与空库存，避免重新放置复制；活动事务保留到准确提交/补偿后在服务器线程掉出最终余额。专项49/7、完整1898 tests/252 suites全零，7Java本机MCP全级零、完整读回与MCP build通过；背景字节/暂存保持。入口 [仓室](hatches.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-drops/`。源码已本地提交 `5f87ce7`，未推送、未启动游戏。
+
 - 2026-11-10 接续上一对话完成三项实机反馈的源码修复与验证：JEI 静态回退共享同代 descriptions/布局量测身份；具体 block/state 与结构匹配同源派生预览，不再要求示例另注册显示表；仓室 tooltip 仅客户端 owner 查询同步 actor，非 owner 保留完整物品配置或明确未就绪，数值格式器按线程隔离。入口 [JEI](jei.md)、[结构](structures.md)、[仓室](hatches.md)。
 
 - 最新完整构建（含 Spotless）1890 tests/251 suites，失败/错误/跳过均零；33 Java 本机 MCP `errorsOnly:false` 全级零，完整源码读回一致，MCP build 成功。复核补齐空 NBT 的方块实体存在约束和宽 OR 搜索展开预算。可视示例五源码已重编并更新 `run/mods`；未启动游戏，真实 HEI、结构视觉及退出世界仍待用户复验。准确日志/XML/MCP/源码快照在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-fixes/resumed-validation/`，原诊断保留在 `preview-empty-diagnosis/`。源码已本地提交 `35de846`，未推送；总体 Goal 保持暂停，当前仅完成用户另行要求的修复。
@@ -18,7 +20,7 @@
 
 ## 下一步
 
-- 新实机反馈优先：由用户重新启动客户端，复验示例配方、具体方块结构预览、机械构建器及退出世界。静态独立自定义页兼容和动态声明安全门保留；具体方块同源显示已修，不应再给示例补第二份显示注册。
+- 新实机反馈优先：由用户重新启动客户端，复验资源仓三方向破坏/扳手拆卸材料掉落、资源包拾取及仓室重新放置空库存；同时复验示例配方、具体方块结构预览、机械构建器及退出世界。具体方块同源显示已修，不应再给示例补第二份显示注册。
 
 1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
 2. 先复验仓室方块/物品在无 CTM、仅 CTM、CTM+Lumenized 下的颜色、透明覆盖及局部发光；未自行启动游戏。总体 Goal 暂停，恢复后再按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等 Java 前提，再接 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。
