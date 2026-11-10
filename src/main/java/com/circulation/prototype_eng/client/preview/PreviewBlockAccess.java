@@ -93,6 +93,8 @@ public final class PreviewBlockAccess implements IBlockAccess {
 
     @Override
     public IBlockState getBlockState(BlockPos pos) {
+        // Hidden neighboring layers must not cull this slice's exposed top/bottom faces.
+        if (!view.threeDimensional && pos.getY() != view.layer) return Blocks.AIR.getDefaultState();
         var state = represented(pos);
         return state == null ? Blocks.AIR.getDefaultState() : state;
     }

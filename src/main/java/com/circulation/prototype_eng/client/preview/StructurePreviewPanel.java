@@ -241,11 +241,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private void layerSlider() {
-        var model = view.model();
-        if (model == null) return;
+        var bounds = view.sceneBounds();
+        if (bounds == null) return;
         sprite("right_layer_selection", 165, 33, 10, 158);
-        int maximum = model.bounds().max().getY() - model.bounds().min().getY();
-        int index = Math.clamp(view.layer - model.bounds().min().getY(), 0, maximum);
+        int maximum = bounds.max().getY() - bounds.min().getY();
+        int index = Math.clamp(view.layer - bounds.min().getY(), 0, maximum);
         int y = 44 + (int) Math.round(maximum == 0 ? 0 : 124.0 * index / maximum);
         boolean hover = new Rect(165, 33, 10, 158).contains(mouseX, mouseY);
         sprite(layerDragging ? "slider_press" : hover ? "slider_selected" : "slider_default", 167, y, 7, 12);
@@ -253,9 +253,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private void updateLayer(int y) {
-        var model = view.model();
-        if (model == null) return;
-        int min = model.bounds().min().getY(), max = model.bounds().max().getY();
+        var bounds = view.sceneBounds();
+        if (bounds == null) return;
+        int min = bounds.min().getY(), max = bounds.max().getY();
         view.layer = min + (int) Math.round(Math.clamp(y - 33 - 11 - 6, 0, 124) / 124.0 * (max - min));
     }
 

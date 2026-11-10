@@ -10,6 +10,7 @@ import com.circulation.prototype_eng.block.MachineControllerBlock;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -55,6 +56,7 @@ public final class StructurePreviewScene implements AutoCloseable {
     private final AutoCloseable invalidationSubscription, closeSubscription;
     private final PreviewTileEntities<TileEntity> tiles = new PreviewTileEntities<>(new NativeTiles());
     private final IntArrayList boundaryCells = new IntArrayList();
+    private final Int2ObjectOpenHashMap<IntArrayList> layerCells = new Int2ObjectOpenHashMap<>();
     private final PreviewRayIndex rayIndex = new PreviewRayIndex();
     private final FloatBuffer colors = BufferUtils.createFloatBuffer(4);
     private final FloatBuffer modelview = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16), projected = BufferUtils.createFloatBuffer(3);
@@ -135,6 +137,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         hovered = null;
         token = null;
         boundaryCells.clear();
+        layerCells.clear();
         rayIndex.clear();
         boundaryCursor = 0;
         Throwable failure = null;
@@ -181,7 +184,8 @@ public final class StructurePreviewScene implements AutoCloseable {
         access.advance(2048);
         camera.prepare(bounds);
         prepareBoundaries();
-        var controllerState = controller == null || !view.threeDimensional ? null : controller.previewState(view.settings().orientation(), view.formedPreview());
+        var controllerState = controller == null || !view.threeDimensional && view.layer != 0 ? null
+            : controller.previewState(view.settings().orientation(), view.formingModelsVisible());
         if (closed || view.token() != round || view.model() != model || mc.world != world) return;
         access.controllerState(controllerState);
         if (pickWorld == null) pickWorld = new StructurePickWorld(mc.world, access::getBlockState, position -> {
@@ -238,11 +242,9 @@ public final class StructurePreviewScene implements AutoCloseable {
                     GlStateManager.rotate((float) camera.yaw(), 0, 1, 0);
                     GlStateManager.translate(-center.x, -center.y, -center.z);
                     var ray = Objects.requireNonNull(camera.ray(viewport, viewport.x() + viewport.width() / 2, viewport.y() + viewport.height() / 2, bounds));
-                    if (view.threeDimensional) {
-                        if (controllerState != null) drawController(controllerState);
-                        meshes.renderScene(view, access, ray.origin().x, ray.origin().y, ray.origin().z);
-                        tiles.draw(view, partialTicks, 512);
-                    }
+                    if (controllerState != null) drawController(controllerState);
+                    meshes.renderScene(view, access, ray.origin().x, ray.origin().y, ray.origin().z);
+                    tiles.draw(view, partialTicks, 512);
                     if (closed || view.token() != round || view.model() != model || mc.world != world) return;
                     if (view.threeDimensional) frame.draw(ray.origin());
                     GlStateManager.disableTexture2D();
@@ -250,7 +252,8 @@ public final class StructurePreviewScene implements AutoCloseable {
                     if (!highlighted.isEmpty()) {
                         GlStateManager.disableDepth();
                         for (var position : highlighted)
-                            RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
+                            if (view.threeDimensional || position.getY() == view.layer)
+                                RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
                         GlStateManager.enableDepth();
                     }
                     if (view.wireframe) drawWireframe(controller != null);
@@ -315,6 +318,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             int index = boundaryCursor++;
             rayIndex.add(model.cells().get(index));
             var pos = model.cells().get(index).position();
+            layerCells.computeIfAbsent(pos.getY(), _ -> new IntArrayList()).add(index);
             var display = model.cells().get(index).display();
             if (display != null) representativePositions.putIfAbsent(display, pos);
             for (var facing : EnumFacing.values()) {
@@ -342,9 +346,9 @@ public final class StructurePreviewScene implements AutoCloseable {
         buffer.pos(min.getX(), min.getY(), max.getZ() + 1.0).color(80, 80, 255, 120).endVertex();
         tessellator.draw();
         var picked = view.picked();
-        for (int index : boundaryCells) {
+        var indices = view.threeDimensional ? boundaryCells : layerCells.get(view.layer);
+        if (indices != null) for (int index : indices) {
             var cell = model.cells().get(index);
-            if (!view.threeDimensional && cell.position().getY() != view.layer) continue;
             if (independentController && cell.position().equals(BlockPos.ORIGIN)) continue;
             boolean selected = picked != null && picked.position().equals(cell.position());
             int color = selected ? 0xff2e6bff : wireColor(view.observation(index), cell.display() == null ? 0 : cell.display().key().hashCode());
@@ -501,7 +505,7 @@ public final class StructurePreviewScene implements AutoCloseable {
     }
 
     private void prepareController() {
-        if (controllerResolved || !view.threeDimensional) return;
+        if (controllerResolved) return;
         var declarations = MachineControllerBlocks.all();
         for (int spent = 0; spent < 512 && controllerCursor < declarations.size(); spent++) {
             var block = declarations.get(controllerCursor++);
