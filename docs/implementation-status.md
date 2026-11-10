@@ -1,5 +1,14 @@
 # 实施进度
 
+- 2026-11-10 总 goal 恢复后的三项 Java 缺口已实现并通过统一验证，已精确本地提交：输入 `b49f62c`、结构并发 `239b52d`、网络参与者 `ad8c584`。输入来源策略恢复 SPLITTABLE/SINGLE_SOURCE/CUSTOM，覆盖资源/FE、扫描与概率预检、同步/预算/overlay；同 key 独立投影保留。CUSTOM 提供稳定事实身份、初始完整 AEKey 余额及当前余量，真实上下文/锁/授权仍独立校验。ImmutableResourceAmounts 共享不可写 entry 实现，预算 builder 逐项 addTo，build O(1) 转移所有权；原生全仓提取模拟用 totals−holds 的已有索引。专题 [输入来源分配](input-allocation.md)，首 before/复核/专项见 `build/staging/input-allocation-policy/`。
+- 跨控制器周期检查接入原 scheduler 相邻 FIFO 批次，按 workerThreads 限宽，同 owner 不同批；原生端口读取与 matcher 均并发。全批实际退出后关闭原窗口，所有 owner 完成回调结束后才准备下一轮；每个 job 独立 deadline，短任务不借用同批长 deadline。首真实 tick 及完整发布复核保留。新增 10 项行为测试，入口 `build/staging/structure-parallel-reuse/`。纯结构计划/朝向复用尚未实施；方案已独立复核，后继明确共享实例并发安全、并发 miss 可重复构建及首检 COOPERATIVE/STRICT 语义。
+- PN 外部参与者接入默认服务器 refresh：准确注册句柄、活动/owner-team/version 快照、供给与工作/来源声明，共享整机 lease/向量预算、原工作 plan/commit/cancel/幂等及跨代补偿。UNKNOWN 保留责任；已关闭 runtime 的后继补偿仍必须收束，首次授权复验异常与原工作取消共用故障路径。17 项行为测试，专题 [网络参与者](network-participants.md)，证据 `build/staging/network-participants/`。
+- 统一首轮 compileJava 暴露三处 ResourceRequirement record 解构漏适配，已修并补关联行为验证。第二轮实际 1744 tests/224 suites 有 5 个输入测试失败；修复测试中执行后重设预算、清理推进不足及资源实体依赖未初始化 AEConfig 的夹具问题。4096 槽稀疏测试按真实各阶段计费调整总 guard，每次仍为 1 unit、空槽访问≤1，余额/异常断言未放松，生产预算未修改；临时 StackWalker 已删除。资源保存/退休由已有 BufferedResourceHatch 验证，不冒充完整资源 TE 或游戏生命周期证据。专项最终 111 tests/11 suites 全零，所有失败、实际步数和原始日志/XML保留在 `input-allocation-policy/test-runs/`。
+- 最终统一 `spotlessApply build --rerun-tasks` 仅格式化拥有的 37 Java（实际无新格式变化），1744 tests/224 suites，0 failures/errors/skipped，所有 XML 均为本轮生成。36 Java 主代理逐文件本机 read_file→get_file_problems(errorsOnly:false)，InputAllocationTest 末次由所属代理检查；全级零、完整读回与磁盘一致。MCP build isSuccess:true/problems:[]。完整构建/检查证据位于 `build/staging/resumed-goal-plan/unified/`；精确候选/背景保护/提交从同级 `exact-commit-preparation/` 进入。未启动 Minecraft/服务端/Bootstrap/FML，未推送。
+- CT 只读计划已核对 PM 实际 Zen 注册与加载链，PN 无已注册 Zen 面。尚缺安全仓室重配置及已加载 TE 传播、局部定义替换边界；ZSData 可由普通桥接组件与已有 codec 承载，不另造核心框架。先完成 Java 后接 CT，Applied-Flux 暂缓。RESCAN/isCore 在 PM 创建时被丢弃，不虚构原有效语义。
+- 三阶段精确候选已另行编译并经独立 max 复核；41 路径首 before/缺席证明、成员顺序、注释/import 与实际 tree delta 对齐。后两阶段基于新 HEAD 重建，candidate 字节与已审查编译版本完全一致。提交保护证实原暂存 patch 及所有工作文件字节不变；两次索引缓存并发变化在提交前安全中止，确认 HEAD/entry/flag/暂存及工作字节未变后重试成功，审计记录保留。
+- 用户已回复两件工具“尚未复验”；全部游戏视觉/实际交互仍为待验收，新 GUI 反馈优先，继续已恢复总目标。
+
 - 2026-11-10 两件工具实际无法打开：日志已定位StructureToolContainer将AE动作最大消息设为32768，但API允许范围0..16384，构造即抛异常。改用AE默认注册重载；原始多次异常保留在build/staging/pm-tool-gui-parity/runtime-before.log，不再把已有GUI类当作运行通过。
 - 继续逐项对照PM原Scanner/BuildInstrument UI及TreeDiagram：补世界端点/选区/小范围方块轮廓，指南针34px/中央加号/阴影，原点重设关闭自动识别、朝向重设不立即重扫；树平移初始化/边界、节点高亮、材料排序/颜色/命中矩形、原连接线和无数据状态。撤去原PM没有的任务/进度/树整行附加tooltip。124张原纹理仍逐字节一致。大选区改为原完整外表面，六面惰性迭代每帧4096读取，替代会漏方块的稀疏采样。
 - 验证：完整1694 tests/221 suites全零；末次命名静态迭代器清理后的5项专项/build通过。10 Java及两语言本机errorsOnly:false全级零、全文读回与磁盘一致，MCP build成功。IDE旧缓存曾仍报已修复case block，经read_file实际刷新后全零；迭代器匿名/非static返回诊断已改具名static类，无压制检查。日志/XML/写前/原资源证据及精确提交均在build/staging/pm-tool-gui-parity。未启动游戏，真实视觉仍待用户重新运行客户端复验。

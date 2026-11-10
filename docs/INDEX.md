@@ -4,45 +4,16 @@
 
 ## 当前检查点
 
-- 2026-11-10 两件工具GUI：实际打不开定位为动作上限32768超过AE16384，已用AE默认重载修复；按PM补回选区世界轮廓、指南针/树视图/原交互和完整大选区外表面。完整1694 tests/221 suites全零，末次5项专项/build通过；10 Java及两语言本机全级零、全文读回一致、MCP build成功。入口[结构工具](structure-tools.md)、`build/staging/pm-tool-gui-parity/`。用户已恢复goal，提交本块后继续总目标；真实视觉待用户重新运行客户端复验。
-
-
-- 2026-11-09 JEI/控制器实机反馈：原jei_base背景/2px边框恢复，移除适用机器标题与重复提示；物品/非物品统一阶段＋方向＋数量与方向概率，控制器第二页普通玩家槽随页禁用。专项39项、完整1693 tests/221 suites全零；12 Java与两语言本机全级零、MCP build成功。入口[JEI](jei.md)、[GUI修复](gui-parity.md)、`build/staging/jei-catalyst-only/`。正在继续两件工具GUI完全迁移：实际日志显示动作上限32768超过AE16384导致打不开，入口`build/staging/pm-tool-gui-parity/`；总goal/其余代理仍暂停。
-
-
-- 2026-11-09 能量JEI截图/重复提示：原18×18电池/LED四图逐字节一致，修正透明ingredient槽由整行收回图标范围，去掉已显示说明文字及箭头加工时间的重复悬停提示。截图对应PM自定义io_test布局，当前默认页仍遵守双侧4×4和完整说明要求；更正之前把renderer文字默认值当最终布局的描述。13项相关测试与build通过，2 Java本机全级零、MCP build成功；入口[JEI](jei.md)及`build/staging/jei-energy-hitbox/`，实机视觉未验收。
-
-- 2026-11-09 PM 缺失工具/旋转光照/能量 JEI：范围结构选择器和机械构建器及原 GUI/模型/124 张 PNG 已接入；控制器按实际顶点格式旋转法线与剔除方向；CleanMix 关闭运行依赖传递，实际测试 Gson 已从 2.2.4 恢复为 2.14.0。JEI 补回红石/荧石能量列表条目、透明提示/检索槽及方向/时机索引。完整1693 tests/221 suites全零，末次两项专项/build通过；33 Java、两语言、依赖脚本本机全级零，MCP build成功。证据 `build/staging/pm-tools-and-lighting/`，入口 [结构工具](structure-tools.md)、[控制器资源](controller-assets.md)、[JEI](jei.md)。真实游戏验收待用户，其余代理/总goal暂停。
-
-
-- 2026-11-09 默认JEI布局反馈：取消说明分页，固定两侧各4×4完整PM槽背景；实际字体换行/池级最大高度向Y展开，所有材料页显示完整说明，页脚与输入边界同步。文案改为加工时间、能量消耗/产出等玩家表达，移除默认技术介绍。专项33项、完整1682 tests/217 suites全零；12 Java及两语言本机全级零，MCP build成功。完整验证记录从`build/staging/jei-default-layout/`和[JEI说明](jei.md)进入。真实视觉待用户复验；其余迁移/代理/总goal保持暂停。
-
-- 2026-11-09 仓室再次反馈：擦除42张仓室纹理的升级槽装饰、修正主体宽度与材料交互仓Lv3/4输出区偏移；能源单向仓电池右移23px并拓宽左侧，交互仓两根电池/两行数量分别同步和提示。用户明确能源交互仓为双独立容器，已分开真实余额、机器/Forge方向、预留、NBT与生命周期；PM原实现单storage/单电池动态接线仅作调查事实。专项28项、完整1680 tests/216 suites全零，10 Java本机全级零。证据 `build/staging/hatch-io-layout/`；实机仍待用户复验，其他迁移/代理/总goal暂停。
-- 2026-11-09 实机 GUI 反馈已修正：标题/输入框/机器及结构标题按区域对齐，材料仓名称与104个纹理/模型文件改名，非物品及容量/按钮 tooltip、超64中键接线补全；关闭按钮改用 AE 并移除 MUI 三图/说明，控制器临时占位区禁收物品，整机状态包含页外进程。专项40项、最终完整1676 tests/216 suites全零，14 Java与两语言本机全级零；一次结构节拍测试失败及通过复查均保留于 `build/staging/gui-feedback/`。入口 [实机反馈修复](gui-parity.md)。用户另授权的6.1-sol/xhigh示例已交付：13台机器/13池/106配方，含能源输入/输出/混合仓与最大170实际方块结构，已安装run/mods；入口 `run/visual-examples/README.md`。其余代理及总goal保持暂停；实机复验待用户。
-- 2026-11-09 GUI/JEI 修复：恢复 PM 仓室/控制器原 PNG、布局、文本与交互，结构预览 native renderBlock、控制器拾取/24 朝向及仓室资产链；通用仓 slot 保留 AE 多类型操作，能源直接调用 AE MathExpressionParser，无 EvalEx 新依赖。JEI 保留按池自动排布/分页并用 PM 纹理，物品原生、非物品统一 GenericStack；多可选材料同槽轮播，样板导入复用 AE2S 优先级，逐 tick 数量乘配方时长，不附加概率/候选拒绝。最终完整重跑 1675 tests/216 suites 全零，49 Java 本机全级零、MCP build 成功；精确本地提交/背景保护从 `build/staging/gui-original-parity/` 进入。实机视觉及终端网络导入未验收，总 goal 与所有子代理仍暂停。入口 [GUI 原效果修复](gui-parity.md)、[JEI 显示与导入](jei.md)。
-- 2026-11-09 Modern有效算法/线程策略已直接并入：默认CPU平台池与显式virtual per-task、有限single-worker lanes保留原safe reload/pending/source/structure/finished/FIFO义务；Gecko SoA/cube packed及generic primary scratch接入当前管线，可选Vector保持scalar默认。正常完整build1658 tests/212 suites全零、15任务全执行，11 Java本机全级零/完整读回一致、MCP build成功；module缺席/强制scalar/实际Vector三种真实输出一致，9pilot排除阈值、六关键场景长样本与窄修/3最终scalar fork raw保留。入口 [普通调度](scheduling.md)、`build/staging/modern-inline-integration/`、`build/staging/gecko-modern-math/`；未推送/启动游戏。
-- 2026-11-09 控制器与配方池阶段已实现并验证：可继承的 MultithreadController/CrossRecipeController、正常装配默认 PLANNED_PARALLEL、整机并行余额/配方线程上限、事件最终数量覆盖、通用/简单池接口及预算化 live freshness。focused70 tests/9 suites、实际完整重跑1620 tests/206 suites均零失败/错误/跳过；42 Java 本机 IDEA 全级零、完整读回一致，最终 MCP build 成功。最早 before、真实失败/最终日志、独立审查和精确本地提交见 `build/staging/controller-shared-parallel/`、`build/staging/recipe-pool-strategies/`、`build/staging/controller-pool-plan/review.md`。
-- 结构异步/预算/首真实tick、JEI原生装饰与显式ResourceRecipeIndex freshness 本轮完成并验证，保留原scheduler/默认PLANNED_PARALLEL及旧virtual扩展。正常完整重跑1636 tests/207 suites全零、15任务全执行；结构39/JEI13/index2 Java本机MCP全级零与完整读回一致，MCP build成功。JEI/Resource已本地提交5ac7908/2d3237e，精确提交及背景保护记录见对应stage；入口 [结构说明](structures.md)、[JEI说明](jei.md) 和 `build/staging/structure-async-budget/continued-full-result.json`，earliest-before、四repair与背景均保留。整体 PM/PN 迁移继续。
-- 调度统计/配置阶段已实现并验证：原 Java scheduler 的 effective/pending、安全 tick 重载与 typed wall/count report，实际 permission-2 pe_scheduler command；focused120 tests/17 suites、正常完整重跑1648 tests/210 suites均全零且15任务全执行，11 Java本机全级零/完整读回一致、MCP build成功。原before、纯行尾repair/首次真实失败、最终证据与精确本地候选/提交保护从 `build/staging/scheduler-statistics-config/` 恢复；入口 [普通调度](scheduling.md)。
-- 已完成阶段及证据从实施进度/专题恢复：研究下载、接口用户盘、材料破坏会话、个人遗忘/管理员绝对等级、结构 A/B/C/D1/D2/D3 与 AE GUI/ModularUI 撤除。历史暂停/停止均不替代当前恢复后的目标；不在本索引重复其测试记录。
+- 2026-11-10 总 goal 已恢复。本批已实现输入来源策略、跨控制器周期结构检查并发、PN 外部网络参与者；独立复核发现的问题均已修复。完整构建 1744 tests / 224 suites 全零，37 Java 本机全级零及完整读回一致，MCP build 成功。已本地提交 `b49f62c` / `239b52d` / `ad8c584`，未推送；入口 `build/staging/resumed-goal-plan/plan.md`、`unified/third-results/` 及同目录 `exact-commit-preparation/`。
+- GUI/两件工具修复已提交 `73233cb` / `7bcb5e5`；用户最新回复“尚未复验”。范围结构选择器、机械构建器、仓室/控制器、JEI 与样板导入的实机结果仍待用户，不能以构建通过替代。入口 [结构工具](structure-tools.md)、[GUI 修复](gui-parity.md)、[JEI](jei.md)。新反馈优先。
+- 已确认后继 Java 缺口：纯结构计划/朝向复用，以及 CT 实际旧调用所需的安全仓室重配置和局部定义替换边界。结构缓存已有独立复核方案，CT 仍待 Java 前提完成。Applied-Flux 暂缓。
 
 ## 下一步
 
-- 最新用户指示覆盖下方暂停记录：完成并提交本次工具GUI修复后恢复总goal，按需求/迁移矩阵检查Java剩余能力，再接CraftTweaker；新的实机反馈仍优先。两工具的原GUI/世界选区/建造及此前JEI/控制器页面等待用户复验，禁止自行启动游戏。
-
-
-- 当前继续由主代理处理两件结构工具：修正GUI创建时AE消息上限异常，逐项对照PM原面板/控件/预览/树与世界选区交互，不能将源码存在或构建通过当作已能打开。已完成的JEI/控制器修复等待用户实机复验。
-
-
-- 当前新增复验范围：用户自行运行 client，核对 CleanMix/Gson 启动、两件结构工具原 GUI 和实际建造/拆卸、控制器各朝向光照，以及红石/荧石能量 JEI 条目的提示/检索。具体操作从 [结构工具](structure-tools.md) 进入；构建和逻辑测试不替代游戏验收。
-
-
-- 当前优先级覆盖下方历史队列：按 [GUI 原效果修复](gui-parity.md) 等待用户实机复验：仓室/能源/控制器、结构预览、JEI 多可选材料轮播及普通/PEA 样板终端导入，其余迁移及总 goal 暂停；run 边界示例已交付并安装，按 `run/visual-examples/README.md` 的 build/stock/charge 命令测试实际成型与运行。
-
-1. 继续 [配方功能核对](recipe-feature-parity.md)：工位 RESCAN/isCore 策略待契约，入口 `build/staging/workslot-restart-plan/facts-and-contract.md`。
-2. 统计/配置已实现并验证：入口 [普通调度](scheduling.md)、`build/staging/scheduler-statistics-config/`。D04 的直接整合本轮已实现并验证，入口 `build/staging/modern-inline-integration/` 与 `build/staging/gecko-modern-math/`；默认CPU平台池与标量数学、显式virtual/可选Vector的证据和成本边界均保留；历史 `build/staging/scheduler-backend-plan/handoff.md` 的独立组织待定不再适用。结构预算公开合同见 `build/staging/structure-budget-plan/policies.md`。
-3. Java 完整后最后接 CraftTweaker；Applied-Flux 暂缓。精确本地提交与原背景保护记录按实施进度进入对应stage。
-4. 实机 World/网络包/GUI/GL/Bloom/HEI验收待用户自行启动；构建和纯逻辑测试不代替这些证据。
+1. 当前三个阶段已提交并保留原工作区背景、暂存许可证删除及未跟踪文件。继续后继 Java 工作，完整证据与历史检查点见 [实施进度](implementation-status.md)。
+2. 实施 `build/staging/structure-parallel-reuse/cache-plan.md`，合并 `cache-plan-independent-review.md` 的并发安全、并发 miss 和首真实 tick 澄清；只复用纯计划，每轮世界捕获/匹配/权限复核保持。
+3. 按 `build/staging/resumed-goal-plan/crafttweaker-plan.md` 补齐已由原调用链确认的 Java 前提，再接 CT。不恢复 MUI/GUI DSL 或独立 Modern；ZSData 沿普通桥接组件和现有 codec。RESCAN/isCore 在 PM 真实创建路径未生效，不新造迁移语义。
+4. 游戏测试由用户自行启动；运行边界示例见 `run/visual-examples/README.md`。GUI 复验结果未到时继续已授权总目标。
 
 ## 必须遵守
 
@@ -71,6 +42,7 @@
 | 服务器奖励领取/准确会话/物品确认与证据清理 | [research-rewards.md](research-rewards.md) |
 | 手动研究逐项投料/玩家回执/九状态恢复/暂停接管 | [manual-research.md](manual-research.md) |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md) |
+| 配方输入来源分配策略 | [input-allocation.md](input-allocation.md) |
 | 配方池 JEI 默认/独立自定义页面 | [jei.md](jei.md) |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md) |
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md) |
@@ -83,6 +55,7 @@
 | 实际tick预算/lease/当前代工作凭据/原代补偿 | [network-budgets.md](network-budgets.md) |
 | PN 配方扩展/并行占用/真实数据中心/服务器自动协调 | [network-recipes.md](network-recipes.md) |
 | 网络角色/服务器发布/共同配方门限 | [network-runtime.md](network-runtime.md) |
+| 外部网络参与者/工作责任 | [network-participants.md](network-participants.md) |
 | 生命周期/卸载/破坏 | [machine-lifecycle.md](machine-lifecycle.md) |
 | 可暂停机器组件/持续执行gate/调度接线风险 | [machine-tick-boundaries.md](machine-tick-boundaries.md) |
 | 控制器运行时/退休 | [machine-controller.md](machine-controller.md) |
