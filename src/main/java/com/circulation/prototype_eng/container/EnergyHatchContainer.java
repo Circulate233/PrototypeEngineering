@@ -38,12 +38,12 @@ public final class EnergyHatchContainer extends AEBaseContainer {
         outputStorage = tile.outputStorage();
         syncFields();
         registerClientAction(INPUT_RATE, Long.class, 20, value -> {
-            if (canInteractWith(getPlayer())) {
+            if (value != null && value >= -1 && canInteractWith(getPlayer())) {
                 tile.setMaxInputRate(value);
             }
         });
         registerClientAction(OUTPUT_RATE, Long.class, 20, value -> {
-            if (canInteractWith(getPlayer())) {
+            if (value != null && value >= -1 && canInteractWith(getPlayer())) {
                 tile.setMaxOutputRate(value);
             }
         });

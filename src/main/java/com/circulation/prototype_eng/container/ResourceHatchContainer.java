@@ -20,7 +20,6 @@ import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import java.util.Objects;
 import ae2.api.stacks.AEFluidKey;
 import ae2.container.guisync.GuiSync;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
@@ -29,8 +28,14 @@ import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.localization.HatchGuiTitle;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import ae2.api.behaviors.ContainerItemStrategies;
+import ae2.core.network.InitNetwork;
+import ae2.core.network.serverbound.InventoryActionPacket;
+import it.unimi.dsi.fastutil.shorts.ShortSet;
+import net.minecraft.network.play.server.SPacketSetSlot;
 public final class ResourceHatchContainer extends AEBaseContainer {
+    private static final String VIEW = "resourceView";
+    private static final String CLICK = "resourceClick";
     private static final String AUTO_INPUT = "autoInput";
     private static final String AUTO_OUTPUT = "autoOutput";
     public final int columns;
@@ -42,18 +47,27 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     public final int playerTop;
     public final int rows;
     public final int outputLeft;
+    public final ResourceHatchPresentation presentation = new ResourceHatchPresentation();
     private final ResourceHatchGuiHost tile;
     private final SlottedResourceHatch hatch;
+    private final ResourceHatchWindow window;
     private final int inputSlots;
     private final int resourceSlots;
     @Nullable
     private final ResourceHatchSettings settings;
     @Nullable
     private final FluidHatchSettings fluidSettings;
+    @GuiSync(2)
+    public ResourceHatchWindowSnapshot snapshot = ResourceHatchWindowSnapshot.EMPTY;
     @GuiSync(0)
     public boolean autoInput;
     @GuiSync(1)
     public boolean autoOutput;
+    private long requestedRevision = -1;
+    private long lastQuickMoveRevision, lastQuickMoveTime;
+    private int lastQuickMoveSlot = -1;
+    private boolean lastQuickMoveInput;
+    private AEKey lastQuickMoveKey;
 
     public ResourceHatchContainer(InventoryPlayer player, ResourceHatchGuiHost tile) {
         super(player, tile.blockEntity());
@@ -63,8 +77,6 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         hatch = tile.storage();
         SlottedResourceStorage input = hatch.input();
         SlottedResourceStorage output = hatch.output();
-        inputSlots = input == null ? 0 : input.size();
-        resourceSlots = inputSlots + (output == null ? 0 : output.size());
         boolean mixed = tile.mode() == HatchMode.MIXED;
         int level = tile.tier().level();
         visibleRows = level <= 2 ? 3 : level <= 4 ? 4 : 7;
@@ -73,7 +85,11 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         guiHeight = level <= 2 ? 168 : level <= 4 ? 186 : mixed ? 240 : 239;
         textureWidth = mixed && level >= 5 ? 304 : 256;
         resourceTop = 24;
-        rows = (Math.max(inputSlots, resourceSlots - inputSlots) + columns - 1) / columns;
+        inputSlots = input == null ? 0 : columns * (visibleRows + 1);
+        resourceSlots = inputSlots + (output == null ? 0 : columns * (visibleRows + 1));
+        rows = ResourceHatchWindow.rows(Math.max(input == null ? 0 : input.size(), output == null ? 0 : output.size()), columns);
+        window = new ResourceHatchWindow(hatch, columns, visibleRows);
+        if (isServerSide()) snapshot = window.capture();
         playerTop = guiHeight - 84;
         outputLeft = mixed ? (level <= 2 ? 114 : level <= 4 ? 119 : 137) : 26;
         addBuffer(input, true, 26);
@@ -81,17 +97,43 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         addPlayerInventorySlots(27, playerTop);
         setGuiTitle(HatchGuiTitle.of(false, tile.mode(), tile.tier()).text());
         syncSettings();
+        registerClientAction(VIEW, long[].class, 96, values -> {
+            if (!canUseServerWindow() || values == null || values.length != 3
+                || values[1] < 0 || values[1] > Integer.MAX_VALUE || values[2] < 0 || values[2] > Integer.MAX_VALUE)
+                return;
+            window.move(values[0], (int) values[1], (int) values[2]);
+            sync(getPlayer());
+        });
+        registerClientAction(CLICK, long[].class, 128, this::receiveResourceClick);
         registerClientAction(AUTO_INPUT, () -> {
-            if (canChangeSettings() && settings != null && tile.mode().hasInput()) settings.setAutoInput(!settings.autoInput());
+            if (canChangeSettings() && settings != null && tile.mode().hasInput())
+                settings.setAutoInput(!settings.autoInput());
         });
         registerClientAction(AUTO_OUTPUT, () -> {
-            if (canChangeSettings() && settings != null && tile.mode().hasOutput()) settings.setAutoOutput(!settings.autoOutput());
+            if (canChangeSettings() && settings != null && tile.mode().hasOutput())
+                settings.setAutoOutput(!settings.autoOutput());
         });
     }
 
-    public int inputRows() { return (inputSlots + columns - 1) / columns; }
+    private static void collectItems(@Nullable SlottedResourceStorage inventory, AEItemKey key, ItemStack carried) {
+        if (inventory == null) return;
+        inventory.context().lock();
+        try {
+            for (int slot = 0; slot < inventory.size() && carried.getCount() < carried.getMaxStackSize(); slot++)
+                carried.grow((int) inventory.extract(slot, key, carried.getMaxStackSize() - carried.getCount(), Actionable.MODULATE));
+        } finally {
+            inventory.context().unlock();
+        }
+    }
+
+    public int inputRows() {
+        return ResourceHatchWindow.rows(typeSlots(true), columns);
+    }
     public HatchTier tier() { return tile.tier(); }
-    public int outputRows() { return (resourceSlots - inputSlots + columns - 1) / columns; }
+
+    public int outputRows() {
+        return ResourceHatchWindow.rows(typeSlots(false), columns);
+    }
     public boolean hasAutomationSettings() { return settings != null; }
     public void toggleInput() { sendClientAction(AUTO_INPUT); }
     public void toggleOutput() { sendClientAction(AUTO_OUTPUT); }
@@ -111,8 +153,12 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         }
     }
 
-    @Override public void broadcastChanges() {
-        if (isServerSide()) syncSettings();
+    @Override
+    public void broadcastChanges() {
+        if (isServerSide()) {
+            syncSettings();
+            if (canInteractWith(getPlayer())) snapshot = window.capture();
+        }
         super.broadcastChanges();
     }
 
@@ -147,29 +193,38 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         return stack == null ? null : stack.what();
     }
 
+    @Override
+    public void onServerDataSync(ShortSet updatedFields) {
+        snapshot = presentation.receive(snapshot);
+        super.onServerDataSync(updatedFields);
+    }
+
     private void addBuffer(@Nullable SlottedResourceStorage inv, boolean input, int left) {
         if (inv == null) {
             return;
         }
-        var display = new HatchGuiInventory(inv, isClientSide());
-        for (int i = 0; i < inv.size(); i++) {
+        var display = new HatchGuiInventory(columns * (visibleRows + 1), isClientSide(), cell -> snapshot.side(input).stack(cell));
+        for (int i = 0; i < display.size(); i++) {
             var slot = new AppEngSlot(display, i, left + (i % columns) * 18 + 1, resourceTop + (i / columns) * 18 + 1) {
                 @Override
                 public boolean isItemValid(ItemStack stack) {
                     var key = AEItemKey.of(stack);
-                    return input && !GenericStack.isWrapped(stack) && key != null && inv.isAllowedIn(getSlotIndex(), key);
+                    int logical = snapshot.side(input).logicalSlot(getSlotIndex());
+                    return input && logical >= 0 && !GenericStack.isWrapped(stack) && key != null
+                        && (isClientSide() || inv.isAllowedIn(logical, key));
                 }
 
                 @Override
                 public boolean canTakeStack(EntityPlayer player) {
-                    return isClientSide() ? display.getDisplayKey(getSlotIndex()) instanceof AEItemKey
-                        : inv.isValid() && inv.availableAmount(getSlotIndex()) > 0
-                        && storedKey(inv, getSlotIndex()) instanceof AEItemKey;
+                    int logical = snapshot.side(input).logicalSlot(getSlotIndex());
+                    return logical >= 0 && (isClientSide() ? display.getDisplayKey(getSlotIndex()) instanceof AEItemKey
+                        : inv.isValid() && inv.availableAmount(logical) > 0 && storedKey(inv, logical) instanceof AEItemKey);
                 }
 
                 @Override
                 public @NotNull ItemStack decrStackSize(int amount) {
-                    return isClientSide() ? ItemStack.EMPTY : takeItems(inv, getSlotIndex(), amount);
+                    // All extraction needs a versioned resource action, never an unversioned native slot write.
+                    return ItemStack.EMPTY;
                 }
             };
             slot.setNotDraggable();
@@ -185,41 +240,108 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         return index >= 0 && index < inputSlots;
     }
 
-    public int typeSlots(boolean input) { return input ? inputSlots : resourceSlots - inputSlots; }
+    public int typeSlots(boolean input) {
+        return snapshot.side(input).totalSlots();
+    }
 
     /** Retained for callers interested in distinct keys, rather than occupied slots. */
     @SuppressWarnings("unused")
     public int usedTypes(boolean input) {
-        var keys = new ObjectOpenHashSet<AEKey>();
-        int start = input ? 0 : inputSlots, end = input ? inputSlots : resourceSlots;
-        for (int i = start; i < end; i++) {
-            var key = ((AppEngSlot) inventorySlots.get(i)).getGenericDisplayKey();
-            if (key != null) keys.add(key);
-        }
-        return keys.size();
+        return snapshot.side(input).usedTypes();
     }
 
     public int usedSlots(boolean input) {
-        int used = 0;
-        int start = input ? 0 : inputSlots, end = input ? inputSlots : resourceSlots;
-        for (int i = start; i < end; i++) {
-            if (((AppEngSlot) inventorySlots.get(i)).getGenericDisplayKey() != null) used++;
-        }
-        return used;
+        return snapshot.side(input).usedSlots();
     }
 
-    public long capacity(int index, AEKey key) { return buffer(index).getMaxAmount(key); }
+    public long capacity(int index, AEKey key) {
+        var side = snapshot.side(isInputSlot(index));
+        int cell = resourceCell(index);
+        var stack = side.stack(cell);
+        return stack != null && stack.what().equals(key) ? side.entries().get(cell).capacity() : 0;
+    }
+
+    public int resourceCell(int index) {
+        return isInputSlot(index) ? index : index - inputSlots;
+    }
+
+    public int logicalSlot(int index) {
+        return snapshot.side(isInputSlot(index)).logicalSlot(resourceCell(index));
+    }
+
+    public boolean resourceViewReady() {
+        return requestedRevision != snapshot.revision() && presentation.accepts(snapshot.revision(), presentation.gestureRevision());
+    }
+
+    public void requestView(int inputRow, int outputRow) {
+        if (!resourceViewReady() || snapshot.input().firstSlot() / columns == inputRow
+            && snapshot.output().firstSlot() / columns == outputRow) return;
+        requestedRevision = snapshot.revision();
+        sendClientAction(VIEW, new long[]{snapshot.revision(), inputRow, outputRow});
+    }
+
+    public void clickResource(int index, int button, ClickType click, boolean matching) {
+        sendResourceClick(index, button, click, matching ? 1 : 0);
+    }
+
+    public void doubleClickResource(int index, int button) {
+        sendResourceClick(index, button, ClickType.PICKUP, 2);
+    }
+
+    private void sendResourceClick(int index, int button, ClickType click, int mode) {
+        if (!resourceViewReady() || !isResourceSlot(index) || logicalSlot(index) < 0) return;
+        sendClientAction(CLICK, new long[]{snapshot.revision(), isInputSlot(index) ? 1 : 0,
+            logicalSlot(index), button, click.ordinal(), mode});
+    }
+
+    public void resourceAction(InventoryAction action, int index) {
+        if (resourceViewReady() && isResourceSlot(index) && logicalSlot(index) >= 0)
+            InitNetwork.sendToServer(new InventoryActionPacket(windowId, action, index, snapshot.revision()));
+    }
+
+    private boolean canUseServerWindow() {
+        var server = getPlayer().world.getMinecraftServer();
+        return isServerSide() && server != null && server.isCallingFromMinecraftThread()
+            && getPlayer().openContainer == this && canInteractWith(getPlayer());
+    }
+
+    private void receiveResourceClick(long[] values) {
+        if (!canUseServerWindow() || values == null || values.length != 6 || values[1] < 0 || values[1] > 1
+            || values[2] < 0 || values[2] > Integer.MAX_VALUE || values[3] < 0 || values[3] > 40
+            || values[4] < 0 || values[4] >= ClickType.values().length || values[5] < 0 || values[5] > 2) return;
+        boolean input = values[1] == 1;
+        int logical = (int) values[2];
+        ClickType click = ClickType.values()[(int) values[4]];
+        window.interact(values[0], input, logical, inventory -> {
+            if (values[5] == 2 && click == ClickType.PICKUP && values[3] <= 1)
+                doubleClickResource(inventory, logical, input, (int) values[3]);
+            else if (values[5] == 1 && click == ClickType.QUICK_MOVE) {
+                var current = storedKey(inventory, logical);
+                if (lastQuickMoveRevision == values[0] && lastQuickMoveSlot == logical && lastQuickMoveInput == input
+                    && System.currentTimeMillis() - lastQuickMoveTime <= 1_000
+                    && (current == null || current.equals(lastQuickMoveKey)))
+                    transferMatching(inventory, lastQuickMoveKey);
+                lastQuickMoveKey = null;
+            } else if (click == ClickType.QUICK_MOVE) {
+                lastQuickMoveKey = null;
+                ResourceHatchBulkTransfer.withSlotKey(inventory, logical, null, key -> {
+                    if (!(key instanceof AEItemKey item)) return;
+                    lastQuickMoveRevision = values[0];
+                    lastQuickMoveSlot = logical;
+                    lastQuickMoveInput = input;
+                    lastQuickMoveKey = key;
+                    lastQuickMoveTime = System.currentTimeMillis();
+                    transferResourceItemsLocked(inventory, logical, item);
+                });
+            } else {
+                clickResource(inventory, logical, input, (int) values[3], click, getPlayer());
+            }
+        });
+        sync(getPlayer());
+    }
 
     public HatchMode mode() {
         return tile.mode();
-    }
-
-    private SlottedResourceStorage buffer(int index) {
-        return Objects.requireNonNull(index < inputSlots ? hatch.input() : hatch.output(), "Missing resource slot storage");
-    }
-
-    private int localSlot(int index) {
-        return index < inputSlots ? index : index - inputSlots;
     }
 
     @Override
@@ -247,152 +369,172 @@ public final class ResourceHatchContainer extends AEBaseContainer {
 
     @Override
     public @NotNull ItemStack slotClick(int index, int button, ClickType click, EntityPlayer player) {
-        if (!canInteractWith(player)) {
-            return ItemStack.EMPTY;
-        }
+        if (!canInteractWith(player) || isResourceSlot(index)) return ItemStack.EMPTY;
         if (click == ClickType.QUICK_MOVE) {
             transferStackInSlot(player, index);
             sync(player);
             return ItemStack.EMPTY;
         }
-        if (!isResourceSlot(index)) {
-            return super.slotClick(index, button, click, player);
-        }
-        if (isClientSide()) {
-            return ItemStack.EMPTY;
+        return super.slotClick(index, button, click, player);
+    }
+
+    private void clickResource(SlottedResourceStorage inventory, int slot, boolean input, int button, ClickType click, EntityPlayer player) {
+        if (click == ClickType.QUICK_MOVE) {
+            transferResourceItems(inventory, slot);
+            return;
         }
         if (click == ClickType.PICKUP_ALL) {
             collectItems();
-            sync(player);
-            return ItemStack.EMPTY;
+            return;
         }
-        SlottedResourceStorage inventory = buffer(index);
-        int slot = localSlot(index);
         inventory.context().lock();
         try {
             switch (click) {
                 case PICKUP -> {
-                    if (button == 0 || button == 1) {
-                        setCarried(clickItem(inventory, slot, getCarried(), index < inputSlots, button == 1));
-                    }
+                    if (button == 0 || button == 1)
+                        setCarried(clickItem(inventory, slot, getCarried(), input, button == 1));
                 }
                 case SWAP -> {
                     if ((button >= 0 && button < 9) || button == 40) {
                         ItemStack old = player.inventory.getStackInSlot(button);
-                        player.inventory.setInventorySlotContents(button, clickItem(inventory, slot, old, index < inputSlots, false));
+                        player.inventory.setInventorySlotContents(button, clickItem(inventory, slot, old, input, false));
                     }
                 }
                 case THROW -> {
                     if (getCarried().isEmpty() && (button == 0 || button == 1)) {
                         ItemStack dropped = takeItems(inventory, slot, button == 0 ? 1 : 64);
-                        if (!dropped.isEmpty()) {
-                            player.dropItem(dropped, true);
-                        }
+                        if (!dropped.isEmpty()) player.dropItem(dropped, true);
                     }
                 }
                 case CLONE -> {
-                    if (player.capabilities.isCreativeMode && getCarried().isEmpty() && storedKey(inventory, slot) instanceof AEItemKey key) {
+                    if (player.capabilities.isCreativeMode && getCarried().isEmpty() && storedKey(inventory, slot) instanceof AEItemKey key)
                         setCarried(key.toStack(key.getMaxStackSize()));
-                    }
                 }
-                case QUICK_CRAFT -> { /* Resource slots do not participate in vanilla drag distribution. */ }
+                case QUICK_CRAFT -> { /* Resource slots are not vanilla ItemStack drag targets. */ }
             }
         } finally {
             inventory.context().unlock();
         }
-        sync(player);
-        return ItemStack.EMPTY;
     }
 
     private void collectItems() {
         ItemStack carried = getCarried();
         AEItemKey key = AEItemKey.of(carried);
-        if (key != null && !GenericStack.isWrapped(carried)) {
-            // Lock one side at a time; never retain an input lock while entering output.
-            for (int i = 0; i < resourceSlots && carried.getCount() < carried.getMaxStackSize(); i++) {
-                SlottedResourceStorage inventory = buffer(i);
-                inventory.context().lock();
-                try {
-                    long amount = inventory.extract(localSlot(i), key, carried.getMaxStackSize() - carried.getCount(), Actionable.MODULATE);
-                    carried.grow((int) amount);
-                } finally {
-                    inventory.context().unlock();
+        if (key == null || GenericStack.isWrapped(carried)) return;
+        collectItems(hatch.input(), key, carried);
+        collectItems(hatch.output(), key, carried);
+    }
+
+    private void transferMatching(SlottedResourceStorage inventory, @Nullable AEKey key) {
+        if (!(key instanceof AEItemKey)) return;
+        for (int slot = 0; slot < inventory.size(); slot++)
+            transferResourceItems(inventory, slot, key);
+    }
+
+    private void doubleClickResource(SlottedResourceStorage inventory, int slot, boolean input, int button) {
+        ResourceHatchBulkTransfer.doubleClick(inventory, slot, input, button, new BulkPlayerSlots(),
+            new ResourceHatchBulkTransfer.HeldContainers() {
+                @Override
+                public boolean isItem(AEKey key) {
+                    return key instanceof AEItemKey;
                 }
+
+                @Override
+                public boolean canInsertCursor() {
+                    return !GenericStack.isWrapped(getCarried());
+                }
+
+                @Override
+                public boolean tryEmpty() {
+                    if (ContainerItemStrategies.getEmptyingAction(getCarried()) == null) return false;
+                    transferContainerItem(inventory, slot, InventoryAction.EMPTY_ENTIRE_ITEM, false);
+                    return true;
+                }
+
+                @Override
+                public boolean tryFill(GenericStack selected) {
+                    var context = ContainerItemStrategies.findCarriedContextForKey(selected.what(), getPlayer(), ResourceHatchContainer.this);
+                    if (context == null || context.insert(selected.what(), selected.amount(), Actionable.SIMULATE) <= 0)
+                        return false;
+                    transferContainerItem(inventory, slot, InventoryAction.FILL_ENTIRE_ITEM, true);
+                    return true;
+                }
+            });
+        getPlayerInventory().markDirty();
+        if (getPlayer() instanceof EntityPlayerMP player)
+            player.connection.sendPacket(new SPacketSetSlot(-2, 40, player.inventory.getStackInSlot(40).copy()));
+    }
+
+    private void transferResourceItems(SlottedResourceStorage inventory, int slot) {
+        transferResourceItems(inventory, slot, null);
+    }
+
+    private void transferResourceItems(SlottedResourceStorage inventory, int slot, @Nullable AEKey expected) {
+        ResourceHatchBulkTransfer.withSlotKey(inventory, slot, expected, key -> {
+            if (key instanceof AEItemKey item) transferResourceItemsLocked(inventory, slot, item);
+        });
+    }
+
+    private void transferResourceItemsLocked(SlottedResourceStorage inventory, int slot, AEItemKey key) {
+        inventory.context().requireLock();
+        // The same expected key remains bound through extraction and exact compensation.
+        for (int i = 0; i < 36; i++) {
+            long amount = inventory.extract(slot, key, Math.min(64, key.getMaxStackSize()), Actionable.MODULATE);
+            if (amount == 0) break;
+            ItemStack moved = key.toStack((int) amount);
+            mergeItemStack(moved, resourceSlots, inventorySlots.size(), true);
+            if (!moved.isEmpty()) {
+                long restored = inventory.insert(slot, key, moved.getCount(), Actionable.MODULATE);
+                if (restored != moved.getCount())
+                    throw new IllegalStateException("Hatch rejected its own untransferred items");
+                break;
             }
         }
     }
 
     @Override
     public @NotNull ItemStack transferStackInSlot(EntityPlayer player, int index) {
-        if (isClientSide() || !canInteractWith(player) || index < 0 || index >= inventorySlots.size()) {
+        if (isClientSide() || !canInteractWith(player) || index < resourceSlots || index >= inventorySlots.size())
             return ItemStack.EMPTY;
-        }
-        if (isResourceSlot(index)) {
-            SlottedResourceStorage inventory = buffer(index);
-            inventory.context().lock();
-            try {
-                // Each iteration moves at most one native stack. The bound also limits work per click.
-                for (int i = 0; i < 36; i++) {
-                    ItemStack moved = takeItems(inventory, localSlot(index), 64);
-                    if (moved.isEmpty()) {
-                        break;
-                    }
-                    mergeItemStack(moved, resourceSlots, inventorySlots.size(), true);
-                    if (!moved.isEmpty()) {
-                        long restored = inventory.insert(localSlot(index), Objects.requireNonNull(AEItemKey.of(moved)), moved.getCount(), Actionable.MODULATE);
-                        if (restored != moved.getCount()) {
-                            throw new IllegalStateException("Hatch rejected its own untransferred items");
-                        }
-                        break;
-                    }
-                }
-            } finally {
-                inventory.context().unlock();
+        SlottedResourceStorage input = hatch.input();
+        if (input == null) return ItemStack.EMPTY;
+        input.context().lock();
+        try {
+            Slot source = inventorySlots.get(index);
+            ItemStack stack = source.getStack();
+            AEItemKey key = AEItemKey.of(stack);
+            if (key != null && !GenericStack.isWrapped(stack)) {
+                // The storage owns full-side target selection, including slots outside the window.
+                long inserted = input.insert(key, stack.getCount(), Actionable.MODULATE);
+                source.decrStackSize((int) inserted);
+                source.onSlotChanged();
             }
-        } else {
-            SlottedResourceStorage input = hatch.input();
-            if (input == null) {
-                return ItemStack.EMPTY;
-            }
-            input.context().lock();
-            try {
-                Slot source = inventorySlots.get(index);
-                ItemStack stack = source.getStack();
-                AEItemKey key = AEItemKey.of(stack);
-                if (key != null && !GenericStack.isWrapped(stack)) {
-                    long inserted = input.insert(key, stack.getCount(), Actionable.MODULATE);
-                    source.decrStackSize((int) inserted);
-                    source.onSlotChanged();
-                }
-            } finally {
-                input.context().unlock();
-            }
+        } finally {
+            input.context().unlock();
         }
         return ItemStack.EMPTY;
     }
 
     @Override
     public void doAction(EntityPlayerMP player, InventoryAction action, int index, long id) {
-        if (player.openContainer != this || !canInteractWith(player)) {
-            return;
-        }
+        if (!canUseServerWindow() || player != getPlayer()) return;
         if (isResourceSlot(index)) {
-            if (action == InventoryAction.CREATIVE_DUPLICATE) {
-                slotClick(index, 2, ClickType.CLONE, player);
-                return;
-            }
-            boolean fill = action == InventoryAction.FILL_ITEM || action == InventoryAction.FILL_ENTIRE_ITEM;
-            boolean empty = action == InventoryAction.EMPTY_ITEM || action == InventoryAction.EMPTY_ENTIRE_ITEM;
-            if (empty && !isInputSlot(index)) {
-                return;
-            }
-            if (fill || empty) {
-                transferContainerItem(buffer(index), localSlot(index), action, fill);
-                syncInventoryActionState(player);
-                return;
-            }
+            boolean input = isInputSlot(index);
+            int logical = logicalSlot(index);
+            window.interact(id, input, logical, inventory -> {
+                if (action == InventoryAction.CREATIVE_DUPLICATE) {
+                    clickResource(inventory, logical, input, 2, ClickType.CLONE, player);
+                } else if (action == InventoryAction.MOVE_REGION) {
+                    for (int slot = 0; slot < inventory.size(); slot++) transferResourceItems(inventory, slot);
+                } else {
+                    boolean fill = action == InventoryAction.FILL_ITEM || action == InventoryAction.FILL_ENTIRE_ITEM;
+                    boolean empty = action == InventoryAction.EMPTY_ITEM || action == InventoryAction.EMPTY_ENTIRE_ITEM;
+                    if (fill || empty && input) transferContainerItem(inventory, logical, action, fill);
+                }
+            });
+        } else {
+            super.doAction(player, action, index, id);
         }
-        super.doAction(player, action, index, id);
         syncInventoryActionState(player);
     }
 
@@ -433,6 +575,36 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     private void sync(EntityPlayer player) {
         if (player instanceof EntityPlayerMP serverPlayer) {
             syncInventoryActionState(serverPlayer);
+        }
+    }
+
+    private final class BulkPlayerSlots implements ResourceHatchBulkTransfer.PlayerSlots {
+        @Override
+        public int size() {
+            return 38;
+        }
+
+        private int inventorySlot(int slot) {
+            return slot == 37 ? 40 : slot - 1;
+        }
+
+        @Override
+        public @Nullable GenericStack get(int slot) {
+            ItemStack item = slot == 0 ? getCarried() : getPlayerInventory().getStackInSlot(inventorySlot(slot));
+            var key = AEItemKey.of(item);
+            return key == null ? null : new GenericStack(key, item.getCount());
+        }
+
+        @Override
+        public void set(int slot, @Nullable GenericStack stack) {
+            ItemStack item = stack == null ? ItemStack.EMPTY : ((AEItemKey) stack.what()).toStack((int) stack.amount());
+            if (slot == 0) setCarried(item);
+            else getPlayerInventory().setInventorySlotContents(inventorySlot(slot), item);
+        }
+
+        @Override
+        public long limit(int slot, AEKey key) {
+            return slot > 0 && isPlayerInventorySlotLocked(inventorySlot(slot)) ? 0 : ((AEItemKey) key).getMaxStackSize();
         }
     }
 }
