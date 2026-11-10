@@ -1,11 +1,17 @@
 package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.structure.StructurePickWorld;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import net.minecraft.item.ItemStack;
 import com.circulation.prototype_eng.block.MachineControllerBlock;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
@@ -49,12 +55,19 @@ public final class StructurePreviewScene implements AutoCloseable {
     private final AutoCloseable invalidationSubscription, closeSubscription;
     private final PreviewTileEntities<TileEntity> tiles = new PreviewTileEntities<>(new NativeTiles());
     private final IntArrayList boundaryCells = new IntArrayList();
+    private final PreviewRayIndex rayIndex = new PreviewRayIndex();
     private final FloatBuffer colors = BufferUtils.createFloatBuffer(4);
     private final FloatBuffer modelview = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16), projected = BufferUtils.createFloatBuffer(3);
     private final IntBuffer nativeViewport = BufferUtils.createIntBuffer(4);
     private final IntBuffer oldScissor = BufferUtils.createIntBuffer(4);
     private final WorldVertexBufferUploader controllerUploader = new WorldVertexBufferUploader();
     private PreviewBlockAccess access;
+    private StructurePickWorld pickWorld;
+    private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectOpenHashMap<>();
+    private final Map<StructureDisplay, BlockPos> representativePositions = new Object2ObjectOpenHashMap<>();
+    private double pointerX, pointerY;
+    private boolean pointerEnabled;
+    private StructurePreviewView.Click hovered;
     private Object token, world;
     private boolean closed;
     private MachineControllerBlock<?> controller;
@@ -115,14 +128,25 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (closed) return;
         view.invalidateMaterials();
         access = null;
+        var oldPicks = pickWorld;
+        pickWorld = null;
+        itemChoices.clear();
+        representativePositions.clear();
+        hovered = null;
         token = null;
         boundaryCells.clear();
+        rayIndex.clear();
         boundaryCursor = 0;
         Throwable failure = null;
         try {
-            machines.invalidate();
+            if (oldPicks != null) oldPicks.close();
         } catch (RuntimeException | Error caught) {
             failure = caught;
+        }
+        try {
+            machines.invalidate();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
         }
         try {
             tiles.clear();
@@ -160,8 +184,13 @@ public final class StructurePreviewScene implements AutoCloseable {
         var controllerState = controller == null || !view.threeDimensional ? null : controller.previewState(view.settings().orientation(), view.formedPreview());
         if (closed || view.token() != round || view.model() != model || mc.world != world) return;
         access.controllerState(controllerState);
+        if (pickWorld == null) pickWorld = new StructurePickWorld(mc.world, access::getBlockState, position -> {
+            var cell = view.at(position);
+            return cell == null || cell.display() == null ? null : cell.display().tileNbt();
+        });
         tiles.prepare(view, access, mc.world, 512);
         camera.frame(System.currentTimeMillis(), view.autoRotate);
+        hovered = pointerEnabled ? pick(viewport.x() + pointerX, viewport.y() + pointerY) : null;
         var before = PreviewBlockModels.State.capture(colors);
         var oldViewport = new int[4];
         nativeViewport.clear();
@@ -224,14 +253,25 @@ public final class StructurePreviewScene implements AutoCloseable {
                             RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
                         GlStateManager.enableDepth();
                     }
-                    var picked = view.picked();
-                    if (!view.wireframe && picked != null && view.visible(picked)) {
-                        GlStateManager.disableDepth();
-                        var p = picked.position();
-                        RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(p).grow(0.002), 0.18f, 0.42f, 1, 1);
+                    if (view.wireframe) drawWireframe(controller != null);
+                    float lineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
+                    GlStateManager.disableDepth();
+                    GlStateManager.depthMask(false);
+                    try {
+                        var picked = view.picked();
+                        if (picked != null && view.visible(picked)) {
+                            GL11.glLineWidth(3.5f);
+                            RenderGlobal.drawSelectionBoundingBox(selectionBox(picked).grow(.004), .15f, .55f, 1, 1);
+                        }
+                        if (hovered != null && hovered.token() == view.token()) {
+                            GL11.glLineWidth(2.5f);
+                            RenderGlobal.drawSelectionBoundingBox(selectionBox(hovered.cell()).grow(.009), 1, 1, .25f, 1);
+                        }
+                    } finally {
+                        GL11.glLineWidth(lineWidth);
+                        GlStateManager.depthMask(true);
                         GlStateManager.enableDepth();
                     }
-                    if (view.wireframe) drawWireframe(controller != null);
                 } finally {
                     GlStateManager.popMatrix();
                 }
@@ -240,11 +280,15 @@ public final class StructurePreviewScene implements AutoCloseable {
                 GlStateManager.popMatrix();
             }
         } finally {
-            GL11.glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
-            GL11.glPopAttrib();
-            GlStateManager.matrixMode(oldMatrix);
-            GlStateManager.depthFunc(oldDepthFunc);
-            before.restore();
+            try {
+                if (pickWorld != null) pickWorld.close();
+            } finally {
+                GL11.glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+                GL11.glPopAttrib();
+                GlStateManager.matrixMode(oldMatrix);
+                GlStateManager.depthFunc(oldDepthFunc);
+                before.restore();
+            }
         }
     }
 
@@ -269,7 +313,10 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (model == null) return;
         for (int visited = 0; visited < 2048 && boundaryCursor < model.cells().size(); visited++) {
             int index = boundaryCursor++;
+            rayIndex.add(model.cells().get(index));
             var pos = model.cells().get(index).position();
+            var display = model.cells().get(index).display();
+            if (display != null) representativePositions.putIfAbsent(display, pos);
             for (var facing : EnumFacing.values()) {
                 if (view.at(pos.offset(facing)) == null) {
                     boundaryCells.add(index);
@@ -348,8 +395,64 @@ public final class StructurePreviewScene implements AutoCloseable {
     }
 
     public boolean release(double x, double y, int button) {
-        return camera.release(button) && view.choose(camera.pick(view, viewport, x, y));
+        if (!camera.release(button)) return false;
+        if (!viewport.contains(x, y)) return false;
+        var hit = pick(x, y);
+        return hit == null ? view.clearPicked(view.token()) : view.choose(hit);
     }
+
+    public void pointer(double x, double y, boolean enabled) {
+        pointerX = x;
+        pointerY = y;
+        pointerEnabled = enabled;
+    }
+
+    private @Nullable StructurePreviewView.Click pick(double x, double y) {
+        var bounds = view.sceneBounds();
+        var model = view.model();
+        if (bounds == null || model == null || boundaryCursor != model.cells().size() || pickWorld == null || access == null || !access.ready()) return null;
+        var ray = camera.ray(viewport, x, y, bounds);
+        if (ray == null) return null;
+        var end = ray.origin().add(ray.direction().scale(Math.max(2000, camera.distance(bounds) * 30)));
+        return rayIndex.pick(view, ray, cell -> {
+            var pos = cell.position();
+            double box = StructurePreviewCamera.intersect(ray, pos.getX(), pos.getY(), pos.getZ());
+            if (!Double.isFinite(box)) return box;
+            var state = access.represented(pos);
+            if (state == null) return box;
+            if (state.getMaterial() == Material.AIR) return Double.POSITIVE_INFINITY;
+            var hit = state.collisionRayTrace(pickWorld, pos, ray.origin(), end);
+            return hit == null ? Double.POSITIVE_INFINITY : ray.origin().distanceTo(hit.hitVec);
+        });
+    }
+
+    private AxisAlignedBB selectionBox(StructurePreviewModel.Cell cell) {
+        var state = access == null ? null : access.represented(cell.position());
+        return state == null || pickWorld == null ? new AxisAlignedBB(cell.position())
+            : state.getSelectedBoundingBox(pickWorld, cell.position());
+    }
+
+    /** The actual creative middle-pick item, cached only for this represented generation. */
+    public ItemStack item(StructureDisplay display, int option) {
+        var mc = Minecraft.getMinecraft();
+        var model = view.model();
+        if (model == null || pickWorld == null || access == null || !access.ready() || mc.player == null) return ItemStack.EMPTY;
+        var picked = view.picked();
+        var position = picked != null && display.equals(picked.display()) ? picked.position()
+            : representativePositions.get(display);
+        if (position == null) return ItemStack.EMPTY;
+        var key = new ItemChoice(display, option, position);
+        var cached = itemChoices.get(key);
+        if (cached != null) return cached.copy();
+        var root = model.generation().entries().get(model.structureId());
+        var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
+        var state = PreviewBlockStates.resolve(display.options().get(option), rotation);
+        var result = state == null ? ItemStack.EMPTY : pickWorld.pick(state, position, mc.player, display.tileNbt());
+        itemChoices.put(key, result);
+        return result.copy();
+    }
+
+    private record ItemChoice(StructureDisplay display, int option, BlockPos position) { }
 
     /** Finish a read-only scanner drag without choosing a block. */
     public void releaseWithoutPicking(int button) {
@@ -367,9 +470,14 @@ public final class StructurePreviewScene implements AutoCloseable {
         PreviewGuiResources.remove(this);
         Throwable failure = null;
         try {
-            machines.close();
+            if (pickWorld != null) pickWorld.close();
         } catch (RuntimeException | Error caught) {
             failure = caught;
+        }
+        try {
+            machines.close();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
         }
         try {
             tiles.close();

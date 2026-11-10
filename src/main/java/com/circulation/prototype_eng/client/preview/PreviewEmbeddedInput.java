@@ -34,6 +34,15 @@ public final class PreviewEmbeddedInput {
         if (dragging.panel == panel) dragging.clear();
     }
 
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public void tooltip(GuiScreenEvent.DrawScreenEvent.Post event) {
+        for (int index = active.size() - 1; index >= 0; index--) {
+            var entry = active.get(index);
+            if (entry.host == event.getGui() && fresh(entry)
+                && entry.panel.renderItemTooltip(event.getMouseX(), event.getMouseY(), event.getMouseX() - entry.x, event.getMouseY() - entry.y)) return;
+        }
+    }
+
     private boolean fresh(Active entry) {
         return entry.panel.inputCurrent() && entry.host == Minecraft.getMinecraft().currentScreen && System.currentTimeMillis() - entry.touched <= 250;
     }

@@ -48,7 +48,7 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
 
     @Override
     public List<String> getTooltipStrings(int x, int y) {
-        return panel == null ? List.of() : panel.tooltip(x, y);
+        return panel == null ? List.of() : panel.controlTooltip(x, y);
     }
 
     @Override

@@ -91,6 +91,7 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
         if (!navigation.viewerCurrent(this) || panel == null || panel.closed()) return;
         super.drawScreen(mouseX, mouseY, partialTicks);
         for (var control : buttonList) if (control.visible && control.isMouseOver()) return;
+        if (panel.renderItemTooltip(mouseX, mouseY, mouseX - guiLeft, mouseY - guiTop)) return;
         var tooltip = panel.tooltip(mouseX - guiLeft, mouseY - guiTop);
         if (!tooltip.isEmpty()) drawHoveringText(tooltip, mouseX, mouseY);
     }

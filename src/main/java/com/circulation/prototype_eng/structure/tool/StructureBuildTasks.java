@@ -10,6 +10,8 @@ import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
+import com.circulation.prototype_eng.structure.StructurePickWorld;
+import net.minecraft.init.Blocks;
 import net.minecraft.block.BlockFalling;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
@@ -107,7 +109,7 @@ public final class StructureBuildTasks {
                         unresolved = true;
                         continue;
                     }
-                    targets.add(new Target(position, StructureToolExport.rotateState(resolved, rotation)));
+                    targets.add(new Target(position, StructureToolExport.rotateState(resolved, rotation), cell.display().tileNbt()));
                 }
             }
             if (unresolved) {
@@ -186,7 +188,7 @@ public final class StructureBuildTasks {
         var current = world.getBlockState(pos);
         var desired = target.state();
         if (desired == null && world.isAirBlock(pos) || current.equals(desired)) return true;
-        var payment = desired == null || player.isCreative() ? Payment.FREE : payment(player, desired);
+        var payment = desired == null || player.isCreative() ? Payment.FREE : payment(player, world, pos, desired, target.tileNbt());
         if (payment == null) return false;
         if (!world.isAirBlock(pos)) {
             if (current.getBlockHardness(world, pos) < 0 || current.getBlock().getHarvestLevel(current) > 3)
@@ -211,16 +213,20 @@ public final class StructureBuildTasks {
     }
 
     private static boolean itemMatches(ItemStack a, ItemStack b) {
-        return !a.isEmpty() && a.getItem() == b.getItem() && a.getMetadata() == b.getMetadata();
+        return !a.isEmpty() && ItemStack.areItemsEqual(a, b) && ItemStack.areItemStackTagsEqual(a, b);
     }
 
-    private static @Nullable Payment payment(EntityPlayer player, IBlockState desired) {
+    private static @Nullable Payment payment(EntityPlayer player, World world, BlockPos pos, IBlockState desired, @Nullable String tileNbt) {
         var block = desired.getBlock();
         var fluid = FluidRegistry.lookupFluidForBlock(block);
         if (fluid == null && desired.getMaterial() == Material.WATER) fluid = FluidRegistry.WATER;
         if (fluid == null && desired.getMaterial() == Material.LAVA) fluid = FluidRegistry.LAVA;
         if (fluid != null) return fluidPayment(player, fluid);
-        var required = new ItemStack(block, 1, block.damageDropped(desired));
+        ItemStack required;
+        try (var picks = new StructurePickWorld(world, position -> world.isBlockLoaded(position, false)
+            ? world.getBlockState(position) : Blocks.AIR.getDefaultState())) {
+            required = picks.pick(desired, pos, player, tileNbt);
+        }
         if (required.isEmpty()) return null;
         for (int i = 0; i < player.inventory.getSizeInventory(); i++) {
             int slot = i;
@@ -323,7 +329,8 @@ public final class StructureBuildTasks {
         void refund(EntityPlayer player);
     }
 
-    private record Target(BlockPos position, @Nullable IBlockState state) {
+    private record Target(BlockPos position, @Nullable IBlockState state, @Nullable String tileNbt) {
+        Target(BlockPos position, @Nullable IBlockState state) { this(position, state, null); }
     }
 
     private static final class Task {

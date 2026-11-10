@@ -144,6 +144,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void drawScreen(int x, int y, float partial) {
         super.drawScreen(x, y, partial);
+        if (preview != null && preview.renderItemTooltip(x, y, x - guiLeft - 4, y - guiTop - 2)) return;
         List<String> tip = preview == null ? List.of() : preview.tooltip(x - guiLeft - 4, y - guiTop - 2);
         if (!tip.isEmpty()) drawHoveringText(tip, x, y);
     }

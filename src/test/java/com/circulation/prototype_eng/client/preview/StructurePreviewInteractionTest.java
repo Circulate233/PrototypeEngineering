@@ -94,6 +94,8 @@ class StructurePreviewInteractionTest {
             assertTrue(ui.choose(click));
             assertSame(B, ui.selected());
             assertTrue(ui.choose(new StructurePreviewView.Click(ui.token(), controller)));
+            assertSame(controller, ui.picked());
+            assertTrue(ui.clearPicked(ui.token()));
             assertNull(ui.picked());
             ui.threeDimensional = false;
             ui.layer = 1;

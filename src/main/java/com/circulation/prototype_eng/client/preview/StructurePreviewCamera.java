@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
+import java.util.function.ToDoubleFunction;
 
 /** PM's 45 degree orbit, exponential smoothing and world-space panning, without native GL state. */
 public final class StructurePreviewCamera {
@@ -27,12 +28,15 @@ public final class StructurePreviewCamera {
     }
 
     static double intersect(Ray ray, int x, int y, int z) {
+        return intersect(ray, x, y, z, 1);
+    }
+
+    static double intersect(Ray ray, int x, int y, int z, int size) {
         double near = 0, far = Double.POSITIVE_INFINITY;
-        double[] origins = {ray.origin.x, ray.origin.y, ray.origin.z};
-        double[] directions = {ray.direction.x, ray.direction.y, ray.direction.z};
-        int[] lower = {x, y, z};
         for (int axis = 0; axis < 3; axis++) {
-            double d = directions[axis], o = origins[axis], min = lower[axis], max = min + 1;
+            double d = axis == 0 ? ray.direction.x : axis == 1 ? ray.direction.y : ray.direction.z;
+            double o = axis == 0 ? ray.origin.x : axis == 1 ? ray.origin.y : ray.origin.z;
+            double min = axis == 0 ? x : axis == 1 ? y : z, max = min + size;
             if (d == 0) {
                 if (o < min || o > max) return Double.POSITIVE_INFINITY;
                 continue;
@@ -161,7 +165,7 @@ public final class StructurePreviewCamera {
 
     private Vec3d back() {
         double y = Math.toRadians(yaw), p = Math.toRadians(pitch);
-        return new Vec3d(-Math.sin(y) * Math.cos(p), -Math.sin(p), Math.cos(y) * Math.cos(p));
+        return new Vec3d(-Math.sin(y) * Math.cos(p), Math.sin(p), Math.cos(y) * Math.cos(p));
     }
 
     public @Nullable Ray ray(Viewport viewport, double x, double y, StructureBounds bounds) {
@@ -179,18 +183,27 @@ public final class StructurePreviewCamera {
         if (model == null || bounds == null) return null;
         var ray = ray(viewport, x, y, bounds);
         if (ray == null) return null;
+        return pick(view, cell -> intersect(ray, cell.position().getX(), cell.position().getY(), cell.position().getZ()));
+    }
+
+    /** The scene supplies native block ray intersections; the pure camera retains box picking for unknown cells. */
+    public @Nullable StructurePreviewView.Click pick(StructurePreviewView view, ToDoubleFunction<StructurePreviewModel.Cell> distanceTo) {
+        var model = view.model();
+        if (model == null) return null;
         double best = Double.POSITIVE_INFINITY;
         StructurePreviewModel.Cell hit = null;
         var controller = view.controllerCell();
         if (controller != null && view.visible(controller)) {
-            best = intersect(ray, 0, 0, 0);
-            if (Double.isFinite(best)) hit = controller;
+            double distance = distanceTo.applyAsDouble(controller);
+            if (Double.isFinite(distance) && distance >= 0) {
+                best = distance;
+                hit = controller;
+            }
         }
         for (var cell : model.cells()) {
             if (!view.visible(cell)) continue;
-            var pos = cell.position();
-            double distance = intersect(ray, pos.getX(), pos.getY(), pos.getZ());
-            if (distance < best) {
+            double distance = distanceTo.applyAsDouble(cell);
+            if (distance >= 0 && distance < best) {
                 best = distance;
                 hit = cell;
             }

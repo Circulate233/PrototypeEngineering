@@ -327,8 +327,15 @@ public final class StructurePreviewView {
         if (click == null || click.token() != token || model() == null || !visible(click.cell())
             || click.cell() != controllerCell && cells.get(click.cell().position()) != click.cell())
             return false;
-        picked = picked != null && picked.position().equals(click.cell().position()) ? null : click.cell();
-        selected = picked == null ? null : picked.display();
+        picked = click.cell();
+        selected = picked.display();
+        return true;
+    }
+
+    public boolean clearPicked(Object expectedToken) {
+        if (expectedToken != token || model() == null || picked == null) return false;
+        picked = null;
+        selected = null;
         return true;
     }
 
@@ -374,11 +381,6 @@ public final class StructurePreviewView {
 
     @Nullable StructureProjectionState.Status observation(int index) {
         return statuses.get(index);
-    }
-
-    @Nullable StructureProjectionState.Status pickedStatus() {
-        var complete = model();
-        return picked == null || complete == null ? null : statuses.get(complete.cells().indexOf(picked));
     }
 
     /** Full-structure counts deliberately never use the visible layer. Counts remain long throughout. */

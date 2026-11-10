@@ -14,6 +14,11 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.Block;
+import net.minecraft.init.Blocks;
+import com.circulation.prototype_eng.structure.StructurePickWorld;
+import com.circulation.prototype_eng.structure.tool.StructureToolExport;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
@@ -47,6 +52,9 @@ final class BuilderStructureTree {
     private float mouseX, mouseY;
     private int dragButton = -1, lastX, lastY;
     private Hit slider;
+    private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectLinkedOpenHashMap<>();
+    private BlockOrientation itemBase = BlockOrientation.NORTH_UP, itemOrientation = BlockOrientation.NORTH_UP;
+    private Object itemWorld;
 
     BuilderStructureTree(StructureToolContainer container, Consumer<Set<BlockPos>> highlight) {
         this.container = container;
@@ -57,12 +65,31 @@ final class BuilderStructureTree {
         return StructureToolText.BuildInstrumentOffset.getLocal(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    private static ItemStack stack(StructureDisplay.BlockOption option) {
-        return option == null || !Block.REGISTRY.containsKey(option.blockId()) ? ItemStack.EMPTY : new ItemStack(Block.REGISTRY.getObject(option.blockId()), 1, option.meta());
+    private ItemStack stack(@Nullable StructureDisplay.BlockOption option, @Nullable String tileNbt) {
+        var mc = Minecraft.getMinecraft();
+        if (option == null || mc.world == null || mc.player == null || !Block.REGISTRY.containsKey(option.blockId())) return ItemStack.EMPTY;
+        if (itemWorld != mc.world) {
+            itemWorld = mc.world;
+            itemChoices.clear();
+        }
+        var key = new ItemChoice(option, tileNbt);
+        var cached = itemChoices.get(key);
+        if (cached != null) return cached.copy();
+        var block = Block.REGISTRY.getObject(option.blockId());
+        @SuppressWarnings("deprecation") var state = option.resolveProperties(block.getStateFromMeta(option.meta()));
+        if (state == null) return ItemStack.EMPTY;
+        state = StructureToolExport.rotateState(state, StructureTransform.between(itemBase, itemOrientation));
+        ItemStack picked;
+        try (var world = new StructurePickWorld(mc.world, position -> mc.world.isBlockLoaded(position, false)
+            ? mc.world.getBlockState(position) : Blocks.AIR.getDefaultState())) {
+            picked = world.pick(state, BuilderState.position(container.snapshot()), mc.player, tileNbt);
+        }
+        itemChoices.put(key, picked);
+        return picked.copy();
     }
 
-    private static String name(StructureDisplay.BlockOption option) {
-        var stack = stack(option);
+    private String name(StructureDisplay.BlockOption option, @Nullable String tileNbt) {
+        var stack = stack(option, tileNbt);
         return stack.isEmpty() ? option.blockId().toString() : stack.getDisplayName();
     }
 
@@ -80,6 +107,8 @@ final class BuilderStructureTree {
         Gui.drawRect(x + width - 1, y, x + width, y + 14, color);
     }
 
+    private record ItemChoice(StructureDisplay.BlockOption option, @Nullable String tileNbt) { }
+
     private boolean open(Row row) {
         return expanded.getOrDefault(row.id, row.kind == 0);
     }
@@ -89,6 +118,10 @@ final class BuilderStructureTree {
         String next = id + tag.getCompoundTag("MaterialSelections").toString() + slices + orientation;
         if (current == catalog && next.equals(key)) return;
         catalog = current;
+        itemChoices.clear();
+        itemOrientation = orientation;
+        itemBase = current == null || id == null || !current.entries().containsKey(id) ? BlockOrientation.NORTH_UP
+            : current.nodes().get(current.entries().get(id).node()).orientation();
         key = next;
         root = null;
         viewRoot = String.valueOf(id);
@@ -128,11 +161,11 @@ final class BuilderStructureTree {
                 var display = count.getKey();
                 var choice = BuilderState.choice(tag, display);
                 boolean alternatives = display.options().size() > 1;
-                var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(name(choice), count.getLongValue()), 2, display, null, instance.path(), 0, 0, 0);
+                var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(name(choice, display.tileNbt()), count.getLongValue()), 2, display, null, instance.path(), 0, 0, 0);
                 materials.children.add(material);
                 if (alternatives) for (int i = 0; i < display.options().size(); i++) {
                     var option = display.options().get(i);
-                    material.children.add(new Row(material.id + "/" + i, name(option), 2, display, option, instance.path(), 0, 0, 0));
+                    material.children.add(new Row(material.id + "/" + i, name(option, display.tileNbt()), 2, display, option, instance.path(), 0, 0, 0));
                 }
             }
         }
@@ -251,7 +284,7 @@ final class BuilderStructureTree {
             StructureToolDraw.image("gui_build_instrument/button/" + (open(row) ? "withdraw" : "expand") + "_" + (row.id.equals(pressed) ? "pressed" : hover ? "selected" : "default"), x + width - 15, y + 1, 11, 12);
         }
         if (row.display != null) {
-            var icon = stack(row.option == null ? BuilderState.choice(container.snapshot(), row.display) : row.option);
+            var icon = stack(row.option == null ? BuilderState.choice(container.snapshot(), row.display) : row.option, row.display.tileNbt());
             GlStateManager.pushMatrix();
             try {
                 GlStateManager.translate(x + 2, y + 1, 0);

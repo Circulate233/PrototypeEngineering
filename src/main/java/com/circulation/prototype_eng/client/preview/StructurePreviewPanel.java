@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.client.preview;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
-import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.client.gui.GuiAtlas;
 import com.circulation.prototype_eng.client.gui.GuiClip;
 import com.circulation.prototype_eng.client.gui.GuiLabel;
@@ -19,7 +18,8 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
-import net.minecraftforge.fml.common.registry.ForgeRegistries;
+import net.minecraft.inventory.InventoryBasic;
+import net.minecraft.inventory.Slot;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
@@ -40,6 +40,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private final int window;
     private final GuiClip clip = new GuiClip();
     private final ObjectArrayList<Action> actions = new ObjectArrayList<>();
+    private final ObjectArrayList<ItemSlot> itemSlots = new ObjectArrayList<>();
+    private final InventoryBasic displayInventory = new InventoryBasic("structure_preview", false, 1);
+    private final Slot displaySlot = new Slot(displayInventory, 0, 1, 1);
+    private final PreviewListScroll alternativesScroll = new PreviewListScroll(), materialsScroll = new PreviewListScroll();
+    private int alternativesCount, materialsCount;
     private boolean construction;
     private BiConsumer<StructureDisplay, Integer> alternativeSelected = (_, _) -> {
     };
@@ -79,20 +84,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
     }
 
-    private static ItemStack optionStack(StructureDisplay.BlockOption option) {
-        var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-        return block == null ? ItemStack.EMPTY : new ItemStack(block, 1, option.meta());
-    }
-
-    private static String shortName(StructureDisplay display) {
-        if (display.options().size() != 1) return display.key();
-        var option = display.options().getFirst();
-        return option.blockId() + (option.meta() == 0 ? "" : "@" + option.meta());
-    }
-
-    private static String optionKey(StructureDisplay.BlockOption option) {
-        return "state:" + BuilderState.optionKey(option);
-    }
+    private ItemStack optionStack(StructureDisplay display, int option) { return scene.item(display, option); }
 
     public void construction() {
         construction = true;
@@ -145,6 +137,13 @@ public final class StructurePreviewPanel implements AutoCloseable {
         this.mouseX = mouseX;
         this.mouseY = mouseY;
         actions.clear();
+        itemSlots.clear();
+        boolean materialsVisible = view.materialsOpen || construction && view.picked() != null;
+        boolean pointer = mouseY >= 31 && mouseY < 195
+            && !(view.picked() != null && new Rect(9, 31, 18, 181).contains(mouseX, mouseY))
+            && !(materialsVisible && new Rect(29, 31, 134, 163).contains(mouseX, mouseY))
+            && !(!view.threeDimensional && new Rect(165, 33, 10, 158).contains(mouseX, mouseY));
+        scene.pointer(mouseX - SCENE_X, mouseY - SCENE_Y, pointer);
         sprite("base", 0, 0, WIDTH, HEIGHT);
         scene.drawAtCurrentOrigin(SCENE_X, SCENE_Y, 171, 200, partialTicks);
         if (embedded) PreviewEmbeddedInput.INSTANCE.mark(host, this);
@@ -262,6 +261,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     private void materials() {
         var selected = view.picked() == null ? null : view.picked().display();
+        alternativesScroll.identity(view.picked());
+        alternativesCount = 0;
         clipped(9, 31, 18, 181, () -> {
             float x = 9 - 18 * Math.max(collapseNow, sidebarNow);
             sprite("left_replace_preview", x, 31, 18, 181);
@@ -270,22 +271,17 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 return;
             }
             int choice = representative(selected);
-            var stack = optionStack(selected.options().get(choice));
-            boolean any = selected.options().size() > 1;
-            var selectedTooltip = new ObjectArrayList<>(any
-                ? List.of(PreviewUiText.CurrentSelection.getLocal(stack.getDisplayName()), PreviewUiText.ChooseOne.getLocal(selected.options().size()), PreviewUiText.Key.getLocal(selected.key()))
-                : List.of(stack.isEmpty() ? PreviewUiText.Empty.getLocal() : stack.getDisplayName(), PreviewUiText.Requirement.getLocal(shortName(selected)), PreviewUiText.Key.getLocal(selected.key())));
-            if (!selected.complete()) selectedTooltip.add(PreviewUiText.Status.getLocal(PreviewUiText.Unknown.getLocal()));
-            slot("selected", stack, x, 31, false, selectedTooltip, null);
+            var stack = optionStack(selected, choice);
+            slot("selected", stack, x, 31, false, List.of(), null);
+            var candidates = new ObjectArrayList<Integer>();
+            for (int index = 0; index < selected.options().size(); index++)
+                if (index != choice && !optionStack(selected, index).isEmpty()) candidates.add(index);
+            alternativesCount = candidates.size();
             int row = 1;
-            for (int index = 0; index < selected.options().size() && row <= 9; index++) {
-                if (index == choice) continue;
-                var alternative = optionStack(selected.options().get(index));
-                if (alternative.isEmpty()) continue;
-                int option = index;
-                slot("option" + index, alternative, x, 31 + row++ * 18, false,
-                    List.of(PreviewUiText.Candidate.getLocal(alternative.getDisplayName()), PreviewUiText.ClickToSelect.getLocal(),
-                        PreviewUiText.Key.getLocal(optionKey(selected.options().get(index)))), () -> {
+            for (int index = alternativesScroll.first(candidates.size(), 9); index < candidates.size() && row <= 9; index++) {
+                int option = candidates.get(index);
+                var alternative = optionStack(selected, option);
+                slot("option" + option, alternative, x, 31 + row++ * 18, false, List.of(), () -> {
                         if (view.alternative(drawnToken, selected, option))
                             alternativeSelected.accept(selected, option);
                     });
@@ -298,58 +294,53 @@ public final class StructurePreviewPanel implements AutoCloseable {
             : new ObjectArrayList<>(List.of(new StructurePreviewModel.BomLine(selected, 1)));
         if (construction && selected == null && view.scan) {
             bom.clear();
-            for (var material : view.materials(StructurePreviewPanel::shortName, PreviewUiText.Unknown.getLocal()))
+            for (var material : view.materials(display -> optionStack(display, representative(display)).getDisplayName(), PreviewUiText.Unknown.getLocal()))
                 if (material.mismatch() > 0)
                     bom.add(new StructurePreviewModel.BomLine(material.display(), material.mismatch()));
         }
         bom.sort(Comparator.comparingLong(StructurePreviewModel.BomLine::count).reversed());
-        int row = 0;
+        var visible = new ObjectArrayList<MaterialRow>();
         for (var line : bom) {
             var display = line.display();
             if (display == null || selected != null && !selected.equals(display)) continue;
-            var stack = optionStack(display.options().get(representative(display)));
+            var stack = optionStack(display, representative(display));
             if (stack.isEmpty()) continue;
             int count = selected == null ? (int) Math.min(Integer.MAX_VALUE, line.count()) : 1;
             stack.setCount(count);
-            var tooltip = new ObjectArrayList<String>();
-            tooltip.add(stack.getDisplayName());
-            if (!display.complete()) tooltip.add(PreviewUiText.Status.getLocal(PreviewUiText.Unknown.getLocal()));
-            if (selected == null) {
-                tooltip.add((construction ? PreviewUiText.Remaining : PreviewUiText.Required).getLocal(count));
-                tooltip.add(PreviewUiText.Key.getLocal(display.key()));
-            } else {
-                tooltip.add(PreviewUiText.Requirement.getLocal(shortName(display)));
-                var status = view.pickedStatus();
-                if (status != null && display.complete()) tooltip.add(PreviewUiText.Status.getLocal(switch (status) {
-                    case DISPLAY_MATCH -> PreviewUiText.Match.getLocal();
-                    case MISSING -> PreviewUiText.Missing.getLocal();
-                    case DIFFERENT -> PreviewUiText.Wrong.getLocal();
-                    case UNLOADED -> PreviewUiText.Unloaded.getLocal();
-                    case UNKNOWN -> PreviewUiText.Unknown.getLocal();
-                }));
-                tooltip.add(PreviewUiText.Count.getLocal(count));
-            }
-            if (display.options().size() > 1) tooltip.add(PreviewUiText.Replaceable.getLocal(display.options().size()));
-            slot("material" + row, stack, 33, 35 + row * 20, true, tooltip, null);
-            if (++row >= 24) break;
+            visible.add(new MaterialRow(stack));
         }
+        materialsScroll.identity(selected);
+        materialsCount = visible.size();
+        clipped(29, 31, 134, 163, () -> {
+            int first = materialsScroll.first(visible.size(), 8);
+            for (int row = 0; row < 8 && first + row < visible.size(); row++)
+                slot("material" + (first + row), visible.get(first + row).stack, 33, 35 + row * 20, true, List.of(), null);
+        });
     }
 
     private void slot(String id, ItemStack stack, float x, float y, boolean amount, List<String> tooltip, @Nullable Runnable run) {
+        if (!amount && !stack.isEmpty()) stack.setCount(1);
         GlStateManager.pushMatrix();
         try {
             GlStateManager.translate(x, y, 0);
             GuiAtlas.state(0, 0, 73, 0, 18, 18);
             if (!stack.isEmpty()) {
                 RenderHelper.enableGUIStandardItemLighting();
-                Minecraft.getMinecraft().getRenderItem().renderItemAndEffectIntoGUI(stack, 1, 1);
+                displayInventory.setInventorySlotContents(0, stack);
+                if (host instanceof PreviewNativeGui.Slots nativeSlots) nativeSlots.prototype_eng$renderSlot(displaySlot);
+                else {
+                    // HEI RecipesGui is a GuiScreen, so use its ordinary native item renderer.
+                    var mc = Minecraft.getMinecraft();
+                    mc.getRenderItem().renderItemAndEffectIntoGUI(player, stack, 1, 1);
+                    mc.getRenderItem().renderItemOverlayIntoGUI(mc.fontRenderer, stack, 1, 1, null);
+                }
                 RenderHelper.disableStandardItemLighting();
-                if (amount) PreviewAmountText.draw(Minecraft.getMinecraft().fontRenderer, stack.getCount());
             }
         } finally {
             GlStateManager.popMatrix();
         }
         area(id, x, y, 18, 18, tooltip, run);
+        if (!stack.isEmpty()) itemSlots.add(new ItemSlot(stack, new Rect(x, y, 18, 18), currentClip));
     }
 
     private int representative(StructureDisplay display) {
@@ -412,6 +403,14 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public boolean wheel(int x, int y, int delta) {
         if (!inputCurrent() || delta == 0) return false;
+        if (view.picked() != null && new Rect(9, 31, 18, 181).contains(x, y)) {
+            alternativesScroll.wheel(delta, alternativesCount, 9);
+            return true;
+        }
+        if ((view.materialsOpen || construction && view.picked() != null) && new Rect(29, 31, 134, 163).contains(x, y)) {
+            materialsScroll.wheel(delta, materialsCount, 8);
+            return true;
+        }
         for (var action : actions) if (action.contains(x, y)) return true;
         if (view.materialsOpen && new Rect(29, 31, 134, 163).contains(x, y)) return true;
         var rect = scene.viewport();
@@ -419,10 +418,34 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     public List<String> tooltip(int x, int y) {
+        var stack = itemAt(x, y);
+        return stack.isEmpty() ? controlTooltip(x, y) : host.getItemToolTip(stack);
+    }
+
+    public List<String> controlTooltip(int x, int y) {
         if (!inputCurrent()) return List.of();
         for (int i = actions.size() - 1; i >= 0; i--) if (actions.get(i).contains(x, y)) return actions.get(i).tooltip;
         return List.of();
     }
+
+    public boolean renderItemTooltip(int screenX, int screenY, int localX, int localY) {
+        var stack = itemAt(localX, localY);
+        if (stack.isEmpty()) return false;
+        ((PreviewNativeGui) host).prototype_eng$renderItemTooltip(stack, screenX, screenY);
+        return true;
+    }
+
+    private ItemStack itemAt(int x, int y) {
+        if (!inputCurrent()) return ItemStack.EMPTY;
+        for (int i = itemSlots.size() - 1; i >= 0; i--) {
+            var slot = itemSlots.get(i);
+            if (slot.bounds.contains(x, y) && (slot.clip == null || slot.clip.contains(x, y))) return slot.stack;
+        }
+        return ItemStack.EMPTY;
+    }
+
+    private record ItemSlot(ItemStack stack, Rect bounds, @Nullable Rect clip) { }
+    private record MaterialRow(ItemStack stack) { }
 
     @Override
     public void close() {
