@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
 import com.circulation.prototype_eng.structure.tool.StructureToolExport;
+import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.ItemStack;
@@ -24,6 +25,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.Map;
 
 /** AE window actions are bound to the exact tool stack and world that opened the screen. */
 public final class StructureToolContainer extends AEBaseContainer {
@@ -50,7 +52,8 @@ public final class StructureToolContainer extends AEBaseContainer {
         setGuiTitle((builder ? StructureToolText.BuilderTitle : StructureToolText.ScannerTitle).text());
         registerClientAction("structure_tool", Action.class, this::accept);
         if (!world.isRemote) {
-            if (!builder) autoInitialize();
+            if (builder) BuilderState.ensureIdentity(data());
+            else autoInitialize();
             synchronize();
         }
     }
@@ -64,6 +67,8 @@ public final class StructureToolContainer extends AEBaseContainer {
     public boolean builder() {
         return builder;
     }
+
+    public ItemStack tool() { return tool; }
 
     public NBTTagCompound snapshot() {
         if (!decoded.equals(state)) {
@@ -105,18 +110,9 @@ public final class StructureToolContainer extends AEBaseContainer {
         var tag = data();
         if (builder) {
             if (action.kind.equals("task")) StructureBuildTasks.toggle(getPlayer(), slot, tool);
-            else if (action.kind.equals("material") && action.key.length() <= 8192 && action.value.length() <= 8192) {
-                var server = getPlayer().getServer();
-                if (server == null) return;
-                var view = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
-                if (view != null) for (var entry : view.entries().values())
-                    for (var display : entry.displays().values()) {
-                        if (!display.key().equals(action.key)) continue;
-                        for (var option : display.options())
-                            if (BuilderState.optionKey(option).equals(action.value))
-                                BuilderState.choose(tag, action.key, action.value);
-                    }
-            }
+            else if ((action.kind.equals("material") || action.kind.equals("cell_material"))
+                && action.key.length() <= 8192 && action.value.length() <= 8192)
+                chooseMaterial(action.kind, action.key, action.value);
         } else switch (action.kind) {
             case "edit" -> {
                 for (var field : ScannerState.Field.values())
@@ -150,6 +146,80 @@ public final class StructureToolContainer extends AEBaseContainer {
             }
         }
         synchronize();
+    }
+
+    private void chooseMaterial(String kind, String key, String value) {
+        final BlockPos position;
+        final String expectedOrientation, selectedMaterial, selectedOption;
+        if (kind.equals("cell_material")) {
+            position = BuilderState.cellPosition(key);
+            int orientationEnd = value.indexOf(':');
+            if (position == null || orientationEnd <= 0) return;
+            expectedOrientation = value.substring(0, orientationEnd);
+            int lengthEnd = value.indexOf(':', orientationEnd + 1);
+            if (lengthEnd < 0) return;
+            var lengthText = value.substring(orientationEnd + 1, lengthEnd);
+            if (!lengthText.matches("[1-9][0-9]{0,3}")) return;
+            int length = Integer.parseInt(lengthText), start = lengthEnd + 1;
+            if (length > value.length() - start) return;
+            selectedMaterial = value.substring(start, start + length);
+            selectedOption = value.substring(start + length);
+        } else {
+            position = null;
+            expectedOrientation = null;
+            selectedMaterial = key;
+            selectedOption = value;
+        }
+        if (selectedMaterial.isBlank() || selectedOption.isEmpty()) return;
+        var binding = data().copy();
+        var anchor = BuilderState.position(binding);
+        if (!binding.getBoolean("Bound") || binding.getInteger("BoundDim") != world.provider.getDimension()
+            || !world.isBlockLoaded(anchor, false) || !(world.getTileEntity(anchor) instanceof MachineControllerHost host)) return;
+        host.readGuiAtBoundary(() -> {
+            var current = data();
+            if (!active() || !current.getBoolean("Bound") || !world.isBlockLoaded(anchor, false) || world.getTileEntity(anchor) != host || host.blockEntity().isInvalid()
+                || host.blockEntity().getWorld() != world || !host.blockEntity().getPos().equals(anchor)
+                || current.getInteger("BoundDim") != world.provider.getDimension() || !BuilderState.position(current).equals(anchor)
+                || !current.getString("BuilderIdentity").equals(binding.getString("BuilderIdentity"))
+                || !current.getString("BoundMachineId").equals(host.type().id().toString())
+                || !current.getString("BoundStructureId").equals(host.type().structureId().toString())
+                || !current.getString("BoundMachineId").equals(binding.getString("BoundMachineId"))
+                || !current.getString("BoundStructureId").equals(binding.getString("BoundStructureId"))
+                || expectedOrientation != null && !expectedOrientation.equals(host.orientation().name())) return;
+            var server = getPlayer().getServer();
+            if (server == null) return;
+            var catalog = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
+            if (catalog == null || !catalog.entries().containsKey(host.type().structureId())) return;
+            var plan = StructureBuildPlan.expand(catalog, host.type().structureId(), host.orientation(), Map.of());
+            if (position != null) {
+                for (var cell : plan.cells()) {
+                    if (!cell.position().equals(position)) continue;
+                    var display = cell.display();
+                    if (display == null || !display.key().equals(selectedMaterial)) return;
+                    for (var candidate : display.options())
+                        if (BuilderState.optionKey(candidate).equals(selectedOption)) {
+                            BuilderState.chooseCell(current, position, selectedMaterial, selectedOption, host.orientation());
+                            synchronize();
+                            return;
+                        }
+                    return;
+                }
+                return;
+            }
+            boolean found = false;
+            for (var cell : plan.cells()) {
+                var display = cell.display();
+                if (display == null || !display.key().equals(selectedMaterial)) continue;
+                boolean valid = false;
+                for (var option : display.options()) if (BuilderState.optionKey(option).equals(selectedOption)) { valid = true; break; }
+                if (!valid) return;
+                found = true;
+            }
+            if (found) {
+                BuilderState.choose(current, selectedMaterial, selectedOption);
+                synchronize();
+            }
+        });
     }
 
     private void autoInitialize() {

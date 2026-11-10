@@ -21,7 +21,7 @@ public final class PreviewDisplayObservation {
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var actual = world.getBlockState(position);
-        var chosen = model.settings().displayOptions().get(display);
+        var chosen = model.settings().explicitOption(cell);
         boolean unresolved = false;
         for (int index = 0; index < display.options().size(); index++) {
             if (chosen != null && chosen != index) continue;

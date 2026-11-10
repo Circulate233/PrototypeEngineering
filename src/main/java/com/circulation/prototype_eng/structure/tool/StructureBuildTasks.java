@@ -98,7 +98,7 @@ public final class StructureBuildTasks {
                         unresolved = true;
                         continue;
                     }
-                    var choice = BuilderState.choice(tag, cell.display());
+                    var choice = BuilderState.choice(tag, cell.display(), cell.position(), host.orientation());
                     if (!Block.REGISTRY.containsKey(choice.blockId())) {
                         unresolved = true;
                         continue;

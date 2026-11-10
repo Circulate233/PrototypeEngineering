@@ -22,6 +22,7 @@ public final class StructurePreviews implements AutoCloseable {
     private final ObjectArrayList<CloseListener> closeListeners = new ObjectArrayList<>();
     @Nullable
     private Projection projection;
+    private long projectionStartedNanos, projectionDurationNanos;
     private boolean closed;
 
     /**
@@ -31,7 +32,7 @@ public final class StructurePreviews implements AutoCloseable {
         this.catalog = Objects.requireNonNull(catalog);
         requests = new StructurePreviewCache<>(catalog, 32);
         subscription = catalog.onInvalidated(() -> {
-            if (catalog.view() == null) projection = null;
+            if (catalog.view() == null) clearProjection();
         });
     }
 
@@ -85,25 +86,53 @@ public final class StructurePreviews implements AutoCloseable {
                            StructureProjectionOptions options) {
         if (request(id, settings) == null) return false;
         projection = new Projection(id, settings, anchor, options);
+        projectionDurationNanos = 0;
+        return true;
+    }
+
+    /** GUI projections may expire without closing their logical preview service. */
+    public boolean projectFor(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
+                              StructureProjectionOptions options, long durationMillis) {
+        if (durationMillis <= 0 || durationMillis > Long.MAX_VALUE / 1_000_000)
+            throw new IllegalArgumentException("Invalid projection lifetime");
+        if (!project(id, settings, anchor, options)) return false;
+        projectionStartedNanos = System.nanoTime();
+        projectionDurationNanos = durationMillis * 1_000_000;
+        return true;
+    }
+
+    /** Changes presentation only for the exact active intent and never renews a timed lifetime. */
+    public boolean replaceProjection(Projection expected, StructurePreviewSettings settings, StructureProjectionOptions options) {
+        requireOpen();
+        if (projection() != expected || request(expected.id(), settings) == null || projection() != expected) return false;
+        projection = new Projection(expected.id(), settings, expected.anchor(), options);
         return true;
     }
 
     @SuppressWarnings("UnusedReturnValue") // Addon callers may detect that no projection is active.
     public boolean moveProjection(BlockPos anchor) {
         requireOpen();
-        if (projection == null) return false;
-        projection = new Projection(projection.id(), projection.settings(), anchor, projection.options());
+        var current = projection();
+        if (current == null) return false;
+        projection = new Projection(current.id(), current.settings(), anchor, current.options());
         return true;
     }
 
     public void stopProjection() {
         requireOpen();
-        projection = null;
+        clearProjection();
     }
 
     public @Nullable Projection projection() {
         requireOpen();
+        if (projection != null && projectionDurationNanos != 0
+            && System.nanoTime() - projectionStartedNanos >= projectionDurationNanos) clearProjection();
         return projection;
+    }
+
+    private void clearProjection() {
+        projection = null;
+        projectionDurationNanos = 0;
     }
 
     public boolean closed() {
@@ -134,7 +163,7 @@ public final class StructurePreviews implements AutoCloseable {
         catalog.view();
         if (closed) return;
         requireOpen();
-        projection = null;
+        clearProjection();
         closed = true;
         Throwable failure = null;
         try {

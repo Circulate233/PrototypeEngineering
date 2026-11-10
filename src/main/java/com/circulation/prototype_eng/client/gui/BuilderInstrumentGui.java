@@ -11,6 +11,9 @@ import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import com.circulation.prototype_eng.container.StructureToolContainer;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
+import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
@@ -18,6 +21,7 @@ import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 
 /** Original PM builder panel: preview at (4,2), clipped tree and task controls. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
@@ -34,6 +38,9 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         ySize = 228;
         tree = new BuilderStructureTree(container, positions -> {
             if (preview != null) preview.scene().highlighted(positions);
+        });
+        tree.onMaterialReplacement(display -> {
+            if (preview != null) preview.openMaterialChoices(display);
         });
     }
 
@@ -67,10 +74,13 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         view.anchor(anchor);
         view.wireframe = false;
         preview = new StructurePreviewPanel(view);
-        preview.construction();
+        preview.construction(container.tool(), container::snapshot);
+        preview.onMaterialsRequested(tree::openMaterials);
         if (oldCamera != null) preview.scene().camera().copyViewFrom(oldCamera);
         appliedSelections = "";
         preview.onAlternativeSelected((display, option) -> container.action("material", display.key(), BuilderState.optionKey(display.options().get(option))));
+        preview.onCellAlternativeSelected((cell, option) -> container.action("cell_material", BuilderState.cellKey(cell.position()),
+            BuilderState.cellValue(Objects.requireNonNull(cell.display()), option, view.settings().orientation())));
     }
 
     private void applySelections() {
@@ -78,18 +88,21 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         var model = preview.view().model();
         if (model == null) return;
         var tag = container.snapshot();
-        String key = tag.getCompoundTag("MaterialSelections").toString();
+        String key = tag.getCompoundTag("MaterialSelections").toString() + tag.getCompoundTag("CellMaterialSelections")
+            + model.generation().session() + model.generation().sequence();
         if (key.equals(appliedSelections)) return;
         var view = preview.view();
+        var globals = new Object2ObjectOpenHashMap<StructureDisplay, Integer>();
         for (var line : model.bom()) {
             var display = line.display();
             if (display == null) continue;
             int selected = display.options().indexOf(BuilderState.choice(tag, display));
-            if (view.alternative(display) != selected) {
-                view.alternative(view.token(), display, selected);
-                return;
-            }
+            if (BuilderState.optionKey(display.options().get(selected)).equals(tag.getCompoundTag("MaterialSelections").getString(display.key())))
+                globals.put(display, selected);
         }
+        var displays = new Object2ObjectOpenHashMap<BlockPos, StructureDisplay>();
+        for (var cell : model.cells()) if (cell.display() != null) displays.put(cell.position(), cell.display());
+        view.replaceAlternatives(view.token(), globals, BuilderState.cellChoices(tag, displays, view.settings().orientation()));
         appliedSelections = key;
     }
 
@@ -146,6 +159,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         super.drawScreen(x, y, partial);
         if (preview != null && preview.renderItemTooltip(x, y, x - guiLeft - 4, y - guiTop - 2)) return;
         List<String> tip = preview == null ? List.of() : preview.tooltip(x - guiLeft - 4, y - guiTop - 2);
+        if (tip.isEmpty()) tip = tree.tooltip(x - guiLeft - 191, y - guiTop - 8);
         if (!tip.isEmpty()) drawHoveringText(tip, x, y);
     }
 

@@ -37,6 +37,7 @@ public final class WorldProjectionManager implements AutoCloseable {
     private final WorldVertexBufferUploader uploader = new WorldVertexBufferUploader();
     private final FloatBuffer colorBuffer = BufferUtils.createFloatBuffer(4);
     private boolean closed;
+    private boolean projectionActive;
 
     public WorldProjectionManager(StructurePreviews previews, ClientStructureCatalog catalog) {
         this.previews = previews;
@@ -117,9 +118,23 @@ public final class WorldProjectionManager implements AutoCloseable {
         }
         var world = Minecraft.getMinecraft().world;
         try {
+            if (previews.projection() == null) {
+                clearProjectionResources();
+                return;
+            }
+            projectionActive = true;
             state.tick(world, (cell, position) -> observe(world, cell, position));
+            if (previews.projection() == null) clearProjectionResources();
         } catch (RuntimeException failure) {
             reportFailure(failure);
+        }
+    }
+
+    private void clearProjectionResources() {
+        state.clear();
+        if (projectionActive) {
+            projectionActive = false;
+            blockModels.invalidate();
         }
     }
 
@@ -130,7 +145,14 @@ public final class WorldProjectionManager implements AutoCloseable {
         var camera = minecraft.getRenderViewEntity();
         if (minecraft.world == null || camera == null) return;
         var intent = previews.projection();
-        if (intent == null) return;
+        if (intent == null) {
+            try {
+                clearProjectionResources();
+            } catch (RuntimeException failure) {
+                reportFailure(failure);
+            }
+            return;
+        }
         var originalRound = state.roundToken();
         try {
             var samples = state.frame(minecraft.world);

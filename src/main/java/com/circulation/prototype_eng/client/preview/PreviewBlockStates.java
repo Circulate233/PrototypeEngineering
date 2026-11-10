@@ -25,7 +25,7 @@ final class PreviewBlockStates {
     }
 
     static IBlockState first(StructurePreviewModel model, StructurePreviewModel.Cell cell) {
-        var explicit = model.settings().displayOptions().get(cell.display());
+        var explicit = model.settings().explicitOption(cell);
         if (explicit != null) return selected(model, cell, explicit);
         var display = cell.display();
         if (display == null) return null;

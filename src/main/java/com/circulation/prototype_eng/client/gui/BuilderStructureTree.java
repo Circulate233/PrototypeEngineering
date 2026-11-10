@@ -38,6 +38,7 @@ import java.util.function.Consumer;
 final class BuilderStructureTree {
     private final StructureToolContainer container;
     private final Consumer<Set<BlockPos>> highlight;
+    private Consumer<StructureDisplay> materialReplacement = _ -> { };
     private final Map<String, Boolean> expanded = new Object2ObjectLinkedOpenHashMap<>();
     private final Map<String, Integer> slices = new Object2ObjectLinkedOpenHashMap<>();
     private final List<Hit> hits = new ObjectArrayList<>();
@@ -55,10 +56,37 @@ final class BuilderStructureTree {
     private final Map<ItemChoice, ItemStack> itemChoices = new Object2ObjectLinkedOpenHashMap<>();
     private BlockOrientation itemBase = BlockOrientation.NORTH_UP, itemOrientation = BlockOrientation.NORTH_UP;
     private Object itemWorld;
+    private boolean materialsPending;
+    private String lastMaterialClick;
+    private StructureDisplay lastMaterialDisplay;
+    private StructureCatalogView lastMaterialCatalog;
+    private long lastMaterialClickTime;
+    private float drawnPanX, drawnPanY, drawnScale = 1;
 
     BuilderStructureTree(StructureToolContainer container, Consumer<Set<BlockPos>> highlight) {
         this.container = container;
         this.highlight = highlight;
+    }
+
+    void onMaterialReplacement(Consumer<StructureDisplay> listener) {
+        materialReplacement = Objects.requireNonNull(listener);
+    }
+
+    void openMaterials() {
+        materialsPending = true;
+        expandMaterials();
+    }
+
+    private void expandMaterials() {
+        if (!materialsPending || root == null) return;
+        var pending = new ObjectArrayList<Row>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            var row = pending.removeLast();
+            if (row.kind == 0 || row.kind == 1) expanded.put(row.id, true);
+            pending.addAll(row.children);
+        }
+        materialsPending = false;
     }
 
     private static String offset(BlockPos pos) {
@@ -137,7 +165,7 @@ final class BuilderStructureTree {
                 label += StructureToolText.BuildInstrumentSliceSuffix.getLocal(node.minCount(), node.maxCount(), offset(node.sliceOffset()));
             if (!instance.path().equals("0"))
                 label = StructureToolText.BuildInstrumentSubstructureLabel.getLocal(label, offset(node.offset()));
-            var row = new Row(instance.path(), label, 0, null, null, instance.path(), 0, 0, 0);
+            var row = new Row(instance.path(), label, 0, null, instance.path(), 0, 0, 0);
             rows.put(instance.path(), row);
             if (root == null) root = row;
             else {
@@ -145,30 +173,26 @@ final class BuilderStructureTree {
                 if (parent != null) parent.children.add(row);
             }
             if (node.kind() == StructurePreviewProvider.Kind.SLICE)
-                row.children.add(new Row(instance.path() + "/slice", StructureToolText.BuildInstrumentSliceSlider.getLocal(instance.count(), node.maxCount()), 3, null, null, instance.path(), node.minCount(), node.maxCount(), instance.count()));
+                row.children.add(new Row(instance.path() + "/slice", StructureToolText.BuildInstrumentSliceSlider.getLocal(instance.count(), node.maxCount()), 3, null, instance.path(), node.minCount(), node.maxCount(), instance.count()));
             var counts = new Object2LongLinkedOpenHashMap<StructureDisplay>();
             for (var cell : plan.cells())
                 if (cell.display() != null && (cell.path().equals(instance.path()) || cell.path().startsWith(instance.path() + "/")))
                     counts.addTo(cell.display(), 1);
             if (counts.isEmpty()) continue;
-            var materials = new Row(instance.path() + "/materials", StructureToolText.BuildInstrumentMaterialsTitleWithCount.getLocal(Math.min(counts.size(), 24)), 1, null, null, instance.path(), 0, 0, 0);
+            var materials = new Row(instance.path() + "/materials", StructureToolText.BuildInstrumentMaterialsTitleWithCount.getLocal(counts.size()), 1, null, instance.path(), 0, 0, 0);
             row.children.add(materials);
             int index = 0;
             var materialsByCount = new ObjectArrayList<>(counts.object2LongEntrySet());
             materialsByCount.sort((a, b) -> Long.compare(b.getLongValue(), a.getLongValue()));
             for (var count : materialsByCount) {
-                if (index == 24) break;
                 var display = count.getKey();
                 var choice = BuilderState.choice(tag, display);
                 boolean alternatives = display.options().size() > 1;
-                var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(name(choice, display.tileNbt()), count.getLongValue()), 2, display, null, instance.path(), 0, 0, 0);
+                var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(name(choice, display.tileNbt()), count.getLongValue()), 2, display, instance.path(), 0, 0, 0);
                 materials.children.add(material);
-                if (alternatives) for (int i = 0; i < display.options().size(); i++) {
-                    var option = display.options().get(i);
-                    material.children.add(new Row(material.id + "/" + i, name(option, display.tileNbt()), 2, display, option, instance.path(), 0, 0, 0));
-                }
             }
         }
+        expandMaterials();
         updateHighlight();
     }
 
@@ -209,8 +233,11 @@ final class BuilderStructureTree {
     void draw(StructureCatalogView current, ResourceLocation id, BlockOrientation orientation, int mx, int my) {
         refresh(current, id, orientation);
         hits.clear();
-        mouseX = (mx - panX) / scale;
-        mouseY = (my - panY) / scale;
+        drawnPanX = panX;
+        drawnPanY = panY;
+        drawnScale = scale;
+        mouseX = (mx - drawnPanX) / drawnScale;
+        mouseY = (my - drawnPanY) / drawnScale;
         texturedState();
         if (root == null) {
             clip.draw(0, 0, 185, 192, () -> Minecraft.getMinecraft().fontRenderer.drawStringWithShadow(StructureToolText.NoStructureData.getLocal(), 4, 23, 0xff9e9e9e));
@@ -264,12 +291,8 @@ final class BuilderStructureTree {
     private void drawRow(Row row, int x, int y) {
         var mc = Minecraft.getMinecraft();
         boolean toggle = !row.children.isEmpty();
-        boolean action = row.option != null;
-        boolean chosen = action && BuilderState.optionKey(row.option).equals(BuilderState.optionKey(BuilderState.choice(container.snapshot(), row.display)));
-        String actionLabel = (chosen ? StructureToolText.BuildInstrumentMaterialOptionSelected : StructureToolText.BuildInstrumentMaterialOptionChoose).getLocal();
-        int actionW = action ? Math.max(24, mc.fontRenderer.getStringWidth(actionLabel) + 8) : 0;
-        int width = Math.max(31, 14 + (row.display == null ? 0 : 14) + mc.fontRenderer.getStringWidth(row.label) + 20 + (toggle ? 17 : 0) + (row.kind == 3 ? 72 : 0) + (action ? actionW + 4 : 0));
-        var hit = new Hit(row, x, y, width, actionW);
+        int width = Math.max(31, 14 + (row.display == null ? 0 : 14) + mc.fontRenderer.getStringWidth(row.label) + 20 + (toggle ? 17 : 0) + (row.kind == 3 ? 72 : 0));
+        var hit = new Hit(row, x, y, width);
         hits.add(hit);
         if (row.id.equals(selected)) border(x, y, width, 0xff2e6bff);
         if (row.kind == 0)
@@ -284,7 +307,7 @@ final class BuilderStructureTree {
             StructureToolDraw.image("gui_build_instrument/button/" + (open(row) ? "withdraw" : "expand") + "_" + (row.id.equals(pressed) ? "pressed" : hover ? "selected" : "default"), x + width - 15, y + 1, 11, 12);
         }
         if (row.display != null) {
-            var icon = stack(row.option == null ? BuilderState.choice(container.snapshot(), row.display) : row.option, row.display.tileNbt());
+            var icon = stack(BuilderState.choice(container.snapshot(), row.display), row.display.tileNbt());
             GlStateManager.pushMatrix();
             try {
                 GlStateManager.translate(x + 2, y + 1, 0);
@@ -298,13 +321,6 @@ final class BuilderStructureTree {
         }
         GlStateManager.enableTexture2D();
         mc.fontRenderer.drawStringWithShadow(row.label, x + (row.display == null ? 14 : 16), y + 4, row.kind == 2 ? 0xffe6e6e6 : 0xffffffff);
-        if (action) {
-            int ax = x + width - 4 - actionW;
-            boolean hover = mouseX >= ax && mouseX < ax + actionW && mouseY >= y + 2 && mouseY < y + 12;
-            Gui.drawRect(ax, y + 2, ax + actionW, y + 12, chosen ? 0x22000000 : hover ? 0x55376dff : 0x442e6bff);
-            Gui.drawRect(ax, y + 2, ax + actionW, y + 3, 0x66ffffff);
-            mc.fontRenderer.drawStringWithShadow(actionLabel, ax + (actionW - mc.fontRenderer.getStringWidth(actionLabel)) / 2f, y + 3, chosen ? 0xaaaaaa : 0xffffff);
-        }
         if (row.kind == 3) {
             int sx = x + width - 76;
             StructureToolDraw.horizontal("gui_states/slider/s/normal/lr_base_expand", sx, y + 2, 72, 10, 14, 5, 6, 8, 6);
@@ -316,30 +332,42 @@ final class BuilderStructureTree {
     boolean press(int x, int y, int button) {
         if (x < 0 || y < 0 || x >= 185 || y >= 192) return false;
         if (button == 1 || button == 0 && y < 19) {
+            lastMaterialClick = null;
             dragButton = button;
             lastX = x;
             lastY = y;
             return true;
         }
         if (button != 0) return false;
-        float tx = (x - panX) / scale, ty = (y - panY) / scale;
+        float tx = (x - drawnPanX) / drawnScale, ty = (y - drawnPanY) / drawnScale;
         for (var hit : hits)
             if (hit.contains(tx, ty)) {
                 var row = hit.row();
-                if (hit.toggle(tx, ty)) pressed = row.id;
+                if (hit.toggle(tx, ty)) {
+                    lastMaterialClick = null;
+                    pressed = row.id;
+                }
                 else if (row.kind == 3 && tx >= hit.x() + hit.width() - 76) {
+                    lastMaterialClick = null;
                     slider = hit;
                     adjustSlider(tx);
-                } else if (row.option != null && hit.action(tx, ty)
-                    && !BuilderState.optionKey(row.option).equals(BuilderState.optionKey(BuilderState.choice(container.snapshot(), row.display))))
-                    container.action("material", row.display.key(), BuilderState.optionKey(row.option));
-                else {
+                } else {
                     selected = row.id;
                     if (row != root && (row.kind == 0 || row.kind == 2)) {
                         highlightedPath = row.path;
                         highlightedDisplay = row.display;
                         updateHighlight();
                     }
+                    if (row.display != null && row.display.options().size() > 1) {
+                        long now = Minecraft.getSystemTime();
+                        boolean twice = row.id.equals(lastMaterialClick) && row.display.equals(lastMaterialDisplay) && catalog == lastMaterialCatalog
+                            && now >= lastMaterialClickTime && now - lastMaterialClickTime < 250;
+                        lastMaterialClick = twice ? null : row.id;
+                        lastMaterialDisplay = row.display;
+                        lastMaterialCatalog = catalog;
+                        lastMaterialClickTime = now;
+                        if (twice) materialReplacement.accept(row.display);
+                    } else lastMaterialClick = null;
                 }
                 return true;
             }
@@ -347,6 +375,7 @@ final class BuilderStructureTree {
         selected = null;
         highlightedPath = null;
         highlightedDisplay = null;
+        lastMaterialClick = null;
         highlight.accept(Set.of());
         return true;
     }
@@ -359,7 +388,7 @@ final class BuilderStructureTree {
             lastY = y;
             clampView();
         }
-        if (slider != null) adjustSlider((x - panX) / scale);
+        if (slider != null) adjustSlider((x - drawnPanX) / drawnScale);
     }
 
     private void adjustSlider(float tx) {
@@ -370,7 +399,7 @@ final class BuilderStructureTree {
 
     void release(int x, int y, int button) {
         if (button == 0 && pressed != null) for (var hit : hits)
-            if (hit.row().id.equals(pressed) && hit.toggle((x - panX) / scale, (y - panY) / scale))
+            if (hit.row().id.equals(pressed) && hit.toggle((x - drawnPanX) / drawnScale, (y - drawnPanY) / drawnScale))
                 expanded.put(pressed, !open(hit.row()));
         pressed = null;
         slider = null;
@@ -379,6 +408,7 @@ final class BuilderStructureTree {
 
     boolean wheel(int x, int y, int delta) {
         if (x < 0 || y < 0 || x >= 185 || y >= 192) return false;
+        lastMaterialClick = null;
         int direction = Integer.signum(delta);
         if (GuiScreen.isCtrlKeyDown()) scale = Math.clamp(scale + direction * .1f, .5f, 2f);
         else if (GuiScreen.isShiftKeyDown()) panX += direction * 12;
@@ -387,21 +417,28 @@ final class BuilderStructureTree {
         return true;
     }
 
+    List<String> tooltip(int x, int y) {
+        if (x < 0 || y < 0 || x >= 185 || y >= 192) return List.of();
+        float tx = (x - drawnPanX) / drawnScale, ty = (y - drawnPanY) / drawnScale;
+        for (var hit : hits)
+            if (hit.contains(tx, ty) && hit.row().display != null && hit.row().display.options().size() > 1)
+                return List.of(StructureToolText.BuildInstrumentDoubleClickReplaceAll.getLocal());
+        return List.of();
+    }
+
     private static final class Row {
         final String id, label;
         final int kind;
         final StructureDisplay display;
-        final StructureDisplay.BlockOption option;
         final String path;
         final int min, max, value;
         final List<Row> children = new ObjectArrayList<>();
 
-        Row(String id, String label, int kind, StructureDisplay display, StructureDisplay.BlockOption option, String path, int min, int max, int value) {
+        Row(String id, String label, int kind, StructureDisplay display, String path, int min, int max, int value) {
             this.id = id;
             this.label = label;
             this.kind = kind;
             this.display = display;
-            this.option = option;
             this.path = path;
             this.min = min;
             this.max = max;
@@ -409,7 +446,7 @@ final class BuilderStructureTree {
         }
     }
 
-    private record Hit(Row row, int x, int y, int width, int actionWidth) {
+    private record Hit(Row row, int x, int y, int width) {
         boolean contains(float px, float py) {
             return px >= x && py >= y && px <= x + width && py <= y + 14;
         }
@@ -418,9 +455,6 @@ final class BuilderStructureTree {
             return !row.children.isEmpty() && px >= x + width - 15 && px <= x + width - 4 && py >= y + 1 && py <= y + 13;
         }
 
-        boolean action(float px, float py) {
-            return actionWidth > 0 && px >= x + width - 4 - actionWidth && px <= x + width - 4 && py >= y + 2 && py <= y + 12;
-        }
     }
 
     private record Visit(Row row, int depth) {

@@ -25,6 +25,7 @@ public enum StructureToolText implements LocalizationEnum {
     BuildInstrumentMaterialEntry,
     BuildInstrumentMaterialOptionChoose,
     BuildInstrumentMaterialOptionSelected,
+    BuildInstrumentDoubleClickReplaceAll,
     BuildInstrumentReqAnyof,
     BuildInstrumentReqDisplay,
     BuildInstrumentReqNbtMarker,
@@ -77,6 +78,13 @@ public enum StructureToolText implements LocalizationEnum {
     Complete,
     Unavailable,
     ScanHint,
+    BuilderUsageBind,
+    BuilderUsageOpen,
+    BuilderUsageSneakOpen,
+    BuilderUsageAir,
+    BuilderUsageProjection,
+    BuilderUsageProjectionLayer,
+    ScannerUsageExport,
     BuildHint;
     private final String translationKey = "structure_tool." + Tags.MOD_ID + "." + name();
 

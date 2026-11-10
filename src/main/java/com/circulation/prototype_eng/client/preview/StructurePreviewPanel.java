@@ -8,6 +8,9 @@ import com.circulation.prototype_eng.client.gui.GuiClip;
 import com.circulation.prototype_eng.client.gui.GuiLabel;
 import com.circulation.prototype_eng.localization.PreviewUiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
@@ -18,14 +21,16 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
-import net.minecraft.inventory.InventoryBasic;
 import net.minecraft.inventory.Slot;
+import ae2.util.inv.AppEngInternalInventory;
+import ae2.container.slot.AppEngSlot;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 /** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
@@ -41,11 +46,20 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private final GuiClip clip = new GuiClip();
     private final ObjectArrayList<Action> actions = new ObjectArrayList<>();
     private final ObjectArrayList<ItemSlot> itemSlots = new ObjectArrayList<>();
-    private final InventoryBasic displayInventory = new InventoryBasic("structure_preview", false, 1);
-    private final Slot displaySlot = new Slot(displayInventory, 0, 1, 1);
+    private final AppEngInternalInventory displayInventory = new AppEngInternalInventory(null, 1, Integer.MAX_VALUE);
+    private final Slot displaySlot = new AppEngSlot(displayInventory, 0, 1, 1);
     private final PreviewListScroll alternativesScroll = new PreviewListScroll(), materialsScroll = new PreviewListScroll();
     private int alternativesCount, materialsCount;
     private boolean construction;
+    private ItemStack builderTool = ItemStack.EMPTY;
+    private Supplier<NBTTagCompound> builderBinding = NBTTagCompound::new;
+    private Runnable materialsRequested = () -> { };
+    private BiConsumer<StructurePreviewModel.Cell, Integer> cellAlternativeSelected = (_, _) -> { };
+    private StructureDisplay constructionChoice;
+    private BlockPos constructionCell;
+    private StructurePreviewModel.Cell lastConstructionPick;
+    private Object constructionMaterialsToken;
+    private List<ConstructionMaterial> constructionMaterials = List.of();
     private BiConsumer<StructureDisplay, Integer> alternativeSelected = (_, _) -> {
     };
     private GuiScreen host;
@@ -89,6 +103,28 @@ public final class StructurePreviewPanel implements AutoCloseable {
     public void construction() {
         construction = true;
         view.scan = true;
+    }
+
+    public void construction(ItemStack tool, Supplier<NBTTagCompound> binding) {
+        construction();
+        builderTool = Objects.requireNonNull(tool);
+        builderBinding = Objects.requireNonNull(binding);
+    }
+
+    public void onMaterialsRequested(Runnable listener) { materialsRequested = Objects.requireNonNull(listener); }
+
+    public void onCellAlternativeSelected(BiConsumer<StructurePreviewModel.Cell, Integer> listener) {
+        cellAlternativeSelected = Objects.requireNonNull(listener);
+    }
+
+    /** Tree double-click selects a requirement class; a preview click selects only its exact cell. */
+    public void openMaterialChoices(StructureDisplay display) {
+        if (!construction || display.options().size() <= 1) return;
+        constructionChoice = display;
+        constructionCell = null;
+        view.select(display);
+        lastConstructionPick = null;
+        view.materialsOpen = true;
     }
 
     public void onAlternativeSelected(BiConsumer<StructureDisplay, Integer> listener) {
@@ -136,11 +172,12 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
         this.mouseX = mouseX;
         this.mouseY = mouseY;
+        updateConstructionChoice();
         actions.clear();
         itemSlots.clear();
-        boolean materialsVisible = view.materialsOpen || construction && view.picked() != null;
+        boolean materialsVisible = view.materialsOpen;
         boolean pointer = mouseY >= 31 && mouseY < 195
-            && !(view.picked() != null && new Rect(9, 31, 18, 181).contains(mouseX, mouseY))
+            && !(!construction && view.picked() != null && new Rect(9, 31, 18, 181).contains(mouseX, mouseY))
             && !(materialsVisible && new Rect(29, 31, 134, 163).contains(mouseX, mouseY))
             && !(!view.threeDimensional && new Rect(165, 33, 10, 158).contains(mouseX, mouseY));
         scene.pointer(mouseX - SCENE_X, mouseY - SCENE_Y, pointer);
@@ -220,7 +257,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             sprite("down_button_base_on", x, 198, 62, 13);
             sprite(collapsed ? "down_button_base_on-led" : "down_button_base_off-led", x + 2, 201, 1, 7);
             bottomButton("place_projection", x + 5, 195, false, !collapsed, PreviewUiText.Project, this::project);
-            bottomButton("material_preview_ui", x + 18, 195, view.materialsOpen, !collapsed, PreviewUiText.Materials, () -> view.materialsOpen = !view.materialsOpen);
+            bottomButton("material_preview_ui", x + 18, 195, view.materialsOpen, !collapsed, PreviewUiText.Materials, this::toggleMaterials);
             bottomButton("replace_block", x + 31, 195, view.wireframe, !collapsed, PreviewUiText.Wireframe, () -> view.wireframe = !view.wireframe);
             bottomButton("layer_preview", x + 44, 195, !view.threeDimensional, !collapsed, PreviewUiText.LayerPreview, () -> view.threeDimensional = !view.threeDimensional);
             bottomButton("component_switch", 165, 197, collapsed, true, PreviewUiText.Collapse, () -> collapsed = !collapsed);
@@ -235,9 +272,40 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private void project() {
         var anchor = construction ? view.anchor() : StructurePreviewScreensAnchor.current();
         view.anchor(anchor);
-        if (view.previews().project(view.id(), view.settings(), anchor,
-            new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false, null, 2048, 0, 4096, 64)))
-            if (!construction) ProjectionInteractions.INSTANCE.follow();
+        var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false,
+            view.threeDimensional ? null : new StructurePreviewModel.Layer(view.layer), 2048, 0, 4096, 64);
+        boolean projected = construction && !builderTool.isEmpty()
+            ? ProjectionInteractions.INSTANCE.projectBuilder(view.previews(), view.id(), view.settings(), anchor, options, builderTool, builderBinding.get())
+            : view.previews().projectFor(view.id(), view.settings(), anchor, options, 30_000);
+        if (projected && !construction) ProjectionInteractions.INSTANCE.follow();
+    }
+
+    private void toggleMaterials() {
+        if (!construction) {
+            view.materialsOpen = !view.materialsOpen;
+            return;
+        }
+        boolean opening = !view.materialsOpen || constructionChoice != null;
+        constructionChoice = null;
+        constructionCell = null;
+        lastConstructionPick = view.picked();
+        view.materialsOpen = opening;
+        if (opening) materialsRequested.run();
+    }
+
+    private void updateConstructionChoice() {
+        if (!construction || view.model() == null || Objects.equals(lastConstructionPick, view.picked())) return;
+        var picked = view.picked();
+        lastConstructionPick = picked;
+        if (picked != null && picked.display() != null && picked.display().options().size() > 1) {
+            constructionChoice = picked.display();
+            constructionCell = picked.position();
+            view.materialsOpen = true;
+        } else if (constructionChoice != null) {
+            constructionChoice = null;
+            constructionCell = null;
+            view.materialsOpen = false;
+        }
     }
 
     private void layerSlider() {
@@ -260,6 +328,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private void materials() {
+        if (construction) {
+            constructionMaterials();
+            return;
+        }
         var selected = view.picked() == null ? null : view.picked().display();
         alternativesScroll.identity(view.picked());
         alternativesCount = 0;
@@ -288,16 +360,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
             }
         });
         var model = view.model();
-        if ((!view.materialsOpen && !(construction && selected != null)) || model == null) return;
+        if (!view.materialsOpen || model == null) return;
         sprite("base_material_preview_ui", 29, 31, 134, 163);
         var bom = selected == null ? new ObjectArrayList<>(model.bom())
             : new ObjectArrayList<>(List.of(new StructurePreviewModel.BomLine(selected, 1)));
-        if (construction && selected == null && view.scan) {
-            bom.clear();
-            for (var material : view.materials(display -> optionStack(display, representative(display)).getDisplayName(), PreviewUiText.Unknown.getLocal()))
-                if (material.mismatch() > 0)
-                    bom.add(new StructurePreviewModel.BomLine(material.display(), material.mismatch()));
-        }
         bom.sort(Comparator.comparingLong(StructurePreviewModel.BomLine::count).reversed());
         var visible = new ObjectArrayList<MaterialRow>();
         for (var line : bom) {
@@ -318,6 +384,73 @@ public final class StructurePreviewPanel implements AutoCloseable {
         });
     }
 
+    private void constructionMaterials() {
+        updateConstructionChoice();
+        var model = view.model();
+        if (!view.materialsOpen || model == null) return;
+        sprite("base_material_preview_ui", 29, 31, 134, 163);
+        var display = constructionChoice;
+        var cell = constructionCell;
+        List<ConstructionMaterial> rows;
+        if (display != null) {
+            var choices = new ObjectArrayList<ConstructionMaterial>(display.options().size());
+            for (int option = 0; option < display.options().size(); option++) choices.add(new ConstructionMaterial(display, option, 1));
+            rows = choices;
+        } else {
+            if (constructionMaterialsToken != view.token()) {
+                constructionMaterialsToken = view.token();
+                var counts = new Object2LongLinkedOpenHashMap<ConstructionChoice>();
+                for (var line : model.bom())
+                    counts.addTo(new ConstructionChoice(line.display(), view.alternative(line.display())), line.count());
+                for (var entry : view.settings().cellOptions().entrySet()) {
+                    var represented = view.at(entry.getKey());
+                    var choice = entry.getValue();
+                    if (represented == null || !choice.display().equals(represented.display())) continue;
+                    int global = view.alternative(choice.display());
+                    if (global != choice.option()) {
+                        counts.addTo(new ConstructionChoice(choice.display(), global), -1);
+                        counts.addTo(new ConstructionChoice(choice.display(), choice.option()), 1);
+                    }
+                }
+                var materials = new ObjectArrayList<ConstructionMaterial>(counts.size());
+                for (var entry : counts.object2LongEntrySet())
+                    if (entry.getLongValue() > 0) materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
+                materials.sort(Comparator.comparingLong(ConstructionMaterial::amount).reversed());
+                constructionMaterials = List.copyOf(materials);
+            }
+            rows = constructionMaterials;
+        }
+        materialsScroll.identity(new ConstructionChoice(display, 0));
+        materialsCount = (rows.size() + 5) / 6;
+        clipped(29, 31, 134, 163, () -> {
+            int first = materialsScroll.first(materialsCount, 8) * 6;
+            for (int visible = 0; visible < 48 && first + visible < rows.size(); visible++) {
+                int index = first + visible;
+                var row = rows.get(index);
+                var stack = row.display == null ? ItemStack.EMPTY : optionStack(row.display, row.option);
+                if (!stack.isEmpty()) stack.setCount((int) Math.min(Integer.MAX_VALUE, row.amount));
+                int option = row.option;
+                Runnable choose = display == null ? null : () -> chooseConstruction(display, cell, option);
+                int slotX = 33 + visible % 6 * 20, slotY = 35 + visible / 6 * 20;
+                slot("construction_material" + index, stack, slotX, slotY,
+                    display == null, row.display == null ? List.of(PreviewUiText.Unknown.getLocal()) : List.of(), choose);
+            }
+        });
+    }
+
+    private void chooseConstruction(StructureDisplay display, @Nullable BlockPos position, int option) {
+        if (position == null) {
+            if (view.alternative(drawnToken, display, option)) alternativeSelected.accept(display, option);
+            return;
+        }
+        var cell = view.at(position);
+        if (cell != null && display.equals(cell.display()) && view.alternativeCell(drawnToken, cell, option))
+            cellAlternativeSelected.accept(cell, option);
+    }
+
+    private record ConstructionChoice(@Nullable StructureDisplay display, int option) { }
+    private record ConstructionMaterial(@Nullable StructureDisplay display, int option, long amount) { }
+
     private void slot(String id, ItemStack stack, float x, float y, boolean amount, List<String> tooltip, @Nullable Runnable run) {
         if (!amount && !stack.isEmpty()) stack.setCount(1);
         GlStateManager.pushMatrix();
@@ -326,7 +459,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             GuiAtlas.state(0, 0, 73, 0, 18, 18);
             if (!stack.isEmpty()) {
                 RenderHelper.enableGUIStandardItemLighting();
-                displayInventory.setInventorySlotContents(0, stack);
+                displayInventory.setItemDirect(0, stack);
                 if (host instanceof PreviewNativeGui.Slots nativeSlots) nativeSlots.prototype_eng$renderSlot(displaySlot);
                 else {
                     // HEI RecipesGui is a GuiScreen, so use its ordinary native item renderer.
@@ -344,7 +477,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private int representative(StructureDisplay display) {
-        return view.settings().displayOptions().getOrDefault(display, 0);
+        var picked = view.picked();
+        return picked != null && display.equals(picked.display()) ? view.alternative(picked) : view.alternative(display);
     }
 
     public boolean press(int x, int y, int button) {
@@ -403,11 +537,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public boolean wheel(int x, int y, int delta) {
         if (!inputCurrent() || delta == 0) return false;
-        if (view.picked() != null && new Rect(9, 31, 18, 181).contains(x, y)) {
+        if (!construction && view.picked() != null && new Rect(9, 31, 18, 181).contains(x, y)) {
             alternativesScroll.wheel(delta, alternativesCount, 9);
             return true;
         }
-        if ((view.materialsOpen || construction && view.picked() != null) && new Rect(29, 31, 134, 163).contains(x, y)) {
+        if (view.materialsOpen && new Rect(29, 31, 134, 163).contains(x, y)) {
             materialsScroll.wheel(delta, materialsCount, 8);
             return true;
         }

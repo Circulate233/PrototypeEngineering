@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ActionResult;
@@ -18,9 +19,13 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.math.BigInteger;
+import java.util.List;
 
 /** PM's range selector and controller-bound construction instrument. */
 public final class StructureToolItem extends AEBaseItem {
@@ -40,6 +45,23 @@ public final class StructureToolItem extends AEBaseItem {
     @Override
     public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
         return (builder ? StructureToolText.BuilderTitle : StructureToolText.ScannerTitle).text().getUnformattedText();
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    protected void addCheckedInformation(@NotNull ItemStack stack, @Nullable World world, @NotNull List<String> lines, @NotNull ITooltipFlag flag) {
+        super.addCheckedInformation(stack, world, lines, flag);
+        if (builder) {
+            lines.add(StructureToolText.BuilderUsageBind.getLocal());
+            lines.add(StructureToolText.BuilderUsageOpen.getLocal());
+            lines.add(StructureToolText.BuilderUsageSneakOpen.getLocal());
+            lines.add(StructureToolText.BuilderUsageAir.getLocal());
+            lines.add(StructureToolText.BuilderUsageProjection.getLocal());
+            lines.add(StructureToolText.BuilderUsageProjectionLayer.getLocal());
+        } else {
+            lines.add(StructureToolText.ScanHint.getLocal());
+            lines.add(StructureToolText.ScannerUsageExport.getLocal());
+        }
     }
 
     @Override
@@ -64,11 +86,32 @@ public final class StructureToolItem extends AEBaseItem {
                                                @NotNull EnumHand hand, @NotNull EnumFacing side, float hitX, float hitY, float hitZ) {
         var stack = player.getHeldItem(hand);
         if (builder) {
+            if (!world.isBlockLoaded(pos, false)) return EnumActionResult.FAIL;
             if (!(world.getTileEntity(pos) instanceof MachineControllerHost controller)) return EnumActionResult.PASS;
+            if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) return EnumActionResult.FAIL;
             if (!world.isRemote) {
-                player.inventory.markDirty();
-                BuilderState.bind(stack, world.provider.getDimension(), pos, controller.type());
-                player.sendStatusMessage(StructureToolText.Bound.text(controller.type().id(), pos.getX(), pos.getY(), pos.getZ()), true);
+                var position = pos.toImmutable();
+                var open = player.openContainer;
+                boolean sneaking = player.isSneaking();
+                controller.readGuiAtBoundary(() -> {
+                    if (player.world != world || !player.isEntityAlive() || player.getHeldItem(hand) != stack || stack.isEmpty()
+                        || player.openContainer != open || !world.isBlockLoaded(position, false) || world.getTileEntity(position) != controller
+                        || controller.blockEntity().isInvalid() || !world.isBlockModifiable(player, position) || !player.canPlayerEdit(position, side, stack)) return;
+                    var data = stack.getTagCompound();
+                    var machine = controller.type();
+                    boolean same = data != null && data.getBoolean("Bound") && data.getInteger("BoundDim") == world.provider.getDimension()
+                        && BuilderState.position(data).equals(position) && data.getString("BoundMachineId").equals(machine.id().toString())
+                        && data.getString("BoundStructureId").equals(machine.structureId().toString());
+                    if (!same || sneaking) {
+                        BuilderState.bind(stack, world.provider.getDimension(), position, machine);
+                        player.inventory.markDirty();
+                        player.sendStatusMessage(StructureToolText.Bound.text(machine.id(), position.getX(), position.getY(), position.getZ()), true);
+                    }
+                    if (same || sneaking) {
+                        int slot = hand == EnumHand.MAIN_HAND ? player.inventory.currentItem : 40;
+                        player.openGui(PrototypeEngineering.instance, StructureToolContainer.GUI_ID, world, slot, 0, 0);
+                    }
+                });
             }
         } else if (!world.isRemote) {
             var data = ScannerState.data(stack);

@@ -2,11 +2,18 @@ package com.circulation.prototype_eng.structure.tool;
 
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.TreeMap;
+import java.util.Map;
+import java.util.UUID;
 
 /** Original builder binding, task states and per-material choice persistence. */
 public final class BuilderState {
@@ -24,6 +31,10 @@ public final class BuilderState {
 
     public static void bind(ItemStack stack, int dimension, BlockPos pos, MachineType machine) {
         var tag = data(stack);
+        ensureIdentity(tag);
+        if (!tag.getBoolean("Bound") || tag.getInteger("BoundDim") != dimension || !position(tag).equals(pos)
+            || !tag.getString("BoundMachineId").equals(machine.id().toString()) || !tag.getString("BoundStructureId").equals(machine.structureId().toString()))
+            tag.removeTag("CellMaterialSelections");
         tag.setBoolean("Bound", true);
         tag.setInteger("BoundDim", dimension);
         tag.setInteger("BoundX", pos.getX());
@@ -33,6 +44,14 @@ public final class BuilderState {
         tag.setString("BoundStructureId", machine.structureId().toString());
         state(tag, State.IDLE);
         progress(tag, 0, 0);
+    }
+
+    public static void ensureIdentity(NBTTagCompound tag) {
+        var identity = tag.getString("BuilderIdentity");
+        if (!identity.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            identity = UUID.randomUUID().toString();
+            tag.setString("BuilderIdentity", identity);
+        }
     }
 
     public static BlockPos position(NBTTagCompound tag) {
@@ -83,6 +102,61 @@ public final class BuilderState {
     public static void choose(NBTTagCompound tag, String material, String option) {
         if (!tag.hasKey("MaterialSelections", 10)) tag.setTag("MaterialSelections", new NBTTagCompound());
         tag.getCompoundTag("MaterialSelections").setString(material, option);
+        var cells = tag.getCompoundTag("CellMaterialSelections");
+        for (var key : new ObjectArrayList<>(cells.getKeySet()))
+            if (cells.getCompoundTag(key).getString("Material").equals(material)) cells.removeTag(key);
+    }
+
+    public static String cellKey(BlockPos position) {
+        return position.getX() + "," + position.getY() + "," + position.getZ();
+    }
+
+    public static @Nullable BlockPos cellPosition(String key) {
+        if (key.length() > 35 || !key.matches("-?(0|[1-9][0-9]{0,9}),-?(0|[1-9][0-9]{0,9}),-?(0|[1-9][0-9]{0,9})")) return null;
+        var parts = key.split(",");
+        long x = Long.parseLong(parts[0]), y = Long.parseLong(parts[1]), z = Long.parseLong(parts[2]);
+        if (x < Integer.MIN_VALUE || x > Integer.MAX_VALUE || y < Integer.MIN_VALUE || y > Integer.MAX_VALUE || z < Integer.MIN_VALUE || z > Integer.MAX_VALUE) return null;
+        var result = new BlockPos((int) x, (int) y, (int) z);
+        return cellKey(result).equals(key) ? result : null;
+    }
+
+    /** Length-prefixed material identity cannot collide with newlines or option-map contents. */
+    public static String cellValue(StructureDisplay display, int option, BlockOrientation orientation) {
+        return orientation.name() + ":" + display.key().length() + ":" + display.key() + optionKey(display.options().get(option));
+    }
+
+    public static void chooseCell(NBTTagCompound tag, BlockPos position, String material, String option, BlockOrientation orientation) {
+        if (!tag.hasKey("CellMaterialSelections", 10)) tag.setTag("CellMaterialSelections", new NBTTagCompound());
+        var choice = new NBTTagCompound();
+        choice.setString("Material", material);
+        choice.setString("Option", option);
+        choice.setString("Orientation", orientation.name());
+        tag.getCompoundTag("CellMaterialSelections").setTag(cellKey(position), choice);
+    }
+
+    private static int cellOption(NBTTagCompound tag, StructureDisplay display, BlockPos position, BlockOrientation orientation) {
+        var saved = tag.getCompoundTag("CellMaterialSelections").getCompoundTag(cellKey(position));
+        if (!saved.getString("Material").equals(display.key()) || !saved.getString("Orientation").equals(orientation.name())) return -1;
+        var option = saved.getString("Option");
+        for (int index = 0; index < display.options().size(); index++)
+            if (optionKey(display.options().get(index)).equals(option)) return index;
+        return -1;
+    }
+
+    public static StructureDisplay.BlockOption choice(NBTTagCompound tag, StructureDisplay display, BlockPos position, BlockOrientation orientation) {
+        int local = cellOption(tag, display, position, orientation);
+        return local < 0 ? choice(tag, display) : display.options().get(local);
+    }
+
+    public static Map<BlockPos, StructurePreviewSettings.CellChoice> cellChoices(NBTTagCompound tag, Map<BlockPos, StructureDisplay> displays,
+                                                                            BlockOrientation orientation) {
+        var choices = new Object2ObjectOpenHashMap<BlockPos, StructurePreviewSettings.CellChoice>();
+        displays.forEach((position, display) -> {
+            if (display == null) return;
+            int option = cellOption(tag, display, position, orientation);
+            if (option >= 0) choices.put(position.toImmutable(), new StructurePreviewSettings.CellChoice(display, option));
+        });
+        return choices;
     }
 
     public enum State {

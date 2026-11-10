@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Map;
 import java.util.function.Function;
 
 /** One viewer/wrapper's choices and bounded observations; all geometry is supplied by the C service. */
@@ -43,7 +44,7 @@ public final class StructurePreviewView {
     public boolean scan, threeDimensional = true, materialsOpen;
     public boolean autoRotate, wireframe = true;
     public int layer;
-    private boolean formedPreview, rootHideWorldBlocks;
+    private boolean formedPreview, rootHideWorldBlocks, layerInitialized;
     private StructureBounds controllerBounds;
     private StructurePreviewSettings settings;
     private StructurePreviews.Request request;
@@ -200,8 +201,9 @@ public final class StructurePreviewView {
                 var bounds = completed.bounds();
                 controllerBounds = new StructureBounds(new BlockPos(Math.min(0, bounds.min().getX()), Math.min(0, bounds.min().getY()), Math.min(0, bounds.min().getZ())),
                     new BlockPos(Math.max(0, bounds.max().getX()), Math.max(0, bounds.max().getY()), Math.max(0, bounds.max().getZ())));
-                layer = Math.clamp(controllerBounds.min().getY() + (controllerBounds.max().getY() - controllerBounds.min().getY() + 1) / 2,
-                    completed.bounds().min().getY(), completed.bounds().max().getY());
+                int minLayer = controllerBounds.min().getY(), maxLayer = controllerBounds.max().getY();
+                layer = Math.clamp(layerInitialized ? layer : minLayer + (maxLayer - minLayer + 1) / 2, minLayer, maxLayer);
+                layerInitialized = true;
             }
         }
         if (completed == null || indexed) return;
@@ -291,6 +293,39 @@ public final class StructurePreviewView {
         return display == null ? 0 : alternatives.getInt(display);
     }
 
+    public int alternative(StructurePreviewModel.Cell cell) {
+        return settings.option(cell);
+    }
+
+    public boolean alternativeCell(Object expected, StructurePreviewModel.Cell cell, int option) {
+        var display = cell.display();
+        if (expected != token || model() == null || display == null || cells.get(cell.position()) != cell
+            || option < 0 || option >= display.options().size()) return false;
+        var choices = new Object2ObjectOpenHashMap<>(settings.cellOptions());
+        choices.put(cell.position(), new StructurePreviewSettings.CellChoice(display, option));
+        return replaceAlternatives(expected, settings.displayOptions(), choices);
+    }
+
+    /** Installs one server-authoritative choice snapshot without one rebuild per cell. */
+    public boolean replaceAlternatives(Object expected, Map<StructureDisplay, Integer> global,
+                                       Map<BlockPos, StructurePreviewSettings.CellChoice> local) {
+        if (expected != token || model() == null) return false;
+        for (var entry : global.entrySet())
+            if (entry.getKey() == null || !membership.contains(entry.getKey()) || entry.getValue() == null || entry.getValue() < 0 || entry.getValue() >= entry.getKey().options().size()) return false;
+        for (var entry : local.entrySet()) {
+            var cell = cells.get(entry.getKey());
+            if (cell == null || entry.getValue() == null || !entry.getValue().display().equals(cell.display())) return false;
+        }
+        if (settings.displayOptions().equals(global) && settings.cellOptions().equals(local)) return true;
+        alternatives.clear();
+        global.forEach((display, option) -> alternatives.put(display, option.intValue()));
+        settings = new StructurePreviewSettings(settings.orientation(), settings.sliceCounts(), settings.maxOccurrences(), settings.maxCellVisits(), global, local);
+        request = null;
+        restorePick = picked == null ? null : picked.position();
+        forgetModel();
+        return true;
+    }
+
     public boolean alternative(Object expected, StructureDisplay display, int option) {
         var complete = model();
         if (expected != token || complete == null || option < 0 || option >= display.options().size()
@@ -298,11 +333,9 @@ public final class StructurePreviewView {
         alternatives.put(display, option);
         var options = new Object2ObjectOpenHashMap<>(settings.displayOptions());
         options.put(display, option);
-        settings = new StructurePreviewSettings(settings.orientation(), settings.sliceCounts(), settings.maxOccurrences(), settings.maxCellVisits(), options);
-        request = null;
-        restorePick = picked == null ? null : picked.position();
-        forgetModel();
-        return true;
+        var local = new Object2ObjectOpenHashMap<>(settings.cellOptions());
+        local.values().removeIf(choice -> choice.display().equals(display));
+        return replaceAlternatives(expected, options, local);
     }
 
     public boolean slices(Object expected, StructurePreviewPath path, int count) {
@@ -315,7 +348,7 @@ public final class StructurePreviewView {
                 return false;
             var choices = new Object2ObjectOpenHashMap<>(settings.sliceCounts());
             choices.put(path, count);
-            settings = new StructurePreviewSettings(settings.orientation(), choices, settings.maxOccurrences(), settings.maxCellVisits(), settings.displayOptions());
+            settings = new StructurePreviewSettings(settings.orientation(), choices, settings.maxOccurrences(), settings.maxCellVisits(), settings.displayOptions(), settings.cellOptions());
             request = null;
             forgetModel();
             return true;
