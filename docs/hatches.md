@@ -1,5 +1,7 @@
 # 仓室核心与扩展接入
 
+2026-11-10 容器操作tooltip按AE2S原生文案及效果统一：ResourceHatchGui直接复用GuiMEStorage的Tooltips.getEmptyingTooltip(StoreAction)，左右键分别显示存入手持物品、存入所含资源，两行使用AE深灰操作/灰色对象及内嵌物品图标。可装填容器使用FillAction配合Tooltips.muted/of、TextComponentItemStack；操作提示优先，沿原生drawTooltipWithHeader绘制，不追加原自有“倒入材料仓；Shift处理全部容器”单行。空光标的资源信息和真实点击/Shift传输行为保持。仅1Java，未改语言文件，源码提交 `cf27716`；验证与真实渲染边界见[实施进度](implementation-status.md)。
+
 2026-11-10 破坏掉落按用户新要求改为AE原生路径：资源仓的 `addAdditionalDrops` 接住输入/输出/交互三种方向的全部材料，经AEKey掉落；大数量物品及流体等非物品资源沿AE资源包，原long数量不裁剪。仓室物品的BlockEntityTag只保存profile、槽位/容量、自动IO和限额等配置，两侧库存列表为空，重新放置不会再恢复已掉出的材料。普通世界存档仍保存真实库存，独立FE仓原有保存行为保持。
 
 销毁在原两侧有序锁下单向失效旧引用，每侧只交付一次。没有未结算token的侧立即清空并掉落；存在预留、已应用输入、临时产物或外部传输回执的侧保留原记录，最后提交/补偿完成后再交付最终余额，不能提前清空或把未确认产物掉出。延后回调在物理锁/fence退出后发布，worker只安排服务器线程产生掉落实体。AE原生挖掘、创造破坏、爆炸及扳手拆卸共用同一入口，未增加第二套世界破坏事件。纯行为及源码核对完成，真实掉落实体/资源包拾取仍待用户游戏复验。

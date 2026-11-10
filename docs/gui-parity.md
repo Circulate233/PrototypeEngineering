@@ -1,5 +1,9 @@
 # GUI 原效果修复
 
+## 2026-11-10 材料仓容器提示统一AE2S
+
+截图中的水桶操作提示不再使用自有单行文案。ResourceHatchGui对照实际GuiMEStorage直接调用Tooltips.getEmptyingTooltip(StoreAction)生成左右键存入两行，装填调用FillAction并复用muted/of/TextComponentItemStack，使用AE原生分色、嵌入图标与drawTooltipWithHeader；有效操作提示优先于底层资源详情。空光标信息及原点击/Shift整批行为保持。源码提交 `cf27716`，单Java本机MCP全级零/完整读回及必要构建通过，未运行测试或游戏；真实渲染待用户复验，证据见[实施进度](implementation-status.md)。
+
 ## 2026-11-10 两件工具继续修复
 
 范围结构选择器/机械构建器无法打开的实际异常为AE动作注册32768超过16384；已改用AE默认合法重载。对照PM原面板补回世界选区轮廓、指南针/树视图细节、完整边界预览、原点/朝向重设时机与原提示行为。具体逐项记录及验证见[结构工具](structure-tools.md)。用户已明确本块处理后返回总目标；总目标恢复不等于声称已经完成游戏视觉验收。

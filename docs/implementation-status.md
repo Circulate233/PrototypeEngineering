@@ -1,5 +1,8 @@
 # 实施进度
 
+- 2026-11-10 根据材料仓水桶tooltip截图改为直接复用AE2S原生文案和效果，源码本地提交 `cf27716`，仅ResourceHatchGui一个Java。对照实际GuiMEStorage.renderHoveredToolTip：可清空容器优先drawTooltipWithHeader(Tooltips.getEmptyingTooltip(ButtonToolTips.StoreAction,...))，左右键分别为存入手持物品和存入所含资源；可装填容器沿ButtonToolTips.FillAction、Tooltips.muted/of与TextComponentItemStack显示左键装填。原生富文本/内嵌图标及深灰操作、灰色对象样式均由AE生成，不再调用自有EmptyContainer/FillContainer拼接“倒入材料仓；Shift处理全部容器”长句。操作提示优先于底层资源详情，空光标的名称/类型/数量/容量与图片提示保持；未修改点击、Shift整批、服务端权限或库存逻辑。旧公开翻译枚举/键保留兼容，未改两语言。
+- 验证：Spotless/build -x test成功，未新增或运行测试；该最终Java逐文件本机MCP get_file_problems(errorsOnly:false)错误/警告/弱警告全零，完整前后read_file与磁盘一致；MCP build isSuccess:true/problems:[]。Gradle保留既有vector incubator/弃用提示。写前、最终源码、原始MCP与构建日志及精确提交证据在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-container-tooltip/`。原依赖/两语言/INDEX.md~字节和原已暂存JeiResourceReloadTest完整patch保持。未启动Minecraft/服务端、Bootstrap/FML或桌面IDE，真实tooltip渲染仍待用户重启复验；未推送，总体Goal保持暂停。
+
 - 2026-11-10 结构JEI空样板已修，源码本地提交 `ac66590`（6Java＋中英各2键），未推送。根因是结构wrapper只登记controller输出检索、Category没有原生材料槽，AE通用处理器因此取得空资源；原PE处理器仅覆盖普通pool。现结构UID为普通样板终端及PEA终端注册同一长数量导入器，准确wrapper提供完整Scene材料快照与控制器×1；普通池原流程保留。
 - 完整model.cells排除原点控制器，保留当前settings的切片数量、global与cell选择，不按层/scan/visible或渲染预算样本裁剪。已知空气省略，未知/partial/无真实pick材料拒绝，不写部分样板。无显式选项时按已准备真实表示状态匹配候选，修复默认0缺失但画面显示后续候选时的导入差异。原生pick使用无片层过滤的StructurePickWorld，流体1000mB/格与自动搭建规则一致；显示项先分组，再用AEKey2LongMap/addTo累计完整AEKey/NBT及long数量，溢出预检保留。快照缓存及model/token/场景/世界/资源重载/关闭守门防止旧页导入。
 - 保留AE优先级和事件/包链，当前所选材料作为singleton候选，不让书签或网络优先级改变当前选择。新客户端静态事件订阅者StructurePatternOutput监听真实PatternRecipeTransferEvent，仅对结构UID加工输出的控制器副本使用本地化“原名-结构”/“original name-Structure”，其余NBT不变，数量1；名称以导入时语言固定保存。继续事件前后容量预检、事件取消和序列化后再验当前快照，失败前不清终端。独立审查核对实际AE与Cleanroom事件注册/GenericStack long编码链，最终未发现剩余阻塞。

@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-10 材料仓容器tooltip按截图反馈统一AE2S：直接调用Tooltips.getEmptyingTooltip(StoreAction)显示左右键两行原生存入提示，FillAction/muted/of/TextComponentItemStack显示装填提示；优先显示操作，不再拼一行自有“倒入材料仓；Shift处理全部容器”，颜色/内嵌图标/富文本绘制与GuiMEStorage同路。仅1Java，无语言或库存行为改动；Spotless/build -x test、本机MCP全级零/全文一致及MCP build通过，未新增或运行测试、未启动游戏。源码本地提交 `cf27716`，未推送，原背景/暂存保留；入口[仓室](hatches.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-container-tooltip/`，总体Goal仍暂停。
+
 - 2026-11-10 结构JEI空样板已修：结构UID接入普通/PEA终端完整资源导入链，按当前model与材料选择统计全结构用料、仅排除原点控制器，层预览不截断；AE2S事件把控制器×1输出本地化为“原名-结构”。未知/partial材料拒绝，原生pick/流体及long数量保持。6Java与两语言MCP全级零/全文一致、必要构建（跳过test）及MCP build通过，未新增或运行测试。可视示例GLASS/STAINED_GLASS候选及本地化结构标题已补，5源码javac/jar并安装run/mods成功；169完整材料、各层不变及候选/命名观察步骤在run/visual-examples/README.md。源码本地提交 `ac66590`，未推送、未启动游戏，原背景/暂存保留。入口[JEI](jei.md)、[结构](structures.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/structure-jei-import/`；总体Goal仍暂停。
 
 - 2026-11-10 构造器新交互已实现：不同控制器右键只绑定、已绑定打开、潜行绑定并打开；固定材料面板显示完整可滚动BOM/候选网格，右侧单击线框、双击整种替换，预览点击只改单格。GUI投影30秒，手持对应构造器Shift＋滚轮循环底层至顶层及完整投影，初始采用GUI片层；材料替换后保留片层，两工具补用法tooltip。16Java及两语言本机MCP全级零/完整读回、Spotless及必要构建（跳过test）、MCP build通过，未新增或运行测试。源码本地提交 `2f4cdac`，未推送、未启动游戏；原依赖/两语言背景/暂存测试/INDEX.md~保留。入口[结构工具](structure-tools.md)、[结构](structures.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/builder-ux/`，总体Goal仍暂停。
@@ -27,6 +29,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 材料仓手持水桶/空桶时复验AE原生左右键存入、左键装填提示的分行、深灰文案/灰色资源与内嵌图标；原Shift整批交互保留，但不再使用自有拼接说明。空光标时原资源名称、数量/容量提示保持。用户自行重启客户端观察，未以源码检查代替渲染验收。
 
 - 先由用户重启客户端从样板终端对示例boundary_structure_controller按R进入结构页，复验完整169输入/任一片层仍169、当前玻璃候选替换及“原名-结构”控制器×1输出并实际编码；步骤见run/visual-examples/README.md。当前JEI候选修改整种材料，构造器单格/整种设置独立，不用工具NBT解释结构页导入结果。忽略目录示例已编译安装，但IDE拒绝分析该目录，不能以主源码全级零冒充示例IDE结果。
 
