@@ -4,14 +4,15 @@
 
 ## 当前检查点
 
+- 当前总 goal 为 active。本批已本地提交 `e35604e` 结构纯计划缓存、`2c55f70` 仓室配置/自动IO、`812c0f9` 大槽窗口/禁用滑块；未推送。完整1814 tests/237 suites全零，73Java与两语言本机全级零/完整读回，MCP build成功；精确候选编译与独立复核通过，原暂存及工作字节保留。自动IO部分结算/回调重入、邻居和同TE内容变化的公平刷新已修复；材料提示仅槽位数量/槽位容量，AE默认等价与比例API保持，自动IO默认关闭，能源用户限额默认-1、0禁止且保留profile配置上限。证据从 `build/staging/chat-goal-recovery-2026-11-10/handoff.md` 进入。
 - 2026-11-10 总 goal 已恢复。本批已实现输入来源策略、跨控制器周期结构检查并发、PN 外部网络参与者；独立复核发现的问题均已修复。完整构建 1744 tests / 224 suites 全零，37 Java 本机全级零及完整读回一致，MCP build 成功。已本地提交 `b49f62c` / `239b52d` / `ad8c584`，未推送；入口 `build/staging/resumed-goal-plan/plan.md`、`unified/third-results/` 及同目录 `exact-commit-preparation/`。
 - GUI/两件工具修复已提交 `73233cb` / `7bcb5e5`；用户最新回复“尚未复验”。范围结构选择器、机械构建器、仓室/控制器、JEI 与样板导入的实机结果仍待用户，不能以构建通过替代。入口 [结构工具](structure-tools.md)、[GUI 修复](gui-parity.md)、[JEI](jei.md)。新反馈优先。
-- 已确认后继 Java 缺口：纯结构计划/朝向复用，以及 CT 实际旧调用所需的安全仓室重配置和局部定义替换边界。结构缓存已有独立复核方案，CT 仍待 Java 前提完成。Applied-Flux 暂缓。
+- 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
 
-1. 当前三个阶段已提交并保留原工作区背景、暂存许可证删除及未跟踪文件。继续后继 Java 工作，完整证据与历史检查点见 [实施进度](implementation-status.md)。
-2. 实施 `build/staging/structure-parallel-reuse/cache-plan.md`，合并 `cache-plan-independent-review.md` 的并发安全、并发 miss 和首真实 tick 澄清；只复用纯计划，每轮世界捕获/匹配/权限复核保持。
+1. 收束局部定义替换的可执行方案并按文件边界实施；同ID替换仅影响后续使用，旧进程、预留、补偿及持久责任保持原定义，避免通用热重载或远程执行闭包。
+2. 本批三个阶段已完成验证与本地提交，不重复实施；详细实际检查、失败修复与79路径精确候选从恢复stage/handoff进入。继续保留背景、原暂存许可证删除和未跟踪测试。
 3. 按 `build/staging/resumed-goal-plan/crafttweaker-plan.md` 补齐已由原调用链确认的 Java 前提，再接 CT。不恢复 MUI/GUI DSL 或独立 Modern；ZSData 沿普通桥接组件和现有 codec。RESCAN/isCore 在 PM 真实创建路径未生效，不新造迁移语义。
 4. 游戏测试由用户自行启动；运行边界示例见 `run/visual-examples/README.md`。GUI 复验结果未到时继续已授权总目标。
 
