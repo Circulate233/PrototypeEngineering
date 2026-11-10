@@ -1,5 +1,11 @@
 # JEI 配方池页面
 
+## 2026-11-10：静态回退与资源重建修复
+
+原故障是 frozen provider 基线生成了新的 display 对象，而静态页面继续复用旧引用量测。现在 category 的最终 descriptions Snapshot 同时供默认页测量、初始 wrapper 和 query index 使用；静态重建只有 recipe/provider 身份相同时复用旧描述，默认页仍按当前 Snapshot prepareUpdate。无 prepareUpdate 的独立旧自定义页只在 pool、description 和已确认 page Data 均准确相同时保留原 factory；发生部分安装失败后不能误用该路径。原未测量断言、wrapper身份校验和 managed declaration/owner/token/原生确认门保持。
+
+资源/category 重建在没有已解析 managed declaration 时采用原 local baseline catalog与本次注册事件最终 provider来源，不继承上个远端 managed池。新增六项实际默认量测/独立引用缓存/wrapper行为回归覆盖静态gen0、断连、重建、远端后回本地和拒绝错误pool/provider/Data。最终执行结果见[实施进度](implementation-status.md)；真实HEI启动和查询仍待用户复验。
+
 本阶段对应 [开发文档](development-spec.md) R18/R19 与 4.7。当前已恢复 AE2S 所需 HEI `mezz:jei:4.35.1`，直接使用 `mezz.jei.api` 原生分类、包装、ingredient 与 Forge 输入生命周期。下文各阶段验证记录是历史证据，最新 GUI/样板导入边界以下节为准。没有新增正式机器、配方或玩法数值。
 
 ## 2026-11-09 默认布局实机反馈修复

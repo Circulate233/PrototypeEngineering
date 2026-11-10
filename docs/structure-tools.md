@@ -30,6 +30,8 @@ PM 原源码的 expanded、substructure、allowMirror 等字段没有对应的�
 
 ## 机械构建器
 
+2026-11-10 结构显示改为从同一匹配声明派生后，构建计划直接消费准确Node的intrinsic displays，显式Entry覆盖继续优先。材料键独立编码完整properties和浅NBT，放置按meta恢复properties后再旋转；未决complete=false、未知方块和无效properties跳过并提示未知要求，不能把partial代表当成确定可建造块。全部新候选均未决时保持IDLE；已知部分仍沿原任务处理。原有显式完整NBT展示继续只放blockstate，不新增TileNBT写入或把任务完成当成结构匹配成功。
+
 注册名 `prototype_eng:build_instrument`，右键控制器绑定，对空气右键打开。保留原绑定 NBT、状态、进度和材料选择；未成型时建造，已成型时拆卸，按钮支持暂停/恢复。服务端每玩家一项任务，每 tick 最多八次尝试；普通方块先于流体/重力方块，拆卸倒序且保留控制器。
 
 结构计划从当前服务端展示图展开，默认切片取 minCount；树的切片覆盖用于预览。材料候选选择同步到服务端，并使用含长度编码、排序后 NBT 的完整键。材料来自玩家库存及一层嵌套 ItemHandler；流体在副本上准备足量 1000mB 后写回，可写嵌套 handler 才可修改。放置/拆除沿权限及 Forge 事件，放置失败或事件取消归还材料。登出、卸载、换工具、重新绑定或朝向改变使旧任务失效。

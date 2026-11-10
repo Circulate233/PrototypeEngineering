@@ -1,5 +1,7 @@
 # 仓室核心与扩展接入
 
+2026-11-10 退出世界提示修复：Forge可在Server thread恢复注册表时调用物品tooltip。资源和能源提示仅在真实客户端owner读取同步配置actor与connection；非owner保留纯物品完整EffectiveProfile/资源legacy配置，缺少目标则明确AwaitingConfiguration。未取消actor线程门，也不用本地默认冒充远端同步事实。数字格式器按线程保存独立实例，避免搜索索引和GUI并发使用可变NumberFormat。源码/纯行为验证完成，真实退出链复验见[实施进度](implementation-status.md)。
+
 2026-11-10 仓室模型反馈已落实窄修：普通外壳保持原光照，彩色发光面单独关闭方向漫反射并后绘制；CUTOUT 处理透明像素。CTM 缺少原生 BLOOM 枚举时，仅自有标记元数据回退 CUTOUT 并保留 light=15；安装 Lumenized 时保留原 BLOOM 层。方块/物品继续同源，不改贴图、动画、外壳 AO 或实体存储。原因、可选组合和证据见 [仓室美术来源](assets.md)。
 
 资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 契约和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。独立 FE 已接入同批预留/补偿；完整调度及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。

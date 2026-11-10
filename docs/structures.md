@@ -1,5 +1,13 @@
 # 结构定义、快照与匹配
 
+## 2026-11-10：结构声明与预览同源
+
+`StructurePredicates.blocks/state/stateWithNbt` 保存具体匹配事实，组合谓词从同一事实树派生只读 `StructureDisplay`；自定义 query 可使用带 display 的 `test` 重载。未知自定义谓词也可实现 `display()`，但库不会执行 condition/matches 或反射推断。`StructurePattern.displays()` 惰性缓存，Template/Slice 的 `MachineStructure.displays()` 直接沿用；shape-only `new StructureDefinition(shape)` 即可取得表示，逐格显式 displays 覆盖仍优先。几何规划和预算变换不提前求展示。
+
+AND 保留完整 state、block membership 的实际相容性及同臂浅 NBT，冲突分支消除；OR 不从其他分支借具体材料。未知条件、非零 at、空 NBT 所隐含的方块实体存在约束及搜索预算耗尽都保留未决语义。搜索 pop 与 children/options 展开共同计入8192额度，最多32代表；超额保持已确认 hard material 的 partial seed，而非伪造空 NBT witness。`complete=false` 的显示可以提供明确材料外观，观察仍为 UNKNOWN，构建器不把它放置为完整要求。
+
+BlockOption 独立保存完整 properties 与浅 NBT，按名称/合法值还原 meta 不能完整表达的状态后再旋转。无效属性返回未知；选项键分别排序、长度编码 properties/NBT。Catalog 的准确 Node 自带 intrinsic displays，未独立注册、同 ID 的不同子结构仍按对象身份传输；Entry 显式覆盖优先。codec v2传输这些数据，保留v1读回及原三参构造入口。纯行为和真实codec回归、最终构建及实机边界见[实施进度](implementation-status.md)。
+
 ## 2026-11-10：纯结构计划与朝向复用
 
 `MachineStructure.planReusable()` 与 `StructurePredicate.planReusable()` 默认 false。扩展显式声明 true 时，几何、变换和读声明必须终身稳定，变换结果也遵守相同合同；多个宿主可以并发使用同一实例，各次 begin/match 的游标、builder 和 scratch 必须独立。实际 query capture、condition、freshness 与 matcher 每轮重新执行。默认 Template/Slice 的 `create` 工厂仅在 pattern、validators 和 children 全部合格时复用；普通公开构造器与未知扩展保留原 virtual 路径。资格在原复制及增量变换循环中累计，读取资格不重新扫描结构树。JSON 外部工厂返回未知谓词时，同样沿这些组合规则回退。

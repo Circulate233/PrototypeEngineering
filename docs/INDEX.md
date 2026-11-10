@@ -4,9 +4,9 @@
 
 ## 当前检查点
 
-- 用户补充日志已确认第三项独立缺陷：关世界时 Forge 在 Server thread 的 registry remap 回调里重建客户端搜索索引，仓室 tooltip 无条件读取 ClientProxy 同步配置 actor，触发 `Hatch tooltip requires client owner`。资源/能源两类共用该入口；应保留 actor 线程门，仅 owner 查询同步 view，非 owner 使用纯物品保存配置/明确默认或未就绪路径。仅记录，尚未修实现；与 JEI 静态身份错误、结构显示映射缺失分别处理。原日志/核对在 `preview-empty-diagnosis/user-tooltip-shutdown.log` 和 `tooltip-thread.md`。
+- 2026-11-10 接续上一对话完成三项实机反馈的源码修复与验证：JEI 静态回退共享同代 descriptions/布局量测身份；具体 block/state 与结构匹配同源派生预览，不再要求示例另注册显示表；仓室 tooltip 仅客户端 owner 查询同步 actor，非 owner 保留完整物品配置或明确未就绪，数值格式器按线程隔离。入口 [JEI](jei.md)、[结构](structures.md)、[仓室](hatches.md)。
 
-- 2026-11-10 用户实机反馈已只读确认两项未修问题：JEI 静态基线副本无显示缓存，回退生成新 display 却复用旧 reference-key 测量，触发 `Display was not measured for this category` 后隐藏整批池配方；示例只有 shape 注册，未发布 `StructureDefinition.displays`，因此几何位置存在但预览只呈现控制器与未知线框。代码修复尚未开始，总体 Goal 仍暂停。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-empty-diagnosis/`；可用日志运行 @63518f6，相关 JEI/结构源码到当前版本无差异。
+- 最新完整构建（含 Spotless）1890 tests/251 suites，失败/错误/跳过均零；33 Java 本机 MCP `errorsOnly:false` 全级零，完整源码读回一致，MCP build 成功。复核补齐空 NBT 的方块实体存在约束和宽 OR 搜索展开预算。可视示例五源码已重编并更新 `run/mods`；未启动游戏，真实 HEI、结构视觉及退出世界仍待用户复验。准确日志/XML/MCP/源码快照在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-fixes/resumed-validation/`，原诊断保留在 `preview-empty-diagnosis/`。源码已本地提交 `35de846`，未推送；总体 Goal 保持暂停，当前仅完成用户另行要求的修复。
 
 - 总体 Goal 保持暂停。本次单独处理用户仓室方块/物品白灰及 Lumenized 物品发暗反馈，源码已本地提交 `16640be`，未推送。44 模型/52 发光元素关闭方向漫反射并改为外壳先绘制；30 标记元数据缺 BLOOM 时仅复制回退 CUTOUT，保留 light=15，有原生层时保留 Bloom；共享仓室 CUTOUT 保透明覆盖。专项4/1、完整1872/248均全零，4 Java 与 Mixin 配置本机全级零、MCP build 成功。入口 [仓室美术](assets.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-model-parity/`；需重启客户端复验，新 Mixin 不能仅靠资源刷新应用。
 
@@ -18,7 +18,7 @@
 
 ## 下一步
 
-- 新实机反馈优先：修复静态回退的同代 display/布局测量身份一致性，并为可视示例补完整结构显示映射、重新编译示例；保持旧自定义页静态兼容和动态声明安全门。当前仅完成问题确认，没有启动游戏或改动实现。
+- 新实机反馈优先：由用户重新启动客户端，复验示例配方、具体方块结构预览、机械构建器及退出世界。静态独立自定义页兼容和动态声明安全门保留；具体方块同源显示已修，不应再给示例补第二份显示注册。
 
 1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
 2. 先复验仓室方块/物品在无 CTM、仅 CTM、CTM+Lumenized 下的颜色、透明覆盖及局部发光；未自行启动游戏。总体 Goal 暂停，恢复后再按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等 Java 前提，再接 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。
