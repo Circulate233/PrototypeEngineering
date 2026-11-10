@@ -44,6 +44,17 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
         return StructurePredicates.stateWithNbt(resolveState(id, meta), nbt);
     }
 
+    @Override
+    public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties) {
+        var option = new StructureDisplay.BlockOption(id, meta, nbt, properties);
+        return StructurePredicates.stateWithNbt(option.applyProperties(resolveState(id, meta)), nbt);
+    }
+
+    @Override
+    public StructurePredicate resolveState(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties) {
+        return state(id, meta, nbt, properties);
+    }
+
     private List<Block> expand(String expression) {
         var existing = regexBlocks.get(expression);
         if (existing != null) return existing;
@@ -69,8 +80,12 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
 
     @Override
     public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
-        resolveState(id, meta);
-        return new StructureDisplay.BlockOption(id, meta, nbt);
+        return StructureDisplay.BlockOption.of(resolveState(id, meta), nbt);
+    }
+
+    @Override
+    public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties) {
+        return StructureDisplay.BlockOption.of(new StructureDisplay.BlockOption(id, meta, nbt, properties).applyProperties(resolveState(id, meta)), nbt);
     }
 
     @Override

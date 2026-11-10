@@ -159,7 +159,7 @@ public final class StructurePreviewExpansion {
             var position = add(add(frame.origin, multiply(frame.step, frame.slice)), rotation.apply(relative));
             if (!position.equals(BlockPos.ORIGIN)) {
                 var definition = byNode.get(frame.node);
-                var display = definition == null ? null : definition.displays().get(relative);
+                var display = definition == null ? frame.shape.displays().get(relative) : definition.displays().getOrDefault(relative, frame.shape.displays().get(relative));
                 positions.put(position, new StructurePreviewModel.Cell(position, frame.path, frame.node,
                     frame.shape.kind() == StructurePreviewProvider.Kind.SLICE ? frame.slice : -1, display, frame.shape.hideWorldBlocks()));
             }

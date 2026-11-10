@@ -30,8 +30,11 @@ public final class HatchItemTooltip {
         ResourceHatchConfiguration profile;
         try {
             var saved = saved(stack);
-            var authoritative = authoritative();
-            if (needsTarget(saved, false) && Minecraft.getMinecraft().getConnection() != null && authoritative == null) {
+            var minecraft = Minecraft.getMinecraft();
+            boolean clientOwner = minecraft.isCallingFromMinecraftThread();
+            var authoritative = clientOwner ? authoritative() : null;
+            // Forge also rebuilds the search tree on the stopping integrated-server thread.
+            if (needsTarget(saved, false) && (!clientOwner || minecraft.getConnection() != null && authoritative == null)) {
                 tooltip.add(HatchItemText.AwaitingConfiguration.getLocal());
                 return;
             }
@@ -72,8 +75,10 @@ public final class HatchItemTooltip {
         HatchItemProfiles.EnergyRates rates;
         try {
             var saved = saved(stack);
-            var authoritative = authoritative();
-            if (needsTarget(saved, true) && Minecraft.getMinecraft().getConnection() != null && authoritative == null) {
+            var minecraft = Minecraft.getMinecraft();
+            boolean clientOwner = minecraft.isCallingFromMinecraftThread();
+            var authoritative = clientOwner ? authoritative() : null;
+            if (needsTarget(saved, true) && (!clientOwner || minecraft.getConnection() != null && authoritative == null)) {
                 tooltip.add(HatchItemText.AwaitingConfiguration.getLocal());
                 return;
             }

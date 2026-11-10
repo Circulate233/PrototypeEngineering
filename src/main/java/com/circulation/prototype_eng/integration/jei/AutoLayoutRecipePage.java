@@ -66,11 +66,25 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     /** Supplies the font metrics used to measure and wrap every recipe in this category. */
     public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays displays, JeiRenderOptions options,
                                 RecipeInformationLayout.Font font) {
+        this(pool, guiHelper, displays::describe, options, font);
+    }
+
+    public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays.Snapshot displays) {
+        this(pool, guiHelper, displays::describe, JeiRenderOptions.defaults(), minecraftFont());
+    }
+
+    public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays.Snapshot displays, JeiRenderOptions options,
+                                RecipeInformationLayout.Font font) {
+        this(pool, guiHelper, displays::describe, options, font);
+    }
+
+    private AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
+                                 JeiRenderOptions options, RecipeInformationLayout.Font font) {
         this.font = Objects.requireNonNull(font);
         Objects.requireNonNull(pool);
         Objects.requireNonNull(guiHelper);
         this.options = Objects.requireNonNull(options);
-        data = measure(pool, displays::describe);
+        data = measure(pool, describe);
         inputLayout = slots(INPUT_X);
         outputLayout = slots(OUTPUT_X);
         decorations = ObjectLists.unmodifiable(ObjectArrayList.of(

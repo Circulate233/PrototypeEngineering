@@ -56,6 +56,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 class StructureJsonLoaderTest {
     private static final StructureQuery<Token> STATE = new StructureQuery<>(id("fake_state"),
         (_, _) -> fail("The fake resolver never reads a World"), UnaryOperator.identity(), Token::equals);
+    private static final StructureQuery<Map<String, String>> PROPERTIES = new StructureQuery<>(id("fake_properties"),
+        (_, _) -> fail("Properties resolver never reads a World"), Map::copyOf, Map::equals);
     private static final StructureQuery<Boolean> ENABLED = new StructureQuery<>(id("fake_enabled"),
         (_, _) -> fail("The addon predicate never reads a World"), UnaryOperator.identity(), Boolean::equals);
 
@@ -447,10 +449,45 @@ class StructureJsonLoaderTest {
         assertFalse(matches(shape, source, BlockOrientation.NORTH_UP));
     }
 
+    @Test
+    void propertiesAreOneResolvedMatchingDeclarationAndUnsupportedResolversRejectThem() {
+        var loader = load("""
+            {"id":"test:shape","type":"template","pattern":[{"pos":{"x":1,"y":0,"z":0},
+             "blockId":"test:first","properties":{"axis":"x"},"nbt":{"name":"plain"}}]}
+            """);
+        var failure = assertThrows(StructureJsonException.class, () -> loader.resolve(emptyCatalog(), builtins(), new FakeBlocks()));
+        assertEquals("$.pattern[0].blockId", failure.path());
+        var resolver = new FakeBlocks() {
+            @Override
+            public StructurePredicate state(ResourceLocation block, int meta, Map<String, String> nbt, Map<String, String> properties) {
+                var frozen = Map.copyOf(properties);
+                return StructurePredicates.all(List.of(super.state(block, meta, nbt), StructurePredicates.test(PROPERTIES, frozen::equals)));
+            }
+
+            @Override
+            public StructureDisplay.BlockOption displayState(ResourceLocation block, int meta, Map<String, String> nbt, Map<String, String> properties) {
+                return new StructureDisplay.BlockOption(block, meta, nbt, properties);
+            }
+        };
+        var entry = definition(loader.resolve(emptyCatalog(), builtins(), resolver), "shape");
+        var option = entry.displays().get(new BlockPos(1, 0, 0)).options().getFirst();
+        assertEquals(Map.of("axis", "x"), option.properties());
+        assertEquals(Map.of("name", "plain"), option.nbt());
+        var source = new FakeSource();
+        source.put(STATE, new BlockPos(1, 0, 0), new Token(id("first"), 0));
+        var nbt = new NBTTagCompound();
+        nbt.setString("name", "plain");
+        source.put(StructureQueries.TILE_NBT, new BlockPos(1, 0, 0), nbt);
+        source.put(PROPERTIES, new BlockPos(1, 0, 0), Map.of("axis", "x"));
+        assertTrue(matches(entry.shape(), source, BlockOrientation.NORTH_UP));
+        source.put(PROPERTIES, new BlockPos(1, 0, 0), Map.of("axis", "y"));
+        assertFalse(matches(entry.shape(), source, BlockOrientation.NORTH_UP));
+    }
+
     private record Token(ResourceLocation id, int meta) {
     }
 
-    private static final class FakeBlocks implements StructureBlockResolver {
+    private static class FakeBlocks implements StructureBlockResolver {
         private final ObjectLinkedOpenHashSet<ResourceLocation> known = new ObjectLinkedOpenHashSet<>(List.of(id("first"), id("second"), new ResourceLocation("minecraft", "air")));
 
         private void check(ResourceLocation id) {

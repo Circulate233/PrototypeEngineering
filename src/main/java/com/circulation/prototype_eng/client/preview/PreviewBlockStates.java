@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.EnumFacing;
@@ -23,7 +24,6 @@ final class PreviewBlockStates {
         return false;
     }
 
-    @SuppressWarnings("deprecation") // Published 1.12 display options carry canonical registry metadata.
     static IBlockState first(StructurePreviewModel model, StructurePreviewModel.Cell cell) {
         var explicit = model.settings().displayOptions().get(cell.display());
         if (explicit != null) return selected(model, cell, explicit);
@@ -35,12 +35,14 @@ final class PreviewBlockStates {
             // containsKey prevents Forge's missing registry lookup from silently returning AIR.
             if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) continue;
             var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-            if (block != null) return rotate(block.getStateFromMeta(option.meta()), rotation);
+            if (block != null) {
+                var state = resolve(option, rotation);
+                if (state != null) return state;
+            }
         }
         return null;
     }
 
-    @SuppressWarnings("deprecation")
     static IBlockState selected(StructurePreviewModel model, StructurePreviewModel.Cell cell, int optionIndex) {
         var display = cell.display();
         if (display == null || optionIndex < 0 || optionIndex >= display.options().size()) return null;
@@ -50,7 +52,16 @@ final class PreviewBlockStates {
         if (block == null) return null;
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
-        return rotate(block.getStateFromMeta(option.meta()), rotation);
+        return resolve(option, rotation);
+    }
+
+    @SuppressWarnings("deprecation")
+    static IBlockState resolve(StructureDisplay.BlockOption option, StructureTransform rotation) {
+        if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) return null;
+        var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
+        if (block == null) return null;
+        var state = option.resolveProperties(block.getStateFromMeta(option.meta()));
+        return state == null ? null : rotate(state, rotation);
     }
 
     @SuppressWarnings("unchecked")

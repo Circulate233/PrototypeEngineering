@@ -125,11 +125,11 @@ public final class StructureJsonLoader {
     }
 
     private static Cell cell(StructureJsonParameters entry) {
-        entry.fields("pos", "blockId", "meta", "nbt", "alternatives", "predicates", "display");
+        entry.fields("pos", "blockId", "meta", "nbt", "properties", "alternatives", "predicates", "display");
         entry.at("pos");
         var options = new ObjectArrayList<Option>();
         if (entry.has("blockId")) options.add(option(entry, false));
-        else if (entry.has("meta") || entry.has("nbt")) throw entry.error("meta/nbt require blockId");
+        else if (entry.has("meta") || entry.has("nbt") || entry.has("properties")) throw entry.error("meta/nbt/properties require blockId");
         if (entry.has("alternatives"))
             for (var alternative : entry.array("alternatives")) options.add(option(alternative, true));
         var predicates = specs(entry, "predicates");
@@ -154,8 +154,8 @@ public final class StructureJsonLoader {
     }
 
     private static Option option(StructureJsonParameters entry, boolean checkFields) {
-        if (checkFields) entry.fields("blockId", "meta", "nbt");
-        return new Option(entry.id("blockId"), entry.meta(), entry.stringMap("nbt"), entry);
+        if (checkFields) entry.fields("blockId", "meta", "nbt", "properties");
+        return new Option(entry.id("blockId"), entry.meta(), entry.stringMap("nbt"), entry.stringMap("properties"), entry);
     }
 
     private static List<Spec> specs(StructureJsonParameters parent, String field) {
@@ -175,11 +175,9 @@ public final class StructureJsonLoader {
         for (var cell : data.pattern) {
             var parts = new ObjectArrayList<StructurePredicate>();
             var alternatives = new ObjectArrayList<StructurePredicate>();
-            var defaultDisplay = new ObjectArrayList<StructureDisplay.BlockOption>();
             for (var option : cell.options) {
                 try {
-                    alternatives.add(Objects.requireNonNull(blocks.state(option.id, option.meta, option.nbt)));
-                    defaultDisplay.add(Objects.requireNonNull(blocks.displayState(option.id, option.meta, option.nbt)));
+                    alternatives.add(Objects.requireNonNull(blocks.resolveState(option.id, option.meta, option.nbt, option.properties)));
                 } catch (RuntimeException failure) {
                     throw option.location.at("blockId").error("Cannot resolve block state " + option.id, failure);
                 }
@@ -189,8 +187,6 @@ public final class StructureJsonLoader {
             pattern.put(cell.position, StructurePredicates.all(parts));
             String defaultKey = data.id + "@" + cell.position.getX() + "," + cell.position.getY() + "," + cell.position.getZ();
             if (cell.display != null) displays.put(cell.position, display(cell.display, defaultKey, blocks));
-            else if (!defaultDisplay.isEmpty())
-                displays.put(cell.position, new StructureDisplay(defaultKey, defaultDisplay, null));
         }
         var validators = new ObjectArrayList<StructurePredicate>();
         for (var spec : data.validators) validators.add(factories.create(spec.identifier, spec.parameters, blocks));
@@ -205,7 +201,7 @@ public final class StructureJsonLoader {
         var choices = new ObjectLinkedOpenHashSet<StructureDisplay.BlockOption>();
         for (var option : data.blocks) {
             try {
-                choices.add(Objects.requireNonNull(blocks.displayState(option.id, option.meta, option.nbt)));
+                choices.add(Objects.requireNonNull(blocks.displayState(option.id, option.meta, option.nbt, option.properties)));
             } catch (RuntimeException failure) {
                 throw option.location.at("blockId").error("Cannot resolve display state " + option.id, failure);
             }
@@ -287,7 +283,7 @@ public final class StructureJsonLoader {
     private record Cell(BlockPos position, List<Option> options, List<Spec> predicates, @Nullable Display display) {
     }
 
-    private record Option(ResourceLocation id, int meta, Map<String, String> nbt, StructureJsonParameters location) {
+    private record Option(ResourceLocation id, int meta, Map<String, String> nbt, Map<String, String> properties, StructureJsonParameters location) {
     }
 
     private record Spec(StructureJsonParameters identifier, StructureJsonParameters parameters) {

@@ -51,7 +51,7 @@ public final class StructureBuildPlan {
                     if (++visits > 1000000) throw new IllegalArgumentException("Too many construction cells");
                     var position = add(anchor, rotation.apply(relative));
                     if (!position.equals(BlockPos.ORIGIN))
-                        cells.put(position, new Cell(position, entry == null ? null : entry.displays().get(relative), visit.path()));
+                        cells.put(position, new Cell(position, entry == null ? node.displays().get(relative) : entry.displays().getOrDefault(relative, node.displays().get(relative)), visit.path()));
                 }
             }
             var childOrigin = node.kind() == StructurePreviewProvider.Kind.SLICE ? add(origin, multiply(step, (long) count - 1)) : origin;

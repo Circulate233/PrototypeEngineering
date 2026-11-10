@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.client.preview;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.client.gui.GuiAtlas;
 import com.circulation.prototype_eng.client.gui.GuiClip;
 import com.circulation.prototype_eng.client.gui.GuiLabel;
@@ -90,7 +91,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private static String optionKey(StructureDisplay.BlockOption option) {
-        return "state:" + option.blockId() + ":" + option.meta();
+        return "state:" + BuilderState.optionKey(option);
     }
 
     public void construction() {
@@ -271,9 +272,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
             int choice = representative(selected);
             var stack = optionStack(selected.options().get(choice));
             boolean any = selected.options().size() > 1;
-            slot("selected", stack, x, 31, false, any
+            var selectedTooltip = new ObjectArrayList<>(any
                 ? List.of(PreviewUiText.CurrentSelection.getLocal(stack.getDisplayName()), PreviewUiText.ChooseOne.getLocal(selected.options().size()), PreviewUiText.Key.getLocal(selected.key()))
-                : List.of(stack.isEmpty() ? PreviewUiText.Empty.getLocal() : stack.getDisplayName(), PreviewUiText.Requirement.getLocal(shortName(selected)), PreviewUiText.Key.getLocal(selected.key())), null);
+                : List.of(stack.isEmpty() ? PreviewUiText.Empty.getLocal() : stack.getDisplayName(), PreviewUiText.Requirement.getLocal(shortName(selected)), PreviewUiText.Key.getLocal(selected.key())));
+            if (!selected.complete()) selectedTooltip.add(PreviewUiText.Status.getLocal(PreviewUiText.Unknown.getLocal()));
+            slot("selected", stack, x, 31, false, selectedTooltip, null);
             int row = 1;
             for (int index = 0; index < selected.options().size() && row <= 9; index++) {
                 if (index == choice) continue;
@@ -310,13 +313,14 @@ public final class StructurePreviewPanel implements AutoCloseable {
             stack.setCount(count);
             var tooltip = new ObjectArrayList<String>();
             tooltip.add(stack.getDisplayName());
+            if (!display.complete()) tooltip.add(PreviewUiText.Status.getLocal(PreviewUiText.Unknown.getLocal()));
             if (selected == null) {
                 tooltip.add((construction ? PreviewUiText.Remaining : PreviewUiText.Required).getLocal(count));
                 tooltip.add(PreviewUiText.Key.getLocal(display.key()));
             } else {
                 tooltip.add(PreviewUiText.Requirement.getLocal(shortName(display)));
                 var status = view.pickedStatus();
-                if (status != null) tooltip.add(PreviewUiText.Status.getLocal(switch (status) {
+                if (status != null && display.complete()) tooltip.add(PreviewUiText.Status.getLocal(switch (status) {
                     case DISPLAY_MATCH -> PreviewUiText.Match.getLocal();
                     case MISSING -> PreviewUiText.Missing.getLocal();
                     case DIFFERENT -> PreviewUiText.Wrong.getLocal();

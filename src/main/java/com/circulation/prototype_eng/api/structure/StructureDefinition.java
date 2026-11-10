@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Complete catalog entry: immutable shape and separate per-pattern-cell presentation data.
+ * Complete catalog entry: intrinsic shape presentation plus explicit per-cell overrides.
  */
 public record StructureDefinition(MachineStructure shape, @Nullable String translationKey,
                                   Map<BlockPos, StructureDisplay> displays) {
@@ -21,11 +21,10 @@ public record StructureDefinition(MachineStructure shape, @Nullable String trans
         Objects.requireNonNull(shape.id());
         if (translationKey != null && translationKey.isBlank())
             throw new IllegalArgumentException("Empty structure translation key");
-        var copy = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
+        var copy = new Object2ObjectLinkedOpenHashMap<>(shape.displays());
         displays.forEach((position, display) -> {
             var fixedPosition = Objects.requireNonNull(position).toImmutable();
-            if (copy.putIfAbsent(fixedPosition, Objects.requireNonNull(display)) != null)
-                throw new IllegalArgumentException("Duplicate display coordinate: " + fixedPosition);
+            copy.put(fixedPosition, Objects.requireNonNull(display));
         });
         displays = Object2ObjectMaps.unmodifiable(copy);
     }

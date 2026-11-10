@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.api.structure.StructureMatchResult;
 import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
+import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
@@ -23,6 +24,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -113,6 +115,11 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     @Override
     public boolean hideWorldBlocks() {
         return hideWorldBlocks;
+    }
+
+    @Override
+    public Map<BlockPos, StructureDisplay> displays() {
+        return pattern.displays();
     }
 
     public StructurePattern pattern() {

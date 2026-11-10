@@ -154,6 +154,6 @@ public final class ProjectionInteractions {
         var cell = indexed.get(hit.subtract(intent.anchor()));
         var display = cell.display();
         event.getLeft().add(StructurePreviewText.Position.getLocal(hit.getX(), hit.getY(), hit.getZ()));
-        event.getLeft().add(StructurePreviewText.Material.getLocal(display == null ? StructurePreviewText.Unknown.getLocal() : display.key()));
+        event.getLeft().add(StructurePreviewText.Material.getLocal(display == null || !display.complete() ? StructurePreviewText.Unknown.getLocal() : display.key()));
     }
 }

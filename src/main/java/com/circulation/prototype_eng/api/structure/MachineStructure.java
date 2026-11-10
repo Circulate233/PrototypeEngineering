@@ -5,6 +5,8 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Map;
+
 /**
  * External structure-shape responsibility. Definitions are immutable; transformed shapes must
  * rotate offsets, predicates, validators and children together. Matching publishes one complete
@@ -20,6 +22,9 @@ public interface MachineStructure {
     @SuppressWarnings("unused")
         // External render/preview consumers use this preserved visual flag.
     boolean hideWorldBlocks();
+
+    /** Presentation of local pattern cells, owned by this immutable shape declaration. */
+    default Map<BlockPos, StructureDisplay> displays() { return Map.of(); }
 
     MachineStructure transform(StructureTransform rotation);
 

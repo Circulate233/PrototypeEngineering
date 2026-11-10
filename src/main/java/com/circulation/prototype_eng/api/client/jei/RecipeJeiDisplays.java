@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMaps;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.Collection;
@@ -91,10 +92,24 @@ public class RecipeJeiDisplays {
 
     /** Describe the entire generation privately, without clearing current providers/descriptions. */
     public Snapshot snapshot(Collection<MachineRecipe> recipes) {
+        return snapshot(recipes, null, null);
+    }
+
+    /** Preserve measured display identities only for the same immutable recipe and provider identities. */
+    public Snapshot snapshot(Collection<MachineRecipe> recipes, @Nullable RecipeJeiDisplays measuredProviders,
+                             @Nullable Snapshot measured) {
         var copy = frozenCopy();
         copy.descriptions.putAll(descriptions);
+        if (measuredProviders != null && measured != null && sameProviders(measuredProviders))
+            copy.descriptions.putAll(measured.descriptions);
+        return copy.capture(recipes);
+    }
+
+    /** One registration source supplies both category measurement and every initial wrapper. */
+    public Snapshot capture(Collection<MachineRecipe> recipes) {
+        if (!frozen) throw new IllegalStateException("JEI displays are not ready");
         var prepared = new Reference2ObjectOpenHashMap<MachineRecipe, JeiRecipeDisplay>();
-        for (var recipe : recipes) prepared.put(recipe, copy.describe(recipe));
+        for (var recipe : recipes) prepared.put(recipe, describe(recipe));
         return new Snapshot(Reference2ObjectMaps.unmodifiable(prepared));
     }
 
@@ -103,6 +118,14 @@ public class RecipeJeiDisplays {
         private Snapshot(Map<MachineRecipe, JeiRecipeDisplay> descriptions) { this.descriptions = descriptions; }
         public JeiRecipeDisplay describe(MachineRecipe recipe) {
             return Objects.requireNonNull(descriptions.get(recipe), "Recipe is outside the prepared JEI generation");
+        }
+
+        public boolean sameDescriptions(Collection<MachineRecipe> recipes, Snapshot measured) {
+            for (var recipe : recipes) {
+                var current = descriptions.get(recipe);
+                if (current == null || current != measured.descriptions.get(recipe)) return false;
+            }
+            return true;
         }
     }
 

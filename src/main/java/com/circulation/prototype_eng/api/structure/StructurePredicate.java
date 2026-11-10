@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Read-only cell or multi-position validator. Declare every possible read before matching; then
@@ -12,6 +13,14 @@ public interface StructurePredicate {
     void collectReads(StructureReadPlan.Builder plan, BlockPos position);
 
     boolean matches(StructureSnapshot snapshot, BlockPos position);
+
+    /**
+     * Stable presentation owned by this declaration. Unknown callbacks return null; no matcher is
+     * executed to derive a representation. Directional declarations transform this data as well.
+     */
+    default @Nullable StructureDisplay display() {
+        return null;
+    }
 
     /**
      * Explicit, stable O(1) promise that transforms and read declarations (including query descriptor

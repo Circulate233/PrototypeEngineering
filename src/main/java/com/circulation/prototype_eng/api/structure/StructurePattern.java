@@ -17,6 +17,7 @@ public final class StructurePattern {
     private final Map<BlockPos, StructurePredicate> blocks;
     private final StructureBounds bounds;
     private final boolean planReusable;
+    private volatile Map<BlockPos, StructureDisplay> displays;
 
     public StructurePattern(Map<BlockPos, StructurePredicate> blocks) {
         var copy = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
@@ -66,6 +67,25 @@ public final class StructurePattern {
 
     public Map<BlockPos, StructurePredicate> blocks() {
         return blocks;
+    }
+
+    /** Lazy freezing is deliberately separate from matching and cooperative transformation. */
+    public Map<BlockPos, StructureDisplay> displays() {
+        var result = displays;
+        if (result != null) return result;
+        synchronized (this) {
+            result = displays;
+            if (result == null) {
+                var copy = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
+                blocks.forEach((position, predicate) -> {
+                    var display = predicate.display();
+                    if (display != null) copy.put(position, display);
+                });
+                result = Object2ObjectMaps.unmodifiable(copy);
+                displays = result;
+            }
+        }
+        return result;
     }
 
     public StructureBounds bounds() {

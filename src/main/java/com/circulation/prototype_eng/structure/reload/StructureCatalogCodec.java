@@ -23,13 +23,14 @@ import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.Map;
 
 /**
  * Bounded binary presentation protocol; it neither serializes nor executes matcher callbacks.
  */
 public final class StructureCatalogCodec {
     public static final int MAX_BYTES = 8 * 1024 * 1024;
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
     private static final int MAX_STRING = 65536;
 
     private StructureCatalogCodec() {
@@ -57,28 +58,14 @@ public final class StructureCatalogCodec {
                 for (var cell : node.cells()) position(output, cell);
                 count(output, node.children().size());
                 for (int child : node.children()) output.writeInt(child);
+                displays(output, node.displays());
             }
             count(output, view.entries().size());
             for (var entry : view.entries().entrySet()) {
                 id(output, entry.getKey());
                 output.writeInt(entry.getValue().node());
                 nullable(output, entry.getValue().translationKey());
-                count(output, entry.getValue().displays().size());
-                for (var display : entry.getValue().displays().entrySet()) {
-                    position(output, display.getKey());
-                    string(output, display.getValue().key());
-                    nullable(output, display.getValue().tileNbt());
-                    count(output, display.getValue().options().size());
-                    for (var option : display.getValue().options()) {
-                        id(output, option.blockId());
-                        output.writeByte(option.meta());
-                        count(output, option.nbt().size());
-                        for (var nbt : option.nbt().entrySet()) {
-                            string(output, nbt.getKey());
-                            string(output, nbt.getValue());
-                        }
-                    }
-                }
+                displays(output, entry.getValue().displays());
             }
         } catch (IOException failure) {
             throw new IllegalArgumentException("Cannot encode structure catalog view", failure);
@@ -89,7 +76,8 @@ public final class StructureCatalogCodec {
     public static StructureCatalogView decode(byte[] bytes) {
         if (bytes.length > MAX_BYTES) throw new IllegalArgumentException("Structure catalog payload is too large");
         try (var input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            if (input.readInt() != VERSION)
+            int version = input.readInt();
+            if (version < 1 || version > VERSION)
                 throw new IllegalArgumentException("Unknown structure catalog protocol version");
             var session = new UUID(input.readLong(), input.readLong());
             long sequence = input.readLong();
@@ -114,7 +102,7 @@ public final class StructureCatalogCodec {
                 var children = new ObjectArrayList<Integer>();
                 int childCount = count(input);
                 for (int c = 0; c < childCount; c++) children.add(input.readInt());
-                nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.values()[kind], offset, min, max, sliceOffset, cells, children));
+                nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.values()[kind], offset, min, max, sliceOffset, cells, children, version == 2 ? displays(input, version) : Map.of()));
             }
             var entries = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureCatalogView.Entry>();
             int entryCount = count(input);
@@ -122,28 +110,7 @@ public final class StructureCatalogCodec {
                 var id = id(input);
                 int node = input.readInt();
                 String name = nullable(input);
-                var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
-                int displayCount = count(input);
-                for (int d = 0; d < displayCount; d++) {
-                    var position = position(input);
-                    String key = string(input), tileNbt = nullable(input);
-                    var options = new ObjectArrayList<StructureDisplay.BlockOption>();
-                    int optionCount = count(input);
-                    for (int o = 0; o < optionCount; o++) {
-                        var block = id(input);
-                        int meta = input.readUnsignedByte();
-                        var nbt = new Object2ObjectLinkedOpenHashMap<String, String>();
-                        int nbtCount = count(input);
-                        for (int n = 0; n < nbtCount; n++) {
-                            String field = string(input);
-                            if (field.isEmpty() || nbt.putIfAbsent(field, string(input)) != null)
-                                throw new IllegalArgumentException("Duplicate or empty preview NBT field");
-                        }
-                        options.add(new StructureDisplay.BlockOption(block, meta, nbt));
-                    }
-                    if (displays.putIfAbsent(position, new StructureDisplay(key, options, tileNbt)) != null)
-                        throw new IllegalArgumentException("Duplicate preview display coordinate");
-                }
+                var displays = displays(input, version);
                 if (entries.putIfAbsent(id, new StructureCatalogView.Entry(node, name, displays)) != null)
                     throw new IllegalArgumentException("Duplicate preview structure ID");
             }
@@ -152,6 +119,65 @@ public final class StructureCatalogCodec {
         } catch (IOException failure) {
             throw new IllegalArgumentException("Cannot decode structure catalog view", failure);
         }
+    }
+
+    private static void displays(DataOutputStream output, Map<BlockPos, StructureDisplay> displays) throws IOException {
+        count(output, displays.size());
+        for (var entry : displays.entrySet()) {
+            position(output, entry.getKey());
+            var display = entry.getValue();
+            string(output, display.key());
+            nullable(output, display.tileNbt());
+            output.writeBoolean(display.complete());
+            count(output, display.options().size());
+            for (var option : display.options()) {
+                id(output, option.blockId());
+                output.writeByte(option.meta());
+                fields(output, option.nbt());
+                fields(output, option.properties());
+            }
+        }
+    }
+
+    private static Map<BlockPos, StructureDisplay> displays(DataInputStream input, int version) throws IOException {
+        var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
+        int displayCount = count(input);
+        for (int d = 0; d < displayCount; d++) {
+            var position = position(input);
+            String key = string(input), tileNbt = nullable(input);
+            boolean complete = version < 2 || bool(input);
+            var options = new ObjectArrayList<StructureDisplay.BlockOption>();
+            int optionCount = count(input);
+            for (int o = 0; o < optionCount; o++) {
+                var block = id(input);
+                int meta = input.readUnsignedByte();
+                var nbt = fields(input);
+                var properties = version >= 2 ? fields(input) : Map.<String, String>of();
+                options.add(new StructureDisplay.BlockOption(block, meta, nbt, properties));
+            }
+            if (displays.putIfAbsent(position, new StructureDisplay(key, options, tileNbt, complete)) != null)
+                throw new IllegalArgumentException("Duplicate preview display coordinate");
+        }
+        return displays;
+    }
+
+    private static void fields(DataOutputStream output, Map<String, String> fields) throws IOException {
+        count(output, fields.size());
+        for (var field : fields.entrySet()) {
+            string(output, field.getKey());
+            string(output, field.getValue());
+        }
+    }
+
+    private static Map<String, String> fields(DataInputStream input) throws IOException {
+        var fields = new Object2ObjectLinkedOpenHashMap<String, String>();
+        int fieldCount = count(input);
+        for (int f = 0; f < fieldCount; f++) {
+            String name = string(input);
+            if (name.isEmpty() || fields.putIfAbsent(name, string(input)) != null)
+                throw new IllegalArgumentException("Duplicate or empty preview state field");
+        }
+        return fields;
     }
 
     private static void count(DataOutputStream output, int value) throws IOException {

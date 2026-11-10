@@ -87,15 +87,36 @@ public final class StructureBuildTasks {
             var rotation = StructureTransform.between(view.nodes().get(view.entries().get(host.type().structureId()).node()).orientation(), host.orientation());
             boolean dismantle = host.formed();
             var targets = new ObjectArrayList<Target>();
+            boolean unresolved = false;
             for (var cell : plan.cells()) {
                 var position = StructureBuildPlan.add(pos, cell.position());
                 if (dismantle) targets.add(new Target(position, null));
                 else if (cell.display() != null) {
+                    if (!cell.display().complete()) {
+                        unresolved = true;
+                        continue;
+                    }
                     var choice = BuilderState.choice(tag, cell.display());
-                    if (!Block.REGISTRY.containsKey(choice.blockId())) continue;
+                    if (!Block.REGISTRY.containsKey(choice.blockId())) {
+                        unresolved = true;
+                        continue;
+                    }
                     var block = Block.REGISTRY.getObject(choice.blockId());
-                    @SuppressWarnings("deprecation") var state = StructureToolExport.rotateState(block.getStateFromMeta(choice.meta()), rotation);
-                    targets.add(new Target(position, state));
+                    @SuppressWarnings("deprecation") var resolved = choice.resolveProperties(block.getStateFromMeta(choice.meta()));
+                    if (resolved == null) {
+                        unresolved = true;
+                        continue;
+                    }
+                    targets.add(new Target(position, StructureToolExport.rotateState(resolved, rotation)));
+                }
+            }
+            if (unresolved) {
+                player.sendStatusMessage(StructureToolText.BuildInstrumentReqUnknown.text(), true);
+                if (targets.isEmpty()) {
+                    BuilderState.state(tag, BuilderState.State.IDLE);
+                    BuilderState.progress(tag, 0, 0);
+                    player.inventory.markDirty();
+                    return;
                 }
             }
             Comparator<Target> order = Comparator.comparingInt((Target target) -> target.position().getY())

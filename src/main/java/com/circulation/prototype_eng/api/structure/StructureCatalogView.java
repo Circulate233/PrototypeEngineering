@@ -60,7 +60,7 @@ public final class StructureCatalogView {
             var children = new ObjectArrayList<Integer>();
             for (var child : geometry.children()) children.add(index(child, indexes, shapes));
             nodes.add(new Node(shape.id(), shape.orientation(), shape.hideWorldBlocks(), geometry.kind(), geometry.offset(),
-                geometry.minCount(), geometry.maxCount(), geometry.sliceOffset(), geometry.cells(), children));
+                geometry.minCount(), geometry.maxCount(), geometry.sliceOffset(), geometry.cells(), children, shape.displays()));
         }
         return new StructureCatalogView(session, sequence, nodes, entries);
     }
@@ -122,7 +122,13 @@ public final class StructureCatalogView {
 
     public record Node(ResourceLocation id, BlockOrientation orientation, boolean hideWorldBlocks,
                        StructurePreviewProvider.Kind kind, BlockPos offset, int minCount, int maxCount,
-                       BlockPos sliceOffset, List<BlockPos> cells, List<Integer> children) {
+                       BlockPos sliceOffset, List<BlockPos> cells, List<Integer> children, Map<BlockPos, StructureDisplay> displays) {
+        public Node(ResourceLocation id, BlockOrientation orientation, boolean hideWorldBlocks,
+                    StructurePreviewProvider.Kind kind, BlockPos offset, int minCount, int maxCount,
+                    BlockPos sliceOffset, List<BlockPos> cells, List<Integer> children) {
+            this(id, orientation, hideWorldBlocks, kind, offset, minCount, maxCount, sliceOffset, cells, children, Map.of());
+        }
+
         public Node {
             Objects.requireNonNull(id);
             Objects.requireNonNull(orientation);
@@ -132,6 +138,7 @@ public final class StructureCatalogView {
             if (minCount < 0 || maxCount < minCount) throw new IllegalArgumentException("Invalid preview count domain");
             cells = cells.stream().map(position -> Objects.requireNonNull(position).toImmutable()).toList();
             children = List.copyOf(children);
+            displays = new Entry(0, null, displays).displays();
         }
     }
 

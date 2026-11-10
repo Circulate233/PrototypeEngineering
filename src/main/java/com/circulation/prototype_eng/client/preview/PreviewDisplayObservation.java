@@ -12,13 +12,12 @@ public final class PreviewDisplayObservation {
     private PreviewDisplayObservation() {
     }
 
-    @SuppressWarnings("deprecation")
     public static StructureProjectionState.Status observe(@Nullable World world, @Nullable StructurePreviewModel model,
                                                           StructurePreviewModel.Cell cell, BlockPos position) {
         if (world == null || model == null) return StructureProjectionState.Status.UNKNOWN;
         if (!world.isBlockLoaded(position, false)) return StructureProjectionState.Status.UNLOADED;
         var display = cell.display();
-        if (display == null || display.tileNbt() != null) return StructureProjectionState.Status.UNKNOWN;
+        if (display == null || !display.complete() || display.tileNbt() != null) return StructureProjectionState.Status.UNKNOWN;
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var actual = world.getBlockState(position);
@@ -31,12 +30,12 @@ public final class PreviewDisplayObservation {
                 unresolved = true;
                 continue;
             }
-            var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-            if (block == null) {
+            var state = PreviewBlockStates.resolve(option, rotation);
+            if (state == null) {
                 unresolved = true;
                 continue;
             }
-            if (actual == PreviewBlockStates.rotate(block.getStateFromMeta(option.meta()), rotation))
+            if (actual == state)
                 return StructureProjectionState.Status.DISPLAY_MATCH;
         }
         if (unresolved) return StructureProjectionState.Status.UNKNOWN;

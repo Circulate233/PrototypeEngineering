@@ -69,7 +69,8 @@ public final class BuilderState {
 
     public static String optionKey(StructureDisplay.BlockOption option) {
         var key = new StringBuilder(option.blockId() + "@" + option.meta());
-        new TreeMap<>(option.nbt()).forEach((name, value) -> key.append('/').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
+        new TreeMap<>(option.properties()).forEach((name, value) -> key.append('/').append('p').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
+        new TreeMap<>(option.nbt()).forEach((name, value) -> key.append('/').append('n').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
         return key.toString();
     }
 

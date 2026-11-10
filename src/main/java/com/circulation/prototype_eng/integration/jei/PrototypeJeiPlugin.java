@@ -65,6 +65,8 @@ public class PrototypeJeiPlugin implements IModPlugin {
     @Nullable private static Runnable runtimeUnavailable;
     private static RecipeRegistry.Snapshot registrationSnapshot;
     private static RecipeJeiDisplays registrationDisplays;
+    private static RecipeJeiDisplays.Snapshot registrationDescriptions;
+    private static boolean pageDataCurrent;
     @Nullable private static Definitions localStaticBaseline;
     private static boolean declarationEventPosted;
     private static boolean applying;
@@ -164,8 +166,13 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 return rejectGeneration("Local JEI declaration is no longer the desired server generation", capturedInvalidation, token, previous, wrappers, registry, gui);
             if (!RecipePoolJeiRegistry.INSTANCE.acceptsPools(snapshot.orderedPools()))
                 return rejectGeneration("JEI replacement changed the pool set or category bindings", capturedInvalidation, token, previous, wrappers, registry, gui);
-            var descriptions = displays.snapshot(RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools()));
-            var updates = staticInitial && initialPagesMatch(snapshot) ? initialUpdates()
+            var recipes = RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools());
+            var descriptions = staticInitial && previous != null
+                ? displays.snapshot(recipes, previous.displays, previous.descriptions) : displays.snapshot(recipes);
+            var updates = staticInitial
+                ? prepareStaticPages(RecipePoolJeiRegistry.INSTANCE.pages(), snapshot, descriptions,
+                    previous == null ? null : previous.descriptions,
+                    pageDataCurrent && previous != null && displays.sameProviders(previous.displays))
                 : RecipePoolJeiRegistry.INSTANCE.tryPrepareUpdates(snapshot.orderedPools(), descriptions);
             if (updates == null)
                 return rejectGeneration("A JEI page does not support definition updates", capturedInvalidation, token, previous, wrappers, registry, gui);
@@ -200,6 +207,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 if (invalidationEpoch == capturedInvalidation) unreadyReason = "HEI did not confirm all category, focus and recipe ID mappings";
                 return status();
             }
+            pageDataCurrent = false;
             for (var update : updates) update.apply();
             for (var update : updates) if (update.page().pool() != update.pool()) throw new IllegalStateException("JEI page did not install its prepared pool");
             for (var wrapper : wrappers) if (!access.confirmed(wrapper, false))
@@ -209,6 +217,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
             if (!finalDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
                 return rejectGeneration("HEI runtime or desired declaration became obsolete during installation", capturedInvalidation, token, previous, wrappers, registry, gui);
             generation = preparedGeneration;
+            pageDataCurrent = true;
             token.activate();
             unreadyReason = "";
             return status();
@@ -232,25 +241,38 @@ public class PrototypeJeiPlugin implements IModPlugin {
         return status();
     }
 
-    /** Unchanged initial custom pages keep the original static extension contract. */
-    private static List<RecipePoolJeiPage.PreparedUpdate> initialUpdates() {
+    /** Default pages remeasure the selected snapshot; unchanged opaque static pages retain their original factory. */
+    static @Nullable List<RecipePoolJeiPage.PreparedUpdate> prepareStaticPages(List<RecipePoolJeiPage> pages,
+                            RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays.Snapshot descriptions,
+                            @Nullable RecipeJeiDisplays.Snapshot measured, boolean currentProviders) {
         var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>();
-        for (var page : RecipePoolJeiRegistry.INSTANCE.pages()) updates.add(new RecipePoolJeiPage.PreparedUpdate() {
-            @Override public RecipePoolJeiPage page() { return page; }
-            @Override public RecipePool pool() { return page.pool(); }
-            @Override public RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
-                return page.createRecipe(recipe, display, ingredients);
+        for (var page : pages) {
+            var pool = snapshot.pools().get(page.pool().id());
+            if (pool == null) return null;
+            var update = page.prepareUpdate(pool, descriptions);
+            if (update == null) {
+                if (page.pool() != pool || measured == null || !currentProviders
+                    || !descriptions.sameDescriptions(pool.recipes(), measured)) return null;
+                update = new StaticPageUpdate(page, pool);
             }
-            @Override public void apply() {}
-        });
+            if (update.page() != page || update.pool() != pool)
+                throw new IllegalArgumentException("Static JEI page prepared a foreign pool or category");
+            updates.add(update);
+        }
         return updates;
     }
 
-    private static boolean initialPagesMatch(RecipeRegistry.Snapshot snapshot) {
-        for (var page : RecipePoolJeiRegistry.INSTANCE.pages()) {
-            if (snapshot.pools().get(page.pool().id()) != page.pool()) return false;
+    private record StaticPageUpdate(RecipePoolJeiPage page, RecipePool pool) implements RecipePoolJeiPage.PreparedUpdate {
+        @Override public RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
+            return page.createRecipe(recipe, display, ingredients);
         }
-        return true;
+        @Override public void apply() {
+            if (page.pool() != pool) throw new IllegalStateException("Static JEI page data changed before installation");
+        }
+    }
+
+    static Definitions registrationDefinition(@Nullable Definitions resolved, Definitions baseline) {
+        return resolved == null ? baseline : resolved;
     }
 
     private static void requireClientOwner() {
@@ -295,9 +317,11 @@ public class PrototypeJeiPlugin implements IModPlugin {
         ingredients = null;
         if (runtimeUnavailable != null) runtimeUnavailable.run();
         var resolved = desiredResolved == null ? null : desiredResolved.get();
-        registrationSnapshot = resolved != null ? resolved.snapshot() : generation != null ? generation.snapshot : RecipeRegistry.INSTANCE.snapshot();
-        var pools = registrationSnapshot.orderedPools();
         var initialLocal = localStaticBaseline == null ? RecipeRegistry.INSTANCE.snapshot() : null;
+        var baselineSnapshot = initialLocal == null ? Objects.requireNonNull(localStaticBaseline).snapshot() : initialLocal;
+        registrationSnapshot = resolved != null ? resolved.snapshot()
+            : baselineSnapshot;
+        var pools = registrationSnapshot.orderedPools();
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var displays = RecipeJeiDisplays.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();
@@ -307,8 +331,11 @@ public class PrototypeJeiPlugin implements IModPlugin {
         MinecraftForge.EVENT_BUS.post(new RecipePoolJeiRegistrationEvent(pages, displays, helper,
             initialLocal == null ? pools : initialLocal.orderedPools()));
         displays.freeze();
-        if (initialLocal != null) localStaticBaseline = new Definitions(initialLocal, displays.frozenCopy());
-        var categoryDisplays = resolved != null ? resolved.displays() : desiredResolved != null && generation != null ? generation.displays : displays;
+        if (initialLocal != null || resolved == null)
+            localStaticBaseline = new Definitions(baselineSnapshot, displays.frozenCopy());
+        // Static event pages and the wrappers share this event's final registration source.
+        var selected = registrationDefinition(resolved, new Definitions(baselineSnapshot, displays));
+        var categoryDisplays = selected.displays();
         registrationDisplays = categoryDisplays;
         deferPoolRegistration = ExternalRecipePoolPages.requested(pools);
         postInitialDeclaration = resolved == null;
@@ -346,8 +373,9 @@ public class PrototypeJeiPlugin implements IModPlugin {
         }
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();
-        pages.freeze(pools, pool -> new AutoLayoutRecipePage(pool, helper, displays),
-            displays.snapshot(RecipePoolJeiRegistry.recipesForOwnPages(pools, known)), known);
+        var descriptions = displays.capture(RecipePoolJeiRegistry.recipesForOwnPages(pools, known));
+        pages.freeze(pools, pool -> new AutoLayoutRecipePage(pool, helper, descriptions), descriptions, known);
+        registrationDescriptions = descriptions;
         for (var page : pages.pages()) registration.addRecipeCategories(page);
         if (!declarationEventPosted && postDeclaration) {
             declarationEventPosted = true;
@@ -376,6 +404,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         requireClientOwner();
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var displays = registrationDisplays;
+        var descriptions = Objects.requireNonNull(registrationDescriptions, "JEI category descriptions are not captured");
         ingredients = registration.getIngredientRegistry();
         var token = new RecipePoolJeiRecipe.DisplayToken();
         var allWrappers = new ObjectArrayList<RecipePoolJeiRecipe>();
@@ -383,7 +412,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         var allDisplays = new ObjectArrayList<JeiRecipeDisplay>();
         for (var page : pages.pages()) {
             for (var recipe : page.pool().recipes()) {
-                allDisplays.add(displays.describe(recipe));
+                allDisplays.add(descriptions.describe(recipe));
             }
         }
         // Finish the global identity audit before registering any pool's wrappers.
@@ -397,7 +426,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
             transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPatternEncodingTerm.class, helper), page.getUid());
             transfer.addRecipeTransferHandler(new PatternRecipeTransfer<>(ContainerPEATerm.class, helper), page.getUid());
             for (var recipe : page.pool().recipes()) {
-                var display = displays.describe(recipe);
+                var display = descriptions.describe(recipe);
                 var ingredients = new JeiRecipeIngredients(display, converters, registration.getIngredientRegistry(), identities);
                 var wrapper = Objects.requireNonNull(page.createRecipe(recipe, display, ingredients), "JEI page returned null wrapper");
                 validateWrapper(wrapper, page, page.pool(), recipe, display, ingredients);
@@ -419,8 +448,9 @@ public class PrototypeJeiPlugin implements IModPlugin {
                 }
             }
         }
-        generation = new Generation(registrationSnapshot, displays.frozenCopy(), displays.snapshot(pages.ownedRecipes(registrationSnapshot.orderedPools())),
+        generation = new Generation(registrationSnapshot, displays.frozenCopy(), descriptions,
             identities, ObjectLists.unmodifiable(allWrappers), token);
+        pageDataCurrent = true;
         registerExternalCatalysts(registration);
     }
 
