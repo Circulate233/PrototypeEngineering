@@ -4,7 +4,7 @@
 
 ## 当前检查点
 
-- 局部定义替换A/B首次专项106 tests/14 suites有1个容量base夹具失败，A的8项均通过；B同时修末次recipeWorkAllowed回调后缺少代复验的真实准入洞。`definition_registry_implementation`（high）现继续C服务器Publication/session/PN依赖接线，`definition_scanner_implementation`（high）独占扫描器及新增MachineWorkSlots窄修，`definition_replacement_audit`（max）复核。入口 `build/staging/definition-replacement/{registry-versioning,scanner-generation,server-publication}/` 和 `ab-first-results/`。当前未完整验证/提交，D/E JEI与远端声明仍须后继实现。
+- 2026-11-10 局部定义替换 A–E、外部 JEI 页面绑定和 AE 网络包结构已完成本轮实现与验证。专项 67 tests/12 suites、完整构建 1868 tests/247 suites，失败/错误/跳过均为零；67 Java 本机 MCP 全级零、完整读回匹配，MCP build 成功。源码已本地提交 `644e710`，未推送。入口 [定义替换](recipe-definition-replacement.md)，新证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/unified-final/`。
 - 当前总 goal 为 active。本批已本地提交 `e35604e` 结构纯计划缓存、`2c55f70` 仓室配置/自动IO、`812c0f9` 大槽窗口/禁用滑块；未推送。完整1814 tests/237 suites全零，73Java与两语言本机全级零/完整读回，MCP build成功；精确候选编译与独立复核通过，原暂存及工作字节保留。自动IO部分结算/回调重入、邻居和同TE内容变化的公平刷新已修复；材料提示仅槽位数量/槽位容量，AE默认等价与比例API保持，自动IO默认关闭，能源用户限额默认-1、0禁止且保留profile配置上限。证据从 `build/staging/chat-goal-recovery-2026-11-10/handoff.md` 进入。
 - 2026-11-10 总 goal 已恢复。本批已实现输入来源策略、跨控制器周期结构检查并发、PN 外部网络参与者；独立复核发现的问题均已修复。完整构建 1744 tests / 224 suites 全零，37 Java 本机全级零及完整读回一致，MCP build 成功。已本地提交 `b49f62c` / `239b52d` / `ad8c584`，未推送；入口 `build/staging/resumed-goal-plan/plan.md`、`unified/third-results/` 及同目录 `exact-commit-preparation/`。
 - GUI/两件工具修复已提交 `73233cb` / `7bcb5e5`；用户最新回复“尚未复验”。范围结构选择器、机械构建器、仓室/控制器、JEI 与样板导入的实机结果仍待用户，不能以构建通过替代。入口 [结构工具](structure-tools.md)、[GUI 修复](gui-parity.md)、[JEI](jei.md)。新反馈优先。
@@ -12,17 +12,17 @@
 
 ## 下一步
 
-1. 按已复核方案完成定义替换A版本/目录、B扫描、C服务端发布、D/E客户端显示与声明。先推进A并对齐后继接口；同ID替换仅影响后续使用，旧进程、预留、补偿及持久责任保持原定义，避免通用热重载或远程执行闭包。
-2. 本批三个阶段已完成验证与本地提交，不重复实施；详细实际检查、失败修复与79路径精确候选从恢复stage/handoff进入。继续保留背景、原暂存许可证删除和未跟踪测试。
-3. 按 `build/staging/resumed-goal-plan/crafttweaker-plan.md` 补齐已由原调用链确认的 Java 前提，再接 CT。不恢复 MUI/GUI DSL 或独立 Modern；ZSData 沿普通桥接组件和现有 codec。RESCAN/isCore 在 PM 真实创建路径未生效，不新造迁移语义。
-4. 游戏测试由用户自行启动；运行边界示例见 `run/visual-examples/README.md`。GUI 复验结果未到时继续已授权总目标。
+1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
+2. 按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等剩余 Java 前提，然后继续 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。
+3. 游戏由用户自行启动，GUI/工具/真实 HEI 页面和 AE 客户端调度仍待实机复验；纯行为测试不冒充原生运行通过。
+4. 用户已确认手动清理 build/.idea。原 stage 的 before/XML/MCP 原文件未恢复，旧条目只作历史；后续证据均保存在上述 build 外 recovery 目录。
 
 ## 必须遵守
 
 - 纯库 `prototype_eng` / `com.circulation.prototype_eng`；不添加正式机器、配方或玩法数值。先审查 PM/PN 的实际目的和实现，再复用/修正；保留未明确取消的效果及多线程能力。
 - Java 25；API按真实外部职责划分，不制造 XxxImpl 镜像。集合优先fastutil，AEKey数量用AEKey2LongMap，累加/扣减优先addTo，保留溢出及事务预检；必要原子字段优先共享VarHandle，不用非必要反射或异常控制流。
 - AEKey/AEKeyType负责身份，核心不用MEStorage；资源/FE仓保留十阶、三方向及公开扩展，混合仓两侧独立且各侧支持多类型，FE独立。
-- GUI直接AEBaseGui，无编辑器/第二套基类/ModularUI依赖或资源命名空间。LocalizationEnum：客户端getLocal、服务器text，GUI不拼翻译键或裸调用翻译。JEI每池一个默认或自定义接口实例。
+- GUI直接AEBaseGui，无编辑器/第二套基类/ModularUI依赖或资源命名空间。LocalizationEnum：客户端getLocal、服务器text，GUI不拼翻译键或裸调用翻译。JEI普通池每池一个默认或自定义实例；有效外部UID仅注册机器入口。
 - IDEA只用本机MCP。未挂载时连接已启用的 `http://127.0.0.1:64343/sse`，先tools/list，逐文件get_file_problems(errorsOnly:false)，记录/消除错误、警告与弱警告；不得操作桌面或修改IDE设置，构建不代替检查。
 - 阶段完成本地提交、不推送；不自行启动Minecraft客户端/服务端或Bootstrap/FML测试初始化，保留其他工作区修改及 `docs/INDEX.md~`。当前检查点更新本索引，详细状态/证据写实施进度。
 
@@ -45,7 +45,8 @@
 | 手动研究逐项投料/玩家回执/九状态恢复/暂停接管 | [manual-research.md](manual-research.md) |
 | 配方/组件/事务/扫描 | [recipes.md](recipes.md) |
 | 配方输入来源分配策略 | [input-allocation.md](input-allocation.md) |
-| 配方池 JEI 默认/独立自定义页面 | [jei.md](jei.md) |
+| 配方池 JEI 默认/独立自定义/外部已有页面 | [jei.md](jei.md) |
+| 局部定义替换/历史版本/远端声明 | [recipe-definition-replacement.md](recipe-definition-replacement.md) |
 | 机器 GUI/自定义入口 | [machine-gui.md](machine-gui.md) |
 | 方向工具/原交互数学 | [orientation-tool.md](orientation-tool.md) |
 | 范围结构选择器/机械构建器 | [structure-tools.md](structure-tools.md) |

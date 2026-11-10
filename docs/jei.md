@@ -50,7 +50,11 @@ AE2S 原导入链可以解包 GenericStack，但 PE 旧一单位查询图标及�
 
 `PrototypeJeiPlugin` 由客户端 JEI `@JEIPlugin` 扫描发现。`registerCategories` 使用已冻结的 `RecipeRegistry.INSTANCE.pools()`，发出客户端 `RecipePoolJeiRegistrationEvent`，随后冻结展示提供器与页面绑定并注册分类。事件提供真实池列表、`IGuiHelper`、页面注册表和展示注册表；外部客户端订阅者可调用 `event.pages().register(pool.id(), page)`，页面直接实现 `RecipePoolJeiPage`，无需继承默认具体类。
 
-每个规范配方池对应一个生效页面实例。未自定义的池创建一次 `AutoLayoutRecipePage`；自定义实例替代该池默认绑定。分类 UID 由稳定池 ID 生成；重复绑定、未知池、伪造同 ID 池、错误 UID 和错误 wrapper 归属被拒绝。页面绑定完整验证后统一发布。R32 从 canonical pool.machines() 的静态绑定匹配 canonical 控制器并引用同池 catalyst，不再根据 recipe group/workslot 猜关联；公开 `catalyst` 入口可追加导航物品，没有伪造控制器产物或第二份配方目录。
+普通规范配方池对应一个生效页面实例。未自定义的池创建一次 `AutoLayoutRecipePage`；自定义实例替代该池默认绑定。分类 UID 由稳定池 ID 生成；重复绑定、未知池、伪造同 ID 池、错误 UID 和错误 wrapper 归属被拒绝。页面绑定完整验证后统一发布。R32 从 canonical pool.machines() 的静态绑定匹配 canonical 控制器并引用同池 catalyst，不再根据 recipe group/workslot 猜关联；公开 `catalyst` 入口可追加导航物品，没有伪造控制器产物或第二份配方目录。
+
+`RecipePool.hasExistingJeiPage()` 为 true 且 `existingJeiPageId()` 是有效已注册分类 UID 时，直接使用外部页面，仅追加本池机器及显式 catalyst；不创建本池分类、配方 wrapper 或样板 transfer handler。`DefaultRecipePool` 和 `SimpleRecipePool.withExistingJeiPage(uid)` 保留设置，canonical freeze/定义替换也保留。存在外部页面请求时，注册通过 `ModRegistry.createRecipeRegistry` HEAD 的无反射 Mixin 延后到全部插件注册结束，覆盖后注册的旧插件分类。空/未知 ID 回退普通页面；明确禁用的分类保持禁用。多个池指向同一 UID 时机器入口去重。
+
+局部定义替换沿原分类准备新 wrapper，确认 HEI 的 category/focus/recipe-ID 映射后激活 token；旧 wrapper 和样板交互立即拒绝旧 token。外部页只保留绑定，不向外部追加本库配方。远端需要准确本地声明与服务器 notice/Ready 阶段；缺声明或 runtime 明确未就绪。当前工作区完整 1868 tests/247 suites 全零，原生 HEI 启动与真实网络调度仍待实机。协议与证据见 [定义替换](recipe-definition-replacement.md)。
 
 `RecipePoolJeiPage` 直接扩展 `IRecipeCategory<RecipePoolJeiRecipe>`。自定义页面负责原生背景、布局与槽位，可重写 `createRecipe` 返回自己的 wrapper 子类，并实现原生绘制、tooltip 和 click。当前 JEI 的 IRecipeWrapper 没有 scroll/drag/release 回调；wheel 使用 RecipePoolJeiRecipe.handleMouseScroll 和原生 Forge bridge。自定义 wrapper 重写 drawInfo 时调用 super.drawInfo 或 JeiRecipeInputs.drawn，登记实际绘制边界。wrapper 保留传入的规范 page、recipe、display 与 ingredients。`RecipeJeiDisplays.register` 按精确 requirement type 注册自定义展示职责，事件结束后不可追加；未知类型保留明确自定义入口说明。
 
