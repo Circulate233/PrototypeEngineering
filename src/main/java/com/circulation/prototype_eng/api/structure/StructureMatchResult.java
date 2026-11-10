@@ -9,7 +9,8 @@ public record StructureMatchResult(StructurePredicateResult status, @Nullable St
     public StructureMatchResult {
         Objects.requireNonNull(status);
         if (status == StructurePredicateResult.MATCHED) Objects.requireNonNull(match, "Matched structure occurrence");
-        else if (match != null) throw new IllegalArgumentException("Non-matched outcome contains a structure occurrence");
+        else if (match != null)
+            throw new IllegalArgumentException("Non-matched outcome contains a structure occurrence");
     }
 
     public static StructureMatchResult matched(StructureMatch match) {

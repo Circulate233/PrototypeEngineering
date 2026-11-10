@@ -49,7 +49,26 @@ class SelectiveOwnershipRestoreTest {
     private static final KeyType KEY_TYPE = new KeyType("selective_restore");
     private static final Key MATERIAL = new Key(KEY_TYPE, "material");
     private static final ResourceLocation SCORE = id("score");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static NumericAttributeModifier addition(String name, double amount) {
+        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static String frame(String value) {
+        return value.length() + ":" + value;
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("selective_restore_test", name);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(KEY_TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, NO_OP);
+    }
 
     @Test
     void restoringInstalledEffectsDoesNotReapplyModifiersAndEndKeepsForeignLayers() {
@@ -193,7 +212,8 @@ class SelectiveOwnershipRestoreTest {
         assertThrows(IllegalArgumentException.class, () -> overlays.restore(List.of(
             new RecipeOverlays.LayerSnapshot<>(path, fixture.target, "a", 0, fixture.addition, 1),
             new RecipeOverlays.LayerSnapshot<>(path, anotherDefinition, "b", 1, fixture.addition, 1))));
-        var mismatchedType = new RecipeRequirementType<Integer>(id("other_type"), new RecipeRequirementSystem<>() { });
+        var mismatchedType = new RecipeRequirementType<Integer>(id("other_type"), new RecipeRequirementSystem<>() {
+        });
         var mismatchedOverlay = new RecipeOverlayType<>(id("other_overlay"), mismatchedType, Integer::sum);
         assertThrows(IllegalArgumentException.class, () -> overlays.restore(List.of(
             new RecipeOverlays.LayerSnapshot<>(path, fixture.target, "a", 0, mismatchedOverlay, 1))));
@@ -208,7 +228,9 @@ class SelectiveOwnershipRestoreTest {
         var overlays = RecipeOverlays.getOrCreate(process);
         overlays.put(fixture.target, "original", fixture.addition, 10).complete();
         var primary = new IllegalStateException("restored applier failed");
-        var throwing = new RecipeOverlayType<Integer, Integer>(id("throwing"), fixture.type, (_, _) -> { throw primary; });
+        var throwing = new RecipeOverlayType<Integer, Integer>(id("throwing"), fixture.type, (_, _) -> {
+            throw primary;
+        });
         assertSame(primary, assertThrows(IllegalStateException.class, () -> overlays.restore(List.of(
             new RecipeOverlays.LayerSnapshot<>(fixture.target.path(null), fixture.target, "replacement", 0, throwing, 1)))));
         assertEquals(12, fixture.effective(process));
@@ -252,7 +274,9 @@ class SelectiveOwnershipRestoreTest {
     void childStartCompletionFaultStillPromotesClaimsAndDoesNotReplayTheModifier() {
         var fixture = new Fixture();
         var primary = new IllegalStateException("child START completion failed");
-        fixture.startCompletion = () -> { throw primary; };
+        fixture.startCompletion = () -> {
+            throw primary;
+        };
         var selection = fixture.selection(false);
         var process = fixture.process(selection, fixture.target);
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
@@ -300,24 +324,24 @@ class SelectiveOwnershipRestoreTest {
         assertEquals(11, fixture.output.availableAmount(MATERIAL));
     }
 
-    private static NumericAttributeModifier addition(String name, double amount) {
-        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
-    }
-
-    private static String frame(String value) { return value.length() + ":" + value; }
-    private static ResourceLocation id(String name) { return new ResourceLocation("selective_restore_test", name); }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(KEY_TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, NO_OP);
-    }
-
     private record Completion(Runnable startCompletion) implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { }
-        @Override public void complete() { startCompletion.run(); }
-        @Override public void rollback() { }
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void complete() {
+            startCompletion.run();
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private static final class Fixture {
@@ -335,14 +359,19 @@ class SelectiveOwnershipRestoreTest {
         private Fixture() {
             input.insert(MATERIAL, 20, Actionable.MODULATE);
             type = new RecipeRequirementType<>(new ResourceLocation("zz_restore", "resource"), new RecipeRequirementSystem<>() {
-                @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+                @Override
+                public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     return List.of(input.context(), output.context());
                 }
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     startAcquisitions++;
                     return acquire(process, requirement, RecipeStage.START);
                 }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     return acquire(process, requirement, RecipeStage.END);
                 }
             });
@@ -354,11 +383,14 @@ class SelectiveOwnershipRestoreTest {
             return new RecipeProcess(machine, new MachineRecipe(id("recipe"), 3, ObjectArrayList.of(requirements)), 17);
         }
 
-        private int effective(RecipeProcess process) { return RecipeOverlays.getOrCreate(process).resolve(target).payload(); }
+        private int effective(RecipeProcess process) {
+            return RecipeOverlays.getOrCreate(process).resolve(target).payload();
+        }
 
         private RecipeRequirement<SelectiveRequirement> selection(boolean nested) {
             var candidate = new RecipeRequirementType<Integer>(id("candidate_type"), new RecipeRequirementSystem<>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     return new Completion(startCompletion);
                 }
             }).requirement(id("candidate"), 0);
@@ -380,11 +412,31 @@ class SelectiveOwnershipRestoreTest {
             var reservation = Objects.requireNonNull(result.reservation());
             ProcessResult decision = stage == RecipeStage.END && blockEnd ? new ProcessResult.Blocked("output") : ProcessResult.SUCCESS;
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { checkScope(); return decision; }
-                @Override public List<ResourceReservation> reservations() { checkScope(); return List.of(reservation); }
-                @Override public void commit() { checkScope(); }
-                @Override public void rollback() { checkScope(); }
-                private void checkScope() { assertEquals(path, process.requirementPath()); }
+                @Override
+                public ProcessResult result() {
+                    checkScope();
+                    return decision;
+                }
+
+                @Override
+                public List<ResourceReservation> reservations() {
+                    checkScope();
+                    return List.of(reservation);
+                }
+
+                @Override
+                public void commit() {
+                    checkScope();
+                }
+
+                @Override
+                public void rollback() {
+                    checkScope();
+                }
+
+                private void checkScope() {
+                    assertEquals(path, process.requirementPath());
+                }
             };
         }
     }

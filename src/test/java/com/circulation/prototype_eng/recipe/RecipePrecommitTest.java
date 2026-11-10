@@ -30,10 +30,107 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipePrecommitTest {
-    @Test void rejectionRestoresPreparedEffectsAndAppliedEnergyWithoutOrdinaryCommits() {
+    private static boolean settleStart(RecipeProcess process, boolean deferred) {
+        var session = Objects.requireNonNull(process.beginTick());
+        var stage = Objects.requireNonNull(session.nextStage());
+        assertEquals(RecipeStage.START, stage.phase());
+        stage.acquire();
+        boolean accepted;
+        if (deferred) {
+            var batch = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(List.of(stage)));
+            accepted = false;
+            while (batch.decision() == ResourceBatch.Decision.OPEN) {
+                for (var source : batch.sources()) {
+                    if (source.state() == ResourceBatch.SourceState.RESERVED) {
+                        assertTrue(source.apply());
+                    }
+                }
+                if (!stage.hasContinuation()) {
+                    accepted = batch.commit(() -> true);
+                    break;
+                }
+                if (!batch.stage(() -> true)) {
+                    break;
+                }
+                if (!RecipeProcess.Stage.acquireNextBatch(List.of(stage), batch)) {
+                    break;
+                }
+            }
+            if (!accepted) {
+                assertTrue(batch.rollback());
+            }
+            for (var source : batch.sources()) {
+                assertTrue(source.resolve());
+            }
+            batch.finish();
+            assertTrue(stage.settleBatch(null));
+        } else {
+            accepted = stage.settleSynchronously() == ProcessResult.SUCCESS;
+        }
+        session.finish();
+        assertTrue(process.quiescent());
+        return accepted;
+    }
+
+    private static void assertScope(RecipeProcess process, RequirementPath path, @Nullable RecipeProcess.Tick tick) {
+        assertEquals(path, process.requirementPath());
+        assertNotNull(Objects.requireNonNull(path.parent()).parent());
+        if (tick == null) {
+            assertThrows(NullPointerException.class, process::tickContext);
+        } else {
+            assertEquals(new RecipeProcess.Tick(0, 0, 0, 0), tick);
+            assertSame(tick, process.tickContext());
+        }
+    }
+
+    private static RecipeRequirement<String> observer(String name,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id(name), system).requirement(id(name), "value");
+    }
+
+    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 2, List.of(requirements)), 17);
+    }
+
+    private static EnergyBuffer energy() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        energy.receiveEnergy(100, Actionable.MODULATE);
+        return energy;
+    }
+
+    private static ResourceLocation id(String value) {
+        return new ResourceLocation("precommit_test", value);
+    }
+
+    @Test
+    void rejectionRestoresPreparedEffectsAndAppliedEnergyWithoutOrdinaryCommits() {
         for (boolean deferred : List.of(false, true)) {
             var energy = energy();
             var events = new ObjectArrayList<String>();
@@ -53,7 +150,8 @@ class RecipePrecommitTest {
         }
     }
 
-    @Test void successfulPreparationPrecedesEveryBusinessCommitAndKeepsItsCost() {
+    @Test
+    void successfulPreparationPrecedesEveryBusinessCommitAndKeepsItsCost() {
         for (boolean deferred : List.of(false, true)) {
             var energy = energy();
             var events = new ObjectArrayList<String>();
@@ -71,7 +169,8 @@ class RecipePrecommitTest {
         }
     }
 
-    @Test void nestedCheckpointAndSelectionKeepPathsAndFrozenTicksThroughRejection() {
+    @Test
+    void nestedCheckpointAndSelectionKeepPathsAndFrozenTicksThroughRejection() {
         for (boolean deferred : List.of(false, true)) {
             var events = new ObjectArrayList<String>();
             var effects = new ObjectArrayList<Effect>();
@@ -79,11 +178,14 @@ class RecipePrecommitTest {
                 var path = current.requirementPath();
                 RecipeProcess.Tick tick = phase == RecipeStage.TICK ? current.tickContext() : null;
                 var effect = new Effect(phase.name(), events, phase != RecipeStage.TICK) {
-                    @Override public boolean prepareCommit() {
+                    @Override
+                    public boolean prepareCommit() {
                         assertScope(current, path, tick);
                         return super.prepareCommit();
                     }
-                    @Override public void rollback() {
+
+                    @Override
+                    public void rollback() {
                         assertScope(current, path, tick);
                         super.rollback();
                     }
@@ -108,12 +210,17 @@ class RecipePrecommitTest {
         }
     }
 
-    @Test void preparationFailureKeepsExactCleanupAndCannotReplayItsPartialEffects() {
+    @Test
+    void preparationFailureKeepsExactCleanupAndCannotReplayItsPartialEffects() {
         var events = new ObjectArrayList<String>();
         var first = new Effect("first", events, true);
         var failure = new IllegalStateException("prepared then failed");
         Effect failing = new Effect("failing", events, true) {
-            @Override public boolean prepareCommit() { super.prepareCommit(); throw failure; }
+            @Override
+            public boolean prepareCommit() {
+                super.prepareCommit();
+                throw failure;
+            }
         };
         var batch = Objects.requireNonNull(ResourceBatch.tryAcquire(List.of(), List.of(first, failing)));
         assertSame(failure, assertThrows(IllegalStateException.class, () -> batch.commit(() -> true)));
@@ -125,12 +232,14 @@ class RecipePrecommitTest {
         assertEquals(0, first.cost + failing.cost);
     }
 
-    @Test void scopedPreparationRejectsReentryAndAllowsOnlyItsOriginalRollback() {
+    @Test
+    void scopedPreparationRejectsReentryAndAllowsOnlyItsOriginalRollback() {
         var events = new ObjectArrayList<String>();
         var process = process(observer("scoped", (_, _) -> RequirementTransaction.SUCCESS));
         RequirementTransaction[] captured = {null};
         var requirement = observer("captured", (_, _) -> new Effect("captured", events, false) {
-            @Override public boolean prepareCommit() {
+            @Override
+            public boolean prepareCommit() {
                 var transaction = Objects.requireNonNull(captured[0]);
                 assertThrows(IllegalStateException.class, transaction::prepareCommit);
                 assertThrows(IllegalStateException.class, transaction::commit);
@@ -148,7 +257,8 @@ class RecipePrecommitTest {
         process.requirePersistenceBoundary();
     }
 
-    @Test void failedSynchronousPreparationRetainsUncertainCleanupWithoutReplayingPreparation() {
+    @Test
+    void failedSynchronousPreparationRetainsUncertainCleanupWithoutReplayingPreparation() {
         var events = new ObjectArrayList<String>();
         var failure = new IllegalStateException("prepared then failed");
         var effect = new RecoveringEffect(events, failure);
@@ -169,17 +279,30 @@ class RecipePrecommitTest {
         assertThrows(IllegalStateException.class, process::requirePersistenceBoundary);
     }
 
-    @Test void postCommitRejectionCompensatesReceiptsEnergyAndProcessProgress() {
+    @Test
+    void postCommitRejectionCompensatesReceiptsEnergyAndProcessProgress() {
         for (boolean deferred : List.of(false, true)) {
             var energy = energy();
             var events = new ObjectArrayList<String>();
             boolean[] authorized = {true};
             Effect receipt = new Effect("receipt", events, true) {
-                @Override public boolean validateCommit() { return authorized[0]; }
+                @Override
+                public boolean validateCommit() {
+                    return authorized[0];
+                }
             };
             var mutation = new Effect("mutation", events, true) {
-                @Override public void commit() { super.commit(); authorized[0] = false; }
-                @Override public void rollback() { super.rollback(); authorized[0] = true; }
+                @Override
+                public void commit() {
+                    super.commit();
+                    authorized[0] = false;
+                }
+
+                @Override
+                public void rollback() {
+                    super.rollback();
+                    authorized[0] = true;
+                }
             };
             receipt.tokens = List.of(Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 20).reservation()));
             var process = process(observer("a", (_, _) -> receipt), observer("b", (_, _) -> mutation));
@@ -194,14 +317,16 @@ class RecipePrecommitTest {
         }
     }
 
-    @Test void nestedValidationKeepsCapturedScopeAndReversesCommittedSelectorModifiers() {
+    @Test
+    void nestedValidationKeepsCapturedScopeAndReversesCommittedSelectorModifiers() {
         for (boolean deferred : List.of(false, true)) {
             var events = new ObjectArrayList<String>();
             var leaf = observer("leaf", (current, phase) -> {
                 var path = current.requirementPath();
                 RecipeProcess.Tick tick = phase == RecipeStage.TICK ? current.tickContext() : null;
                 return new Effect(phase.name(), events, true) {
-                    @Override public boolean validateCommit() {
+                    @Override
+                    public boolean validateCommit() {
                         assertScope(current, path, tick);
                         events.add("validate:" + phase);
                         return phase != RecipeStage.TICK;
@@ -223,68 +348,6 @@ class RecipePrecommitTest {
         }
     }
 
-    private static boolean settleStart(RecipeProcess process, boolean deferred) {
-        var session = Objects.requireNonNull(process.beginTick());
-        var stage = Objects.requireNonNull(session.nextStage());
-        assertEquals(RecipeStage.START, stage.phase());
-        stage.acquire();
-        boolean accepted;
-        if (deferred) {
-            var batch = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(List.of(stage)));
-            accepted = false;
-            while (batch.decision() == ResourceBatch.Decision.OPEN) {
-                for (var source : batch.sources()) {
-                    if (source.state() == ResourceBatch.SourceState.RESERVED) { assertTrue(source.apply()); }
-                }
-                if (!stage.hasContinuation()) { accepted = batch.commit(() -> true); break; }
-                if (!batch.stage(() -> true)) { break; }
-                if (!RecipeProcess.Stage.acquireNextBatch(List.of(stage), batch)) { break; }
-            }
-            if (!accepted) { assertTrue(batch.rollback()); }
-            for (var source : batch.sources()) { assertTrue(source.resolve()); }
-            batch.finish();
-            assertTrue(stage.settleBatch(null));
-        } else { accepted = stage.settleSynchronously() == ProcessResult.SUCCESS; }
-        session.finish();
-        assertTrue(process.quiescent());
-        return accepted;
-    }
-
-    private static void assertScope(RecipeProcess process, RequirementPath path, @Nullable RecipeProcess.Tick tick) {
-        assertEquals(path, process.requirementPath());
-        assertNotNull(Objects.requireNonNull(path.parent()).parent());
-        if (tick == null) { assertThrows(NullPointerException.class, process::tickContext); }
-        else { assertEquals(new RecipeProcess.Tick(0, 0, 0, 0), tick); assertSame(tick, process.tickContext()); }
-    }
-
-    private static RecipeRequirement<String> observer(String name,
-            BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(id(name), system).requirement(id(name), "value");
-    }
-
-    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 2, List.of(requirements)), 17);
-    }
-
-    private static EnergyBuffer energy() {
-        var energy = new EnergyBuffer(100, () -> {});
-        energy.receiveEnergy(100, Actionable.MODULATE);
-        return energy;
-    }
-
-    private static ResourceLocation id(String value) { return new ResourceLocation("precommit_test", value); }
-
     private static class Effect implements RequirementTransaction {
         private final String name;
         private final List<String> events;
@@ -299,13 +362,45 @@ class RecipePrecommitTest {
             this.accepted = accepted;
         }
 
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public List<ResourceReservation> reservations() { return tokens; }
-        @Override public boolean prepareCommit() { events.add("prepare:" + name); cost++; return accepted; }
-        @Override public void commit() { events.add("commit:" + name); }
-        @Override public void complete() { events.add("complete:" + name); resolution = Resolution.COMPLETED; }
-        @Override public void rollback() { events.add("rollback:" + name); cost = 0; resolution = Resolution.ROLLED_BACK; }
-        @Override public Resolution resolution() { return resolution; }
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public List<ResourceReservation> reservations() {
+            return tokens;
+        }
+
+        @Override
+        public boolean prepareCommit() {
+            events.add("prepare:" + name);
+            cost++;
+            return accepted;
+        }
+
+        @Override
+        public void commit() {
+            events.add("commit:" + name);
+        }
+
+        @Override
+        public void complete() {
+            events.add("complete:" + name);
+            resolution = Resolution.COMPLETED;
+        }
+
+        @Override
+        public void rollback() {
+            events.add("rollback:" + name);
+            cost = 0;
+            resolution = Resolution.ROLLED_BACK;
+        }
+
+        @Override
+        public Resolution resolution() {
+            return resolution;
+        }
     }
 
     private static final class RecoveringEffect extends Effect {
@@ -319,14 +414,24 @@ class RecipePrecommitTest {
             this.failure = failure;
         }
 
-        @Override public boolean prepareCommit() { super.prepareCommit(); throw failure; }
-        @Override public void rollback() {
+        @Override
+        public boolean prepareCommit() {
+            super.prepareCommit();
+            throw failure;
+        }
+
+        @Override
+        public void rollback() {
             rollbackAttempts++;
-            if (!recoveryAllowed) { throw new IllegalStateException("uncertain rollback"); }
+            if (!recoveryAllowed) {
+                throw new IllegalStateException("uncertain rollback");
+            }
             super.rollback();
             rolledBack = true;
         }
-        @Override public Resolution resolution() {
+
+        @Override
+        public Resolution resolution() {
             return rolledBack ? Resolution.ROLLED_BACK : recoveryAllowed ? Resolution.REVERSIBLE : Resolution.UNKNOWN;
         }
     }

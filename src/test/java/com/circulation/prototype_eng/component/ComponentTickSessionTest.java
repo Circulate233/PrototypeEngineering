@@ -19,7 +19,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ComponentTickSessionTest {
-    private static final Runnable NO_OP = () -> {};
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static ComponentType<Object, String> install(ComponentMap<Object> map, Object owner, RecordingSystem system) {
+        var type = new ComponentType<>(id(system.name), _ -> system.name, List.of(system));
+        map.create(type, owner);
+        return type;
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("component_session_test", name);
+    }
 
     @Test
     void retainedSessionCapturesAllPhasesBeforeCallbacksEditValuesAndDependencyGraph() {
@@ -72,9 +83,14 @@ class ComponentTickSessionTest {
             install(map, owner, first);
             install(map, owner, second);
             var fault = new IllegalStateException("early callback failed");
-            Runnable fail = () -> { throw fault; };
-            if (failingPre) { first.preAction = fail; }
-            else { first.tickAction = fail; }
+            Runnable fail = () -> {
+                throw fault;
+            };
+            if (failingPre) {
+                first.preAction = fail;
+            } else {
+                first.tickAction = fail;
+            }
 
             assertSame(fault, assertThrows(IllegalStateException.class, () -> map.beginTick(owner)));
             assertEquals(failingPre ? List.of("pre:first:first")
@@ -100,9 +116,15 @@ class ComponentTickSessionTest {
         var first = new RecordingSystem("first", events);
         var second = new RecordingSystem("second", events);
         var third = new RecordingSystem("third", events);
-        first.postAction = () -> { throw firstFault; };
-        second.postAction = () -> { throw secondFault; };
-        third.postAction = () -> { throw primary; };
+        first.postAction = () -> {
+            throw firstFault;
+        };
+        second.postAction = () -> {
+            throw secondFault;
+        };
+        third.postAction = () -> {
+            throw primary;
+        };
         install(map, owner, first);
         install(map, owner, second);
         install(map, owner, third);
@@ -125,8 +147,12 @@ class ComponentTickSessionTest {
         var secondFault = new AssertionError("second post failed");
         var first = new RecordingSystem("first", events);
         var second = new RecordingSystem("second", events);
-        first.postAction = () -> { throw firstFault; };
-        second.postAction = () -> { throw secondFault; };
+        first.postAction = () -> {
+            throw firstFault;
+        };
+        second.postAction = () -> {
+            throw secondFault;
+        };
         install(map, owner, first);
         install(map, owner, second);
         install(map, owner, new RecordingSystem("third", events));
@@ -181,14 +207,6 @@ class ComponentTickSessionTest {
         }
     }
 
-    private static ComponentType<Object, String> install(ComponentMap<Object> map, Object owner, RecordingSystem system) {
-        var type = new ComponentType<>(id(system.name), _ -> system.name, List.of(system));
-        map.create(type, owner);
-        return type;
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("component_session_test", name); }
-
     private static final class RecordingSystem implements ComponentSystem<Object, String> {
         private final String name;
         private final List<String> events;
@@ -201,16 +219,25 @@ class ComponentTickSessionTest {
             this.events = events;
         }
 
-        @Override public ResourceLocation id() { return ComponentTickSessionTest.id(name); }
-        @Override public void onPreTick(Object owner, String component) {
+        @Override
+        public ResourceLocation id() {
+            return ComponentTickSessionTest.id(name);
+        }
+
+        @Override
+        public void onPreTick(Object owner, String component) {
             events.add("pre:" + name + ":" + component);
             preAction.run();
         }
-        @Override public void onTick(Object owner, String component) {
+
+        @Override
+        public void onTick(Object owner, String component) {
             events.add("tick:" + name + ":" + component);
             tickAction.run();
         }
-        @Override public void onPostTick(Object owner, String component) {
+
+        @Override
+        public void onPostTick(Object owner, String component) {
             events.add("post:" + name + ":" + component);
             postAction.run();
         }

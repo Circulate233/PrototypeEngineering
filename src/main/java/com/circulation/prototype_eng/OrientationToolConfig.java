@@ -4,12 +4,15 @@ import net.minecraftforge.common.config.Configuration;
 
 import java.io.File;
 
-/** PM's existing orientation-tool defaults and bounds; loaded before item registration. */
+/**
+ * PM's existing orientation-tool defaults and bounds; loaded before item registration.
+ */
 public final class OrientationToolConfig {
     private static final Settings DEFAULTS = new Settings(1024, 14, 20.0, 5.0, -2.4, 5, 5, 1, 5, 1);
     private static Settings settings = DEFAULTS;
 
-    private OrientationToolConfig() { }
+    private OrientationToolConfig() {
+    }
 
     public static void load(File directory) {
         var config = new Configuration(new File(directory, Tags.MOD_ID + "/tools.cfg"));
@@ -26,13 +29,18 @@ public final class OrientationToolConfig {
             config.getInt("orientationToolDurabilityCostAttackDisabled", category, DEFAULTS.durabilityCostAttackDisabled(), 0, 1000, "Durability cost per disabled attack."),
             config.getInt("orientationToolDurabilityCostBreakEnabled", category, DEFAULTS.durabilityCostBreakEnabled(), 0, 1000, "Durability cost per enabled block break."),
             config.getInt("orientationToolDurabilityCostBreakDisabled", category, DEFAULTS.durabilityCostBreakDisabled(), 0, 1000, "Durability cost per disabled block break."));
-        if (config.hasChanged()) { config.save(); }
+        if (config.hasChanged()) {
+            config.save();
+        }
     }
 
-    public static Settings settings() { return settings; }
+    public static Settings settings() {
+        return settings;
+    }
 
     public record Settings(int maxDurability, int enchantability, double attackDamageEnabled,
-            double attackDamageDisabled, double attackSpeed, int durabilityCostRotateEnabled,
-            int durabilityCostAttackEnabled, int durabilityCostAttackDisabled,
-            int durabilityCostBreakEnabled, int durabilityCostBreakDisabled) { }
+                           double attackDamageDisabled, double attackSpeed, int durabilityCostRotateEnabled,
+                           int durabilityCostAttackEnabled, int durabilityCostAttackDisabled,
+                           int durabilityCostBreakEnabled, int durabilityCostBreakDisabled) {
+    }
 }

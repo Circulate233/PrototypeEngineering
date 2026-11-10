@@ -14,5 +14,7 @@ public enum StructurePreviewText implements LocalizationEnum {
     private final String translationKey = "gui." + Tags.MOD_ID + ".StructurePreview." + name();
 
     @Override
-    public String getTranslationKey() { return translationKey; }
+    public String getTranslationKey() {
+        return translationKey;
+    }
 }

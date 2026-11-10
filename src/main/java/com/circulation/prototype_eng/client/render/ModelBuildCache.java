@@ -1,21 +1,20 @@
 package com.circulation.prototype_eng.client.render;
 
+import com.circulation.prototype_eng.client.render.StructureRenderAnchors.Part;
 import com.circulation.prototype_eng.client.render.gecko.GeckoAnimationDriver;
 import com.circulation.prototype_eng.client.render.gecko.GeckoGeoModelInstances;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBuildTask;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
-import com.circulation.prototype_eng.client.render.StructureRenderAnchors.Part;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
-import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.Map;
 
 /** Client-owned current/next slots. Time changes may reuse a completed frame; base/owner/epoch changes revoke it first. */
 public class ModelBuildCache implements AutoCloseable {
@@ -43,6 +42,12 @@ public class ModelBuildCache implements AutoCloseable {
         GeckoAnimationDriver.initialize();
     }
 
+    private static void throwFailure(@Nullable Throwable failure) {
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
+        throw new IllegalStateException("Gecko model build failed", failure);
+    }
+
     public GeckoRenderRequest.Epoch resourceEpoch() {
         client.requireOwner();
         return assets.epoch();
@@ -51,20 +56,6 @@ public class ModelBuildCache implements AutoCloseable {
     public ReusableModelVboUploader uploader() {
         client.requireOwner();
         return uploader;
-    }
-
-    private record PartMode(Part part, GeckoModelBaker.BakeMode mode) {
-    }
-
-    private static final class Slot {
-        final GeckoGeoModelInstances.Instance instance;
-        GeckoModelBuildTask current;
-        @Nullable GeckoModelBuildTask next;
-
-        Slot(GeckoGeoModelInstances.Instance instance, GeckoModelBuildTask current) {
-            this.instance = instance;
-            this.current = current;
-        }
     }
 
     public BuiltModelBuffers.@Nullable Lease request(GeckoRenderRequest request) {
@@ -202,9 +193,17 @@ public class ModelBuildCache implements AutoCloseable {
         BuiltModelBuffers.rethrow(failure);
     }
 
-    private static void throwFailure(@Nullable Throwable failure) {
-        if (failure instanceof Error error) throw error;
-        if (failure instanceof RuntimeException exception) throw exception;
-        throw new IllegalStateException("Gecko model build failed", failure);
+    private record PartMode(Part part, GeckoModelBaker.BakeMode mode) {
+    }
+
+    private static final class Slot {
+        final GeckoGeoModelInstances.Instance instance;
+        GeckoModelBuildTask current;
+        @Nullable GeckoModelBuildTask next;
+
+        Slot(GeckoGeoModelInstances.Instance instance, GeckoModelBuildTask current) {
+            this.instance = instance;
+            this.current = current;
+        }
     }
 }

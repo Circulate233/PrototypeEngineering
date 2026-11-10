@@ -6,9 +6,11 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Detached contents of one physical data center; revision is runtime state, never a saved permit. */
+/**
+ * Detached contents of one physical data center; revision is runtime state, never a saved permit.
+ */
 public record DataCenterResearchSnapshot(UUID dataCenterId, int level, int capacity, long revision,
-                                        Object2IntMap<ResourceLocation> storedResearch) {
+                                         Object2IntMap<ResourceLocation> storedResearch) {
     public DataCenterResearchSnapshot {
         Objects.requireNonNull(dataCenterId);
         if (level < 0 || capacity < 1 || revision < 0 || storedResearch.size() > capacity) {
@@ -16,7 +18,9 @@ public record DataCenterResearchSnapshot(UUID dataCenterId, int level, int capac
         }
         for (var entry : storedResearch.object2IntEntrySet()) {
             Objects.requireNonNull(entry.getKey());
-            if (entry.getIntValue() < 1) { throw new IllegalArgumentException("Stored research levels must be positive"); }
+            if (entry.getIntValue() < 1) {
+                throw new IllegalArgumentException("Stored research levels must be positive");
+            }
         }
         storedResearch = ResearchSnapshots.levels(storedResearch);
     }

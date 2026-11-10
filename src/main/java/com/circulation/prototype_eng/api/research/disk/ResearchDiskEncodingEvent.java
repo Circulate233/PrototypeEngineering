@@ -33,7 +33,9 @@ public final class ResearchDiskEncodingEvent implements ResearchItemDownloadEven
         this.outputTemplate = ResearchDiskNbtCodec.copyStack(outputTemplate);
     }
 
-    /** Bind a consumer-registered material and disk template in the existing item-download event. */
+    /**
+     * Bind a consumer-registered material and disk template in the existing item-download event.
+     */
     @SuppressWarnings("unused") // Consumer registration through the existing Java item-download event.
     public static void register(ResearchItemDownloadRegistry downloads, ResearchRegistry research, ItemStack material,
                                 ItemStack outputTemplate) {

@@ -47,6 +47,52 @@ class RecipeProcessLifecycleTest {
     private static final Key MATERIAL = new Key(TYPE, "material");
     private static final Key PRODUCT = new Key(TYPE, "product");
 
+    private static RecipeRequirement<String> observer(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        return observer(new ResourceLocation("zz_external", "observer"), acquire);
+    }
+
+    private static RecipeRequirement<String> observer(ResourceLocation location,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(location, system).requirement(location, "payload");
+    }
+
+    private static RecipeProcess process(MachineInstance machine, int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
+    }
+
+    private static MachineInstance machine(MachineHatches hatches) {
+        var machine = new MachineInstance();
+        machine.components().put(MachineHatches.TYPE, hatches);
+        return machine;
+    }
+
+    private static BufferedResourceHatch hatch(HatchMode mode, long capacity) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, capacity);
+        return new BufferedResourceHatch(mode, 1, capacities, () -> {
+        });
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("external_process", path);
+    }
+
     @Test
     void blockedStagesPreserveAttributesBalancesAndBothTimelines() {
         var input = hatch(HatchMode.INPUT, 20);
@@ -55,8 +101,10 @@ class RecipeProcessLifecycleTest {
         var products = Objects.requireNonNull(output.output());
         materials.insert(MATERIAL, 3, Actionable.MODULATE);
         products.insert(PRODUCT, 1, Actionable.MODULATE);
-        var energy = new EnergyBuffer(100, () -> { });
-        var generated = new EnergyBuffer(100, () -> { });
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        var generated = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(20, Actionable.MODULATE);
         var machine = machine(new MachineHatches(List.of(input, output), List.of(energy), List.of(generated)));
         machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2.8);
@@ -137,7 +185,8 @@ class RecipeProcessLifecycleTest {
 
     @Test
     void commitFaultRefundsTickAndPermanentlyStopsItsDeterministicClock() {
-        var energy = new EnergyBuffer(10, () -> { });
+        var energy = new EnergyBuffer(10, () -> {
+        });
         energy.receiveEnergy(5, Actionable.MODULATE);
         boolean[] fail = {true};
         var ticks = new ObjectArrayList<RecipeProcess.Tick>();
@@ -145,12 +194,26 @@ class RecipeProcessLifecycleTest {
         var process = process(machine(new MachineHatches(List.of(), List.of(energy), List.of())), 1,
             RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(1, 1, 0, 0, false)),
             observer((current, stage) -> {
-                if (stage != RecipeStage.TICK) { return RequirementTransaction.SUCCESS; }
+                if (stage != RecipeStage.TICK) {
+                    return RequirementTransaction.SUCCESS;
+                }
                 ticks.add(current.tickContext());
                 return new RequirementTransaction() {
-                    @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                    @Override public void commit() { if (fail[0]) { throw primary; } }
-                    @Override public void rollback() { }
+                    @Override
+                    public ProcessResult result() {
+                        return ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public void commit() {
+                        if (fail[0]) {
+                            throw primary;
+                        }
+                    }
+
+                    @Override
+                    public void rollback() {
+                    }
                 };
             }));
 
@@ -189,9 +252,20 @@ class RecipeProcessLifecycleTest {
                 observer((_, stage) -> {
                     visits.add(stage);
                     return new RequirementTransaction() {
-                        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                        @Override public void commit() { armed[0] = stage == failingStage; }
-                        @Override public void rollback() { armed[0] = false; }
+                        @Override
+                        public ProcessResult result() {
+                            return ProcessResult.SUCCESS;
+                        }
+
+                        @Override
+                        public void commit() {
+                            armed[0] = stage == failingStage;
+                        }
+
+                        @Override
+                        public void rollback() {
+                            armed[0] = false;
+                        }
                     };
                 }));
             assertSame(failure, assertThrows(IllegalStateException.class, process::tick));
@@ -202,7 +276,11 @@ class RecipeProcessLifecycleTest {
                 case TICK -> List.of(RecipeStage.START, RecipeStage.TICK);
                 case END -> List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END);
             };
-            long expectedEnergy = switch (failingStage) { case START -> 8; case TICK -> 5; case END -> 6; };
+            long expectedEnergy = switch (failingStage) {
+                case START -> 8;
+                case TICK -> 5;
+                case END -> 6;
+            };
             assertEquals(expectedVisits, visits);
             assertEquals(expectedEnergy, energy.storedEnergy());
             assertThrows(IllegalStateException.class, process::tick);
@@ -219,14 +297,26 @@ class RecipeProcessLifecycleTest {
     void frozenTickAdvanceMatchesRequirementsEvenWhenThatStageChangesSpeed() {
         var timeline = new ObjectArrayList<RecipeProcess.Tick>();
         var process = process(new MachineInstance(), 3, observer((current, stage) -> {
-            if (stage != RecipeStage.TICK) { return RequirementTransaction.SUCCESS; }
+            if (stage != RecipeStage.TICK) {
+                return RequirementTransaction.SUCCESS;
+            }
             timeline.add(current.tickContext());
             var before = current.attributes().localSnapshot();
             current.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 2);
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { }
-                @Override public void rollback() { current.attributes().restoreLocal(before); }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                }
+
+                @Override
+                public void rollback() {
+                    current.attributes().restoreLocal(before);
+                }
             };
         }));
         assertSame(ProcessResult.SUCCESS, process.tick());
@@ -244,15 +334,25 @@ class RecipeProcessLifecycleTest {
         var primary = new IllegalStateException("late commit failed");
         var process = process(new MachineInstance(), 1,
             observer(new ResourceLocation("aaa_external", "change_base"), (current, stage) -> {
-                if (stage != RecipeStage.START) { return RequirementTransaction.SUCCESS; }
+                if (stage != RecipeStage.START) {
+                    return RequirementTransaction.SUCCESS;
+                }
                 return new RequirementTransaction() {
                     private boolean applied;
-                    @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                    @Override public void commit() {
+
+                    @Override
+                    public ProcessResult result() {
+                        return ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public void commit() {
                         current.attributes().setBase(value, current.attributes().value(value) + 5);
                         applied = true;
                     }
-                    @Override public void rollback() {
+
+                    @Override
+                    public void rollback() {
                         if (applied) {
                             current.attributes().setBase(value, current.attributes().value(value) - 5);
                         }
@@ -263,9 +363,19 @@ class RecipeProcessLifecycleTest {
                 StandardMachineAttributes.PROCESS_SPEED,
                 new NumericAttributeModifier("speed", 1, AttributeModifier.Operation.ADDITION))),
             observer((_, _) -> new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { throw primary; }
-                @Override public void rollback() { }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    throw primary;
+                }
+
+                @Override
+                public void rollback() {
+                }
             }));
         process.attributes().setBase(value, 10);
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
@@ -282,7 +392,8 @@ class RecipeProcessLifecycleTest {
         var materials = Objects.requireNonNull(input.input());
         var products = Objects.requireNonNull(output.output());
         materials.insert(MATERIAL, Long.MAX_VALUE - 1, Actionable.MODULATE);
-        var energy = new EnergyBuffer(Long.MAX_VALUE, () -> { });
+        var energy = new EnergyBuffer(Long.MAX_VALUE, () -> {
+        });
         energy.receiveEnergy(Long.MAX_VALUE, Actionable.MODULATE);
         var machine = machine(new MachineHatches(List.of(input, output), List.of(energy), List.of()));
         machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
@@ -308,17 +419,41 @@ class RecipeProcessLifecycleTest {
         var process = process(new MachineInstance(), 1, observer((_, stage) -> {
             events.add(stage.name());
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return failure; }
-                @Override public void commit() { throw new AssertionError("Failed stage committed"); }
-                @Override public void rollback() { events.add("rollback"); }
+                @Override
+                public ProcessResult result() {
+                    return failure;
+                }
+
+                @Override
+                public void commit() {
+                    throw new AssertionError("Failed stage committed");
+                }
+
+                @Override
+                public void rollback() {
+                    events.add("rollback");
+                }
             };
         }));
         var component = new ComponentType<RecipeProcess, String>(id("component"), _ -> "state",
             List.of(new ComponentSystem<>() {
-                @Override public ResourceLocation id() { return RecipeProcessLifecycleTest.id("callbacks"); }
-                @Override public void onPreTick(RecipeProcess owner, String value) { events.add("pre"); }
-                @Override public void onTick(RecipeProcess owner, String value) { events.add("component"); }
-                @Override public void onPostTick(RecipeProcess owner, String value) {
+                @Override
+                public ResourceLocation id() {
+                    return RecipeProcessLifecycleTest.id("callbacks");
+                }
+
+                @Override
+                public void onPreTick(RecipeProcess owner, String value) {
+                    events.add("pre");
+                }
+
+                @Override
+                public void onTick(RecipeProcess owner, String value) {
+                    events.add("component");
+                }
+
+                @Override
+                public void onPostTick(RecipeProcess owner, String value) {
                     events.add("post:" + owner.state().lifecycle());
                 }
             }));
@@ -328,42 +463,4 @@ class RecipeProcessLifecycleTest {
         assertEquals(List.of("pre", "component", "START", "rollback", "post:FAILED"), events);
         assertEquals(0, process.state().successfulTicks());
     }
-
-    private static RecipeRequirement<String> observer(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
-        return observer(new ResourceLocation("zz_external", "observer"), acquire);
-    }
-
-    private static RecipeRequirement<String> observer(ResourceLocation location,
-                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(location, system).requirement(location, "payload");
-    }
-
-    private static RecipeProcess process(MachineInstance machine, int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
-    }
-
-    private static MachineInstance machine(MachineHatches hatches) {
-        var machine = new MachineInstance();
-        machine.components().put(MachineHatches.TYPE, hatches);
-        return machine;
-    }
-
-    private static BufferedResourceHatch hatch(HatchMode mode, long capacity) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, capacity);
-        return new BufferedResourceHatch(mode, 1, capacities, () -> { });
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("external_process", path); }
 }

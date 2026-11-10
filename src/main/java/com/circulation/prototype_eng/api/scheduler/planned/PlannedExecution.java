@@ -8,7 +8,9 @@ package com.circulation.prototype_eng.api.scheduler.planned;
  * round. Methods require the owning thread outside callbacks; none transfer ownership to a worker.
  */
 public interface PlannedExecution {
-    /** A fresh cleanup budget cannot renew forward authority; a finished execution returns true without replay. */
+    /**
+     * A fresh cleanup budget cannot renew forward authority; a finished execution returns true without replay.
+     */
     boolean advance(PlannedDeadline cleanupDeadline);
 
     /**
@@ -18,9 +20,13 @@ public interface PlannedExecution {
      */
     void awaitExit();
 
-    /** Pure fact query: true only after every captured callback, resource and ownership obligation is settled. */
+    /**
+     * Pure fact query: true only after every captured callback, resource and ownership obligation is settled.
+     */
     boolean finished();
 
-    /** Idempotently revokes forward work, including after completion, without claiming physical exit. */
+    /**
+     * Idempotently revokes forward work, including after completion, without claiming physical exit.
+     */
     void cancel(PlannedCancellationToken.Reason reason);
 }

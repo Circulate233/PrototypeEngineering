@@ -30,7 +30,9 @@ public final class ItemDeliveryTemplates {
         return result;
     }
 
-    /** Native NBT writes empty lists as TAG_END, including lists nested inside business tags or caps. */
+    /**
+     * Native NBT writes empty lists as TAG_END, including lists nested inside business tags or caps.
+     */
     private static NBTBase normalizeEmptyLists(NBTBase value) {
         if (value instanceof NBTTagCompound compound) {
             for (var key : compound.getKeySet()) {

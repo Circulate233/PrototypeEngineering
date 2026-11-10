@@ -13,7 +13,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 
-/** Saves only ordered local attributes; callers restore the decoded map after complete validation. */
+/**
+ * Saves only ordered local attributes; callers restore the decoded map after complete validation.
+ */
 public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation, MachineAttributes.LocalAttribute>> {
     private final AttributeModifierNbt modifiers;
 

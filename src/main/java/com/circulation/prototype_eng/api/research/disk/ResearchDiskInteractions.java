@@ -13,7 +13,9 @@ import net.minecraft.world.World;
 
 import java.util.Objects;
 
-/** Common pre-block interaction for consumer-registered disk items and external controller hosts. */
+/**
+ * Common pre-block interaction for consumer-registered disk items and external controller hosts.
+ */
 public final class ResearchDiskInteractions {
     private ResearchDiskInteractions() {
     }
@@ -31,7 +33,8 @@ public final class ResearchDiskInteractions {
         var stack = player.getHeldItem(hand);
         if (!(stack.getItem() instanceof ResearchDiskCarrier carrier) || !carrier.hasResearchDiskData(stack)
             || !(world.getTileEntity(pos) instanceof MachineControllerHost)) return EnumActionResult.PASS;
-        if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, facing, stack)) return EnumActionResult.FAIL;
+        if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, facing, stack))
+            return EnumActionResult.FAIL;
         if (!world.isRemote && player instanceof EntityPlayerMP actor) {
             ServerResearch.requestDiskImport(actor, pos, hand, facing,
                 result -> actor.sendStatusMessage(ResearchGuiText.diskImport(result.status()).text(), true));

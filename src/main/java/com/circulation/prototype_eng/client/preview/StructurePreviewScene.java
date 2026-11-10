@@ -1,41 +1,43 @@
 package com.circulation.prototype_eng.client.preview;
 
+import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.block.MachineControllerBlock;
+import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderGlobal;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.WorldVertexBufferUploader;
+import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.block.state.IBlockState;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.BlockRenderLayer;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraftforge.client.ForgeHooksClient;
+import net.minecraftforge.client.MinecraftForgeClient;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.glu.GLU;
+
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.Objects;
-import com.circulation.prototype_eng.block.MachineControllerBlock;
-import com.circulation.prototype_eng.block.MachineControllerBlocks;
-import net.minecraft.client.renderer.texture.TextureMap;
-import com.circulation.prototype_eng.api.structure.StructureDisplay;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
-import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.client.renderer.WorldVertexBufferUploader;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
-import net.minecraft.util.EnumFacing;
-import net.minecraft.util.BlockRenderLayer;
-import net.minecraftforge.client.ForgeHooksClient;
-import net.minecraftforge.client.MinecraftForgeClient;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+
 /** Public concrete preview control for AEBaseGui and independent custom RecipePoolJeiPage composition. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewScene implements AutoCloseable {
@@ -46,20 +48,21 @@ public final class StructurePreviewScene implements AutoCloseable {
     private final long animationStartNanos = System.nanoTime();
     private final AutoCloseable invalidationSubscription, closeSubscription;
     private final PreviewTileEntities<TileEntity> tiles = new PreviewTileEntities<>(new NativeTiles());
+    private final IntArrayList boundaryCells = new IntArrayList();
+    private final FloatBuffer colors = BufferUtils.createFloatBuffer(4);
+    private final FloatBuffer modelview = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16), projected = BufferUtils.createFloatBuffer(3);
+    private final IntBuffer nativeViewport = BufferUtils.createIntBuffer(4);
+    private final IntBuffer oldScissor = BufferUtils.createIntBuffer(4);
+    private final WorldVertexBufferUploader controllerUploader = new WorldVertexBufferUploader();
     private PreviewBlockAccess access;
     private Object token, world;
     private boolean closed;
     private MachineControllerBlock<?> controller;
     private int controllerCursor;
     private boolean controllerResolved;
-    private final IntArrayList boundaryCells = new IntArrayList();
     private int boundaryCursor;
-    private final FloatBuffer colors = BufferUtils.createFloatBuffer(4);
-    private final FloatBuffer modelview = BufferUtils.createFloatBuffer(16), projection = BufferUtils.createFloatBuffer(16), projected = BufferUtils.createFloatBuffer(3);
-    private final IntBuffer nativeViewport = BufferUtils.createIntBuffer(4);
-    private final IntBuffer oldScissor = BufferUtils.createIntBuffer(4);
-    private final WorldVertexBufferUploader controllerUploader = new WorldVertexBufferUploader();
     private StructurePreviewCamera.Viewport viewport = new StructurePreviewCamera.Viewport(0, 0, 1, 1);
+    private Set<BlockPos> highlighted = Set.of();
 
     public StructurePreviewScene(StructurePreviewView view) {
         this.view = view;
@@ -70,9 +73,43 @@ public final class StructurePreviewScene implements AutoCloseable {
         closeSubscription = view.previews().onClosed(this::close);
         PreviewGuiResources.add(this);
     }
-    public StructurePreviewView view() { return view; }
-    public StructurePreviewCamera camera() { return camera; }
-    public StructurePreviewCamera.Viewport viewport() { return viewport; }
+
+    private static int wireColor(@Nullable StructureProjectionState.Status status, int hash) {
+        if (status != null) switch (status) {
+            case DISPLAY_MATCH -> {
+                return 0xcc55ff55;
+            }
+            case MISSING -> {
+                return 0xccff5555;
+            }
+            case DIFFERENT -> {
+                return 0xccffaa55;
+            }
+            case UNLOADED -> {
+                return 0xcc55ffff;
+            }
+            case UNKNOWN -> {
+            }
+        }
+        return 0xaa000000 | (120 + (hash & 63)) << 16 | (120 + ((hash >> 6) & 63)) << 8 | 120 + ((hash >> 12) & 63);
+    }
+
+    private static void drawWireBox(BlockPos pos, int color) {
+        RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(pos), (color >> 16 & 255) / 255f,
+            (color >> 8 & 255) / 255f, (color & 255) / 255f, (color >>> 24) / 255f);
+    }
+
+    public StructurePreviewView view() {
+        return view;
+    }
+
+    public StructurePreviewCamera camera() {
+        return camera;
+    }
+
+    public StructurePreviewCamera.Viewport viewport() {
+        return viewport;
+    }
 
     public void invalidate() {
         if (closed) return;
@@ -183,7 +220,8 @@ public final class StructurePreviewScene implements AutoCloseable {
                     GlStateManager.disableLighting();
                     if (!highlighted.isEmpty()) {
                         GlStateManager.disableDepth();
-                        for (var position : highlighted) RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
+                        for (var position : highlighted)
+                            RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(position).grow(.002), .18f, .42f, 1, 1);
                         GlStateManager.enableDepth();
                     }
                     var picked = view.picked();
@@ -233,7 +271,10 @@ public final class StructurePreviewScene implements AutoCloseable {
             int index = boundaryCursor++;
             var pos = model.cells().get(index).position();
             for (var facing : EnumFacing.values()) {
-                if (view.at(pos.offset(facing)) == null) { boundaryCells.add(index); break; }
+                if (view.at(pos.offset(facing)) == null) {
+                    boundaryCells.add(index);
+                    break;
+                }
             }
         }
     }
@@ -271,22 +312,6 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
 
-    private static int wireColor(@Nullable StructureProjectionState.Status status, int hash) {
-        if (status != null) switch (status) {
-            case DISPLAY_MATCH -> { return 0xcc55ff55; }
-            case MISSING -> { return 0xccff5555; }
-            case DIFFERENT -> { return 0xccffaa55; }
-            case UNLOADED -> { return 0xcc55ffff; }
-            case UNKNOWN -> { }
-        }
-        return 0xaa000000 | (120 + (hash & 63)) << 16 | (120 + ((hash >> 6) & 63)) << 8 | 120 + ((hash >> 12) & 63);
-    }
-
-    private static void drawWireBox(BlockPos pos, int color) {
-        RenderGlobal.drawSelectionBoundingBox(new AxisAlignedBB(pos), (color >> 16 & 255) / 255f,
-            (color >> 8 & 255) / 255f, (color & 255) / 255f, (color >>> 24) / 255f);
-    }
-
     public void compass(int x, int y) {
         var font = Minecraft.getMinecraft().fontRenderer;
         boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
@@ -309,18 +334,37 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
     }
 
-    private Set<BlockPos> highlighted = Set.of();
-    public void highlighted(Set<BlockPos> positions) { highlighted = Set.copyOf(positions); }
-    public boolean press(double x, double y, int button) { return camera.press(viewport, x, y, button); }
-    public boolean drag(double x, double y) { var bounds = view.sceneBounds(); return bounds != null && camera.drag(x, y, bounds, viewport); }
-    public boolean release(double x, double y, int button) { return camera.release(button) && view.choose(camera.pick(view, viewport, x, y)); }
+    public void highlighted(Set<BlockPos> positions) {
+        highlighted = Set.copyOf(positions);
+    }
+
+    public boolean press(double x, double y, int button) {
+        return camera.press(viewport, x, y, button);
+    }
+
+    public boolean drag(double x, double y) {
+        var bounds = view.sceneBounds();
+        return bounds != null && camera.drag(x, y, bounds, viewport);
+    }
+
+    public boolean release(double x, double y, int button) {
+        return camera.release(button) && view.choose(camera.pick(view, viewport, x, y));
+    }
 
     /** Finish a read-only scanner drag without choosing a block. */
-    public void releaseWithoutPicking(int button) { camera.release(button); }
-    public boolean wheel(double x, double y, int delta) { return camera.wheel(viewport, x, y, delta); }
-    @Override public void close() {
+    public void releaseWithoutPicking(int button) {
+        camera.release(button);
+    }
+
+    public boolean wheel(double x, double y, int delta) {
+        return camera.wheel(viewport, x, y, delta);
+    }
+
+    @Override
+    public void close() {
         if (closed) return;
-        closed = true; PreviewGuiResources.remove(this);
+        closed = true;
+        PreviewGuiResources.remove(this);
         Throwable failure = null;
         try {
             machines.close();
@@ -328,11 +372,23 @@ public final class StructurePreviewScene implements AutoCloseable {
             failure = caught;
         }
         try {
-            tiles.close(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
-        try { meshes.close(); } catch (RuntimeException | Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
-        for (var subscription : new AutoCloseable[] {invalidationSubscription, closeSubscription}) try { subscription.close(); }
-        catch (Exception caught) { failure = PreviewBlockModelCache.merge(failure, new IllegalStateException("Cannot detach viewer subscription", caught)); }
-        catch (Error caught) { failure = PreviewBlockModelCache.merge(failure, caught); }
+            tiles.close();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        try {
+            meshes.close();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        for (var subscription : new AutoCloseable[]{invalidationSubscription, closeSubscription})
+            try {
+                subscription.close();
+            } catch (Exception caught) {
+                failure = PreviewBlockModelCache.merge(failure, new IllegalStateException("Cannot detach viewer subscription", caught));
+            } catch (Error caught) {
+                failure = PreviewBlockModelCache.merge(failure, caught);
+            }
         PreviewBlockModelCache.rethrow(failure);
     }
 
@@ -372,15 +428,25 @@ public final class StructurePreviewScene implements AutoCloseable {
                 for (var layer : BlockRenderLayer.values()) {
                     if (!state.getBlock().canRenderInLayer(state, layer)) continue;
                     ForgeHooksClient.setRenderLayer(layer);
-                    if (layer == BlockRenderLayer.TRANSLUCENT) { GlStateManager.enableBlend(); GlStateManager.depthMask(false); }
-                    else { GlStateManager.disableBlend(); GlStateManager.depthMask(true); }
+                    if (layer == BlockRenderLayer.TRANSLUCENT) {
+                        GlStateManager.enableBlend();
+                        GlStateManager.depthMask(false);
+                    } else {
+                        GlStateManager.disableBlend();
+                        GlStateManager.depthMask(true);
+                    }
                     var buffer = Tessellator.getInstance().getBuffer();
                     buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-                    try { buffer.addVertexData(access.renderLayer(state, BlockPos.ORIGIN)); }
-                    finally { buffer.finishDrawing(); }
+                    try {
+                        buffer.addVertexData(access.renderLayer(state, BlockPos.ORIGIN));
+                    } finally {
+                        buffer.finishDrawing();
+                    }
                     controllerUploader.draw(buffer);
                 }
-            } finally { ForgeHooksClient.setRenderLayer(previousLayer); }
+            } finally {
+                ForgeHooksClient.setRenderLayer(previousLayer);
+            }
         } finally {
             OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, lightX, lightY);
             GlStateManager.popMatrix();
@@ -389,35 +455,52 @@ public final class StructurePreviewScene implements AutoCloseable {
     }
 
     private final class NativeTiles implements PreviewTileEntities.Owner<TileEntity> {
-        @Override public @Nullable TileEntity create(Object currentWorld, IBlockState state, BlockPos pos, @Nullable NBTTagCompound ownTag) {
+        @Override
+        public @Nullable TileEntity create(Object currentWorld, IBlockState state, BlockPos pos, @Nullable NBTTagCompound ownTag) {
             var world = (World) currentWorld;
             if (!state.getBlock().hasTileEntity(state)) return null;
             var tile = state.getBlock().createTileEntity(world, state);
             if (tile == null) return null;
             try {
-                tile.setWorld(world); tile.setPos(pos.toImmutable());
+                tile.setWorld(world);
+                tile.setPos(pos.toImmutable());
                 if (ownTag != null) tile.handleUpdateTag(ownTag.copy());
-                tile.setWorld(world); tile.setPos(pos.toImmutable());
+                tile.setWorld(world);
+                tile.setPos(pos.toImmutable());
                 return tile;
             } catch (RuntimeException | Error failure) {
                 Throwable combined = failure;
-                try { tile.invalidate(); } catch (RuntimeException | Error cleanup) { combined = PreviewBlockModelCache.merge(combined, cleanup); }
+                try {
+                    tile.invalidate();
+                } catch (RuntimeException | Error cleanup) {
+                    combined = PreviewBlockModelCache.merge(combined, cleanup);
+                }
                 PreviewBlockModelCache.rethrow(combined);
                 return null;
             }
         }
-        @Override public void release(TileEntity tile) { tile.invalidate(); }
-        @Override public void draw(TileEntity tile, BlockPos position, float partialTicks) {
+
+        @Override
+        public void release(TileEntity tile) {
+            tile.invalidate();
+        }
+
+        @Override
+        public void draw(TileEntity tile, BlockPos position, float partialTicks) {
             var before = PreviewBlockModels.State.capture(colors);
             float lightX = OpenGlHelper.lastBrightnessX, lightY = OpenGlHelper.lastBrightnessY;
             GlStateManager.pushMatrix();
             try {
-                GlStateManager.enableTexture2D(); GlStateManager.enableDepth(); GlStateManager.disableCull();
-                GlStateManager.disableLighting(); OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240);
+                GlStateManager.enableTexture2D();
+                GlStateManager.enableDepth();
+                GlStateManager.disableCull();
+                GlStateManager.disableLighting();
+                OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240, 240);
                 TileEntityRendererDispatcher.instance.render(tile, position.getX(), position.getY(), position.getZ(), partialTicks, -1, 1);
             } finally {
                 OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, lightX, lightY);
-                GlStateManager.popMatrix(); before.restore();
+                GlStateManager.popMatrix();
+                before.restore();
             }
         }
     }

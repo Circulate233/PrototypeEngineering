@@ -17,12 +17,21 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchStationsTest {
     private static final UUID OWNER = new UUID(0, 1);
 
-    @Test void dimensionsRotateAndUuidOrderChoosesPrimaryWhileStationsShareOnePool() {
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("research_stations_test", name);
+    }
+
+    @Test
+    void dimensionsRotateAndUuidOrderChoosesPrimaryWhileStationsShareOnePool() {
         try (var fixture = new StationFixtures(10, 2)) {
             var first = fixture.station(2, -1);
             var second = fixture.station(2, -1);
@@ -41,7 +50,8 @@ class ResearchStationsTest {
         }
     }
 
-    @Test void realDataCenterTierRolesFormationTeamsAndDuplicateIdentityFilterCandidates() {
+    @Test
+    void realDataCenterTierRolesFormationTeamsAndDuplicateIdentityFilterCandidates() {
         try (var fixture = new StationFixtures(10, 1)) {
             var station = fixture.station(2, 0);
             fixture.role(NetworkDeviceRole.DEVICE, 2, 0, OWNER, fixture.world);
@@ -62,7 +72,8 @@ class ResearchStationsTest {
         }
     }
 
-    @Test void stationLeasesLimitParticipationButDoNotConsumeIndependentResearchNumericSupply() {
+    @Test
+    void stationLeasesLimitParticipationButDoNotConsumeIndependentResearchNumericSupply() {
         try (var fixture = new StationFixtures(1, 2)) {
             fixture.station(2, 0);
             fixture.station(2, 0);
@@ -85,7 +96,8 @@ class ResearchStationsTest {
         }
     }
 
-    @Test void renewalKeepsPrimaryAndExactPoolAcrossTicksAndRejectsNewHatchBindings() {
+    @Test
+    void renewalKeepsPrimaryAndExactPoolAcrossTicksAndRejectsNewHatchBindings() {
         try (var fixture = new StationFixtures(10, 2)) {
             var first = fixture.station(2, 0);
             fixture.station(2, 0);
@@ -106,7 +118,8 @@ class ResearchStationsTest {
         }
     }
 
-    @Test void equalDimensionNeverPoolsDifferentWorldSessionObjects() {
+    @Test
+    void equalDimensionNeverPoolsDifferentWorldSessionObjects() {
         try (var fixture = new StationFixtures(10, 2)) {
             fixture.station(2, 0);
             fixture.role(NetworkDeviceRole.RESEARCH_STATION, 2, 0, OWNER, new Object());
@@ -118,7 +131,8 @@ class ResearchStationsTest {
         }
     }
 
-    @Test void exactPublicationProofIsReadInsideForeignSourceFenceWithoutNewStorageLocks() {
+    @Test
+    void exactPublicationProofIsReadInsideForeignSourceFenceWithoutNewStorageLocks() {
         try (var fixture = new StationFixtures(10, 2)) {
             var station = fixture.station(2, 0);
             fixture.refresh();
@@ -126,8 +140,11 @@ class ResearchStationsTest {
             var permit = Objects.requireNonNull(station.machine().components().get(station.role())).workPermit();
             var snapshot = Objects.requireNonNull(permit).deviceSnapshot();
             var fence = Objects.requireNonNull(StorageFence.tryAcquire(List.of(station.energy().context())));
-            try { assertTrue(fence.access(capture::current)); }
-            finally { fence.release(); }
+            try {
+                assertTrue(fence.access(capture::current));
+            } finally {
+                fence.release();
+            }
             fixture.network.revoke();
             assertFalse(capture.current());
             assertSame(snapshot, permit.deviceSnapshot(), "Old capability exposes its own frozen snapshot, never a fresh capture");
@@ -135,6 +152,4 @@ class ResearchStationsTest {
             assertNull(fixture.selector.renew(capture));
         }
     }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("research_stations_test", name); }
 }

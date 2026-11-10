@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.gui;
 
 import ae2.container.AEBaseContainer;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.container.MachineContainer;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -9,8 +10,6 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-
 /**
  * Common-side Java container bindings. Register during mod initialization, on both logical sides.
  * Custom containers call super(player, tile); bind their matching screen on the client only.
@@ -18,7 +17,8 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 public final class MachineGuiRegistry {
     private static final Object2ObjectOpenHashMap<ResourceLocation, BiFunction<InventoryPlayer, MachineControllerHost, ? extends AEBaseContainer>> FACTORIES = new Object2ObjectOpenHashMap<>();
 
-    private MachineGuiRegistry() { }
+    private MachineGuiRegistry() {
+    }
 
     @SuppressWarnings("unused") // Downstream mods register their own containers before opening any GUI.
     public static void register(ResourceLocation type, BiFunction<InventoryPlayer, MachineControllerHost, ? extends AEBaseContainer> factory) {

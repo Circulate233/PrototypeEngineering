@@ -1,25 +1,26 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
-import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.probability.BinomialSampler;
 import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Independent quantitative facts; no process, hatches, context, authorization or reservation.
@@ -92,6 +93,13 @@ class ResourceComputation implements RecipePureComputation {
         this.tick = tick;
     }
 
+    private static void addChecked(AEKey2LongMap amounts, AEKey key, long amount) {
+        if (amount > Long.MAX_VALUE - amounts.getLong(key)) {
+            throw new ArithmeticException("long overflow");
+        }
+        amounts.addTo(key, amount);
+    }
+
     boolean matches(ResourceRequirement payload, RecipeStage stage, long seed, String salt, int parallelism,
                     double chance, ProbabilityTuning tuning, List<AEKey2LongMap> sources, int hatchCount,
                     RecipeProcess.Tick tick) {
@@ -113,7 +121,9 @@ class ResourceComputation implements RecipePureComputation {
             && originalPool.pickCount() == currentPool.pickCount() && originalPool.candidates().size() == currentPool.candidates().size());
     }
 
-    /** Exact effective-payload proof runs in the pure worker, one entry or group header per unit. */
+    /**
+     * Exact effective-payload proof runs in the pure worker, one entry or group header per unit.
+     */
     private boolean provePayload(RecipeWorkBudget budget) {
         while (cached != null && payloadPhase < 7) {
             var original = cached.payload;
@@ -492,12 +502,5 @@ class ResourceComputation implements RecipePureComputation {
         if (!complete) {
             throw new IllegalStateException("Resource preparation is incomplete");
         }
-    }
-
-    private static void addChecked(AEKey2LongMap amounts, AEKey key, long amount) {
-        if (amount > Long.MAX_VALUE - amounts.getLong(key)) {
-            throw new ArithmeticException("long overflow");
-        }
-        amounts.addTo(key, amount);
     }
 }

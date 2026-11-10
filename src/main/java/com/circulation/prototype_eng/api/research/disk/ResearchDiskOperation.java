@@ -7,9 +7,12 @@ import com.circulation.prototype_eng.api.research.download.ResearchDownloadMater
 import java.util.Objects;
 import java.util.UUID;
 
-/** Frozen database and single-slot obligations, checkpointed by the research world's writer. */
+/**
+ * Frozen database and single-slot obligations, checkpointed by the research world's writer.
+ */
 public record ResearchDiskOperation(Intent intent, ResearchDataCenters.Target target, ResearchDiskCommit commit,
-                                    ResearchDownloadMaterial material, long createdAt, Status status, boolean databaseArmed) {
+                                    ResearchDownloadMaterial material, long createdAt, Status status,
+                                    boolean databaseArmed) {
     public ResearchDiskOperation {
         Objects.requireNonNull(intent);
         Objects.requireNonNull(target);
@@ -42,7 +45,8 @@ public record ResearchDiskOperation(Intent intent, ResearchDataCenters.Target ta
     }
 
     public ResearchDiskOperation armed() {
-        if (status != Status.PREPARED || databaseArmed) throw new IllegalStateException("Disk operation cannot arm another database attempt");
+        if (status != Status.PREPARED || databaseArmed)
+            throw new IllegalStateException("Disk operation cannot arm another database attempt");
         return new ResearchDiskOperation(intent, target, commit, material, createdAt, status, true);
     }
 

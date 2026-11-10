@@ -12,11 +12,11 @@ import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
-import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
@@ -51,9 +51,32 @@ class RecipeOverlaysTest {
     private static final Key MATERIAL = new Key(FIRST, "material");
     private static final Key LIQUID = new Key(SECOND, "liquid");
     private static final Key PRODUCT = new Key(FIRST, "product");
-    private static final RecipeRequirementType<Integer> NUMBER = new RecipeRequirementType<>(id("number"), new RecipeRequirementSystem<>() { });
+    private static final RecipeRequirementType<Integer> NUMBER = new RecipeRequirementType<>(id("number"), new RecipeRequirementSystem<>() {
+    });
     private static final RecipeOverlayType<Integer, Integer> ADD = new RecipeOverlayType<>(id("add"), NUMBER, Math::addExact);
     private static final RecipeOverlayType<Integer, Integer> MULTIPLY = new RecipeOverlayType<>(id("multiply"), NUMBER, Math::multiplyExact);
+
+    private static RecipeProcess process(int duration, MachineHatches hatches, RecipeRequirement<?>... requirements) {
+        var owner = new MachineInstance();
+        owner.components().put(MachineHatches.TYPE, hatches);
+        return new RecipeProcess(owner, new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 1);
+    }
+
+    private static BufferedResourceHatch hatch(HatchMode mode, int slots) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST, 100);
+        capacities.put(SECOND, 100);
+        return new BufferedResourceHatch(mode, slots, capacities, () -> {
+        });
+    }
+
+    private static GenericStack stack(Key key, long amount) {
+        return new GenericStack(key, amount);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("overlay_test", path);
+    }
 
     @Test
     void partialLayersOverrideAllResourceStagesWithoutChangingAnotherProcessUsingTheSameRecipe() {
@@ -115,8 +138,10 @@ class RecipeOverlaysTest {
 
     @Test
     void energyTickPatchAcceptsZeroAndVoidWithoutReplacingStartAndEndQuantities() {
-        var input = new EnergyBuffer(100, () -> { });
-        var output = new EnergyBuffer(10, () -> { });
+        var input = new EnergyBuffer(100, () -> {
+        });
+        var output = new EnergyBuffer(10, () -> {
+        });
         input.receiveEnergy(3, Actionable.MODULATE);
         var target = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(3, 20, 30, 8, false));
         var process = process(1, new MachineHatches(List.of(), List.of(input), List.of(output)), target);
@@ -154,7 +179,9 @@ class RecipeOverlaysTest {
         var overlays = RecipeOverlays.getOrCreate(process(0, NO_HATCHES, target));
         var pending = overlays.put(target, "own", ADD, 4);
         assertThrows(IllegalStateException.class, overlays::clear);
-        var broken = new RecipeOverlayType<Integer, Integer>(id("broken"), NUMBER, (_, _) -> { throw new IllegalArgumentException("bad patch"); });
+        var broken = new RecipeOverlayType<Integer, Integer>(id("broken"), NUMBER, (_, _) -> {
+            throw new IllegalArgumentException("bad patch");
+        });
         assertThrows(IllegalArgumentException.class, () -> overlays.put(target, "own", broken, 1));
         assertEquals(14, overlays.resolve(target).payload());
         var counterfeit = new RecipeRequirementType<>(NUMBER.id(), NUMBER.system());
@@ -213,20 +240,4 @@ class RecipeOverlaysTest {
         assertSame(ProcessResult.SUCCESS, process.tick());
         assertEquals(0, input.amount(MATERIAL));
     }
-
-    private static RecipeProcess process(int duration, MachineHatches hatches, RecipeRequirement<?>... requirements) {
-        var owner = new MachineInstance();
-        owner.components().put(MachineHatches.TYPE, hatches);
-        return new RecipeProcess(owner, new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 1);
-    }
-
-    private static BufferedResourceHatch hatch(HatchMode mode, int slots) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST, 100);
-        capacities.put(SECOND, 100);
-        return new BufferedResourceHatch(mode, slots, capacities, () -> { });
-    }
-
-    private static GenericStack stack(Key key, long amount) { return new GenericStack(key, amount); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("overlay_test", path); }
 }

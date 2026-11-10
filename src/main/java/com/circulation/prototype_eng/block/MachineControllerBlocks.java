@@ -6,6 +6,7 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.Block;
 import net.minecraft.item.Item;
 import net.minecraft.util.ResourceLocation;
@@ -18,13 +19,16 @@ import net.minecraftforge.fml.common.registry.GameRegistry;
 import java.util.List;
 import java.util.Objects;
 
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class MachineControllerBlocks {
     private static List<MachineControllerBlock<?>> blocks = List.of();
-    private MachineControllerBlocks() { }
-    public static List<MachineControllerBlock<?>> all() { return blocks; }
+
+    private MachineControllerBlocks() {
+    }
+
+    public static List<MachineControllerBlock<?>> all() {
+        return blocks;
+    }
 
     @SubscribeEvent
     public static void registerBlocks(RegistryEvent.Register<Block> event) {

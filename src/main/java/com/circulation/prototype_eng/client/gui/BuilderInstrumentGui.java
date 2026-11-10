@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.client.gui;
 
 import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import ae2.client.gui.AEBaseGui;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import com.circulation.prototype_eng.container.StructureToolContainer;
@@ -52,7 +52,9 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
             && mc.world.isBlockLoaded(anchor) && mc.world.getTileEntity(anchor) instanceof MachineControllerHost machine ? machine : null;
         var nextOrientation = host == null ? BlockOrientation.NORTH_UP : host.orientation();
         if (next.equals(id) && nextOrientation == orientation) {
-            preview.view().anchor(anchor); applySelections(); return;
+            preview.view().anchor(anchor);
+            applySelections();
+            return;
         }
         var oldCamera = preview == null ? null : preview.scene().camera();
         if (preview != null) preview.close();
@@ -115,7 +117,8 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         } finally {
             GlStateManager.popMatrix();
         }
-        if (!container.snapshot().getBoolean("Bound")) fontRenderer.drawStringWithShadow(StructureToolText.Unbound.getLocal(), 10, 207, 0xffffff);
+        if (!container.snapshot().getBoolean("Bound"))
+            fontRenderer.drawStringWithShadow(StructureToolText.Unbound.getLocal(), 10, 207, 0xffffff);
         var tag = container.snapshot();
         var state = BuilderState.state(tag);
         int done = BuilderState.done(tag), total = BuilderState.total(tag);

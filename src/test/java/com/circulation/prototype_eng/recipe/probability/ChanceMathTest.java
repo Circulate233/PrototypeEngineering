@@ -71,11 +71,21 @@ class ChanceMathTest {
             this.values = values;
         }
 
-        @Override public long nextLong() { throw new AssertionError("Unexpected integer draw"); }
-        @Override public double nextDouble() { return values[index++]; }
+        @Override
+        public long nextLong() {
+            throw new AssertionError("Unexpected integer draw");
+        }
+
+        @Override
+        public double nextDouble() {
+            return values[index++];
+        }
     }
 
     private static final class NoRandom implements RandomGenerator {
-        @Override public long nextLong() { throw new AssertionError("No random draw is needed"); }
+        @Override
+        public long nextLong() {
+            throw new AssertionError("No random draw is needed");
+        }
     }
 }

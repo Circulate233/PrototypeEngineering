@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.localization;
 
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
+
 /**
  * AE2S's LocalizationEnum contract supplies client strings and server-safe text components.
  */

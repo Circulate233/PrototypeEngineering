@@ -16,15 +16,15 @@ import ae2.helpers.InventoryAction;
 import ae2.integration.modules.hei.HeiBookmarkHelper;
 import ae2.mixins.hei.AccessorRecipeLayout;
 import ae2.parts.encoding.EncodingMode;
-import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRecipe;
 import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
+import com.circulation.prototype_eng.api.client.jei.RecipePoolJeiRecipe;
 import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import mezz.jei.api.gui.IRecipeLayout;
-import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import mezz.jei.api.recipe.transfer.IRecipeTransferError;
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandler;
+import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.common.MinecraftForge;
@@ -33,6 +33,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.BooleanSupplier;
 
 /** Uses the complete wrapper data and AE2S's priority, event, filter packet and encoding APIs. */
 final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implements IRecipeTransferHandler<C> {
@@ -44,49 +45,17 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         this.errors = errors;
     }
 
-    @Override public @NotNull Class<C> getContainerClass() { return containerClass; }
+    enum EventOutcome { PROCEED, CANCELLED, STALE }
 
-    @Override public @Nullable IRecipeTransferError transferRecipe(@NotNull C container, @NotNull IRecipeLayout layout,
-                                                                  @NotNull EntityPlayer player, boolean maxTransfer, boolean doTransfer) {
-        // AE2S already supplies this accessor; no new mixin or global "last drawn recipe" state is needed.
-        if (!(layout instanceof AccessorRecipeLayout accessor) || !(accessor.ae2$getRecipeWrapper() instanceof RecipePoolJeiRecipe recipe)
-            || layout.getRecipeCategory() != recipe.page()) return errors.createInternalError();
-        final JeiPatternRecipe source;
-        try { source = recipe.patternRecipe(); }
-        catch (ArithmeticException overflow) { return errors.createUserErrorWithTooltip(JeiText.PatternAmountOverflow.getLocal()); }
-        if (source == null || source.inputs().isEmpty() || source.outputs().isEmpty()) {
-            return errors.createUserErrorWithTooltip(JeiText.PatternNoResources.getLocal());
-        }
-        var context = PatternImportPriorityContextImpl.create(container, HeiBookmarkHelper.getBookmarkedStacks());
-        Function<List<GenericStack>, GenericStack> select = candidates -> PatternImportPrioritySelector.selectIngredient(candidates, context, false);
-        var inputs = plan(source.inputs(), select, container.isMergeHeiProcessingInputs());
-        var outputs = plan(source.outputs(), select, true);
-        if (inputs == null || outputs == null) return errors.createUserErrorWithTooltip(JeiText.PatternAmountOverflow.getLocal());
-        if (!fits(inputs, outputs, container)) return capacityError(inputs, outputs, container);
-        if (!doTransfer) return null;
-
-        var event = new PatternRecipeTransferEvent(container, EncodingMode.PROCESSING, recipe.page().getUid(),
-            recipe.page().getTitle(), null, inputs, outputs);
-        try {
-            if (MinecraftForge.EVENT_BUS.post(event)) return null;
-        } catch (RuntimeException failure) {
-            AELog.error(failure, "Pattern recipe transfer listener failed for " + recipe.page().getUid());
-            return errors.createInternalError();
-        }
-        inputs = PatternTransferPlan.packedSlots(inputs);
-        outputs = PatternTransferPlan.packedSlots(outputs);
-        if (inputs.isEmpty() || outputs.isEmpty()) return errors.createUserErrorWithTooltip(JeiText.PatternNoResources.getLocal());
-        if (!fits(inputs, outputs, container)) return capacityError(inputs, outputs, container);
-        container.setMode(EncodingMode.PROCESSING);
-        write(container, container.getProcessingInputSlots(), inputs);
-        write(container, container.getProcessingOutputSlots(), outputs);
-        container.setHeiProcessingRecipe(recipe.page().getUid(), PatternTransferPlan.serializeCandidateKeyTags(inputs));
-        return null;
+    static EventOutcome dispatch(BooleanSupplier current, BooleanSupplier event) {
+        if (!current.getAsBoolean()) return EventOutcome.STALE;
+        if (event.getAsBoolean()) return EventOutcome.CANCELLED;
+        return current.getAsBoolean() ? EventOutcome.PROCEED : EventOutcome.STALE;
     }
 
     /** Mirrors AE's selected-key merge and candidate intersection, with a preflight instead of losing overflow. */
     static @Nullable List<PatternRecipeTransferSlot> plan(List<List<GenericStack>> groups,
-                                                         Function<List<GenericStack>, GenericStack> select, boolean merge) {
+                                                          Function<List<GenericStack>, GenericStack> select, boolean merge) {
         var result = new ObjectArrayList<PatternRecipeTransferSlot>();
         var byKey = new Object2ObjectOpenHashMap<AEKey, PatternRecipeTransferSlot>();
         for (var candidates : groups) {
@@ -114,16 +83,77 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
         return inputs.size() <= container.getProcessingInputSlots().length && outputs.size() <= container.getProcessingOutputSlots().length;
     }
 
+    private static List<InventoryActionPacket> packets(ContainerPatternEncodingTerm container, FakeSlot[] targets, List<PatternRecipeTransferSlot> values) {
+        var packets = new ObjectArrayList<InventoryActionPacket>();
+        for (int i = 0; i < targets.length; i++) {
+            var stack = i < values.size() ? GenericStack.wrapInItemStack(values.get(i).getStack()) : ItemStack.EMPTY;
+            packets.add(new InventoryActionPacket(container.windowId, InventoryAction.SET_FILTER, targets[i].slotNumber, stack));
+        }
+        return packets;
+    }
+
+    @Override
+    public @NotNull Class<C> getContainerClass() {
+        return containerClass;
+    }
+
+    @Override
+    public @Nullable IRecipeTransferError transferRecipe(@NotNull C container, @NotNull IRecipeLayout layout,
+                                                         @NotNull EntityPlayer player, boolean maxTransfer, boolean doTransfer) {
+        // AE2S already supplies this accessor; no new mixin or global "last drawn recipe" state is needed.
+        if (!(layout instanceof AccessorRecipeLayout accessor) || !(accessor.ae2$getRecipeWrapper() instanceof RecipePoolJeiRecipe recipe)
+            || layout.getRecipeCategory() != recipe.page() || !recipe.isCurrent()) return errors.createInternalError();
+        final JeiPatternRecipe source;
+        try {
+            source = recipe.patternRecipe();
+        } catch (ArithmeticException overflow) {
+            return errors.createUserErrorWithTooltip(JeiText.PatternAmountOverflow.getLocal());
+        }
+        if (source == null || source.inputs().isEmpty() || source.outputs().isEmpty()) {
+            return errors.createUserErrorWithTooltip(JeiText.PatternNoResources.getLocal());
+        }
+        var context = PatternImportPriorityContextImpl.create(container, HeiBookmarkHelper.getBookmarkedStacks());
+        Function<List<GenericStack>, GenericStack> select = candidates -> PatternImportPrioritySelector.selectIngredient(candidates, context, false);
+        var inputs = plan(source.inputs(), select, container.isMergeHeiProcessingInputs());
+        var outputs = plan(source.outputs(), select, true);
+        if (inputs == null || outputs == null)
+            return errors.createUserErrorWithTooltip(JeiText.PatternAmountOverflow.getLocal());
+        if (!fits(inputs, outputs, container)) return capacityError(inputs, outputs, container);
+        if (!recipe.isCurrent()) return errors.createInternalError();
+        if (!doTransfer) return null;
+
+        var event = new PatternRecipeTransferEvent(container, EncodingMode.PROCESSING, recipe.page().getUid(),
+            recipe.page().getTitle(), null, inputs, outputs);
+        try {
+            var outcome = dispatch(recipe::isCurrent, () -> MinecraftForge.EVENT_BUS.post(event));
+            if (outcome == EventOutcome.CANCELLED) return null;
+            if (outcome == EventOutcome.STALE) return errors.createInternalError();
+        } catch (RuntimeException failure) {
+            AELog.error(failure, "Pattern recipe transfer listener failed for " + recipe.page().getUid());
+            return errors.createInternalError();
+        }
+        if (!recipe.isCurrent()) return errors.createInternalError();
+        inputs = PatternTransferPlan.packedSlots(inputs);
+        outputs = PatternTransferPlan.packedSlots(outputs);
+        if (inputs.isEmpty() || outputs.isEmpty())
+            return errors.createUserErrorWithTooltip(JeiText.PatternNoResources.getLocal());
+        if (!fits(inputs, outputs, container)) return capacityError(inputs, outputs, container);
+        // AEKey serialization is addon code. Finish it before the final current-token check and any terminal write.
+        var inputPackets = packets(container, container.getProcessingInputSlots(), inputs);
+        var outputPackets = packets(container, container.getProcessingOutputSlots(), outputs);
+        var candidateTags = PatternTransferPlan.serializeCandidateKeyTags(inputs);
+        var categoryUid = recipe.page().getUid();
+        if (!recipe.isCurrent()) return errors.createInternalError();
+        container.setMode(EncodingMode.PROCESSING);
+        for (var packet : inputPackets) InitNetwork.sendToServer(packet);
+        for (var packet : outputPackets) InitNetwork.sendToServer(packet);
+        container.setHeiProcessingRecipe(categoryUid, candidateTags);
+        return null;
+    }
+
     private IRecipeTransferError capacityError(List<PatternRecipeTransferSlot> inputs, List<PatternRecipeTransferSlot> outputs,
                                                ContainerPatternEncodingTerm container) {
         return errors.createUserErrorWithTooltip(JeiText.PatternCapacity.getLocal(inputs.size(), outputs.size(),
             container.getProcessingInputSlots().length, container.getProcessingOutputSlots().length));
-    }
-
-    private static void write(ContainerPatternEncodingTerm container, FakeSlot[] targets, List<PatternRecipeTransferSlot> values) {
-        for (int i = 0; i < targets.length; i++) {
-            var stack = i < values.size() ? GenericStack.wrapInItemStack(values.get(i).getStack()) : ItemStack.EMPTY;
-            InitNetwork.sendToServer(new InventoryActionPacket(container.windowId, InventoryAction.SET_FILTER, targets[i].slotNumber, stack));
-        }
     }
 }

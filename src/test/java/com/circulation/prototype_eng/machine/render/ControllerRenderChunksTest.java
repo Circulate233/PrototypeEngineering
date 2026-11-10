@@ -1,10 +1,5 @@
 package com.circulation.prototype_eng.machine.render;
 
-import net.minecraft.nbt.NBTTagCompound;
-import io.netty.buffer.Unpooled;
-
-import java.util.Objects;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
@@ -15,7 +10,9 @@ import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.math.BlockPos;
@@ -23,9 +20,18 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @SuppressWarnings("resource") // Logical registrations stay in this local registry through each scenario.
 class ControllerRenderChunksTest {
@@ -37,6 +43,15 @@ class ControllerRenderChunksTest {
         return new MachineRenderSnapshot(new ControllerDisplayData(MachineRenderSnapshotTest.MACHINE, BlockOrientation.NORTH_UP, true, generation, sequence),
             new MachineRenderSnapshot.CatalogToken(MachineRenderSnapshotTest.SESSION, catalog), BlockPos.ORIGIN,
             root.structure(), List.of(root), positions, List.of(), null);
+    }
+
+    static void installCatalog(ClientStructureCatalog client, Object connection, long sequence) {
+        var root = new StructureCatalogView.Node(MachineRenderSnapshotTest.id("root"), BlockOrientation.NORTH_UP, true,
+            StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
+        var view = new StructureCatalogView(MachineRenderSnapshotTest.SESSION, sequence, List.of(root),
+            Map.of(root.id(), new StructureCatalogView.Entry(0, null, Map.of())));
+        byte[] bytes = StructureCatalogCodec.encode(view);
+        assertTrue(client.receive(connection, new StructureCatalogPacket(view.session(), view.sequence(), bytes.length, 0, bytes)));
     }
 
     @Test
@@ -338,14 +353,5 @@ class ControllerRenderChunksTest {
             assertEquals(newer, Objects.requireNonNull(client.view(world, tile, BlockPos.ORIGIN)).snapshot());
             assertEquals(2, installed.size());
         }
-    }
-
-    static void installCatalog(ClientStructureCatalog client, Object connection, long sequence) {
-        var root = new StructureCatalogView.Node(MachineRenderSnapshotTest.id("root"), BlockOrientation.NORTH_UP, true,
-            StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
-        var view = new StructureCatalogView(MachineRenderSnapshotTest.SESSION, sequence, List.of(root),
-            Map.of(root.id(), new StructureCatalogView.Entry(0, null, Map.of())));
-        byte[] bytes = StructureCatalogCodec.encode(view);
-        assertTrue(client.receive(connection, new StructureCatalogPacket(view.session(), view.sequence(), bytes.length, 0, bytes)));
     }
 }

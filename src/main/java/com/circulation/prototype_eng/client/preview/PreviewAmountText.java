@@ -10,8 +10,13 @@ import java.text.DecimalFormat;
 final class PreviewAmountText {
     private static final DecimalFormat FORMAT = new DecimalFormat("0.###");
     private static final String[] PREFIXES = {"", "k", "M", "G"};
-    static { FORMAT.setRoundingMode(RoundingMode.DOWN); }
-    private PreviewAmountText() {}
+
+    static {
+        FORMAT.setRoundingMode(RoundingMode.DOWN);
+    }
+
+    private PreviewAmountText() {
+    }
 
     static String format(int amount) {
         int prefix = 0;

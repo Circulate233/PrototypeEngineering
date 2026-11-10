@@ -12,8 +12,8 @@ import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
 
 import java.nio.ByteOrder;
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -35,11 +35,6 @@ final class PreviewBlockQuadCursor {
     private boolean initialized, complete;
     private int[] nativeVertices;
     private int nativeOffset;
-
-    @FunctionalInterface
-    interface QuadSink {
-        void put(int layer, int[] vertices);
-    }
 
     PreviewBlockQuadCursor(StructurePreviewModel model, StructurePreviewModel.Cell cell, BooleanSupplier current, PreviewBlockAccess access) {
         this.model = model;
@@ -75,12 +70,19 @@ final class PreviewBlockQuadCursor {
             ForgeHooksClient.setRenderLayer(LAYERS[layer]);
             if (access != null) {
                 if (nativeVertices == null) {
-                    if (!state.getBlock().canRenderInLayer(state, LAYERS[layer])) { layer++; return false; }
+                    if (!state.getBlock().canRenderInLayer(state, LAYERS[layer])) {
+                        layer++;
+                        return false;
+                    }
                     nativeVertices = access.renderLayer(state, cell.position());
                     nativeOffset = 0;
                     return false;
                 }
-                if (nativeOffset == nativeVertices.length) { nativeVertices = null; layer++; return false; }
+                if (nativeOffset == nativeVertices.length) {
+                    nativeVertices = null;
+                    layer++;
+                    return false;
+                }
                 if (!current.getAsBoolean()) return false;
                 sink.put(layer, Arrays.copyOfRange(nativeVertices, nativeOffset, nativeOffset + 28));
                 nativeOffset += 28;
@@ -134,5 +136,10 @@ final class PreviewBlockQuadCursor {
         } finally {
             ForgeHooksClient.setRenderLayer(previous);
         }
+    }
+
+    @FunctionalInterface
+    interface QuadSink {
+        void put(int layer, int[] vertices);
     }
 }

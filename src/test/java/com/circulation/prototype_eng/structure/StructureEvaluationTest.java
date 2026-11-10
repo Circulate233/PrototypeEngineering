@@ -38,25 +38,51 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class StructureEvaluationTest {
+    private static StructureEvaluation evaluate(StructurePlan plan, FakeSource source) {
+        return plan.evaluate(StructureSnapshot.capture(plan.reads(), source));
+    }
+
+    private static StructurePlan plan(String name, StructurePredicate predicate) {
+        var structure = new TemplateStructure(id(name), BlockOrientation.NORTH_UP,
+            new BlockPos(1, 0, 0), false,
+            new StructurePattern(Map.of(BlockPos.ORIGIN, predicate)), List.of(), List.of());
+        return new StructurePlan(structure, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
+    }
+
+    private static StructurePredicate marker(StructureQuery<String> query, String expected) {
+        return StructurePredicates.test(query, expected::equals);
+    }
+
+    private static StructureQuery<String> stringQuery(String name) {
+        return new StructureQuery<>(id(name), (_, _) -> fail("No World reader may run in this test"),
+            UnaryOperator.identity(), Objects::equals);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("structure_evaluation_test", name);
+    }
+
     @Test
     void unusedOrBranchFailuresAndUnloadedAreasDoNotEnterTheActualProof() {
         StructureQuery<String> query = stringQuery("optional");
         BlockPos position = new BlockPos(1, 0, 0);
         BlockPos distant = new BlockPos(65, 0, 0);
         StructurePredicate predicate = StructurePredicates.any(List.of(
-                marker(query, "head"),
-                StructurePredicates.at(new BlockPos(64, 0, 0), marker(query, "fallback"))));
+            marker(query, "head"),
+            StructurePredicates.at(new BlockPos(64, 0, 0), marker(query, "fallback"))));
         var plan = plan("optional", predicate);
         var source = new FakeSource();
         source.put(query, position, "head");
         var initialFailure = new IllegalArgumentException("unused distant provider");
-        source.supply(query, distant, () -> { throw initialFailure; });
+        source.supply(query, distant, () -> {
+            throw initialFailure;
+        });
         var snapshot = StructureSnapshot.capture(plan.reads(), source);
         StructureEvaluation evaluation = plan.evaluate(snapshot);
         assertNotNull(evaluation.match());
         assertEquals(1, evaluation.failures().size());
         assertSame(initialFailure, assertThrows(IllegalStateException.class,
-                () -> snapshot.read(query, distant)).getCause());
+            () -> snapshot.read(query, distant)).getCause());
 
         source.unloaded.add(StructureBounds.at(distant));
         assertTrue(evaluation.isCurrent(source));
@@ -64,7 +90,9 @@ class StructureEvaluationTest {
         assertEquals(1, source.readCount(query, distant));
         source.unloaded.clear();
         var changedFailure = new IllegalStateException("the unused provider changed");
-        source.supply(query, distant, () -> { throw changedFailure; });
+        source.supply(query, distant, () -> {
+            throw changedFailure;
+        });
         assertTrue(evaluation.isCurrent(source));
         assertSame(evaluation, evaluation.refresh(source));
         assertEquals(1, source.readCount(query, distant));
@@ -74,9 +102,9 @@ class StructureEvaluationTest {
     void theFirstFailedGreedySliceIsRecheckedAndANewMatchIncludesTheAddedSlices() {
         StructureQuery<String> query = stringQuery("slices");
         var structure = new SliceStructure(id("slices"), BlockOrientation.NORTH_UP,
-                new BlockPos(1, 0, 0), false,
-                new StructurePattern(Map.of(BlockPos.ORIGIN, marker(query, "body"))),
-                1, 3, new BlockPos(1, 0, 0), List.of(), List.of());
+            new BlockPos(1, 0, 0), false,
+            new StructurePattern(Map.of(BlockPos.ORIGIN, marker(query, "body"))),
+            1, 3, new BlockPos(1, 0, 0), List.of(), List.of());
         var plan = new StructurePlan(structure, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
         BlockPos first = new BlockPos(1, 0, 0);
         BlockPos second = new BlockPos(2, 0, 0);
@@ -114,7 +142,7 @@ class StructureEvaluationTest {
     void changedWorldTimeRefreshesTheProofWhileTheTimeConditionCanRemainTrue() {
         BlockPos position = new BlockPos(1, 0, 0);
         StructurePredicate time = StructurePredicates.test(StructureQueries.WORLD_TIME,
-                value -> value != null && value >= 100 && value < 200);
+            value -> value != null && value >= 100 && value < 200);
         var plan = plan("time", time);
         var source = new FakeSource();
         source.put(StructureQueries.WORLD_TIME, position, 100L);
@@ -137,14 +165,14 @@ class StructureEvaluationTest {
     @Test
     void mutableFactsUseTheirExplicitEquivalenceAndBothCaptureAndDeliveryStayDetached() {
         StructureQuery<MutableFact> query = new StructureQuery<>(id("mutable_fact"),
-                (_, _) -> fail("A logical fake must never invoke a World reader"),
-                fact -> new MutableFact(fact.amount, fact.slots.clone()),
-                (first, second) -> first.amount == second.amount && Arrays.equals(first.slots, second.slots));
+            (_, _) -> fail("A logical fake must never invoke a World reader"),
+            fact -> new MutableFact(fact.amount, fact.slots.clone()),
+            (first, second) -> first.amount == second.amount && Arrays.equals(first.slots, second.slots));
         StructurePredicate predicate = StructurePredicates.test(query,
-                fact -> fact != null && fact.amount == 7 && fact.slots[0] == 2);
+            fact -> fact != null && fact.amount == 7 && fact.slots[0] == 2);
         var plan = plan("mutable", predicate);
         BlockPos position = new BlockPos(1, 0, 0);
-        var original = new MutableFact(7, new int[] {2, 5});
+        var original = new MutableFact(7, new int[]{2, 5});
         var source = new FakeSource();
         source.put(query, position, original);
         var snapshot = StructureSnapshot.capture(plan.reads(), source);
@@ -153,7 +181,7 @@ class StructureEvaluationTest {
         original.amount = 90;
         original.slots[0] = 99;
 
-        var replacement = new MutableFact(7, new int[] {2, 5});
+        var replacement = new MutableFact(7, new int[]{2, 5});
         source.put(query, position, replacement);
         assertTrue(evaluation.isCurrent(source));
         assertSame(evaluation, evaluation.refresh(source));
@@ -176,7 +204,7 @@ class StructureEvaluationTest {
         BlockPos position = new BlockPos(1, 0, 0);
         BlockPos fallbackPosition = new BlockPos(33, 0, 0);
         StructurePredicate predicate = StructurePredicates.any(List.of(marker(firstQuery, "yes"),
-                StructurePredicates.at(new BlockPos(32, 0, 0), marker(fallbackQuery, "yes"))));
+            StructurePredicates.at(new BlockPos(32, 0, 0), marker(fallbackQuery, "yes"))));
         var plan = plan("changed_branch", predicate);
         var source = new FakeSource();
         source.put(firstQuery, position, "no");
@@ -186,7 +214,9 @@ class StructureEvaluationTest {
 
         var failure = new IllegalArgumentException("the previously used fallback failed");
         source.put(firstQuery, position, "yes");
-        source.supply(fallbackQuery, fallbackPosition, () -> { throw failure; });
+        source.supply(fallbackQuery, fallbackPosition, () -> {
+            throw failure;
+        });
         assertFalse(old.isCurrent(source));
         var refreshed = old.refresh(source);
         assertNotNull(refreshed.match());
@@ -195,7 +225,7 @@ class StructureEvaluationTest {
 
         source.put(firstQuery, position, "no");
         assertSame(failure, assertThrows(IllegalStateException.class,
-                () -> refreshed.refresh(source)).getCause());
+            () -> refreshed.refresh(source)).getCause());
 
         source.put(firstQuery, position, "yes");
         source.areaFailures.put(StructureBounds.at(fallbackPosition), failure);
@@ -204,36 +234,17 @@ class StructureEvaluationTest {
         assertTrue(withoutFailedArea.isCurrent(source));
         source.put(firstQuery, position, "no");
         assertSame(failure, assertThrows(IllegalStateException.class,
-                () -> withoutFailedArea.refresh(source)).getCause());
+            () -> withoutFailedArea.refresh(source)).getCause());
     }
-
-    private static StructureEvaluation evaluate(StructurePlan plan, FakeSource source) {
-        return plan.evaluate(StructureSnapshot.capture(plan.reads(), source));
-    }
-
-    private static StructurePlan plan(String name, StructurePredicate predicate) {
-        var structure = new TemplateStructure(id(name), BlockOrientation.NORTH_UP,
-                new BlockPos(1, 0, 0), false,
-                new StructurePattern(Map.of(BlockPos.ORIGIN, predicate)), List.of(), List.of());
-        return new StructurePlan(structure, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
-    }
-
-    private static StructurePredicate marker(StructureQuery<String> query, String expected) {
-        return StructurePredicates.test(query, expected::equals);
-    }
-
-    private static StructureQuery<String> stringQuery(String name) {
-        return new StructureQuery<>(id(name), (_, _) -> fail("No World reader may run in this test"),
-                UnaryOperator.identity(), Objects::equals);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("structure_evaluation_test", name); }
 
     private static final class MutableFact {
-        private int amount;
         private final int[] slots;
+        private int amount;
 
-        private MutableFact(int amount, int[] slots) { this.amount = amount; this.slots = slots; }
+        private MutableFact(int amount, int[] slots) {
+            this.amount = amount;
+            this.slots = slots;
+        }
     }
 
     private static final class FakeSource implements StructureReadSource {
@@ -264,7 +275,9 @@ class StructureEvaluationTest {
         public boolean isAreaLoaded(StructureBounds bounds) {
             requireServerThread();
             var failure = areaFailures.get(bounds);
-            if (failure != null) { throw failure; }
+            if (failure != null) {
+                throw failure;
+            }
             return !unloaded.contains(bounds);
         }
 

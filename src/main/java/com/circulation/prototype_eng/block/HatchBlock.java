@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.block;
 
+import ae2.block.AEBaseBlockItem;
+import ae2.block.AEBaseTileBlock;
+import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
@@ -13,24 +16,22 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.NonNullList;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-
-import ae2.block.AEBaseBlockItem;
-import ae2.block.AEBaseTileBlock;
-import ae2.tile.AEBaseTile;
 import java.util.Objects;
-import net.minecraft.util.ResourceLocation;
 
 /**
  * Physical shell shared by tiered resource and energy hatches. Storage belongs to the tile.
  */
 public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T> {
-    /** The registered entity class must expose a public no-arg constructor for AE and Forge. */
+    /**
+     * The registered entity class must expose a public no-arg constructor for AE and Forge.
+     */
     protected HatchBlock(ResourceLocation id, Class<T> tileClass, float hardness) {
         super(Material.IRON);
         setTileEntity(Objects.requireNonNull(tileClass));
@@ -43,7 +44,9 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         setHarvestLevel("pickaxe", 1);
     }
 
-    /** Override to customize the registered item while retaining AE2S block item behavior. */
+    /**
+     * Override to customize the registered item while retaining AE2S block item behavior.
+     */
     public AEBaseBlockItem createItem() {
         return new AEBaseBlockItem(this);
     }
@@ -58,7 +61,9 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         return Objects.requireNonNull(createHatch(world, state), "Hatch creation returned null");
     }
 
-    /** Creates the configured entity for Forge's block-state-aware placement path. */
+    /**
+     * Creates the configured entity for Forge's block-state-aware placement path.
+     */
     protected abstract T createHatch(World world, IBlockState state);
 
     @Override

@@ -46,7 +46,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchMaterialPersistenceTest {
     private static final KeyType TYPE = new KeyType("research_material_persistence");
@@ -57,7 +63,47 @@ class ResearchMaterialPersistenceTest {
     private static final ResourceLocation SCORE = id("score");
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt(location -> location.equals(TYPE.getId()) ? TYPE : null);
 
-    @Test void blockedEndRestoresSelectorOverlayAttributeAndInputLockAgainstNewPhysicalSourcesWithoutRepeatingPaidStages() {
+    private static RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> observer(
+        BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        var type = new RecipeRequirementType<>(new ResourceLocation("aaa_material_test", "observer_type"),
+            new RecipeRequirementSystem<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>>() {
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> requirement) {
+                    return requirement.payload().apply(process, RecipeStage.START);
+                }
+
+                @Override
+                public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> requirement) {
+                    return requirement.payload().apply(process, RecipeStage.TICK);
+                }
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> requirement) {
+                    return requirement.payload().apply(process, RecipeStage.END);
+                }
+            });
+        return type.requirement(id("observer"), action);
+    }
+
+    private static NumericAttributeModifier add(String name, double value) {
+        return new NumericAttributeModifier(name, value, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return List.of(new GenericStack(key, amount));
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("research_material_persistence_test", path);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        return new SlottedResourceBuffer(4, Map.of(TYPE, 100L), () -> {
+        });
+    }
+
+    @Test
+    void blockedEndRestoresSelectorOverlayAttributeAndInputLockAgainstNewPhysicalSourcesWithoutRepeatingPaidStages() {
         for (double speed : new double[]{0, 0.5, 2}) {
             var source = new Sources();
             source.input.insert(MATERIAL, 100, Actionable.MODULATE);
@@ -82,8 +128,12 @@ class ResearchMaterialPersistenceTest {
             var attribute = RecipeRequirements.ATTRIBUTES.requirement(id("attribute"), new AttributeRequirement(SCORE, add("requirement", 2)));
             var observer = observer((process, phase) -> {
                 phases.add(phase);
-                if (phase == RecipeStage.TICK) { clocks.add(process.tickContext()); }
-                if (phase != RecipeStage.START) { assertEquals(20, process.attributes().value(SCORE)); }
+                if (phase == RecipeStage.TICK) {
+                    clocks.add(process.tickContext());
+                }
+                if (phase != RecipeStage.START) {
+                    assertEquals(20, process.attributes().value(SCORE));
+                }
                 return RequirementTransaction.SUCCESS;
             });
             var cycle = RecipeProcess.materialCycle(source.owner, id("cycle"), List.of(observer, attribute, io, selection,
@@ -159,7 +209,8 @@ class ResearchMaterialPersistenceTest {
         }
     }
 
-    @Test void aPaidOrdinaryProcessSaveCannotEnterTheMaterialCycleRestorePath() {
+    @Test
+    void aPaidOrdinaryProcessSaveCannotEnterTheMaterialCycleRestorePath() {
         var sources = new Sources();
         sources.input.insert(MATERIAL, 10, Actionable.MODULATE);
         sources.energy.receiveEnergy(20, Actionable.MODULATE);
@@ -184,42 +235,28 @@ class ResearchMaterialPersistenceTest {
         assertEquals(7, sources.generated.storedEnergy());
     }
 
-    private static RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> observer(
-            BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        var type = new RecipeRequirementType<>(new ResourceLocation("aaa_material_test", "observer_type"),
-            new RecipeRequirementSystem<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> requirement) {
-                    return requirement.payload().apply(process, RecipeStage.START);
-                }
-                @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> requirement) {
-                    return requirement.payload().apply(process, RecipeStage.TICK);
-                }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<BiFunction<RecipeProcess, RecipeStage, RequirementTransaction>> requirement) {
-                    return requirement.payload().apply(process, RecipeStage.END);
-                }
-            });
-        return type.requirement(id("observer"), action);
-    }
-
-    private static NumericAttributeModifier add(String name, double value) {
-        return new NumericAttributeModifier(name, value, AttributeModifier.Operation.ADDITION);
-    }
-
-    private static List<GenericStack> stacks(Key key, long amount) { return List.of(new GenericStack(key, amount)); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("research_material_persistence_test", path); }
-    private static SlottedResourceBuffer buffer() { return new SlottedResourceBuffer(4, Map.of(TYPE, 100L), () -> { }); }
-
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
 
     private static final class Sources {
         private final MachineInstance owner = new MachineInstance();
         private final SlottedResourceBuffer input = buffer();
         private final SlottedResourceBuffer output = buffer();
-        private final EnergyBuffer energy = new EnergyBuffer(100, () -> { });
-        private final EnergyBuffer generated = new EnergyBuffer(100, () -> { });
-        private Sources() { owner.components().put(MachineHatches.TYPE, hatches()); }
-        private MachineHatches hatches() { return new MachineHatches(List.of(new Ports(input, output)), List.of(energy), List.of(generated)); }
+        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {
+        });
+        private final EnergyBuffer generated = new EnergyBuffer(100, () -> {
+        });
+
+        private Sources() {
+            owner.components().put(MachineHatches.TYPE, hatches());
+        }
+
+        private MachineHatches hatches() {
+            return new MachineHatches(List.of(new Ports(input, output)), List.of(energy), List.of(generated));
+        }
     }
 }

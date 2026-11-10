@@ -1,32 +1,40 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import software.bernie.geckolib3.file.AnimationFileLoader;
-import software.bernie.shadowed.eliotlash.molang.MolangParser;
-
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.CompletableFuture;
-
 import com.circulation.prototype_eng.client.render.ModelAssets;
 import com.circulation.prototype_eng.client.render.ModelClientThread;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import software.bernie.geckolib3.file.AnimationFileLoader;
+import software.bernie.shadowed.eliotlash.molang.MolangParser;
 
+import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static com.circulation.prototype_eng.client.render.BModelFixtures.*;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.ANIMATION;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.GEO;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.TEXTURE;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.bone;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.change;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.model;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.request;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.resources;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeckoAnimationAssetsTest {
-    @TempDir
-    Path root;
     static final String LAYERS = """
         {"animations":{"base":{"loop":true,"animation_length":2,"bones":{"root":{"position":[16,0,0],"rotation":[0,0,90]}}},
         "overlay":{"loop":true,"animation_length":2,"bones":{"root":{"position":[32,0,0]}}},"a_idle":{"loop":true,"animation_length":2,"bones":{}}}}
         """;
+    @TempDir
+    Path root;
 
     @Test
     void emptyIdleNamesRemainTheSameFallbackAsTheActualAnimationLoader() throws Exception {

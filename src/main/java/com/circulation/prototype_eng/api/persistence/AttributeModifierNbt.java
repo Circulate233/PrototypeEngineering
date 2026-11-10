@@ -12,7 +12,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-/** Frozen explicit modifier codec bindings. Unknown or ambiguous implementations cannot be saved. */
+/**
+ * Frozen explicit modifier codec bindings. Unknown or ambiguous implementations cannot be saved.
+ */
 public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, AttributeModifierCodec> codecs = new Object2ObjectLinkedOpenHashMap<>();
 
@@ -26,6 +28,22 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
         for (var binding : Objects.requireNonNull(bindings, "bindings")) {
             register(Objects.requireNonNull(binding, "binding"));
         }
+    }
+
+    private static void validate(AttributeModifier modifier) {
+        if (modifier == null || modifier.id() == null || modifier.id().isBlank() || modifier.operation() == null) {
+            throw new IllegalArgumentException("Attribute modifier requires a nonblank ID and operation");
+        }
+    }
+
+    private static AttributeModifier.Operation readOperation(NBTTagCompound tag) {
+        var name = StrictNbt.requireString(tag, "Operation");
+        for (var operation : AttributeModifier.Operation.values()) {
+            if (operation.name().equals(name)) {
+                return operation;
+            }
+        }
+        throw new IllegalArgumentException("Unknown attribute modifier operation: " + name);
     }
 
     @Override
@@ -68,33 +86,17 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
         return modifier;
     }
 
-    public record Binding(ResourceLocation id, AttributeModifierCodec codec) {
-        public Binding {
-            StrictNbt.requireId(Objects.requireNonNull(id, "id").toString());
-            Objects.requireNonNull(codec, "codec");
-        }
-    }
-
     private void register(Binding binding) {
         if (codecs.putIfAbsent(binding.id(), binding.codec()) != null) {
             throw new IllegalArgumentException("Duplicate attribute modifier codec ID: " + binding.id());
         }
     }
 
-    private static void validate(AttributeModifier modifier) {
-        if (modifier == null || modifier.id() == null || modifier.id().isBlank() || modifier.operation() == null) {
-            throw new IllegalArgumentException("Attribute modifier requires a nonblank ID and operation");
+    public record Binding(ResourceLocation id, AttributeModifierCodec codec) {
+        public Binding {
+            StrictNbt.requireId(Objects.requireNonNull(id, "id").toString());
+            Objects.requireNonNull(codec, "codec");
         }
-    }
-
-    private static AttributeModifier.Operation readOperation(NBTTagCompound tag) {
-        var name = StrictNbt.requireString(tag, "Operation");
-        for (var operation : AttributeModifier.Operation.values()) {
-            if (operation.name().equals(name)) {
-                return operation;
-            }
-        }
-        throw new IllegalArgumentException("Unknown attribute modifier operation: " + name);
     }
 
     private static final class NumericCodec implements AttributeModifierCodec {

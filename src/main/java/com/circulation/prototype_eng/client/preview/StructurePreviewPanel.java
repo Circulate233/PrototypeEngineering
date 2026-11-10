@@ -1,90 +1,148 @@
 package com.circulation.prototype_eng.client.preview;
 
-import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.client.gui.GuiAtlas;
+import com.circulation.prototype_eng.client.gui.GuiClip;
+import com.circulation.prototype_eng.client.gui.GuiLabel;
+import com.circulation.prototype_eng.localization.PreviewUiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.client.gui.GuiAtlas;
-import com.circulation.prototype_eng.client.gui.GuiClip;
-import com.circulation.prototype_eng.localization.PreviewUiText;
-import net.minecraft.client.audio.PositionedSoundRecord;
-import net.minecraft.client.renderer.RenderHelper;
-import net.minecraft.init.SoundEvents;
-import java.util.Comparator;
-import com.circulation.prototype_eng.client.gui.GuiLabel;
 import java.util.function.BiConsumer;
+
 /** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class StructurePreviewPanel implements AutoCloseable {
     public static final int WIDTH = 184, HEIGHT = 220;
     static final int SCENE_X = 6, SCENE_Y = 13;
     private final StructurePreviewView view;
-    private boolean construction;
-    public void construction() { construction = true; view.scan = true; }
-
-    private BiConsumer<StructureDisplay, Integer> alternativeSelected = (_, _) -> { };
-    public void onAlternativeSelected(BiConsumer<StructureDisplay, Integer> listener) { alternativeSelected = Objects.requireNonNull(listener); }
     private final StructurePreviewScene scene;
     private final EntityPlayer player;
     private final Object world, connection;
     private final Container container;
     private final int window;
-    private GuiScreen host;
     private final GuiClip clip = new GuiClip();
     private final ObjectArrayList<Action> actions = new ObjectArrayList<>();
-    private String pressed;
-    private int mouseX, mouseY;
+    private boolean construction;
+    private BiConsumer<StructureDisplay, Integer> alternativeSelected = (_, _) -> {
+    };
+    private GuiScreen host;
     private Object drawnToken;
     private boolean closed, collapsed, layerDragging;
     private float collapseNow, sidebarNow = 1;
     private long frameTime = -1;
+    private String pressed;
+    private int mouseX, mouseY;
     private Rect currentClip;
-
-    private record Rect(float x, float y, float width, float height) {
-        boolean contains(int px, int py) { return px >= x && py >= y && px < x + width && py < y + height; }
-    }
-    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run) {
-        boolean contains(int x, int y) { return bounds.contains(x, y) && (clip == null || clip.contains(x, y)); }
-    }
-
     public StructurePreviewPanel(StructurePreviewView view) {
         this.view = Objects.requireNonNull(view);
         var mc = Minecraft.getMinecraft();
-        player = mc.player; world = mc.world; connection = mc.getConnection();
+        player = mc.player;
+        world = mc.world;
+        connection = mc.getConnection();
         container = player == null ? null : player.openContainer;
         window = container == null ? -1 : container.windowId;
         scene = new StructurePreviewScene(view);
     }
-    public StructurePreviewView view() { return view; }
-    public StructurePreviewScene scene() { return scene; }
-    public boolean closed() { return closed; }
+
+    private static float animate(float value, float target, float alpha) {
+        float next = value + (target - value) * alpha;
+        return Math.abs(target - next) < .0005f ? target : next;
+    }
+
+    private static void sprite(String path, float x, float y, int width, int height) {
+        Minecraft.getMinecraft().getTextureManager().bindTexture(GuiAtlas.texture("gui_structure_preview/" + path));
+        GlStateManager.color(1, 1, 1, 1);
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(x, y, 0);
+            Gui.drawModalRectWithCustomSizedTexture(0, 0, 0, 0, width, height, width, height);
+        } finally {
+            GlStateManager.popMatrix();
+        }
+    }
+
+    private static ItemStack optionStack(StructureDisplay.BlockOption option) {
+        var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
+        return block == null ? ItemStack.EMPTY : new ItemStack(block, 1, option.meta());
+    }
+
+    private static String shortName(StructureDisplay display) {
+        if (display.options().size() != 1) return display.key();
+        var option = display.options().getFirst();
+        return option.blockId() + (option.meta() == 0 ? "" : "@" + option.meta());
+    }
+
+    private static String optionKey(StructureDisplay.BlockOption option) {
+        return "state:" + option.blockId() + ":" + option.meta();
+    }
+
+    public void construction() {
+        construction = true;
+        view.scan = true;
+    }
+
+    public void onAlternativeSelected(BiConsumer<StructureDisplay, Integer> listener) {
+        alternativeSelected = Objects.requireNonNull(listener);
+    }
+
+    public StructurePreviewView view() {
+        return view;
+    }
+
+    public StructurePreviewScene scene() {
+        return scene;
+    }
+
+    public boolean closed() {
+        return closed;
+    }
+
     public boolean ownerCurrent() {
         var mc = Minecraft.getMinecraft();
         return !closed && player != null && mc.player == player && mc.world == world && mc.getConnection() == connection
             && player.openContainer == container && container.windowId == window && player.isEntityAlive() && player.getHealth() > 0
             && (host == null || mc.currentScreen == host);
     }
-    public boolean inputCurrent() { return host != null && ownerCurrent() && drawnToken == view.token() && view.inputCurrent(); }
-    public void tick() { if (!ownerCurrent()) close(); }
+
+    public boolean inputCurrent() {
+        return host != null && ownerCurrent() && drawnToken == view.token() && view.inputCurrent();
+    }
+
+    public void tick() {
+        if (!ownerCurrent()) close();
+    }
 
     /** Width/height are retained in the public host contract; PM's panel itself has a fixed size. */
     public void draw(int width, int height, int mouseX, int mouseY, float partialTicks, boolean embedded) {
         if (width <= 0 || height <= 0) return;
-        if (!ownerCurrent()) { close(); return; }
+        if (!ownerCurrent()) {
+            close();
+            return;
+        }
         if (host == null) host = Minecraft.getMinecraft().currentScreen;
-        if (host == null) { close(); return; }
-        this.mouseX = mouseX; this.mouseY = mouseY;
+        if (host == null) {
+            close();
+            return;
+        }
+        this.mouseX = mouseX;
+        this.mouseY = mouseY;
         actions.clear();
         sprite("base", 0, 0, WIDTH, HEIGHT);
         scene.drawAtCurrentOrigin(SCENE_X, SCENE_Y, 171, 200, partialTicks);
@@ -102,24 +160,13 @@ public final class StructurePreviewPanel implements AutoCloseable {
         bottomBar();
     }
 
-    private static float animate(float value, float target, float alpha) {
-        float next = value + (target - value) * alpha;
-        return Math.abs(target - next) < .0005f ? target : next;
-    }
-
-    private static void sprite(String path, float x, float y, int width, int height) {
-        Minecraft.getMinecraft().getTextureManager().bindTexture(GuiAtlas.texture("gui_structure_preview/" + path));
-        GlStateManager.color(1, 1, 1, 1);
-        GlStateManager.pushMatrix();
-        try {
-            GlStateManager.translate(x, y, 0);
-            Gui.drawModalRectWithCustomSizedTexture(0, 0, 0, 0, width, height, width, height);
-        } finally { GlStateManager.popMatrix(); }
-    }
-
     private void clipped(float x, float y, int width, int height, Runnable content) {
         currentClip = new Rect(x, y, width, height);
-        try { clip.draw(x, y, width, height, content); } finally { currentClip = null; }
+        try {
+            clip.draw(x, y, width, height, content);
+        } finally {
+            currentClip = null;
+        }
     }
 
     private void area(String id, float x, float y, int width, int height, List<String> tooltip, @Nullable Runnable run) {
@@ -236,8 +283,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 slot("option" + index, alternative, x, 31 + row++ * 18, false,
                     List.of(PreviewUiText.Candidate.getLocal(alternative.getDisplayName()), PreviewUiText.ClickToSelect.getLocal(),
                         PreviewUiText.Key.getLocal(optionKey(selected.options().get(index)))), () -> {
-                            if (view.alternative(drawnToken, selected, option)) alternativeSelected.accept(selected, option);
-                        });
+                        if (view.alternative(drawnToken, selected, option))
+                            alternativeSelected.accept(selected, option);
+                    });
             }
         });
         var model = view.model();
@@ -248,7 +296,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (construction && selected == null && view.scan) {
             bom.clear();
             for (var material : view.materials(StructurePreviewPanel::shortName, PreviewUiText.Unknown.getLocal()))
-                if (material.mismatch() > 0) bom.add(new StructurePreviewModel.BomLine(material.display(), material.mismatch()));
+                if (material.mismatch() > 0)
+                    bom.add(new StructurePreviewModel.BomLine(material.display(), material.mismatch()));
         }
         bom.sort(Comparator.comparingLong(StructurePreviewModel.BomLine::count).reversed());
         int row = 0;
@@ -293,23 +342,14 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 RenderHelper.disableStandardItemLighting();
                 if (amount) PreviewAmountText.draw(Minecraft.getMinecraft().fontRenderer, stack.getCount());
             }
-        } finally { GlStateManager.popMatrix(); }
+        } finally {
+            GlStateManager.popMatrix();
+        }
         area(id, x, y, 18, 18, tooltip, run);
     }
 
-    private int representative(StructureDisplay display) { return view.settings().displayOptions().getOrDefault(display, 0); }
-    private static ItemStack optionStack(StructureDisplay.BlockOption option) {
-        var block = ForgeRegistries.BLOCKS.getValue(option.blockId());
-        return block == null ? ItemStack.EMPTY : new ItemStack(block, 1, option.meta());
-    }
-    private static String shortName(StructureDisplay display) {
-        if (display.options().size() != 1) return display.key();
-        var option = display.options().getFirst();
-        return option.blockId() + (option.meta() == 0 ? "" : "@" + option.meta());
-    }
-
-    private static String optionKey(StructureDisplay.BlockOption option) {
-        return "state:" + option.blockId() + ":" + option.meta();
+    private int representative(StructureDisplay display) {
+        return view.settings().displayOptions().getOrDefault(display, 0);
     }
 
     public boolean press(int x, int y, int button) {
@@ -317,8 +357,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
         for (int i = actions.size() - 1; i >= 0; i--) {
             var action = actions.get(i);
             if (!action.contains(x, y)) continue;
-            if (button == 0 && action.id.equals("layer")) { layerDragging = true; updateLayer(y); }
-            else if (button == 0 && action.run != null) pressed = action.id;
+            if (button == 0 && action.id.equals("layer")) {
+                layerDragging = true;
+                updateLayer(y);
+            } else if (button == 0 && action.run != null) pressed = action.id;
             if (button == 0 && (layerDragging || action.run != null))
                 Minecraft.getMinecraft().getSoundHandler().playSound(PositionedSoundRecord.getMasterRecord(SoundEvents.UI_BUTTON_CLICK, 1));
             return true;
@@ -327,24 +369,43 @@ public final class StructurePreviewPanel implements AutoCloseable {
         var rect = scene.viewport();
         return scene.press(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
     }
+
     public boolean drag(int x, int y) {
         if (!inputCurrent()) return false;
-        if (layerDragging) { updateLayer(y); return true; }
+        if (layerDragging) {
+            updateLayer(y);
+            return true;
+        }
         if (pressed != null) return true;
         var rect = scene.viewport();
         return scene.drag(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y);
     }
+
     public boolean release(int x, int y, int button) {
-        if (!inputCurrent()) { pressed = null; layerDragging = false; return false; }
-        if (button == 0 && layerDragging) { layerDragging = false; updateLayer(y); return true; }
+        if (!inputCurrent()) {
+            pressed = null;
+            layerDragging = false;
+            return false;
+        }
+        if (button == 0 && layerDragging) {
+            layerDragging = false;
+            updateLayer(y);
+            return true;
+        }
         if (button == 0 && pressed != null) {
-            String previous = pressed; pressed = null;
-            for (var action : actions) if (previous.equals(action.id) && action.contains(x, y) && action.run != null) { action.run.run(); break; }
+            String previous = pressed;
+            pressed = null;
+            for (var action : actions)
+                if (previous.equals(action.id) && action.contains(x, y) && action.run != null) {
+                    action.run.run();
+                    break;
+                }
             return true;
         }
         var rect = scene.viewport();
         return scene.release(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
     }
+
     public boolean wheel(int x, int y, int delta) {
         if (!inputCurrent() || delta == 0) return false;
         for (var action : actions) if (action.contains(x, y)) return true;
@@ -352,10 +413,30 @@ public final class StructurePreviewPanel implements AutoCloseable {
         var rect = scene.viewport();
         return scene.wheel(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, delta);
     }
+
     public List<String> tooltip(int x, int y) {
         if (!inputCurrent()) return List.of();
         for (int i = actions.size() - 1; i >= 0; i--) if (actions.get(i).contains(x, y)) return actions.get(i).tooltip;
         return List.of();
     }
-    @Override public void close() { if (closed) return; closed = true; PreviewEmbeddedInput.INSTANCE.remove(this); scene.close(); }
+
+    @Override
+    public void close() {
+        if (closed) return;
+        closed = true;
+        PreviewEmbeddedInput.INSTANCE.remove(this);
+        scene.close();
+    }
+
+    private record Rect(float x, float y, float width, float height) {
+        boolean contains(int px, int py) {
+            return px >= x && py >= y && px < x + width && py < y + height;
+        }
+    }
+
+    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run) {
+        boolean contains(int x, int y) {
+            return bounds.contains(x, y) && (clip == null || clip.contains(x, y));
+        }
+    }
 }

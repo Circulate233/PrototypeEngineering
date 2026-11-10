@@ -4,13 +4,13 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
-/** Pure eligibility callback evaluated with a captured real start attempt. Throwing aborts the attempt. */
+/**
+ * Pure eligibility callback evaluated with a captured real start attempt. Throwing aborts the attempt.
+ */
 @FunctionalInterface
 @SuppressWarnings("unused")
 public interface ResearchStartCondition {
     ResearchStartCondition ALWAYS_ALLOWED = _ -> true;
-
-    boolean canStart(ResearchStartContext context);
 
     static ResearchStartCondition fromContext(Predicate<ResearchStartContext> predicate) {
         Objects.requireNonNull(predicate);
@@ -24,4 +24,6 @@ public interface ResearchStartCondition {
             return supplier.getAsBoolean();
         };
     }
+
+    boolean canStart(ResearchStartContext context);
 }

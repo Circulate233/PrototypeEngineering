@@ -7,6 +7,7 @@ import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
@@ -21,6 +22,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
@@ -46,16 +48,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.function.Consumer;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class ResourceRecipeIndexTest {
     private static final KeyType FIRST_TYPE = new KeyType("resource_index_first");
@@ -65,7 +65,56 @@ class ResourceRecipeIndexTest {
     private static final Key C = new Key(SECOND_TYPE, "a");
     private static final ResourceLocation GROUP = id("group");
     private static final ResourceLocation OTHER_GROUP = id("other_group");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static RecipeRequirement<ResourceRequirement> inputs(GenericStack... stacks) {
+        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(List.of(stacks), List.of()));
+    }
+
+    private static MachineRecipe recipe(String name, RecipeRequirement<?>... requirements) {
+        return new MachineRecipe(id(name), 2, List.of(requirements), Set.of(GROUP));
+    }
+
+    private static RecipeCatalog catalog(MachineRecipe... recipes) {
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "resource.index.pool", List.of(recipes))));
+    }
+
+    private static SlottedResourceBuffer buffer(long capacity) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST_TYPE, capacity);
+        capacities.put(SECOND_TYPE, capacity);
+        return new SlottedResourceBuffer(3, capacities, NO_OP);
+    }
+
+    private static void install(MachineInstance machine, ResourceHatch... hatches) {
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatches), List.of(), List.of()));
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("resource_index_test", path);
+    }
+
+    private static void finish(ResourceRecipeIndex.QuantityLookup cursor) {
+        for (int step = 0; step < 1000; step++) {
+            var budget = new RecipeWorkBudget(1);
+            if (cursor.advance(budget)) return;
+            assertTrue(budget.remaining() >= 0);
+            assertTrue(cursor.current(), "A stable owner must progress rather than restart");
+        }
+        throw new AssertionError("One-unit lookup did not finish");
+    }
+
+    private static void validate(ResourceRecipeIndex.QuantityLookup cursor, boolean expected) {
+        var validation = cursor.beginValidation();
+        for (int step = 0; step < 1000; step++) {
+            if (validation.advance(new RecipeWorkBudget(1))) {
+                assertEquals(expected, validation.current());
+                return;
+            }
+        }
+        throw new AssertionError("One-unit validation did not finish");
+    }
 
     @Test
     void postingsMatchAllDeclaredKeysAcrossTypesAndPreserveUnknownRecipesWithinCatalogScopeAndOrder() {
@@ -91,7 +140,8 @@ class ResourceRecipeIndexTest {
             new ResourceRequirement(List.of(), List.of(new GenericStack(A, 1)))));
         var mutableInput = inputs(new GenericStack(MISSING, 99));
         var externallyModified = recipe("externally_modified", mutableInput);
-        var customType = new RecipeRequirementType<ResourceRequirement>(RecipeRequirements.RESOURCES.id(), new RecipeRequirementSystem<>() { });
+        var customType = new RecipeRequirementType<ResourceRequirement>(RecipeRequirements.RESOURCES.id(), new RecipeRequirementSystem<>() {
+        });
         var unknownType = recipe("unknown_type", customType.requirement(id("unknown_io"), new ResourceRequirement(List.of(new GenericStack(MISSING, 99)), List.of())));
         var tooMuchC = recipe("too_much_c", inputs(new GenericStack(C, 3)));
         var otherGroup = new MachineRecipe(id("a_other_group"), 2, List.of(inputs(new GenericStack(A, 1))), Set.of(OTHER_GROUP));
@@ -239,7 +289,11 @@ class ResourceRecipeIndexTest {
     void changedQuantityContextIdentityAndAdapterValidityInvalidateOriginalCaptureWithoutResampling() {
         for (Consumer<FreshPorts> change : List.<Consumer<FreshPorts>>of(
             ports -> ports.source.extract(A, 1, Actionable.MODULATE),
-            ports -> { var replacement = buffer(100); replacement.insert(A, 5, Actionable.MODULATE); ports.source = replacement; },
+            ports -> {
+                var replacement = buffer(100);
+                replacement.insert(A, 5, Actionable.MODULATE);
+                ports.source = replacement;
+            },
             ports -> ports.identity = new Object(),
             ports -> ports.inputValid = false,
             ports -> ports.views.getFirst().valid = false)) {
@@ -293,7 +347,9 @@ class ResourceRecipeIndexTest {
                 finish(cursor);
                 assertEquals(List.of(), cursor.result());
             }
-            ports.present = true; ports.valid = true; ports.inputValid = true;
+            ports.present = true;
+            ports.valid = true;
+            ports.inputValid = true;
             if (completedBeforeChange) {
                 validate(cursor, false);
             } else {
@@ -310,39 +366,21 @@ class ResourceRecipeIndexTest {
         }
     }
 
-    private static void finish(ResourceRecipeIndex.QuantityLookup cursor) {
-        for (int step = 0; step < 1000; step++) {
-            var budget = new RecipeWorkBudget(1);
-            if (cursor.advance(budget)) return;
-            assertTrue(budget.remaining() >= 0);
-            assertTrue(cursor.current(), "A stable owner must progress rather than restart");
-        }
-        throw new AssertionError("One-unit lookup did not finish");
-    }
-
-    private static void validate(ResourceRecipeIndex.QuantityLookup cursor, boolean expected) {
-        var validation = cursor.beginValidation();
-        for (int step = 0; step < 1000; step++) {
-            if (validation.advance(new RecipeWorkBudget(1))) {
-                assertEquals(expected, validation.current());
-                return;
-            }
-        }
-        throw new AssertionError("One-unit validation did not finish");
-    }
-
     private static final class FreshPorts implements ResourceHatch {
+        private final ObjectArrayList<ReadOnlyView> views = new ObjectArrayList<>();
         private ResourceStorage source;
         private Object identity = new Object();
         private boolean valid = true;
         private boolean present = true;
         private boolean inputValid = true;
         private int validReads;
-        private final ObjectArrayList<ReadOnlyView> views = new ObjectArrayList<>();
 
-        private FreshPorts(ResourceStorage source) { this.source = source; }
+        private FreshPorts(ResourceStorage source) {
+            this.source = source;
+        }
 
-        @Override public @Nullable ResourceStorage input() {
+        @Override
+        public @Nullable ResourceStorage input() {
             if (!present) return null;
             var view = new ReadOnlyView(source, Set.of(A));
             view.valid = inputValid;
@@ -350,38 +388,29 @@ class ResourceRecipeIndexTest {
             return view;
         }
 
-        @Override public @Nullable ResourceStorage output() { return null; }
-        @Override public Object inputStorageIdentity() { return identity; }
-        @Override public boolean isValid() { validReads++; return valid; }
+        @Override
+        public @Nullable ResourceStorage output() {
+            return null;
+        }
+
+        @Override
+        public Object inputStorageIdentity() {
+            return identity;
+        }
+
+        @Override
+        public boolean isValid() {
+            validReads++;
+            return valid;
+        }
     }
 
-    private static RecipeRequirement<ResourceRequirement> inputs(GenericStack... stacks) {
-        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(List.of(stacks), List.of()));
-    }
-
-    private static MachineRecipe recipe(String name, RecipeRequirement<?>... requirements) {
-        return new MachineRecipe(id(name), 2, List.of(requirements), Set.of(GROUP));
-    }
-
-    private static RecipeCatalog catalog(MachineRecipe... recipes) {
-        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "resource.index.pool", List.of(recipes))));
-    }
-
-    private static SlottedResourceBuffer buffer(long capacity) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST_TYPE, capacity);
-        capacities.put(SECOND_TYPE, capacity);
-        return new SlottedResourceBuffer(3, capacities, NO_OP);
-    }
-
-    private static void install(MachineInstance machine, ResourceHatch... hatches) {
-        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatches), List.of(), List.of()));
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("resource_index_test", path); }
-
-    private record Ports(@Nullable ResourceStorage input, @Nullable ResourceStorage output, boolean valid) implements ResourceHatch {
-        @Override public boolean isValid() { return valid; }
+    private record Ports(@Nullable ResourceStorage input, @Nullable ResourceStorage output,
+                         boolean valid) implements ResourceHatch {
+        @Override
+        public boolean isValid() {
+            return valid;
+        }
     }
 
     /**
@@ -398,7 +427,10 @@ class ResourceRecipeIndexTest {
             this.visible = visible;
         }
 
-        @Override public boolean isValid() { return valid && delegate.isValid(); }
+        @Override
+        public boolean isValid() {
+            return valid && delegate.isValid();
+        }
 
         @Override
         public StorageContext context() {

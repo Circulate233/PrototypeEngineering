@@ -15,7 +15,17 @@ public enum PreviewUiText implements LocalizationEnum {
     Match("entry_status.match"), Missing("entry_status.missing"), Wrong("entry_status.wrong"), Unloaded("entry_status.unloaded"), Unknown("entry_status.unknown");
 
     private final String translationKey;
-    PreviewUiText(String suffix) { translationKey = "gui." + Tags.MOD_ID + ".preview." + suffix; }
-    @Override public String getTranslationKey() { return translationKey; }
-    public static String onOff(boolean value) { return (value ? On : Off).getLocal(); }
+
+    PreviewUiText(String suffix) {
+        translationKey = "gui." + Tags.MOD_ID + ".preview." + suffix;
+    }
+
+    public static String onOff(boolean value) {
+        return (value ? On : Off).getLocal();
+    }
+
+    @Override
+    public String getTranslationKey() {
+        return translationKey;
+    }
 }

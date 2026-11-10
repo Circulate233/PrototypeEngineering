@@ -15,7 +15,9 @@ import net.minecraftforge.common.util.Constants;
 import java.util.Comparator;
 import java.util.UUID;
 
-/** Strict complete receipt codec shared by the single world operation and its physical database. */
+/**
+ * Strict complete receipt codec shared by the single world operation and its physical database.
+ */
 public final class ResearchDiskCommitNbt {
     private ResearchDiskCommitNbt() {
     }
@@ -39,7 +41,8 @@ public final class ResearchDiskCommitNbt {
     public static ResearchDiskCommit decode(NBTTagCompound tag, ResearchRegistry registry) {
         StrictNbt.requireKeys(tag, "Version", "Operation", "Actor", "Team", "Database", "DatabaseTier", "Capacity", "DiskTier",
             "Entries", "Before", "After");
-        if (StrictNbt.requireInt(tag, "Version") != 1) throw new IllegalArgumentException("Unsupported disk import receipt schema");
+        if (StrictNbt.requireInt(tag, "Version") != 1)
+            throw new IllegalArgumentException("Unsupported disk import receipt schema");
         var database = uuid(tag, "Database");
         int tier = StrictNbt.requireInt(tag, "DatabaseTier");
         int capacity = StrictNbt.requireInt(tag, "Capacity");
@@ -55,7 +58,9 @@ public final class ResearchDiskCommitNbt {
     private static DataCenterResearchSnapshot validated(UUID database, int tier, int capacity,
                                                         Object2IntMap<ResourceLocation> contents, ResearchRegistry registry) {
         var snapshot = new DataCenterResearchSnapshot(database, tier, capacity, 0, contents);
-        return ResearchDataCenter.restore(snapshot, registry, () -> { }, () -> { }).snapshot();
+        return ResearchDataCenter.restore(snapshot, registry, () -> {
+        }, () -> {
+        }).snapshot();
     }
 
     private static UUID uuid(NBTTagCompound tag, String key) {
@@ -86,7 +91,8 @@ public final class ResearchDiskCommitNbt {
             StrictNbt.requireKeys(entry, "Id", "Level");
             var id = StrictNbt.requireId(entry, "Id");
             int level = StrictNbt.requireInt(entry, "Level");
-            if (level < 1 || result.containsKey(id)) throw new IllegalArgumentException("Invalid or duplicate disk receipt research");
+            if (level < 1 || result.containsKey(id))
+                throw new IllegalArgumentException("Invalid or duplicate disk receipt research");
             result.put(id, level);
         }
         return result;

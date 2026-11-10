@@ -40,7 +40,148 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineWorkSlotGroupTest {
-    private static final Runnable NO_OP = () -> {};
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static void settleBatch(List<RecipeProcess.Stage> stages) {
+        var resources = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(stages));
+        for (var source : resources.sources()) {
+            assertTrue(source.apply());
+        }
+        assertTrue(resources.commit(() -> true));
+        for (var source : resources.sources()) {
+            assertTrue(source.resolve());
+        }
+        resources.finish();
+        for (var stage : stages) {
+            assertTrue(stage.settleBatch(null));
+        }
+    }
+
+    private static void settleSynchronously(MachineWorkSlots.TickGroup group) {
+        List<RecipeProcess.Stage> stages;
+        while (!(stages = group.nextRound()).isEmpty()) {
+            for (var stage : stages) {
+                stage.acquire();
+                stage.settleSynchronously();
+            }
+        }
+    }
+
+    private static ResourceReservation delayed(ResourceReservation token, boolean[] recoverable, int[] attempts, RuntimeException failure) {
+        return new ResourceReservation() {
+            @Override
+            public StorageContext context() {
+                return token.context();
+            }
+
+            @Override
+            public boolean canApply() {
+                return token.canApply();
+            }
+
+            @Override
+            public void apply() {
+                token.apply();
+            }
+
+            @Override
+            public void complete() {
+                attempts[0]++;
+                if (!recoverable[0]) {
+                    throw failure;
+                }
+                token.complete();
+            }
+
+            @Override
+            public void rollback() {
+                token.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
+                return recoverable[0] ? token.resolution() : Resolution.UNKNOWN;
+            }
+        };
+    }
+
+    private static MachineWorkSlots host() {
+        return new MachineWorkSlots(new MachineInstance(), List.of());
+    }
+
+    private static RequirementTransaction outcome(ProcessResult result) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return result;
+            }
+
+            @Override
+            public void commit() {
+            }
+
+            @Override
+            public void rollback() {
+            }
+        };
+    }
+
+    private static RecipeProcess process(MachineWorkSlots host, String name, int duration, RecipeRequirement<?>... requirements) {
+        var process = new RecipeProcess(host.owner(), new MachineRecipe(id(name), duration, List.of(requirements)), 1);
+        assertTrue(host.start(process));
+        return process;
+    }
+
+    private static RecipeRequirement<String> requirement(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id("observer"), system).requirement(id("observer"), "value");
+    }
+
+    private static void components(RecipeProcess process, String name, List<String> events, Runnable pre, Runnable post) {
+        process.components().create(new ComponentType<>(id("component"), _ -> "value", List.of(new ComponentSystem<RecipeProcess, String>() {
+            @Override
+            public ResourceLocation id() {
+                return MachineWorkSlotGroupTest.id("system");
+            }
+
+            @Override
+            public void onPreTick(RecipeProcess owner, String component) {
+                events.add("pre:" + name);
+                pre.run();
+            }
+
+            @Override
+            public void onTick(RecipeProcess owner, String component) {
+                events.add("tick:" + name);
+            }
+
+            @Override
+            public void onPostTick(RecipeProcess owner, String component) {
+                events.add("post:" + name);
+                post.run();
+            }
+        })), process);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("work_slot_group_test", name);
+    }
 
     @Test
     void sharedSourceRoundsExecuteEachPhaseOnceAcrossRealHosts() {
@@ -66,7 +207,9 @@ class MachineWorkSlotGroupTest {
         while (!(stages = group.nextRound()).isEmpty()) {
             assertEquals(2, stages.size());
             phases.add(stages.getFirst().phase());
-            for (var stage : stages) { stage.acquire(); }
+            for (var stage : stages) {
+                stage.acquire();
+            }
             settleBatch(stages);
         }
         assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), phases);
@@ -117,7 +260,10 @@ class MachineWorkSlotGroupTest {
         group.begin();
         var first = group.nextRound();
         assertEquals(3, first.size());
-        for (var stage : first) { stage.acquire(); stage.settleSynchronously(); }
+        for (var stage : first) {
+            stage.acquire();
+            stage.settleSynchronously();
+        }
         var next = group.nextRound();
         assertEquals(1, next.size());
         assertEquals(RecipeStage.END, next.getFirst().phase());
@@ -145,11 +291,23 @@ class MachineWorkSlotGroupTest {
         RecipeProcess.Stage[] foreign = {null};
         int[] acquisitions = {0};
         var first = process(firstHost, "first", 2, requirement((_, _) -> {
-            if (foreign[0] != null) { assertThrows(IllegalStateException.class, foreign[0]::acquire); }
+            if (foreign[0] != null) {
+                assertThrows(IllegalStateException.class, foreign[0]::acquire);
+            }
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { assertThrows(IllegalStateException.class, foreign[0]::discard); }
-                @Override public void rollback() { }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    assertThrows(IllegalStateException.class, foreign[0]::discard);
+                }
+
+                @Override
+                public void rollback() {
+                }
             };
         }));
         var second = process(secondHost, "second", 2, requirement((_, _) -> {
@@ -178,7 +336,9 @@ class MachineWorkSlotGroupTest {
         stages.getFirst().acquire();
         assertEquals(0, acquisitions[0]);
         stages.get(1).acquire();
-        for (var stage : stages) { stage.settleSynchronously(); }
+        for (var stage : stages) {
+            stage.settleSynchronously();
+        }
         group.stop();
         assertTrue(group.tryFinish());
         assertEquals(1, acquisitions[0]);
@@ -199,7 +359,9 @@ class MachineWorkSlotGroupTest {
         var untouched = process(untouchedHost, "untouched", 1);
         var failure = new IllegalStateException("later pre failed");
         components(first, "first", events, () -> assertThrows(IllegalStateException.class, untouchedHost::snapshot), NO_OP);
-        components(second, "second", events, () -> { throw failure; }, NO_OP);
+        components(second, "second", events, () -> {
+            throw failure;
+        }, NO_OP);
         components(untouched, "untouched", events, NO_OP, NO_OP);
         var group = MachineWorkSlots.prepareTickGroup(List.of(firstHost, secondHost, untouchedHost));
         assertSame(failure, assertThrows(IllegalStateException.class, group::begin));
@@ -255,10 +417,23 @@ class MachineWorkSlotGroupTest {
         var first = process(firstHost, "first", 1, requirement((_, _) -> {
             var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 10).reservation());
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public List<? extends ResourceReservation> reservations() { return List.of(delayed(token, recoverable, attempts, failure)); }
-                @Override public void commit() { }
-                @Override public void rollback() { }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public List<? extends ResourceReservation> reservations() {
+                    return List.of(delayed(token, recoverable, attempts, failure));
+                }
+
+                @Override
+                public void commit() {
+                }
+
+                @Override
+                public void rollback() {
+                }
             };
         }));
         var second = process(secondHost, "second", 1);
@@ -268,7 +443,9 @@ class MachineWorkSlotGroupTest {
         var group = MachineWorkSlots.prepareTickGroup(List.of(firstHost, secondHost));
         group.begin();
         var stages = group.nextRound();
-        for (var stage : stages) { stage.acquire(); }
+        for (var stage : stages) {
+            stage.acquire();
+        }
         var resources = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(stages));
         var source = resources.sources().getFirst();
         assertTrue(source.apply());
@@ -276,7 +453,9 @@ class MachineWorkSlotGroupTest {
         assertSame(failure, assertThrows(IllegalStateException.class, source::resolve));
         assertFalse(source.resolve());
         group.recordFailure(failure);
-        for (var stage : stages) { assertFalse(stage.settleBatch(failure)); }
+        for (var stage : stages) {
+            assertFalse(stage.settleBatch(failure));
+        }
         assertFalse(group.tryFinish());
         assertTrue(events.stream().noneMatch(event -> event.startsWith("post:")));
         for (var host : List.of(firstHost, secondHost)) {
@@ -287,7 +466,9 @@ class MachineWorkSlotGroupTest {
         recoverable[0] = true;
         assertTrue(source.resolve());
         resources.finish();
-        for (var stage : stages) { assertTrue(stage.settleBatch(null)); }
+        for (var stage : stages) {
+            assertTrue(stage.settleBatch(null));
+        }
         assertTrue(group.nextRound().isEmpty());
         assertTrue(group.tryFinish());
         assertEquals(2, attempts[0]);
@@ -302,7 +483,9 @@ class MachineWorkSlotGroupTest {
         var hosts = List.of(host(), host(), host(), host());
         var processes = new ObjectArrayList<RecipeProcess>();
         var events = new ObjectArrayList<String>();
-        for (int i = 0; i < hosts.size(); i++) { processes.add(process(hosts.get(i), "p" + i, 0)); }
+        for (int i = 0; i < hosts.size(); i++) {
+            processes.add(process(hosts.get(i), "p" + i, 0));
+        }
         var failure = new IllegalStateException("later post");
         var cleanup = new AssertionError("third post");
         components(processes.getFirst(), "first", events, NO_OP, NO_OP);
@@ -313,7 +496,9 @@ class MachineWorkSlotGroupTest {
             assertThrows(IllegalStateException.class, hosts.getFirst()::snapshot);
             throw failure;
         });
-        components(processes.get(2), "third", events, NO_OP, () -> { throw cleanup; });
+        components(processes.get(2), "third", events, NO_OP, () -> {
+            throw cleanup;
+        });
         components(processes.getLast(), "fourth", events, NO_OP, NO_OP);
         var group = MachineWorkSlots.prepareTickGroup(hosts);
         group.begin();
@@ -325,7 +510,10 @@ class MachineWorkSlotGroupTest {
         assertNull(processes.getLast().host());
         assertSame(hosts.get(1), processes.get(1).host());
         assertSame(hosts.get(2), processes.get(2).host());
-        for (var host : hosts) { assertNull(host.pendingTickBatch()); host.requireQuiescent(); }
+        for (var host : hosts) {
+            assertNull(host.pendingTickBatch());
+            host.requireQuiescent();
+        }
         assertEquals(4, events.stream().filter(event -> event.startsWith("post:")).count());
         hosts.getFirst().snapshot();
         hosts.getLast().snapshot();
@@ -374,67 +562,4 @@ class MachineWorkSlotGroupTest {
         assertTrue(empty.nextRound().isEmpty());
         assertTrue(empty.tryFinish());
     }
-
-    private static void settleBatch(List<RecipeProcess.Stage> stages) {
-        var resources = Objects.requireNonNull(RecipeProcess.Stage.tryAcquireBatch(stages));
-        for (var source : resources.sources()) { assertTrue(source.apply()); }
-        assertTrue(resources.commit(() -> true));
-        for (var source : resources.sources()) { assertTrue(source.resolve()); }
-        resources.finish();
-        for (var stage : stages) { assertTrue(stage.settleBatch(null)); }
-    }
-
-    private static void settleSynchronously(MachineWorkSlots.TickGroup group) {
-        List<RecipeProcess.Stage> stages;
-        while (!(stages = group.nextRound()).isEmpty()) {
-            for (var stage : stages) { stage.acquire(); stage.settleSynchronously(); }
-        }
-    }
-
-    private static ResourceReservation delayed(ResourceReservation token, boolean[] recoverable, int[] attempts, RuntimeException failure) {
-        return new ResourceReservation() {
-            @Override public StorageContext context() { return token.context(); }
-            @Override public boolean canApply() { return token.canApply(); }
-            @Override public void apply() { token.apply(); }
-            @Override public void complete() { attempts[0]++; if (!recoverable[0]) { throw failure; } token.complete(); }
-            @Override public void rollback() { token.rollback(); }
-            @Override public Resolution resolution() { return recoverable[0] ? token.resolution() : Resolution.UNKNOWN; }
-        };
-    }
-
-    private static MachineWorkSlots host() { return new MachineWorkSlots(new MachineInstance(), List.of()); }
-
-    private static RequirementTransaction outcome(ProcessResult result) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return result; }
-            @Override public void commit() { }
-            @Override public void rollback() { }
-        };
-    }
-
-    private static RecipeProcess process(MachineWorkSlots host, String name, int duration, RecipeRequirement<?>... requirements) {
-        var process = new RecipeProcess(host.owner(), new MachineRecipe(id(name), duration, List.of(requirements)), 1);
-        assertTrue(host.start(process));
-        return process;
-    }
-
-    private static RecipeRequirement<String> requirement(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.START); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.TICK); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.END); }
-        };
-        return new RecipeRequirementType<>(id("observer"), system).requirement(id("observer"), "value");
-    }
-
-    private static void components(RecipeProcess process, String name, List<String> events, Runnable pre, Runnable post) {
-        process.components().create(new ComponentType<>(id("component"), _ -> "value", List.of(new ComponentSystem<RecipeProcess, String>() {
-            @Override public ResourceLocation id() { return MachineWorkSlotGroupTest.id("system"); }
-            @Override public void onPreTick(RecipeProcess owner, String component) { events.add("pre:" + name); pre.run(); }
-            @Override public void onTick(RecipeProcess owner, String component) { events.add("tick:" + name); }
-            @Override public void onPostTick(RecipeProcess owner, String component) { events.add("post:" + name); post.run(); }
-        })), process);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("work_slot_group_test", name); }
 }

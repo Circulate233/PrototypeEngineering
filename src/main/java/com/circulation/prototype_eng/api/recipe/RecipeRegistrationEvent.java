@@ -17,13 +17,19 @@ public final class RecipeRegistrationEvent extends Event {
         this.networkExtensions = Objects.requireNonNull(networkExtensions);
     }
 
-    /** Downstream mods register their pools and recipes through this event's registry. */
+    /**
+     * Downstream mods register their pools and recipes through this event's registry.
+     */
     @SuppressWarnings("unused")
     public RecipeRegistry registry() {
         return registry;
     }
 
-    /** Registers ordered per-recipe network requirements before the complete catalog is published. */
+    /**
+     * Registers ordered per-recipe network requirements before the complete catalog is published.
+     */
     @SuppressWarnings("unused")
-    public NetworkRecipeExtensions networkExtensions() { return networkExtensions; }
+    public NetworkRecipeExtensions networkExtensions() {
+        return networkExtensions;
+    }
 }

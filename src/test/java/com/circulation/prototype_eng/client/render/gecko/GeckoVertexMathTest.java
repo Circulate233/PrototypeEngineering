@@ -52,61 +52,6 @@ class GeckoVertexMathTest {
         return expected;
     }
 
-    @Test
-    void scalarVectorAndSelectedMatchVecmathCoordinatesWithOffsetsTailAndUntouchedAttributes() {
-        assertTrue(ModuleLayer.boot().findModule("jdk.incubator.vector").isPresent(), "Enabled test JVM resolves the module");
-        var affine = new Matrix4f(new float[]{
-            1.03125f, .125f, -.0625f, 12.5f,
-            -.25f, .9375f, .03125f, -7.75f,
-            .0625f, -.125f, 1.015625f, 3.125f,
-            0, 0, 0, 1
-        });
-        var reflected = new Matrix4f();
-        reflected.rotY(.37f);
-        reflected.m00 = -reflected.m00;
-        reflected.m20 = -reflected.m20;
-        var identity = new Matrix4f();
-        identity.setIdentity();
-        for (int count : new int[]{0, 4, 8, 12, 16, 20, 24, 28, 36}) {
-            var cache = positions(count + 6);
-            float[] xs = cache.xs().clone(), ys = cache.ys().clone(), zs = cache.zs().clone();
-            for (var matrix : List.of(identity, affine, reflected)) {
-              for (int[] offsets : new int[][]{{0, 0}, {2, 5}}) {
-                int[] initial = new int[count * 7 + 10];
-                Arrays.fill(initial, 0x5a5a5a5a);
-                int[] expected = referencePositions(cache, matrix, offsets[0], count, initial, offsets[1]);
-                int[] scalar = initial.clone(), vector = initial.clone(), selected = initial.clone();
-                GeckoBakerMath.packPositionsScalar(cache, matrix, offsets[0], count, scalar, offsets[1]);
-                GeckoBakerMath.packPositionsVector(cache, matrix, offsets[0], count, vector, offsets[1]);
-                GeckoBakerMath.packPositions(cache, matrix, offsets[0], count, selected, offsets[1]);
-                assertArrayEquals(expected, scalar);
-                assertArrayEquals(expected, vector);
-                assertArrayEquals(expected, selected);
-              }
-            }
-            assertArrayEquals(xs, cache.xs());
-            assertArrayEquals(ys, cache.ys());
-            assertArrayEquals(zs, cache.zs());
-        }
-    }
-
-    @Test
-    void uvAliasAndInvalidRangesAreRejectedBeforeAnyWrite() {
-        var cache = positions(4);
-        Arrays.fill(cache.uv(), 0x7fc12345);
-        int[] beforeUv = cache.uv().clone();
-        assertThrows(IllegalArgumentException.class,
-            () -> GeckoBakerMath.packPositions(cache, cache.model(), 0, 1, cache.uv(), 0));
-        assertArrayEquals(beforeUv, cache.uv());
-        int[] out = new int[28];
-        Arrays.fill(out, 17);
-        int[] before = out.clone();
-        assertThrows(IndexOutOfBoundsException.class, () -> GeckoBakerMath.packPositions(cache, cache.model(), 1, 4, out, 0));
-        assertThrows(IndexOutOfBoundsException.class, () -> GeckoBakerMath.packPositions(cache, cache.model(), 0, 4, out, 1));
-        assertThrows(IndexOutOfBoundsException.class, () -> GeckoBakerMath.packPositions(cache, cache.model(), -1, 0, out, 0));
-        assertArrayEquals(before, out);
-    }
-
     private static int[] bake(GeckoModelBaker baker, GeoModel model, IntArrayList batchLengths) {
         var out = new IntArrayList();
         baker.bakeRoutedFilteredPacked(model, new GeckoBakerMath.MatrixStack(), pass -> {
@@ -141,27 +86,83 @@ class GeckoVertexMathTest {
             matrix.mul(boneStack.model(), cubeStack.model());
             var normals = new Matrix3f();
             normals.mul(boneStack.normal(), cubeStack.normal());
-            for (var quad : cube.quads) if (quad != null) {
-                var normal = new Vector3f((float) quad.normal.getX(), (float) quad.normal.getY(), (float) quad.normal.getZ());
-                normals.transform(normal);
-                if (cube.size.y == 0 || cube.size.z == 0) normal.x = Math.abs(normal.x);
-                if (cube.size.x == 0 || cube.size.z == 0) normal.y = Math.abs(normal.y);
-                if (cube.size.x == 0 || cube.size.y == 0) normal.z = Math.abs(normal.z);
-                int packedNormal = GeckoBakerMath.packNormal(normal.x, normal.y, normal.z);
-                for (var vertex : quad.vertices) {
-                    var position = new Point3f(vertex.position);
-                    matrix.transform(position);
-                    expected.add(Float.floatToRawIntBits(position.x));
-                    expected.add(Float.floatToRawIntBits(position.y));
-                    expected.add(Float.floatToRawIntBits(position.z));
-                    expected.add(Float.floatToRawIntBits(vertex.textureU));
-                    expected.add(Float.floatToRawIntBits(vertex.textureV));
-                    expected.add(0xffffffff);
-                    expected.add(packedNormal);
+            for (var quad : cube.quads)
+                if (quad != null) {
+                    var normal = new Vector3f((float) quad.normal.getX(), (float) quad.normal.getY(), (float) quad.normal.getZ());
+                    normals.transform(normal);
+                    if (cube.size.y == 0 || cube.size.z == 0) normal.x = Math.abs(normal.x);
+                    if (cube.size.x == 0 || cube.size.z == 0) normal.y = Math.abs(normal.y);
+                    if (cube.size.x == 0 || cube.size.y == 0) normal.z = Math.abs(normal.z);
+                    int packedNormal = GeckoBakerMath.packNormal(normal.x, normal.y, normal.z);
+                    for (var vertex : quad.vertices) {
+                        var position = new Point3f(vertex.position);
+                        matrix.transform(position);
+                        expected.add(Float.floatToRawIntBits(position.x));
+                        expected.add(Float.floatToRawIntBits(position.y));
+                        expected.add(Float.floatToRawIntBits(position.z));
+                        expected.add(Float.floatToRawIntBits(vertex.textureU));
+                        expected.add(Float.floatToRawIntBits(vertex.textureV));
+                        expected.add(0xffffffff);
+                        expected.add(packedNormal);
+                    }
                 }
-            }
         }
         return expected.toIntArray();
+    }
+
+    @Test
+    void scalarVectorAndSelectedMatchVecmathCoordinatesWithOffsetsTailAndUntouchedAttributes() {
+        assertTrue(ModuleLayer.boot().findModule("jdk.incubator.vector").isPresent(), "Enabled test JVM resolves the module");
+        var affine = new Matrix4f(new float[]{
+            1.03125f, .125f, -.0625f, 12.5f,
+            -.25f, .9375f, .03125f, -7.75f,
+            .0625f, -.125f, 1.015625f, 3.125f,
+            0, 0, 0, 1
+        });
+        var reflected = new Matrix4f();
+        reflected.rotY(.37f);
+        reflected.m00 = -reflected.m00;
+        reflected.m20 = -reflected.m20;
+        var identity = new Matrix4f();
+        identity.setIdentity();
+        for (int count : new int[]{0, 4, 8, 12, 16, 20, 24, 28, 36}) {
+            var cache = positions(count + 6);
+            float[] xs = cache.xs().clone(), ys = cache.ys().clone(), zs = cache.zs().clone();
+            for (var matrix : List.of(identity, affine, reflected)) {
+                for (int[] offsets : new int[][]{{0, 0}, {2, 5}}) {
+                    int[] initial = new int[count * 7 + 10];
+                    Arrays.fill(initial, 0x5a5a5a5a);
+                    int[] expected = referencePositions(cache, matrix, offsets[0], count, initial, offsets[1]);
+                    int[] scalar = initial.clone(), vector = initial.clone(), selected = initial.clone();
+                    GeckoBakerMath.packPositionsScalar(cache, matrix, offsets[0], count, scalar, offsets[1]);
+                    GeckoBakerMath.packPositionsVector(cache, matrix, offsets[0], count, vector, offsets[1]);
+                    GeckoBakerMath.packPositions(cache, matrix, offsets[0], count, selected, offsets[1]);
+                    assertArrayEquals(expected, scalar);
+                    assertArrayEquals(expected, vector);
+                    assertArrayEquals(expected, selected);
+                }
+            }
+            assertArrayEquals(xs, cache.xs());
+            assertArrayEquals(ys, cache.ys());
+            assertArrayEquals(zs, cache.zs());
+        }
+    }
+
+    @Test
+    void uvAliasAndInvalidRangesAreRejectedBeforeAnyWrite() {
+        var cache = positions(4);
+        Arrays.fill(cache.uv(), 0x7fc12345);
+        int[] beforeUv = cache.uv().clone();
+        assertThrows(IllegalArgumentException.class,
+            () -> GeckoBakerMath.packPositions(cache, cache.model(), 0, 1, cache.uv(), 0));
+        assertArrayEquals(beforeUv, cache.uv());
+        int[] out = new int[28];
+        Arrays.fill(out, 17);
+        int[] before = out.clone();
+        assertThrows(IndexOutOfBoundsException.class, () -> GeckoBakerMath.packPositions(cache, cache.model(), 1, 4, out, 0));
+        assertThrows(IndexOutOfBoundsException.class, () -> GeckoBakerMath.packPositions(cache, cache.model(), 0, 4, out, 1));
+        assertThrows(IndexOutOfBoundsException.class, () -> GeckoBakerMath.packPositions(cache, cache.model(), -1, 0, out, 0));
+        assertArrayEquals(before, out);
     }
 
     @Test

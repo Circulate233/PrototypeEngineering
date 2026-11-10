@@ -1,38 +1,39 @@
 package com.circulation.prototype_eng.container;
 
+import ae2.api.behaviors.ContainerItemStrategies;
 import ae2.api.config.Actionable;
+import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import ae2.container.AEBaseContainer;
 import ae2.container.SlotSemantics;
+import ae2.container.guisync.GuiSync;
 import ae2.container.slot.AppEngSlot;
+import ae2.core.network.InitNetwork;
+import ae2.core.network.serverbound.InventoryActionPacket;
 import ae2.helpers.InventoryAction;
+import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
+import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.HatchTier;
+import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
+import com.circulation.prototype_eng.localization.HatchGuiTitle;
 import com.circulation.prototype_eng.storage.HatchGuiInventory;
 import com.circulation.prototype_eng.storage.HatchSlotActions;
+import it.unimi.dsi.fastutil.shorts.ShortSet;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.ClickType;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.play.server.SPacketSetSlot;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import ae2.api.stacks.AEFluidKey;
-import ae2.container.guisync.GuiSync;
-import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
-import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
-import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
-import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
-import com.circulation.prototype_eng.api.storage.HatchTier;
-import com.circulation.prototype_eng.localization.HatchGuiTitle;
-import ae2.api.behaviors.ContainerItemStrategies;
-import ae2.core.network.InitNetwork;
-import ae2.core.network.serverbound.InventoryActionPacket;
-import it.unimi.dsi.fastutil.shorts.ShortSet;
-import net.minecraft.network.play.server.SPacketSetSlot;
+
 public final class ResourceHatchContainer extends AEBaseContainer {
     private static final String VIEW = "resourceView";
     private static final String CLICK = "resourceClick";
@@ -115,53 +116,6 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         });
     }
 
-    private static void collectItems(@Nullable SlottedResourceStorage inventory, AEItemKey key, ItemStack carried) {
-        if (inventory == null) return;
-        inventory.context().lock();
-        try {
-            for (int slot = 0; slot < inventory.size() && carried.getCount() < carried.getMaxStackSize(); slot++)
-                carried.grow((int) inventory.extract(slot, key, carried.getMaxStackSize() - carried.getCount(), Actionable.MODULATE));
-        } finally {
-            inventory.context().unlock();
-        }
-    }
-
-    public int inputRows() {
-        return ResourceHatchWindow.rows(typeSlots(true), columns);
-    }
-    public HatchTier tier() { return tile.tier(); }
-
-    public int outputRows() {
-        return ResourceHatchWindow.rows(typeSlots(false), columns);
-    }
-    public boolean hasAutomationSettings() { return settings != null; }
-    public void toggleInput() { sendClientAction(AUTO_INPUT); }
-    public void toggleOutput() { sendClientAction(AUTO_OUTPUT); }
-
-    private boolean canChangeSettings() {
-        var player = getPlayer();
-        var server = player.world.getMinecraftServer();
-        return isServerSide() && server != null && server.isCallingFromMinecraftThread()
-            && player.openContainer == this && canInteractWith(player)
-            && player.world.isBlockModifiable(player, tile.blockEntity().getPos());
-    }
-
-    private void syncSettings() {
-        if (settings != null) {
-            autoInput = settings.autoInput();
-            autoOutput = settings.autoOutput();
-        }
-    }
-
-    @Override
-    public void broadcastChanges() {
-        if (isServerSide()) {
-            syncSettings();
-            if (canInteractWith(getPlayer())) snapshot = window.capture();
-        }
-        super.broadcastChanges();
-    }
-
     private static ItemStack clickItem(SlottedResourceStorage inventory, int slot, ItemStack carried, boolean input, boolean right) {
         var stored = storedKey(inventory, slot);
         if (stored != null && !(stored instanceof AEItemKey) || GenericStack.isWrapped(carried)) {
@@ -191,6 +145,65 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     private static AEKey storedKey(SlottedResourceStorage inventory, int slot) {
         GenericStack stack = inventory.getStack(slot);
         return stack == null ? null : stack.what();
+    }
+
+    private static void collectItems(@Nullable SlottedResourceStorage inventory, AEItemKey key, ItemStack carried) {
+        if (inventory == null) return;
+        inventory.context().lock();
+        try {
+            for (int slot = 0; slot < inventory.size() && carried.getCount() < carried.getMaxStackSize(); slot++)
+                carried.grow((int) inventory.extract(slot, key, carried.getMaxStackSize() - carried.getCount(), Actionable.MODULATE));
+        } finally {
+            inventory.context().unlock();
+        }
+    }
+
+    public int inputRows() {
+        return ResourceHatchWindow.rows(typeSlots(true), columns);
+    }
+
+    public HatchTier tier() {
+        return tile.tier();
+    }
+
+    public int outputRows() {
+        return ResourceHatchWindow.rows(typeSlots(false), columns);
+    }
+
+    public boolean hasAutomationSettings() {
+        return settings != null;
+    }
+
+    public void toggleInput() {
+        sendClientAction(AUTO_INPUT);
+    }
+
+    public void toggleOutput() {
+        sendClientAction(AUTO_OUTPUT);
+    }
+
+    private boolean canChangeSettings() {
+        var player = getPlayer();
+        var server = player.world.getMinecraftServer();
+        return isServerSide() && server != null && server.isCallingFromMinecraftThread()
+            && player.openContainer == this && canInteractWith(player)
+            && player.world.isBlockModifiable(player, tile.blockEntity().getPos());
+    }
+
+    private void syncSettings() {
+        if (settings != null) {
+            autoInput = settings.autoInput();
+            autoOutput = settings.autoOutput();
+        }
+    }
+
+    @Override
+    public void broadcastChanges() {
+        if (isServerSide()) {
+            syncSettings();
+            if (canInteractWith(getPlayer())) snapshot = window.capture();
+        }
+        super.broadcastChanges();
     }
 
     @Override
@@ -561,10 +574,10 @@ public final class ResourceHatchContainer extends AEBaseContainer {
                 }
             } else {
                 handleEmptyHeldItem((what, amount, mode) -> {
-                    long limited = what instanceof AEFluidKey && fluidSettings != null
-                        ? fluidSettings.limitFluidInput(amount) : amount;
-                    return inventory.insert(slot, what, limited, mode);
-                },
+                        long limited = what instanceof AEFluidKey && fluidSettings != null
+                            ? fluidSettings.limitFluidInput(amount) : amount;
+                        return inventory.insert(slot, what, limited, mode);
+                    },
                     action == InventoryAction.EMPTY_ENTIRE_ITEM);
             }
         } finally {

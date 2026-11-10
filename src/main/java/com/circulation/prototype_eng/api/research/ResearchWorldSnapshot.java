@@ -25,12 +25,15 @@ import java.util.UUID;
 public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players,
                                     ObjectList<Team> teams,
                                     ObjectList<ResearchDownloadOperation> downloads,
-                                    ObjectList<ResearchDownloadReceipt> downloadReceipts, ObjectList<ResearchDiskOperation> diskImports) {
+                                    ObjectList<ResearchDownloadReceipt> downloadReceipts,
+                                    ObjectList<ResearchDiskOperation> diskImports) {
     public ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams) {
         this(serverTime, players, teams, ObjectList.of(), ObjectList.of(), ObjectList.of());
     }
 
-    /** Host checkpoint without disk obligations. */
+    /**
+     * Host checkpoint without disk obligations.
+     */
     public ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchState.Snapshot> players, ObjectList<Team> teams,
                                  ObjectList<ResearchDownloadOperation> downloads, ObjectList<ResearchDownloadReceipt> downloadReceipts) {
         this(serverTime, players, teams, downloads, downloadReceipts, ObjectList.of());
@@ -130,7 +133,8 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                 throw new IllegalArgumentException("Duplicate or future world disk operation");
             requirePlayer(playerIds, operation.intent().playerId());
             requirePlayer(playerIds, operation.target().ownerId());
-            if (!teamIds.contains(operation.intent().teamId())) throw new IllegalArgumentException("Disk import lost its original team");
+            if (!teamIds.contains(operation.intent().teamId()))
+                throw new IllegalArgumentException("Disk import lost its original team");
         }
     }
 

@@ -1,7 +1,5 @@
 package com.circulation.prototype_eng.machine.render;
 
-import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.GeckoStructureBinding;
@@ -9,6 +7,7 @@ import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
+import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.client.render.StructureRenderAnchors;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import net.minecraft.util.math.BlockPos;
@@ -17,7 +16,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("resource") // Logical registration tokens are scoped by the local test registry.
 class MachineRenderBindingsTest {

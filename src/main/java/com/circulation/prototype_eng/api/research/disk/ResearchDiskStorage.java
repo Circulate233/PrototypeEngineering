@@ -12,7 +12,9 @@ import java.util.function.BooleanSupplier;
  * consume a disk. The content and complete operation receipt must share one atomic saved state.
  */
 public interface ResearchDiskStorage extends DataCenterStorage {
-    /** Check real platform availability before preparing a new import; this grants no write authority. */
+    /**
+     * Check real platform availability before preparing a new import; this grants no write authority.
+     */
     boolean diskPersistenceAvailable();
 
     /**
@@ -22,7 +24,9 @@ public interface ResearchDiskStorage extends DataCenterStorage {
      */
     Result commitDisk(ResearchDiskCommit commit, TeamResearchView cloud, BooleanSupplier current);
 
-    /** Missing evidence never proves that an import succeeded or that its disk can be consumed. */
+    /**
+     * Missing evidence never proves that an import succeeded or that its disk can be consumed.
+     */
     @Nullable
     ResearchDiskCommit receipt(UUID operationId);
 

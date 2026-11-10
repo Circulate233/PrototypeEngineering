@@ -5,12 +5,14 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GuiActionCodecTest {
     private final Gson codec = new GsonBuilder().create();
 
-    @Test void researchViewDecodesAndEncodesTheActualWireFields() {
+    @Test
+    void researchViewDecodesAndEncodesTheActualWireFields() {
         String json = """
             {"tab":2,"offset":6,"research":"test:research/path","level":3,
              "entryId":9223372036854775806,"detailOffset":12}
@@ -27,7 +29,8 @@ class GuiActionCodecTest {
         assertEquals(Long.MAX_VALUE - 1, codec.fromJson(encoded, ResearchContainer.View.class).entryId);
     }
 
-    @Test void researchActionPreservesEnumStringsBooleanAndLongIdentity() {
+    @Test
+    void researchActionPreservesEnumStringsBooleanAndLongIdentity() {
         String inbound = """
             {"kind":"CLAIM","research":"test:research/path","level":4,
              "entryId":9223372036854775806,"group":"test:choice/path","blacklisted":true,"expectedTeam":"team_a"}
@@ -51,7 +54,8 @@ class GuiActionCodecTest {
         assertEquals("team_b", codec.fromJson(encoded, ResearchContainer.Action.class).expectedTeam);
     }
 
-    @Test void machineViewUsesTheExistingInboundAndOutboundShape() {
+    @Test
+    void machineViewUsesTheExistingInboundAndOutboundShape() {
         String json = "{\"offset\":12,\"rows\":6}";
         var decoded = codec.fromJson(json, MachineContainer.View.class);
         assertEquals(12, decoded.offset);

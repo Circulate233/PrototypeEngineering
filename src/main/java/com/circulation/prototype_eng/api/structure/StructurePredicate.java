@@ -10,6 +10,7 @@ import net.minecraft.util.math.BlockPos;
  */
 public interface StructurePredicate {
     void collectReads(StructureReadPlan.Builder plan, BlockPos position);
+
     boolean matches(StructureSnapshot snapshot, BlockPos position);
 
     /**
@@ -42,5 +43,8 @@ public interface StructurePredicate {
             return snapshot.unavailableVisits() == unavailable ? StructurePredicateResult.MISMATCH : StructurePredicateResult.UNAVAILABLE;
         });
     }
-    default StructurePredicate transform(StructureTransform rotation) { return this; }
+
+    default StructurePredicate transform(StructureTransform rotation) {
+        return this;
+    }
 }

@@ -10,11 +10,23 @@ import net.minecraftforge.common.util.Constants;
 import java.util.List;
 import java.util.Objects;
 
-/** Shared strict business-result schema for process and host state. */
+/**
+ * Shared strict business-result schema for process and host state.
+ */
 public final class ProcessResultNbt implements NbtCodec<ProcessResult> {
     public static final ProcessResultNbt INSTANCE = new ProcessResultNbt();
 
     private ProcessResultNbt() {
+    }
+
+    private static void writeDetails(NBTTagCompound tag, String kind, String reason, List<String> arguments) {
+        tag.setString("Kind", kind);
+        tag.setString("Reason", reason);
+        var list = new NBTTagList();
+        for (var argument : arguments) {
+            list.appendTag(new NBTTagString(Objects.requireNonNull(argument)));
+        }
+        tag.setTag("Arguments", list);
     }
 
     @Override
@@ -47,15 +59,5 @@ public final class ProcessResultNbt implements NbtCodec<ProcessResult> {
             case "FAILURE" -> new ProcessResult.Failure(reason, arguments);
             default -> throw new IllegalArgumentException("Unknown saved process result");
         };
-    }
-
-    private static void writeDetails(NBTTagCompound tag, String kind, String reason, List<String> arguments) {
-        tag.setString("Kind", kind);
-        tag.setString("Reason", reason);
-        var list = new NBTTagList();
-        for (var argument : arguments) {
-            list.appendTag(new NBTTagString(Objects.requireNonNull(argument)));
-        }
-        tag.setTag("Arguments", list);
     }
 }

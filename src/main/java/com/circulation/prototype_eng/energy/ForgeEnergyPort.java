@@ -4,8 +4,10 @@ import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.energy.EnergyHatch;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import net.minecraftforge.energy.IEnergyStorage;
-import java.util.Objects;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
+
 /**
  * PM energy hatch's input/output/IO capability routing and configurable per-operation limits.
  */
@@ -16,6 +18,20 @@ public final class ForgeEnergyPort implements IEnergyStorage {
     public ForgeEnergyPort(EnergyHatch storage, HatchMode mode) {
         this(mode.hasInput() ? Objects.requireNonNull(storage) : null,
             mode.hasOutput() ? Objects.requireNonNull(storage) : null);
+    }
+
+    /** Receives only into the input balance and extracts only from the output balance. */
+    public ForgeEnergyPort(@Nullable EnergyHatch input, @Nullable EnergyHatch output) {
+        if (input == null && output == null) throw new IllegalArgumentException("No energy direction");
+        this.input = input;
+        this.output = output;
+    }
+
+    private static int checkedTransfer(long amount, int requested) {
+        if (amount < 0 || amount > requested) {
+            throw new IllegalStateException("Energy storage violated its transfer contract");
+        }
+        return (int) amount;
     }
 
     @Override
@@ -50,20 +66,6 @@ public final class ForgeEnergyPort implements IEnergyStorage {
         } finally {
             context.unlock();
         }
-    }
-
-    /** Receives only into the input balance and extracts only from the output balance. */
-    public ForgeEnergyPort(@Nullable EnergyHatch input, @Nullable EnergyHatch output) {
-        if (input == null && output == null) throw new IllegalArgumentException("No energy direction");
-        this.input = input;
-        this.output = output;
-    }
-
-    private static int checkedTransfer(long amount, int requested) {
-        if (amount < 0 || amount > requested) {
-            throw new IllegalStateException("Energy storage violated its transfer contract");
-        }
-        return (int) amount;
     }
 
     @Override

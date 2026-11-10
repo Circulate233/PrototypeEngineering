@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegis
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -37,22 +38,93 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class MachineRetirementTest {
     private static final ResourceLocation GROUP = id("group");
+
+    private static RequirementTransaction probeTransaction(ResourceReservation reservation, List<String> log) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public List<? extends ResourceReservation> reservations() {
+                return List.of(reservation);
+            }
+
+            @Override
+            public void commit() {
+                fail("An admission probe cannot commit");
+            }
+
+            @Override
+            public void rollback() {
+                log.add("rollback");
+            }
+        };
+    }
+
+    private static RequirementTransaction transaction(List<String> log, String name, Runnable commit) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+                log.add(name + ":commit");
+                commit.run();
+            }
+
+            @Override
+            public void complete() {
+                log.add(name + ":complete");
+            }
+
+            @Override
+            public void rollback() {
+                log.add(name + ":rollback");
+            }
+        };
+    }
+
+    private static MachineRecipe recipe(String name, RecipeRequirementSystem<String> system) {
+        var requirement = new RecipeRequirementType<>(id(name + "_requirement"), system).requirement(id(name + "_part"), "value");
+        return new MachineRecipe(id(name), 1, List.of(requirement), Set.of(GROUP));
+    }
+
+    private static RecipeCatalog catalog(MachineRecipe recipe) {
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "retirement.pool", List.of(recipe))));
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("retirement_test", path);
+    }
 
     @Test
     void committedStartRetirementFinishesTheTransactionAndPausesBeforeTickWithoutRequiringFormation() {
         var fixture = new Fixture();
         var log = new ObjectArrayList<String>();
         var recipe = recipe("start", new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 log.add("start:acquire");
                 return transaction(log, "start", fixture.lifecycle::retire);
             }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return fail("Retirement during START must pause before TICK");
             }
         });
@@ -74,10 +146,13 @@ class MachineRetirementTest {
         var fixture = new Fixture();
         var log = new ObjectArrayList<String>();
         var recipe = recipe("tick", new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return transaction(log, "tick", fixture.lifecycle::retire);
             }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return fail("Retirement during TICK must pause before END");
             }
         });
@@ -96,15 +171,16 @@ class MachineRetirementTest {
         var fixture = new Fixture();
         var log = new ObjectArrayList<String>();
         var recipe = recipe("slots", new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return transaction(log, "start", fixture.lifecycle::retire);
             }
         });
         var slots = new MachineWorkSlots(fixture.machine, List.of(new WorkSlotDefinition("first", Set.of(GROUP)),
             new WorkSlotDefinition("second", Set.of(GROUP))), Set.of(), process -> {
-                log.add("executor:" + process.seed());
-                process.tick();
-            });
+            log.add("executor:" + process.seed());
+            process.tick();
+        });
         fixture.machine.components().put(MachineWorkSlots.TYPE, slots);
         fixture.machine.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2);
         assertTrue(slots.startIn("first", new RecipeProcess(fixture.machine, recipe, 1)));
@@ -116,7 +192,10 @@ class MachineRetirementTest {
         var saved = fixture.lifecycle.withPersistence(() -> codec.encode(slots));
         fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
         assertEquals(saved, fixture.lifecycle.withPersistence(() -> codec.encode(slots)));
-        fixture.lifecycle.withPersistence(() -> { codec.restore(slots, saved); return null; });
+        fixture.lifecycle.withPersistence(() -> {
+            codec.restore(slots, saved);
+            return null;
+        });
         assertEquals(2, slots.activeProcesses().size());
         assertFalse(slots.startIn("first", new RecipeProcess(fixture.machine, recipe, 3)));
         assertEquals(saved, fixture.lifecycle.withPersistence(() -> codec.encode(slots)));
@@ -125,11 +204,13 @@ class MachineRetirementTest {
     @Test
     void retiringInsideAStartProbeRollsBackRealReservationsAndNeverAdmitsTheCandidate() {
         var fixture = new Fixture();
-        var buffer = new EnergyBuffer(100, () -> {});
+        var buffer = new EnergyBuffer(100, () -> {
+        });
         buffer.receiveEnergy(20, Actionable.MODULATE);
         var log = new ObjectArrayList<String>();
         var recipe = recipe("probe", new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 var reservation = Objects.requireNonNull(buffer.reserveExtractEnergy(buffer.energySnapshot(), 5).reservation());
                 log.add("reserve");
                 fixture.lifecycle.retire();
@@ -154,7 +235,8 @@ class MachineRetirementTest {
         var fixture = new Fixture();
         var log = new ObjectArrayList<String>();
         var recipe = recipe("preparation", new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                 return fail("Retired preparation cannot begin a resource probe");
             }
         });
@@ -194,33 +276,6 @@ class MachineRetirementTest {
         duringPrepare.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
     }
 
-    private static RequirementTransaction probeTransaction(ResourceReservation reservation, List<String> log) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public List<? extends ResourceReservation> reservations() { return List.of(reservation); }
-            @Override public void commit() { fail("An admission probe cannot commit"); }
-            @Override public void rollback() { log.add("rollback"); }
-        };
-    }
-
-    private static RequirementTransaction transaction(List<String> log, String name, Runnable commit) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { log.add(name + ":commit"); commit.run(); }
-            @Override public void complete() { log.add(name + ":complete"); }
-            @Override public void rollback() { log.add(name + ":rollback"); }
-        };
-    }
-
-    private static MachineRecipe recipe(String name, RecipeRequirementSystem<String> system) {
-        var requirement = new RecipeRequirementType<>(id(name + "_requirement"), system).requirement(id(name + "_part"), "value");
-        return new MachineRecipe(id(name), 1, List.of(requirement), Set.of(GROUP));
-    }
-    private static RecipeCatalog catalog(MachineRecipe recipe) {
-        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "retirement.pool", List.of(recipe))));
-    }
-    private static ResourceLocation id(String path) { return new ResourceLocation("retirement_test", path); }
-
     private static final class Fixture {
         private final MachineInstance machine = new MachineInstance();
         private final MachineLifecycle lifecycle;
@@ -228,9 +283,20 @@ class MachineRetirementTest {
         private Fixture() {
             var owner = Thread.currentThread();
             lifecycle = new MachineLifecycle(machine, new MachineLifecycleHost() {
-                @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-                @Override public World world() { return fail("Retirement tests do not create a game World"); }
-                @Override public void requireServerThread() { assertSame(owner, Thread.currentThread()); }
+                @Override
+                public MachineIdentity identity() {
+                    return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+                }
+
+                @Override
+                public World world() {
+                    return fail("Retirement tests do not create a game World");
+                }
+
+                @Override
+                public void requireServerThread() {
+                    assertSame(owner, Thread.currentThread());
+                }
             }, new MachineLifecycleRegistry());
             lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
         }

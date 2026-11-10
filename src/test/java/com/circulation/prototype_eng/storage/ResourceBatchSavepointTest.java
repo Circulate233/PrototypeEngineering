@@ -21,7 +21,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResourceBatchSavepointTest {
     private static final KeyType FIRST = new KeyType("savepoint_first");
@@ -30,7 +34,59 @@ class ResourceBatchSavepointTest {
     private static final Key REJECTED = new Key(SECOND, "rejected");
     private static final Key ACCEPTED = new Key(SECOND, "accepted");
 
-    @Test void aFullSlotCandidateCanBeRefundedAndReplacedWhileTheOldPrefixRemainsApplied() {
+    private static Token appendEnergy(ResourceBatch batch, EnergyBuffer energy, long amount, boolean receive) {
+        var tokens = new ArrayList<Token>();
+        batch.acquireNext(() -> tokens.add(token(receive ? energy.reserveReceiveEnergy(energy.energySnapshot(), amount)
+            : energy.reserveExtractEnergy(energy.energySnapshot(), amount))));
+        batch.append(tokens, List.of());
+        return tokens.getFirst();
+    }
+
+    private static void applyAndStage(ResourceBatch batch, ResourceBatch.Source source) {
+        assertTrue(source.apply());
+        assertTrue(batch.stage(() -> true));
+    }
+
+    private static ResourceBatch batch(List<StorageContext> domains, List<? extends ResourceReservation> tokens,
+                                       List<? extends ReversibleTransaction> business) {
+        return Objects.requireNonNull(ResourceBatch.tryAcquireSequential(domains, tokens, business));
+    }
+
+    private static ResourceReservation accepted(ReservationResult result) {
+        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
+        return Objects.requireNonNull(result.reservation());
+    }
+
+    private static Token token(ReservationResult result) {
+        return new Token(accepted(result));
+    }
+
+    private static EnergyBuffer energy() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        energy.receiveEnergy(100, Actionable.MODULATE);
+        return energy;
+    }
+
+    private static SlottedResourceBuffer storage() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST, 100L);
+        capacities.put(SECOND, 100L);
+        return new SlottedResourceBuffer(1, capacities, () -> {
+        });
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Source did not reach its actual exit boundary");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    @Test
+    void aFullSlotCandidateCanBeRefundedAndReplacedWhileTheOldPrefixRemainsApplied() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
         var prefix = token(storage.reserveExtract(storage.snapshot(), MATERIAL, 20));
@@ -90,7 +146,8 @@ class ResourceBatchSavepointTest {
         assertThrows(IllegalStateException.class, () -> batch.rollbackTo(mark));
     }
 
-    @Test void nestedRollbackConsumesOnlyItsTargetAndDescendantsAndReleaseRequiresTheStackTop() {
+    @Test
+    void nestedRollbackConsumesOnlyItsTargetAndDescendantsAndReleaseRequiresTheStackTop() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 10));
         var batch = batch(List.of(energy.context()), List.of(prefix), List.of());
@@ -130,7 +187,8 @@ class ResourceBatchSavepointTest {
         assertEquals(90, energy.savedEnergy());
     }
 
-    @Test void unknownSuffixTokenStopsBeforeItsEarlierSuffixAndPrefixUntilExactProofResumesTheRewind() {
+    @Test
+    void unknownSuffixTokenStopsBeforeItsEarlierSuffixAndPrefixUntilExactProofResumesTheRewind() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 40));
         var batch = batch(List.of(), List.of(prefix), List.of());
@@ -143,8 +201,19 @@ class ResourceBatchSavepointTest {
         var fault = new IllegalStateException("suffix outcome unknown");
         var later = new ArrayList<Token>();
         batch.acquireNext(() -> later.add(new Token(accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 30))) {
-            @Override public void rollback() { if (!proof[0]) { rollbacks++; throw fault; } super.rollback(); }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                if (!proof[0]) {
+                    rollbacks++;
+                    throw fault;
+                }
+                super.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         }));
         batch.append(later, List.of());
         applyAndStage(batch, source);
@@ -169,7 +238,8 @@ class ResourceBatchSavepointTest {
         assertEquals(60, energy.savedEnergy());
     }
 
-    @Test void aSuffixThrowAfterMutationIsConfirmedAndNotReplayedWhenThePrefixCompletes() {
+    @Test
+    void aSuffixThrowAfterMutationIsConfirmedAndNotReplayedWhenThePrefixCompletes() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 40));
         var batch = batch(List.of(), List.of(prefix), List.of());
@@ -179,7 +249,11 @@ class ResourceBatchSavepointTest {
         var fault = new IllegalStateException("suffix acknowledgement failed after mutation");
         var suffix = new ArrayList<Token>();
         batch.acquireNext(() -> suffix.add(new Token(accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 30))) {
-            @Override public void rollback() { super.rollback(); throw fault; }
+            @Override
+            public void rollback() {
+                super.rollback();
+                throw fault;
+            }
         }));
         batch.append(suffix, List.of());
         applyAndStage(batch, source);
@@ -195,7 +269,8 @@ class ResourceBatchSavepointTest {
         assertEquals(1, prefix.completions);
     }
 
-    @Test void unknownBusinessSuffixKeepsEverySourceAndEarlierBusinessUntouchedUntilConfirmed() {
+    @Test
+    void unknownBusinessSuffixKeepsEverySourceAndEarlierBusinessUntouchedUntilConfirmed() {
         var energy = energy();
         var prefixToken = token(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var prefixBusiness = new Business();
@@ -207,8 +282,19 @@ class ResourceBatchSavepointTest {
         var fault = new IllegalStateException("business suffix outcome unknown");
         var earlier = new Business();
         var later = new Business() {
-            @Override public void rollback() { if (!proof[0]) { rollbacks++; throw fault; } super.rollback(); }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                if (!proof[0]) {
+                    rollbacks++;
+                    throw fault;
+                }
+                super.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         var suffix = new ArrayList<Token>();
         batch.acquireNext(() -> suffix.add(token(energy.reserveExtractEnergy(energy.energySnapshot(), 30))));
@@ -237,7 +323,8 @@ class ResourceBatchSavepointTest {
         assertEquals(1, prefixBusiness.completions);
     }
 
-    @Test void globalCancellationExpandsAnUnknownRewindWithoutReplayingAnyConfirmedSuffix() {
+    @Test
+    void globalCancellationExpandsAnUnknownRewindWithoutReplayingAnyConfirmedSuffix() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var prefixBusiness = new Business();
@@ -250,8 +337,19 @@ class ResourceBatchSavepointTest {
         var fault = new IllegalStateException("unknown suffix during cancellation");
         var suffix = new ArrayList<Token>();
         batch.acquireNext(() -> suffix.add(new Token(accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 30))) {
-            @Override public void rollback() { if (!proof[0]) { rollbacks++; throw fault; } super.rollback(); }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                if (!proof[0]) {
+                    rollbacks++;
+                    throw fault;
+                }
+                super.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         }));
         batch.append(suffix, List.of(suffixBusiness));
         applyAndStage(batch, source);
@@ -274,7 +372,8 @@ class ResourceBatchSavepointTest {
         assertEquals(1, suffixBusiness.rollbacks);
     }
 
-    @Test void cancellingAfterSuffixConfirmationStillRefundsThePrefixAndSkipsTheConfirmedToken() {
+    @Test
+    void cancellingAfterSuffixConfirmationStillRefundsThePrefixAndSkipsTheConfirmedToken() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var batch = batch(List.of(), List.of(prefix), List.of());
@@ -294,9 +393,11 @@ class ResourceBatchSavepointTest {
         assertEquals(1, prefix.rollbacks);
     }
 
-    @Test void aSourceIntroducedAfterTheMarkMustActuallyExitAndRemainsReusableAfterItsSuffixIsTrimmed() throws Exception {
+    @Test
+    void aSourceIntroducedAfterTheMarkMustActuallyExitAndRemainsReusableAfterItsSuffixIsTrimmed() throws Exception {
         var energy = energy();
-        var introduced = new EnergyBuffer(100, () -> {});
+        var introduced = new EnergyBuffer(100, () -> {
+        });
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var batch = batch(List.of(introduced.context()), List.of(prefix), List.of());
         var prefixSource = batch.sources().getFirst();
@@ -306,7 +407,12 @@ class ResourceBatchSavepointTest {
         var exit = new CountDownLatch(1);
         var suffix = new ArrayList<Token>();
         batch.acquireNext(() -> suffix.add(new Token(accepted(introduced.reserveReceiveEnergy(introduced.energySnapshot(), 50))) {
-            @Override public void apply() { super.apply(); entered.countDown(); await(exit); }
+            @Override
+            public void apply() {
+                super.apply();
+                entered.countDown();
+                await(exit);
+            }
         }));
         batch.append(suffix, List.of());
         var source = batch.sources().getLast();
@@ -321,8 +427,11 @@ class ResourceBatchSavepointTest {
                 assertFalse(batch.resolveBusiness());
                 assertThrows(IllegalStateException.class, () -> batch.stage(() -> true));
                 assertThrows(IllegalStateException.class, () -> batch.commit(() -> true));
-                assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {}));
-            } finally { exit.countDown(); }
+                assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {
+                }));
+            } finally {
+                exit.countDown();
+            }
             assertTrue(applying.get(5, TimeUnit.SECONDS));
             assertTrue(batch.resolveBusiness());
             assertTrue(lane.submit(source::resolve).get(5, TimeUnit.SECONDS));
@@ -344,7 +453,8 @@ class ResourceBatchSavepointTest {
         assertEquals(1, suffix.getFirst().rollbacks);
     }
 
-    @Test void releasingASuccessfulCandidateMarkKeepsEveryEffectReversibleForOuterCancellation() {
+    @Test
+    void releasingASuccessfulCandidateMarkKeepsEveryEffectReversibleForOuterCancellation() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var batch = batch(List.of(), List.of(prefix), List.of());
@@ -370,7 +480,8 @@ class ResourceBatchSavepointTest {
         assertEquals(1, suffixBusiness.rollbacks);
     }
 
-    @Test void foreignConsumedAndUnregisteredWindowMarksCannotCrossTheOwnershipBoundary() {
+    @Test
+    void foreignConsumedAndUnregisteredWindowMarksCannotCrossTheOwnershipBoundary() {
         var energy = energy();
         var prefix = token(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var batch = batch(List.of(), List.of(prefix), List.of());
@@ -410,7 +521,8 @@ class ResourceBatchSavepointTest {
         ordinary.finish();
     }
 
-    @Test void anEmptySuffixAndAnEmptyIntroducedSourceCanFinishWithoutReleasingTheOriginalFence() {
+    @Test
+    void anEmptySuffixAndAnEmptyIntroducedSourceCanFinishWithoutReleasingTheOriginalFence() {
         var energy = energy();
         var batch = batch(List.of(energy.context()), List.of(), List.of());
         assertTrue(batch.stage(() -> true));
@@ -432,63 +544,58 @@ class ResourceBatchSavepointTest {
         assertEquals(100, energy.savedEnergy());
     }
 
-    private static Token appendEnergy(ResourceBatch batch, EnergyBuffer energy, long amount, boolean receive) {
-        var tokens = new ArrayList<Token>();
-        batch.acquireNext(() -> tokens.add(token(receive ? energy.reserveReceiveEnergy(energy.energySnapshot(), amount)
-            : energy.reserveExtractEnergy(energy.energySnapshot(), amount))));
-        batch.append(tokens, List.of());
-        return tokens.getFirst();
-    }
-
-    private static void applyAndStage(ResourceBatch batch, ResourceBatch.Source source) {
-        assertTrue(source.apply());
-        assertTrue(batch.stage(() -> true));
-    }
-
-    private static ResourceBatch batch(List<StorageContext> domains, List<? extends ResourceReservation> tokens,
-                                        List<? extends ReversibleTransaction> business) {
-        return Objects.requireNonNull(ResourceBatch.tryAcquireSequential(domains, tokens, business));
-    }
-
-    private static ResourceReservation accepted(ReservationResult result) {
-        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
-        return Objects.requireNonNull(result.reservation());
-    }
-
-    private static Token token(ReservationResult result) { return new Token(accepted(result)); }
-
-    private static EnergyBuffer energy() {
-        var energy = new EnergyBuffer(100, () -> {});
-        energy.receiveEnergy(100, Actionable.MODULATE);
-        return energy;
-    }
-
-    private static SlottedResourceBuffer storage() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST, 100L);
-        capacities.put(SECOND, 100L);
-        return new SlottedResourceBuffer(1, capacities, () -> {});
-    }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Source did not reach its actual exit boundary"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-
     private static class Token implements ResourceReservation {
         private final ResourceReservation delegate;
         int applies;
         int completions;
         int rollbacks;
-        private Token(ResourceReservation delegate) { this.delegate = delegate; }
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public void apply() { applies++; delegate.apply(); }
-        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
-        @Override public void exposeApplied() { delegate.exposeApplied(); }
-        @Override public void complete() { completions++; delegate.complete(); }
-        @Override public void rollback() { rollbacks++; delegate.rollback(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
+
+        private Token(ResourceReservation delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public void apply() {
+            applies++;
+            delegate.apply();
+        }
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return delegate.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            delegate.exposeApplied();
+        }
+
+        @Override
+        public void complete() {
+            completions++;
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            delegate.rollback();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
     }
 
     private static class Business implements ReversibleTransaction {
@@ -496,9 +603,27 @@ class ResourceBatchSavepointTest {
         int completions;
         int rollbacks;
         private Resolution terminal = Resolution.REVERSIBLE;
-        @Override public void commit() { commits++; }
-        @Override public void complete() { completions++; terminal = Resolution.COMPLETED; }
-        @Override public void rollback() { rollbacks++; terminal = Resolution.ROLLED_BACK; }
-        @Override public Resolution resolution() { return terminal; }
+
+        @Override
+        public void commit() {
+            commits++;
+        }
+
+        @Override
+        public void complete() {
+            completions++;
+            terminal = Resolution.COMPLETED;
+        }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            terminal = Resolution.ROLLED_BACK;
+        }
+
+        @Override
+        public Resolution resolution() {
+            return terminal;
+        }
     }
 }

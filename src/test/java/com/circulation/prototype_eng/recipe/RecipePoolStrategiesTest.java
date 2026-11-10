@@ -1,40 +1,40 @@
 package com.circulation.prototype_eng.recipe;
 
 import ae2.api.config.Actionable;
-import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.MultithreadController;
-import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.RecipeController;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
-import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
-import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
-import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
-import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
+import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
+import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
-import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import com.circulation.prototype_eng.api.storage.StorageContext;
-import com.circulation.prototype_eng.api.storage.ReservationResult;
+import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
@@ -88,21 +88,6 @@ class RecipePoolStrategiesTest {
         var ports = new ObjectArrayList<ResourceHatch>();
         for (var input : inputs) ports.add(new Port(input));
         machine.components().put(MachineHatches.TYPE, new MachineHatches(ports, List.of(), List.of()));
-    }
-
-    private record Port(ResourceStorage input) implements ResourceHatch {
-        @Override
-        public @Nullable ResourceStorage output() {
-            return null;
-        }
-
-        @Override
-        public boolean isValid() {
-            return true;
-        }
-    }
-
-    private record Completed(List<MachineRecipe> recipes, long work) {
     }
 
     private static Completed complete(RecipeCatalog.CandidatePass pass, int slice) {
@@ -372,6 +357,21 @@ class RecipePoolStrategiesTest {
             assertEquals(RecipeScanner.Status.ADMITTED, custom.scan(new ScanLimits(1, 10)).status());
             assertEquals(0, input.availableAmount(INPUT));
         }
+    }
+
+    private record Port(ResourceStorage input) implements ResourceHatch {
+        @Override
+        public @Nullable ResourceStorage output() {
+            return null;
+        }
+
+        @Override
+        public boolean isValid() {
+            return true;
+        }
+    }
+
+    private record Completed(List<MachineRecipe> recipes, long work) {
     }
 
     private static final class MutablePort implements ResourceHatch {

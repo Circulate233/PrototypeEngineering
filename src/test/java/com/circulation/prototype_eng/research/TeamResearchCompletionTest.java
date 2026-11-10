@@ -24,7 +24,14 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class TeamResearchCompletionTest {
     private static final ResourceLocation PERSONAL = new ResourceLocation("test", "personal");
@@ -32,7 +39,35 @@ class TeamResearchCompletionTest {
     private static final UUID FIRST = new UUID(1, 1);
     private static final UUID SECOND = new UUID(1, 2);
 
-    @Test void completionCreatesEligibilityForBothPoliciesWithoutDeliveringRewards() {
+    private static ResearchRegistry registry() {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        var registry = new ResearchRegistry();
+        for (var id : List.of(PERSONAL, TEAM)) {
+            var rewards = new RewardGroup(new ResourceLocation("test", "group"), new ObjectArrayList<>(List.of(
+                new RewardChild.Event(new ResourceLocation("test", "event"), (_, _) -> {
+                    fail("Research completion must not deliver rewards");
+                    return RewardEventAction.Result.APPLIED;
+                }))));
+            registry.register(ResearchDefinition.builder(id).maxLevel(Integer.MAX_VALUE)
+                                                .deliveryPolicy(id.equals(TEAM) ? ResearchDownloadDeliveryPolicy.ITEM_ONLY : ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                                .stage(ResearchLevelStage.builder(1, Integer.MAX_VALUE).researchTier(0)
+                                                                         .resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(2, rewards)
+                                                                         .rewardGroup(Integer.MAX_VALUE, rewards).build()).build());
+        }
+        registry.freeze(resources);
+        return registry;
+    }
+
+    private static Object2ObjectOpenHashMap<UUID, PlayerResearchState> players() {
+        var players = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+        players.put(FIRST, new PlayerResearchState(FIRST));
+        players.put(SECOND, new PlayerResearchState(SECOND));
+        return players;
+    }
+
+    @Test
+    void completionCreatesEligibilityForBothPoliciesWithoutDeliveringRewards() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var players = players();
@@ -57,7 +92,8 @@ class TeamResearchCompletionTest {
         assertEquals(0, source.completedLevel(PERSONAL));
     }
 
-    @Test void rollbackRestoresEverySourceAndClaimThenAllowsAnotherCompletion() {
+    @Test
+    void rollbackRestoresEverySourceAndClaimThenAllowsAnotherCompletion() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var players = players();
@@ -80,7 +116,8 @@ class TeamResearchCompletionTest {
         assertThrows(IllegalStateException.class, retry::rollback);
     }
 
-    @Test void aReservedDownloadSourceBlocksCompletionWithoutTakingOtherPlayerWriters() {
+    @Test
+    void aReservedDownloadSourceBlocksCompletionWithoutTakingOtherPlayerWriters() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var players = players();
@@ -97,7 +134,8 @@ class TeamResearchCompletionTest {
         assertFalse(source.busy());
     }
 
-    @Test void frozenBaselinesGrantOriginalEligibilityAfterAnotherCompletionWithoutReplayingClaims() {
+    @Test
+    void frozenBaselinesGrantOriginalEligibilityAfterAnotherCompletionWithoutReplayingClaims() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var players = players();
@@ -120,7 +158,8 @@ class TeamResearchCompletionTest {
         assertEquals(1, players.get(FIRST).rewardClaimsSnapshot().size());
     }
 
-    @Test void sparseRewardsSupportMaxLevelAndMissingEligibilityRepairWithoutLevelSizedAllocation() {
+    @Test
+    void sparseRewardsSupportMaxLevelAndMissingEligibilityRepairWithoutLevelSizedAllocation() {
         assertTimeoutPreemptively(Duration.ofSeconds(2), () -> {
             var registry = registry();
             var source = new TeamOwnedResearch("team", registry);
@@ -136,7 +175,8 @@ class TeamResearchCompletionTest {
         });
     }
 
-    @Test void invalidMembersAndForeignRegistryFailBeforeAnyWriterIsAcquired() {
+    @Test
+    void invalidMembersAndForeignRegistryFailBeforeAnyWriterIsAcquired() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var players = players();
@@ -149,7 +189,8 @@ class TeamResearchCompletionTest {
             () -> completion.prepare(TEAM, 2, List.of(FIRST), players, new TeamOwnedResearch("team", registry()), 5));
     }
 
-    @Test void savedTeamSourceRoundTripsAndRejectsWrongOwnershipOrDuplicateEntries() {
+    @Test
+    void savedTeamSourceRoundTripsAndRejectsWrongOwnershipOrDuplicateEntries() {
         var registry = registry();
         var source = new TeamOwnedResearch("team", registry);
         var mutation = source.prepareCompletion(TEAM, 2);
@@ -168,32 +209,5 @@ class TeamResearchCompletionTest {
         assertEquals(2, restored.completedLevel(TEAM));
         assertThrows(UnsupportedOperationException.class,
             () -> restored.completedLevelsSnapshot().object2IntEntrySet().iterator().next().setValue(3));
-    }
-
-    private static ResearchRegistry registry() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        var registry = new ResearchRegistry();
-        for (var id : List.of(PERSONAL, TEAM)) {
-            var rewards = new RewardGroup(new ResourceLocation("test", "group"), new ObjectArrayList<>(List.of(
-                new RewardChild.Event(new ResourceLocation("test", "event"), (_, _) -> {
-                    fail("Research completion must not deliver rewards");
-                    return RewardEventAction.Result.APPLIED;
-                }))));
-            registry.register(ResearchDefinition.builder(id).maxLevel(Integer.MAX_VALUE)
-                .deliveryPolicy(id.equals(TEAM) ? ResearchDownloadDeliveryPolicy.ITEM_ONLY : ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, Integer.MAX_VALUE).researchTier(0)
-                    .resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(2, rewards)
-                    .rewardGroup(Integer.MAX_VALUE, rewards).build()).build());
-        }
-        registry.freeze(resources);
-        return registry;
-    }
-
-    private static Object2ObjectOpenHashMap<UUID, PlayerResearchState> players() {
-        var players = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
-        players.put(FIRST, new PlayerResearchState(FIRST));
-        players.put(SECOND, new PlayerResearchState(SECOND));
-        return players;
     }
 }

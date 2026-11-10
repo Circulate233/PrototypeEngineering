@@ -10,20 +10,20 @@ import com.circulation.prototype_eng.api.recipe.process.ProcessAbortListener;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectBidirectionalIterator;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import it.unimi.dsi.fastutil.objects.ObjectBidirectionalIterator;
-import java.util.Iterator;
 
 /**
  * Process-owned selection decisions and their exact local attribute/requirement additions, keyed by nested
@@ -36,8 +36,8 @@ public final class SelectiveState implements ProcessAbortListener {
         new ComponentType<>(new ResourceLocation(Tags.MOD_ID, "selective_state"), SelectiveState::new, ObjectLists.emptyList());
 
     private final RecipeProcess process;
-    private Object2ObjectLinkedOpenHashMap<RequirementPath, Selection> selections = new Object2ObjectLinkedOpenHashMap<>();
     private final ObjectArrayList<AbortReceipt> abortReceipts = new ObjectArrayList<>();
+    private Object2ObjectLinkedOpenHashMap<RequirementPath, Selection> selections = new Object2ObjectLinkedOpenHashMap<>();
 
     private SelectiveState(RecipeProcess process) {
         this.process = process;
@@ -48,12 +48,33 @@ public final class SelectiveState implements ProcessAbortListener {
         return state == null ? process.components().create(TYPE, process) : state;
     }
 
+    private static Throwable accumulate(@Nullable Throwable failure, Throwable cleanup) {
+        if (failure == null) {
+            return cleanup;
+        }
+        if (failure != cleanup) {
+            failure.addSuppressed(cleanup);
+        }
+        return failure;
+    }
+
+    private static void rethrow(@Nullable Throwable failure) {
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+    }
+
     @Nullable
     public Selection selection(RequirementPath path) {
         return selections.get(Objects.requireNonNull(path));
     }
 
-    /** Managed by the selector while holding exclusive ownership of this process. */
+    /**
+     * Managed by the selector while holding exclusive ownership of this process.
+     */
     public Selection begin(RequirementPath path, int index) {
         if (index < -1) {
             throw new IllegalArgumentException("Invalid selection index");
@@ -65,7 +86,9 @@ public final class SelectiveState implements ProcessAbortListener {
         return selection;
     }
 
-    /** Abandons only the provisional/committing transaction's own decision. */
+    /**
+     * Abandons only the provisional/committing transaction's own decision.
+     */
     public void discard(RequirementPath path, Selection expected) {
         selections.remove(path, expected);
     }
@@ -76,13 +99,17 @@ public final class SelectiveState implements ProcessAbortListener {
         return Collections.unmodifiableMap(snapshot);
     }
 
-    /** Binds existing installed effects in a fresh component; no modifier application or layer put. */
+    /**
+     * Binds existing installed effects in a fresh component; no modifier application or layer put.
+     */
     public void restore(Map<RequirementPath, SelectionSnapshot> snapshot) {
         if (!selections.isEmpty() || !abortReceipts.isEmpty()) {
             throw new IllegalStateException("Restore requires an empty selective component");
         }
         var existingOverlays = process.components().get(RecipeOverlays.TYPE);
-        if (existingOverlays != null) { existingOverlays.snapshot(); }
+        if (existingOverlays != null) {
+            existingOverlays.snapshot();
+        }
         var restored = new Object2ObjectLinkedOpenHashMap<RequirementPath, Selection>();
         var attributes = process.attributes().localSnapshot();
         var claimedModifiers = new ObjectOpenHashSet<ModifierReference>();
@@ -90,7 +117,9 @@ public final class SelectiveState implements ProcessAbortListener {
         for (var entry : snapshot.entrySet()) {
             var path = Objects.requireNonNull(entry.getKey());
             var saved = Objects.requireNonNull(entry.getValue());
-            if (!saved.committed() || saved.index() < -1) { throw new IllegalArgumentException("Invalid committed selection snapshot"); }
+            if (!saved.committed() || saved.index() < -1) {
+                throw new IllegalArgumentException("Invalid committed selection snapshot");
+            }
             if ((saved.index() == -1 || saved.completed()) && (!saved.modifiers().isEmpty() || !saved.overlays().isEmpty())) {
                 throw new IllegalArgumentException("Disabled or completed selection owns live effects");
             }
@@ -100,10 +129,14 @@ public final class SelectiveState implements ProcessAbortListener {
             selection.completed = saved.completed();
             for (var reference : saved.modifiers()) {
                 Objects.requireNonNull(reference);
-                if (!claimedModifiers.add(reference)) { throw new IllegalArgumentException("Modifier ownership is repeated"); }
+                if (!claimedModifiers.add(reference)) {
+                    throw new IllegalArgumentException("Modifier ownership is repeated");
+                }
                 var attribute = attributes.get(reference.attribute());
                 var modifier = attribute == null ? null : attribute.modifiers().get(reference.id());
-                if (modifier == null) { throw new IllegalArgumentException("Owned local modifier is absent: " + reference.id()); }
+                if (modifier == null) {
+                    throw new IllegalArgumentException("Owned local modifier is absent: " + reference.id());
+                }
                 var owned = new OwnedModifier(reference);
                 owned.installed = true;
                 owned.expected = modifier;
@@ -111,7 +144,9 @@ public final class SelectiveState implements ProcessAbortListener {
             }
             for (var reference : saved.overlays()) {
                 Objects.requireNonNull(reference);
-                if (!claimedOverlays.add(reference)) { throw new IllegalArgumentException("Overlay ownership is repeated"); }
+                if (!claimedOverlays.add(reference)) {
+                    throw new IllegalArgumentException("Overlay ownership is repeated");
+                }
                 var overlays = process.components().get(RecipeOverlays.TYPE);
                 if (overlays == null || !overlays.hasLayer(reference.target(), reference.path(), reference.layerId())) {
                     throw new IllegalArgumentException("Owned overlay layer is absent: " + reference.layerId());
@@ -120,17 +155,23 @@ public final class SelectiveState implements ProcessAbortListener {
                 owned.claim = overlays.claim(reference.target(), reference.path(), reference.layerId());
                 selection.ownedOverlays.put(reference, owned);
             }
-            if (restored.putIfAbsent(path, selection) != null) { throw new IllegalArgumentException("Duplicate selection path"); }
+            if (restored.putIfAbsent(path, selection) != null) {
+                throw new IllegalArgumentException("Duplicate selection path");
+            }
         }
         selections = restored;
     }
 
-    /** Successful removals remain independently verifiable after active decisions have been cleared. */
+    /**
+     * Successful removals remain independently verifiable after active decisions have been cleared.
+     */
     public List<AbortReceipt> abortReceipts() {
         return ObjectLists.unmodifiable(new ObjectArrayList<>(abortReceipts));
     }
 
-    /** Restores cleanup evidence without reacquiring effects or invoking cancellation callbacks. */
+    /**
+     * Restores cleanup evidence without reacquiring effects or invoking cancellation callbacks.
+     */
     public void restoreAbortReceipts(List<AbortReceipt> receipts) {
         if (!selections.isEmpty() || !abortReceipts.isEmpty()) {
             throw new IllegalStateException("Receipt restore requires an empty selective component");
@@ -143,16 +184,22 @@ public final class SelectiveState implements ProcessAbortListener {
         var layers = process.components().get(RecipeOverlays.TYPE);
         for (var receipt : receipts) {
             Objects.requireNonNull(receipt);
-            if (!paths.add(receipt.selectionPath())) { throw new IllegalArgumentException("Repeated abort selection path"); }
+            if (!paths.add(receipt.selectionPath())) {
+                throw new IllegalArgumentException("Repeated abort selection path");
+            }
             for (var reference : receipt.modifiers()) {
-                if (!modifiers.add(reference)) { throw new IllegalArgumentException("Repeated removed modifier"); }
+                if (!modifiers.add(reference)) {
+                    throw new IllegalArgumentException("Repeated removed modifier");
+                }
                 var attribute = local.get(reference.attribute());
                 if (attribute != null && attribute.modifiers().containsKey(reference.id())) {
                     throw new IllegalArgumentException("Aborted modifier is still installed: " + reference.id());
                 }
             }
             for (var reference : receipt.overlays()) {
-                if (!overlays.add(reference)) { throw new IllegalArgumentException("Repeated removed overlay"); }
+                if (!overlays.add(reference)) {
+                    throw new IllegalArgumentException("Repeated removed overlay");
+                }
                 if (layers != null && layers.hasLayer(reference.target(), reference.path(), reference.layerId())) {
                     throw new IllegalArgumentException("Aborted overlay is still installed: " + reference.layerId());
                 }
@@ -162,10 +209,14 @@ public final class SelectiveState implements ProcessAbortListener {
         abortReceipts.addAll(restored);
     }
 
-    /** Reverse selection cleanup; each effect family continues after any ownership or applier fault. */
+    /**
+     * Reverse selection cleanup; each effect family continues after any ownership or applier fault.
+     */
     @Override
     public void onAborted(RecipeProcess aborted) {
-        if (aborted != process) { throw new IllegalArgumentException("Selective state belongs to a different process"); }
+        if (aborted != process) {
+            throw new IllegalArgumentException("Selective state belongs to a different process");
+        }
         var paths = new ObjectArrayList<>(selections.keySet());
         Throwable failure = null;
         for (int index = paths.size() - 1; index >= 0; index--) {
@@ -193,13 +244,21 @@ public final class SelectiveState implements ProcessAbortListener {
             Objects.requireNonNull(selectionPath);
             modifiers = ObjectLists.unmodifiable(new ObjectArrayList<>(modifiers));
             overlays = ObjectLists.unmodifiable(new ObjectArrayList<>(overlays));
-            for (var reference : modifiers) { Objects.requireNonNull(reference); }
-            for (var reference : overlays) { Objects.requireNonNull(reference); }
-            if (modifiers.isEmpty() && overlays.isEmpty()) { throw new IllegalArgumentException("Empty abort receipt"); }
+            for (var reference : modifiers) {
+                Objects.requireNonNull(reference);
+            }
+            for (var reference : overlays) {
+                Objects.requireNonNull(reference);
+            }
+            if (modifiers.isEmpty() && overlays.isEmpty()) {
+                throw new IllegalArgumentException("Empty abort receipt");
+            }
         }
     }
 
-    /** The completed START boundary is implicit in this save; pending or provisional state cannot produce it. */
+    /**
+     * The completed START boundary is implicit in this save; pending or provisional state cannot produce it.
+     */
     public record SelectionSnapshot(boolean committed, int index, boolean completed, List<ModifierReference> modifiers,
                                     List<OverlayReference> overlays) {
         public SelectionSnapshot {
@@ -212,11 +271,15 @@ public final class SelectiveState implements ProcessAbortListener {
         public OverlayReference {
             Objects.requireNonNull(path);
             Objects.requireNonNull(target);
-            if (target != target.definition()) { throw new IllegalArgumentException("Owned overlay target must be canonical"); }
+            if (target != target.definition()) {
+                throw new IllegalArgumentException("Owned overlay target must be canonical");
+            }
             if (!target.id().equals(path.requirementId()) || !target.type().id().equals(path.typeId())) {
                 throw new IllegalArgumentException("Owned overlay path does not identify its target");
             }
-            if (Objects.requireNonNull(layerId).isBlank()) { throw new IllegalArgumentException("Blank overlay layer id"); }
+            if (Objects.requireNonNull(layerId).isBlank()) {
+                throw new IllegalArgumentException("Blank overlay layer id");
+            }
         }
     }
 
@@ -248,14 +311,24 @@ public final class SelectiveState implements ProcessAbortListener {
             this.index = index;
         }
 
-        public int index() { return index; }
-        public boolean committed() { return committed; }
-        public boolean completed() { return completed; }
+        public int index() {
+            return index;
+        }
+
+        public boolean committed() {
+            return committed;
+        }
+
+        public boolean completed() {
+            return completed;
+        }
 
         public List<ModifierReference> modifiers() {
             var installed = new ObjectArrayList<ModifierReference>();
             for (var modifier : modifiers.values()) {
-                if (modifier.installed) { installed.add(modifier.reference); }
+                if (modifier.installed) {
+                    installed.add(modifier.reference);
+                }
             }
             return ObjectLists.unmodifiable(installed);
         }
@@ -270,7 +343,9 @@ public final class SelectiveState implements ProcessAbortListener {
             }
             var local = attributes.localSnapshot();
             for (var owned : modifiers.values()) {
-                if (!owned.installed) { continue; }
+                if (!owned.installed) {
+                    continue;
+                }
                 var attribute = local.get(owned.reference.attribute());
                 if (attribute == null || attribute.modifiers().get(owned.reference.id()) != owned.expected) {
                     throw new IllegalStateException("Owned local modifier changed before snapshot");
@@ -288,10 +363,16 @@ public final class SelectiveState implements ProcessAbortListener {
             return new SelectionSnapshot(committed, index, completed, modifierReferences, overlayReferences);
         }
 
-        /** Promotes exact final layer identities into lifetime cleanup rights and relinquishes stage undo. */
+        /**
+         * Promotes exact final layer identities into lifetime cleanup rights and relinquishes stage undo.
+         */
         public void completeStart() {
-            if (startCompleted) { return; }
-            if (!committed) { throw new IllegalStateException("Cannot complete an uncommitted selection"); }
+            if (startCompleted) {
+                return;
+            }
+            if (!committed) {
+                throw new IllegalStateException("Cannot complete an uncommitted selection");
+            }
             Throwable failure = null;
             for (var owned : ownedOverlays.values()) {
                 try {
@@ -345,7 +426,9 @@ public final class SelectiveState implements ProcessAbortListener {
             return true;
         }
 
-        /** Registers ownership before the mutation, so a partially throwing apply remains cleanable. */
+        /**
+         * Registers ownership before the mutation, so a partially throwing apply remains cleanable.
+         */
         public void putModifier(ResourceLocation attribute, AttributeModifier modifier) {
             requireApplying();
             var reference = new ModifierReference(attribute, Objects.requireNonNull(modifier).id());
@@ -364,9 +447,11 @@ public final class SelectiveState implements ProcessAbortListener {
             owned.expected = modifier;
         }
 
-        /** Records every replacement so reverse undo restores only this owner's preceding writes. */
+        /**
+         * Records every replacement so reverse undo restores only this owner's preceding writes.
+         */
         public <C, D> void putOverlay(RecipeRequirement<C> target, RequirementPath path, String layerId,
-                                     RecipeOverlayType<C, D> type, D data) {
+                                      RecipeOverlayType<C, D> type, D data) {
             requireApplying();
             var reference = new OverlayReference(path, target.definition(), layerId);
             var overlays = RecipeOverlays.getOrCreate(process);
@@ -374,17 +459,23 @@ public final class SelectiveState implements ProcessAbortListener {
                 throw new IllegalStateException("Unknown existing selective overlay layer: " + layerId);
             }
             var previous = ownedOverlays.get(reference);
-            if (previous != null) { Objects.requireNonNull(previous.expected).validate(); }
+            if (previous != null) {
+                Objects.requireNonNull(previous.expected).validate();
+            }
             pendingOverlays.add(overlays.put(target, path, layerId, type, data));
             var owned = ownedOverlays.computeIfAbsent(reference, OwnedOverlay::new);
             owned.expected = overlays.claim(target, path, layerId);
         }
 
         private void requireApplying() {
-            if (startCompleted || completed) { throw new IllegalStateException("Selection modifier application has ended"); }
+            if (startCompleted || completed) {
+                throw new IllegalStateException("Selection modifier application has ended");
+            }
         }
 
-        /** Tries both effect families even when an extension violates its cleanup contract. */
+        /**
+         * Tries both effect families even when an extension violates its cleanup contract.
+         */
         public void cleanupEffects() {
             Throwable failure = null;
             if (startCompleted || pendingOverlays.isEmpty()) {
@@ -417,13 +508,19 @@ public final class SelectiveState implements ProcessAbortListener {
             ownedOverlays.clear();
         }
 
-        /** Same two effect families and reverse order, retaining a yielded exact layer edit. */
+        /**
+         * Same two effect families and reverse order, retaining a yielded exact layer edit.
+         */
         public boolean cleanupEffectsWithinBudget(RecipeWorkBudget budget) {
             if (effectsPhase == 0) {
                 if (startCompleted || pendingOverlays.isEmpty()) {
-                    if (!ownedOverlays.isEmpty() && overlayCleanup == null) overlayCleanup = ownedOverlays.keySet().iterator(ownedOverlays.lastKey());
+                    if (!ownedOverlays.isEmpty() && overlayCleanup == null)
+                        overlayCleanup = ownedOverlays.keySet().iterator(ownedOverlays.lastKey());
                     effectsPhase = 1;
-                } else { pendingCleanup = pendingOverlays.size() - 1; effectsPhase = 2; }
+                } else {
+                    pendingCleanup = pendingOverlays.size() - 1;
+                    effectsPhase = 2;
+                }
             }
             if (effectsPhase == 1) {
                 while (cleaningOverlay != null || overlayCleanup != null && overlayCleanup.hasPrevious()) {
@@ -444,7 +541,10 @@ public final class SelectiveState implements ProcessAbortListener {
             }
             if (effectsPhase == 2) {
                 while (pendingCleanup >= 0) {
-                    if (!changeSelected) { if (!budget.take()) return false; changeSelected = true; }
+                    if (!changeSelected) {
+                        if (!budget.take()) return false;
+                        changeSelected = true;
+                    }
                     try {
                         if (!pendingOverlays.get(pendingCleanup).rollbackWithinBudget(budget)) return false;
                     } catch (RuntimeException | Error failure) {
@@ -460,8 +560,9 @@ public final class SelectiveState implements ProcessAbortListener {
                 effectsPhase = 3;
             }
             if (effectsPhase == 3) {
-                try { if (!cleanupModifiersWithinBudget(budget)) return false; }
-                catch (RuntimeException | Error failure) {
+                try {
+                    if (!cleanupModifiersWithinBudget(budget)) return false;
+                } catch (RuntimeException | Error failure) {
                     effectsFailure = accumulate(effectsFailure, failure);
                     if (failure instanceof VirtualMachineError fatal) throw fatal;
                 }
@@ -475,14 +576,18 @@ public final class SelectiveState implements ProcessAbortListener {
             return true;
         }
 
-        /** Reverse-order local cleanup; never restores a layer snapshot or another selection's effects. */
+        /**
+         * Reverse-order local cleanup; never restores a layer snapshot or another selection's effects.
+         */
         public void cleanupModifiers() {
             var owned = new ObjectArrayList<>(modifiers.values());
             var local = attributes.localSnapshot();
             Throwable failure = null;
             for (int index = owned.size() - 1; index >= 0; index--) {
                 var modifier = owned.get(index);
-                if (!modifier.installed) { continue; }
+                if (!modifier.installed) {
+                    continue;
+                }
                 try {
                     var attribute = local.get(modifier.reference.attribute());
                     if (attribute == null || attribute.modifiers().get(modifier.reference.id()) != modifier.expected) {
@@ -491,23 +596,32 @@ public final class SelectiveState implements ProcessAbortListener {
                     attributes.removeModifier(modifier.reference.attribute(), modifier.reference.id());
                     modifier.installed = false;
                 } catch (RuntimeException | Error cleanup) {
-                    if (failure == null) { failure = cleanup; }
-                    else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                    if (failure == null) {
+                        failure = cleanup;
+                    } else if (failure != cleanup) {
+                        failure.addSuppressed(cleanup);
+                    }
                 }
             }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
             modifiers.clear();
         }
 
         public boolean cleanupModifiersWithinBudget(RecipeWorkBudget budget) {
-            if (!modifiers.isEmpty() && modifierCleanup == null) modifierCleanup = modifiers.keySet().iterator(modifiers.lastKey());
+            if (!modifiers.isEmpty() && modifierCleanup == null)
+                modifierCleanup = modifiers.keySet().iterator(modifiers.lastKey());
             while (modifierCleanup != null && modifierCleanup.hasPrevious()) {
                 if (!budget.take()) return false;
                 var owned = modifiers.get(modifierCleanup.previous());
                 try {
                     if (owned.installed) {
-                        if (attributes.localModifier(owned.reference.attribute(), owned.reference.id()) != owned.expected) throw new IllegalStateException("Owned local modifier changed before cleanup");
+                        if (attributes.localModifier(owned.reference.attribute(), owned.reference.id()) != owned.expected)
+                            throw new IllegalStateException("Owned local modifier changed before cleanup");
                         attributes.removeModifier(owned.reference.attribute(), owned.reference.id());
                         owned.installed = false;
                     }
@@ -530,7 +644,9 @@ public final class SelectiveState implements ProcessAbortListener {
             return true;
         }
 
-        /** Records only exact owned removals; a replacement belongs to its new writer and is retained. */
+        /**
+         * Records only exact owned removals; a replacement belongs to its new writer and is retained.
+         */
         private void abortEffects(List<ModifierReference> removedModifiers, List<OverlayReference> removedOverlays) {
             Throwable failure = null;
             var overlays = new ObjectArrayList<>(ownedOverlays.values());
@@ -548,7 +664,9 @@ public final class SelectiveState implements ProcessAbortListener {
             var installed = new ObjectArrayList<>(modifiers.values());
             for (int ordinal = installed.size() - 1; ordinal >= 0; ordinal--) {
                 var owned = installed.get(ordinal);
-                if (!owned.installed) { continue; }
+                if (!owned.installed) {
+                    continue;
+                }
                 try {
                     var attribute = local.get(owned.reference.attribute());
                     if (attribute == null || attribute.modifiers().get(owned.reference.id()) != owned.expected) {
@@ -571,7 +689,9 @@ public final class SelectiveState implements ProcessAbortListener {
             completed = true;
         }
 
-        /** Infallible END terminal cleanup after every enclosing business commit succeeds. */
+        /**
+         * Infallible END terminal cleanup after every enclosing business commit succeeds.
+         */
         public void finish() {
             Throwable failure = null;
             try {
@@ -593,14 +713,17 @@ public final class SelectiveState implements ProcessAbortListener {
         public ModifierReference {
             Objects.requireNonNull(attribute);
             Objects.requireNonNull(id);
-            if (id.isBlank()) { throw new IllegalArgumentException("Blank modifier id"); }
+            if (id.isBlank()) {
+                throw new IllegalArgumentException("Blank modifier id");
+            }
         }
     }
 
     private static final class OwnedModifier {
         private final ModifierReference reference;
         private boolean installed;
-        @Nullable private AttributeModifier expected;
+        @Nullable
+        private AttributeModifier expected;
 
         private OwnedModifier(ModifierReference reference) {
             this.reference = reference;
@@ -609,20 +732,13 @@ public final class SelectiveState implements ProcessAbortListener {
 
     private static final class OwnedOverlay {
         private final OverlayReference reference;
-        @Nullable private RecipeOverlays.RemovalClaim expected;
-        @Nullable private RecipeOverlays.RemovalClaim claim;
+        @Nullable
+        private RecipeOverlays.RemovalClaim expected;
+        @Nullable
+        private RecipeOverlays.RemovalClaim claim;
 
-        private OwnedOverlay(OverlayReference reference) { this.reference = reference; }
-    }
-
-    private static Throwable accumulate(@Nullable Throwable failure, Throwable cleanup) {
-        if (failure == null) { return cleanup; }
-        if (failure != cleanup) { failure.addSuppressed(cleanup); }
-        return failure;
-    }
-
-    private static void rethrow(@Nullable Throwable failure) {
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
+        private OwnedOverlay(OverlayReference reference) {
+            this.reference = reference;
+        }
     }
 }

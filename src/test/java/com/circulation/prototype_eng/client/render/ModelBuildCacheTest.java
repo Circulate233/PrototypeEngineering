@@ -1,124 +1,38 @@
 package com.circulation.prototype_eng.client.render;
 
-import java.util.concurrent.RejectedExecutionException;
-import java.util.Objects;
-
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.client.render.gecko.GeckoGeoModelInstances;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBuildTask;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static com.circulation.prototype_eng.client.render.BModelFixtures.*;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.CpuUploader;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.change;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.resources;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelBuildCacheTest {
     @TempDir
     Path root;
-
-    private static final class ManualExecutor extends AbstractExecutorService {
-        final ObjectArrayList<Runnable> queued = new ObjectArrayList<>();
-        boolean shutdown;
-
-        @Override
-        public void shutdown() {
-            shutdown = true;
-        }
-
-        @Override
-        public @NotNull List<Runnable> shutdownNow() {
-            shutdown = true;
-            var result = List.copyOf(queued);
-            queued.clear();
-            return result;
-        }
-
-        @Override
-        public boolean isShutdown() {
-            return shutdown;
-        }
-
-        @Override
-        public boolean isTerminated() {
-            return shutdown && queued.isEmpty();
-        }
-
-        @Override
-        public boolean awaitTermination(long timeout, @NotNull TimeUnit unit) {
-            return isTerminated();
-        }
-
-        @Override
-        public void execute(@NotNull Runnable command) {
-            if (shutdown) throw new RejectedExecutionException("fixture executor closed");
-            queued.add(command);
-        }
-
-        void runNext() {
-            queued.removeFirst().run();
-        }
-    }
-
-    private final class Fixture implements AutoCloseable {
-        final ManualExecutor executor = new ManualExecutor();
-        final ModelClientThread client = new ModelClientThread(Thread.currentThread(), Runnable::run);
-        final ModelBufferPool builders = new ModelBufferPool();
-        final DirectVertexBufferPool direct = new DirectVertexBufferPool();
-        final CpuUploader gpu = new CpuUploader(client);
-        final ModelAssets assets;
-        final AtomicInteger builds = new AtomicInteger(), releases = new AtomicInteger();
-        final ModelBuildCache cache;
-        CountDownLatch started, resume;
-
-        Fixture() throws Exception {
-            assets = new ModelAssets(client, resources("{\"animations\":{\"base\":{},\"overlay\":{}}}"), root);
-            cache = new ModelBuildCache(client, assets, new ModelBuildExecutor(executor), builders, direct, gpu, false) {
-                @SuppressWarnings("ReturnOfInnerClass")
-                // This task retains the fixture's actual blocked-worker and release counters.
-                @Override
-                protected GeckoModelBuildTask createTask(GeckoRenderRequest request, GeckoGeoModelInstances.Instance instance) {
-                    return new GeckoModelBuildTask(request, instance, assets, builders, direct, client, gpu, false) {
-                        @Override
-                        protected BuiltModelBuffers build() throws Exception {
-                            builds.incrementAndGet();
-                            if (started != null) {
-                                started.countDown();
-                                if (!resume.await(5, TimeUnit.SECONDS))
-                                    throw new AssertionError("fixture resume timed out");
-                            }
-                            var bytes = direct.borrow(112);
-                            bytes.putInt((int) request.sample().timeKey());
-                            bytes.position(0);
-                            bytes.limit(112);
-                            return new BuiltModelBuffers(request.origin(), Map.of(), Map.of(MachineRenderPass.DEFAULT, bytes), Map.of(),
-                                builders, direct, client, releases::incrementAndGet);
-                        }
-                    };
-                }
-            };
-        }
-
-        GeckoRenderRequest request(GeckoModelBaker.BakeMode mode) {
-            return BModelFixtures.request(assets, new GeckoRenderRequest.Owner(), mode, List.of("base"), 0);
-        }
-
-        @Override
-        public void close() {
-            cache.close();
-        }
-    }
 
     private static int marker(BuiltModelBuffers.Lease lease) {
         return lease.buffers().packed().get(MachineRenderPass.DEFAULT).getInt(0);
@@ -228,6 +142,98 @@ class ModelBuildCacheTest {
             assertEquals(0, fixture.builds.get());
             assertEquals(0, fixture.gpu.next);
             assertThrows(RejectedExecutionException.class, () -> fixture.cache.request(request));
+        }
+    }
+
+    private static final class ManualExecutor extends AbstractExecutorService {
+        final ObjectArrayList<Runnable> queued = new ObjectArrayList<>();
+        boolean shutdown;
+
+        @Override
+        public void shutdown() {
+            shutdown = true;
+        }
+
+        @Override
+        public @NotNull List<Runnable> shutdownNow() {
+            shutdown = true;
+            var result = List.copyOf(queued);
+            queued.clear();
+            return result;
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return shutdown;
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return shutdown && queued.isEmpty();
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, @NotNull TimeUnit unit) {
+            return isTerminated();
+        }
+
+        @Override
+        public void execute(@NotNull Runnable command) {
+            if (shutdown) throw new RejectedExecutionException("fixture executor closed");
+            queued.add(command);
+        }
+
+        void runNext() {
+            queued.removeFirst().run();
+        }
+    }
+
+    private final class Fixture implements AutoCloseable {
+        final ManualExecutor executor = new ManualExecutor();
+        final ModelClientThread client = new ModelClientThread(Thread.currentThread(), Runnable::run);
+        final ModelBufferPool builders = new ModelBufferPool();
+        final DirectVertexBufferPool direct = new DirectVertexBufferPool();
+        final CpuUploader gpu = new CpuUploader(client);
+        final ModelAssets assets;
+        final AtomicInteger builds = new AtomicInteger(), releases = new AtomicInteger();
+        final ModelBuildCache cache;
+        CountDownLatch started, resume;
+
+        Fixture() throws Exception {
+            assets = new ModelAssets(client, resources("{\"animations\":{\"base\":{},\"overlay\":{}}}"), root);
+            cache = new ModelBuildCache(client, assets, new ModelBuildExecutor(executor), builders, direct, gpu, false) {
+                @SuppressWarnings("ReturnOfInnerClass")
+                // This task retains the fixture's actual blocked-worker and release counters.
+                @Override
+                protected GeckoModelBuildTask createTask(GeckoRenderRequest request, GeckoGeoModelInstances.Instance instance) {
+                    return new GeckoModelBuildTask(request, instance, assets, builders, direct, client, gpu, false) {
+                        @Override
+                        protected BuiltModelBuffers build() throws Exception {
+                            builds.incrementAndGet();
+                            if (started != null) {
+                                started.countDown();
+                                if (!resume.await(5, TimeUnit.SECONDS))
+                                    throw new AssertionError("fixture resume timed out");
+                            }
+                            var bytes = direct.borrow(112);
+                            bytes.putInt((int) request.sample().timeKey());
+                            bytes.position(0);
+                            bytes.limit(112);
+                            return new BuiltModelBuffers(request.origin(), Map.of(), Map.of(MachineRenderPass.DEFAULT, bytes), Map.of(),
+                                builders, direct, client, releases::incrementAndGet);
+                        }
+                    };
+                }
+            };
+        }
+
+        GeckoRenderRequest request(GeckoModelBaker.BakeMode mode) {
+            return BModelFixtures.request(assets, new GeckoRenderRequest.Owner(), mode, List.of("base"), 0);
+        }
+
+        @Override
+        public void close() {
+            cache.close();
         }
     }
 }

@@ -3,10 +3,6 @@ package com.circulation.prototype_eng.recipe.requirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Objects;
-import java.util.function.IntToLongFunction;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTPrimitive;
 import net.minecraft.nbt.NBTTagByteArray;
@@ -17,11 +13,17 @@ import net.minecraft.nbt.NBTTagLongArray;
 import net.minecraft.nbt.NBTTagString;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.IntToLongFunction;
+
 /**
  * Exact legacy canonical wire bytes, yielding before every node/name/byte and array element.
  */
 class CanonicalKeyEncoding {
     private final ObjectArrayList<Part> parts = new ObjectArrayList<>();
+    private final ByteArrayList emitted = new ByteArrayList();
     private byte @Nullable [] result;
     private int copied;
     private int allocationCredit;
@@ -70,14 +72,39 @@ class CanonicalKeyEncoding {
         return result;
     }
 
-    private final ByteArrayList emitted = new ByteArrayList();
-
     private void emit(int value) {
         emitted.add((byte) value);
     }
 
     private void push(Part part) {
         parts.add(part);
+    }
+
+    private Part leaf(NBTBase tag) {
+        return switch (tag) {
+            case NBTTagByteArray array -> {
+                byte[] values = array.getByteArray();
+                yield new Array(values.length, 1, index -> values[index]);
+            }
+            case NBTTagIntArray array -> {
+                int[] values = array.getIntArray();
+                yield new Array(values.length, 4, index -> values[index]);
+            }
+            case NBTTagLongArray array -> {
+                var values = (NbtLongArrayAccess) array;
+                yield new Array(values.prototype_eng$length(), 8, values::prototype_eng$value);
+            }
+            case NBTPrimitive number -> switch (tag.getId()) {
+                case 1 -> new Word(number.getByte(), 1);
+                case 2 -> new Word(number.getShort(), 2);
+                case 3 -> new Word(number.getInt(), 4);
+                case 4 -> new Word(number.getLong(), 8);
+                case 5 -> new Word(Float.floatToIntBits(number.getFloat()), 4);
+                case 6 -> new Word(Double.doubleToLongBits(number.getDouble()), 8);
+                default -> throw new IllegalArgumentException("Unsupported numeric key tag");
+            };
+            default -> throw new IllegalArgumentException("Unsupported serialized key tag");
+        };
     }
 
     private interface Part {
@@ -212,33 +239,6 @@ class CanonicalKeyEncoding {
             }
             return true;
         }
-    }
-
-    private Part leaf(NBTBase tag) {
-        return switch (tag) {
-            case NBTTagByteArray array -> {
-                byte[] values = array.getByteArray();
-                yield new Array(values.length, 1, index -> values[index]);
-            }
-            case NBTTagIntArray array -> {
-                int[] values = array.getIntArray();
-                yield new Array(values.length, 4, index -> values[index]);
-            }
-            case NBTTagLongArray array -> {
-                var values = (NbtLongArrayAccess) array;
-                yield new Array(values.prototype_eng$length(), 8, values::prototype_eng$value);
-            }
-            case NBTPrimitive number -> switch (tag.getId()) {
-                case 1 -> new Word(number.getByte(), 1);
-                case 2 -> new Word(number.getShort(), 2);
-                case 3 -> new Word(number.getInt(), 4);
-                case 4 -> new Word(number.getLong(), 8);
-                case 5 -> new Word(Float.floatToIntBits(number.getFloat()), 4);
-                case 6 -> new Word(Double.doubleToLongBits(number.getDouble()), 8);
-                default -> throw new IllegalArgumentException("Unsupported numeric key tag");
-            };
-            default -> throw new IllegalArgumentException("Unsupported serialized key tag");
-        };
     }
 
     private class Compound implements Part {

@@ -5,10 +5,11 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import java.util.Collection;
-import java.util.Objects;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Collection;
+import java.util.Objects;
 
 /**
  * One choice; all children execute in their declared order without a second selection.

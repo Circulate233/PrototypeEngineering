@@ -5,8 +5,8 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import net.minecraft.nbt.CompressedStreamTools;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.world.chunk.storage.RegionFile;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.world.chunk.storage.RegionFile;
 import net.minecraftforge.common.util.Constants;
 
 import java.io.IOException;
@@ -15,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-/** Database-specific verification of the actual Anvil tile payload, never the loader's pending cache. */
+/**
+ * Database-specific verification of the actual Anvil tile payload, never the loader's pending cache.
+ */
 final class DataCenterDiskPersistence {
     private DataCenterDiskPersistence() {
     }
@@ -50,7 +52,8 @@ final class DataCenterDiskPersistence {
                         matches++;
                     }
                 }
-                if (matches != 1) throw new IOException("Saved database chunk requires exactly one original tile; found " + matches);
+                if (matches != 1)
+                    throw new IOException("Saved database chunk requires exactly one original tile; found " + matches);
             }
         } catch (IllegalArgumentException malformed) {
             throw new IOException("Saved database envelope is malformed", malformed);
@@ -90,7 +93,8 @@ final class DataCenterDiskPersistence {
                     storage++;
                 }
             }
-            if (ownership != 1 || storage != 1) throw new IOException("Saved database requires one ownership and storage binding");
+            if (ownership != 1 || storage != 1)
+                throw new IOException("Saved database requires one ownership and storage binding");
         } catch (IllegalArgumentException malformed) {
             throw new IOException("Saved database tile envelope is malformed", malformed);
         }

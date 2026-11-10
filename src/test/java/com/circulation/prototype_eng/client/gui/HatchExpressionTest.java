@@ -1,10 +1,12 @@
 package com.circulation.prototype_eng.client.gui;
 
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class HatchExpressionTest {
-    @Test void aeExpressionsCommitThroughTheEnergyRateBoundary() {
+    @Test
+    void aeExpressionsCommitThroughTheEnergyRateBoundary() {
         assertEquals(500, HatchExpression.parse("2k / 4"));
         assertEquals(32, HatchExpression.parse("2^5"));
         assertEquals(12, HatchExpression.parse("2*(2+4)"));
@@ -14,7 +16,8 @@ class HatchExpressionTest {
         assertEquals(0, HatchExpression.parse("0"));
     }
 
-    @Test void invalidNegativeAndLargeValuesRetainTheRateCommitContract() {
+    @Test
+    void invalidNegativeAndLargeValuesRetainTheRateCommitContract() {
         assertEquals(0, HatchExpression.parse(""));
         assertEquals(0, HatchExpression.parse("1+"));
         assertEquals(0, HatchExpression.parse("1/0"));

@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
 import ae2.api.orientation.BlockOrientation;
+import jdk.incubator.vector.FloatVector;
+import jdk.incubator.vector.VectorSpecies;
 import net.minecraft.util.EnumFacing;
 import software.bernie.geckolib3.geo.render.built.GeoBone;
 import software.bernie.geckolib3.geo.render.built.GeoCube;
@@ -9,8 +11,6 @@ import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
 import java.util.ArrayDeque;
 import java.util.Objects;
-import jdk.incubator.vector.FloatVector;
-import jdk.incubator.vector.VectorSpecies;
 
 /** The original Gecko affine, pivot, Z/Y/X rotation and reflected-normal conventions. No GL calls. */
 public final class GeckoBakerMath {
@@ -19,6 +19,7 @@ public final class GeckoBakerMath {
     // Keep the current scalar default until real Gecko batch/writer measurements select the crossover.
     private static final int VECTOR_MIN_VERTICES = Math.max(4,
         Integer.getInteger("prototype_eng.gecko.vectorMinVertices", Integer.MAX_VALUE));
+
     private GeckoBakerMath() {
     }
 
@@ -128,6 +129,16 @@ public final class GeckoBakerMath {
             var normal = new Matrix3f();
             normal.setIdentity();
             normals.push(normal);
+        }
+
+        public static MatrixStack forRequest(GeckoRenderRequest request) {
+            var stack = new MatrixStack();
+            stack.translate(request.position().getX() - request.origin().getX() + .5f,
+                (float) (request.position().getY() - request.origin().getY() + request.binding().yOffset() + .01),
+                request.position().getZ() - request.origin().getZ() + .5f);
+            stack.orientation(request.orientation());
+            stack.translate((float) request.localOffset().x, (float) request.localOffset().y, (float) request.localOffset().z);
+            return stack;
         }
 
         Matrix4f model() {
@@ -257,16 +268,6 @@ public final class GeckoBakerMath {
             model().mul(tempModel);
             normal().mul(tempNormal);
             translate(0, -.5f, 0);
-        }
-
-        public static MatrixStack forRequest(GeckoRenderRequest request) {
-            var stack = new MatrixStack();
-            stack.translate(request.position().getX() - request.origin().getX() + .5f,
-                (float) (request.position().getY() - request.origin().getY() + request.binding().yOffset() + .01),
-                request.position().getZ() - request.origin().getZ() + .5f);
-            stack.orientation(request.orientation());
-            stack.translate((float) request.localOffset().x, (float) request.localOffset().y, (float) request.localOffset().z);
-            return stack;
         }
     }
 }

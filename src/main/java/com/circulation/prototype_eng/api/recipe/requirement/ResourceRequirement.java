@@ -39,11 +39,6 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
             fuzzyInputs, dynamicInputs, InputAllocation.SPLITTABLE);
     }
 
-    public ResourceRequirement withInputAllocation(InputAllocation allocation) {
-        return new ResourceRequirement(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs,
-            chance, randomOutputs, fuzzyInputs, dynamicInputs, allocation);
-    }
-
     public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
                                List<GenericStack> outputsPerTick, List<GenericStack> outputs,
                                boolean voidExcessOutputs, ResourceChance chance, @Nullable RandomOutputPool randomOutputs) {
@@ -85,8 +80,15 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
             return groups;
         }
         var result = new ObjectArrayList<T>(groups.size());
-        for (var group : groups) { result.add(Objects.requireNonNull(group)); }
+        for (var group : groups) {
+            result.add(Objects.requireNonNull(group));
+        }
         return new CanonicalList<>(result);
+    }
+
+    public ResourceRequirement withInputAllocation(InputAllocation allocation) {
+        return new ResourceRequirement(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs,
+            chance, randomOutputs, fuzzyInputs, dynamicInputs, allocation);
     }
 
     private static final class CanonicalList<T> extends ObjectLists.UnmodifiableList<T> {

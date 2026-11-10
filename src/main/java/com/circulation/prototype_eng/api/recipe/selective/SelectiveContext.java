@@ -16,10 +16,15 @@ import net.minecraft.util.ResourceLocation;
  */
 public interface SelectiveContext {
     MachineInstance machine();
+
     RecipeProcess process();
+
     RequirementPath selectionPath();
+
     int candidateIndex();
+
     ResourceLocation modifierId();
+
     int modifierOrdinal();
 
     default String selectionId() {
@@ -45,12 +50,16 @@ public interface SelectiveContext {
         putProcessAttributeModifier(StandardMachineAttributes.PROCESS_SPEED, SelectiveModifiers.speedMultiplier(modifierId, factor));
     }
 
-    /** Root target shorthand; only this selection's layer writes are undone by its cleanup. */
+    /**
+     * Root target shorthand; only this selection's layer writes are undone by its cleanup.
+     */
     default <C, D> void putRequirementOverlay(RecipeRequirement<C> target, String layerId, RecipeOverlayType<C, D> type, D data) {
         putRequirementOverlay(target, target.path(null), layerId, type, data);
     }
 
-    /** Exact nested target path; writes remain effective through END commit and clear at complete. */
+    /**
+     * Exact nested target path; writes remain effective through END commit and clear at complete.
+     */
     <C, D> void putRequirementOverlay(RecipeRequirement<C> target, RequirementPath path, String layerId,
-                                    RecipeOverlayType<C, D> type, D data);
+                                      RecipeOverlayType<C, D> type, D data);
 }

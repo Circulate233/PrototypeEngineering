@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe;
 
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
@@ -24,11 +25,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class RecipeCatalogTest {
     private static final ResourceLocation FIRST_GROUP = id("first_group");
     private static final ResourceLocation SECOND_GROUP = id("second_group");
+
+    private static MachineRecipe recipe(String name, ResourceLocation... groups) {
+        return new MachineRecipe(id(name), 1, List.of(), List.of(groups));
+    }
+
+    private static RecipePool pool(String name, MachineRecipe... recipes) {
+        return new DefaultRecipePool(id(name), "catalog.title", List.of(recipes));
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("catalog_test", path);
+    }
 
     @Test
     void poolAndDeclarationOrderWinsOverGroupOrderAndSharedCanonicalRecipesAppearOnce() {
@@ -55,7 +67,9 @@ class RecipeCatalogTest {
         var outside = recipe("outside", SECOND_GROUP);
         var catalog = new RecipeCatalog(List.of(pool("pool", first, outside)));
         var machine = new MachineInstance();
-        RecipeCandidateIndex shouldNotRun = (_, _, _) -> { throw new AssertionError("Empty scope must not invoke indices"); };
+        RecipeCandidateIndex shouldNotRun = (_, _, _) -> {
+            throw new AssertionError("Empty scope must not invoke indices");
+        };
         assertTrue(new RecipeCatalog(List.of()).candidates(machine, Set.of(), List.of(shouldNotRun)).isEmpty());
         assertTrue(catalog.candidates(machine, Set.of(id("unknown")), List.of(shouldNotRun)).isEmpty());
         RecipeCandidateIndex noOpinion = (_, _, _) -> null;
@@ -158,17 +172,5 @@ class RecipeCatalogTest {
             RecipeCandidateIndex empty = (_, _, _) -> List.of();
             assertThrows(IllegalArgumentException.class, () -> catalog.candidates(machine, Set.of(FIRST_GROUP), List.of(empty, index)));
         }
-    }
-
-    private static MachineRecipe recipe(String name, ResourceLocation... groups) {
-        return new MachineRecipe(id(name), 1, List.of(), List.of(groups));
-    }
-
-    private static RecipePool pool(String name, MachineRecipe... recipes) {
-        return new DefaultRecipePool(id(name), "catalog.title", List.of(recipes));
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("catalog_test", path);
     }
 }

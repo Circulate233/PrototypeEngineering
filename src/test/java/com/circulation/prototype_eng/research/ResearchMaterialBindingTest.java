@@ -34,10 +34,51 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ResearchMaterialBindingTest {
-    @Test void frozenStageCodecRestoresCustomEffectsForEveryTargetButRejectsAnotherDefinitionSharingThatStage() {
+    private static ResearchRegistry registry(ResearchDefinition... definitions) {
+        var registry = new ResearchRegistry();
+        for (var definition : definitions) {
+            registry.register(definition);
+        }
+        registry.freeze(resources());
+        return registry;
+    }
+
+    private static ResearchDefinition definition(String name, int maxLevel, ResearchLevelStage... stages) {
+        var builder = ResearchDefinition.builder(id(name)).maxLevel(maxLevel).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
+        for (var stage : stages) {
+            builder.stage(stage);
+        }
+        return builder.build();
+    }
+
+    private static ResearchLevelStage.Builder stage(int first, int last) {
+        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+    }
+
+    private static RecipeRequirement<EnergyRequirement> energy() {
+        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 3, 0, 7, false));
+    }
+
+    private static NetworkResourceRegistry resources() {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        return resources;
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("research_material_binding_test", name);
+    }
+
+    @Test
+    void frozenStageCodecRestoresCustomEffectsForEveryTargetButRejectsAnotherDefinitionSharingThatStage() {
         var extension = new Extension(4);
         var shared = extension.stage(1, 3, "1").build();
         var registry = registry(definition("first", 3, shared), definition("second", 3, shared));
@@ -75,7 +116,8 @@ class ResearchMaterialBindingTest {
             otherReplacement, 7);
     }
 
-    @Test void equalUserRevisionsAndRequirementsCannotRestoreAcrossStageIntervals() {
+    @Test
+    void equalUserRevisionsAndRequirementsCannotRestoreAcrossStageIntervals() {
         var extension = new Extension(4);
         var registry = registry(definition("stages", 4, extension.stage(1, 2, "shared").build(), extension.stage(3, 4, "shared").build()));
         var first = registry.materials(id("stages"), 2);
@@ -93,7 +135,8 @@ class ResearchMaterialBindingTest {
         assertEquals(2, extension.configurations);
     }
 
-    @Test void explicitBehaviorRevisionRejectsOldPaidWorkWhenCustomPayloadChanges() {
+    @Test
+    void explicitBehaviorRevisionRejectsOldPaidWorkWhenCustomPayloadChanges() {
         var oldExtension = new Extension(4);
         var oldRegistry = registry(definition("revision", 1, oldExtension.stage(1, 1, "1").build()));
         var oldCodec = oldRegistry.materials(id("revision"), 1);
@@ -111,7 +154,8 @@ class ResearchMaterialBindingTest {
         newExtension.complete(newCodec.decodeMaterialCycle(replacement.owner, replacement.hatches, newCodec.encode(newPaid)), replacement, 11);
     }
 
-    @Test void defaultBindingPersistsPositiveTierWorkAndTierZeroHasNoStationCodec() {
+    @Test
+    void defaultBindingPersistsPositiveTierWorkAndTierZeroHasNoStationCodec() {
         var registry = registry(definition("default", 2, stage(1, 2).materialRequirement(energy()).build()),
             definition("manual", 1, stage(1, 1).researchTier(0).build()));
         var codec = registry.materials(id("default"), 1);
@@ -128,7 +172,8 @@ class ResearchMaterialBindingTest {
         assertThrows(IllegalArgumentException.class, () -> registry.materials(id("manual"), 1));
     }
 
-    @Test void referenceValidationCanBeRepairedBeforeExtensionConfigurationStarts() {
+    @Test
+    void referenceValidationCanBeRepairedBeforeExtensionConfigurationStarts() {
         var extension = new Extension(4);
         var registry = new ResearchRegistry();
         registry.register(definition("dependent", 1, extension.stage(1, 1, "1").prerequisite(id("missing"), 1).build()));
@@ -147,14 +192,18 @@ class ResearchMaterialBindingTest {
         assertEquals(1, extension.configurations);
     }
 
-    @Test void callbackFailurePublishesNoPartialBindingsAndCannotReplayAlreadyConfiguredExtensions() {
+    @Test
+    void callbackFailurePublishesNoPartialBindingsAndCannotReplayAlreadyConfiguredExtensions() {
         var firstExtension = new Extension(4);
         var failingExtension = new Extension(8);
         var failure = new IllegalStateException("addon configuration failed");
         var registry = new ResearchRegistry();
         registry.register(definition("first", 1, firstExtension.stage(1, 1, "1").build()));
         registry.register(definition("failure", 1, stage(1, 1).materialRequirement(failingExtension.requirement)
-            .materialPersistence("1", builder -> { failingExtension.configure(builder); throw failure; }).build()));
+                                                              .materialPersistence("1", builder -> {
+                                                                  failingExtension.configure(builder);
+                                                                  throw failure;
+                                                              }).build()));
         assertSame(failure, assertThrows(IllegalStateException.class, () -> registry.freeze(resources())));
         assertFalse(registry.isFrozen());
         assertThrows(IllegalStateException.class, registry::all);
@@ -165,15 +214,16 @@ class ResearchMaterialBindingTest {
         assertEquals(1, failingExtension.configurations);
     }
 
-    @Test void loadingConfigurationCannotReenterFreezeOrRegistrationButCanFinishItsOriginalBinding() {
+    @Test
+    void loadingConfigurationCannotReenterFreezeOrRegistrationButCanFinishItsOriginalBinding() {
         var extension = new Extension(4);
         var registry = new ResearchRegistry();
         var configured = stage(1, 1).materialRequirement(extension.requirement).materialRequirement(energy())
-            .materialPersistence("1", builder -> {
-                assertThrows(IllegalStateException.class, () -> registry.freeze(resources()));
-                assertThrows(IllegalStateException.class, () -> registry.register(definition("late", 1, stage(1, 1).build())));
-                extension.configure(builder);
-            }).build();
+                                    .materialPersistence("1", builder -> {
+                                        assertThrows(IllegalStateException.class, () -> registry.freeze(resources()));
+                                        assertThrows(IllegalStateException.class, () -> registry.register(definition("late", 1, stage(1, 1).build())));
+                                        extension.configure(builder);
+                                    }).build();
         registry.register(definition("reentrant", 1, configured));
         registry.freeze(resources());
         var codec = registry.materials(id("reentrant"), 1);
@@ -185,37 +235,20 @@ class ResearchMaterialBindingTest {
         assertEquals(1, registry.all().size());
     }
 
-    private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var registry = new ResearchRegistry();
-        for (var definition : definitions) { registry.register(definition); }
-        registry.freeze(resources());
-        return registry;
+    private record State(int starts, int ticks, int credits) {
     }
-    private static ResearchDefinition definition(String name, int maxLevel, ResearchLevelStage... stages) {
-        var builder = ResearchDefinition.builder(id(name)).maxLevel(maxLevel).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
-        for (var stage : stages) { builder.stage(stage); }
-        return builder.build();
-    }
-    private static ResearchLevelStage.Builder stage(int first, int last) {
-        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
-    }
-    private static RecipeRequirement<EnergyRequirement> energy() {
-        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 3, 0, 7, false));
-    }
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
-    }
-    private static ResourceLocation id(String name) { return new ResourceLocation("research_material_binding_test", name); }
 
-    private record State(int starts, int ticks, int credits) { }
     private static final class Box {
         private State state = new State(0, 0, 0);
-        private State snapshot() { return state; }
+
+        private State snapshot() {
+            return state;
+        }
     }
 
-    /** A real external requirement whose reversible business result depends on its restored overlay. */
+    /**
+     * A real external requirement whose reversible business result depends on its restored overlay.
+     */
     private static final class Extension {
         private final ComponentType<RecipeProcess, Box> component = new ComponentType<>(id("box"), _ -> new Box(), List.of());
         private final RecipeRequirement<Integer> requirement;
@@ -224,14 +257,19 @@ class ResearchMaterialBindingTest {
 
         private Extension(int endCredits) {
             var type = new RecipeRequirementType<>(id("custom_type"), new RecipeRequirementSystem<Integer>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> current) {
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> current) {
                     var box = process.components().create(component, process);
                     return change(box, RecipeStage.START, current.payload());
                 }
-                @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> current) {
+
+                @Override
+                public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> current) {
                     return change(state(process), RecipeStage.TICK, current.payload());
                 }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> current) {
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> current) {
                     return change(state(process), RecipeStage.END, current.payload());
                 }
             });
@@ -239,36 +277,75 @@ class ResearchMaterialBindingTest {
             overlay = new RecipeOverlayType<>(id("custom_overlay"), type, Math::addExact);
         }
 
+        private static RequirementTransaction change(Box box, RecipeStage stage, int credits) {
+            var before = box.snapshot();
+            return new RequirementTransaction() {
+                private boolean applied;
+
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    box.state = switch (stage) {
+                        case START -> new State(before.starts + 1, before.ticks, before.credits);
+                        case TICK -> new State(before.starts, before.ticks + 1, before.credits);
+                        case END -> new State(before.starts, before.ticks, Math.addExact(before.credits, credits));
+                    };
+                    applied = true;
+                }
+
+                @Override
+                public void rollback() {
+                    if (applied) {
+                        box.state = before;
+                        applied = false;
+                    }
+                }
+            };
+        }
+
         private ResearchLevelStage.Builder stage(int first, int last, String revision) {
             return ResearchMaterialBindingTest.stage(first, last).materialRequirement(requirement).materialRequirement(energy())
-                .materialPersistence(revision, this::configure);
+                                              .materialPersistence(revision, this::configure);
         }
+
         private void configure(RecipeProcessNbt.Builder builder) {
             configurations++;
             builder.component(component, new ProcessComponentCodec<>() {
-                @Override public NBTTagCompound encode(RecipeProcess process, Box box) {
+                @Override
+                public NBTTagCompound encode(RecipeProcess process, Box box) {
                     var tag = new NBTTagCompound();
                     tag.setInteger("Starts", box.state.starts);
                     tag.setInteger("Ticks", box.state.ticks);
                     tag.setInteger("Credits", box.state.credits);
                     return tag;
                 }
-                @Override public void restore(RecipeProcess process, Box box, NBTTagCompound tag) {
+
+                @Override
+                public void restore(RecipeProcess process, Box box, NBTTagCompound tag) {
                     StrictNbt.requireKeys(tag, "Starts", "Ticks", "Credits");
                     box.state = new State(StrictNbt.requireInt(tag, "Starts"), StrictNbt.requireInt(tag, "Ticks"), StrictNbt.requireInt(tag, "Credits"));
                 }
-                @Override public void validate(RecipeProcess process, Box box) {
+
+                @Override
+                public void validate(RecipeProcess process, Box box) {
                     if (box.state.starts < 0 || box.state.starts > 1 || box.state.ticks < 0 || box.state.ticks > 1 || box.state.credits < 0) {
                         throw new IllegalArgumentException("Invalid external business state");
                     }
                 }
             }).overlay(overlay, new NbtCodec<>() {
-                @Override public NBTTagCompound encode(Integer amount) {
+                @Override
+                public NBTTagCompound encode(Integer amount) {
                     var tag = new NBTTagCompound();
                     tag.setInteger("Amount", amount);
                     return tag;
                 }
-                @Override public Integer decode(NBTTagCompound tag) {
+
+                @Override
+                public Integer decode(NBTTagCompound tag) {
                     StrictNbt.requireKeys(tag, "Amount");
                     return StrictNbt.requireInt(tag, "Amount");
                 }
@@ -282,7 +359,11 @@ class ResearchMaterialBindingTest {
                 }
             });
         }
-        private Box state(RecipeProcess process) { return Objects.requireNonNull(process.components().get(component)); }
+
+        private Box state(RecipeProcess process) {
+            return Objects.requireNonNull(process.components().get(component));
+        }
+
         private RecipeProcess blocked(RecipeProcessNbt codec, Sources sources) {
             var process = RecipeProcess.materialCycle(sources.owner, codec.recipe(), sources.hatches, 13);
             RecipeOverlays.getOrCreate(process).put(requirement, "bonus", overlay, 3).complete();
@@ -292,6 +373,7 @@ class ResearchMaterialBindingTest {
             assertEquals(15, sources.energy.storedEnergy());
             return process;
         }
+
         private void complete(RecipeProcess process, Sources sources, int credits) {
             assertEquals(new State(1, 1, 0), state(process).snapshot());
             assertSame(sources.hatches, process.hatches());
@@ -305,29 +387,16 @@ class ResearchMaterialBindingTest {
             assertEquals(new State(1, 1, credits), state(process).snapshot());
             assertEquals(7, sources.generated.storedEnergy());
         }
-        private static RequirementTransaction change(Box box, RecipeStage stage, int credits) {
-            var before = box.snapshot();
-            return new RequirementTransaction() {
-                private boolean applied;
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() {
-                    box.state = switch (stage) {
-                        case START -> new State(before.starts + 1, before.ticks, before.credits);
-                        case TICK -> new State(before.starts, before.ticks + 1, before.credits);
-                        case END -> new State(before.starts, before.ticks, Math.addExact(before.credits, credits));
-                    };
-                    applied = true;
-                }
-                @Override public void rollback() { if (applied) { box.state = before; applied = false; } }
-            };
-        }
     }
 
     private static final class Sources {
         private final MachineInstance owner = new MachineInstance();
-        private final EnergyBuffer energy = new EnergyBuffer(100, () -> { });
-        private final EnergyBuffer generated = new EnergyBuffer(100, () -> { });
+        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {
+        });
+        private final EnergyBuffer generated = new EnergyBuffer(100, () -> {
+        });
         private final MachineHatches hatches = new MachineHatches(List.of(), List.of(energy), List.of(generated));
+
         private Sources(long inputEnergy, long outputEnergy) {
             energy.receiveEnergy(inputEnergy, Actionable.MODULATE);
             generated.receiveEnergy(outputEnergy, Actionable.MODULATE);

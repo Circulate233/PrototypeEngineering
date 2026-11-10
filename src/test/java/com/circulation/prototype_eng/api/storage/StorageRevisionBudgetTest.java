@@ -23,6 +23,38 @@ class StorageRevisionBudgetTest {
     private static final KeyType TYPE = new KeyType("revision_budget");
     private static final Key KEY = new Key(TYPE, "material");
 
+    private static ResourceReservation accepted(ReservationResult result) {
+        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
+        return Objects.requireNonNull(result.reservation());
+    }
+
+    private static SlottedResourceBuffer resources(long initialRevision, long amount) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        var storage = new SlottedResourceBuffer(1, capacities, () -> {
+        });
+        initialize(storage.context(), initialRevision);
+        assertEquals(amount, storage.insert(KEY, amount, Actionable.MODULATE));
+        return storage;
+    }
+
+    private static EnergyBuffer energy(long initialRevision) {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        initialize(energy.context(), initialRevision);
+        energy.restore(60);
+        return energy;
+    }
+
+    private static void initialize(StorageContext context, long initialRevision) {
+        context.lock();
+        try {
+            context.initializeRevision(initialRevision);
+        } finally {
+            context.unlock();
+        }
+    }
+
     @Test
     void appliedInputAndInvalidationKeepRefundCreditsAfterOrdinaryChangesExhaustTheirBudget() {
         var storage = resources(Long.MAX_VALUE - 8, 40);
@@ -132,7 +164,9 @@ class StorageRevisionBudgetTest {
                 assertThrows(IllegalStateException.class, () -> storage.insert(KEY, 1, Actionable.MODULATE));
                 assertThrows(IllegalStateException.class, () -> energy.receiveEnergy(1, Actionable.MODULATE));
                 throw fault;
-            }, () -> {}, () -> {}));
+            }, () -> {
+            }, () -> {
+            }));
         assertSame(fault, thrown);
         assertEquals(0, thrown.getSuppressed().length);
         assertEquals(70, storage.amount(KEY));
@@ -167,7 +201,6 @@ class StorageRevisionBudgetTest {
         assertEquals(14, storage.getAmount(0));
     }
 
-
     @Test
     void exposureAndInvalidationCannotSpendTheLastPromisedCompensationCredit() {
         var storage = resources(Long.MAX_VALUE - 6, 40);
@@ -177,12 +210,16 @@ class StorageRevisionBudgetTest {
         var fence = Objects.requireNonNull(StorageFence.tryAcquire(List.of(storage.context(), energy.context())));
         try {
             fence.access(() -> {
-                material.apply(); power.apply();
-                material.exposeApplied(); power.exposeApplied();
+                material.apply();
+                power.apply();
+                material.exposeApplied();
+                power.exposeApplied();
                 assertThrows(IllegalStateException.class, () -> storage.reserveInsert(storage.snapshot(), KEY, 1));
                 assertThrows(IllegalStateException.class, () -> energy.reserveReceiveEnergy(energy.energySnapshot(), 1));
-                storage.context().invalidate(); energy.invalidate();
-                material.rollback(); power.rollback();
+                storage.context().invalidate();
+                energy.invalidate();
+                material.rollback();
+                power.rollback();
                 assertEquals(Long.MAX_VALUE, storage.context().revision());
                 assertEquals(Long.MAX_VALUE, energy.context().revision());
                 assertEquals(40, storage.getAmount(0));
@@ -190,33 +227,8 @@ class StorageRevisionBudgetTest {
                 assertEquals(ResourceReservation.Resolution.ROLLED_BACK, material.resolution());
                 assertEquals(ResourceReservation.Resolution.ROLLED_BACK, power.resolution());
             });
-        } finally { fence.release(); }
-    }
-
-    private static ResourceReservation accepted(ReservationResult result) {
-        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
-        return Objects.requireNonNull(result.reservation());
-    }
-
-    private static SlottedResourceBuffer resources(long initialRevision, long amount) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        var storage = new SlottedResourceBuffer(1, capacities, () -> {});
-        initialize(storage.context(), initialRevision);
-        assertEquals(amount, storage.insert(KEY, amount, Actionable.MODULATE));
-        return storage;
-    }
-
-    private static EnergyBuffer energy(long initialRevision) {
-        var energy = new EnergyBuffer(100, () -> {});
-        initialize(energy.context(), initialRevision);
-        energy.restore(60);
-        return energy;
-    }
-
-    private static void initialize(StorageContext context, long initialRevision) {
-        context.lock();
-        try { context.initializeRevision(initialRevision); }
-        finally { context.unlock(); }
+        } finally {
+            fence.release();
+        }
     }
 }

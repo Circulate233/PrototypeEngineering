@@ -13,7 +13,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Frozen result of one discovery batch; publication must still prove current runtime ownership. */
+/**
+ * Frozen result of one discovery batch; publication must still prove current runtime ownership.
+ */
 public final class NetworkPlan {
     private final long epoch;
     private final Map<UUID, NetworkWorkState> workStates;
@@ -21,7 +23,7 @@ public final class NetworkPlan {
     private final Map<String, Team> teams;
 
     NetworkPlan(long epoch, Object2ObjectMap<UUID, NetworkWorkState> workStates,
-            Object2ObjectMap<UUID, String> teamIds, Object2ObjectMap<String, Team> teams) {
+                Object2ObjectMap<UUID, String> teamIds, Object2ObjectMap<String, Team> teams) {
         this.epoch = epoch;
         // JDK wrappers also protect Map.Entry.setValue; the owned backing maps remain fastutil.
         this.workStates = Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(workStates));
@@ -29,16 +31,30 @@ public final class NetworkPlan {
         this.teams = Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(teams));
     }
 
-    public long epoch() { return epoch; }
-    public Map<UUID, NetworkWorkState> workStates() { return workStates; }
-    public Map<UUID, String> teamIds() { return teamIds; }
-    public Map<String, Team> teams() { return teams; }
+    public long epoch() {
+        return epoch;
+    }
+
+    public Map<UUID, NetworkWorkState> workStates() {
+        return workStates;
+    }
+
+    public Map<UUID, String> teamIds() {
+        return teamIds;
+    }
+
+    public Map<String, Team> teams() {
+        return teams;
+    }
 
     public record Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId,
-            Object2LongMap<NetworkResourceType> resourcesPerTick, @Nullable DataCenterResearchSnapshot dataCenterResearch) {
+                       Object2LongMap<NetworkResourceType> resourcesPerTick,
+                       @Nullable DataCenterResearchSnapshot dataCenterResearch) {
         public Team {
             Objects.requireNonNull(centerId);
-            if (centerLevel < 1) { throw new IllegalArgumentException("Invalid selected center level"); }
+            if (centerLevel < 1) {
+                throw new IllegalArgumentException("Invalid selected center level");
+            }
             if (dataCenterResearch != null && !dataCenterResearch.dataCenterId().equals(dataCenterId)) {
                 throw new IllegalArgumentException("Selected data-center contents have another identity");
             }

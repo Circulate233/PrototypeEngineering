@@ -12,6 +12,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BinomialSamplerTest {
+    private static void checkMoments(int trials, double probability, ProbabilityTuning tuning, double meanTolerance) {
+        var random = new Random(0xBAA13L);
+        int samples = 10000;
+        double sum = 0;
+        double sumSquares = 0;
+        for (int sample = 0; sample < samples; sample++) {
+            int successes = BinomialSampler.sample(random, trials, probability, tuning);
+            assertTrue(successes >= 0 && successes <= trials);
+            sum += successes;
+            sumSquares += (double) successes * successes;
+        }
+        double mean = sum / samples;
+        double variance = sumSquares / samples - mean * mean;
+        double expectedMean = trials * probability;
+        double expectedVariance = expectedMean * (1 - probability);
+        assertEquals(expectedMean, mean, meanTolerance);
+        // PM deliberately uses approximations; broad moment bounds catch broken math without exactness claims.
+        assertEquals(expectedVariance, variance, expectedVariance * 0.3);
+    }
+
     @Test
     void explicitExactPolicyAndItsThresholdChangeTheSmallSampleStrategy() {
         assertEquals(0, BinomialSampler.sample(new ConstantDouble(0.5), 5, 0.4, new ProbabilityTuning(true, 5)));
@@ -51,28 +71,15 @@ class BinomialSamplerTest {
         }
     }
 
-    private static void checkMoments(int trials, double probability, ProbabilityTuning tuning, double meanTolerance) {
-        var random = new Random(0xBAA13L);
-        int samples = 10000;
-        double sum = 0;
-        double sumSquares = 0;
-        for (int sample = 0; sample < samples; sample++) {
-            int successes = BinomialSampler.sample(random, trials, probability, tuning);
-            assertTrue(successes >= 0 && successes <= trials);
-            sum += successes;
-            sumSquares += (double) successes * successes;
-        }
-        double mean = sum / samples;
-        double variance = sumSquares / samples - mean * mean;
-        double expectedMean = trials * probability;
-        double expectedVariance = expectedMean * (1 - probability);
-        assertEquals(expectedMean, mean, meanTolerance);
-        // PM deliberately uses approximations; broad moment bounds catch broken math without exactness claims.
-        assertEquals(expectedVariance, variance, expectedVariance * 0.3);
-    }
-
     private record ConstantDouble(double value) implements RandomGenerator {
-        @Override public long nextLong() { throw new AssertionError("Unexpected integer draw"); }
-        @Override public double nextDouble() { return value; }
+        @Override
+        public long nextLong() {
+            throw new AssertionError("Unexpected integer draw");
+        }
+
+        @Override
+        public double nextDouble() {
+            return value;
+        }
     }
 }

@@ -12,9 +12,6 @@ public final class MachineModelBloom {
     private static final ObjectArrayList<Batch> pending = new ObjectArrayList<>();
     private static boolean secondPhase;
 
-    private record Batch(ModelBuildCache cache, List<MachineModelPasses.Entry> entries, Runnable revoke) {
-    }
-
     private MachineModelBloom() {
     }
 
@@ -120,5 +117,8 @@ public final class MachineModelBloom {
                     failure = BuiltModelBuffers.append(failure, exception);
                 }
         BuiltModelBuffers.rethrow(failure);
+    }
+
+    private record Batch(ModelBuildCache cache, List<MachineModelPasses.Entry> entries, Runnable revoke) {
     }
 }

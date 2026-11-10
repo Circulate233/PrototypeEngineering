@@ -14,13 +14,17 @@ import java.util.Objects;
  * The host must retain its exact registration separately and recheck it before publishing a plan.
  */
 public record NetworkDeviceSnapshot(PersistentMachineIdentity identity, NetworkDeviceRole role, int level,
-        boolean formed, long loadOrder, Object2LongMap<NetworkResourceType> resourcesPerTick,
-        NetworkResourceModifier resourceModifier, int dataCenterCapacity, int storedResearchCount,
-        @Nullable DataCenterResearchSnapshot dataCenterResearch) {
-    /** Count-only captures support topology planning; runtime data centers require versioned real contents. */
+                                    boolean formed, long loadOrder,
+                                    Object2LongMap<NetworkResourceType> resourcesPerTick,
+                                    NetworkResourceModifier resourceModifier, int dataCenterCapacity,
+                                    int storedResearchCount,
+                                    @Nullable DataCenterResearchSnapshot dataCenterResearch) {
+    /**
+     * Count-only captures support topology planning; runtime data centers require versioned real contents.
+     */
     public NetworkDeviceSnapshot(PersistentMachineIdentity identity, NetworkDeviceRole role, int level,
-            boolean formed, long loadOrder, Object2LongMap<NetworkResourceType> resourcesPerTick,
-            NetworkResourceModifier resourceModifier, int dataCenterCapacity, int storedResearchCount) {
+                                 boolean formed, long loadOrder, Object2LongMap<NetworkResourceType> resourcesPerTick,
+                                 NetworkResourceModifier resourceModifier, int dataCenterCapacity, int storedResearchCount) {
         this(identity, role, level, formed, loadOrder, resourcesPerTick, resourceModifier, dataCenterCapacity, storedResearchCount, null);
     }
 
@@ -29,7 +33,7 @@ public record NetworkDeviceSnapshot(PersistentMachineIdentity identity, NetworkD
         Objects.requireNonNull(role);
         Objects.requireNonNull(resourceModifier);
         if (level < 0 || loadOrder < 0 || storedResearchCount < 0
-                || storedResearchCount > dataCenterCapacity || (role == NetworkDeviceRole.DATA_CENTER) != (dataCenterCapacity > 0)) {
+            || storedResearchCount > dataCenterCapacity || (role == NetworkDeviceRole.DATA_CENTER) != (dataCenterCapacity > 0)) {
             throw new IllegalArgumentException("Invalid network device snapshot");
         }
         if ((role == NetworkDeviceRole.NETWORK_CENTER || role == NetworkDeviceRole.RESEARCH_STATION) && level == 0) {

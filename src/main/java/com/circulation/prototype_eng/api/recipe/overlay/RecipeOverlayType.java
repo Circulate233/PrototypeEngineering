@@ -5,7 +5,9 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
 
-/** Stable typed applier binding, retained directly instead of looking up a replaceable global registry. */
+/**
+ * Stable typed applier binding, retained directly instead of looking up a replaceable global registry.
+ */
 public record RecipeOverlayType<C, D>(ResourceLocation id, RecipeRequirementType<C> requirementType,
                                       RecipeOverlayApplier<C, D> applier) {
     public RecipeOverlayType {

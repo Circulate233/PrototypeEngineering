@@ -67,7 +67,27 @@ class RecipeStartProbeTest {
     private static final Key EXTRA = new Key(SECOND_TYPE, "extra");
     private static final Key PRODUCT = new Key(FIRST_TYPE, "product");
     private static final ResourceLocation SCORE = id("score");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST_TYPE, 100);
+        capacities.put(SECOND_TYPE, 100);
+        return new SlottedResourceBuffer(4, capacities, NO_OP);
+    }
+
+    private static NumericAttributeModifier modifier(String name, double amount) {
+        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return List.of(new GenericStack(key, amount));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("probe_test", name);
+    }
 
     @Test
     void successfulProbeAcquiresRealMultiTypeResourceEnergyAndProvisionalStateThenUndoesEverything() {
@@ -214,7 +234,8 @@ class RecipeStartProbeTest {
                 List.of(new GenericStack(MATERIAL, 2), new GenericStack(EXTRA, 3)), stacks(MATERIAL, 1), List.of(), stacks(PRODUCT, 5),
                 false, ResourceChance.ALWAYS, null, List.of(new FuzzyInputGroup(List.of(MATERIAL, ALTERNATE), 4)), List.of()));
             early = new RecipeRequirementType<>(new ResourceLocation("aaa_probe_test", "early"), new TracingSystem() {
-                @Override public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                     events.add("early:acquire");
                     assertEquals(requirement.path(null), owner.requirementPath());
                     assertTrue(owner.attributes().addModifier(SCORE, modifier("early", 3)));
@@ -223,12 +244,15 @@ class RecipeStartProbeTest {
                     return transaction(owner, "early", List.of(), ProcessResult.SUCCESS, () -> {
                         change.rollback();
                         assertTrue(owner.attributes().removeModifier(SCORE, "early"));
-                        if (earlyRollbackFailure != null) { throw earlyRollbackFailure; }
+                        if (earlyRollbackFailure != null) {
+                            throw earlyRollbackFailure;
+                        }
                     });
                 }
             }).requirement(id("early"), true);
             var child = new RecipeRequirementType<>(id("child_type"), new TracingSystem() {
-                @Override public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                     events.add("child:acquire");
                     assertEquals(requirement.path(selection.path(null)), owner.requirementPath());
                     var material = env.input.reserveExtract(env.input.snapshot(), MATERIAL, 1);
@@ -239,12 +263,14 @@ class RecipeStartProbeTest {
                     assertEquals(ReservationResult.Status.ACCEPTED, energy.status());
                     assertTrue(owner.attributes().addModifier(SCORE, modifier("child", 5)));
                     return transaction(owner, "child", List.of(
-                        new TrackedReservation(Objects.requireNonNull(material.reservation()), metrics, () -> null),
-                        new TrackedReservation(Objects.requireNonNull(extra.reservation()), metrics, () -> null),
-                        new TrackedReservation(Objects.requireNonNull(energy.reservation()), metrics, () -> tokenRollbackFailure)),
+                            new TrackedReservation(Objects.requireNonNull(material.reservation()), metrics, () -> null),
+                            new TrackedReservation(Objects.requireNonNull(extra.reservation()), metrics, () -> null),
+                            new TrackedReservation(Objects.requireNonNull(energy.reservation()), metrics, () -> tokenRollbackFailure)),
                         ProcessResult.SUCCESS, () -> {
                             assertTrue(owner.attributes().removeModifier(SCORE, "child"));
-                            if (childRollbackFailure != null) { throw childRollbackFailure; }
+                            if (childRollbackFailure != null) {
+                                throw childRollbackFailure;
+                            }
                         });
                 }
             }).requirement(id("child"), true);
@@ -258,7 +284,8 @@ class RecipeStartProbeTest {
             var attribute = RecipeRequirements.ATTRIBUTES.requirement(id("attribute"), new AttributeRequirement(SCORE, modifier("attribute", 4)));
             var energy = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(5, 7, 0, 11, false));
             var tail = new RecipeRequirementType<>(new ResourceLocation("zzz_probe_test", "tail"), new TracingSystem() {
-                @Override public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                     events.add("tail:acquire");
                     assertEquals(requirement.path(null), owner.requirementPath());
                     assertEquals(12, env.input.availableAmount(MATERIAL));
@@ -270,12 +297,15 @@ class RecipeStartProbeTest {
                     var provisional = Objects.requireNonNull(owner.components().get(SelectiveState.TYPE)).selection(selection.path(null));
                     assertEquals(0, Objects.requireNonNull(provisional).index());
                     assertFalse(provisional.committed());
-                    if (tailFailure != null) { throw tailFailure; }
+                    if (tailFailure != null) {
+                        throw tailFailure;
+                    }
                     return transaction(owner, "tail", List.of(), tailResult, NO_OP);
                 }
             }).requirement(id("tail"), true);
             var after = new RecipeRequirementType<>(new ResourceLocation("zzz_probe_test", "zz_after"), new TracingSystem() {
-                @Override public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                     events.add("after:acquire");
                     return transaction(owner, "after", List.of(), ProcessResult.SUCCESS, NO_OP);
                 }
@@ -311,9 +341,13 @@ class RecipeStartProbeTest {
             assertEquals(3, process.attributes().value(SCORE));
             assertEquals(initialLayers, RecipeOverlays.getOrCreate(process).snapshot());
             var locks = process.components().get(ResourceInputLocks.TYPE);
-            if (locks != null) { assertTrue(locks.snapshot().isEmpty()); }
+            if (locks != null) {
+                assertTrue(locks.snapshot().isEmpty());
+            }
             var selections = process.components().get(SelectiveState.TYPE);
-            if (selections != null) { assertTrue(selections.snapshot().isEmpty()); }
+            if (selections != null) {
+                assertTrue(selections.snapshot().isEmpty());
+            }
             assertThrows(NullPointerException.class, process::requirementPath);
             assertEquals(0, metrics.commits);
             assertEquals(0, metrics.completes);
@@ -321,38 +355,52 @@ class RecipeStartProbeTest {
         }
 
         private abstract class TracingSystem implements RecipeRequirementSystem<Boolean> {
-            @Override public RequirementTransaction tick(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction tick(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                 metrics.ticks++;
                 return RequirementTransaction.SUCCESS;
             }
-            @Override public RequirementTransaction end(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+
+            @Override
+            public RequirementTransaction end(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                 metrics.ends++;
                 return RequirementTransaction.SUCCESS;
             }
         }
     }
 
-    private record TrackedTransaction(RecipeProcess process, RequirementPath path, String name, List<ResourceReservation> tokens,
-                                      ProcessResult outcome, Runnable cleanup, List<String> events, Metrics metrics) implements RequirementTransaction {
-        @Override public ProcessResult result() {
+    private record TrackedTransaction(RecipeProcess process, RequirementPath path, String name,
+                                      List<ResourceReservation> tokens,
+                                      ProcessResult outcome, Runnable cleanup, List<String> events,
+                                      Metrics metrics) implements RequirementTransaction {
+        @Override
+        public ProcessResult result() {
             assertEquals(path, process.requirementPath());
             events.add(name + ":result");
             return outcome;
         }
-        @Override public List<ResourceReservation> reservations() {
+
+        @Override
+        public List<ResourceReservation> reservations() {
             assertEquals(path, process.requirementPath());
             events.add(name + ":reservations");
             return tokens;
         }
-        @Override public void commit() {
+
+        @Override
+        public void commit() {
             assertEquals(path, process.requirementPath());
             metrics.commits++;
         }
-        @Override public void complete() {
+
+        @Override
+        public void complete() {
             assertEquals(path, process.requirementPath());
             metrics.completes++;
         }
-        @Override public void rollback() {
+
+        @Override
+        public void rollback() {
             assertEquals(path, process.requirementPath());
             events.add(name + ":rollback");
             cleanup.run();
@@ -361,14 +409,35 @@ class RecipeStartProbeTest {
 
     private record TrackedReservation(ResourceReservation delegate, Metrics metrics,
                                       Supplier<RuntimeException> cleanupFailure) implements ResourceReservation {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public void apply() { metrics.tokenApplications++; delegate.apply(); }
-        @Override public void complete() { metrics.tokenCompletions++; delegate.complete(); }
-        @Override public void rollback() {
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public void apply() {
+            metrics.tokenApplications++;
+            delegate.apply();
+        }
+
+        @Override
+        public void complete() {
+            metrics.tokenCompletions++;
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
             delegate.rollback();
             var failure = cleanupFailure.get();
-            if (failure != null) { throw failure; }
+            if (failure != null) {
+                throw failure;
+            }
         }
     }
 
@@ -388,12 +457,14 @@ class RecipeStartProbeTest {
         private final EnergyBuffer energy = new EnergyBuffer(100, NO_OP);
         private final EnergyBuffer generated = new EnergyBuffer(100, NO_OP);
         private final MachineInstance machine = new MachineInstance();
+
         private Environment() {
             machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Ports(input, output)), List.of(energy), List.of(generated)));
             input.insert(MATERIAL, 20, Actionable.MODULATE);
             input.insert(EXTRA, 30, Actionable.MODULATE);
             energy.receiveEnergy(40, Actionable.MODULATE);
         }
+
         private void assertAllReservationsReleased() {
             assertEquals(input.amount(MATERIAL), input.availableAmount(MATERIAL));
             assertEquals(input.amount(EXTRA), input.availableAmount(EXTRA));
@@ -404,19 +475,9 @@ class RecipeStartProbeTest {
     }
 
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST_TYPE, 100);
-        capacities.put(SECOND_TYPE, 100);
-        return new SlottedResourceBuffer(4, capacities, NO_OP);
-    }
-
-    private static NumericAttributeModifier modifier(String name, double amount) {
-        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
-    }
-    private static List<GenericStack> stacks(Key key, long amount) { return List.of(new GenericStack(key, amount)); }
-    private static ResourceLocation id(String name) { return new ResourceLocation("probe_test", name); }
 }

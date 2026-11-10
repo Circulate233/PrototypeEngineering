@@ -4,20 +4,29 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import java.util.Objects;
-import java.util.UUID;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
+
+import java.util.Objects;
+import java.util.UUID;
 
 import static com.circulation.prototype_eng.api.research.ResearchDataCentersTest.FIRST;
 import static com.circulation.prototype_eng.api.research.ResearchDataCentersTest.OWNER;
 import static com.circulation.prototype_eng.api.research.ResearchDataCentersTest.SECOND;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class DataCenterResearchAccessTest {
-    @Test void consecutiveDownloadsRefreshPublicationAndAccumulateWithoutRefillingTheTickBudget() {
+    @Test
+    void consecutiveDownloadsRefreshPublicationAndAccumulateWithoutRefillingTheTickBudget() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
-            var machine = fixture.dataCenter(); fixture.refresh();
+            var machine = fixture.dataCenter();
+            fixture.refresh();
             var world = fixture.researchWorld(ResearchPermissionPolicy.DEFAULT, _ -> fail("Download saved cloud sources"));
             var access = new DataCenterResearchAccess(world, fixture.network, fixture.selector);
             var before = world.snapshot();
@@ -46,9 +55,11 @@ class DataCenterResearchAccessTest {
         }
     }
 
-    @Test void permissionDenialAndWrongPhysicalTargetLeaveStorageAndPublicationUntouched() {
+    @Test
+    void permissionDenialAndWrongPhysicalTargetLeaveStorageAndPublicationUntouched() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
-            var machine = fixture.dataCenter(); fixture.refresh();
+            var machine = fixture.dataCenter();
+            fixture.refresh();
             var actions = new ObjectArrayList<ResearchPermissionPolicy.Action>();
             var world = fixture.researchWorld((action, _) -> {
                 actions.add(action);
@@ -71,11 +82,13 @@ class DataCenterResearchAccessTest {
         }
     }
 
-    @Test void deniedStateViewReportsIndependentDownloadPermissionWithoutExposingItsCloudOrDatabase() {
+    @Test
+    void deniedStateViewReportsIndependentDownloadPermissionWithoutExposingItsCloudOrDatabase() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
-            var machine = fixture.dataCenter(); fixture.refresh();
+            var machine = fixture.dataCenter();
+            fixture.refresh();
             var world = fixture.researchWorld((action, _) -> action == ResearchPermissionPolicy.Action.REQUEST_DATA_CENTER_STATE
-                ? ResearchPermissionPolicy.Decision.NOT_SERVER_OPERATOR : ResearchPermissionPolicy.Decision.ALLOWED,
+                    ? ResearchPermissionPolicy.Decision.NOT_SERVER_OPERATOR : ResearchPermissionPolicy.Decision.ALLOWED,
                 _ -> fail("State view saved cloud sources"));
             var access = new DataCenterResearchAccess(world, fixture.network, fixture.selector);
             var before = world.snapshot();
@@ -92,15 +105,18 @@ class DataCenterResearchAccessTest {
         }
     }
 
-    @Test void sameTickCloudCompletionSynchronizesStoredLoopWithoutPlayerPolicyOrAnotherBudget() {
+    @Test
+    void sameTickCloudCompletionSynchronizesStoredLoopWithoutPlayerPolicyOrAnotherBudget() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
-            var machine = fixture.dataCenter(); fixture.refresh();
+            var machine = fixture.dataCenter();
+            fixture.refresh();
             var actions = new ObjectArrayList<ResearchPermissionPolicy.Action>();
             var world = fixture.researchWorld((action, _) -> {
                 assertEquals(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, action);
                 actions.add(action);
                 return ResearchPermissionPolicy.Decision.ALLOWED;
-            }, _ -> { });
+            }, _ -> {
+            });
             var access = new DataCenterResearchAccess(world, fixture.network, fixture.selector);
             assertEquals(DataCenterStorage.Result.UPDATED,
                 access.download(fixture.membership(OWNER), fixture.permission(), fixture.machineId(machine), FIRST, 1, () -> true).storageResult());
@@ -118,9 +134,11 @@ class DataCenterResearchAccessTest {
         }
     }
 
-    @Test void dirtyFailureAfterContentPublicationRevokesNetworkWithoutRollingBackTheWrittenResearch() {
+    @Test
+    void dirtyFailureAfterContentPublicationRevokesNetworkWithoutRollingBackTheWrittenResearch() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
-            var machine = fixture.dataCenter(); fixture.refresh();
+            var machine = fixture.dataCenter();
+            fixture.refresh();
             var world = fixture.researchWorld(ResearchPermissionPolicy.DEFAULT, _ -> fail("Download saved cloud sources"));
             var access = new DataCenterResearchAccess(world, fixture.network, fixture.selector);
             var physical = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(machine)));
@@ -136,11 +154,15 @@ class DataCenterResearchAccessTest {
         }
     }
 
-    @Test void staleMembershipProofAndPendingCloudSaveNeverStartPhysicalWrites() {
+    @Test
+    void staleMembershipProofAndPendingCloudSaveNeverStartPhysicalWrites() {
         try (var fixture = new ResearchDataCentersTest.Fixture()) {
-            var machine = fixture.dataCenter(); fixture.refresh();
+            var machine = fixture.dataCenter();
+            fixture.refresh();
             var failure = new IllegalStateException("Pending cloud save");
-            var world = fixture.researchWorld((_, _) -> fail("Unavailable cloud checked permission"), _ -> { throw failure; });
+            var world = fixture.researchWorld((_, _) -> fail("Unavailable cloud checked permission"), _ -> {
+                throw failure;
+            });
             var access = new DataCenterResearchAccess(world, fixture.network, fixture.selector);
             var publication = fixture.network.plan();
             assertEquals(DataCenterResearchAccess.Status.STALE_CONTEXT, access.download(fixture.membership(OWNER), fixture.permission(),

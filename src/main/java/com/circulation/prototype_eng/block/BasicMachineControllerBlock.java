@@ -6,7 +6,9 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 
-/** Default physical host for a downstream machine declaration. */
+/**
+ * Default physical host for a downstream machine declaration.
+ */
 public class BasicMachineControllerBlock extends MachineControllerBlock<MachineControllerBlockEntity> {
     public BasicMachineControllerBlock(MachineType type) {
         this(type, new ResourceLocation(type.id().getNamespace(), type.id().getPath() + "_controller"));

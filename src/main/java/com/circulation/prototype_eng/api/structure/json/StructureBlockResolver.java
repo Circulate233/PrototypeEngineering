@@ -7,7 +7,9 @@ import net.minecraft.util.ResourceLocation;
 import java.util.List;
 import java.util.Map;
 
-/** Definition-time block resolution. Implementations reject unknown IDs instead of defaulting to air. */
+/**
+ * Definition-time block resolution. Implementations reject unknown IDs instead of defaulting to air.
+ */
 public interface StructureBlockResolver {
     StructurePredicate block(ResourceLocation id);
 

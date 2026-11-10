@@ -8,7 +8,9 @@ import com.circulation.prototype_eng.recipe.requirement.ResourceRequirementSyste
 import com.circulation.prototype_eng.recipe.requirement.SelectiveRequirementSystem;
 import net.minecraft.util.ResourceLocation;
 
-/** Built-in execution responsibilities; downstream types use the same public registration path. */
+/**
+ * Built-in execution responsibilities; downstream types use the same public registration path.
+ */
 public final class RecipeRequirements {
     public static final RecipeRequirementType<AttributeRequirement> ATTRIBUTES =
         new RecipeRequirementType<>(new ResourceLocation(Tags.MOD_ID, "attribute_modifier"), new AttributeRequirementSystem());

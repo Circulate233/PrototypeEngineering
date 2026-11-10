@@ -11,12 +11,14 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.ResourceLocation;
 
-import java.util.List;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-/** Construct and use only after Forge block registration. Caches belong to this candidate, not a static registry. */
+/**
+ * Construct and use only after Forge block registration. Caches belong to this candidate, not a static registry.
+ */
 public final class ForgeStructureBlocks implements StructureBlockResolver {
     private final Object2ObjectLinkedOpenHashMap<String, List<Block>> regexBlocks = new Object2ObjectLinkedOpenHashMap<>();
 

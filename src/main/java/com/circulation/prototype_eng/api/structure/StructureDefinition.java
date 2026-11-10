@@ -11,7 +11,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.Objects;
 
-/** Complete catalog entry: immutable shape and separate per-pattern-cell presentation data. */
+/**
+ * Complete catalog entry: immutable shape and separate per-pattern-cell presentation data.
+ */
 public record StructureDefinition(MachineStructure shape, @Nullable String translationKey,
                                   Map<BlockPos, StructureDisplay> displays) {
     public StructureDefinition {
@@ -36,7 +38,9 @@ public record StructureDefinition(MachineStructure shape, @Nullable String trans
         return shape.id();
     }
 
-    /** Absent names use the structure ID in the caller; configured names follow the AE2S contract. */
+    /**
+     * Absent names use the structure ID in the caller; configured names follow the AE2S contract.
+     */
     @SuppressWarnings("unused") // Public Java preview and GUI naming contract.
     @Nullable
     public LocalizationEnum displayName() {

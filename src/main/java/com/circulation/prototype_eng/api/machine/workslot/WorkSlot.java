@@ -8,7 +8,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.Set;
 
-/** Runtime state owned and updated by the machine's work slot host. */
+/**
+ * Runtime state owned and updated by the machine's work slot host.
+ */
 public final class WorkSlot {
     private final WorkSlotDefinition definition;
     @Nullable

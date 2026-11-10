@@ -1,13 +1,17 @@
 package com.circulation.prototype_eng.structure;
 
+import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
+import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructureQueries;
 import com.circulation.prototype_eng.api.structure.StructureQuery;
 import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureReadSource;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -20,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -29,13 +34,19 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
-import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
-import com.circulation.prototype_eng.api.structure.StructureTransform;
-import java.util.Objects;
 
 class StructurePredicateTest {
+    private static boolean matches(StructurePredicate predicate, FakeSource source, BlockPos position) {
+        var plan = new StructureReadPlan.Builder();
+        predicate.collectReads(plan, position);
+        return predicate.matches(StructureSnapshot.capture(plan.build(), source), position);
+    }
+
+    private static StructureQuery<String> stringQuery(String path) {
+        return new StructureQuery<>(new ResourceLocation("test", path),
+            (_, _) -> fail("No World reader may run in this test"), UnaryOperator.identity(), String::equals);
+    }
+
     @Test
     void nestedBuiltInOffsetsAndNbtEntriesAdvanceWithoutAnEagerUnbudgetedWalk() {
         StructurePredicate predicate = StructurePredicates.nbt(Map.of("first", "one", "second", "two", "third", "three"));
@@ -51,7 +62,9 @@ class StructurePredicateTest {
         while (!declaration.advance(new RecipeWorkBudget(1))) assertTrue(++slices < 100);
         assertTrue(slices >= 20);
         var tag = new NBTTagCompound();
-        tag.setString("first", "one"); tag.setString("second", "two"); tag.setString("third", "three");
+        tag.setString("first", "one");
+        tag.setString("second", "two");
+        tag.setString("third", "three");
         var source = new FakeSource();
         source.put(StructureQueries.TILE_NBT, new BlockPos(0, 0, 20), tag);
         var matching = transformed.beginMatch(StructureSnapshot.capture(builder.build(), source), BlockPos.ORIGIN);
@@ -60,6 +73,7 @@ class StructurePredicateTest {
         assertTrue(slices >= 23);
         assertEquals(StructurePredicateResult.MATCHED, matching.result());
     }
+
     @Test
     void rootNbtUsesBareStringsAndTypedSnbtAndFreezesExternalConstraints() {
         BlockPos position = new BlockPos(3, 4, 5);
@@ -112,13 +126,15 @@ class StructurePredicateTest {
             return true;
         });
         StructurePredicate failedPredicate = StructurePredicates.test(poisoned,
-                _ -> fail("The failed fact must throw before testing its condition"));
+            _ -> fail("The failed fact must throw before testing its condition"));
         StructurePredicate all = StructurePredicates.all(List.of(truePredicate, falsePredicate, failedPredicate));
         StructurePredicate any = StructurePredicates.any(List.of(falsePredicate, truePredicate, failedPredicate));
         var failure = new IllegalArgumentException("optional provider failed");
         var source = new FakeSource();
         source.put(ordinary, position, "available");
-        source.supply(poisoned, position, () -> { throw failure; });
+        source.supply(poisoned, position, () -> {
+            throw failure;
+        });
         var plan = new StructureReadPlan.Builder();
         all.collectReads(plan, position);
         any.collectReads(plan, position);
@@ -134,12 +150,12 @@ class StructurePredicateTest {
         visits.clear();
         StructurePredicate allReachesFailure = StructurePredicates.all(List.of(truePredicate, failedPredicate));
         assertSame(failure, assertThrows(IllegalStateException.class,
-                () -> allReachesFailure.matches(snapshot, position)).getCause());
+            () -> allReachesFailure.matches(snapshot, position)).getCause());
         assertEquals(List.of("true"), visits);
         visits.clear();
         StructurePredicate anyReachesFailure = StructurePredicates.any(List.of(falsePredicate, failedPredicate));
         assertSame(failure, assertThrows(IllegalStateException.class,
-                () -> anyReachesFailure.matches(snapshot, position)).getCause());
+            () -> anyReachesFailure.matches(snapshot, position)).getCause());
         assertEquals(List.of("false"), visits);
         assertEquals(1, source.readCount(ordinary, position));
         assertEquals(1, source.readCount(poisoned, position));
@@ -152,14 +168,14 @@ class StructurePredicateTest {
         BlockPos offset = new BlockPos(32, -1, 2);
         BlockPos validatorPosition = origin.add(offset);
         StructurePredicate cell = StructurePredicates.test(query,
-                _ -> fail("An unloaded cell must short circuit before its condition"));
+            _ -> fail("An unloaded cell must short circuit before its condition"));
         StructurePredicate validator = StructurePredicates.at(offset, StructurePredicates.nbt(Map.of("amount", "7")));
         var source = new FakeSource();
         source.unloaded.add(StructureBounds.at(origin));
         source.unloaded.add(StructureBounds.at(validatorPosition));
         source.supply(query, origin, () -> fail("An unloaded cell must not be captured"));
         source.supply(StructureQueries.TILE_NBT, validatorPosition,
-                () -> fail("An unloaded validator position must not be captured"));
+            () -> fail("An unloaded validator position must not be captured"));
         var plan = new StructureReadPlan.Builder();
         cell.collectReads(plan, origin);
         validator.collectReads(plan, origin);
@@ -170,17 +186,6 @@ class StructurePredicateTest {
         assertTrue(snapshot.failures().isEmpty());
         assertEquals(0, source.readCount(query, origin));
         assertEquals(0, source.readCount(StructureQueries.TILE_NBT, validatorPosition));
-    }
-
-    private static boolean matches(StructurePredicate predicate, FakeSource source, BlockPos position) {
-        var plan = new StructureReadPlan.Builder();
-        predicate.collectReads(plan, position);
-        return predicate.matches(StructureSnapshot.capture(plan.build(), source), position);
-    }
-
-    private static StructureQuery<String> stringQuery(String path) {
-        return new StructureQuery<>(new ResourceLocation("test", path),
-                (_, _) -> fail("No World reader may run in this test"), UnaryOperator.identity(), String::equals);
     }
 
     private static final class FakeSource implements StructureReadSource {

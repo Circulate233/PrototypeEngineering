@@ -23,8 +23,8 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
+import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
@@ -40,14 +40,58 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Tests the production resolved-key boundary without initializing native ItemStack or a game world. */
+/**
+ * Tests the production resolved-key boundary without initializing native ItemStack or a game world.
+ */
 class NetworkComputerComponentsTest {
     private static final AEKey CARD = ComputerSupplyFixtures.key("card");
     private static final NetworkResourceType CAPPED = new NetworkResourceType(id("capped"), false, 5);
 
-    @Test void longQuantitiesMultiplyPerItemCapAcrossSourcesWithoutCountingAliases() {
+    private static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, SlottedResourceStorage... storage) {
+        return NetworkComputerComponentInventory.capture(registry, new MachineInstance(), List.of(storage));
+    }
+
+    private static SlottedResourceBuffer buffer(int slots) {
+        return new SlottedResourceBuffer(slots, Map.of(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> {
+        });
+    }
+
+    private static void put(SlottedResourceStorage storage, int slot, AEKey key, long count) {
+        assertTrue(storage.tryReplaceSlot(slot, storage.getStack(slot), new GenericStack(key, count)));
+    }
+
+    private static NetworkComputerComponentRegistry registry(Object2LongMap<NetworkResourceType> resources) {
+        var registry = new NetworkComputerComponentRegistry();
+        ComputerSupplyFixtures.fixed(registry, CARD, resources);
+        registry.freeze(resources());
+        return registry;
+    }
+
+    private static NetworkResourceRegistry resources() {
+        var resources = new NetworkResourceRegistry();
+        resources.register(CAPPED);
+        resources.freeze();
+        return resources;
+    }
+
+    private static Object2LongMap<NetworkResourceType> vector(NetworkResourceType type, long amount) {
+        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        result.put(type, amount);
+        return result;
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("computer_supply_test", path);
+    }
+
+    @Test
+    void longQuantitiesMultiplyPerItemCapAcrossSourcesWithoutCountingAliases() {
         var registry = registry(vector(CAPPED, 5));
         var first = buffer(2);
         var second = buffer(2);
@@ -62,7 +106,8 @@ class NetworkComputerComponentsTest {
         assertFalse(captured.current());
     }
 
-    @Test void extractionHoldsStillSupplyUntilAppliedAndPendingOutputsDoNotSupply() {
+    @Test
+    void extractionHoldsStillSupplyUntilAppliedAndPendingOutputsDoNotSupply() {
         var registry = registry(vector(NetworkResources.COMPUTE, 10));
         var storage = buffer(2);
         put(storage, 0, CARD, 4);
@@ -71,15 +116,19 @@ class NetworkComputerComponentsTest {
         var captured = capture(registry, storage);
         assertEquals(40, captured.resourcesPerTick().getLong(NetworkResources.COMPUTE));
         storage.context().lock();
-        try { extract.apply(); }
-        finally { storage.context().unlock(); }
+        try {
+            extract.apply();
+        } finally {
+            storage.context().unlock();
+        }
         assertFalse(captured.current());
         assertEquals(20, capture(registry, storage).resourcesPerTick().getLong(NetworkResources.COMPUTE));
         ResourceTransactions.rollback(List.of(extract, insert));
         assertEquals(40, capture(registry, storage).resourcesPerTick().getLong(NetworkResources.COMPUTE));
     }
 
-    @Test void canonicalLimitsAndOverflowAreCheckedBeforePublishingSupply() {
+    @Test
+    void canonicalLimitsAndOverflowAreCheckedBeforePublishingSupply() {
         var storage = buffer(2);
         put(storage, 0, CARD, 17);
         assertEquals(17, capture(registry(vector(NetworkResources.THREAD, 1)), storage).resourcesPerTick().getLong(NetworkResources.THREAD));
@@ -99,7 +148,8 @@ class NetworkComputerComponentsTest {
         assertThrows(ArithmeticException.class, () -> capture(registry, storage));
     }
 
-    @Test void dynamicCaptureNeverRecomputesInsideForeignLocksAndVersionChangesInvalidateIt() {
+    @Test
+    void dynamicCaptureNeverRecomputesInsideForeignLocksAndVersionChangesInvalidateIt() {
         long[] value = {2};
         int[] calls = {0};
         var registry = new NetworkComputerComponentRegistry();
@@ -114,8 +164,11 @@ class NetworkComputerComponentsTest {
         var captured = capture(registry, storage);
         var foreign = buffer(1);
         foreign.context().lock();
-        try { assertTrue(captured.current()); }
-        finally { foreign.context().unlock(); }
+        try {
+            assertTrue(captured.current());
+        } finally {
+            foreign.context().unlock();
+        }
         assertEquals(1, calls[0]);
         value[0] = 3;
         assertFalse(captured.current());
@@ -125,13 +178,16 @@ class NetworkComputerComponentsTest {
         assertFalse(assertDoesNotThrow(() -> capture(registry, storage)).current());
     }
 
-    @Test void contextRevisionIsRecheckedAfterExternalProofAndCaptureInvalidationIsNormal() {
+    @Test
+    void contextRevisionIsRecheckedAfterExternalProofAndCaptureInvalidationIsNormal() {
         var storage = buffer(1);
         put(storage, 0, CARD, 2);
         boolean[] mutate = {false};
         var registry = new NetworkComputerComponentRegistry();
         ComputerSupplyFixtures.register(registry, CARD, _ -> new NetworkComputerComponent.Capture(vector(NetworkResources.COMPUTE, 5), () -> {
-            if (mutate[0]) { put(storage, 0, CARD, 3); }
+            if (mutate[0]) {
+                put(storage, 0, CARD, 3);
+            }
             return true;
         }));
         registry.freeze(resources());
@@ -147,12 +203,14 @@ class NetworkComputerComponentsTest {
         assertFalse(capture(invalidating, storage).current());
     }
 
-    @Test void restoredExistingBufferFeedsRecreatedComponentAndOldProofNeverRevives() {
+    @Test
+    void restoredExistingBufferFeedsRecreatedComponentAndOldProofNeverRevives() {
         var registry = registry(vector(NetworkResources.COMPUTE, 4));
         var source = buffer(1);
         put(source, 0, CARD, 7);
         var sourceHolder = new SlottedResourceStorage[]{source};
-        try (var identities = new MachineIdentityRegistry(() -> { })) {
+        try (var identities = new MachineIdentityRegistry(() -> {
+        })) {
             var ownership = new ComponentType<MachineInstance, MachineOwnership>(id("ownership"), owner -> new MachineOwnership(owner, _ -> identities), List.of());
             var supply = MachineComputerComponents.component(id("supply"), registry, _ -> {
                 var physical = sourceHolder[0];
@@ -184,25 +242,29 @@ class NetworkComputerComponentsTest {
         }
     }
 
-    private static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, SlottedResourceStorage... storage) {
-        return NetworkComputerComponentInventory.capture(registry, new MachineInstance(), List.of(storage));
-    }
-    private static SlottedResourceBuffer buffer(int slots) { return new SlottedResourceBuffer(slots, Map.of(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> { }); }
-    private static void put(SlottedResourceStorage storage, int slot, AEKey key, long count) { assertTrue(storage.tryReplaceSlot(slot, storage.getStack(slot), new GenericStack(key, count))); }
-    private static NetworkComputerComponentRegistry registry(Object2LongMap<NetworkResourceType> resources) {
-        var registry = new NetworkComputerComponentRegistry();
-        ComputerSupplyFixtures.fixed(registry, CARD, resources);
-        registry.freeze(resources());
-        return registry;
-    }
-    private static NetworkResourceRegistry resources() { var resources = new NetworkResourceRegistry(); resources.register(CAPPED); resources.freeze(); return resources; }
-    private static Object2LongMap<NetworkResourceType> vector(NetworkResourceType type, long amount) { var result = new Object2LongOpenHashMap<NetworkResourceType>(); result.put(type, amount); return result; }
-    private static ResourceLocation id(String path) { return new ResourceLocation("computer_supply_test", path); }
     private record Host() implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("No game world in supply tests"); }
-        @Override public Object worldIdentity() { return NetworkComputerComponentsTest.class; }
-        @Override public UUID placementPlayer() { return new UUID(0, 1); }
-        @Override public void requireServerThread() { }
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No game world in supply tests");
+        }
+
+        @Override
+        public Object worldIdentity() {
+            return NetworkComputerComponentsTest.class;
+        }
+
+        @Override
+        public UUID placementPlayer() {
+            return new UUID(0, 1);
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

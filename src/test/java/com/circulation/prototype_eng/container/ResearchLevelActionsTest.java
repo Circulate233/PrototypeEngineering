@@ -20,6 +20,12 @@ class ResearchLevelActionsTest {
     private static final ResearchGuiSnapshot.Entry ROW = new ResearchGuiSnapshot.Entry(new ResourceLocation("level_gui", "research"),
         3, 4, 4, 1, false, 0, null, null, null, null, null);
 
+    private static ResearchGuiSnapshot snapshot(Decision forget, Decision admin) {
+        return new ResearchGuiSnapshot(true, false, ResearchPlayerView.TeamStatus.AVAILABLE,
+            Decision.ALLOWED, Decision.ALLOWED, Decision.ALLOWED, Decision.ALLOWED, Decision.NOT_TEAM_LEADER,
+            ResearchGuiSnapshot.Tab.RESEARCH, 1, 0, ObjectList.of(ROW), ROW.selection(), 0, 0, ObjectList.of(), forget, admin);
+    }
+
     @Test
     void operationPermissionsRoundTripWithIndependentAdmissionAndFollowingGuiSyncField() {
         var view = snapshot(Decision.ALLOWED, Decision.NOT_SERVER_OPERATOR);
@@ -73,13 +79,8 @@ class ResearchLevelActionsTest {
         assertFalse(queued.get());
         assertSame(cleanup, failure.getSuppressed()[0]);
         queued.set(true);
-        ServerResearch.runFinalized(() -> {}, () -> queued.set(false));
+        ServerResearch.runFinalized(() -> {
+        }, () -> queued.set(false));
         assertFalse(queued.get());
-    }
-
-    private static ResearchGuiSnapshot snapshot(Decision forget, Decision admin) {
-        return new ResearchGuiSnapshot(true, false, ResearchPlayerView.TeamStatus.AVAILABLE,
-            Decision.ALLOWED, Decision.ALLOWED, Decision.ALLOWED, Decision.ALLOWED, Decision.NOT_TEAM_LEADER,
-            ResearchGuiSnapshot.Tab.RESEARCH, 1, 0, ObjectList.of(ROW), ROW.selection(), 0, 0, ObjectList.of(), forget, admin);
     }
 }

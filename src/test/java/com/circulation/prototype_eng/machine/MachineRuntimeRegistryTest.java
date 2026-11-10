@@ -30,6 +30,32 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class MachineRuntimeRegistryTest {
+    private static MachineTypeRegistry frozen(MachineType... types) {
+        var registry = new MachineTypeRegistry();
+        registry.registerAll(List.of(types));
+        registry.freeze();
+        return registry;
+    }
+
+    private static void assertUnpublished(MachineTypeRegistry registry, MachineType... types) {
+        for (var type : types) {
+            assertThrows(IllegalStateException.class, () -> registry.structure(type));
+            assertThrows(IllegalStateException.class, () -> registry.assembly(type));
+        }
+    }
+
+    private static MachineAssembly assembly(MachineType type) {
+        return MachineAssembly.builder(type, "v1").build();
+    }
+
+    private static MachineType type(String machine, String structure) {
+        return MachineType.builder(id(machine), RecipeText.Cancelled, id(structure)).build();
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("test", path);
+    }
+
     @Test
     void incompleteOrInvalidRuntimePublishesNeitherBindingAndAcceptsACompleteRetry() {
         var first = type("first", "first_shape");
@@ -75,12 +101,17 @@ class MachineRuntimeRegistryTest {
         var structures = Map.of(shape.id(), shape);
         var registry = frozen(type);
         var definitions = new AbstractCollection<MachineAssembly>() {
-            @Override public @NotNull Iterator<MachineAssembly> iterator() {
+            @Override
+            public @NotNull Iterator<MachineAssembly> iterator() {
                 assertUnpublished(registry, type);
                 assertThrows(IllegalStateException.class, () -> registry.resolveStructures(structures));
                 return List.of(assembly).iterator();
             }
-            @Override public int size() { return 1; }
+
+            @Override
+            public int size() {
+                return 1;
+            }
         };
 
         registry.resolveRuntime(structures, definitions);
@@ -154,31 +185,41 @@ class MachineRuntimeRegistryTest {
         assertSame(secondAssembly, registry.assembly(second));
     }
 
-    private static MachineTypeRegistry frozen(MachineType... types) {
-        var registry = new MachineTypeRegistry();
-        registry.registerAll(List.of(types));
-        registry.freeze();
-        return registry;
-    }
-
-    private static void assertUnpublished(MachineTypeRegistry registry, MachineType... types) {
-        for (var type : types) {
-            assertThrows(IllegalStateException.class, () -> registry.structure(type));
-            assertThrows(IllegalStateException.class, () -> registry.assembly(type));
-        }
-    }
-
-    private static MachineAssembly assembly(MachineType type) { return MachineAssembly.builder(type, "v1").build(); }
-    private static MachineType type(String machine, String structure) { return MachineType.builder(id(machine), RecipeText.Cancelled, id(structure)).build(); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("test", path); }
-
     private record Shape(ResourceLocation shapeId, Runnable onReadId) implements MachineStructure {
-        private Shape(ResourceLocation id) { this(id, () -> {}); }
-        @Override public ResourceLocation id() { onReadId.run(); return shapeId; }
-        @Override public BlockOrientation orientation() { return fail("Registration must not inspect orientation"); }
-        @Override public boolean hideWorldBlocks() { return fail("Registration must not inspect rendering"); }
-        @Override public MachineStructure transform(StructureTransform rotation) { return fail("Registration must not transform a structure"); }
-        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) { fail("Registration must not read the world"); }
-        @Override public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) { return fail("Registration must not match a structure"); }
+        private Shape(ResourceLocation id) {
+            this(id, () -> {
+            });
+        }
+
+        @Override
+        public ResourceLocation id() {
+            onReadId.run();
+            return shapeId;
+        }
+
+        @Override
+        public BlockOrientation orientation() {
+            return fail("Registration must not inspect orientation");
+        }
+
+        @Override
+        public boolean hideWorldBlocks() {
+            return fail("Registration must not inspect rendering");
+        }
+
+        @Override
+        public MachineStructure transform(StructureTransform rotation) {
+            return fail("Registration must not transform a structure");
+        }
+
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+            fail("Registration must not read the world");
+        }
+
+        @Override
+        public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+            return fail("Registration must not match a structure");
+        }
     }
 }

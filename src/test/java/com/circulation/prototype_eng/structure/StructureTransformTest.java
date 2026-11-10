@@ -12,6 +12,28 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class StructureTransformTest {
+    private static BlockPos scaled(EnumFacing axis, int value) {
+        return new BlockPos(axis.getXOffset() * value, axis.getYOffset() * value, axis.getZOffset() * value);
+    }
+
+    /**
+     * Independent integer basis: right = front cross top; positive Z points away from front.
+     */
+    private static BlockPos expected(BlockOrientation orientation, BlockPos position) {
+        EnumFacing front = orientation.getSide(RelativeSide.FRONT);
+        EnumFacing top = orientation.getSide(RelativeSide.TOP);
+        int rightX = front.getYOffset() * top.getZOffset() - front.getZOffset() * top.getYOffset();
+        int rightY = front.getZOffset() * top.getXOffset() - front.getXOffset() * top.getZOffset();
+        int rightZ = front.getXOffset() * top.getYOffset() - front.getYOffset() * top.getXOffset();
+        long x = position.getX();
+        long y = position.getY();
+        long z = position.getZ();
+        return new BlockPos(
+            Math.toIntExact(x * rightX + y * top.getXOffset() - z * front.getXOffset()),
+            Math.toIntExact(x * rightY + y * top.getYOffset() - z * front.getYOffset()),
+            Math.toIntExact(x * rightZ + y * top.getZOffset() - z * front.getZOffset()));
+    }
+
     @Test
     void yawAndRollPreserveThePmNorthUpConvention() {
         BlockPos offset = new BlockPos(2, 3, -5);
@@ -24,9 +46,9 @@ class StructureTransformTest {
         assertEquals(EnumFacing.UP, east.apply(EnumFacing.UP));
 
         assertEquals(new BlockPos(-3, 2, -5),
-                StructureTransform.of(BlockOrientation.NORTH_WEST).apply(offset));
+            StructureTransform.of(BlockOrientation.NORTH_WEST).apply(offset));
         assertEquals(new BlockPos(-2, 5, -3),
-                StructureTransform.of(BlockOrientation.UP_NORTH).apply(offset));
+            StructureTransform.of(BlockOrientation.UP_NORTH).apply(offset));
     }
 
     @Test
@@ -39,10 +61,10 @@ class StructureTransformTest {
             for (EnumFacing direction : EnumFacing.VALUES) {
                 BlockPos unit = new BlockPos(direction.getDirectionVec());
                 assertEquals(expected(orientation, unit),
-                        new BlockPos(transform.apply(direction).getDirectionVec()),
-                        orientation + " / " + direction);
+                    new BlockPos(transform.apply(direction).getDirectionVec()),
+                    orientation + " / " + direction);
                 assertEquals(direction, transform.inverse().apply(transform.apply(direction)),
-                        orientation + " / " + direction);
+                    orientation + " / " + direction);
             }
         }
     }
@@ -62,7 +84,7 @@ class StructureTransformTest {
                 assertEquals(sourceOffset, change.inverse().apply(targetOffset), context);
                 for (EnumFacing direction : EnumFacing.VALUES) {
                     assertEquals(target.apply(direction), change.apply(source.apply(direction)),
-                            context + " / " + direction);
+                        context + " / " + direction);
                 }
             }
         }
@@ -72,20 +94,20 @@ class StructureTransformTest {
     void extremeCoordinatesMoveExactlyOrRejectUnrepresentableNegationOnEveryAxis() {
         for (BlockOrientation orientation : BlockOrientation.values()) {
             StructureTransform transform = StructureTransform.of(orientation);
-            for (EnumFacing axis : new EnumFacing[] {EnumFacing.EAST, EnumFacing.UP, EnumFacing.SOUTH}) {
+            for (EnumFacing axis : new EnumFacing[]{EnumFacing.EAST, EnumFacing.UP, EnumFacing.SOUTH}) {
                 BlockPos maximum = scaled(axis, Integer.MAX_VALUE);
                 assertEquals(expected(orientation, maximum), transform.apply(maximum),
-                        orientation + " / max " + axis);
+                    orientation + " / max " + axis);
                 assertEquals(maximum, transform.inverse().apply(transform.apply(maximum)));
 
                 BlockPos minimum = scaled(axis, Integer.MIN_VALUE);
                 EnumFacing rotated = transform.apply(axis);
                 if (rotated.getAxisDirection() == EnumFacing.AxisDirection.NEGATIVE) {
                     assertThrows(ArithmeticException.class, () -> transform.apply(minimum),
-                            orientation + " / min " + axis);
+                        orientation + " / min " + axis);
                 } else {
                     assertEquals(scaled(rotated, Integer.MIN_VALUE), transform.apply(minimum),
-                            orientation + " / min " + axis);
+                        orientation + " / min " + axis);
                     assertEquals(minimum, transform.inverse().apply(transform.apply(minimum)));
                 }
             }
@@ -102,25 +124,5 @@ class StructureTransformTest {
         assertFalse(rotated instanceof BlockPos.MutableBlockPos);
         assertEquals(new BlockPos(3, -7, 11), identity);
         assertEquals(new BlockPos(-11, -7, 3), rotated);
-    }
-
-    private static BlockPos scaled(EnumFacing axis, int value) {
-        return new BlockPos(axis.getXOffset() * value, axis.getYOffset() * value, axis.getZOffset() * value);
-    }
-
-    /** Independent integer basis: right = front cross top; positive Z points away from front. */
-    private static BlockPos expected(BlockOrientation orientation, BlockPos position) {
-        EnumFacing front = orientation.getSide(RelativeSide.FRONT);
-        EnumFacing top = orientation.getSide(RelativeSide.TOP);
-        int rightX = front.getYOffset() * top.getZOffset() - front.getZOffset() * top.getYOffset();
-        int rightY = front.getZOffset() * top.getXOffset() - front.getXOffset() * top.getZOffset();
-        int rightZ = front.getXOffset() * top.getYOffset() - front.getYOffset() * top.getXOffset();
-        long x = position.getX();
-        long y = position.getY();
-        long z = position.getZ();
-        return new BlockPos(
-                Math.toIntExact(x * rightX + y * top.getXOffset() - z * front.getXOffset()),
-                Math.toIntExact(x * rightY + y * top.getYOffset() - z * front.getYOffset()),
-                Math.toIntExact(x * rightZ + y * top.getZOffset() - z * front.getZOffset()));
     }
 }

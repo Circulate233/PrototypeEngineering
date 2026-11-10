@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.requirement;
 
 import java.util.Objects;
+
 /**
  * PM's start input, tick input/output and end output, kept as independent long FE quantities.
  */

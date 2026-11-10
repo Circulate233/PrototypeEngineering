@@ -36,52 +36,6 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
         return target(owner) != null;
     }
 
-    @Override
-    public void persistAndVerify(MachineInstance owner, ResourceLocation storageType, ResourceLocation ownershipType,
-                                 NBTTagCompound expected, BooleanSupplier physicalCurrent) {
-        var lifecycle = Objects.requireNonNull(owner.lifecycle());
-        lifecycle.host().requireServerThread();
-        owner.requirePersistenceBoundary();
-        var target = Objects.requireNonNull(target(owner), "Original Anvil database host is unavailable");
-        var ownership = ownership(owner, ownershipType);
-        var identity = ownership.identity();
-        var registration = Objects.requireNonNull(ownership.registration());
-        if (!registration.unique() || registration.runtimeIdentity() != owner || registration.worldIdentity() != target.world()
-            || !registration.location().equals(target.location()) || !physicalCurrent.getAsBoolean())
-            throw new IllegalStateException("Original database identity binding is stale");
-        int storages = 0;
-        for (var binding : owner.components().assemblyBindings()) {
-            if (binding.type().id().equals(storageType) && binding.component() instanceof DataCenterStorage storage
-                && storage.snapshot().dataCenterId().equals(identity.machineId())) storages++;
-        }
-        if (storages != 1) throw new IllegalStateException("Original database component binding is unavailable");
-        var nativeTag = target.tile().writeToNBT(new NBTTagCompound());
-        var nativeId = nativeTag.getString("id");
-        try {
-            DataCenterDiskPersistence.verifyTile(nativeTag, target.location(), identity, storageType, ownershipType, nativeId, expected);
-            if (!physicalCurrent.getAsBoolean()) throw new IllegalStateException("Database changed before its chunk save");
-            // Avoid a full world save, which would reenter the research world's save callback.
-            target.loader().saveChunk(target.world(), target.chunk());
-            ThreadedFileIOBase.getThreadedIOInstance().waitForFinish();
-            lifecycle.host().requireServerThread();
-            if (target.loader().getPendingSaveCount() != 0) throw new IllegalStateException("Database chunk save still has pending writes");
-            DataCenterDiskPersistence.verify(target.loader().chunkSaveLocation.toPath(), target.location(), identity,
-                storageType, ownershipType, nativeId, expected);
-            var current = target(owner);
-            if (!physicalCurrent.getAsBoolean() || current == null || current.world() != target.world()
-                || current.tile() != target.tile() || current.controller() != target.controller() || current.chunk() != target.chunk()
-                || current.loader() != target.loader() || !registration.unique() || ownership(owner, ownershipType) != ownership)
-                throw new IllegalStateException("Original database changed during its persistence barrier");
-        } catch (MinecraftException failure) {
-            throw new IllegalStateException("Database chunk persistence failed", failure);
-        } catch (IOException failure) {
-            throw new UncheckedIOException(failure);
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Database chunk persistence was interrupted", failure);
-        }
-    }
-
     private static MachineOwnership ownership(MachineInstance owner, ResourceLocation type) {
         MachineOwnership result = null;
         for (var binding : owner.components().assemblyBindings()) {
@@ -108,6 +62,54 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
             || !tile.getPos().equals(location.controllerPos()) || controller.blockEntity() != tile
             || controller.machine() != owner || controller.type() != owner.type()) return null;
         return new Target(world, tile, controller, chunk, loader, location);
+    }
+
+    @Override
+    public void persistAndVerify(MachineInstance owner, ResourceLocation storageType, ResourceLocation ownershipType,
+                                 NBTTagCompound expected, BooleanSupplier physicalCurrent) {
+        var lifecycle = Objects.requireNonNull(owner.lifecycle());
+        lifecycle.host().requireServerThread();
+        owner.requirePersistenceBoundary();
+        var target = Objects.requireNonNull(target(owner), "Original Anvil database host is unavailable");
+        var ownership = ownership(owner, ownershipType);
+        var identity = ownership.identity();
+        var registration = Objects.requireNonNull(ownership.registration());
+        if (!registration.unique() || registration.runtimeIdentity() != owner || registration.worldIdentity() != target.world()
+            || !registration.location().equals(target.location()) || !physicalCurrent.getAsBoolean())
+            throw new IllegalStateException("Original database identity binding is stale");
+        int storages = 0;
+        for (var binding : owner.components().assemblyBindings()) {
+            if (binding.type().id().equals(storageType) && binding.component() instanceof DataCenterStorage storage
+                && storage.snapshot().dataCenterId().equals(identity.machineId())) storages++;
+        }
+        if (storages != 1) throw new IllegalStateException("Original database component binding is unavailable");
+        var nativeTag = target.tile().writeToNBT(new NBTTagCompound());
+        var nativeId = nativeTag.getString("id");
+        try {
+            DataCenterDiskPersistence.verifyTile(nativeTag, target.location(), identity, storageType, ownershipType, nativeId, expected);
+            if (!physicalCurrent.getAsBoolean())
+                throw new IllegalStateException("Database changed before its chunk save");
+            // Avoid a full world save, which would reenter the research world's save callback.
+            target.loader().saveChunk(target.world(), target.chunk());
+            ThreadedFileIOBase.getThreadedIOInstance().waitForFinish();
+            lifecycle.host().requireServerThread();
+            if (target.loader().getPendingSaveCount() != 0)
+                throw new IllegalStateException("Database chunk save still has pending writes");
+            DataCenterDiskPersistence.verify(target.loader().chunkSaveLocation.toPath(), target.location(), identity,
+                storageType, ownershipType, nativeId, expected);
+            var current = target(owner);
+            if (!physicalCurrent.getAsBoolean() || current == null || current.world() != target.world()
+                || current.tile() != target.tile() || current.controller() != target.controller() || current.chunk() != target.chunk()
+                || current.loader() != target.loader() || !registration.unique() || ownership(owner, ownershipType) != ownership)
+                throw new IllegalStateException("Original database changed during its persistence barrier");
+        } catch (MinecraftException failure) {
+            throw new IllegalStateException("Database chunk persistence failed", failure);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Database chunk persistence was interrupted", failure);
+        }
     }
 
     private record Target(WorldServer world, TileEntity tile, MachineControllerHost controller, Chunk chunk,

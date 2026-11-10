@@ -25,10 +25,60 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchEligibilityTest {
-    @Test void personalMaximumUsesCurrentMembersAndTeamOwnedProgressRemainsWithTheTeam() {
+    private static ResearchDefinition.Builder definition(String path, int maxLevel, ResearchDownloadDeliveryPolicy policy) {
+        return ResearchDefinition.builder(id(path)).maxLevel(maxLevel).deliveryPolicy(policy);
+    }
+
+    private static ResearchLevelStage.Builder stage(int first, int last) {
+        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+    }
+
+    private static ResearchRegistry registry(ResearchDefinition... definitions) {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        var registry = new ResearchRegistry();
+        for (var definition : definitions) {
+            registry.register(definition);
+        }
+        registry.freeze(resources);
+        return registry;
+    }
+
+    private static PlayerResearchState player(ResourceLocation id, int level) {
+        var state = new PlayerResearchState(UUID.randomUUID());
+        state.completeAtLeast(id, level);
+        return state;
+    }
+
+    private static Object2IntOpenHashMap<ResourceLocation> levels() {
+        return new Object2IntOpenHashMap<>();
+    }
+
+    private static Object2IntOpenHashMap<ResourceLocation> levels(ResourceLocation id, int level) {
+        var result = levels();
+        result.put(id, level);
+        return result;
+    }
+
+    private static Object2LongOpenHashMap<NetworkResourceType> resources() {
+        return new Object2LongOpenHashMap<>();
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("research_eligibility_test", path);
+    }
+
+    @Test
+    void personalMaximumUsesCurrentMembersAndTeamOwnedProgressRemainsWithTheTeam() {
         var personal = definition("personal", 5, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 5).build()).build();
         var owned = definition("owned", 5, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 5).build()).build();
         var eligibility = new ResearchEligibility(registry(personal, owned));
@@ -57,7 +107,8 @@ class ResearchEligibilityTest {
         assertThrows(UnsupportedOperationException.class, () -> view.startableResearchTargets().object2IntEntrySet().iterator().next().setValue(1));
     }
 
-    @Test void stageBoundaryFallbackAndBlacklistCascadeAcrossBothSourcesWithoutScanningEveryLevel() {
+    @Test
+    void stageBoundaryFallbackAndBlacklistCascadeAcrossBothSourcesWithoutScanningEveryLevel() {
         var gate = definition("gate", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
         var middle = definition("middle", Integer.MAX_VALUE, ResearchDownloadDeliveryPolicy.ITEM_ONLY)
             .stage(stage(1, 4).prerequisite(gate.id(), 1).build())
@@ -90,7 +141,8 @@ class ResearchEligibilityTest {
         assertEquals(3, insideStage.completedLevel(middle.id()), "A satisfied stage must preserve the actual source level");
     }
 
-    @Test void stageMutexBlocksNewTargetsButDoesNotEraseAlreadyCompletedBranches() {
+    @Test
+    void stageMutexBlocksNewTargetsButDoesNotEraseAlreadyCompletedBranches() {
         var firstId = id("first_branch");
         var secondId = id("second_branch");
         var first = definition("first_branch", 3, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
@@ -114,7 +166,8 @@ class ResearchEligibilityTest {
         assertFalse(bothCompleted.isStartable(second.id()));
     }
 
-    @Test void realRequesterConditionsUseCurrentResourcesAndMembershipRatherThanTeamCandidateCache() {
+    @Test
+    void realRequesterConditionsUseCurrentResourcesAndMembershipRatherThanTeamCandidateCache() {
         var seen = new AtomicReference<ResearchStartContext>();
         var gate = definition("context_gate", 1, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 1).build()).build();
         var member = player(gate.id(), 1);
@@ -148,16 +201,19 @@ class ResearchEligibilityTest {
         assertThrows(UnsupportedOperationException.class, () -> captured.availableResources().object2LongEntrySet().iterator().next().setValue(0));
     }
 
-    @Test void conditionFailurePropagatesButExistingQueueStructuralCheckDoesNotRunItAgain() {
+    @Test
+    void conditionFailurePropagatesButExistingQueueStructuralCheckDoesNotRunItAgain() {
         var failCondition = new AtomicBoolean();
         var calls = new AtomicInteger();
         var failure = new IllegalStateException("real condition failed");
         var definition = definition("condition", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 2).build())
-            .startCondition(_ -> {
-                calls.incrementAndGet();
-                if (failCondition.get()) { throw failure; }
-                return true;
-            }).build();
+                                                                                             .startCondition(_ -> {
+                                                                                                 calls.incrementAndGet();
+                                                                                                 if (failCondition.get()) {
+                                                                                                     throw failure;
+                                                                                                 }
+                                                                                                 return true;
+                                                                                             }).build();
         var eligibility = new ResearchEligibility(registry(definition));
         var member = new PlayerResearchState(UUID.randomUUID());
         var members = List.of(member.playerUuid());
@@ -175,7 +231,8 @@ class ResearchEligibilityTest {
         assertEquals(3, calls.get());
     }
 
-    @Test void sourcePolicySpecialOnlyUnknownAndExcessiveLevelsAreRejectedBeforeProjection() {
+    @Test
+    void sourcePolicySpecialOnlyUnknownAndExcessiveLevelsAreRejectedBeforeProjection() {
         var personal = definition("source_personal", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
         var owned = definition("source_owned", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 2).build()).build();
         var special = definition("disk_only", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).specialOnly().stage(stage(1, 2).build()).build();
@@ -197,7 +254,8 @@ class ResearchEligibilityTest {
         assertTrue(clean.isStartable(personal.id()));
     }
 
-    @Test void frozenDefinitionAuthorityAndExactPlayerIdentityAreRequiredEvenWithoutEligibleTargets() {
+    @Test
+    void frozenDefinitionAuthorityAndExactPlayerIdentityAreRequiredEvenWithoutEligibleTargets() {
         assertThrows(IllegalStateException.class, () -> new ResearchEligibility(new ResearchRegistry()));
         var definition = definition("identity", 1, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 1).build()).build();
         var eligibility = new ResearchEligibility(registry(definition));
@@ -217,53 +275,25 @@ class ResearchEligibilityTest {
         assertThrows(IllegalArgumentException.class, () -> anotherAuthority.structurallyEligible(view, definition.id(), 1));
     }
 
-    @Test void resourceSnapshotIsFrozenBeforeTheFirstConditionCanChangeItsOriginalInput() {
+    @Test
+    void resourceSnapshotIsFrozenBeforeTheFirstConditionCanChangeItsOriginalInput() {
         var amount = resources();
         amount.put(NetworkResources.COMPUTE, 7);
         var observed = new AtomicInteger();
         var first = definition("snapshot_first", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
-            .startCondition(_ -> { amount.put(NetworkResources.COMPUTE, 0); return true; }).build();
+                                                                                             .startCondition(_ -> {
+                                                                                                 amount.put(NetworkResources.COMPUTE, 0);
+                                                                                                 return true;
+                                                                                             }).build();
         var second = definition("snapshot_second", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
-            .startCondition(context -> {
-                observed.set(Math.toIntExact(context.availableResources().getLong(NetworkResources.COMPUTE)));
-                return observed.get() == 7;
-            }).build();
+                                                                                               .startCondition(context -> {
+                                                                                                   observed.set(Math.toIntExact(context.availableResources().getLong(NetworkResources.COMPUTE)));
+                                                                                                   return observed.get() == 7;
+                                                                                               }).build();
         var eligibility = new ResearchEligibility(registry(first, second));
         TeamResearchView view = eligibility.calculate("team", List.of(), Map.of(), levels(), 0, Set.of(), amount);
         assertEquals(7, observed.get());
         assertTrue(view.isStartable(second.id()));
         assertEquals(0, amount.getLong(NetworkResources.COMPUTE));
     }
-
-    private static ResearchDefinition.Builder definition(String path, int maxLevel, ResearchDownloadDeliveryPolicy policy) {
-        return ResearchDefinition.builder(id(path)).maxLevel(maxLevel).deliveryPolicy(policy);
-    }
-
-    private static ResearchLevelStage.Builder stage(int first, int last) {
-        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
-    }
-
-    private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        var registry = new ResearchRegistry();
-        for (var definition : definitions) { registry.register(definition); }
-        registry.freeze(resources);
-        return registry;
-    }
-
-    private static PlayerResearchState player(ResourceLocation id, int level) {
-        var state = new PlayerResearchState(UUID.randomUUID());
-        state.completeAtLeast(id, level);
-        return state;
-    }
-
-    private static Object2IntOpenHashMap<ResourceLocation> levels() { return new Object2IntOpenHashMap<>(); }
-    private static Object2IntOpenHashMap<ResourceLocation> levels(ResourceLocation id, int level) {
-        var result = levels();
-        result.put(id, level);
-        return result;
-    }
-    private static Object2LongOpenHashMap<NetworkResourceType> resources() { return new Object2LongOpenHashMap<>(); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("research_eligibility_test", path); }
 }

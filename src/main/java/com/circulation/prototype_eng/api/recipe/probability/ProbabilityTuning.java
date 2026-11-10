@@ -20,7 +20,9 @@ public record ProbabilityTuning(boolean exactSmallBinomial, int exactSmallBinomi
         return defaultTuning;
     }
 
-    /** Startup/runtime configuration entry point; explicit per-call policies remain independent. */
+    /**
+     * Startup/runtime configuration entry point; explicit per-call policies remain independent.
+     */
     @SuppressWarnings("unused")
     public static void setDefault(ProbabilityTuning tuning) {
         defaultTuning = Objects.requireNonNull(tuning, "tuning");

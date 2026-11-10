@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.storage;
 
-/** Optional fluid automation limits in mB per operation. Zero is unlimited; recipes use storage directly. */
+/**
+ * Optional fluid automation limits in mB per operation. Zero is unlimited; recipes use storage directly.
+ */
 public interface FluidHatchSettings {
     long maxFluidInputRate();
 

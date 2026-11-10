@@ -41,8 +41,8 @@ import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import org.junit.jupiter.api.Test;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
@@ -50,8 +50,8 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -64,6 +64,25 @@ class PlannedMachineSchedulerTest {
 
     private static ResourceLocation id(String path) {
         return new ResourceLocation("planned_machine_test", path);
+    }
+
+    private static ScheduledTask ordinary(ExecutionMode mode, Runnable action) {
+        return new ScheduledTask() {
+            @Override
+            public void onSchedule() {
+                action.run();
+            }
+
+            @Override
+            public ExecutionMode executionMode() {
+                return mode;
+            }
+
+            @Override
+            public boolean active() {
+                return true;
+            }
+        };
     }
 
     @Test
@@ -173,7 +192,8 @@ class PlannedMachineSchedulerTest {
                     if (selected == 0) wrapper.mode = ExecutionMode.CONCURRENT;
                     else if (selected == 1) wrapper.enabled = false;
                     else if (selected == 2) wrapper.machine = new MachineInstance();
-                    else fixture.machine.components().put(MachineScheduling.TYPE, new MachineScheduling(ExecutionMode.CONCURRENT));
+                    else
+                        fixture.machine.components().put(MachineScheduling.TYPE, new MachineScheduling(ExecutionMode.CONCURRENT));
                 };
                 scheduler.tick();
                 assertEquals(RecipeProcess.Lifecycle.NEW, fixture.process.state().lifecycle());
@@ -187,25 +207,36 @@ class PlannedMachineSchedulerTest {
         }
     }
 
-    private static ScheduledTask ordinary(ExecutionMode mode, Runnable action) {
-        return new ScheduledTask() {
-            @Override public void onSchedule() { action.run(); }
-            @Override public ExecutionMode executionMode() { return mode; }
-            @Override public boolean active() { return true; }
-        };
-    }
-
     private static final class Wrapper implements PlannedMachineTask {
+        private final AtomicInteger ordinaryCalls = new AtomicInteger();
         private MachineInstance machine;
         private ExecutionMode mode = ExecutionMode.PLANNED_PARALLEL;
         private boolean enabled = true;
-        private final AtomicInteger ordinaryCalls = new AtomicInteger();
 
-        private Wrapper(MachineInstance machine) { this.machine = machine; }
-        @Override public MachineInstance plannedMachine() { return machine; }
-        @Override public ExecutionMode executionMode() { return mode; }
-        @Override public boolean active() { return enabled; }
-        @Override public void onSchedule() { ordinaryCalls.incrementAndGet(); machine.onSchedule(); }
+        private Wrapper(MachineInstance machine) {
+            this.machine = machine;
+        }
+
+        @Override
+        public MachineInstance plannedMachine() {
+            return machine;
+        }
+
+        @Override
+        public ExecutionMode executionMode() {
+            return mode;
+        }
+
+        @Override
+        public boolean active() {
+            return enabled;
+        }
+
+        @Override
+        public void onSchedule() {
+            ordinaryCalls.incrementAndGet();
+            machine.onSchedule();
+        }
     }
 
     private static final class Fixture {
@@ -215,26 +246,51 @@ class PlannedMachineSchedulerTest {
         private final RecipeProcess process;
         private final Key raw = new Key(KEYS, "raw");
         private final Key product = new Key(KEYS, "product");
-        private final BufferedResourceHatch warehouse = new BufferedResourceHatch(HatchMode.MIXED, 2, Map.of(KEYS, 10L), () -> {});
-        private final EnergyBuffer energy = new EnergyBuffer(20, () -> {});
+        private final BufferedResourceHatch warehouse = new BufferedResourceHatch(HatchMode.MIXED, 2, Map.of(KEYS, 10L), () -> {
+        });
+        private final EnergyBuffer energy = new EnergyBuffer(20, () -> {
+        });
         private final ConcurrentLinkedQueue<RecipeStage> stages = new ConcurrentLinkedQueue<>();
         private final ConcurrentLinkedQueue<String> phases = new ConcurrentLinkedQueue<>();
-        private Runnable onPre = () -> {};
-        private Runnable checkPreparation = () -> {};
+        private Runnable onPre = () -> {
+        };
+        private Runnable checkPreparation = () -> {
+        };
 
         private Fixture(TaskScheduler scheduler, String name, ConcurrentLinkedQueue<String> log, CountDownLatch bothPure) {
             ComponentType<MachineInstance, String> callbacks = new ComponentType<>(id("callbacks_" + name), _ -> name, List.of(new MachineSystem<>() {
-                @Override public ResourceLocation id() { return PlannedMachineSchedulerTest.id("callbacks_" + name); }
-                @Override public void onPreTick(MachineInstance machine, String value) {
-                    requireOwner(); checkPreparation.run(); phases.add("pre"); log.add(name + ":pre"); onPre.run();
+                @Override
+                public ResourceLocation id() {
+                    return PlannedMachineSchedulerTest.id("callbacks_" + name);
                 }
-                @Override public void onTick(MachineInstance machine, String value) { requireOwner(); checkPreparation.run(); phases.add("normal"); }
-                @Override public void onPostTick(MachineInstance machine, String value) { requireOwner(); checkPreparation.run(); phases.add("post"); }
+
+                @Override
+                public void onPreTick(MachineInstance machine, String value) {
+                    requireOwner();
+                    checkPreparation.run();
+                    phases.add("pre");
+                    log.add(name + ":pre");
+                    onPre.run();
+                }
+
+                @Override
+                public void onTick(MachineInstance machine, String value) {
+                    requireOwner();
+                    checkPreparation.run();
+                    phases.add("normal");
+                }
+
+                @Override
+                public void onPostTick(MachineInstance machine, String value) {
+                    requireOwner();
+                    checkPreparation.run();
+                    phases.add("post");
+                }
             }));
             var type = MachineType.builder(id(name), RecipeText.Cancelled, id("shape"))
-                .executionMode(ExecutionMode.PLANNED_PARALLEL).component(callbacks).component(MachineWorkSlots.TYPE).build();
+                                  .executionMode(ExecutionMode.PLANNED_PARALLEL).component(callbacks).component(MachineWorkSlots.TYPE).build();
             var assembly = MachineAssembly.builder(type, "formal-v1").recreated(callbacks)
-                .workSlots(new MachineWorkSlotsNbt("slots-v1", List.of())).build();
+                                          .workSlots(new MachineWorkSlotsNbt("slots-v1", List.of())).build();
             controller = new MachineController(assembly, new Host(owner, type.id()), scheduler, new MachineLifecycleRegistry());
             controller.load(null);
             machine = Objects.requireNonNull(controller.machine());
@@ -242,13 +298,26 @@ class PlannedMachineSchedulerTest {
             Objects.requireNonNull(warehouse.input()).insert(raw, 3, Actionable.MODULATE);
             Objects.requireNonNull(machine.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(energy), List.of(energy)));
             var observer = new RecipeRequirementSystem<String>() {
-                @Override public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<String> requirement, RecipeStage stage) {
+                @Override
+                public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<String> requirement, RecipeStage stage) {
                     if (stage != RecipeStage.START) return null;
                     return new StartPreparation(Fixture.this, bothPure);
                 }
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) { return observed(RecipeStage.START); }
-                @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return observed(RecipeStage.TICK); }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return observed(RecipeStage.END); }
+
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                    return observed(RecipeStage.START);
+                }
+
+                @Override
+                public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                    return observed(RecipeStage.TICK);
+                }
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                    return observed(RecipeStage.END);
+                }
             };
             var observed = new RecipeRequirementType<>(id("observer"), observer).requirement(id("observer"), name);
             var materials = RecipeRequirements.RESOURCES.requirement(id("materials"), new ResourceRequirement(
@@ -256,6 +325,31 @@ class PlannedMachineSchedulerTest {
             var power = RecipeRequirements.ENERGY.requirement(id("power"), new EnergyRequirement(2, 3, 0, 1, false));
             process = new RecipeProcess(machine, new MachineRecipe(id("recipe_" + name), 1, List.of(observed, materials, power)), 19);
             assertTrue(Objects.requireNonNull(machine.components().get(MachineWorkSlots.TYPE)).start(process));
+        }
+
+        private RequirementTransaction observed(RecipeStage stage) {
+            requireOwner();
+            stages.add(stage);
+            return RequirementTransaction.SUCCESS;
+        }
+
+        private void requireOwner() {
+            assertSame(owner, Thread.currentThread());
+        }
+
+        private void assertCompleted() {
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+            assertEquals(1, process.state().successfulTicks());
+            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), List.copyOf(stages));
+            assertEquals(List.of("pre", "normal", "post"), List.copyOf(phases));
+            assertEquals(1, Objects.requireNonNull(warehouse.input()).amount(raw));
+            assertEquals(1, Objects.requireNonNull(warehouse.output()).amount(product));
+            assertEquals(6, energy.savedEnergy());
+            machine.requirePersistenceBoundary();
+        }
+
+        private void unload() {
+            controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
         }
 
         private static final class StartPreparation implements RequirementPreparation {
@@ -290,26 +384,21 @@ class PlannedMachineSchedulerTest {
                 return fixture.observed(RecipeStage.START);
             }
         }
-
-        private RequirementTransaction observed(RecipeStage stage) { requireOwner(); stages.add(stage); return RequirementTransaction.SUCCESS; }
-        private void requireOwner() { assertSame(owner, Thread.currentThread()); }
-        private void assertCompleted() {
-            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
-            assertEquals(1, process.state().successfulTicks());
-            assertEquals(List.of(RecipeStage.START, RecipeStage.TICK, RecipeStage.END), List.copyOf(stages));
-            assertEquals(List.of("pre", "normal", "post"), List.copyOf(phases));
-            assertEquals(1, Objects.requireNonNull(warehouse.input()).amount(raw));
-            assertEquals(1, Objects.requireNonNull(warehouse.output()).amount(product));
-            assertEquals(6, energy.savedEnergy());
-            machine.requirePersistenceBoundary();
-        }
-        private void unload() { controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
     }
 
     private record Host(Thread owner, ResourceLocation type) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type, 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("No live World in independent scheduler tests"); }
-        @Override public void requireServerThread() {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type, 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No live World in independent scheduler tests");
+        }
+
+        @Override
+        public void requireServerThread() {
             if (Thread.currentThread() != owner) throw new IllegalStateException("Wrong lifecycle owner");
         }
     }

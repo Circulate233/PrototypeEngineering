@@ -12,11 +12,13 @@ import java.util.UUID;
  * owns work units, sources and version validation at commit; this projection never grants those capabilities.
  */
 public record NetworkContribution(UUID participantId, UUID ownerId, long epoch, long version,
-        Object2LongMap<NetworkResourceType> resourcesPerTick) {
+                                  Object2LongMap<NetworkResourceType> resourcesPerTick) {
     public NetworkContribution {
         Objects.requireNonNull(participantId);
         Objects.requireNonNull(ownerId);
-        if (epoch < 0 || version < 0) { throw new IllegalArgumentException("Invalid participant snapshot generation"); }
+        if (epoch < 0 || version < 0) {
+            throw new IllegalArgumentException("Invalid participant snapshot generation");
+        }
         resourcesPerTick = NetworkResourceModifier.copyResources(resourcesPerTick);
     }
 }

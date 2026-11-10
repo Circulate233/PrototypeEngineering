@@ -7,7 +7,9 @@ package com.circulation.prototype_eng.api.recipe.process;
  */
 @FunctionalInterface
 public interface RecipeExecutor {
-    /** Built-in process lifecycle, also supported by the host's explicit staged batch entry. */
+    /**
+     * Built-in process lifecycle, also supported by the host's explicit staged batch entry.
+     */
     RecipeExecutor DEFAULT = RecipeProcess::tick;
 
     void tick(RecipeProcess process);

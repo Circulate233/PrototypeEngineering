@@ -17,9 +17,57 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class TaskSchedulerTest {
+    private static Task task(ExecutionMode mode, Set<?> keys, Runnable action) {
+        return new Task(mode, keys, action);
+    }
+
+    private static void record(ConcurrentLinkedQueue<String> log, ConcurrentLinkedQueue<Thread> threads, String name) {
+        threads.add(Thread.currentThread());
+        log.add(name);
+    }
+
+    private static ExecutorService auxiliary() {
+        return Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+    }
+
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    // Clear the test owner's flag without masking an earlier assertion failure.
+    private static void clearTestThreadInterrupt() {
+        Thread.interrupted();
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static void holdUntilChecked(CountDownLatch entered, CountDownLatch returned, CountDownLatch release) {
+        try {
+            await(entered);
+            assertFalse(returned.await(100, TimeUnit.MILLISECONDS), "Tick returned while an accepted worker still owned its task");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        } finally {
+            release.countDown();
+        }
+    }
+
     @Test
     void preparationCapturesEveryMainMutationBeforeTheNextActionAndConcurrentMetadata() {
         Thread owner = Thread.currentThread();
@@ -46,7 +94,8 @@ class TaskSchedulerTest {
                 assertNotSame(owner, Thread.currentThread());
                 log.add("worker:" + captured[0]);
             }) {
-                @Override public Set<?> affinityKeys() {
+                @Override
+                public Set<?> affinityKeys() {
                     assertSame(owner, Thread.currentThread());
                     assertEquals(3, captured[0], "Prepare must precede worker metadata callbacks");
                     return super.affinityKeys();
@@ -84,12 +133,15 @@ class TaskSchedulerTest {
             scheduler.register(task(ExecutionMode.CONCURRENT, Set.of(), () -> fail("Rejected worker executed")));
 
             assertSame(primary, assertThrows(IllegalStateException.class, () -> scheduler.tick(() -> {
-                if (++preparations[0] == 2) { throw primary; }
+                if (++preparations[0] == 2) {
+                    throw primary;
+                }
             })));
             assertEquals(List.of("first", "cleanup"), List.copyOf(log));
             assertEquals(2, preparations[0]);
             assertThrows(IllegalStateException.class, () -> scheduler.tick(() -> fail("Faulted preparation retried")));
-            assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.CONCURRENT));
+            assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {
+            }, ExecutionMode.CONCURRENT));
             scheduler.runAtBoundary(() -> log.add("fault cleanup"));
             assertEquals(List.of("first", "cleanup", "fault cleanup"), List.copyOf(log));
         }
@@ -107,7 +159,9 @@ class TaskSchedulerTest {
             scheduler.register(worker);
 
             assertSame(primary, assertThrows(IllegalArgumentException.class, () -> scheduler.tick(() -> {
-                if (++preparations[0] == 2) { throw primary; }
+                if (++preparations[0] == 2) {
+                    throw primary;
+                }
             })));
             assertEquals(1, mains[0]);
             assertEquals(2, preparations[0]);
@@ -190,17 +244,22 @@ class TaskSchedulerTest {
             assertNotSame(owner, Thread.currentThread());
             log.add("later");
         }) {
-            @Override public boolean active() {
+            @Override
+            public boolean active() {
                 assertSame(owner, Thread.currentThread());
                 metadata.add("active");
                 return super.active();
             }
-            @Override public ExecutionMode executionMode() {
+
+            @Override
+            public ExecutionMode executionMode() {
                 assertSame(owner, Thread.currentThread());
                 metadata.add("mode");
                 return super.executionMode();
             }
-            @Override public Set<?> affinityKeys() {
+
+            @Override
+            public Set<?> affinityKeys() {
                 assertSame(owner, Thread.currentThread());
                 metadata.add("keys");
                 return super.affinityKeys();
@@ -293,18 +352,24 @@ class TaskSchedulerTest {
                 assertThrows(IllegalStateException.class, () -> scheduler.unregister(other));
                 log.add("worker");
             }) {
-                @Override public ExecutionMode executionMode() {
+                @Override
+                public ExecutionMode executionMode() {
                     forbidMutation();
                     return super.executionMode();
                 }
-                @Override public boolean active() {
+
+                @Override
+                public boolean active() {
                     forbidMutation();
                     return super.active();
                 }
-                @Override public Set<?> affinityKeys() {
+
+                @Override
+                public Set<?> affinityKeys() {
                     forbidMutation();
                     return super.affinityKeys();
                 }
+
                 private void forbidMutation() {
                     assertSame(owner, Thread.currentThread());
                     assertThrows(IllegalStateException.class, () -> scheduler.register(other));
@@ -379,7 +444,8 @@ class TaskSchedulerTest {
                 observation.get(5, TimeUnit.SECONDS);
                 assertEquals(List.of("finished"), List.copyOf(log));
                 assertThrows(IllegalStateException.class, () -> scheduler.register(failed));
-                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.MAIN_THREAD));
+                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {
+                }, ExecutionMode.MAIN_THREAD));
                 assertThrows(IllegalStateException.class, scheduler::tick);
                 scheduler.unregister(failed);
                 assertEquals(2, scheduler.registeredCount());
@@ -439,7 +505,8 @@ class TaskSchedulerTest {
                 returned.countDown();
                 observation.get(5, TimeUnit.SECONDS);
                 assertThrows(IllegalStateException.class, scheduler::tick);
-                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.CONCURRENT));
+                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {
+                }, ExecutionMode.CONCURRENT));
             } finally {
                 returned.countDown();
                 release.countDown();
@@ -475,7 +542,8 @@ class TaskSchedulerTest {
                 assertTrue(Thread.interrupted(), "Consume the interrupt flag restored by the scheduler");
                 observation.get(5, TimeUnit.SECONDS);
                 assertThrows(IllegalStateException.class, scheduler::tick);
-                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.CONCURRENT));
+                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {
+                }, ExecutionMode.CONCURRENT));
             } finally {
                 clearTestThreadInterrupt();
                 returned.countDown();
@@ -511,7 +579,8 @@ class TaskSchedulerTest {
             scheduler.close();
             assertThrows(IllegalStateException.class, scheduler::tick);
             assertThrows(IllegalStateException.class, () -> scheduler.register(callback));
-            assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.MAIN_THREAD));
+            assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {
+            }, ExecutionMode.MAIN_THREAD));
             assertEquals(List.of("ran"), List.copyOf(log));
         }
     }
@@ -535,43 +604,11 @@ class TaskSchedulerTest {
         }
     }
 
-    private static Task task(ExecutionMode mode, Set<?> keys, Runnable action) { return new Task(mode, keys, action); }
-
-    private static void record(ConcurrentLinkedQueue<String> log, ConcurrentLinkedQueue<Thread> threads, String name) {
-        threads.add(Thread.currentThread());
-        log.add(name);
-    }
-
-    private static ExecutorService auxiliary() {
-        return Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
-    }
-
-    @SuppressWarnings("ResultOfMethodCallIgnored") // Clear the test owner's flag without masking an earlier assertion failure.
-    private static void clearTestThreadInterrupt() { Thread.interrupted(); }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake"); }
-        catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(failure);
-        }
-    }
-
-    private static void holdUntilChecked(CountDownLatch entered, CountDownLatch returned, CountDownLatch release) {
-        try {
-            await(entered);
-            assertFalse(returned.await(100, TimeUnit.MILLISECONDS), "Tick returned while an accepted worker still owned its task");
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(failure);
-        } finally { release.countDown(); }
-    }
-
     private static class Task implements ScheduledTask {
+        private final Runnable action;
         private ExecutionMode mode;
         private Set<?> keys;
         private boolean enabled = true;
-        private final Runnable action;
 
         private Task(ExecutionMode mode, Set<?> keys, Runnable action) {
             this.mode = mode;
@@ -579,10 +616,25 @@ class TaskSchedulerTest {
             this.action = action;
         }
 
-        @Override public void onSchedule() { action.run(); }
-        @Override public ExecutionMode executionMode() { return mode; }
-        @Override public boolean active() { return enabled; }
-        @Override public Set<?> affinityKeys() { return keys; }
+        @Override
+        public void onSchedule() {
+            action.run();
+        }
+
+        @Override
+        public ExecutionMode executionMode() {
+            return mode;
+        }
+
+        @Override
+        public boolean active() {
+            return enabled;
+        }
+
+        @Override
+        public Set<?> affinityKeys() {
+            return keys;
+        }
     }
 
     private static final class RejectSecondExecutor extends AbstractExecutorService {
@@ -591,20 +643,41 @@ class TaskSchedulerTest {
         private final RejectedExecutionException failure = new RejectedExecutionException("second dispatch rejected");
         private int executions;
 
-        private RejectSecondExecutor(CountDownLatch rejected) { this.rejected = rejected; }
+        private RejectSecondExecutor(CountDownLatch rejected) {
+            this.rejected = rejected;
+        }
 
-        @Override public void execute(@NotNull Runnable command) {
+        @Override
+        public void execute(@NotNull Runnable command) {
             if (++executions == 2) {
                 rejected.countDown();
                 throw failure;
             }
             delegate.execute(command);
         }
-        @Override public void shutdown() { delegate.shutdown(); }
-        @Override public @NotNull List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
-        @Override public boolean isShutdown() { return delegate.isShutdown(); }
-        @Override public boolean isTerminated() { return delegate.isTerminated(); }
-        @Override public boolean awaitTermination(long timeout, @NotNull TimeUnit unit) throws InterruptedException {
+
+        @Override
+        public void shutdown() {
+            delegate.shutdown();
+        }
+
+        @Override
+        public @NotNull List<Runnable> shutdownNow() {
+            return delegate.shutdownNow();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return delegate.isShutdown();
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return delegate.isTerminated();
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, @NotNull TimeUnit unit) throws InterruptedException {
             return delegate.awaitTermination(timeout, unit);
         }
     }

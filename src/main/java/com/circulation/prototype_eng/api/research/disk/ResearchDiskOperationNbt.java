@@ -11,7 +11,9 @@ import net.minecraft.util.math.BlockPos;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Strict world operation envelope; the database commit codec owns research-content validation. */
+/**
+ * Strict world operation envelope; the database commit codec owns research-content validation.
+ */
 public final class ResearchDiskOperationNbt {
     private ResearchDiskOperationNbt() {
     }

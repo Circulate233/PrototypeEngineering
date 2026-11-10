@@ -1,10 +1,12 @@
 package com.circulation.prototype_eng.api.structure;
 
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+
 /**
  * One transformed definition, controller anchor and complete declaration of potential reads.
  */
@@ -104,29 +106,39 @@ public final class StructurePlan {
         };
     }
 
-    public StructureReadPlan reads() { return reads; }
+    public StructureReadPlan reads() {
+        return reads;
+    }
 
     /** Whether the actual transformed definition is safe to retain across independent attempts. */
     public boolean planReusable() {
         return structure.planReusable();
     }
 
-    /** Independent attempts cannot retain a successful tree after a later failed match. */
+    /**
+     * Independent attempts cannot retain a successful tree after a later failed match.
+     */
     @Nullable
-    public StructureMatch match(StructureSnapshot snapshot) { return structure.match(Objects.requireNonNull(snapshot), controller, controller); }
+    public StructureMatch match(StructureSnapshot snapshot) {
+        return structure.match(Objects.requireNonNull(snapshot), controller, controller);
+    }
 
-    /** Worker-safe evaluation; each invocation records its own actual reads, including failed probes. */
+    /**
+     * Worker-safe evaluation; each invocation records its own actual reads, including failed probes.
+     */
     public StructureEvaluation evaluate(StructureSnapshot snapshot) {
         return Objects.requireNonNull(beginEvaluate(snapshot).run());
     }
 
-    @SuppressWarnings("ReturnOfInnerClass") // The cursor retains only this immutable plan and its detached private trace.
+    @SuppressWarnings("ReturnOfInnerClass")
+    // The cursor retains only this immutable plan and its detached private trace.
     public StructureOperation<StructureEvaluation> beginEvaluate(StructureSnapshot snapshot) {
         Objects.requireNonNull(snapshot);
         return new StructureOperation<>() {
             private final StructureReadPlan.Builder used = new StructureReadPlan.Builder();
             private final StructureOperation<StructureMatchResult> match = structure.beginMatch(snapshot.tracking(used), controller, controller);
-            @Nullable private StructureOperation<StructureReadPlan> freeze;
+            @Nullable
+            private StructureOperation<StructureReadPlan> freeze;
 
             @Override
             public boolean advance(RecipeWorkBudget work) {

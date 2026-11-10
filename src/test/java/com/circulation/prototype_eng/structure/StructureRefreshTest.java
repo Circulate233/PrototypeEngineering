@@ -1,23 +1,43 @@
 package com.circulation.prototype_eng.structure;
 
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.machine.component.MachineSystem;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
+import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
+import com.circulation.prototype_eng.api.structure.MachineStructure;
 import com.circulation.prototype_eng.api.structure.MachineStructureHost;
+import com.circulation.prototype_eng.api.structure.StructureAssembly;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
+import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import com.circulation.prototype_eng.api.structure.StructureHatchBinding;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
+import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructureQuery;
+import com.circulation.prototype_eng.api.structure.StructureReadPlan;
+import com.circulation.prototype_eng.api.structure.StructureSnapshot;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
+import com.circulation.prototype_eng.localization.RecipeText;
+import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
@@ -25,50 +45,121 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
-import com.circulation.prototype_eng.api.component.ComponentType;
-import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
-import com.circulation.prototype_eng.api.machine.component.MachineSystem;
-import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
-import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
-import com.circulation.prototype_eng.localization.RecipeText;
-import com.circulation.prototype_eng.scheduler.TaskScheduler;
-import java.util.Collections;
-import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.structure.MachineStructure;
-import com.circulation.prototype_eng.api.structure.StructureAssembly;
-import com.circulation.prototype_eng.api.structure.StructureOperation;
-import com.circulation.prototype_eng.api.structure.StructureTransform;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
-import com.circulation.prototype_eng.api.structure.StructureCatalog;
-import com.circulation.prototype_eng.api.structure.StructureDefinition;
-import com.circulation.prototype_eng.api.structure.StructurePredicate;
-import com.circulation.prototype_eng.api.structure.StructureReadPlan;
-import com.circulation.prototype_eng.api.structure.StructureSnapshot;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-import java.time.Duration;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+
 class StructureRefreshTest {
+    private static final BlockPos FIRST = new BlockPos(1, 0, 0);
+    private static final BlockPos SECOND = new BlockPos(2, 0, 0);
+    private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"),
+        (_, _) -> fail("Logical tests never read a game world"), UnaryOperator.identity(), String::equals);
+    private static final ComponentType<MachineInstance, ExternalPort> PORT = new ComponentType<>(id("port"),
+        _ -> fail("Structure port discovery must not invoke component factories"), List.of(new MachineSystem<>() {
+        @Override
+        public ResourceLocation id() {
+            return StructureRefreshTest.id("port_system");
+        }
+
+        @Override
+        public void onTick(MachineInstance owner, ExternalPort component) {
+            fail("Lightweight structure ports must not tick their component type systems");
+        }
+    }));
+
+    private static MachineStructure reusableDefinition(AtomicInteger declarations, AtomicInteger transforms) {
+        StructurePredicate predicate = new StructurePredicate() {
+            @Override
+            public boolean planReusable() {
+                return true;
+            }
+
+            @Override
+            public StructurePredicate transform(StructureTransform rotation) {
+                transforms.incrementAndGet();
+                return this;
+            }
+
+            @Override
+            public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+                declarations.incrementAndGet();
+                plan.read(position, MARKER);
+            }
+
+            @Override
+            public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+                return "body".equals(snapshot.read(MARKER, position));
+            }
+        };
+        return TemplateStructure.create(id("reusable"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
+            new StructurePattern(Map.of(FIRST, predicate)), List.of(), List.of());
+    }
+
+    private static StructureRefresh.Request parallelRequest(Fixture fixture) {
+        var preparation = fixture.refresh.beginParallelPrepare();
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1)) {
+            scheduler.runAtBoundary(() -> {
+                while (!preparation.complete()) {
+                    var action = preparation.prepareWorker(new RecipeWorkBudget(Long.MAX_VALUE));
+                    if (action != null) {
+                        var result = scheduler.runStructureWorker(() -> {
+                            action.run();
+                            return true;
+                        }, PlannedDeadline.after(Duration.ofSeconds(5)));
+                        assertInstanceOf(PlannedTaskExecutor.Success.class, result);
+                        preparation.finishWorker(true, null);
+                    }
+                }
+            });
+        }
+        return Objects.requireNonNull(preparation.result());
+    }
+
+    private static StructureHatchBinding binding(ResourceHatch hatch) {
+        return new StructureHatchBinding(new Object(), hatch, null, null);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("structure_refresh_test", path);
+    }
+
+    private static StructureComponentProvider.Entry<ExternalPort> entry(String portId, ExternalPort port) {
+        return new StructureComponentProvider.Entry<>(PORT, portId, port);
+    }
+
+    private static StructureConfiguration planningFailure(AssertionError failure, Runnable beforeFailure) {
+        return new StructureConfiguration(new TemplateStructure(id("legacy_planning_failure"), BlockOrientation.NORTH_UP,
+            BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, StructurePredicates.test(MARKER, "body"::equals))),
+            List.of(), List.of()) {
+            @Override
+            public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
+                beforeFailure.run();
+                throw failure;
+            }
+        }, BlockOrientation.NORTH_UP);
+    }
 
     @Test
     void anIncompletePlanCannotBeAdoptedByANewerPreparationEvenWithoutACatalog() {
@@ -153,6 +244,7 @@ class StructureRefreshTest {
         assertEquals(4, transforms.get());
         assertFalse(fixture.refresh.publish(obsolete));
     }
+
     @Test
     void insufficientAtomicNotificationBudgetKeepsTheAcceptedTreeAndEmitsNoPartialEvent() {
         var fixture = new Fixture();
@@ -163,42 +255,84 @@ class StructureRefreshTest {
         var notifications = new AtomicInteger();
         var subscriptions = new ObjectArrayList<MachineLifecycleRegistry.Subscription>();
         try {
-        for (int index = 0; index < 30; index++) subscriptions.add(fixture.registry.register(new MachineLifecycleListener() {
-            @Override public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) { notifications.incrementAndGet(); }
-        }));
-        var prepared = new AtomicBoolean();
-        assertFalse(fixture.lifecycle.refreshStructure(() -> true, () -> {
-            prepared.set(true); return StructureAssembly.UNFORMED;
-        }, new RecipeWorkBudget(60)));
-        assertTrue(prepared.get());
-        assertTrue(fixture.lifecycle.formed());
-        assertSame(accepted, fixture.lifecycle.structureMatch());
-        assertSame(hatches, fixture.machine.components().get(MachineHatches.TYPE));
-        assertEquals(0, notifications.get());
-        assertTrue(fixture.lifecycle.refreshStructure(() -> true, () -> StructureAssembly.UNFORMED));
-        assertEquals(30, notifications.get());
-        assertFalse(fixture.lifecycle.formed());
+            for (int index = 0; index < 30; index++)
+                subscriptions.add(fixture.registry.register(new MachineLifecycleListener() {
+                    @Override
+                    public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
+                        notifications.incrementAndGet();
+                    }
+                }));
+            var prepared = new AtomicBoolean();
+            assertFalse(fixture.lifecycle.refreshStructure(() -> true, () -> {
+                prepared.set(true);
+                return StructureAssembly.UNFORMED;
+            }, new RecipeWorkBudget(60)));
+            assertTrue(prepared.get());
+            assertTrue(fixture.lifecycle.formed());
+            assertSame(accepted, fixture.lifecycle.structureMatch());
+            assertSame(hatches, fixture.machine.components().get(MachineHatches.TYPE));
+            assertEquals(0, notifications.get());
+            assertTrue(fixture.lifecycle.refreshStructure(() -> true, () -> StructureAssembly.UNFORMED));
+            assertEquals(30, notifications.get());
+            assertFalse(fixture.lifecycle.formed());
         } finally {
             for (var subscription : subscriptions) subscription.close();
         }
     }
-    private static final BlockPos FIRST = new BlockPos(1, 0, 0);
-    private static final BlockPos SECOND = new BlockPos(2, 0, 0);
-    private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"),
-        (_, _) -> fail("Logical tests never read a game world"), UnaryOperator.identity(), String::equals);
+
+    @Test
+    void aMismatchChangedByItsRealPredicateCannotRevokeTheAcceptedFormation() {
+        var fixture = new Fixture();
+        assertTrue(fixture.refresh.publish(fixture.result()));
+        var accepted = fixture.lifecycle.structureMatch();
+        var predicate = StructurePredicates.test(MARKER, value -> {
+            if (!"body".equals(value)) fixture.host.values.put(FIRST, "body");
+            return "body".equals(value);
+        });
+        fixture.host.configuration = new StructureConfiguration(TemplateStructure.create(id("changing_mismatch"),
+            BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, predicate)),
+            List.of(), List.of()), BlockOrientation.NORTH_UP);
+        var result = fixture.result();
+        fixture.host.values.put(FIRST, "changed");
+        assertFalse(fixture.refresh.publish(result));
+        assertTrue(fixture.lifecycle.formed());
+        assertSame(accepted, fixture.lifecycle.structureMatch());
+        assertTrue(fixture.refresh.publish(fixture.result()));
+    }
+
+    @Test
+    void eagerLegacyPlanningFailureFaultsOnlyItsExactCurrentPreparation() {
+        var current = new Fixture();
+        var failure = new AssertionError("real legacy planning failure");
+        current.host.configuration = planningFailure(failure, () -> {
+        });
+        var operation = current.refresh.beginPrepare(null);
+        assertSame(failure, assertThrows(AssertionError.class, () -> operation.advance(new RecipeWorkBudget(100))));
+        assertFalse(current.lifecycle.schedulingAllowed());
+
+        var revoked = new Fixture();
+        var replacement = revoked.host.configuration;
+        revoked.host.configuration = planningFailure(failure, () -> revoked.host.configuration = replacement);
+        var obsolete = revoked.refresh.beginPrepare(null);
+        assertSame(failure, assertThrows(AssertionError.class, () -> obsolete.advance(new RecipeWorkBudget(100))));
+        assertTrue(revoked.lifecycle.schedulingAllowed());
+        assertTrue(revoked.refresh.publish(revoked.result()));
+    }
 
     @Test
     void workerUsesDetachedFactsAndPublishesTreeAndAllPublicRolesBeforeTheFormedEvent() throws Exception {
         var fixture = new Fixture();
         fixture.host.values.put(SECOND, "body");
         var resource = new ExternalHatch();
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var binding = new StructureHatchBinding(new Object(), resource, energy, energy);
         fixture.host.bindings.put(FIRST, binding);
         fixture.host.bindings.put(SECOND, binding);
         var events = new ObjectArrayList<Boolean>();
         try (var ignored = fixture.registry.register(new MachineLifecycleListener() {
-            @Override public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
+            @Override
+            public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
                 events.add(event.context().formed());
                 assertEquals(List.of(FIRST, SECOND), Objects.requireNonNull(fixture.lifecycle.structureMatch()).allBlocks());
                 assertEquals(List.of(resource), MachineHatches.get(fixture.machine).resources());
@@ -224,7 +358,10 @@ class StructureRefreshTest {
         fixture.host.bindings.put(FIRST, binding(oldHatch));
         var formed = new ObjectArrayList<Boolean>();
         try (var ignored = fixture.registry.register(new MachineLifecycleListener() {
-            @Override public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) { formed.add(event.context().formed()); }
+            @Override
+            public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
+                formed.add(event.context().formed());
+            }
         })) {
             assertTrue(fixture.refresh.publish(fixture.result()));
             var result = fixture.result();
@@ -294,7 +431,8 @@ class StructureRefreshTest {
         fixture.host.onDiscovery = position -> fixture.host.bindings.put(position, replacement);
         assertFalse(fixture.refresh.publish(result));
         assertTrue(fixture.lifecycle.formed());
-        fixture.host.onDiscovery = _ -> {};
+        fixture.host.onDiscovery = _ -> {
+        };
         assertTrue(fixture.refresh.publish(result));
         assertEquals(List.of(replacementHatch), MachineHatches.get(fixture.machine).resources());
         fixture.host.bindings.put(FIRST, binding(initial));
@@ -324,13 +462,19 @@ class StructureRefreshTest {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var running = executor.submit(() -> fixture.lifecycle.runScheduled(() -> {
                 entered.countDown();
-                try { assertTrue(release.await(5, TimeUnit.SECONDS)); }
-                catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+                try {
+                    assertTrue(release.await(5, TimeUnit.SECONDS));
+                } catch (InterruptedException failure) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(failure);
+                }
             }));
             try {
                 assertTrue(entered.await(5, TimeUnit.SECONDS));
                 assertThrows(IllegalStateException.class, () -> fixture.refresh.publish(result));
-            } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
             running.get(5, TimeUnit.SECONDS);
             executor.submit(() -> assertThrows(IllegalStateException.class, () -> fixture.refresh.publish(result))).get(5, TimeUnit.SECONDS);
         }
@@ -387,80 +531,14 @@ class StructureRefreshTest {
             throw failure;
         };
         assertSame(failure, assertThrows(IllegalArgumentException.class, () -> fixture.refresh.publish(result)));
-        fixture.host.onDiscovery = _ -> {};
+        fixture.host.onDiscovery = _ -> {
+        };
         assertTrue(fixture.refresh.publish(fixture.result()));
         assertTrue(fixture.machine.canProcessRecipes());
         var pending = fixture.request();
         assertSame(failure, assertThrows(IllegalArgumentException.class, () -> fixture.refresh.fail(pending, failure)));
         assertFalse(fixture.machine.canProcessRecipes());
         assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
-    }
-
-    private static final ComponentType<MachineInstance, ExternalPort> PORT = new ComponentType<>(id("port"),
-        _ -> fail("Structure port discovery must not invoke component factories"), List.of(new MachineSystem<>() {
-            @Override
-            public ResourceLocation id() {
-                return StructureRefreshTest.id("port_system");
-            }
-
-            @Override
-            public void onTick(MachineInstance owner, ExternalPort component) {
-                fail("Lightweight structure ports must not tick their component type systems");
-            }
-        }));
-
-    private static StructureComponentProvider.Entry<ExternalPort> entry(String portId, ExternalPort port) {
-        return new StructureComponentProvider.Entry<>(PORT, portId, port);
-    }
-
-    @Test
-    void aMismatchChangedByItsRealPredicateCannotRevokeTheAcceptedFormation() {
-        var fixture = new Fixture();
-        assertTrue(fixture.refresh.publish(fixture.result()));
-        var accepted = fixture.lifecycle.structureMatch();
-        var predicate = StructurePredicates.test(MARKER, value -> {
-            if (!"body".equals(value)) fixture.host.values.put(FIRST, "body");
-            return "body".equals(value);
-        });
-        fixture.host.configuration = new StructureConfiguration(TemplateStructure.create(id("changing_mismatch"),
-            BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, predicate)),
-            List.of(), List.of()), BlockOrientation.NORTH_UP);
-        var result = fixture.result();
-        fixture.host.values.put(FIRST, "changed");
-        assertFalse(fixture.refresh.publish(result));
-        assertTrue(fixture.lifecycle.formed());
-        assertSame(accepted, fixture.lifecycle.structureMatch());
-        assertTrue(fixture.refresh.publish(fixture.result()));
-    }
-
-    @Test
-    void eagerLegacyPlanningFailureFaultsOnlyItsExactCurrentPreparation() {
-        var current = new Fixture();
-        var failure = new AssertionError("real legacy planning failure");
-        current.host.configuration = planningFailure(failure, () -> { });
-        var operation = current.refresh.beginPrepare(null);
-        assertSame(failure, assertThrows(AssertionError.class, () -> operation.advance(new RecipeWorkBudget(100))));
-        assertFalse(current.lifecycle.schedulingAllowed());
-
-        var revoked = new Fixture();
-        var replacement = revoked.host.configuration;
-        revoked.host.configuration = planningFailure(failure, () -> revoked.host.configuration = replacement);
-        var obsolete = revoked.refresh.beginPrepare(null);
-        assertSame(failure, assertThrows(AssertionError.class, () -> obsolete.advance(new RecipeWorkBudget(100))));
-        assertTrue(revoked.lifecycle.schedulingAllowed());
-        assertTrue(revoked.refresh.publish(revoked.result()));
-    }
-
-    private static StructureConfiguration planningFailure(AssertionError failure, Runnable beforeFailure) {
-        return new StructureConfiguration(new TemplateStructure(id("legacy_planning_failure"), BlockOrientation.NORTH_UP,
-            BlockPos.ORIGIN, false, new StructurePattern(Map.of(FIRST, StructurePredicates.test(MARKER, "body"::equals))),
-            List.of(), List.of()) {
-            @Override
-            public StructureOperation<MachineStructure> beginTransform(StructureTransform rotation) {
-                beforeFailure.run();
-                throw failure;
-            }
-        }, BlockOrientation.NORTH_UP);
     }
 
     @Test
@@ -485,7 +563,7 @@ class StructureRefreshTest {
             @Override
             public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
                 assertEquals(List.of(first, extra, second), fixture.machine.structureComponents().get(PORT).stream()
-                    .map(binding -> binding.entry().component()).toList());
+                                                                           .map(binding -> binding.entry().component()).toList());
             }
         })) {
             var request = fixture.request();
@@ -559,7 +637,9 @@ class StructureRefreshTest {
             _ -> Collections.singletonList(null),
             _ -> List.of(entry("same", new ExternalPort("left")), entry("same", new ExternalPort("right"))),
             _ -> List.of(entry("first", repeated), entry("second", repeated)),
-            _ -> { throw new IllegalArgumentException("provider failed"); });
+            _ -> {
+                throw new IllegalArgumentException("provider failed");
+            });
         for (var provider : invalid) {
             var fixture = new Fixture();
             var initial = new ExternalPort("initial");
@@ -598,13 +678,6 @@ class StructureRefreshTest {
         assertTrue(restoredRefresh.publish(Objects.requireNonNull(restoredRefresh.prepare()).evaluate()));
         assertEquals(3, restored.structureComponents().get(PORT).getFirst().context().formationGeneration());
 
-    }
-
-    private record ExternalPort(String name) implements AffinityKeyProvider {
-        @Override
-        public Set<?> affinityKeys() {
-            return Set.of(name);
-        }
     }
 
     @Test
@@ -647,56 +720,12 @@ class StructureRefreshTest {
         }
     }
 
-    private static MachineStructure reusableDefinition(AtomicInteger declarations, AtomicInteger transforms) {
-        StructurePredicate predicate = new StructurePredicate() {
-            @Override
-            public boolean planReusable() {
-                return true;
-            }
-
-            @Override
-            public StructurePredicate transform(StructureTransform rotation) {
-                transforms.incrementAndGet();
-                return this;
-            }
-
-            @Override
-            public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
-                declarations.incrementAndGet();
-                plan.read(position, MARKER);
-            }
-
-            @Override
-            public boolean matches(StructureSnapshot snapshot, BlockPos position) {
-                return "body".equals(snapshot.read(MARKER, position));
-            }
-        };
-        return TemplateStructure.create(id("reusable"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN, false,
-            new StructurePattern(Map.of(FIRST, predicate)), List.of(), List.of());
-    }
-
-    private static StructureRefresh.Request parallelRequest(Fixture fixture) {
-        var preparation = fixture.refresh.beginParallelPrepare();
-        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1)) {
-            scheduler.runAtBoundary(() -> {
-                while (!preparation.complete()) {
-                    var action = preparation.prepareWorker(new RecipeWorkBudget(Long.MAX_VALUE));
-                    if (action != null) {
-                        var result = scheduler.runStructureWorker(() -> {
-                            action.run();
-                            return true;
-                        }, PlannedDeadline.after(Duration.ofSeconds(5)));
-                        assertInstanceOf(PlannedTaskExecutor.Success.class, result);
-                        preparation.finishWorker(true, null);
-                    }
-                }
-            });
+    private record ExternalPort(String name) implements AffinityKeyProvider {
+        @Override
+        public Set<?> affinityKeys() {
+            return Set.of(name);
         }
-        return Objects.requireNonNull(preparation.result());
     }
-
-    private static StructureHatchBinding binding(ResourceHatch hatch) { return new StructureHatchBinding(new Object(), hatch, null, null); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("structure_refresh_test", path); }
 
     private static final class Fixture {
         private final MachineInstance machine = new MachineInstance();
@@ -705,16 +734,38 @@ class StructureRefreshTest {
         private final MachineLifecycle lifecycle = new MachineLifecycle(machine, host, registry);
         private final StructureRefresh refresh = new StructureRefresh(lifecycle, host);
 
-        private Fixture() { lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH); }
-        private StructureRefresh.Request request() { return Objects.requireNonNull(refresh.prepare()); }
-        private StructureRefresh.Result result() { return request().evaluate(); }
+        private Fixture() {
+            lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
+        }
+
+        private StructureRefresh.Request request() {
+            return Objects.requireNonNull(refresh.prepare());
+        }
+
+        private StructureRefresh.Result result() {
+            return request().evaluate();
+        }
     }
 
     private static final class ExternalHatch implements ResourceHatch {
         private boolean valid = true;
-        @Override @Nullable public ResourceStorage input() { return null; }
-        @Override @Nullable public ResourceStorage output() { return null; }
-        @Override public boolean isValid() { return valid; }
+
+        @Override
+        @Nullable
+        public ResourceStorage input() {
+            return null;
+        }
+
+        @Override
+        @Nullable
+        public ResourceStorage output() {
+            return null;
+        }
+
+        @Override
+        public boolean isValid() {
+            return valid;
+        }
     }
 
     private static final class Host implements MachineStructureHost {
@@ -730,21 +781,44 @@ class StructureRefreshTest {
                 1, 3, FIRST, List.of(), List.of()), BlockOrientation.NORTH_UP);
         private boolean present = true;
         private int reads;
-        @Nullable private RuntimeException readFailure;
-        private Consumer<BlockPos> onDiscovery = _ -> {};
+        @Nullable
+        private RuntimeException readFailure;
+        private Consumer<BlockPos> onDiscovery = _ -> {
+        };
 
-        private Host() { values.put(FIRST, "body"); }
+        private Host() {
+            values.put(FIRST, "body");
+        }
 
         @Override
         public MachineIdentity identity() {
             return new MachineIdentity(id("machine"), 0, controllerPosition);
         }
-        @Override public World world() { throw new UnsupportedOperationException("No World in logic tests"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != serverThread) { throw new IllegalStateException("Not the owner thread"); }
+
+        @Override
+        public World world() {
+            throw new UnsupportedOperationException("No World in logic tests");
         }
-        @Override @Nullable public StructureConfiguration structureConfiguration() { requireServerThread(); return present ? configuration : null; }
-        @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); return present; }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != serverThread) {
+                throw new IllegalStateException("Not the owner thread");
+            }
+        }
+
+        @Override
+        @Nullable
+        public StructureConfiguration structureConfiguration() {
+            requireServerThread();
+            return present ? configuration : null;
+        }
+
+        @Override
+        public boolean isAreaLoaded(StructureBounds bounds) {
+            requireServerThread();
+            return present;
+        }
 
         @Override
         @Nullable
@@ -759,7 +833,9 @@ class StructureRefreshTest {
             }
             return (T) values.get(position);
         }
-        @Override public StructureHatchBinding hatchesAt(BlockPos position) {
+
+        @Override
+        public StructureHatchBinding hatchesAt(BlockPos position) {
             requireServerThread();
             var found = bindings.getOrDefault(position, StructureHatchBinding.EMPTY);
             onDiscovery.accept(position);

@@ -57,7 +57,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class CheckpointAlternativeExecutionTest {
     private static final KeyType TYPE = new KeyType("checkpoint_alternative");
@@ -65,22 +74,6 @@ class CheckpointAlternativeExecutionTest {
     private static final Key PRODUCT = new Key(TYPE, "product");
     private static final Key RESULT = new Key(TYPE, "result");
     private static final ResourceLocation SCORE = id("score");
-
-    @Test void aBlockedChildTickRefundsItsCandidateBeforeTheNextCheckpointStarts() {
-        assertFallback(RecipeStage.TICK, new ProcessResult.Blocked("child tick blocked"));
-    }
-
-    @Test void aFailedChildTickRefundsItsCandidateBeforeTheNextCheckpointStarts() {
-        assertFallback(RecipeStage.TICK, new ProcessResult.Failure("child tick failed"));
-    }
-
-    @Test void aBlockedChildEndRefundsItsCandidateBeforeTheNextCheckpointStarts() {
-        assertFallback(RecipeStage.END, new ProcessResult.Blocked("child end blocked"));
-    }
-
-    @Test void aFailedChildEndRefundsItsCandidateBeforeTheNextCheckpointStarts() {
-        assertFallback(RecipeStage.END, new ProcessResult.Failure("child end failed"));
-    }
 
     private static void assertFallback(RecipeStage phase, ProcessResult result) {
         var fixture = new Fixture();
@@ -110,15 +103,175 @@ class CheckpointAlternativeExecutionTest {
         assertEquals(1, fallbackStarts.get(), "Completed candidates cannot replay");
     }
 
-    @Test void allRejectedCheckpointsDisableTheSelectorAndLetEveryOuterStageContinue() {
+    private static RecipeRequirement<CheckpointRequirement> rejectingCandidate(String name, Fixture fixture,
+                                                                               PhaseEffects effects, RecipeStage rejectedPhase, ProcessResult result, long initialEnergy, long initialMaterial) {
+        return checkpoint(name, sequence(name + "_cycle", energy(name + "_energy", 30, 10, 10),
+            resources(name + "_material", List.of(stack(MATERIAL, 40)), List.of(stack(PRODUCT, 15)), List.of(stack(PRODUCT, 25))),
+            checkpoint(name + "_start_output", resources(name + "_produce", List.of(), List.of(stack(PRODUCT, 10)), List.of(stack(PRODUCT, 10)))),
+            effects.requirement(name + "_business"), external(name + "_gate", (_, phase) -> {
+                fixture.assertContents(initialEnergy - (phase == RecipeStage.TICK ? 40 : 30), initialMaterial - 40,
+                    phase == RecipeStage.START ? 20 : phase == RecipeStage.TICK ? 35 : 60);
+                return phase == rejectedPhase ? rejected(result) : RequirementTransaction.SUCCESS;
+            })));
+    }
+
+    private static RecipeRequirement<CheckpointRequirement> succeedingCandidate(String name, RecipeRequirement<?> observer) {
+        return checkpoint(name, sequence(name + "_cycle", observer, energy(name + "_energy", 10, 5, 5),
+            resources(name + "_material", List.of(stack(MATERIAL, 20)), List.of(stack(PRODUCT, 5)), List.of(stack(PRODUCT, 15)))));
+    }
+
+    /**
+     * Only orders real child acquisitions; storage effects remain owned by builtin requirements.
+     */
+    private static RecipeRequirement<List<RecipeRequirement<?>>> sequence(String name, RecipeRequirement<?>... children) {
+        var system = new RecipeRequirementSystem<List<RecipeRequirement<?>>>() {
+            @Override
+            public List<RecipeRequirement<?>> children(List<RecipeRequirement<?>> payload) {
+                return payload;
+            }
+
+            @Override
+            public boolean continuedAcquisition(List<RecipeRequirement<?>> payload) {
+                return true;
+            }
+
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<List<RecipeRequirement<?>>> requirement) {
+                return new Sequence(process, requirement.payload(), RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<List<RecipeRequirement<?>>> requirement) {
+                return new Sequence(process, requirement.payload(), RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<List<RecipeRequirement<?>>> requirement) {
+                return new Sequence(process, requirement.payload(), RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id(name + "_sequence"), system).requirement(id(name), List.of(children));
+    }
+
+    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, RecipeRequirement<?> child) {
+        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(0, child));
+    }
+
+    private static RecipeRequirement<EnergyRequirement> energy(String name, long input, long tickInput, long output) {
+        return RecipeRequirements.ENERGY.requirement(id(name), new EnergyRequirement(input, tickInput, 0, output, false));
+    }
+
+    private static RecipeRequirement<ResourceRequirement> resources(String name, List<GenericStack> input,
+                                                                    List<GenericStack> tickOutput, List<GenericStack> output) {
+        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(input, List.of(), tickOutput, output, false));
+    }
+
+    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates) {
+        return selector(name, candidates, List.of());
+    }
+
+    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates,
+                                                                    List<SelectiveModifierDescriptor> modifiers) {
+        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates, modifiers));
+    }
+
+    private static RecipeRequirement<String> external(String name, BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(new ResourceLocation("zz_checkpoint_alternative", name), system).requirement(id(name), "observer");
+    }
+
+    private static RequirementTransaction rejected(ProcessResult result) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return result;
+            }
+
+            @Override
+            public void commit() {
+                fail("Rejected child cannot commit");
+            }
+
+            @Override
+            public void rollback() {
+            }
+        };
+    }
+
+    private static SelectiveState.Selection decision(RecipeProcess process, RequirementPath path) {
+        return Objects.requireNonNull(SelectiveState.getOrCreate(process).selection(path));
+    }
+
+    private static GenericStack stack(Key key, long amount) {
+        return new GenericStack(key, amount);
+    }
+
+    private static RecipeProcess process(MachineInstance machine, int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, List.of(requirements)), 73);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("checkpoint_alternative_test", name);
+    }
+
+    private static PlannedDeadline deadline() {
+        return PlannedDeadline.after(Duration.ofSeconds(10));
+    }
+
+    private static MachineInstance machine(SlottedResourceBuffer storage, EnergyBuffer energy, @Nullable SourceObservations observations) {
+        var machine = new MachineInstance();
+        List<ResourceHatch> resources = List.of(new LoopHatch(storage), new LoopHatch(storage));
+        List<EnergyHatch> energies = observations == null ? List.of(energy, energy)
+            : List.of(new ObservedEnergy(energy, observations), new ObservedEnergy(energy, observations));
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(resources, energies, energies));
+        return machine;
+    }
+
+    @Test
+    void aBlockedChildTickRefundsItsCandidateBeforeTheNextCheckpointStarts() {
+        assertFallback(RecipeStage.TICK, new ProcessResult.Blocked("child tick blocked"));
+    }
+
+    @Test
+    void aFailedChildTickRefundsItsCandidateBeforeTheNextCheckpointStarts() {
+        assertFallback(RecipeStage.TICK, new ProcessResult.Failure("child tick failed"));
+    }
+
+    @Test
+    void aBlockedChildEndRefundsItsCandidateBeforeTheNextCheckpointStarts() {
+        assertFallback(RecipeStage.END, new ProcessResult.Blocked("child end blocked"));
+    }
+
+    @Test
+    void aFailedChildEndRefundsItsCandidateBeforeTheNextCheckpointStarts() {
+        assertFallback(RecipeStage.END, new ProcessResult.Failure("child end failed"));
+    }
+
+    @Test
+    void allRejectedCheckpointsDisableTheSelectorAndLetEveryOuterStageContinue() {
         var fixture = new Fixture();
         var first = new PhaseEffects();
         var second = new PhaseEffects();
         var modifiers = new AtomicInteger();
         var outerPhases = new ObjectArrayList<RecipeStage>();
         var selection = selector("disabled", List.of(
-            rejectingCandidate("blocked", fixture, first, RecipeStage.TICK, new ProcessResult.Blocked("missing"), 100, 100),
-            rejectingCandidate("failed", fixture, second, RecipeStage.END, new ProcessResult.Failure("invalid"), 100, 100)),
+                rejectingCandidate("blocked", fixture, first, RecipeStage.TICK, new ProcessResult.Blocked("missing"), 100, 100),
+                rejectingCandidate("failed", fixture, second, RecipeStage.END, new ProcessResult.Failure("invalid"), 100, 100)),
             List.of(new SelectiveModifierDescriptor(id("unused"), _ -> modifiers.incrementAndGet())));
         var process = process(fixture.machine, 1, selection, external("outer_successor", (_, stage) -> {
             fixture.assertContents(100, 100, 0);
@@ -137,7 +290,8 @@ class CheckpointAlternativeExecutionTest {
         fixture.assertContents(100, 100, 0);
     }
 
-    @Test void onlyTheSuccessfulCandidateInstallsItsModifierAndLaterStagesSeeItOnce() {
+    @Test
+    void onlyTheSuccessfulCandidateInstallsItsModifierAndLaterStagesSeeItOnce() {
         var fixture = new Fixture();
         var rejectedEffects = new PhaseEffects();
         var modifierCalls = new AtomicInteger();
@@ -150,12 +304,12 @@ class CheckpointAlternativeExecutionTest {
                 childPhases.add(phase);
                 return RequirementTransaction.SUCCESS;
             }))), List.of(new SelectiveModifierDescriptor(id("bonus"), context -> {
-                assertEquals(1, context.candidateIndex());
-                fixture.assertContents(90, 80, 20);
-                assertEquals(0, rejectedEffects.active.get());
-                modifierCalls.incrementAndGet();
-                context.putProcessAttributeModifier(SCORE, new NumericAttributeModifier("bonus", 4, AttributeModifier.Operation.ADDITION));
-            })));
+            assertEquals(1, context.candidateIndex());
+            fixture.assertContents(90, 80, 20);
+            assertEquals(0, rejectedEffects.active.get());
+            modifierCalls.incrementAndGet();
+            context.putProcessAttributeModifier(SCORE, new NumericAttributeModifier("bonus", 4, AttributeModifier.Operation.ADDITION));
+        })));
         var process = process(fixture.machine, 3, selection, external("outer_modified", (current, phase) -> {
             assertEquals(5, current.attributes().value(SCORE));
             outerPhases.add(phase);
@@ -174,21 +328,24 @@ class CheckpointAlternativeExecutionTest {
         fixture.assertContents(90, 80, 20);
     }
 
-    @Test void aLaterOuterFailureAlsoCompensatesTheSuccessfulFallbackAndItsModifier() {
+    @Test
+    void aLaterOuterFailureAlsoCompensatesTheSuccessfulFallbackAndItsModifier() {
         var fixture = new Fixture();
         var rejectedEffects = new PhaseEffects();
         var acceptedEffects = new PhaseEffects();
         var calls = new AtomicInteger();
         var selection = selector("outer_failure", List.of(
-            rejectingCandidate("rejected", fixture, rejectedEffects, RecipeStage.TICK, new ProcessResult.Blocked("missing"), 100, 100),
-            succeedingCandidate("chosen", acceptedEffects.requirement("accepted_business"))),
+                rejectingCandidate("rejected", fixture, rejectedEffects, RecipeStage.TICK, new ProcessResult.Blocked("missing"), 100, 100),
+                succeedingCandidate("chosen", acceptedEffects.requirement("accepted_business"))),
             List.of(new SelectiveModifierDescriptor(id("bonus"), context -> {
                 calls.incrementAndGet();
                 context.putProcessAttributeModifier(SCORE, new NumericAttributeModifier("bonus", 4, AttributeModifier.Operation.ADDITION));
             })));
         var failure = new ProcessResult.Failure("outer successor failed");
         var process = process(fixture.machine, 0, selection, external("outer_failure_gate", (current, phase) -> {
-            if (phase != RecipeStage.START) { return RequirementTransaction.SUCCESS; }
+            if (phase != RecipeStage.START) {
+                return RequirementTransaction.SUCCESS;
+            }
             fixture.assertContents(90, 80, 20);
             assertEquals(5, current.attributes().value(SCORE));
             assertEquals(3, acceptedEffects.active.get());
@@ -206,12 +363,15 @@ class CheckpointAlternativeExecutionTest {
         assertEquals(0, process.state().successfulTicks());
     }
 
-    @Test void reusedNestedSelectorsKeepExactPathsAndTheirSuccessfulCheckpointOutputFeedsTheNextInput() {
+    @Test
+    void reusedNestedSelectorsKeepExactPathsAndTheirSuccessfulCheckpointOutputFeedsTheNextInput() {
         var fixture = new Fixture();
         var visits = new ObjectArrayList<Visit>();
         var observer = external("nested_leaf", (current, phase) -> {
             visits.add(new Visit(current.requirementPath(), phase));
-            if (phase == RecipeStage.TICK) { assertEquals(0, current.tickContext().indexAfter()); }
+            if (phase == RecipeStage.TICK) {
+                assertEquals(0, current.tickContext().indexAfter());
+            }
             return RequirementTransaction.SUCCESS;
         });
         var innerCycle = sequence("inner_cycle", resources("produce", List.of(), List.of(stack(PRODUCT, 7)), List.of(stack(PRODUCT, 13))), observer);
@@ -255,7 +415,8 @@ class CheckpointAlternativeExecutionTest {
         fixture.assertContents(100, 100, 10);
     }
 
-    @Test void plannedFallbackRetainsAnotherWorkSlotsStagedPrefixOnTheSamePhysicalSources() {
+    @Test
+    void plannedFallbackRetainsAnotherWorkSlotsStagedPrefixOnTheSamePhysicalSources() {
         var fixture = new Fixture();
         var observations = new SourceObservations();
         var prefixMachine = machine(fixture.storage, fixture.energy, observations);
@@ -309,7 +470,8 @@ class CheckpointAlternativeExecutionTest {
         }
     }
 
-    @Test void plannedOuterFailureCompensatesRejectedAndSuccessfulCandidatesOnTheirOriginalSourceLane() {
+    @Test
+    void plannedOuterFailureCompensatesRejectedAndSuccessfulCandidatesOnTheirOriginalSourceLane() {
         var fixture = new Fixture();
         var observations = new SourceObservations();
         var machine = machine(fixture.storage, fixture.energy, observations);
@@ -319,7 +481,9 @@ class CheckpointAlternativeExecutionTest {
             rejectingCandidate("rejected", fixture, rejectedEffects, RecipeStage.END, new ProcessResult.Blocked("missing"), 100, 100),
             succeedingCandidate("chosen", external("accepted_observer", (_, _) -> RequirementTransaction.SUCCESS))));
         var process = process(machine, 1, selection, external("planned_outer_gate", (_, phase) -> {
-            if (phase != RecipeStage.START) { return RequirementTransaction.SUCCESS; }
+            if (phase != RecipeStage.START) {
+                return RequirementTransaction.SUCCESS;
+            }
             fixture.assertContents(90, 80, 20);
             return rejected(failure);
         }));
@@ -340,7 +504,8 @@ class CheckpointAlternativeExecutionTest {
         }
     }
 
-    @Test void cancellationKeepsTheOriginalPlannedCandidateCleanupPendingUntilItsUnknownRefundIsConfirmed() {
+    @Test
+    void cancellationKeepsTheOriginalPlannedCandidateCleanupPendingUntilItsUnknownRefundIsConfirmed() {
         var fixture = new Fixture();
         var delayed = new DelayedRollback();
         var observations = new SourceObservations(delayed);
@@ -350,7 +515,9 @@ class CheckpointAlternativeExecutionTest {
         var selection = selector("pending_choice", List.of(
             rejectingCandidate("rejected", fixture, rejectedEffects, RecipeStage.TICK, new ProcessResult.Blocked("missing"), 100, 100),
             succeedingCandidate("unused", external("unused_fallback", (_, phase) -> {
-                if (phase == RecipeStage.START) { fallbackStarts.incrementAndGet(); }
+                if (phase == RecipeStage.START) {
+                    fallbackStarts.incrementAndGet();
+                }
                 return RequirementTransaction.SUCCESS;
             }))));
         var process = process(machine, 1, selection);
@@ -392,7 +559,8 @@ class CheckpointAlternativeExecutionTest {
         }
     }
 
-    @Test void cancellingAnInflightLocalRefundWaitsForActualLaneExitThenRefundsAnotherSlotsPrefixWithoutFallback() {
+    @Test
+    void cancellingAnInflightLocalRefundWaitsForActualLaneExitThenRefundsAnotherSlotsPrefixWithoutFallback() {
         var fixture = new Fixture();
         var blocking = new BlockingRollback();
         var observations = new SourceObservations(blocking);
@@ -408,7 +576,9 @@ class CheckpointAlternativeExecutionTest {
         var selection = selector("inflight_choice", List.of(
             rejectingCandidate("rejected", fixture, rejectedEffects, RecipeStage.TICK, new ProcessResult.Blocked("missing"), 80, 90),
             succeedingCandidate("unused", external("inflight_unused_fallback", (_, phase) -> {
-                if (phase == RecipeStage.START) { fallbackStarts.incrementAndGet(); }
+                if (phase == RecipeStage.START) {
+                    fallbackStarts.incrementAndGet();
+                }
                 return RequirementTransaction.SUCCESS;
             }))));
         var chosen = process(choiceMachine, 1, selection);
@@ -461,43 +631,10 @@ class CheckpointAlternativeExecutionTest {
                 assertEquals(RecipeProcess.Lifecycle.NEW, prefix.state().lifecycle());
                 assertEquals(RecipeProcess.Lifecycle.NEW, chosen.state().lifecycle());
                 assertNull(chosen.pendingTick());
-            } finally { blocking.release.countDown(); }
+            } finally {
+                blocking.release.countDown();
+            }
         }
-    }
-
-    private static RecipeRequirement<CheckpointRequirement> rejectingCandidate(String name, Fixture fixture,
-            PhaseEffects effects, RecipeStage rejectedPhase, ProcessResult result, long initialEnergy, long initialMaterial) {
-        return checkpoint(name, sequence(name + "_cycle", energy(name + "_energy", 30, 10, 10),
-            resources(name + "_material", List.of(stack(MATERIAL, 40)), List.of(stack(PRODUCT, 15)), List.of(stack(PRODUCT, 25))),
-            checkpoint(name + "_start_output", resources(name + "_produce", List.of(), List.of(stack(PRODUCT, 10)), List.of(stack(PRODUCT, 10)))),
-            effects.requirement(name + "_business"), external(name + "_gate", (_, phase) -> {
-                fixture.assertContents(initialEnergy - (phase == RecipeStage.TICK ? 40 : 30), initialMaterial - 40,
-                    phase == RecipeStage.START ? 20 : phase == RecipeStage.TICK ? 35 : 60);
-                return phase == rejectedPhase ? rejected(result) : RequirementTransaction.SUCCESS;
-            })));
-    }
-
-    private static RecipeRequirement<CheckpointRequirement> succeedingCandidate(String name, RecipeRequirement<?> observer) {
-        return checkpoint(name, sequence(name + "_cycle", observer, energy(name + "_energy", 10, 5, 5),
-            resources(name + "_material", List.of(stack(MATERIAL, 20)), List.of(stack(PRODUCT, 5)), List.of(stack(PRODUCT, 15)))));
-    }
-
-    /** Only orders real child acquisitions; storage effects remain owned by builtin requirements. */
-    private static RecipeRequirement<List<RecipeRequirement<?>>> sequence(String name, RecipeRequirement<?>... children) {
-        var system = new RecipeRequirementSystem<List<RecipeRequirement<?>>>() {
-            @Override public List<RecipeRequirement<?>> children(List<RecipeRequirement<?>> payload) { return payload; }
-            @Override public boolean continuedAcquisition(List<RecipeRequirement<?>> payload) { return true; }
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<List<RecipeRequirement<?>>> requirement) {
-                return new Sequence(process, requirement.payload(), RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<List<RecipeRequirement<?>>> requirement) {
-                return new Sequence(process, requirement.payload(), RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<List<RecipeRequirement<?>>> requirement) {
-                return new Sequence(process, requirement.payload(), RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(id(name + "_sequence"), system).requirement(id(name), List.of(children));
     }
 
     private static final class Sequence implements RequirementTransaction, RequirementContinuation {
@@ -506,19 +643,47 @@ class CheckpointAlternativeExecutionTest {
         private final RecipeStage phase;
         private int cursor;
         private Resolution terminal = Resolution.REVERSIBLE;
+
         private Sequence(RecipeProcess process, List<RecipeRequirement<?>> children, RecipeStage phase) {
             this.process = process;
             this.children = children;
             this.phase = phase;
         }
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public RequirementContinuation continuation() { return this; }
-        @Override public void commit() { }
-        @Override public void complete() { terminal = Resolution.COMPLETED; }
-        @Override public void rollback() { terminal = Resolution.ROLLED_BACK; }
-        @Override public Resolution resolution() { return terminal; }
-        @Override public @Nullable RequirementTransaction acquireNext() {
-            if (terminal != Resolution.REVERSIBLE) { throw new IllegalStateException("Sequence already resolved"); }
+
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public RequirementContinuation continuation() {
+            return this;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void complete() {
+            terminal = Resolution.COMPLETED;
+        }
+
+        @Override
+        public void rollback() {
+            terminal = Resolution.ROLLED_BACK;
+        }
+
+        @Override
+        public Resolution resolution() {
+            return terminal;
+        }
+
+        @Override
+        public @Nullable RequirementTransaction acquireNext() {
+            if (terminal != Resolution.REVERSIBLE) {
+                throw new IllegalStateException("Sequence already resolved");
+            }
             return cursor == children.size() ? null : children.get(cursor++).acquire(process, phase);
         }
     }
@@ -527,80 +692,71 @@ class CheckpointAlternativeExecutionTest {
         private final AtomicInteger active = new AtomicInteger();
         private final AtomicInteger commits = new AtomicInteger();
         private final AtomicInteger rollbacks = new AtomicInteger();
-        private RecipeRequirement<String> requirement(String name) { return external(name, (_, _) -> transaction()); }
+
+        private RecipeRequirement<String> requirement(String name) {
+            return external(name, (_, _) -> transaction());
+        }
+
         private RequirementTransaction transaction() {
             return new RequirementTransaction() {
                 private boolean applied;
                 private Resolution terminal = Resolution.REVERSIBLE;
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { assertFalse(applied); applied = true; active.incrementAndGet(); commits.incrementAndGet(); }
-                @Override public void complete() { terminal = Resolution.COMPLETED; }
-                @Override public void rollback() {
+
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    assertFalse(applied);
+                    applied = true;
+                    active.incrementAndGet();
+                    commits.incrementAndGet();
+                }
+
+                @Override
+                public void complete() {
+                    terminal = Resolution.COMPLETED;
+                }
+
+                @Override
+                public void rollback() {
                     assertEquals(Resolution.REVERSIBLE, terminal);
-                    if (applied) { active.decrementAndGet(); }
+                    if (applied) {
+                        active.decrementAndGet();
+                    }
                     rollbacks.incrementAndGet();
                     terminal = Resolution.ROLLED_BACK;
                 }
-                @Override public Resolution resolution() { return terminal; }
+
+                @Override
+                public Resolution resolution() {
+                    return terminal;
+                }
             };
         }
     }
 
-    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, RecipeRequirement<?> child) {
-        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(0, child));
+    private record Visit(RequirementPath path, RecipeStage phase) {
     }
-    private static RecipeRequirement<EnergyRequirement> energy(String name, long input, long tickInput, long output) {
-        return RecipeRequirements.ENERGY.requirement(id(name), new EnergyRequirement(input, tickInput, 0, output, false));
-    }
-    private static RecipeRequirement<ResourceRequirement> resources(String name, List<GenericStack> input,
-            List<GenericStack> tickOutput, List<GenericStack> output) {
-        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(input, List.of(), tickOutput, output, false));
-    }
-    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates) {
-        return selector(name, candidates, List.of());
-    }
-    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates,
-            List<SelectiveModifierDescriptor> modifiers) {
-        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates, modifiers));
-    }
-    private static RecipeRequirement<String> external(String name, BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) { return acquire.apply(process, RecipeStage.START); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return acquire.apply(process, RecipeStage.TICK); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return acquire.apply(process, RecipeStage.END); }
-        };
-        return new RecipeRequirementType<>(new ResourceLocation("zz_checkpoint_alternative", name), system).requirement(id(name), "observer");
-    }
-    private static RequirementTransaction rejected(ProcessResult result) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return result; }
-            @Override public void commit() { fail("Rejected child cannot commit"); }
-            @Override public void rollback() { }
-        };
-    }
-    private static SelectiveState.Selection decision(RecipeProcess process, RequirementPath path) {
-        return Objects.requireNonNull(SelectiveState.getOrCreate(process).selection(path));
-    }
-    private static GenericStack stack(Key key, long amount) { return new GenericStack(key, amount); }
-    private static RecipeProcess process(MachineInstance machine, int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, List.of(requirements)), 73);
-    }
-    private static ResourceLocation id(String name) { return new ResourceLocation("checkpoint_alternative_test", name); }
-    private static PlannedDeadline deadline() { return PlannedDeadline.after(Duration.ofSeconds(10)); }
-    private record Visit(RequirementPath path, RecipeStage phase) { }
 
     private static final class Fixture {
         private final SlottedResourceBuffer storage;
-        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {});
+        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {
+        });
         private final MachineInstance machine;
+
         private Fixture() {
             var capacities = new Reference2LongArrayMap<AEKeyType>();
             capacities.put(TYPE, 100L);
-            storage = new SlottedResourceBuffer(3, capacities, () -> {});
+            storage = new SlottedResourceBuffer(3, capacities, () -> {
+            });
             storage.insert(MATERIAL, 100, Actionable.MODULATE);
             energy.receiveEnergy(100, Actionable.MODULATE);
             machine = machine(storage, energy, null);
         }
+
         private void assertContents(long energyAmount, long materialAmount, long productAmount) {
             assertEquals(energyAmount, energy.savedEnergy());
             assertEquals(energyAmount, energy.energySnapshot().availableEnergy());
@@ -608,19 +764,24 @@ class CheckpointAlternativeExecutionTest {
             assertEquals(productAmount, storage.availableAmount(PRODUCT));
         }
     }
-    private static MachineInstance machine(SlottedResourceBuffer storage, EnergyBuffer energy, @Nullable SourceObservations observations) {
-        var machine = new MachineInstance();
-        List<ResourceHatch> resources = List.of(new LoopHatch(storage), new LoopHatch(storage));
-        List<EnergyHatch> energies = observations == null ? List.of(energy, energy)
-            : List.of(new ObservedEnergy(energy, observations), new ObservedEnergy(energy, observations));
-        machine.components().put(MachineHatches.TYPE, new MachineHatches(resources, energies, energies));
-        return machine;
-    }
+
     private record LoopHatch(SlottedResourceBuffer storage) implements ResourceHatch {
-        @Override public SlottedResourceBuffer input() { return storage; }
-        @Override public SlottedResourceBuffer output() { return storage; }
-        @Override public boolean isValid() { return storage.isValid(); }
+        @Override
+        public SlottedResourceBuffer input() {
+            return storage;
+        }
+
+        @Override
+        public SlottedResourceBuffer output() {
+            return storage;
+        }
+
+        @Override
+        public boolean isValid() {
+            return storage.isValid();
+        }
     }
+
     private static final class SourceObservations {
         private final ConcurrentLinkedQueue<Thread> applies = new ConcurrentLinkedQueue<>();
         private final AtomicInteger exposures = new AtomicInteger();
@@ -628,62 +789,153 @@ class CheckpointAlternativeExecutionTest {
         private final AtomicInteger rollbacks = new AtomicInteger();
         private final @Nullable DelayedRollback delayed;
         private final @Nullable BlockingRollback blocking;
-        private SourceObservations() { this(null, null); }
-        private SourceObservations(DelayedRollback delayed) { this(delayed, null); }
-        private SourceObservations(BlockingRollback blocking) { this(null, blocking); }
+
+        private SourceObservations() {
+            this(null, null);
+        }
+
+        private SourceObservations(DelayedRollback delayed) {
+            this(delayed, null);
+        }
+
+        private SourceObservations(BlockingRollback blocking) {
+            this(null, blocking);
+        }
+
         private SourceObservations(@Nullable DelayedRollback delayed, @Nullable BlockingRollback blocking) {
             this.delayed = delayed;
             this.blocking = blocking;
         }
     }
+
     private static final class DelayedRollback {
         private final AtomicBoolean armed = new AtomicBoolean(true);
         private final AtomicBoolean confirmed = new AtomicBoolean();
         private final IllegalStateException failure = new IllegalStateException("Refund applied but confirmation unavailable");
     }
+
     private static final class BlockingRollback {
         private final AtomicBoolean armed = new AtomicBoolean(true);
         private final CountDownLatch entered = new CountDownLatch(1);
         private final CountDownLatch release = new CountDownLatch(1);
+
         private void awaitEntered() {
-            try { assertTrue(entered.await(5, TimeUnit.SECONDS), "The candidate must enter its original refund callback"); }
-            catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS), "The candidate must enter its original refund callback");
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(failure);
+            }
         }
+
         private void blockUntilReleased() {
             entered.countDown();
             boolean done = false;
             while (!done) {
-                try { assertTrue(release.await(5, TimeUnit.SECONDS), "Test must release the original source callback"); done = true; }
-                catch (InterruptedException ignored) { /* Deadline interruption does not prove physical exit. */ }
+                try {
+                    assertTrue(release.await(5, TimeUnit.SECONDS), "Test must release the original source callback");
+                    done = true;
+                } catch (InterruptedException ignored) { /* Deadline interruption does not prove physical exit. */ }
             }
         }
     }
+
     private record ObservedEnergy(EnergyBuffer delegate, SourceObservations observations) implements EnergyHatch {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public EnergySnapshot energySnapshot() { return delegate.energySnapshot(); }
-        @Override public long storedEnergy() { return delegate.storedEnergy(); }
-        @Override public long capacity() { return delegate.capacity(); }
-        @Override public long extractEnergy(long amount, Actionable mode) { return delegate.extractEnergy(amount, mode); }
-        @Override public long receiveEnergy(long amount, Actionable mode) { return delegate.receiveEnergy(amount, mode); }
-        @Override public boolean isValid() { return delegate.isValid(); }
-        @Override public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) { return observed(delegate.reserveExtractEnergy(snapshot, amount)); }
-        @Override public ReservationResult reserveReceiveEnergy(EnergySnapshot snapshot, long amount) { return observed(delegate.reserveReceiveEnergy(snapshot, amount)); }
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public EnergySnapshot energySnapshot() {
+            return delegate.energySnapshot();
+        }
+
+        @Override
+        public long storedEnergy() {
+            return delegate.storedEnergy();
+        }
+
+        @Override
+        public long capacity() {
+            return delegate.capacity();
+        }
+
+        @Override
+        public long extractEnergy(long amount, Actionable mode) {
+            return delegate.extractEnergy(amount, mode);
+        }
+
+        @Override
+        public long receiveEnergy(long amount, Actionable mode) {
+            return delegate.receiveEnergy(amount, mode);
+        }
+
+        @Override
+        public boolean isValid() {
+            return delegate.isValid();
+        }
+
+        @Override
+        public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
+            return observed(delegate.reserveExtractEnergy(snapshot, amount));
+        }
+
+        @Override
+        public ReservationResult reserveReceiveEnergy(EnergySnapshot snapshot, long amount) {
+            return observed(delegate.reserveReceiveEnergy(snapshot, amount));
+        }
+
         private ReservationResult observed(ReservationResult reserved) {
-            if (reserved.status() != ReservationResult.Status.ACCEPTED) { return reserved; }
+            if (reserved.status() != ReservationResult.Status.ACCEPTED) {
+                return reserved;
+            }
             var token = Objects.requireNonNull(reserved.reservation());
             return new ReservationResult(reserved.status(), new ResourceReservation() {
                 private boolean awaitingConfirmation;
-                @Override public StorageContext context() { return token.context(); }
-                @Override public boolean canApply() { return token.canApply(); }
-                @Override public void apply() { observations.applies.add(Thread.currentThread()); token.apply(); }
-                @Override public boolean supportsSequentialUse() { return token.supportsSequentialUse(); }
-                @Override public void exposeApplied() { observations.exposures.incrementAndGet(); token.exposeApplied(); }
-                @Override public void complete() { assertOriginalLane(); observations.completions.incrementAndGet(); token.complete(); }
-                @Override public void rollback() {
+
+                @Override
+                public StorageContext context() {
+                    return token.context();
+                }
+
+                @Override
+                public boolean canApply() {
+                    return token.canApply();
+                }
+
+                @Override
+                public void apply() {
+                    observations.applies.add(Thread.currentThread());
+                    token.apply();
+                }
+
+                @Override
+                public boolean supportsSequentialUse() {
+                    return token.supportsSequentialUse();
+                }
+
+                @Override
+                public void exposeApplied() {
+                    observations.exposures.incrementAndGet();
+                    token.exposeApplied();
+                }
+
+                @Override
+                public void complete() {
+                    assertOriginalLane();
+                    observations.completions.incrementAndGet();
+                    token.complete();
+                }
+
+                @Override
+                public void rollback() {
                     assertOriginalLane();
                     observations.rollbacks.incrementAndGet();
                     var blocking = observations.blocking;
-                    if (blocking != null && blocking.armed.compareAndSet(true, false)) { blocking.blockUntilReleased(); }
+                    if (blocking != null && blocking.armed.compareAndSet(true, false)) {
+                        blocking.blockUntilReleased();
+                    }
                     token.rollback();
                     var delayed = observations.delayed;
                     if (delayed != null && delayed.armed.compareAndSet(true, false)) {
@@ -691,25 +943,36 @@ class CheckpointAlternativeExecutionTest {
                         throw delayed.failure;
                     }
                 }
-                @Override public Resolution resolution() {
+
+                @Override
+                public Resolution resolution() {
                     var delayed = observations.delayed;
                     return awaitingConfirmation && delayed != null && !delayed.confirmed.get() ? Resolution.UNKNOWN : token.resolution();
                 }
-                private void assertOriginalLane() { assertSame(observations.applies.peek(), Thread.currentThread()); }
+
+                private void assertOriginalLane() {
+                    assertSame(observations.applies.peek(), Thread.currentThread());
+                }
             });
         }
     }
+
     private static final class Backend implements AutoCloseable {
         private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
         private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
         private final PlannedTaskExecutor tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
-        @Override public void close() {
+
+        @Override
+        public void close() {
             workers.shutdownNow();
             lane.shutdownNow();
             try {
                 assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
                 assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
-            } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(failure);
+            }
         }
     }
 }

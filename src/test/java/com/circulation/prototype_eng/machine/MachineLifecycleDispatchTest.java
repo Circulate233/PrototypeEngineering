@@ -35,6 +35,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 // Each fixture-local registry owns subscriptions for the entire scenario; cancellation is under test.
 @SuppressWarnings("resource")
 class MachineLifecycleDispatchTest {
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("lifecycle_dispatch_test", name);
+    }
+
+    private static ComponentType<MachineInstance, Recorder> type(String name, Recorder recorder) {
+        return new ComponentType<>(id(name), _ -> recorder, List.of());
+    }
+
+    private static MachineHatches emptyHatches() {
+        return new MachineHatches(List.of(), List.of(), List.of());
+    }
+
+    private static void installTick(MachineInstance machine, Consumer<MachineInstance> action) {
+        var system = new MachineSystem<String>() {
+            @Override
+            public ResourceLocation id() {
+                return MachineLifecycleDispatchTest.id("recording_tick");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, String component) {
+                action.accept(owner);
+            }
+        };
+        var type = new ComponentType<>(id("tick_component"), _ -> "state", List.of(system));
+        machine.components().create(type, machine);
+    }
+
     @Test
     void assemblyAndSaveBoundariesAllowNestedOwnerCodecsButRejectPrematureOrRecursiveExecution() {
         var fixture = new Fixture();
@@ -46,11 +74,13 @@ class MachineLifecycleDispatchTest {
                 assertFalse(fixture.machine.active());
                 assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
                 assertThrows(IllegalStateException.class, () -> fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH));
-                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.assemble(() -> {}));
+                assertThrows(IllegalStateException.class, () -> fixture.lifecycle.assemble(() -> {
+                }));
                 assertThrows(IllegalStateException.class, () -> fixture.lifecycle.withPersistence(() -> "nested"));
             });
             assertTrue(log.isEmpty());
-            assertThrows(IllegalStateException.class, () -> fixture.lifecycle.assemble(() -> {}));
+            assertThrows(IllegalStateException.class, () -> fixture.lifecycle.assemble(() -> {
+            }));
             fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
             assertEquals(List.of("load:observer"), log);
             var checked = fixture.lifecycle.withPersistence(() -> {
@@ -74,7 +104,9 @@ class MachineLifecycleDispatchTest {
         var log = new ObjectArrayList<String>();
         fixture.registry.register(new Recorder("observer", log));
         var failure = new AssertionError("assembly failed");
-        assertSame(failure, assertThrows(AssertionError.class, () -> fixture.lifecycle.assemble(() -> { throw failure; })));
+        assertSame(failure, assertThrows(AssertionError.class, () -> fixture.lifecycle.assemble(() -> {
+            throw failure;
+        })));
         assertFalse(fixture.machine.active());
         assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
         assertThrows(IllegalStateException.class, fixture.machine::requirePersistenceBoundary);
@@ -91,7 +123,9 @@ class MachineLifecycleDispatchTest {
         fixture.registry.register(new Recorder("observer", log));
         fixture.lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
         var failure = new AssertionError("codec failed");
-        assertSame(failure, assertThrows(AssertionError.class, () -> fixture.lifecycle.withPersistence(() -> { throw failure; })));
+        assertSame(failure, assertThrows(AssertionError.class, () -> fixture.lifecycle.withPersistence(() -> {
+            throw failure;
+        })));
         assertFalse(fixture.machine.active());
         assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
         assertThrows(IllegalStateException.class, () -> fixture.lifecycle.withPersistence(() -> "retry"));
@@ -359,34 +393,6 @@ class MachineLifecycleDispatchTest {
         assertEquals(List.of("load:listener", "form:listener:true", "form:listener:false", "unload:listener:CHUNK_UNLOAD"), log);
     }
 
-    private static ResourceLocation id(String name) {
-        return new ResourceLocation("lifecycle_dispatch_test", name);
-    }
-
-    private static ComponentType<MachineInstance, Recorder> type(String name, Recorder recorder) {
-        return new ComponentType<>(id(name), _ -> recorder, List.of());
-    }
-
-    private static MachineHatches emptyHatches() {
-        return new MachineHatches(List.of(), List.of(), List.of());
-    }
-
-    private static void installTick(MachineInstance machine, Consumer<MachineInstance> action) {
-        var system = new MachineSystem<String>() {
-            @Override
-            public ResourceLocation id() {
-                return MachineLifecycleDispatchTest.id("recording_tick");
-            }
-
-            @Override
-            public void onTick(MachineInstance owner, String component) {
-                action.accept(owner);
-            }
-        };
-        var type = new ComponentType<>(id("tick_component"), _ -> "state", List.of(system));
-        machine.components().create(type, machine);
-    }
-
     private static final class Fixture {
         private final MachineInstance machine = new MachineInstance();
         private final FakeHost host = new FakeHost(Thread.currentThread());
@@ -416,7 +422,8 @@ class MachineLifecycleDispatchTest {
     private static final class Recorder implements MachineLifecycleListener {
         private final String name;
         private final List<String> log;
-        private Consumer<MachineLifecycleEvent> action = _ -> {};
+        private Consumer<MachineLifecycleEvent> action = _ -> {
+        };
 
         private Recorder(String name, List<String> log) {
             this.name = name;

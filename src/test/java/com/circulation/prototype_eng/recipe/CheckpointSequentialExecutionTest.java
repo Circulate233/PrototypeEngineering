@@ -47,15 +47,113 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class CheckpointSequentialExecutionTest {
     private static final KeyType TYPE = new KeyType("checkpoint_sequence");
     private static final Key MATERIAL = new Key(TYPE, "material");
     private static final Key PRODUCT = new Key(TYPE, "product");
 
-    @Test void aFullEnergyBufferFundsChildStartAndTickBeforeChildEndRefillsIt() {
-        var energy = new EnergyBuffer(100, () -> {});
+    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, int time, RecipeRequirement<?> child) {
+        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(time, child));
+    }
+
+    private static RecipeRequirement<EnergyRequirement> energy(String name, long input, long tickInput, long tickOutput, long output) {
+        return RecipeRequirements.ENERGY.requirement(id(name), new EnergyRequirement(input, tickInput, tickOutput, output, false));
+    }
+
+    private static RecipeRequirement<ResourceRequirement> resources(String name, List<GenericStack> input,
+                                                                    List<GenericStack> tickInput, List<GenericStack> tickOutput, List<GenericStack> output) {
+        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(input, tickInput, tickOutput, output, false));
+    }
+
+    private static GenericStack stack(Key key, long amount) {
+        return new GenericStack(key, amount);
+    }
+
+    private static RecipeRequirement<String> external(String name,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquisition) {
+        var typeId = new ResourceLocation("zz_checkpoint_sequence", name);
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquisition.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquisition.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquisition.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(typeId, system).requirement(id(name), "observer");
+    }
+
+    private static RequirementTransaction rejected(ProcessResult result) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return result;
+            }
+
+            @Override
+            public void commit() {
+                fail("Blocked outer successor cannot commit");
+            }
+
+            @Override
+            public void rollback() {
+            }
+        };
+    }
+
+    private static MachineInstance machine(SlottedResourceBuffer storage, EnergyBuffer energy) {
+        return machine(storage, energy, null);
+    }
+
+    private static MachineInstance machine(SlottedResourceBuffer storage, EnergyBuffer energy, SourceObservations observations) {
+        var machine = new MachineInstance();
+        List<ResourceHatch> resources = storage == null ? List.of() : List.of(new LoopHatch(storage), new LoopHatch(storage));
+        List<EnergyHatch> energies = energy == null ? List.of() : observations == null ? List.of(energy, energy)
+            : List.of(new ObservedEnergy(energy, observations), new ObservedEnergy(energy, observations));
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(resources, energies, energies));
+        return machine;
+    }
+
+    private static RecipeProcess process(MachineInstance machine, int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, List.of(requirements)), 71);
+    }
+
+    private static SlottedResourceBuffer storage() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100L);
+        return new SlottedResourceBuffer(1, capacities, () -> {
+        });
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("checkpoint_sequence_test", name);
+    }
+
+    private static PlannedDeadline deadline() {
+        return PlannedDeadline.after(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void aFullEnergyBufferFundsChildStartAndTickBeforeChildEndRefillsIt() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var process = process(machine(null, energy), 0,
             checkpoint("energy_cycle", 0, energy("child_energy", 40, 10, 0, 50)));
@@ -69,10 +167,12 @@ class CheckpointSequentialExecutionTest {
         assertEquals(100, energy.savedEnergy(), "A completed checkpoint cannot replay its lifecycle");
     }
 
-    @Test void startProbeObservesTheSequentialCycleThenRefundsItBeforeRealExecution() {
+    @Test
+    void startProbeObservesTheSequentialCycleThenRefundsItBeforeRealExecution() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var process = process(machine(storage, energy), 0,
             checkpoint("probe_energy", 0, energy("probe_child_energy", 40, 10, 0, 50)),
@@ -90,7 +190,8 @@ class CheckpointSequentialExecutionTest {
         assertEquals(new GenericStack(PRODUCT, 100), storage.getStack(0));
     }
 
-    @Test void aFullResourceSlotIsConsumedThenReassignedByChildTickAndEndOutputs() {
+    @Test
+    void aFullResourceSlotIsConsumedThenReassignedByChildTickAndEndOutputs() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
         var child = resources("child_resource", List.of(stack(MATERIAL, 100)), List.of(),
@@ -105,9 +206,11 @@ class CheckpointSequentialExecutionTest {
         assertEquals(0, process.state().successfulTicks());
     }
 
-    @Test void aPrecedingCheckpointOutputFeedsALaterCheckpointInputOnTheSamePhysicalSources() {
+    @Test
+    void aPrecedingCheckpointOutputFeedsALaterCheckpointInputOnTheSamePhysicalSources() {
         var storage = storage();
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var process = process(machine(storage, energy), 0,
             checkpoint("produce_energy", 0, energy("energy_output", 0, 0, 20, 80)),
             checkpoint("consume_energy", 0, energy("energy_input", 70, 10, 0, 0)),
@@ -123,10 +226,12 @@ class CheckpointSequentialExecutionTest {
         assertEquals(0, process.state().successfulTicks());
     }
 
-    @Test void aLaterOuterBlockRefundsTheCurrentCheckpointWhileKeepingHistoricalSuccessfulStages() {
+    @Test
+    void aLaterOuterBlockRefundsTheCurrentCheckpointWhileKeepingHistoricalSuccessfulStages() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         boolean[] blocked = {true};
         var rejection = new ProcessResult.Blocked("outer successor rejected");
@@ -164,10 +269,12 @@ class CheckpointSequentialExecutionTest {
         assertEquals(50, storage.availableAmount(MATERIAL));
     }
 
-    @Test void realPlannedSourceLanesRunEachChildEnergyTokenOnceAcrossAliasHatchesAndRefillBothBuffers() {
+    @Test
+    void realPlannedSourceLanesRunEachChildEnergyTokenOnceAcrossAliasHatchesAndRefillBothBuffers() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var observations = new SourceObservations();
         var machine = machine(storage, energy, observations);
@@ -204,14 +311,18 @@ class CheckpointSequentialExecutionTest {
         }
     }
 
-    @Test void independentCheckpointContinuationsStillApplyConcurrentlyOnTheirSourceLanes() {
+    @Test
+    void independentCheckpointContinuationsStillApplyConcurrentlyOnTheirSourceLanes() {
         try (var backend = new Backend(true)) {
-            var firstEnergy = new EnergyBuffer(100, () -> {});
+            var firstEnergy = new EnergyBuffer(100, () -> {
+            });
             var firstLane = backend.laneFor(firstEnergy.context());
-            var secondEnergy = new EnergyBuffer(100, () -> {});
+            var secondEnergy = new EnergyBuffer(100, () -> {
+            });
             // Select a different real lane through its public dispatcher, without testing its hash.
             for (int attempt = 0; attempt < 32 && backend.laneFor(secondEnergy.context()) == firstLane; attempt++) {
-                secondEnergy = new EnergyBuffer(100, () -> {});
+                secondEnergy = new EnergyBuffer(100, () -> {
+                });
             }
             assertNotSame(firstLane, backend.laneFor(secondEnergy.context()));
             firstEnergy.receiveEnergy(100, Actionable.MODULATE);
@@ -219,8 +330,12 @@ class CheckpointSequentialExecutionTest {
             var entered = new CountDownLatch(2);
             Runnable meetOtherSource = () -> {
                 entered.countDown();
-                try { assertTrue(entered.await(5, TimeUnit.SECONDS), "Independent child sources must be dispatched together"); }
-                catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+                try {
+                    assertTrue(entered.await(5, TimeUnit.SECONDS), "Independent child sources must be dispatched together");
+                } catch (InterruptedException failure) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(failure);
+                }
             };
             var firstObservations = new SourceObservations(meetOtherSource);
             var secondObservations = new SourceObservations(meetOtherSource);
@@ -248,10 +363,12 @@ class CheckpointSequentialExecutionTest {
         }
     }
 
-    @Test void aPlannedOuterBlockCompensatesAllStagedChildrenOnTheirSourceLaneWithoutAdvancingTheParent() {
+    @Test
+    void aPlannedOuterBlockCompensatesAllStagedChildrenOnTheirSourceLaneWithoutAdvancingTheParent() {
         var storage = storage();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var observations = new SourceObservations();
         var machine = machine(storage, energy, observations);
@@ -262,7 +379,9 @@ class CheckpointSequentialExecutionTest {
             checkpoint("resource_cycle", 0, resources("child_resource", List.of(stack(MATERIAL, 100)), List.of(),
                 List.of(stack(PRODUCT, 25)), List.of(stack(PRODUCT, 35)))),
             external("block_start", (_, phase) -> {
-                if (phase != RecipeStage.START) { return RequirementTransaction.SUCCESS; }
+                if (phase != RecipeStage.START) {
+                    return RequirementTransaction.SUCCESS;
+                }
                 assertEquals(50, energy.savedEnergy());
                 assertEquals(60, storage.availableAmount(PRODUCT));
                 return rejected(rejection);
@@ -290,8 +409,10 @@ class CheckpointSequentialExecutionTest {
         }
     }
 
-    @Test void aliasesDoNotMultiplyTheAvailableEnergyOrResourceQuantityDuringChildAdmission() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void aliasesDoNotMultiplyTheAvailableEnergyOrResourceQuantityDuringChildAdmission() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var energyProcess = process(machine(null, energy), 0,
             checkpoint("oversized_energy", 0, energy("child_energy", 150, 0, 0, 0)));
@@ -309,76 +430,21 @@ class CheckpointSequentialExecutionTest {
         assertEquals(RecipeProcess.Lifecycle.NEW, resourceProcess.state().lifecycle());
     }
 
-    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, int time, RecipeRequirement<?> child) {
-        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(time, child));
-    }
-
-    private static RecipeRequirement<EnergyRequirement> energy(String name, long input, long tickInput, long tickOutput, long output) {
-        return RecipeRequirements.ENERGY.requirement(id(name), new EnergyRequirement(input, tickInput, tickOutput, output, false));
-    }
-
-    private static RecipeRequirement<ResourceRequirement> resources(String name, List<GenericStack> input,
-            List<GenericStack> tickInput, List<GenericStack> tickOutput, List<GenericStack> output) {
-        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(input, tickInput, tickOutput, output, false));
-    }
-
-    private static GenericStack stack(Key key, long amount) { return new GenericStack(key, amount); }
-
-    private static RecipeRequirement<String> external(String name,
-            BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquisition) {
-        var typeId = new ResourceLocation("zz_checkpoint_sequence", name);
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquisition.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquisition.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquisition.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(typeId, system).requirement(id(name), "observer");
-    }
-
-    private static RequirementTransaction rejected(ProcessResult result) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return result; }
-            @Override public void commit() { fail("Blocked outer successor cannot commit"); }
-            @Override public void rollback() { }
-        };
-    }
-
-    private static MachineInstance machine(SlottedResourceBuffer storage, EnergyBuffer energy) {
-        return machine(storage, energy, null);
-    }
-
-    private static MachineInstance machine(SlottedResourceBuffer storage, EnergyBuffer energy, SourceObservations observations) {
-        var machine = new MachineInstance();
-        List<ResourceHatch> resources = storage == null ? List.of() : List.of(new LoopHatch(storage), new LoopHatch(storage));
-        List<EnergyHatch> energies = energy == null ? List.of() : observations == null ? List.of(energy, energy)
-            : List.of(new ObservedEnergy(energy, observations), new ObservedEnergy(energy, observations));
-        machine.components().put(MachineHatches.TYPE, new MachineHatches(resources, energies, energies));
-        return machine;
-    }
-
-    private static RecipeProcess process(MachineInstance machine, int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, List.of(requirements)), 71);
-    }
-
-    private static SlottedResourceBuffer storage() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100L);
-        return new SlottedResourceBuffer(1, capacities, () -> {});
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("checkpoint_sequence_test", name); }
-    private static PlannedDeadline deadline() { return PlannedDeadline.after(Duration.ofSeconds(10)); }
-
     private record LoopHatch(SlottedResourceBuffer storage) implements ResourceHatch {
-        @Override public SlottedResourceBuffer input() { return storage; }
-        @Override public SlottedResourceBuffer output() { return storage; }
-        @Override public boolean isValid() { return storage.isValid(); }
+        @Override
+        public SlottedResourceBuffer input() {
+            return storage;
+        }
+
+        @Override
+        public SlottedResourceBuffer output() {
+            return storage;
+        }
+
+        @Override
+        public boolean isValid() {
+            return storage.isValid();
+        }
     }
 
     private static final class SourceObservations {
@@ -388,41 +454,118 @@ class CheckpointSequentialExecutionTest {
         private final AtomicInteger completions = new AtomicInteger();
         private final AtomicInteger rollbacks = new AtomicInteger();
 
-        private SourceObservations() { this(() -> {}); }
-        private SourceObservations(Runnable onApply) { this.onApply = onApply; }
+        private SourceObservations() {
+            this(() -> {
+            });
+        }
+
+        private SourceObservations(Runnable onApply) {
+            this.onApply = onApply;
+        }
     }
 
     private record ObservedEnergy(EnergyBuffer delegate, SourceObservations observations) implements EnergyHatch {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public EnergySnapshot energySnapshot() { return delegate.energySnapshot(); }
-        @Override public long storedEnergy() { return delegate.storedEnergy(); }
-        @Override public long capacity() { return delegate.capacity(); }
-        @Override public long extractEnergy(long amount, Actionable mode) { return delegate.extractEnergy(amount, mode); }
-        @Override public long receiveEnergy(long amount, Actionable mode) { return delegate.receiveEnergy(amount, mode); }
-        @Override public boolean isValid() { return delegate.isValid(); }
-        @Override public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public EnergySnapshot energySnapshot() {
+            return delegate.energySnapshot();
+        }
+
+        @Override
+        public long storedEnergy() {
+            return delegate.storedEnergy();
+        }
+
+        @Override
+        public long capacity() {
+            return delegate.capacity();
+        }
+
+        @Override
+        public long extractEnergy(long amount, Actionable mode) {
+            return delegate.extractEnergy(amount, mode);
+        }
+
+        @Override
+        public long receiveEnergy(long amount, Actionable mode) {
+            return delegate.receiveEnergy(amount, mode);
+        }
+
+        @Override
+        public boolean isValid() {
+            return delegate.isValid();
+        }
+
+        @Override
+        public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
             return observed(delegate.reserveExtractEnergy(snapshot, amount));
         }
-        @Override public ReservationResult reserveReceiveEnergy(EnergySnapshot snapshot, long amount) {
+
+        @Override
+        public ReservationResult reserveReceiveEnergy(EnergySnapshot snapshot, long amount) {
             return observed(delegate.reserveReceiveEnergy(snapshot, amount));
         }
+
         private ReservationResult observed(ReservationResult reserved) {
-            if (reserved.status() != ReservationResult.Status.ACCEPTED) { return reserved; }
+            if (reserved.status() != ReservationResult.Status.ACCEPTED) {
+                return reserved;
+            }
             var token = Objects.requireNonNull(reserved.reservation());
             return new ReservationResult(reserved.status(), new ResourceReservation() {
-                @Override public StorageContext context() { return token.context(); }
-                @Override public boolean canApply() { return token.canApply(); }
-                @Override public void apply() {
+                @Override
+                public StorageContext context() {
+                    return token.context();
+                }
+
+                @Override
+                public boolean canApply() {
+                    return token.canApply();
+                }
+
+                @Override
+                public void apply() {
                     observations.applies.add(Thread.currentThread());
                     observations.onApply.run();
                     token.apply();
                 }
-                @Override public boolean supportsSequentialUse() { return token.supportsSequentialUse(); }
-                @Override public void exposeApplied() { observations.exposures.incrementAndGet(); token.exposeApplied(); }
-                @Override public void complete() { assertOriginalLane(); observations.completions.incrementAndGet(); token.complete(); }
-                @Override public void rollback() { assertOriginalLane(); observations.rollbacks.incrementAndGet(); token.rollback(); }
-                @Override public Resolution resolution() { return token.resolution(); }
-                private void assertOriginalLane() { assertSame(observations.applies.peek(), Thread.currentThread()); }
+
+                @Override
+                public boolean supportsSequentialUse() {
+                    return token.supportsSequentialUse();
+                }
+
+                @Override
+                public void exposeApplied() {
+                    observations.exposures.incrementAndGet();
+                    token.exposeApplied();
+                }
+
+                @Override
+                public void complete() {
+                    assertOriginalLane();
+                    observations.completions.incrementAndGet();
+                    token.complete();
+                }
+
+                @Override
+                public void rollback() {
+                    assertOriginalLane();
+                    observations.rollbacks.incrementAndGet();
+                    token.rollback();
+                }
+
+                @Override
+                public Resolution resolution() {
+                    return token.resolution();
+                }
+
+                private void assertOriginalLane() {
+                    assertSame(observations.applies.peek(), Thread.currentThread());
+                }
             });
         }
     }
@@ -432,18 +575,27 @@ class CheckpointSequentialExecutionTest {
         private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
         private final ExecutorService otherLane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
         private final PlannedTaskExecutor tasks;
-        private Backend() { this(false); }
+
+        private Backend() {
+            this(false);
+        }
+
         private Backend(boolean parallel) {
             tasks = new PlannedTaskExecutor(workers, parallel ? new ExecutorService[]{lane, otherLane} : new ExecutorService[]{lane});
         }
+
         private Thread laneFor(StorageContext context) {
             var dispatched = tasks.runOnSourceLanes(List.of(new PlannedTaskExecutor.SourceJob<>("storage:" + context.order(),
                 new PlannedTaskExecutor.Job<>(null, Thread::currentThread))), deadline());
             assertTrue(dispatched.quiescent());
-            if (dispatched.results().getFirst() instanceof PlannedTaskExecutor.Success<Thread>(var thread)) { return thread; }
+            if (dispatched.results().getFirst() instanceof PlannedTaskExecutor.Success<Thread>(var thread)) {
+                return thread;
+            }
             throw new AssertionError("Source lane lookup did not finish successfully");
         }
-        @Override public void close() {
+
+        @Override
+        public void close() {
             workers.shutdownNow();
             lane.shutdownNow();
             otherLane.shutdownNow();
@@ -451,7 +603,10 @@ class CheckpointSequentialExecutionTest {
                 assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
                 assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
                 assertTrue(otherLane.awaitTermination(5, TimeUnit.SECONDS));
-            } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(failure);
+            }
         }
     }
 }

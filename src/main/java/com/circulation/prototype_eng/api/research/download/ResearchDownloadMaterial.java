@@ -92,8 +92,7 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
                 entries.removeTag(index);
                 // Native serialization gives an empty list TAG_END; retain that same after proof.
                 if (entries.tagCount() == 0) after.setTag("inventory", new NBTTagList());
-            }
-            else stack.setByte("Count", (byte) (count - 1));
+            } else stack.setByte("Count", (byte) (count - 1));
             return after;
         }
         throw new IllegalArgumentException("Download material slot is empty");

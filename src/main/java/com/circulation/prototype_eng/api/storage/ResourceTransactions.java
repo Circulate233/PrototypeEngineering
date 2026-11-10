@@ -46,7 +46,9 @@ public final class ResourceTransactions {
         return commit(reservations, prepareCommit, ACCEPT, apply, complete, rollback);
     }
 
-    /** A read-only validation after all business commits retains the same full compensation boundary. */
+    /**
+     * A read-only validation after all business commits retains the same full compensation boundary.
+     */
     public static boolean commit(List<? extends ResourceReservation> reservations, BooleanSupplier prepareCommit,
                                  BooleanSupplier validateCommit, Runnable apply, Runnable complete, Runnable rollback) {
         return settle(reservations, true, prepareCommit, validateCommit, apply, complete, rollback);
@@ -101,7 +103,10 @@ public final class ResourceTransactions {
                         reservation.apply();
                     }
                     accepted = prepareCommit.getAsBoolean();
-                    if (accepted) { apply.run(); accepted = validateCommit.getAsBoolean(); }
+                    if (accepted) {
+                        apply.run();
+                        accepted = validateCommit.getAsBoolean();
+                    }
                 }
             } catch (RuntimeException | Error failure) {
                 rollbackAll(participants, rollback, failure);

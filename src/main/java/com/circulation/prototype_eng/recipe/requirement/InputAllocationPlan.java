@@ -26,7 +26,8 @@ final class InputAllocationPlan {
     private long available;
     private long total;
     private long missing;
-    @Nullable private List<InputAllocation.Portion> proposed;
+    @Nullable
+    private List<InputAllocation.Portion> proposed;
     private boolean invoked;
     private boolean complete;
 
@@ -83,15 +84,22 @@ final class InputAllocationPlan {
             if (total > facts.amount()) throw new IllegalArgumentException("Allocation exceeds input: " + policy.id());
             amounts[index] = value.amount();
         }
-        if (total != facts.amount()) throw new IllegalArgumentException("Allocation does not cover input: " + policy.id());
+        if (total != facts.amount())
+            throw new IllegalArgumentException("Allocation does not cover input: " + policy.id());
         missing = 0;
         complete = true;
         return true;
     }
 
-    long missing() { return missing; }
-    long amount(int index) { return amounts[index]; }
+    long missing() {
+        return missing;
+    }
+
+    long amount(int index) {
+        return amounts[index];
+    }
 
     private record Facts(RecipeStage stage, int projection, @Nullable AEKey resource, long amount,
-                         List<InputAllocation.Source> sources) implements InputAllocation.Context { }
+                         List<InputAllocation.Source> sources) implements InputAllocation.Context {
+    }
 }

@@ -8,23 +8,23 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
+import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageSnapshot;
-import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
@@ -49,6 +49,26 @@ class ProbabilisticResourceRequirementTest {
     private static final Key MATERIAL = new Key(FIRST, "material");
     private static final Key PRODUCT = new Key(FIRST, "product");
     private static final Key ALTERNATE = new Key(SECOND, "alternate");
+
+    private static RecipeProcess process(List<? extends ResourceHatch> hatches, int duration, double parallelism,
+                                         RecipeRequirement<?>... requirements) {
+        var owner = new MachineInstance();
+        owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
+        owner.components().put(MachineHatches.TYPE, new MachineHatches(new ObjectArrayList<>(hatches), List.of(), List.of()));
+        return new RecipeProcess(owner, new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
+    }
+
+    private static BufferedResourceHatch hatch(HatchMode mode, int slots, long capacity) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST, capacity);
+        capacities.put(SECOND, capacity);
+        return new BufferedResourceHatch(mode, slots, capacities, () -> {
+        });
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("probability_test", path);
+    }
 
     @Test
     void zeroChanceStillChecksCapacityButDoesNotMonopolizeSharedCheckResources() {
@@ -197,46 +217,64 @@ class ProbabilisticResourceRequirementTest {
         assertInstanceOf(ProcessResult.Blocked.class, process(List.of(), 0, 3, definition).tick());
     }
 
-    private static RecipeProcess process(List<? extends ResourceHatch> hatches, int duration, double parallelism,
-                                          RecipeRequirement<?>... requirements) {
-        var owner = new MachineInstance();
-        owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
-        owner.components().put(MachineHatches.TYPE, new MachineHatches(new ObjectArrayList<>(hatches), List.of(), List.of()));
-        return new RecipeProcess(owner, new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
-    }
-
-    private static BufferedResourceHatch hatch(HatchMode mode, int slots, long capacity) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST, capacity);
-        capacities.put(SECOND, capacity);
-        return new BufferedResourceHatch(mode, slots, capacities, () -> { });
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("probability_test", path); }
-
     private record Decision(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
 
     private record FaultingOutput(ResourceStorage backing, boolean[] fail) implements ResourceStorage {
-        @Override public StorageContext context() { return backing.context(); }
-        @Override public StorageSnapshot snapshot() { return backing.snapshot(); }
-        @Override public long amount(AEKey key) { return backing.amount(key); }
-        @Override public long availableAmount(AEKey key) { return backing.availableAmount(key); }
-        @Override public long insert(AEKey key, long amount, Actionable mode) {
-            if (fail[0]) { throw new IllegalStateException("External output preflight failed"); }
+        @Override
+        public StorageContext context() {
+            return backing.context();
+        }
+
+        @Override
+        public StorageSnapshot snapshot() {
+            return backing.snapshot();
+        }
+
+        @Override
+        public long amount(AEKey key) {
+            return backing.amount(key);
+        }
+
+        @Override
+        public long availableAmount(AEKey key) {
+            return backing.availableAmount(key);
+        }
+
+        @Override
+        public long insert(AEKey key, long amount, Actionable mode) {
+            if (fail[0]) {
+                throw new IllegalStateException("External output preflight failed");
+            }
             return backing.insert(key, amount, mode);
         }
-        @Override public long extract(AEKey key, long amount, Actionable mode) { return backing.extract(key, amount, mode); }
-        @Override public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
+
+        @Override
+        public long extract(AEKey key, long amount, Actionable mode) {
+            return backing.extract(key, amount, mode);
+        }
+
+        @Override
+        public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
             return backing.reserveExtract(snapshot, key, amount);
         }
-        @Override public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
+
+        @Override
+        public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
             return backing.reserveInsert(snapshot, key, amount);
         }
     }

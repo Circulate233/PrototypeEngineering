@@ -10,7 +10,8 @@ import net.minecraft.util.ResourceLocation;
 public final class GuiAtlas {
     public static final ResourceLocation STATES = texture("states");
 
-    private GuiAtlas() {}
+    private GuiAtlas() {
+    }
 
     public static ResourceLocation texture(String path) {
         return new ResourceLocation(Tags.MOD_ID, "textures/gui/" + path + ".png");

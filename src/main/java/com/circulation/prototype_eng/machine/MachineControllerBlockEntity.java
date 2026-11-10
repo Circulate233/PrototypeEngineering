@@ -1,14 +1,32 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.orientation.BlockOrientation;
+import ae2.api.orientation.RelativeSide;
+import ae2.tile.AEBaseTile;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
+import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineController;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
+import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
+import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.structure.StructureConfiguration;
+import com.circulation.prototype_eng.api.structure.StructureMatch;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
+import com.circulation.prototype_eng.machine.render.ControllerRenderSnapshots;
+import com.circulation.prototype_eng.machine.render.ControllerRenderSync;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
@@ -19,37 +37,17 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.Mirror;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.Rotation;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.FakePlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
-
-import ae2.api.orientation.RelativeSide;
-import ae2.tile.AEBaseTile;
-import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-
-import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
-import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
-import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
-import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.api.structure.StructureConfiguration;
-import com.circulation.prototype_eng.api.structure.StructureMatch;
-import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
-import com.circulation.prototype_eng.machine.render.ControllerRenderSnapshots;
-import com.circulation.prototype_eng.machine.render.ControllerRenderSync;
-import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.List;
-import net.minecraft.util.math.AxisAlignedBB;
 
 /**
  * Empty construction/read never assembles. The next server update observes the final placement/NBT
@@ -57,26 +55,18 @@ import net.minecraft.util.math.AxisAlignedBB;
  */
 @SuppressWarnings("resource") // FML owns the shared server scheduler, never an individual tile.
 public class MachineControllerBlockEntity extends AEBaseTile implements MachineControllerHost {
-    @Override
-    public @NotNull AxisAlignedBB getRenderBoundingBox() {
-        return PrototypeEngineering.proxy.controllerRenderBounds(this);
-    }
-
-    @Override
-    public double getMaxRenderDistanceSquared() {
-        var bounds = getRenderBoundingBox();
-        double x = Math.max(Math.abs(bounds.minX - pos.getX()), Math.abs(bounds.maxX - pos.getX()));
-        double y = Math.max(Math.abs(bounds.minY - pos.getY()), Math.abs(bounds.maxY - pos.getY()));
-        double z = Math.max(Math.abs(bounds.minZ - pos.getZ()), Math.abs(bounds.maxZ - pos.getZ()));
-        double distance = 64 + Math.sqrt(x * x + y * y + z * z);
-        return distance * distance;
-    }
-    @Nullable private ControllerData data;
-    @Nullable private MachineController controller;
-    @Nullable private ControllerLifecycleHost host;
-    @Nullable private ControllerStructureUpdates structures;
-    @Nullable private Placement placement;
-    @Nullable private ControllerDisplayData display;
+    @Nullable
+    private ControllerData data;
+    @Nullable
+    private MachineController controller;
+    @Nullable
+    private ControllerLifecycleHost host;
+    @Nullable
+    private ControllerStructureUpdates structures;
+    @Nullable
+    private Placement placement;
+    @Nullable
+    private ControllerDisplayData display;
     @Nullable
     private ControllerDisplayData serverDisplay;
     @Nullable
@@ -102,14 +92,37 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     private long displaySequence;
     @Nullable
     private BlockPos attachmentPosition;
-
     @SuppressWarnings("unused") // Forge's registered TileEntity factory invokes the public no-arg constructor.
-    public MachineControllerBlockEntity() { }
+    public MachineControllerBlockEntity() {
+    }
     public MachineControllerBlockEntity(ResourceLocation type, BlockOrientation orientation) {
         data = new ControllerData(type, orientation, null);
     }
 
-    /** Supplies only immutable construction data; assembly remains deferred to the owner boundary. */
+    private static void requireType(MachineType type, ResourceLocation saved) {
+        if (!type.id().equals(saved) || MachineTypeRegistry.INSTANCE.get(saved) != type) {
+            throw new IllegalArgumentException("Controller does not reference its canonical block type");
+        }
+    }
+
+    @Override
+    public @NotNull AxisAlignedBB getRenderBoundingBox() {
+        return PrototypeEngineering.proxy.controllerRenderBounds(this);
+    }
+
+    @Override
+    public double getMaxRenderDistanceSquared() {
+        var bounds = getRenderBoundingBox();
+        double x = Math.max(Math.abs(bounds.minX - pos.getX()), Math.abs(bounds.maxX - pos.getX()));
+        double y = Math.max(Math.abs(bounds.minY - pos.getY()), Math.abs(bounds.maxY - pos.getY()));
+        double z = Math.max(Math.abs(bounds.minZ - pos.getZ()), Math.abs(bounds.maxZ - pos.getZ()));
+        double distance = 64 + Math.sqrt(x * x + y * y + z * z);
+        return distance * distance;
+    }
+
+    /**
+     * Supplies only immutable construction data; assembly remains deferred to the owner boundary.
+     */
     protected void initializeControllerConfiguration(ResourceLocation type, BlockOrientation orientation) {
         if (data == null) {
             data = new ControllerData(Objects.requireNonNull(type), Objects.requireNonNull(orientation), null);
@@ -162,7 +175,10 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         orient(BlockOrientation.get(forward, up));
     }
 
-    @Nullable public MachineInstance machine() { return controller == null ? null : controller.machine(); }
+    @Nullable
+    public MachineInstance machine() {
+        return controller == null ? null : controller.machine();
+    }
 
     @Override
     @Nullable
@@ -180,14 +196,26 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var saved = controller != null && !replacementData ? controller.save() : data == null ? null : data.runtime();
         return saved == null ? null : MachineTypeRegistry.INSTANCE.assembly(type()).savedIdentity(saved);
     }
-    public MachineType type() { return requireBlock().type(); }
 
-    /** The callback runs on the server after accepted workers join; recheck the open container there. */
-    public void readGuiAtBoundary(Runnable read) { scheduler().runAtBoundary(Objects.requireNonNull(read)); }
+    public MachineType type() {
+        return requireBlock().type();
+    }
 
-    public BlockOrientation orientation() { return data == null ? BlockOrientation.NORTH_UP : data.orientation(); }
+    /**
+     * The callback runs on the server after accepted workers join; recheck the open container there.
+     */
+    public void readGuiAtBoundary(Runnable read) {
+        scheduler().runAtBoundary(Objects.requireNonNull(read));
+    }
+
+    public BlockOrientation orientation() {
+        return data == null ? BlockOrientation.NORTH_UP : data.orientation();
+    }
+
     public boolean formed() {
-        if (world != null && world.isRemote) { return display != null && display.formed(); }
+        if (world != null && world.isRemote) {
+            return display != null && display.formed();
+        }
         var machine = machine();
         return machine != null && Objects.requireNonNull(machine.lifecycle()).formed();
     }
@@ -251,15 +279,23 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
 
     private void attachAtBoundary() {
         queuedLoad = false;
-        if (!wantsLoad || !isAttached()) { return; }
+        if (!wantsLoad || !isAttached()) {
+            return;
+        }
         var block = requireBlock();
         var type = block.type();
-        if (data == null) { data = new ControllerData(type.id(), block.getOrientation(world.getBlockState(pos)), null); }
+        if (data == null) {
+            data = new ControllerData(type.id(), block.getOrientation(world.getBlockState(pos)), null);
+        }
         requireType(type, data.type());
         if (controller != null) {
             var previous = controller.machine();
-            if (previous != null && !Objects.requireNonNull(previous.lifecycle()).retired()) { return; }
-            if (!replacementData && previous != null) { data = new ControllerData(type.id(), orientation(), controller.save()); }
+            if (previous != null && !Objects.requireNonNull(previous.lifecycle()).retired()) {
+                return;
+            }
+            if (!replacementData && previous != null) {
+                data = new ControllerData(type.id(), orientation(), controller.save());
+            }
             controller = null;
             structures = null;
             host = null;
@@ -285,7 +321,10 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         // load queues behind this owner action. Only its following boundary action may use the machine.
         created.load(data.runtime());
         scheduler().runAtBoundary(() -> {
-            if (controller != created || !wantsLoad || !isAttached()) { created.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED); return; }
+            if (controller != created || !wantsLoad || !isAttached()) {
+                created.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED);
+                return;
+            }
             var machine = created.machine();
             if (machine == null) {
                 // A previously queued stop can cancel load while vanilla revalidates this same tile.
@@ -293,7 +332,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
                 host = null;
                 return;
             }
-            if (Objects.requireNonNull(machine.lifecycle()).retired()) { return; }
+            if (Objects.requireNonNull(machine.lifecycle()).retired()) {
+                return;
+            }
             try {
                 data = new ControllerData(type.id(), orientation(), null);
                 replacementData = false;
@@ -304,20 +345,33 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
                 changed();
             } catch (RuntimeException | Error failure) {
                 wantsLoad = false;
-                try { created.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED); }
-                catch (RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
+                try {
+                    created.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED);
+                } catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) {
+                        failure.addSuppressed(cleanup);
+                    }
+                }
                 throw failure;
             }
         });
     }
 
-    /** Capture only the actual placer of this exact tile; no coordinate-wide pending actor cache. */
+    /**
+     * Capture only the actual placer of this exact tile; no coordinate-wide pending actor cache.
+     */
     public void placedBy(EntityLivingBase placer) {
         requireServer();
-        if (controller != null || !isAttached()) { throw new IllegalStateException("Placement must precede controller assembly"); }
+        if (controller != null || !isAttached()) {
+            throw new IllegalStateException("Placement must precede controller assembly");
+        }
         var type = requireBlock().type();
-        if (data != null) { requireType(type, data.type()); }
-        if (placement != null) { throw new IllegalStateException("Controller placement was already recorded"); }
+        if (data != null) {
+            requireType(type, data.type());
+        }
+        if (placement != null) {
+            throw new IllegalStateException("Controller placement was already recorded");
+        }
         if (placer instanceof EntityPlayer player && !(player instanceof FakePlayer)) {
             placement = new Placement(world, pos.toImmutable(), type, player.getUniqueID());
         }
@@ -328,21 +382,29 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         transformOrientation(_ -> orientation);
     }
 
-    /** Applies a pure relative transform at the owner boundary, using this attachment's latest direction. */
+    /**
+     * Applies a pure relative transform at the owner boundary, using this attachment's latest direction.
+     */
     public void transformOrientation(UnaryOperator<BlockOrientation> transformation) {
         Objects.requireNonNull(transformation);
         requireServer();
         var epoch = attachmentEpoch;
         scheduler().runAtBoundary(() -> {
-            if (epoch == attachmentEpoch) { changeOrientation(transformation.apply(orientation())); }
+            if (epoch == attachmentEpoch) {
+                changeOrientation(transformation.apply(orientation()));
+            }
         });
     }
 
     private void changeOrientation(BlockOrientation orientation) {
-        if (!isAttached() || orientation() == orientation) { return; }
+        if (!isAttached() || orientation() == orientation) {
+            return;
+        }
         var block = requireBlock();
         var old = Objects.requireNonNull(data, "Controller has no pending data");
-        if (structures != null) { structures.invalidate(); }
+        if (structures != null) {
+            structures.invalidate();
+        }
         data = new ControllerData(old.type(), orientation, old.runtime());
         var machine = machine();
         if (host != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
@@ -356,11 +418,17 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var block = requireBlock();
         var current = world.getBlockState(pos);
         var desired = block.state(current, orientation());
-        if (desired == current) { return; }
+        if (desired == current) {
+            return;
+        }
         changingState = true;
         try {
-            if (!world.setBlockState(pos, desired, 3)) { throw new IllegalStateException("Controller orientation could not be written"); }
-        } finally { changingState = false; }
+            if (!world.setBlockState(pos, desired, 3)) {
+                throw new IllegalStateException("Controller orientation could not be written");
+            }
+        } finally {
+            changingState = false;
+        }
     }
 
     @Override
@@ -378,8 +446,16 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         }
         return false;
     }
-    @Override public void rotate(@NotNull Rotation rotation) { transformOrientation(current -> ControllerOrientation.rotate(current, rotation)); }
-    @Override public void mirror(@NotNull Mirror mirror) { transformOrientation(current -> ControllerOrientation.mirror(current, mirror)); }
+
+    @Override
+    public void rotate(@NotNull Rotation rotation) {
+        transformOrientation(current -> ControllerOrientation.rotate(current, rotation));
+    }
+
+    @Override
+    public void mirror(@NotNull Mirror mirror) {
+        transformOrientation(current -> ControllerOrientation.mirror(current, mirror));
+    }
 
     @SuppressWarnings("unused") // Public downstream convenience entry point.
     public void rotateAround(EnumFacing axis) {
@@ -416,10 +492,16 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             controller.controllerBroken();
         }
     }
+
     private void stop(MachineLifecycleEvent.UnloadReason reason) {
         wantsLoad = false;
-        if (controller != null) { placement = null; controller.unload(reason); attachmentEpoch = new Object(); }
-        else if (!isAttached()) { placement = null; }
+        if (controller != null) {
+            placement = null;
+            controller.unload(reason);
+            attachmentEpoch = new Object();
+        } else if (!isAttached()) {
+            placement = null;
+        }
     }
 
     @Override
@@ -546,7 +628,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         renderAnimation = snapshot == null ? null : snapshot.animation();
         markDirty();
         var state = world.getBlockState(pos);
-            world.notifyBlockUpdate(pos, state, state, 3);
+        world.notifyBlockUpdate(pos, state, state, 3);
         ControllerRenderSync.remaining(this, parts);
     }
 
@@ -592,17 +674,27 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         if (world == null || !world.isRemote) return null;
         return PrototypeEngineering.proxy.currentControllerRender(this);
     }
-    @Override public @NotNull NBTTagCompound getUpdateTag() {
+
+    @Override
+    public @NotNull NBTTagCompound getUpdateTag() {
         requireServer();
         freezeColdDisplay();
         if (!renderParts.isEmpty()) return ControllerRenderSync.tag(this, renderParts.getFirst());
         var tag = new NBTTagCompound();
-        tag.setInteger("x", pos.getX()); tag.setInteger("y", pos.getY()); tag.setInteger("z", pos.getZ());
+        tag.setInteger("x", pos.getX());
+        tag.setInteger("y", pos.getY());
+        tag.setInteger("z", pos.getZ());
         tag.setTag("Display", Objects.requireNonNull(serverDisplay).encode());
         return tag;
     }
-    @Override public SPacketUpdateTileEntity getUpdatePacket() { return new SPacketUpdateTileEntity(pos, 0, getUpdateTag()); }
-    @Override public void handleUpdateTag(@NotNull NBTTagCompound tag) {
+
+    @Override
+    public SPacketUpdateTileEntity getUpdatePacket() {
+        return new SPacketUpdateTileEntity(pos, 0, getUpdateTag());
+    }
+
+    @Override
+    public void handleUpdateTag(@NotNull NBTTagCompound tag) {
         acceptClientTag(tag, null);
     }
 
@@ -635,9 +727,12 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         data = new ControllerData(incoming.type(), incoming.orientation(), null);
         world.markBlockRangeForRenderUpdate(pos, pos);
     }
-    @Override public void onDataPacket(@NotNull NetworkManager manager, @NotNull SPacketUpdateTileEntity packet) {
+
+    @Override
+    public void onDataPacket(@NotNull NetworkManager manager, @NotNull SPacketUpdateTileEntity packet) {
         if (packet.getPos().equals(pos) && packet.getTileEntityType() == 0)
-            acceptClientTag(packet.getNbtCompound(), manager); }
+            acceptClientTag(packet.getNbtCompound(), manager);
+    }
 
     private boolean isAttached() {
         return world != null && !isInvalid() && world.isBlockLoaded(pos, false) && world.getTileEntity(pos) == this
@@ -650,14 +745,18 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         }
         return block;
     }
+
     private void requireServer() {
         if (world == null || world.isRemote || !Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Controller operation requires its attached server thread");
         }
     }
-    private TaskScheduler scheduler() { requireServer(); return ServerTaskSchedulers.forServer(Objects.requireNonNull(world.getMinecraftServer())); }
-    private static void requireType(MachineType type, ResourceLocation saved) {
-        if (!type.id().equals(saved) || MachineTypeRegistry.INSTANCE.get(saved) != type) { throw new IllegalArgumentException("Controller does not reference its canonical block type"); }
+
+    private TaskScheduler scheduler() {
+        requireServer();
+        return ServerTaskSchedulers.forServer(Objects.requireNonNull(world.getMinecraftServer()));
     }
-    private record Placement(World world, BlockPos position, MachineType type, UUID player) { }
+
+    private record Placement(World world, BlockPos position, MachineType type, UUID player) {
+    }
 }

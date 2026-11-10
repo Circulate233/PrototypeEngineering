@@ -9,9 +9,12 @@ import org.jetbrains.annotations.Nullable;
  * may not force-load chunks and must reject calls off the owner thread. No host goes to a worker.
  */
 public interface MachineStructureHost extends MachineLifecycleHost, StructureReadSource {
-    @Override void requireServerThread();
+    @Override
+    void requireServerThread();
 
-    /** Null when the exact controller/world is no longer loaded and present or permission is revoked. */
+    /**
+     * Null when the exact controller/world is no longer loaded and present or permission is revoked.
+     */
     @Nullable StructureConfiguration structureConfiguration();
 
     /**
@@ -21,7 +24,9 @@ public interface MachineStructureHost extends MachineLifecycleHost, StructureRea
      */
     StructureHatchBinding hatchesAt(BlockPos position);
 
-    /** Current optional provider identity at a loaded position, stable throughout discovery. */
+    /**
+     * Current optional provider identity at a loaded position, stable throughout discovery.
+     */
     @Nullable
     default StructureComponentProvider structureComponentsAt(BlockPos position) {
         requireServerThread();

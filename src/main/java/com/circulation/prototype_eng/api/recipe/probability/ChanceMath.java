@@ -3,7 +3,9 @@ package com.circulation.prototype_eng.api.recipe.probability;
 import java.util.Objects;
 import java.util.random.RandomGenerator;
 
-/** Percentage-to-execution counts; percentages above 100 can execute more than once per parallel. */
+/**
+ * Percentage-to-execution counts; percentages above 100 can execute more than once per parallel.
+ */
 public final class ChanceMath {
     private ChanceMath() {
     }
@@ -40,7 +42,9 @@ public final class ChanceMath {
         return guaranteed > Long.MAX_VALUE - extra ? Long.MAX_VALUE : guaranteed + extra;
     }
 
-    /** Conservative ceil(C/100)*parallels capacity bound, using the same nonnegative saturation. */
+    /**
+     * Conservative ceil(C/100)*parallels capacity bound, using the same nonnegative saturation.
+     */
     public static long maxTimes(int parallels, double chancePercent) {
         requireFinite(chancePercent);
         if (parallels <= 0 || chancePercent <= 0) {
@@ -53,7 +57,9 @@ public final class ChanceMath {
         return scaleCount((long) ceiling, parallels);
     }
 
-    /** Quantities for repeated execution: zero times uses no resources; positive overflow saturates. */
+    /**
+     * Quantities for repeated execution: zero times uses no resources; positive overflow saturates.
+     */
     public static long scaleCount(long base, long times) {
         if (base < 0 || times < 0) {
             throw new IllegalArgumentException("Quantity and execution count must be nonnegative");

@@ -13,7 +13,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 
-/** Per-process chosen resource identities, not inventory mutexes or quantity reservations. */
+/**
+ * Per-process chosen resource identities, not inventory mutexes or quantity reservations.
+ */
 public final class ResourceInputLocks implements ProcessAbortListener {
     public static final ComponentType<RecipeProcess, ResourceInputLocks> TYPE = new ComponentType<>(
         new ResourceLocation(Tags.MOD_ID, "resource_input_locks"), _ -> new ResourceInputLocks(), ObjectLists.emptyList());
@@ -29,7 +31,9 @@ public final class ResourceInputLocks implements ProcessAbortListener {
         return choices.get(key);
     }
 
-    /** Installs an absent choice; an existing different choice is a broken process-state contract. */
+    /**
+     * Installs an absent choice; an existing different choice is a broken process-state contract.
+     */
     public boolean putIfAbsent(Key key, AEKey chosen) {
         Objects.requireNonNull(key);
         Objects.requireNonNull(chosen);
@@ -40,19 +44,25 @@ public final class ResourceInputLocks implements ProcessAbortListener {
         return previous == null;
     }
 
-    /** Undo only the expected choice made by the current acquisition. */
+    /**
+     * Undo only the expected choice made by the current acquisition.
+     */
     public void remove(Key key, AEKey expected) {
         if (!choices.remove(key, expected)) {
             throw new IllegalStateException("Input choice lost before rollback: " + key);
         }
     }
 
-    /** Immutable local state for host persistence; AEKey follows AE2's immutable identity contract. */
+    /**
+     * Immutable local state for host persistence; AEKey follows AE2's immutable identity contract.
+     */
     public Map<Key, AEKey> snapshot() {
         return Collections.unmodifiableMap(new Object2ObjectLinkedOpenHashMap<>(choices));
     }
 
-    /** Restore only at an exclusive lifecycle boundary with no acquired requirement transactions. */
+    /**
+     * Restore only at an exclusive lifecycle boundary with no acquired requirement transactions.
+     */
     public void restore(Map<Key, AEKey> snapshot) {
         var restored = new Object2ObjectLinkedOpenHashMap<Key, AEKey>();
         for (var entry : snapshot.entrySet()) {
@@ -61,20 +71,24 @@ public final class ResourceInputLocks implements ProcessAbortListener {
         choices = restored;
     }
 
-    /** Choices carry no inventory ownership; terminal abort only forgets the chosen identities. */
+    /**
+     * Choices carry no inventory ownership; terminal abort only forgets the chosen identities.
+     */
     @Override
     public void onAborted(RecipeProcess process) {
         choices.clear();
     }
 
-    public enum Kind { FUZZY, DYNAMIC }
+    public enum Kind {FUZZY, DYNAMIC}
 
     public record Key(RequirementPath requirement, RecipeStage stage, Kind kind, int groupIndex) {
         public Key {
             Objects.requireNonNull(requirement);
             Objects.requireNonNull(stage);
             Objects.requireNonNull(kind);
-            if (groupIndex < 0) { throw new IllegalArgumentException("Negative input group index"); }
+            if (groupIndex < 0) {
+                throw new IllegalArgumentException("Negative input group index");
+            }
         }
     }
 }

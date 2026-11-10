@@ -8,14 +8,16 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.LongSupplier;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+
 /**
  * PM's ordered planned execution barriers, separate from coordinator policy. Executors are borrowed,
  * never cancelled or closed here. A stopped result is not an exit proof: retain its Batch until
@@ -33,13 +35,18 @@ public final class PlannedTaskExecutor {
     PlannedTaskExecutor(ExecutorService workers, ExecutorService[] sourceLanes, LongSupplier nanoTime) {
         this.workers = Objects.requireNonNull(workers);
         this.sourceLanes = sourceLanes.clone();
-        if (sourceLanes.length == 0) { throw new IllegalArgumentException("Planned source execution needs at least one serial lane"); }
-        for (var lane : this.sourceLanes) { Objects.requireNonNull(lane); }
+        if (sourceLanes.length == 0) {
+            throw new IllegalArgumentException("Planned source execution needs at least one serial lane");
+        }
+        for (var lane : this.sourceLanes) {
+            Objects.requireNonNull(lane);
+        }
         this.nanoTime = Objects.requireNonNull(nanoTime);
     }
 
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline) {
-        return runPrepare(jobs, deadline, _ -> {});
+        return runPrepare(jobs, deadline, _ -> {
+        });
     }
 
     /**
@@ -48,15 +55,20 @@ public final class PlannedTaskExecutor {
      * The callback must not await its undispatched batch.
      */
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline,
-                                 Consumer<Batch<T>> beforeDispatch) {
+                                   Consumer<Batch<T>> beforeDispatch) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
-        for (var job : jobs) { dispatches.add(new Dispatch<>(workers, job)); }
+        for (var job : jobs) {
+            dispatches.add(new Dispatch<>(workers, job));
+        }
         return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch));
     }
 
-    /** Commit, query and compensation for the same source must all use the same affinity. */
+    /**
+     * Commit, query and compensation for the same source must all use the same affinity.
+     */
     public <T> Batch<T> runOnSourceLanes(List<SourceJob<T>> jobs, PlannedDeadline deadline) {
-        return runOnSourceLanes(jobs, deadline, _ -> {});
+        return runOnSourceLanes(jobs, deadline, _ -> {
+        });
     }
 
     /**
@@ -65,9 +77,11 @@ public final class PlannedTaskExecutor {
      * describe every submitted or stopped action. The callback must not await its undispatched batch.
      */
     public <T> Batch<T> runOnSourceLanes(List<SourceJob<T>> jobs, PlannedDeadline deadline,
-                                      Consumer<Batch<T>> beforeDispatch) {
+                                         Consumer<Batch<T>> beforeDispatch) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
-        for (var job : jobs) { dispatches.add(new Dispatch<>(sourceLanes[laneIndex(job.affinity())], job.job())); }
+        for (var job : jobs) {
+            dispatches.add(new Dispatch<>(sourceLanes[laneIndex(job.affinity())], job.job()));
+        }
         return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch));
     }
 
@@ -152,7 +166,9 @@ public final class PlannedTaskExecutor {
         return batch;
     }
 
-    /** Original PM UTF-16 FNV-1a mapping; stable across batches and backend instances. */
+    /**
+     * Original PM UTF-16 FNV-1a mapping; stable across batches and backend instances.
+     */
     private int laneIndex(String affinity) {
         long hash = 0xcbf29ce484222325L;
         for (int index = 0; index < affinity.length(); index++) {
@@ -160,6 +176,13 @@ public final class PlannedTaskExecutor {
             hash *= 0x100000001b3L;
         }
         return Math.floorMod(hash, sourceLanes.length);
+    }
+
+    private enum Stage {NEW, QUEUED, RUNNING, DONE}
+
+    // The type parameter keeps every outcome tied to its batch's success payload type.
+    @SuppressWarnings("unused")
+    public sealed interface Result<T> permits Success, Failure, Stopped {
     }
 
     /** A null per-job deadline preserves the original batch-wide planned execution policy. */
@@ -178,20 +201,28 @@ public final class PlannedTaskExecutor {
         public SourceJob {
             Objects.requireNonNull(affinity);
             Objects.requireNonNull(job);
-            if (affinity.isBlank()) { throw new IllegalArgumentException("Planned source affinity must not be blank"); }
+            if (affinity.isBlank()) {
+                throw new IllegalArgumentException("Planned source affinity must not be blank");
+            }
         }
     }
 
-    // The type parameter keeps every outcome tied to its batch's success payload type.
-    @SuppressWarnings("unused")
-    public sealed interface Result<T> permits Success, Failure, Stopped { }
-    public record Success<T>(T value) implements Result<T> { }
-    public record Failure<T>(Throwable failure) implements Result<T> {
-        public Failure { Objects.requireNonNull(failure); }
+    public record Success<T>(T value) implements Result<T> {
     }
-    /** started=true is uncertain: interruption does not prove whether source effects happened. */
+
+    public record Failure<T>(Throwable failure) implements Result<T> {
+        public Failure {
+            Objects.requireNonNull(failure);
+        }
+    }
+
+    /**
+     * started=true is uncertain: interruption does not prove whether source effects happened.
+     */
     public record Stopped<T>(Reason reason, boolean started) implements Result<T> {
-        public Stopped { Objects.requireNonNull(reason); }
+        public Stopped {
+            Objects.requireNonNull(reason);
+        }
     }
 
     public static final class Batch<T> {
@@ -204,8 +235,10 @@ public final class PlannedTaskExecutor {
         private final boolean individualDeadlines;
         private int unfinished;
         private int runningOrEligible;
-        @Nullable private Reason stopReason;
-        @Nullable private ObjectList<Result<T>> results;
+        @Nullable
+        private Reason stopReason;
+        @Nullable
+        private ObjectList<Result<T>> results;
 
         private Batch(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline, LongSupplier nanoTime) {
             this.deadline = deadline;
@@ -225,23 +258,47 @@ public final class PlannedTaskExecutor {
             }
         }
 
-        /** Immutable ordered terminal snapshots. Late task returns never overwrite these outcomes. */
-        public ObjectList<Result<T>> results() { return Objects.requireNonNull(results); }
+        private static void suppress(Throwable primary, Throwable secondary) {
+            if (primary != secondary) {
+                primary.addSuppressed(secondary);
+            }
+        }
 
-        @Nullable public Reason stopReason() { return stopReason; }
+        /**
+         * Immutable ordered terminal snapshots. Late task returns never overwrite these outcomes.
+         */
+        public ObjectList<Result<T>> results() {
+            return Objects.requireNonNull(results);
+        }
 
-        /** Proves no accepted user action can still execute; queued stopped wrappers are inert. */
-        public boolean quiescent() { return exited.getCount() == 0; }
+        @Nullable
+        public Reason stopReason() {
+            return stopReason;
+        }
 
-        /** Never returns early on interruption; restores the flag and reports it only after actual exit. */
+        /**
+         * Proves no accepted user action can still execute; queued stopped wrappers are inert.
+         */
+        public boolean quiescent() {
+            return exited.getCount() == 0;
+        }
+
+        /**
+         * Never returns early on interruption; restores the flag and reports it only after actual exit.
+         */
         public void awaitQuiescence() {
             InterruptedException interrupted = null;
             boolean done = false;
             while (!done) {
-                try { exited.await(); done = true; }
-                catch (InterruptedException failure) {
-                    if (interrupted == null) { interrupted = failure; }
-                    else { interrupted.addSuppressed(failure); }
+                try {
+                    exited.await();
+                    done = true;
+                } catch (InterruptedException failure) {
+                    if (interrupted == null) {
+                        interrupted = failure;
+                    } else {
+                        interrupted.addSuppressed(failure);
+                    }
                 }
             }
             if (interrupted != null) {
@@ -332,8 +389,12 @@ public final class PlannedTaskExecutor {
         private void rejected(Entry<T> entry, Throwable failure) {
             synchronized (lock) {
                 // Executor rejection means the action was not accepted; cancellation may already have won.
-                if (entry.result == null) { publish(entry, new Failure<>(failure)); }
-                if (entry.stage != Stage.RUNNING && entry.stage != Stage.DONE) { finish(entry); }
+                if (entry.result == null) {
+                    publish(entry, new Failure<>(failure));
+                }
+                if (entry.stage != Stage.RUNNING && entry.stage != Stage.DONE) {
+                    finish(entry);
+                }
             }
         }
 
@@ -355,7 +416,10 @@ public final class PlannedTaskExecutor {
                 synchronized (lock) {
                     long now = nanoTime.getAsLong();
                     remaining = deadline.remainingNanos(now);
-                    if (remaining == 0) { stopLocked(Reason.WORKER_TIMEOUT); return; }
+                    if (remaining == 0) {
+                        stopLocked(Reason.WORKER_TIMEOUT);
+                        return;
+                    }
                     for (var entry : entries) {
                         if (entry.result != null || entry.deadline == null) continue;
                         long local = entry.deadline.remainingNanos(now);
@@ -369,7 +433,9 @@ public final class PlannedTaskExecutor {
         }
 
         private void stop(Reason reason) {
-            synchronized (lock) { stopLocked(reason); }
+            synchronized (lock) {
+                stopLocked(reason);
+            }
         }
 
         private void stopLocked(Reason reason) {
@@ -379,8 +445,9 @@ public final class PlannedTaskExecutor {
             stopReason = reason;
             Throwable failure = null;
             for (var entry : entries) {
-                try { stopEntryLocked(entry, reason); }
-                catch (RuntimeException | Error interrupt) {
+                try {
+                    stopEntryLocked(entry, reason);
+                } catch (RuntimeException | Error interrupt) {
                     if (failure == null) {
                         failure = interrupt;
                     } else {
@@ -407,46 +474,59 @@ public final class PlannedTaskExecutor {
         }
 
         private void abort(Throwable primary) {
-            try { stop(Reason.WORKER_FAILURE); }
-            catch (RuntimeException | Error cleanup) { suppress(primary, cleanup); }
-            try { freezeResults(); }
-            catch (RuntimeException | Error cleanup) { suppress(primary, cleanup); }
+            try {
+                stop(Reason.WORKER_FAILURE);
+            } catch (RuntimeException | Error cleanup) {
+                suppress(primary, cleanup);
+            }
+            try {
+                freezeResults();
+            } catch (RuntimeException | Error cleanup) {
+                suppress(primary, cleanup);
+            }
         }
 
         private void publish(Entry<T> entry, Result<T> result) {
             entry.result = result;
-            if (--unfinished == 0) { terminal.countDown(); }
+            if (--unfinished == 0) {
+                terminal.countDown();
+            }
         }
 
         private void finish(Entry<T> entry) {
-            if (entry.stage == Stage.DONE) { return; }
+            if (entry.stage == Stage.DONE) {
+                return;
+            }
             entry.stage = Stage.DONE;
-            if (--runningOrEligible == 0) { exited.countDown(); }
+            if (--runningOrEligible == 0) {
+                exited.countDown();
+            }
         }
 
         private void freezeResults() {
             synchronized (lock) {
                 var copy = new ObjectArrayList<Result<T>>(entries.size());
-                for (var entry : entries) { copy.add(Objects.requireNonNull(entry.result)); }
+                for (var entry : entries) {
+                    copy.add(Objects.requireNonNull(entry.result));
+                }
                 results = ObjectLists.unmodifiable(copy);
             }
         }
-
-        private static void suppress(Throwable primary, Throwable secondary) {
-            if (primary != secondary) { primary.addSuppressed(secondary); }
-        }
     }
 
-    private enum Stage { NEW, QUEUED, RUNNING, DONE }
-    private record Dispatch<T>(ExecutorService executor, Job<T> job) { }
+    private record Dispatch<T>(ExecutorService executor, Job<T> job) {
+    }
 
     private static final class Entry<T> {
         private final ExecutorService executor;
         private final Supplier<? extends T> action;
-        @Nullable private final PlannedDeadline deadline;
+        @Nullable
+        private final PlannedDeadline deadline;
         private Stage stage = Stage.NEW;
-        @Nullable private Thread thread;
-        @Nullable private Result<T> result;
+        @Nullable
+        private Thread thread;
+        @Nullable
+        private Result<T> result;
 
         private Entry(ExecutorService executor, Supplier<? extends T> action, @Nullable PlannedDeadline deadline) {
             this.executor = executor;

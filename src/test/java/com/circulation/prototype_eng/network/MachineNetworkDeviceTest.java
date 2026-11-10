@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -53,13 +54,28 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineNetworkDeviceTest {
     private static final UUID OWNER = new UUID(0, 1);
     private static final UUID OTHER_PLACER = new UUID(0, 2);
     private static final ScanLimits SCAN = new ScanLimits(10, 10);
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("network_device_test", path);
+    }
+
+    private static NetworkResourceRegistry resources() {
+        var registry = new NetworkResourceRegistry();
+        registry.freeze();
+        return registry;
+    }
 
     @Test
     void pendingAndRejectedNetworksPauseAdmissionAndExistingWorkWhileOrdinaryComponentsKeepRunning() {
@@ -159,7 +175,8 @@ class MachineNetworkDeviceTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // The listener subscription shares this fixture's lifecycle registry lifetime.
+    @SuppressWarnings("resource")
+        // The listener subscription shares this fixture's lifecycle registry lifetime.
     void aLaterLoadFailureCannotRevokeAReplacementAlreadyPublishedDuringTheListener() {
         try (var fixture = new Fixture()) {
             var original = fixture.create();
@@ -172,7 +189,8 @@ class MachineNetworkDeviceTest {
             MachineInstance[] failed = {null};
             var failure = new IllegalStateException("later listener failed after replacing its generation");
             listeners.register(new MachineLifecycleListener() {
-                @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                @Override
+                public void onLoaded(MachineLifecycleEvent.Loaded event) {
                     failed[0] = event.context().machine();
                     replacement[0] = fixture.restore(saved, new MachineLifecycleRegistry());
                     fixture.unload(original);
@@ -192,7 +210,7 @@ class MachineNetworkDeviceTest {
 
             // A repeated, late unload of the failed generation must also preserve the replacement.
             assertFalse(Objects.requireNonNull(Objects.requireNonNull(failed[0]).lifecycle())
-                .unload(MachineLifecycleEvent.UnloadReason.INVALIDATED));
+                               .unload(MachineLifecycleEvent.UnloadReason.INVALIDATED));
             survivor.work().tickProcesses();
             assertEquals(3, survivor.process("first").state().successfulTicks());
             assertEquals(2, survivor.process("second").state().successfulTicks());
@@ -200,24 +218,20 @@ class MachineNetworkDeviceTest {
         }
     }
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("network_device_test", path); }
-
     private record AssembledMachine(MachineInstance owner, EnergyBuffer input) {
-        private MachineWorkSlots work() { return Objects.requireNonNull(owner.components().get(MachineWorkSlots.TYPE)); }
-        private RecipeProcess process(String name) { return Objects.requireNonNull(work().requireSlot(name).process()); }
-    }
+        private MachineWorkSlots work() {
+            return Objects.requireNonNull(owner.components().get(MachineWorkSlots.TYPE));
+        }
 
-    private static NetworkResourceRegistry resources() {
-        var registry = new NetworkResourceRegistry();
-        registry.freeze();
-        return registry;
+        private RecipeProcess process(String name) {
+            return Objects.requireNonNull(work().requireSlot(name).process());
+        }
     }
 
     private static final class Fixture implements AutoCloseable {
         private final Thread ownerThread = Thread.currentThread();
         private final Object world = new Object();
         private final List<AssembledMachine> machines = new ObjectArrayList<>();
-        private boolean rejected;
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
         private final NetworkRuntime network = new NetworkRuntime(identities, resources(), owner -> this.rejected
             ? OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "test owner has no team")
@@ -233,11 +247,19 @@ class MachineNetworkDeviceTest {
             host -> new RecipeScanner(host, catalog, () -> 17), SCAN, _ -> true);
         private final ComponentType<MachineInstance, int[]> ordinaryType = new ComponentType<>(id("ordinary"), _ -> new int[1],
             List.of(new MachineSystem<int[]>() {
-                @Override public ResourceLocation id() { return MachineNetworkDeviceTest.id("ordinary_tick"); }
-                @Override public void onTick(MachineInstance owner, int[] ticks) { ticks[0]++; }
+                @Override
+                public ResourceLocation id() {
+                    return MachineNetworkDeviceTest.id("ordinary_tick");
+                }
+
+                @Override
+                public void onTick(MachineInstance owner, int[] ticks) {
+                    ticks[0]++;
+                }
             }));
         private final MachineAssembly assembly;
         private final ComponentType<MachineInstance, MachineNetworkDevice> networkType;
+        private boolean rejected;
 
         private Fixture() {
             network.beginTick(0);
@@ -246,16 +268,15 @@ class MachineNetworkDeviceTest {
                     1, Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
                     NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var type = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure"))
-                .component(ownershipType).component(networkType).component(MachineWorkSlots.TYPE)
-                .component(scannerType).component(ordinaryType)
-                .recipePool(id("recipes"))
+                                  .component(ownershipType).component(networkType).component(MachineWorkSlots.TYPE)
+                                  .component(scannerType).component(ordinaryType).recipePool(id("recipes"))
                                   .workSlot(new WorkSlotDefinition("first")).workSlot(new WorkSlotDefinition("second"))
-                .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2).build();
+                                  .attribute(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 2).build();
             var codec = new MachineWorkSlotsNbt("slots-v1", List.of(
                 RecipeProcessNbt.builder(firstRecipe, "recipe-v1").build(),
                 RecipeProcessNbt.builder(secondRecipe, "recipe-v1").build()));
             assembly = MachineAssembly.builder(type, "machine-v1").component(ownershipType, MachineOwnership.CODEC)
-                .recreated(networkType, scannerType, ordinaryType).workSlots(codec).build();
+                                      .recreated(networkType, scannerType, ordinaryType).workSlots(codec).build();
         }
 
         private static MachineRecipe recipe(String name) {
@@ -272,7 +293,8 @@ class MachineNetworkDeviceTest {
         }
 
         private AssembledMachine attach(MachineInstance owner, long stored) {
-            var input = new EnergyBuffer(100, () -> { });
+            var input = new EnergyBuffer(100, () -> {
+            });
             input.receiveEnergy(stored, Actionable.MODULATE);
             Objects.requireNonNull(owner.lifecycle()).form(new MachineHatches(List.of(), List.of(input), List.of()));
             var machine = new AssembledMachine(owner, input);
@@ -280,28 +302,54 @@ class MachineNetworkDeviceTest {
             return machine;
         }
 
-        private RecipeScanner scanner(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(scannerType)); }
-        private MachineOwnership ownership(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(ownershipType)); }
-        private MachineNetworkDevice networkDevice(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(networkType)); }
-        private int ordinaryTicks(AssembledMachine machine) { return Objects.requireNonNull(machine.owner.components().get(ordinaryType))[0]; }
+        private RecipeScanner scanner(AssembledMachine machine) {
+            return Objects.requireNonNull(machine.owner.components().get(scannerType));
+        }
+
+        private MachineOwnership ownership(AssembledMachine machine) {
+            return Objects.requireNonNull(machine.owner.components().get(ownershipType));
+        }
+
+        private MachineNetworkDevice networkDevice(AssembledMachine machine) {
+            return Objects.requireNonNull(machine.owner.components().get(networkType));
+        }
+
+        private int ordinaryTicks(AssembledMachine machine) {
+            return Objects.requireNonNull(machine.owner.components().get(ordinaryType))[0];
+        }
+
         private void unload(AssembledMachine machine) {
             Objects.requireNonNull(machine.owner.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
         }
 
         private void requireOwner() {
-            if (Thread.currentThread() != ownerThread) { throw new IllegalStateException("Not the test server owner"); }
+            if (Thread.currentThread() != ownerThread) {
+                throw new IllegalStateException("Not the test server owner");
+            }
         }
 
-        @Override public void close() {
+        @Override
+        public void close() {
             machines.forEach(this::unload);
             network.close();
             identities.close();
         }
     }
 
-    private record Host(Object worldIdentity, BlockPos position, @Nullable UUID placementPlayer) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, position); }
-        @Override public World world() { throw new AssertionError("Network tests do not load a Minecraft world"); }
-        @Override public void requireServerThread() { }
+    private record Host(Object worldIdentity, BlockPos position,
+                        @Nullable UUID placementPlayer) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, position);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("Network tests do not load a Minecraft world");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

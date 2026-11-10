@@ -7,8 +7,8 @@ import com.circulation.prototype_eng.client.render.ModelAssets;
 import com.circulation.prototype_eng.client.render.ModelBufferPool;
 import com.circulation.prototype_eng.client.render.ModelClientThread;
 import com.circulation.prototype_eng.client.render.ReusableModelVboUploader;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
@@ -20,17 +20,11 @@ import software.bernie.geckolib3.geo.render.built.GeoModel;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
+import java.util.Set;
 
 /** A single publication state owns every successful or late result. Retiring an active task preserves its cleanup duty. */
 public class GeckoModelBuildTask implements Runnable {
-    private enum Status {PENDING, RUNNING, READY, FAILED, RETIRED_RUNNING, RETIRED}
-
-    private record State(Status status, @Nullable BuiltModelBuffers result, @Nullable Throwable failure) {
-    }
-
-    private State state = new State(Status.PENDING, null, null);
     private final GeckoRenderRequest request;
     private final GeckoGeoModelInstances.Instance instance;
     private final ModelAssets assets;
@@ -39,7 +33,7 @@ public class GeckoModelBuildTask implements Runnable {
     private final ModelClientThread client;
     private final ReusableModelVboUploader uploader;
     private final boolean mapped;
-
+    private State state = new State(Status.PENDING, null, null);
     public GeckoModelBuildTask(GeckoRenderRequest request, GeckoGeoModelInstances.Instance instance, ModelAssets assets,
                                ModelBufferPool builders, DirectVertexBufferPool direct, ModelClientThread client,
                                ReusableModelVboUploader uploader, boolean mapped) {
@@ -51,6 +45,21 @@ public class GeckoModelBuildTask implements Runnable {
         this.client = client;
         this.uploader = uploader;
         this.mapped = mapped;
+    }
+
+    private static int capacity(int bytes) {
+        return Math.max(32 * 1024, Math.addExact(bytes, 16 * 1024));
+    }
+
+    private static Throwable append(@Nullable Throwable prior, Throwable next) {
+        if (prior == null) return next;
+        if (prior != next) prior.addSuppressed(next);
+        return prior;
+    }
+
+    private static void rethrow(@Nullable Throwable failure) {
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
     }
 
     public GeckoRenderRequest request() {
@@ -239,10 +248,6 @@ public class GeckoModelBuildTask implements Runnable {
         return result;
     }
 
-    private static int capacity(int bytes) {
-        return Math.max(32 * 1024, Math.addExact(bytes, 16 * 1024));
-    }
-
     private MachineRenderPass effective(MachineRenderPass routed) {
         return request.binding().pass() == MachineRenderPass.DEFAULT ? routed : request.binding().pass();
     }
@@ -273,6 +278,35 @@ public class GeckoModelBuildTask implements Runnable {
                 failure.addSuppressed(exception);
             }
             throw failure;
+        }
+    }
+
+    private enum Status {PENDING, RUNNING, READY, FAILED, RETIRED_RUNNING, RETIRED}
+
+    private record State(Status status, @Nullable BuiltModelBuffers result, @Nullable Throwable failure) {
+    }
+
+    private static final class Bounds {
+        double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
+
+        void add(int packedX, int packedY, int packedZ) {
+            double x = Float.intBitsToFloat(packedX), y = Float.intBitsToFloat(packedY), z = Float.intBitsToFloat(packedZ);
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z))
+                throw new IllegalArgumentException("Non-finite model vertex");
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            maxZ = Math.max(maxZ, z);
+        }
+
+        @Nullable AxisAlignedBB world(GeckoRenderRequest request) {
+            if (minX == Double.POSITIVE_INFINITY) return null;
+            var origin = request.origin();
+            return new AxisAlignedBB(minX + origin.getX(), minY + origin.getY(), minZ + origin.getZ(),
+                maxX + origin.getX(), maxY + origin.getY(), maxZ + origin.getZ());
         }
     }
 
@@ -342,40 +376,5 @@ public class GeckoModelBuildTask implements Runnable {
                 direct.release(Objects.requireNonNull(bytes));
             }
         }
-    }
-
-    private static final class Bounds {
-        double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
-
-        void add(int packedX, int packedY, int packedZ) {
-            double x = Float.intBitsToFloat(packedX), y = Float.intBitsToFloat(packedY), z = Float.intBitsToFloat(packedZ);
-            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z))
-                throw new IllegalArgumentException("Non-finite model vertex");
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            minZ = Math.min(minZ, z);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-            maxZ = Math.max(maxZ, z);
-        }
-
-        @Nullable AxisAlignedBB world(GeckoRenderRequest request) {
-            if (minX == Double.POSITIVE_INFINITY) return null;
-            var origin = request.origin();
-            return new AxisAlignedBB(minX + origin.getX(), minY + origin.getY(), minZ + origin.getZ(),
-                maxX + origin.getX(), maxY + origin.getY(), maxZ + origin.getZ());
-        }
-    }
-
-    private static Throwable append(@Nullable Throwable prior, Throwable next) {
-        if (prior == null) return next;
-        if (prior != next) prior.addSuppressed(next);
-        return prior;
-    }
-
-    private static void rethrow(@Nullable Throwable failure) {
-        if (failure instanceof Error error) throw error;
-        if (failure instanceof RuntimeException exception) throw exception;
     }
 }

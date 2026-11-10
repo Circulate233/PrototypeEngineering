@@ -19,6 +19,9 @@ import java.util.Objects;
 public final class HatchBlocks {
     private static final HatchBlock<?>[] BLOCKS = createBlocks();
 
+    private HatchBlocks() {
+    }
+
     private static HatchBlock<?>[] createBlocks() {
         var blocks = new HatchBlock<?>[60];
         int index = 0;
@@ -29,9 +32,6 @@ public final class HatchBlocks {
             }
         }
         return blocks;
-    }
-
-    private HatchBlocks() {
     }
 
     public static HatchBlock<?>[] all() {

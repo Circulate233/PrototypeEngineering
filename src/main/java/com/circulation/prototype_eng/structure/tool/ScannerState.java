@@ -1,22 +1,20 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import ae2.api.orientation.RelativeSide;
-
-import java.util.List;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import ae2.api.orientation.BlockOrientation;
-import com.circulation.prototype_eng.item.OrientationToolOrientations;
+import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.item.OrientationToolOrientations;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
+import java.util.NoSuchElementException;
 import java.util.regex.Pattern;
 
 /** Persistent selection and edit buffers from PM's range structure selector. */
@@ -25,21 +23,6 @@ public final class ScannerState {
     private static final Pattern INTEGER = Pattern.compile("-?[0-9]{1,10}");
 
     private ScannerState() {
-    }
-
-    public enum Field {
-        NAME("langName"), ID("structureId"), EXPANDED("expanded"), QUANTITY("expandedQuantity"),
-        SPACING("expandedSpacing"), SUBSTRUCTURE("substructure"), NBT("includeTileNbt"), MIRROR("allowMirror"),
-        X("originEditX"), Y("originEditY"), Z("originEditZ"), PREVIEW_MIRROR("previewMirror");
-        public final String key;
-
-        Field(String key) {
-            this.key = key;
-        }
-
-        public boolean toggle() {
-            return this == EXPANDED || this == SUBSTRUCTURE || this == NBT || this == MIRROR || this == PREVIEW_MIRROR;
-        }
     }
 
     public static NBTTagCompound data(ItemStack stack) {
@@ -183,12 +166,31 @@ public final class ScannerState {
         return a == null || b == null ? null : new Box(a, b);
     }
 
+    public enum Field {
+        NAME("langName"), ID("structureId"), EXPANDED("expanded"), QUANTITY("expandedQuantity"),
+        SPACING("expandedSpacing"), SUBSTRUCTURE("substructure"), NBT("includeTileNbt"), MIRROR("allowMirror"),
+        X("originEditX"), Y("originEditY"), Z("originEditZ"), PREVIEW_MIRROR("previewMirror");
+        public final String key;
+
+        Field(String key) {
+            this.key = key;
+        }
+
+        public boolean toggle() {
+            return this == EXPANDED || this == SUBSTRUCTURE || this == NBT || this == MIRROR || this == PREVIEW_MIRROR;
+        }
+    }
+
     public record Box(BlockPos min, BlockPos max) {
         public Box {
             var a = min;
             var b = max;
             min = new BlockPos(Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()));
             max = new BlockPos(Math.max(a.getX(), b.getX()), Math.max(a.getY(), b.getY()), Math.max(a.getZ(), b.getZ()));
+        }
+
+        private static long samples(long size, long stride) {
+            return (size - 1 + stride - 1) / stride + 1;
         }
 
         public long sizeX() {
@@ -207,49 +209,6 @@ public final class ScannerState {
         public Iterator<BlockPos> previewCells() {
             if (!exceeds(32768)) return previewPositions(32768).iterator();
             return new BoundaryIterator(min, max);
-        }
-
-        private static final class BoundaryIterator implements Iterator<BlockPos> {
-            private final BlockPos min, max;
-                int face;
-                long u, v, lowV, highU, highV;
-            private BoundaryIterator(BlockPos min, BlockPos max) {
-                this.min = min;
-                this.max = max;
-                plane();
-            }
-
-                private void plane() {
-                    while (face < 6) {
-                        if (face < 2) {
-                            u = min.getZ(); highU = max.getZ(); lowV = min.getX(); highV = max.getX();
-                        } else {
-                            u = (long) min.getY() + 1; highU = (long) max.getY() - 1;
-                            lowV = face < 4 ? min.getX() : (long) min.getZ() + 1;
-                            highV = face < 4 ? max.getX() : (long) max.getZ() - 1;
-                        }
-                        v = lowV;
-                        boolean duplicate = face == 1 && min.getY() == max.getY()
-                            || face == 3 && min.getZ() == max.getZ() || face == 5 && min.getX() == max.getX();
-                        if (!duplicate && u <= highU && v <= highV) return;
-                        face++;
-                    }
-                }
-
-                @Override public boolean hasNext() { return face < 6; }
-
-                @Override public BlockPos next() {
-                    if (!hasNext()) throw new NoSuchElementException();
-                    var result = switch (face) {
-                        case 0, 1 -> new BlockPos(v, face == 0 ? min.getY() : max.getY(), u);
-                        case 2, 3 -> new BlockPos(v, u, face == 2 ? min.getZ() : max.getZ());
-                        default -> new BlockPos(face == 4 ? min.getX() : max.getX(), u, v);
-                    };
-                    if (v < highV) v++;
-                    else if (u < highU) { u++; v = lowV; }
-                    else { face++; plane(); }
-                    return result;
-                }
         }
 
         /** Includes both box edges; work is bounded even for selections spanning the int coordinate range. */
@@ -274,12 +233,65 @@ public final class ScannerState {
             return (double) samples(sizeX(), stride) * samples(sizeY(), stride) * samples(sizeZ(), stride);
         }
 
-        private static long samples(long size, long stride) {
-            return (size - 1 + stride - 1) / stride + 1;
-        }
-
         public boolean exceeds(long limit) {
             return sizeX() > limit / sizeY() || sizeX() * sizeY() > limit / sizeZ();
+        }
+
+        private static final class BoundaryIterator implements Iterator<BlockPos> {
+            private final BlockPos min, max;
+            int face;
+            long u, v, lowV, highU, highV;
+
+            private BoundaryIterator(BlockPos min, BlockPos max) {
+                this.min = min;
+                this.max = max;
+                plane();
+            }
+
+            private void plane() {
+                while (face < 6) {
+                    if (face < 2) {
+                        u = min.getZ();
+                        highU = max.getZ();
+                        lowV = min.getX();
+                        highV = max.getX();
+                    } else {
+                        u = (long) min.getY() + 1;
+                        highU = (long) max.getY() - 1;
+                        lowV = face < 4 ? min.getX() : (long) min.getZ() + 1;
+                        highV = face < 4 ? max.getX() : (long) max.getZ() - 1;
+                    }
+                    v = lowV;
+                    boolean duplicate = face == 1 && min.getY() == max.getY()
+                        || face == 3 && min.getZ() == max.getZ() || face == 5 && min.getX() == max.getX();
+                    if (!duplicate && u <= highU && v <= highV) return;
+                    face++;
+                }
+            }
+
+            @Override
+            public boolean hasNext() {
+                return face < 6;
+            }
+
+            @Override
+            public BlockPos next() {
+                if (!hasNext()) throw new NoSuchElementException();
+                var result = switch (face) {
+                    case 0, 1 -> new BlockPos(v, face == 0 ? min.getY() : max.getY(), u);
+                    case 2, 3 -> new BlockPos(v, u, face == 2 ? min.getZ() : max.getZ());
+                    default -> new BlockPos(face == 4 ? min.getX() : max.getX(), u, v);
+                };
+                if (v < highV) v++;
+                else if (u < highU) {
+                    u++;
+                    v = lowV;
+                } else {
+                    face++;
+                    plane();
+                }
+                return result;
+            }
         }
     }
 }

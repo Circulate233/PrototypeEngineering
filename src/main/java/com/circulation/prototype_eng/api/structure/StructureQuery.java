@@ -46,9 +46,13 @@ public final class StructureQuery<T> {
         this.workerReader = workerReader;
     }
 
-    public ResourceLocation id() { return id; }
+    public ResourceLocation id() {
+        return id;
+    }
 
-    /** World-adapter boundary. A capture callback must not force chunks to load. */
+    /**
+     * World-adapter boundary. A capture callback must not force chunks to load.
+     */
     @Nullable
     public T capture(World world, BlockPos position) {
         Objects.requireNonNull(world);
@@ -72,10 +76,14 @@ public final class StructureQuery<T> {
     }
 
     @Nullable
-    T copy(@Nullable T value) { return value == null ? null : Objects.requireNonNull(copier.apply(value), "Copied structure fact"); }
+    T copy(@Nullable T value) {
+        return value == null ? null : Objects.requireNonNull(copier.apply(value), "Copied structure fact");
+    }
 
     boolean equivalent(@Nullable T first, @Nullable T second) {
-        if (first == null || second == null) { return first == second; }
+        if (first == null || second == null) {
+            return first == second;
+        }
         return equivalence.test(copy(first), copy(second));
     }
 }

@@ -1,11 +1,12 @@
 package com.circulation.prototype_eng.block;
 
+import ae2.block.AEBaseBlockItem;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import ae2.block.AEBaseBlockItem;
-
-/** Uses the machine's localization contract without manufacturing another translation key. */
+/**
+ * Uses the machine's localization contract without manufacturing another translation key.
+ */
 public class MachineControllerItem extends AEBaseBlockItem {
     private final MachineControllerBlock<?> controller;
 
@@ -14,7 +15,8 @@ public class MachineControllerItem extends AEBaseBlockItem {
         this.controller = controller;
     }
 
-    @Override public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
+    @Override
+    public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
         return controller.type().displayName().text().getUnformattedText();
     }
 }

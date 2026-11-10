@@ -9,8 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ForgeEnergyPortTest {
     @Test
     void splitPortKeepsSimulationCapacityAndLongTotalsIndependent() {
-        var input = new EnergyBuffer(Long.MAX_VALUE, () -> {});
-        var output = new EnergyBuffer(Long.MAX_VALUE, () -> {});
+        var input = new EnergyBuffer(Long.MAX_VALUE, () -> {
+        });
+        var output = new EnergyBuffer(Long.MAX_VALUE, () -> {
+        });
         var port = new ForgeEnergyPort(input, output);
         input.restore(Long.MAX_VALUE);
         assertEquals(0, port.receiveEnergy(100, false));
@@ -30,13 +32,15 @@ class ForgeEnergyPortTest {
 
     @Test
     void physicalDirectionsAllowReverseMachineOperationsOnTheSameBalance() {
-        var input = new EnergyBuffer(100, 20, 20, () -> {});
+        var input = new EnergyBuffer(100, 20, 20, () -> {
+        });
         var inputPort = new ForgeEnergyPort(input, HatchMode.INPUT);
         assertEquals(20, inputPort.receiveEnergy(100, false));
         assertEquals(0, inputPort.extractEnergy(100, false));
         assertEquals(20, input.extractEnergy(100, Actionable.MODULATE));
 
-        var output = new EnergyBuffer(100, 30, 20, () -> {});
+        var output = new EnergyBuffer(100, 30, 20, () -> {
+        });
         var outputPort = new ForgeEnergyPort(output, HatchMode.OUTPUT);
         assertEquals(0, outputPort.receiveEnergy(100, false));
         assertEquals(30, output.receiveEnergy(100, Actionable.MODULATE));

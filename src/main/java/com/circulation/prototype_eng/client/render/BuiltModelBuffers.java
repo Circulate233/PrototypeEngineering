@@ -3,13 +3,13 @@ package com.circulation.prototype_eng.client.render;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.client.renderer.BufferBuilder;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.ByteBuffer;
-import java.util.Objects;
 import java.util.Map;
+import java.util.Objects;
 
 /** One cache ownership plus explicit readers cover builders, packed buffers and concrete GPU slots together. */
 public final class BuiltModelBuffers {
@@ -57,6 +57,18 @@ public final class BuiltModelBuffers {
         this.assets = assets;
         this.texture = texture;
         this.bounds = bounds;
+    }
+
+    static Throwable append(@Nullable Throwable prior, Throwable next) {
+        if (prior == null) return next;
+        if (prior != next) prior.addSuppressed(next);
+        return prior;
+    }
+
+    static void rethrow(@Nullable Throwable failure) {
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
+        if (failure != null) throw new IllegalStateException(failure);
     }
 
     public synchronized @Nullable Lease borrow() {
@@ -138,18 +150,6 @@ public final class BuiltModelBuffers {
             failure = append(failure, exception);
         }
         rethrow(failure);
-    }
-
-    static Throwable append(@Nullable Throwable prior, Throwable next) {
-        if (prior == null) return next;
-        if (prior != next) prior.addSuppressed(next);
-        return prior;
-    }
-
-    static void rethrow(@Nullable Throwable failure) {
-        if (failure instanceof Error error) throw error;
-        if (failure instanceof RuntimeException exception) throw exception;
-        if (failure != null) throw new IllegalStateException(failure);
     }
 
     public BlockPos origin() {

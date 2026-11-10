@@ -14,11 +14,17 @@ import org.jetbrains.annotations.Nullable;
  */
 public interface MachineStructure {
     ResourceLocation id();
+
     BlockOrientation orientation();
-    @SuppressWarnings("unused") // External render/preview consumers use this preserved visual flag.
+
+    @SuppressWarnings("unused")
+        // External render/preview consumers use this preserved visual flag.
     boolean hideWorldBlocks();
+
     MachineStructure transform(StructureTransform rotation);
+
     void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller);
+
     @Nullable StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller);
 
     /**
@@ -53,4 +59,5 @@ public interface MachineStructure {
             return snapshot.unavailableVisits() == unavailable ? StructureMatchResult.mismatch() : StructureMatchResult.unavailable();
         });
     }
+
 }

@@ -1,24 +1,26 @@
 package com.circulation.prototype_eng.api.structure;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.block.Block;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagString;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Predicate;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.Collections;
-import java.util.Iterator;
 import java.util.function.Function;
-import net.minecraft.nbt.NBTTagCompound;
-import org.jetbrains.annotations.Nullable;
+import java.util.function.Predicate;
+
 /**
  * Built-in PM predicate behavior composed over declared, detached queries.
  */
@@ -135,6 +137,26 @@ public final class StructurePredicates {
             }
         }
         return result;
+    }
+
+    @SuppressWarnings("unchecked") // Minecraft valueClass binds the same property to its Enum type.
+    private static IBlockState rotateProperty(IBlockState state, IProperty<?> property, StructureTransform rotation) {
+        if (property.getValueClass() == EnumFacing.class) {
+            var facing = (IProperty<EnumFacing>) property;
+            var transformed = rotation.apply(state.getValue(facing));
+            return facing.getAllowedValues().contains(transformed) ? state.withProperty(facing, transformed) : state;
+        }
+        if (property.getValueClass() == EnumFacing.Axis.class) {
+            var axis = (IProperty<EnumFacing.Axis>) property;
+            var representative = switch (state.getValue(axis)) {
+                case X -> EnumFacing.EAST;
+                case Y -> EnumFacing.UP;
+                case Z -> EnumFacing.NORTH;
+            };
+            var transformed = rotation.apply(representative).getAxis();
+            return axis.getAllowedValues().contains(transformed) ? state.withProperty(axis, transformed) : state;
+        }
+        return state;
     }
 
     private record Composite(List<StructurePredicate> children, boolean all,
@@ -354,22 +376,27 @@ public final class StructurePredicates {
         public boolean planReusable() {
             return true;
         }
+
         @Override
         public StructureOperation<StructurePredicate> beginTransform(StructureTransform rotation) {
             var properties = expected.getPropertyKeys().iterator();
             return new StructureOperation<>() {
                 private IBlockState transformed = expected;
-                @Override public boolean advance(RecipeWorkBudget work) {
+
+                @Override
+                public boolean advance(RecipeWorkBudget work) {
                     if (complete()) return true;
                     while (properties.hasNext()) {
                         if (!work.take()) return false;
                         transformed = rotateProperty(transformed, properties.next(), rotation);
                     }
                     if (!work.take()) return false;
-                    finish(new State(transformed)); return true;
+                    finish(new State(transformed));
+                    return true;
                 }
             };
         }
+
         @Override
         public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
             plan.read(position, StructureQueries.BLOCK_STATE);
@@ -386,56 +413,57 @@ public final class StructurePredicates {
         }
     }
 
-    @SuppressWarnings("unchecked") // Minecraft valueClass binds the same property to its Enum type.
-    private static IBlockState rotateProperty(IBlockState state, IProperty<?> property, StructureTransform rotation) {
-        if (property.getValueClass() == EnumFacing.class) {
-            var facing = (IProperty<EnumFacing>) property;
-            var transformed = rotation.apply(state.getValue(facing));
-            return facing.getAllowedValues().contains(transformed) ? state.withProperty(facing, transformed) : state;
-        }
-        if (property.getValueClass() == EnumFacing.Axis.class) {
-            var axis = (IProperty<EnumFacing.Axis>) property;
-            var representative = switch (state.getValue(axis)) {
-                case X -> EnumFacing.EAST;
-                case Y -> EnumFacing.UP;
-                case Z -> EnumFacing.NORTH;
-            };
-            var transformed = rotation.apply(representative).getAxis();
-            return axis.getAllowedValues().contains(transformed) ? state.withProperty(axis, transformed) : state;
-        }
-        return state;
-    }
-
     private record Nbt(Map<String, String> expected) implements StructurePredicate {
         @Override
         public boolean planReusable() {
             return true;
         }
-        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { plan.read(position, StructureQueries.TILE_NBT); }
-        @Override public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            plan.read(position, StructureQueries.TILE_NBT);
+        }
+
+        @Override
+        public boolean matches(StructureSnapshot snapshot, BlockPos position) {
             return beginMatch(snapshot, position).run() == StructurePredicateResult.MATCHED;
         }
-        @Override public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+
+        @Override
+        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
             return new StructureOperation<>() {
                 private final Iterator<Map.Entry<String, String>> entries = expected.entrySet().iterator();
-                @Nullable private NBTTagCompound tag;
+                @Nullable
+                private NBTTagCompound tag;
                 private boolean captured;
-                @Override public boolean advance(RecipeWorkBudget work) {
+
+                @Override
+                public boolean advance(RecipeWorkBudget work) {
                     if (complete()) return true;
                     if (!captured) {
                         if (!work.take()) return false;
-                        if (!snapshot.isAreaLoaded(StructureBounds.at(position))) { finish(StructurePredicateResult.UNAVAILABLE); return true; }
-                        tag = snapshot.read(StructureQueries.TILE_NBT, position); captured = true;
-                        if (tag == null) { finish(StructurePredicateResult.MISMATCH); return true; }
+                        if (!snapshot.isAreaLoaded(StructureBounds.at(position))) {
+                            finish(StructurePredicateResult.UNAVAILABLE);
+                            return true;
+                        }
+                        tag = snapshot.read(StructureQueries.TILE_NBT, position);
+                        captured = true;
+                        if (tag == null) {
+                            finish(StructurePredicateResult.MISMATCH);
+                            return true;
+                        }
                     }
                     while (entries.hasNext()) {
                         if (!work.take()) return false;
-                        var entry = entries.next(); var value = Objects.requireNonNull(tag).getTag(entry.getKey());
+                        var entry = entries.next();
+                        var value = Objects.requireNonNull(tag).getTag(entry.getKey());
                         if (value == null || !entry.getValue().equals(value instanceof NBTTagString string ? string.getString() : value.toString())) {
-                            finish(StructurePredicateResult.MISMATCH); return true;
+                            finish(StructurePredicateResult.MISMATCH);
+                            return true;
                         }
                     }
-                    finish(StructurePredicateResult.MATCHED); return true;
+                    finish(StructurePredicateResult.MATCHED);
+                    return true;
                 }
             };
         }

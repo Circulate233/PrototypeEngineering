@@ -10,7 +10,8 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 
 public final class TestResources {
-    private TestResources() {}
+    private TestResources() {
+    }
 
     // Real AEKey implementations exercise multi-type routing without a game world.
     public static final class KeyType extends AEKeyType {
@@ -39,21 +40,44 @@ public final class TestResources {
         }
 
         @Override
-        public AEKeyType getType() { return type; }
+        public AEKeyType getType() {
+            return type;
+        }
+
         @Override
-        public AEKey dropSecondary() { return this; }
+        public AEKey dropSecondary() {
+            return this;
+        }
+
         @Override
-        public Object getPrimaryKey() { return name; }
+        public Object getPrimaryKey() {
+            return name;
+        }
+
         @Override
-        public ResourceLocation getId() { return new ResourceLocation("prototype_eng_test", name); }
+        public ResourceLocation getId() {
+            return new ResourceLocation("prototype_eng_test", name);
+        }
+
         @Override
-        public Object getReadOnlyStack() { return this; }
+        public Object getReadOnlyStack() {
+            return this;
+        }
+
         @Override
-        protected ITextComponent computeDisplayName() { return new TextComponentString(name); }
+        protected ITextComponent computeDisplayName() {
+            return new TextComponentString(name);
+        }
+
         @Override
-        public NBTBase get(String componentId) { return null; }
+        public NBTBase get(String componentId) {
+            return null;
+        }
+
         @Override
-        public void writeToPacket(PacketBuffer data) { data.writeString(name); }
+        public void writeToPacket(PacketBuffer data) {
+            data.writeString(name);
+        }
 
         @Override
         public NBTTagCompound toTag() {
@@ -68,6 +92,8 @@ public final class TestResources {
         }
 
         @Override
-        public int hashCode() { return 31 * type.hashCode() + name.hashCode(); }
+        public int hashCode() {
+            return 31 * type.hashCode() + name.hashCode();
+        }
     }
 }

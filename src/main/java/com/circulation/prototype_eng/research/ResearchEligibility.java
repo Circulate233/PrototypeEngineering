@@ -20,13 +20,24 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-/** PN's combined-source effective levels and contextual start checks against frozen definitions. */
+/**
+ * PN's combined-source effective levels and contextual start checks against frozen definitions.
+ */
 public final class ResearchEligibility {
     private final ResearchRegistry registry;
 
     public ResearchEligibility(ResearchRegistry registry) {
         this.registry = Objects.requireNonNull(registry);
-        if (!registry.isFrozen()) { throw new IllegalStateException("Research eligibility requires a frozen registry"); }
+        if (!registry.isFrozen()) {
+            throw new IllegalStateException("Research eligibility requires a frozen registry");
+        }
+    }
+
+    private static void requireTeamId(String teamId) {
+        Objects.requireNonNull(teamId);
+        if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
+            throw new IllegalArgumentException("Research team id must be canonical non-blank text");
+        }
     }
 
     /**
@@ -41,17 +52,21 @@ public final class ResearchEligibility {
                                       Set<ResourceLocation> blacklistedResearchIds,
                                       Object2LongMap<NetworkResourceType> availableResources) {
         requireTeamId(teamId);
-        if (networkCenterLevel < 0) { throw new IllegalArgumentException("Negative network center level"); }
+        if (networkCenterLevel < 0) {
+            throw new IllegalArgumentException("Negative network center level");
+        }
         var resources = NetworkResourceModifier.copyResources(availableResources);
         var structuralView = calculateStructural(teamId, currentMembers, playerStates, teamOwnedResearch, blacklistedResearchIds);
         var startable = new Object2IntOpenHashMap<ResourceLocation>();
         for (var definition : registry.all()) {
             int completed = structuralView.completedLevel(definition.id());
-            if (completed >= definition.maxLevel()) { continue; }
+            if (completed >= definition.maxLevel()) {
+                continue;
+            }
             int target = completed + 1;
             if (structurallyEligible(structuralView, definition.id(), target)
                 && definition.startCondition().canStart(new ResearchStartContext(definition.id(), target, null,
-                    teamId, structuralView.sharedLevels(), resources, networkCenterLevel))) {
+                teamId, structuralView.sharedLevels(), resources, networkCenterLevel))) {
                 startable.put(definition.id(), target);
             }
         }
@@ -59,11 +74,13 @@ public final class ResearchEligibility {
             startable, structuralView.blacklistedResearchIds());
     }
 
-    /** Captures source levels and structural rules for server admission and queue retention without running start conditions. */
+    /**
+     * Captures source levels and structural rules for server admission and queue retention without running start conditions.
+     */
     public TeamResearchView calculateStructural(String teamId, Collection<UUID> currentMembers,
-                                               Map<UUID, PlayerResearchState> playerStates,
-                                               Object2IntMap<ResourceLocation> teamOwnedResearch,
-                                               Set<ResourceLocation> blacklistedResearchIds) {
+                                                Map<UUID, PlayerResearchState> playerStates,
+                                                Object2IntMap<ResourceLocation> teamOwnedResearch,
+                                                Set<ResourceLocation> blacklistedResearchIds) {
         requireTeamId(teamId);
         var members = new ObjectOpenHashSet<UUID>();
         for (var member : Objects.requireNonNull(currentMembers)) {
@@ -86,22 +103,32 @@ public final class ResearchEligibility {
         var raw = new Object2IntOpenHashMap<ResourceLocation>();
         for (var member : members) {
             var state = playerStates.get(member);
-            if (state == null) { throw new IllegalArgumentException("Missing research state for member " + member); }
+            if (state == null) {
+                throw new IllegalArgumentException("Missing research state for member " + member);
+            }
             for (var entry : state.completedLevelsSnapshot().object2IntEntrySet()) {
                 var id = Objects.requireNonNull(entry.getKey());
                 var definition = requireSource(id, entry.getIntValue(), ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
-                if (entry.getIntValue() > raw.getInt(definition.id())) { raw.put(id, entry.getIntValue()); }
+                if (entry.getIntValue() > raw.getInt(definition.id())) {
+                    raw.put(id, entry.getIntValue());
+                }
             }
         }
         for (var entry : Objects.requireNonNull(teamOwnedResearch).object2IntEntrySet()) {
             var id = Objects.requireNonNull(entry.getKey());
             requireSource(id, entry.getIntValue(), ResearchDownloadDeliveryPolicy.ITEM_ONLY);
-            if (raw.containsKey(id)) { throw new IllegalArgumentException("Research exists in both ordinary sources: " + id); }
-            if (entry.getIntValue() > 0) { raw.put(id, entry.getIntValue()); }
+            if (raw.containsKey(id)) {
+                throw new IllegalArgumentException("Research exists in both ordinary sources: " + id);
+            }
+            if (entry.getIntValue() > 0) {
+                raw.put(id, entry.getIntValue());
+            }
         }
         var effective = new Object2IntOpenHashMap<ResourceLocation>();
         var resolving = new ObjectOpenHashSet<ResourceLocation>();
-        for (var definition : registry.all()) { resolveEffective(definition.id(), raw, blacklist, effective, resolving); }
+        for (var definition : registry.all()) {
+            resolveEffective(definition.id(), raw, blacklist, effective, resolving);
+        }
         var emptyTargets = new Object2IntOpenHashMap<ResourceLocation>();
         return new TeamResearchView(registry, teamId, members, effective, emptyTargets, blacklist);
     }
@@ -117,15 +144,21 @@ public final class ResearchEligibility {
         if (!view.members().contains(requestedBy)) {
             throw new IllegalArgumentException("Research requester is not a captured member of team " + view.teamId());
         }
-        if (networkCenterLevel < 0) { throw new IllegalArgumentException("Negative network center level"); }
+        if (networkCenterLevel < 0) {
+            throw new IllegalArgumentException("Negative network center level");
+        }
         var resources = NetworkResourceModifier.copyResources(availableResources);
-        if (!structurallyEligible(view, researchId, targetLevel)) { return false; }
+        if (!structurallyEligible(view, researchId, targetLevel)) {
+            return false;
+        }
         var definition = registry.require(researchId);
         return definition.startCondition().canStart(new ResearchStartContext(researchId, targetLevel, requestedBy,
             view.teamId(), view.sharedLevels(), resources, networkCenterLevel));
     }
 
-    /** Existing queue retention checks rules only; an admission condition is not a continuation gate. */
+    /**
+     * Existing queue retention checks rules only; an admission condition is not a continuation gate.
+     */
     public boolean structurallyEligible(TeamResearchView view, ResourceLocation researchId, int targetLevel) {
         requireView(view);
         var definition = registry.require(Objects.requireNonNull(researchId));
@@ -136,10 +169,14 @@ public final class ResearchEligibility {
         }
         var stage = definition.stageForLevel(targetLevel);
         for (var entry : stage.prerequisites().object2IntEntrySet()) {
-            if (view.completedLevel(entry.getKey()) < entry.getIntValue()) { return false; }
+            if (view.completedLevel(entry.getKey()) < entry.getIntValue()) {
+                return false;
+            }
         }
         for (var rule : stage.mutexRules()) {
-            if (view.completedLevel(rule.researchId()) >= rule.minLevel()) { return false; }
+            if (view.completedLevel(rule.researchId()) >= rule.minLevel()) {
+                return false;
+            }
         }
         return true;
     }
@@ -147,8 +184,12 @@ public final class ResearchEligibility {
     private int resolveEffective(ResourceLocation id, Object2IntMap<ResourceLocation> raw,
                                  Set<ResourceLocation> blacklist, Object2IntOpenHashMap<ResourceLocation> cache,
                                  Set<ResourceLocation> resolving) {
-        if (cache.containsKey(id)) { return cache.getInt(id); }
-        if (!resolving.add(id)) { throw new IllegalStateException("Research prerequisite cycle at " + id); }
+        if (cache.containsKey(id)) {
+            return cache.getInt(id);
+        }
+        if (!resolving.add(id)) {
+            throw new IllegalStateException("Research prerequisite cycle at " + id);
+        }
         try {
             var definition = registry.require(id);
             int candidate = definition.specialOnly() || blacklist.contains(id) ? 0 : raw.getInt(id);
@@ -161,13 +202,18 @@ public final class ResearchEligibility {
                         break;
                     }
                 }
-                if (satisfied) { cache.put(id, candidate); return candidate; }
+                if (satisfied) {
+                    cache.put(id, candidate);
+                    return candidate;
+                }
                 // Prerequisites are constant throughout this stage; skip its entire failed range.
                 candidate = stage.firstLevel() - 1;
             }
             cache.put(id, 0);
             return 0;
-        } finally { resolving.remove(id); }
+        } finally {
+            resolving.remove(id);
+        }
     }
 
     private ResearchDefinition requireSource(ResourceLocation id, int level, ResearchDownloadDeliveryPolicy expected) {
@@ -180,13 +226,8 @@ public final class ResearchEligibility {
 
     private void requireView(TeamResearchView view) {
         Objects.requireNonNull(view);
-        if (view.registry() != registry) { throw new IllegalArgumentException("Research view belongs to another definition registry"); }
-    }
-
-    private static void requireTeamId(String teamId) {
-        Objects.requireNonNull(teamId);
-        if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
-            throw new IllegalArgumentException("Research team id must be canonical non-blank text");
+        if (view.registry() != registry) {
+            throw new IllegalArgumentException("Research view belongs to another definition registry");
         }
     }
 

@@ -1,56 +1,35 @@
 package com.circulation.prototype_eng.proxy;
 
 import ae2.container.AEBaseContainer;
+import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.client.gui.MachineScreenRegistry;
+import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
+import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
+import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
+import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
+import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
+import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.block.HatchBlocks;
-import com.circulation.prototype_eng.client.gui.EnergyHatchGui;
-import com.circulation.prototype_eng.client.gui.ResourceHatchGui;
-import com.circulation.prototype_eng.client.gui.ResearchGui;
-import com.circulation.prototype_eng.container.ResearchContainer;
 import com.circulation.prototype_eng.client.MachineControllerModels;
 import com.circulation.prototype_eng.client.OrientationToolModels;
-import com.circulation.prototype_eng.container.EnergyHatchContainer;
-import com.circulation.prototype_eng.container.ResourceHatchContainer;
-import net.minecraft.client.renderer.block.model.ModelResourceLocation;
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.item.Item;
-import net.minecraft.world.World;
-import net.minecraftforge.client.event.ModelRegistryEvent;
-import net.minecraftforge.client.model.ModelLoader;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import java.util.Objects;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.network.NetHandlerPlayClient;
-import net.minecraftforge.fml.common.network.FMLNetworkEvent;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
-import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
-import net.minecraft.client.resources.IReloadableResourceManager;
+import com.circulation.prototype_eng.client.gui.BuilderInstrumentGui;
+import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
+import com.circulation.prototype_eng.client.gui.EnergyHatchGui;
+import com.circulation.prototype_eng.client.gui.ResearchGui;
+import com.circulation.prototype_eng.client.gui.ResourceHatchGui;
+import com.circulation.prototype_eng.client.gui.ScannerInstrumentGui;
 import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
 import com.circulation.prototype_eng.client.preview.PreviewEmbeddedInput;
 import com.circulation.prototype_eng.client.preview.PreviewGuiResources;
 import com.circulation.prototype_eng.client.preview.ProjectionInteractions;
 import com.circulation.prototype_eng.client.preview.StructurePreviewCommand;
-import net.minecraftforge.client.ClientCommandHandler;
-import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
-import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
-import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
-import com.circulation.prototype_eng.machine.ControllerDisplayData;
-import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
-import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
-import java.util.function.Consumer;
-import net.minecraft.network.NetworkManager;
-import net.minecraft.util.ResourceLocation;
-import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.jetbrains.annotations.Nullable;
+import com.circulation.prototype_eng.client.preview.WorldProjectionManager;
 import com.circulation.prototype_eng.client.render.BasicMachineControllerRenderer;
+import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
 import com.circulation.prototype_eng.client.render.DirectVertexBufferPool;
 import com.circulation.prototype_eng.client.render.MachineControllerRenderer;
 import com.circulation.prototype_eng.client.render.MachineModelBloom;
@@ -62,16 +41,44 @@ import com.circulation.prototype_eng.client.render.ModelBuildCache;
 import com.circulation.prototype_eng.client.render.ModelBuildExecutor;
 import com.circulation.prototype_eng.client.render.ModelClientThread;
 import com.circulation.prototype_eng.client.render.ReusableModelVboUploader;
-import net.minecraft.util.math.AxisAlignedBB;
-import net.minecraftforge.client.event.RenderWorldLastEvent;
-import net.minecraftforge.client.event.ModelBakeEvent;
-import net.minecraftforge.fml.common.eventhandler.EventPriority;
-import com.circulation.prototype_eng.client.gui.ScannerInstrumentGui;
-import com.circulation.prototype_eng.client.gui.BuilderInstrumentGui;
+import com.circulation.prototype_eng.container.EnergyHatchContainer;
+import com.circulation.prototype_eng.container.ResearchContainer;
+import com.circulation.prototype_eng.container.ResourceHatchContainer;
 import com.circulation.prototype_eng.container.StructureToolContainer;
-import com.circulation.prototype_eng.client.gui.ClientHatchConfigurations;
+import com.circulation.prototype_eng.machine.ControllerDisplayData;
+import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
+import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.network.NetHandlerPlayClient;
+import net.minecraft.client.renderer.block.model.ModelResourceLocation;
+import net.minecraft.client.resources.IReloadableResourceManager;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.Item;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.AxisAlignedBB;
+import net.minecraft.world.World;
+import net.minecraftforge.client.ClientCommandHandler;
+import net.minecraftforge.client.event.ModelBakeEvent;
+import net.minecraftforge.client.event.ModelRegistryEvent;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
+import net.minecraftforge.client.model.ModelLoader;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.world.WorldEvent;
+import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.fml.common.network.FMLNetworkEvent;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
+import java.util.function.Consumer;
+
 @SuppressWarnings("resource") // Proxy retains the client manager; connection/world hooks retire its attachment leases.
 public class ClientProxy extends CommonProxy {
     private ModelBuildCache modelBuilds;
@@ -82,10 +89,24 @@ public class ClientProxy extends CommonProxy {
     private MachineRenderOptions modelRenderOptions = MachineRenderOptions.defaults();
     private ClientStructureCatalog structures;
     private ClientHatchConfigurations hatchConfigurations;
+    private ClientRecipeDefinitions recipeDefinitions;
     private StructurePreviews previews;
     private WorldProjectionManager projectionManager;
     private MachineRenderBindings renderBindings;
     private ClientMachineRenderSnapshots renderSnapshots;
+
+    private static void modelCleanup(Runnable... actions) {
+        Throwable failure = null;
+        for (var action : actions)
+            try {
+                action.run();
+            } catch (RuntimeException | Error cleanup) {
+                if (failure == null) failure = cleanup;
+                else if (failure != cleanup) failure.addSuppressed(cleanup);
+            }
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
+    }
 
     public StructurePreviews previews() {
         var catalog = structures();
@@ -99,12 +120,15 @@ public class ClientProxy extends CommonProxy {
     }
 
     public ClientStructureCatalog structures() {
-        if (!Minecraft.getMinecraft().isCallingFromMinecraftThread()) throw new IllegalStateException("Structure view requires the client thread");
+        if (!Minecraft.getMinecraft().isCallingFromMinecraftThread())
+            throw new IllegalStateException("Structure view requires the client thread");
         if (structures == null) structures = new ClientStructureCatalog();
         return structures;
     }
 
-    /** Concrete owned CPU model service, shared by the following runtime and preview consumers. */
+    /**
+     * Concrete owned CPU model service, shared by the following runtime and preview consumers.
+     */
     public ModelBuildCache modelBuilds() {
         structures();
         var minecraft = Minecraft.getMinecraft();
@@ -194,19 +218,6 @@ public class ClientProxy extends CommonProxy {
         MachineModelBloom.clear();
     }
 
-    private static void modelCleanup(Runnable... actions) {
-        Throwable failure = null;
-        for (var action : actions)
-            try {
-                action.run();
-            } catch (RuntimeException | Error cleanup) {
-                if (failure == null) failure = cleanup;
-                else if (failure != cleanup) failure.addSuppressed(cleanup);
-            }
-        if (failure instanceof Error error) throw error;
-        if (failure instanceof RuntimeException exception) throw exception;
-    }
-
     public MachineRenderBindings renderBindings() {
         structures();
         if (renderBindings == null) renderBindings = new MachineRenderBindings();
@@ -281,8 +292,8 @@ public class ClientProxy extends CommonProxy {
                 if (originalBuilds != null && modelBuilds == originalBuilds) retireModelBuilds();
             },
             () -> {
-            if (renderSnapshots != null) renderSnapshots.unloadWorld(world);
-        }));
+                if (renderSnapshots != null) renderSnapshots.unloadWorld(world);
+            }));
     }
 
     @SubscribeEvent
@@ -296,7 +307,10 @@ public class ClientProxy extends CommonProxy {
             },
             () -> {
                 if (renderSnapshots != null) renderSnapshots.tick();
-    });
+            },
+            () -> {
+                if (recipeDefinitions != null) recipeDefinitions.tick();
+            });
     }
 
     private ClientHatchConfigurations hatchConfigurations() {
@@ -313,6 +327,40 @@ public class ClientProxy extends CommonProxy {
         return display.connectedTo(handler.getNetworkManager()) ? display.view() : null;
     }
 
+    public ClientRecipeDefinitions recipeDefinitions() {
+        if (!Minecraft.getMinecraft().isCallingFromMinecraftThread())
+            throw new IllegalStateException("Recipe definitions require client owner");
+        if (recipeDefinitions == null)
+            recipeDefinitions = new ClientRecipeDefinitions(ClientRecipeDeclarations.INSTANCE,
+                new ClientRecipeDefinitions.Renderer() {
+                    @Override
+                    public ClientRecipeDefinitions.ApplyResult apply(ClientRecipeDeclarations.Declaration declaration) {
+                    if (!Loader.isModLoaded("jei")) return new ClientRecipeDefinitions.ApplyResult(false, "HEI is not loaded");
+                        var result = PrototypeJeiPlugin.applyDefinitions(declaration.snapshot(), declaration.displays());
+                        return new ClientRecipeDefinitions.ApplyResult(result.ready(), result.reason());
+                    }
+
+                    @Override
+                    public void withdraw(String reason) {
+                    if (Loader.isModLoaded("jei")) PrototypeJeiPlugin.withdrawDefinitions(reason);
+                    }
+            });
+        return recipeDefinitions;
+    }
+
+    @Override
+    public void receiveRecipeDefinitions(RecipeDefinitionManifestPacket packet, Object connection) {
+        Minecraft.getMinecraft().addScheduledTask(() -> {
+            var minecraft = Minecraft.getMinecraft();
+            if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+            try {
+                recipeDefinitions().receive(handler.getNetworkManager(), packet);
+            } catch (RuntimeException failure) {
+                PrototypeEngineering.LOGGER.error("Cannot apply authoritative recipe declaration manifest", failure);
+            }
+        });
+    }
+
     @Override
     public void receiveHatchConfiguration(HatchConfigurationPacket packet, Object connection) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
@@ -326,13 +374,18 @@ public class ClientProxy extends CommonProxy {
         });
     }
 
-    @Override public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
+    @Override
+    public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
         Minecraft.getMinecraft().addScheduledTask(() -> {
             var minecraft = Minecraft.getMinecraft();
-            if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+            if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler)
+                return;
             var manager = handler.getNetworkManager();
-            try { structures().receive(manager, packet); }
-            catch (RuntimeException failure) { PrototypeEngineering.LOGGER.error("Cannot install authoritative structure catalog", failure); }
+            try {
+                structures().receive(manager, packet);
+            } catch (RuntimeException failure) {
+                PrototypeEngineering.LOGGER.error("Cannot install authoritative structure catalog", failure);
+            }
         });
     }
 
@@ -343,6 +396,7 @@ public class ClientProxy extends CommonProxy {
             if (event.getManager().isChannelOpen() && (current == null || current.getNetworkManager() == event.getManager())) {
                 structures().connected(event.getManager());
                 hatchConfigurations().connected(event.getManager());
+                recipeDefinitions().connected(event.getManager());
             }
         });
     }
@@ -353,12 +407,18 @@ public class ClientProxy extends CommonProxy {
                 if (structures().connectedTo(event.getManager())) retireModelBuilds();
             },
             () -> structures().disconnected(event.getManager()),
-            () -> hatchConfigurations().disconnected(event.getManager())));
+            () -> hatchConfigurations().disconnected(event.getManager()),
+            () -> recipeDefinitions().disconnected(event.getManager())));
 
     }
+
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        if (Loader.isModLoaded("jei")) PrototypeJeiPlugin.configureDefinitions(() -> {
+            var local = recipeDefinitions().resolved();
+            return local == null ? null : new PrototypeJeiPlugin.Definitions(local.snapshot(), local.displays());
+        }, () -> recipeDefinitions().runtimeReady(), () -> recipeDefinitions().runtimeUnavailable());
         new BasicMachineControllerRenderer().register();
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(PreviewGuiResources.INSTANCE);
@@ -374,6 +434,7 @@ public class ClientProxy extends CommonProxy {
                 retireModelBuilds();
                 if (renderSnapshots != null) renderSnapshots.invalidateResources();
                 if (projectionManager != null) projectionManager.invalidateResources();
+                recipeDefinitions().resourcesReloaded();
             });
     }
 

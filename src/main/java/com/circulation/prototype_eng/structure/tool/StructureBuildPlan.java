@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
@@ -17,18 +17,6 @@ import java.util.Map;
 
 /** Common-side expansion for construction; unknown display requirements remain unbuildable. */
 public final class StructureBuildPlan {
-    public record Cell(BlockPos position, @Nullable StructureDisplay display, String path) {
-    }
-
-    public record Node(String path, int index, BlockPos origin, int count) {
-    }
-
-    public record Result(List<Cell> cells, List<Node> nodes) {
-    }
-
-    private record Visit(int node, String path, BlockPos anchor) {
-    }
-
     private StructureBuildPlan() {
     }
 
@@ -79,5 +67,17 @@ public final class StructureBuildPlan {
 
     private static BlockPos multiply(BlockPos position, long amount) {
         return new BlockPos(Math.toIntExact(position.getX() * amount), Math.toIntExact(position.getY() * amount), Math.toIntExact(position.getZ() * amount));
+    }
+
+    public record Cell(BlockPos position, @Nullable StructureDisplay display, String path) {
+    }
+
+    public record Node(String path, int index, BlockPos origin, int count) {
+    }
+
+    public record Result(List<Cell> cells, List<Node> nodes) {
+    }
+
+    private record Visit(int node, String path, BlockPos anchor) {
     }
 }

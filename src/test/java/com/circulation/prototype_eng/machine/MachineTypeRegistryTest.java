@@ -28,6 +28,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class MachineTypeRegistryTest {
+    private static MachineType type(String machine, String structure) {
+        return MachineType.builder(id(machine), RecipeText.Cancelled, id(structure)).build();
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("test", path);
+    }
+
     @Test
     void rejectedBatchesPreservePendingDeclarationsAndAcceptLaterCorrectionInOrder() {
         var registry = new MachineTypeRegistry();
@@ -137,11 +145,16 @@ class MachineTypeRegistryTest {
         registry.register(first);
         var second = type("second", "shape");
         var batch = new AbstractCollection<MachineType>() {
-            @Override public @NotNull Iterator<MachineType> iterator() {
+            @Override
+            public @NotNull Iterator<MachineType> iterator() {
                 registry.freeze();
                 return List.of(second).iterator();
             }
-            @Override public int size() { return 1; }
+
+            @Override
+            public int size() {
+                return 1;
+            }
         };
         assertThrows(IllegalStateException.class, () -> registry.registerAll(batch));
         registry.register(second);
@@ -149,19 +162,41 @@ class MachineTypeRegistryTest {
         assertEquals(List.of(first, second), registry.types());
     }
 
-    private static MachineType type(String machine, String structure) {
-        return MachineType.builder(id(machine), RecipeText.Cancelled, id(structure)).build();
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("test", path); }
-
     private record Shape(ResourceLocation shapeId, Runnable onReadId) implements MachineStructure {
-        private Shape(ResourceLocation id) { this(id, () -> {}); }
-        @Override public ResourceLocation id() { onReadId.run(); return shapeId; }
-        @Override public BlockOrientation orientation() { return fail("Registration must not inspect orientation"); }
-        @Override public boolean hideWorldBlocks() { return fail("Registration must not inspect rendering"); }
-        @Override public MachineStructure transform(StructureTransform rotation) { return fail("Registration must not transform a structure"); }
-        @Override public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) { fail("Registration must not read the world"); }
-        @Override public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) { return fail("Registration must not match a structure"); }
+        private Shape(ResourceLocation id) {
+            this(id, () -> {
+            });
+        }
+
+        @Override
+        public ResourceLocation id() {
+            onReadId.run();
+            return shapeId;
+        }
+
+        @Override
+        public BlockOrientation orientation() {
+            return fail("Registration must not inspect orientation");
+        }
+
+        @Override
+        public boolean hideWorldBlocks() {
+            return fail("Registration must not inspect rendering");
+        }
+
+        @Override
+        public MachineStructure transform(StructureTransform rotation) {
+            return fail("Registration must not transform a structure");
+        }
+
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
+            fail("Registration must not read the world");
+        }
+
+        @Override
+        public StructureMatch match(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
+            return fail("Registration must not match a structure");
+        }
     }
 }

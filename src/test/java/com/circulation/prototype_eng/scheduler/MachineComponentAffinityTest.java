@@ -8,8 +8,8 @@ import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -114,7 +114,9 @@ class MachineComponentAffinityTest {
         List<Supplier<Set<?>>> failures = List.of(
             () -> null,
             () -> Collections.singleton(null),
-            () -> { throw failure; });
+            () -> {
+                throw failure;
+            });
         for (var invalid : failures) {
             var finished = new AtomicInteger();
             var first = new Device(() -> Set.of("first"), finished::incrementAndGet);
@@ -139,12 +141,14 @@ class MachineComponentAffinityTest {
         }
     }
 
-    private record Source(String id) {}
+    private record Source(String id) {
+    }
 
     private static final class Device implements AffinityKeyProvider {
         private Supplier<Set<?>> keys;
         private Runnable action;
-        private Runnable onCapture = () -> {};
+        private Runnable onCapture = () -> {
+        };
 
         private Device(Supplier<Set<?>> keys, Runnable action) {
             this.keys = keys;

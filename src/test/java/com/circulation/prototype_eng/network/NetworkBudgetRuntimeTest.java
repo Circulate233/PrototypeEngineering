@@ -12,10 +12,10 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.LeaseStatus;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
-import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
@@ -29,14 +29,27 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkBudgetRuntimeTest {
     private static final UUID OWNER = new UUID(1, 1);
     private static final ResourceLocation SOURCE = new ResourceLocation("test", "slot");
     private static final ResourceLocation MACHINE_TYPE = new ResourceLocation("test", "machine");
 
-    @Test void recapturesFailuresAndTeamReturnKeepOneTickBalanceAndOldCompensationCannotRefillNextTick() {
+    private static NetworkRuntime.WorkPermit permit(NetworkRuntime.Registration registration) {
+        return Objects.requireNonNull(registration.workPermit());
+    }
+
+    private static Object2LongMap<NetworkResourceType> amount(long value) {
+        return Object2LongMaps.singleton(NetworkResources.COMPUTE, value);
+    }
+
+    @Test
+    void recapturesFailuresAndTeamReturnKeepOneTickBalanceAndOldCompensationCannotRefillNextTick() {
         try (var fixture = new Fixture()) {
             var runtime = fixture.runtime;
             runtime.beginTick(10);
@@ -87,7 +100,8 @@ class NetworkBudgetRuntimeTest {
         }
     }
 
-    @Test void identityAbaAndChangedHostProofPreventOldReceiptCommitWithoutWaitingForAnotherCapture() {
+    @Test
+    void identityAbaAndChangedHostProofPreventOldReceiptCommitWithoutWaitingForAnotherCapture() {
         try (var fixture = new Fixture()) {
             var runtime = fixture.runtime;
             runtime.beginTick(0);
@@ -123,7 +137,8 @@ class NetworkBudgetRuntimeTest {
         }
     }
 
-    @Test void schedulerMainPreparationsShareBudgetAndWorkersOnlyReadTheFinalPublication() {
+    @Test
+    void schedulerMainPreparationsShareBudgetAndWorkersOnlyReadTheFinalPublication() {
         try (var fixture = new Fixture();
              var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
             var runtime = fixture.runtime;
@@ -158,17 +173,11 @@ class NetworkBudgetRuntimeTest {
                 assertEquals(3, preparations[0]);
                 assertTrue(workerReceipt[0].commit());
                 assertEquals(0, workerPermit[0].availableResources().getLong(NetworkResources.COMPUTE));
-            } finally { runtime.endTick(); }
+            } finally {
+                runtime.endTick();
+            }
             assertFalse(workerPermit[0].current());
         }
-    }
-
-    private static NetworkRuntime.WorkPermit permit(NetworkRuntime.Registration registration) {
-        return Objects.requireNonNull(registration.workPermit());
-    }
-
-    private static Object2LongMap<NetworkResourceType> amount(long value) {
-        return Object2LongMaps.singleton(NetworkResources.COMPUTE, value);
     }
 
     private static final class Fixture implements AutoCloseable {
@@ -205,7 +214,9 @@ class NetworkBudgetRuntimeTest {
 
         private NetworkRuntime.Registration register(MachineIdentityRegistry.Registration identity, NetworkDeviceRole role) {
             return runtime.register(identity, () -> {
-                if (captureFailure) { throw new IllegalStateException("capture failed"); }
+                if (captureFailure) {
+                    throw new IllegalStateException("capture failed");
+                }
                 var resources = new Object2LongOpenHashMap<NetworkResourceType>();
                 if (role == NetworkDeviceRole.NETWORK_CENTER) {
                     resources.put(NetworkResources.THREAD, 1);
@@ -213,17 +224,22 @@ class NetworkBudgetRuntimeTest {
                 }
                 return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), role, 1, true,
                     identity.loadOrder(), resources, NetworkResourceModifier.EMPTY, 0, 0), () -> {
-                    if (proofFailure) { throw new IllegalStateException("proof failed"); }
+                    if (proofFailure) {
+                        throw new IllegalStateException("proof failed");
+                    }
                     return role != NetworkDeviceRole.NETWORK_CENTER || centerProofValid;
                 });
             });
         }
 
         private void requireOwner() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Network runtime owner required"); }
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Network runtime owner required");
+            }
         }
 
-        @Override public void close() {
+        @Override
+        public void close() {
             runtime.close();
             identities.close();
         }

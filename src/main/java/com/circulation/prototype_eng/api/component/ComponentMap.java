@@ -1,24 +1,24 @@
 package com.circulation.prototype_eng.api.component;
 
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import net.minecraft.util.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
-
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.Map;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectSets;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import java.util.AbstractSet;
-import java.util.Iterator;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.AbstractSet;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Typed component assembly and ordered phase execution migrated from PM's MachineComponentMap.
@@ -44,21 +44,29 @@ public final class ComponentMap<E> {
         var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<E, ?>, Set<ComponentType<E, ?>>>();
         for (var type : declarations) {
             Objects.requireNonNull(type);
-            if (dependencies.putIfAbsent(type, type.dependencies()) != null) { throw new IllegalArgumentException("Component declared twice: " + type.id()); }
+            if (dependencies.putIfAbsent(type, type.dependencies()) != null) {
+                throw new IllegalArgumentException("Component declared twice: " + type.id());
+            }
         }
         validateGraph(dependencies);
     }
 
-    /** Validates saved effective edges before restoration invokes any component factory. */
+    /**
+     * Validates saved effective edges before restoration invokes any component factory.
+     */
     public static <E> void validateGraph(Map<ComponentType<E, ?>, ? extends Set<ComponentType<E, ?>>> dependencies) {
         var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
         var graph = new TopologicalComponentMap<ComponentType<E, ?>, ComponentType<E, ?>>();
         for (var entry : dependencies.entrySet()) {
             var type = Objects.requireNonNull(entry.getKey());
             var edges = Objects.requireNonNull(entry.getValue());
-            if (graph.contains(type)) { throw new IllegalArgumentException("Component declared twice: " + type.id()); }
+            if (graph.contains(type)) {
+                throw new IllegalArgumentException("Component declared twice: " + type.id());
+            }
             requireTypeIdentity(identities, type);
-            for (var dependency : edges) { requireTypeIdentity(identities, Objects.requireNonNull(dependency)); }
+            for (var dependency : edges) {
+                requireTypeIdentity(identities, Objects.requireNonNull(dependency));
+            }
             graph.add(type, type, edges);
         }
         orderWithSystems(graph);
@@ -66,7 +74,79 @@ public final class ComponentMap<E> {
 
     private static <E> void requireTypeIdentity(Map<ResourceLocation, ComponentType<E, ?>> identities, ComponentType<E, ?> type) {
         var previous = identities.putIfAbsent(type.id(), type);
-        if (previous != null && previous != type) { throw new IllegalArgumentException("Different component types share id " + type.id()); }
+        if (previous != null && previous != type) {
+            throw new IllegalArgumentException("Different component types share id " + type.id());
+        }
+    }
+
+    private static <E> void postAll(E owner, List<TickEntry<E, ?>> entries, @Nullable Throwable primary) {
+        Throwable failure = primary;
+        for (var entry : entries) {
+            try {
+                entry.post(owner);
+            } catch (RuntimeException | Error cleanupFailure) {
+                if (failure == null) {
+                    failure = cleanupFailure;
+                } else if (failure != cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+        }
+        if (primary == null) {
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
+        }
+    }
+
+    private static <E, C> List<TopologicalComponentMap.Node<ComponentType<E, ?>, C>> orderWithSystems(
+        TopologicalComponentMap<ComponentType<E, ?>, C> components) {
+        var graph = new TopologicalComponentMap<ComponentType<E, ?>, C>();
+        var bySystem = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ComponentType<E, ?>>>();
+        var systemDefinitions = new Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>>();
+        for (var node : components.orderedComponents()) {
+            graph.add(node.key(), node.component(), node.dependencies());
+            for (var system : node.key().systems()) {
+                var id = Objects.requireNonNull(system.id(), "system id");
+                var previous = systemDefinitions.putIfAbsent(id, system);
+                if (previous != null && previous != system) {
+                    throw new IllegalArgumentException("Different systems share id " + id);
+                }
+                var owners = bySystem.computeIfAbsent(id, ignored -> new ObjectArrayList<>());
+                if (owners.contains(node.key())) {
+                    throw new IllegalArgumentException("System bound twice: " + id);
+                }
+                owners.add(node.key());
+            }
+        }
+        for (var node : components.orderedComponents()) {
+            for (var system : node.key().systems()) {
+                for (var after : system.runAfter()) {
+                    var owners = bySystem.get(after);
+                    if (owners != null) {
+                        for (var other : owners) {
+                            if (other != node.key()) {
+                                graph.addDependency(node.key(), other);
+                            }
+                        }
+                    }
+                }
+                for (var before : system.runBefore()) {
+                    var owners = bySystem.get(before);
+                    if (owners != null) {
+                        for (var other : owners) {
+                            if (other != node.key()) {
+                                graph.addDependency(other, node.key());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return graph.orderedComponents();
     }
 
     public <C> C create(ComponentType<E, C> type, E owner) {
@@ -90,7 +170,8 @@ public final class ComponentMap<E> {
     @Nullable
     @SuppressWarnings("ReturnOfInnerClass") // The candidate belongs to this exact component map and graph revision.
     public <C> PreparedPut preparePut(ComponentType<E, C> type, C component, RecipeWorkBudget work) {
-        Objects.requireNonNull(type); Objects.requireNonNull(component);
+        Objects.requireNonNull(type);
+        Objects.requireNonNull(component);
         var previous = types.get(type.id());
         if (previous != null && previous != type)
             throw new IllegalArgumentException("Different component types share id " + type.id());
@@ -104,7 +185,8 @@ public final class ComponentMap<E> {
         var unique = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>();
         var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
         for (var put : prepared) {
-            if (put.owner != this || !unique.add(put.type)) throw new IllegalArgumentException("Foreign or duplicate prepared component insertion");
+            if (put.owner != this || !unique.add(put.type))
+                throw new IllegalArgumentException("Foreign or duplicate prepared component insertion");
             requireTypeIdentity(identities, put.type);
             var previous = types.get(put.type.id());
             if (previous != null && previous != put.type)
@@ -115,20 +197,15 @@ public final class ComponentMap<E> {
         for (var put : prepared) types.put(put.type.id(), put.type);
     }
 
-    public final class PreparedPut {
-        private final ComponentMap<E> owner = ComponentMap.this;
-        private final ComponentType<E, ?> type;
-        private final TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>> candidate;
-        private PreparedPut(ComponentType<E, ?> type, TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>> candidate) {
-            this.type = type; this.candidate = candidate;
-        }
-    }
-
-    /** Used when restoring an immutable component; preserves the existing node and effective graph. */
+    /**
+     * Used when restoring an immutable component; preserves the existing node and effective graph.
+     */
     public <C> void replaceValue(ComponentType<E, C> type, C component) {
         Objects.requireNonNull(type);
         Objects.requireNonNull(component);
-        if (types.get(type.id()) != type) { throw new IllegalArgumentException("Cannot replace absent or foreign component type: " + type.id()); }
+        if (types.get(type.id()) != type) {
+            throw new IllegalArgumentException("Cannot replace absent or foreign component type: " + type.id());
+        }
         components.replaceValue(type, new Binding<>(type, component));
     }
 
@@ -147,7 +224,9 @@ public final class ComponentMap<E> {
         types.remove(type.id());
     }
 
-    /** Captures assembly order and effective dependency edges at an exclusive save boundary. */
+    /**
+     * Captures assembly order and effective dependency edges at an exclusive save boundary.
+     */
     public List<SavedBinding<E, ?>> snapshotBindings() {
         orderedTickEntries();
         return assemblyBindings();
@@ -158,10 +237,362 @@ public final class ComponentMap<E> {
         return new BindingCapture(false);
     }
 
-    /** Same complete component/system graph validation as snapshotBindings, with actual visits charged. */
+    /**
+     * Same complete component/system graph validation as snapshotBindings, with actual visits charged.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     public BindingCapture beginSnapshotBindings() {
         return new BindingCapture(true);
+    }
+
+    /**
+     * Unsorted assembly for exceptional lifecycle cleanup when a broken dependency graph cannot be
+     * ordered. This deliberately does not validate the graph and must not replace save validation.
+     */
+    public List<SavedBinding<E, ?>> assemblyBindings() {
+        var result = new ObjectArrayList<SavedBinding<E, ?>>();
+        for (var node : components.assemblyComponents()) {
+            result.add(node.component().saved(node.dependencies()));
+        }
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /**
+     * Captures component dependency order, independently of assembly order, for lifecycle cleanup.
+     */
+    public List<SavedBinding<E, ?>> orderedBindings() {
+        return Objects.requireNonNull(orderedBindings(new RecipeWorkBudget(Long.MAX_VALUE)));
+    }
+
+    /** Original component dependency order, charged before each current publication visit. */
+    @Nullable
+    public List<SavedBinding<E, ?>> orderedBindings(RecipeWorkBudget work) {
+        var result = new ObjectArrayList<SavedBinding<E, ?>>();
+        var ordered = components.orderedComponents(work);
+        if (ordered == null) return null;
+        for (var node : ordered) {
+            if (!work.take()) return null;
+            result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
+        }
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /**
+     * Constraints for dependents not yet installed also survive a save/reload.
+     */
+    public Map<ComponentType<E, ?>, Set<ComponentType<E, ?>>> snapshotPendingDependencies() {
+        return components.pendingDependencies();
+    }
+
+    /**
+     * Downstream mods can reset the components owned by their machine or process.
+     */
+    @SuppressWarnings("unused")
+    public void clear() {
+        components.clear();
+        types.clear();
+    }
+
+    /**
+     * Downstream mods can add ordering constraints while assembling components.
+     */
+    @SuppressWarnings("unused")
+    public void addDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) {
+        components.addDependency(dependent, dependency);
+    }
+
+    /**
+     * Downstream mods can remove ordering constraints when their assembly changes.
+     */
+    @SuppressWarnings("unused")
+    public void removeDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) {
+        components.removeDependency(dependent, dependency);
+    }
+
+    /**
+     * Captures all phases before invoking any callback.
+     */
+    public void tick(E owner) {
+        var entries = orderedTickEntries();
+        for (var entry : entries) {
+            entry.pre(owner);
+        }
+        for (var entry : entries) {
+            entry.tick(owner);
+        }
+        for (var entry : entries) {
+            entry.post(owner);
+        }
+    }
+
+    /**
+     * Captures the plain tick's exact dispatch without running callbacks. A scheduler may advance
+     * one normal callback at a time, retaining this cursor while that callback's deferred work is
+     * settled. It must not advance or finish until that work is confirmed. This cursor preserves
+     * the plain tick's fail-fast post policy; process-body cleanup uses {@link #beginTick} instead.
+     * The caller supplies execution ownership for the entity throughout every suspended interval.
+     */
+    public TickDispatch<E> captureDispatch(E owner) {
+        return new TickDispatch<>(owner, orderedTickEntries());
+    }
+
+    /**
+     * Captures one dispatch for pre, tick, body and post. Pre/tick faults abort before body and post,
+     * preserving PM's process callback boundary and the plain tick's fail-fast behavior. Once body
+     * starts, every captured post callback runs in order, even after a body or earlier post fault.
+     * A body fault remains primary; post faults are suppressed rather than replacing it.
+     */
+    public void tick(E owner, Runnable body) {
+        Objects.requireNonNull(body);
+        var session = beginTick(owner);
+        Throwable primary = null;
+        try {
+            body.run();
+        } catch (RuntimeException | Error failure) {
+            primary = failure;
+            throw failure;
+        } finally {
+            session.finish(primary);
+        }
+    }
+
+    /**
+     * Starts one captured dispatch and runs all pre callbacks, then all tick callbacks. A callback
+     * failure produces no session and never enters post. The caller retains the successful session
+     * across its business stages and finishes only after their complete or compensated boundary.
+     */
+    public TickSession<E> beginTick(E owner) {
+        var entries = orderedTickEntries();
+        var session = new TickSession<>(owner, entries);
+        for (var entry : entries) {
+            entry.pre(owner);
+        }
+        for (var entry : entries) {
+            entry.tick(owner);
+        }
+        return session;
+    }
+
+    private List<TickEntry<E, ?>> orderedTickEntries() {
+        if (dispatchRevision == components.revision()) {
+            return dispatch;
+        }
+        var entries = new ObjectArrayList<TickEntry<E, ?>>();
+        for (var node : orderWithSystems(components)) {
+            node.component().appendEntries(entries);
+        }
+        dispatch = ObjectLists.unmodifiable(entries);
+        dispatchRevision = components.revision();
+        return dispatch;
+    }
+
+    /**
+     * Private proof: TopologicalComponentMap.Node already froze this exact immutable set.
+     */
+    private static final class FrozenDependencies<E> extends AbstractSet<ComponentType<E, ?>> {
+        private final Set<ComponentType<E, ?>> values;
+
+        private FrozenDependencies(Set<ComponentType<E, ?>> values) {
+            this.values = values;
+        }
+
+        @Override
+        public @NotNull Iterator<ComponentType<E, ?>> iterator() {
+            return values.iterator();
+        }
+
+        @Override
+        public int size() {
+            return values.size();
+        }
+    }
+
+    public record SavedBinding<E, C>(ComponentType<E, C> type, C component, Set<ComponentType<E, ?>> dependencies) {
+        public SavedBinding {
+            Objects.requireNonNull(type);
+            Objects.requireNonNull(component);
+            dependencies = dependencies instanceof FrozenDependencies<?> ? dependencies
+                : ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies));
+        }
+    }
+
+    /**
+     * One captured, owner-thread plain dispatch, including intervals between callbacks.
+     */
+    public static final class TickDispatch<E> {
+        private final Thread creator = Thread.currentThread();
+        private final E owner;
+        private final List<TickEntry<E, ?>> entries;
+        private Phase phase = Phase.PREPARED;
+        private int cursor;
+        private boolean executing;
+
+        private TickDispatch(E owner, List<TickEntry<E, ?>> entries) {
+            this.owner = owner;
+            this.entries = entries;
+        }
+
+        /**
+         * Runs all captured pre callbacks once. A failure aborts every later phase.
+         */
+        public void begin() {
+            requireBoundary();
+            if (phase != Phase.PREPARED) {
+                throw new IllegalStateException("Component dispatch has already begun");
+            }
+            executing = true;
+            try {
+                for (var entry : entries) {
+                    entry.pre(owner);
+                }
+                phase = Phase.NORMAL;
+            } catch (RuntimeException | Error failure) {
+                phase = Phase.ABORTED;
+                throw failure;
+            } finally {
+                executing = false;
+            }
+        }
+
+        /**
+         * Invokes exactly the next normal callback, returning false only when none remain. The
+         * callback is consumed before entry; neither failure nor a later resume can replay it.
+         */
+        public boolean advance() {
+            requireBoundary();
+            if (phase != Phase.NORMAL) {
+                throw new IllegalStateException("Component dispatch is not in its normal phase");
+            }
+            if (cursor == entries.size()) {
+                return false;
+            }
+            executing = true;
+            try {
+                entries.get(cursor++).tick(owner);
+                return true;
+            } catch (RuntimeException | Error failure) {
+                phase = Phase.ABORTED;
+                throw failure;
+            } finally {
+                executing = false;
+            }
+        }
+
+        /**
+         * Runs post only after all normal callbacks and their caller-owned deferred work. Like
+         * plain tick, the first post failure stops later post callbacks and cannot be replayed.
+         */
+        public void finish() {
+            requireBoundary();
+            if (phase != Phase.NORMAL || cursor != entries.size()) {
+                throw new IllegalStateException("Component dispatch still has unfinished normal callbacks");
+            }
+            phase = Phase.FINISHED;
+            executing = true;
+            try {
+                for (var entry : entries) {
+                    entry.post(owner);
+                }
+            } finally {
+                executing = false;
+            }
+        }
+
+        /**
+         * Stops an unstarted or suspended dispatch without post, for example when deferred normal
+         * work failed. The caller must still retain and settle that work before releasing ownership.
+         */
+        public void abort() {
+            requireBoundary();
+            if (phase == Phase.FINISHED) {
+                throw new IllegalStateException("Component dispatch already finished");
+            }
+            phase = Phase.ABORTED;
+        }
+
+        private void requireBoundary() {
+            if (Thread.currentThread() != creator || executing) {
+                throw new IllegalStateException("Component dispatch requires its owner outside callbacks");
+            }
+        }
+
+        private enum Phase {PREPARED, NORMAL, ABORTED, FINISHED}
+    }
+
+    /**
+     * One owner-thread post boundary for exactly the entries captured before pre/tick execution.
+     */
+    public static final class TickSession<E> {
+        private final Thread creator = Thread.currentThread();
+        private final E owner;
+        private final List<TickEntry<E, ?>> entries;
+        private boolean finished;
+
+        private TickSession(E owner, List<TickEntry<E, ?>> entries) {
+            this.owner = owner;
+            this.entries = entries;
+        }
+
+        /**
+         * Attempts every captured post once, aggregating faults after later posts have run.
+         */
+        public void finish() {
+            finish(null);
+        }
+
+        /**
+         * Attach every post fault to an existing primary without throwing it; its caller owns that
+         * fault. Without a primary, throw the aggregated post fault. Reject replay and callback
+         * reentry even when the original post dispatch failed.
+         */
+        public void finish(@Nullable Throwable primary) {
+            if (Thread.currentThread() != creator) {
+                throw new IllegalStateException("Component tick session must finish on its creating thread");
+            }
+            if (finished) {
+                throw new IllegalStateException("Component tick session already entered its post boundary");
+            }
+            finished = true;
+            postAll(owner, entries, primary);
+        }
+    }
+
+    private record Binding<E, C>(ComponentType<E, C> type, C component) {
+        SavedBinding<E, C> saved(Set<ComponentType<E, ?>> dependencies) {
+            return new SavedBinding<>(type, component, dependencies);
+        }
+
+        void appendEntries(ObjectArrayList<TickEntry<E, ?>> entries) {
+            // PM preserves the declared order of multiple systems attached to one component.
+            for (var system : type.systems()) {
+                entries.add(new TickEntry<>(system, component));
+            }
+        }
+    }
+
+    private record TickEntry<E, C>(ComponentSystem<E, C> system, C component) {
+        void pre(E owner) {
+            system.onPreTick(owner, component);
+        }
+
+        void tick(E owner) {
+            system.onTick(owner, component);
+        }
+
+        void post(E owner) {
+            system.onPostTick(owner, component);
+        }
+    }
+
+    public final class PreparedPut {
+        private final ComponentMap<E> owner = ComponentMap.this;
+        private final ComponentType<E, ?> type;
+        private final TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>> candidate;
+
+        private PreparedPut(ComponentType<E, ?> type, TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>> candidate) {
+            this.type = type;
+            this.candidate = candidate;
+        }
     }
 
     public final class BindingCapture {
@@ -253,7 +684,8 @@ public final class ComponentMap<E> {
                         var system = registrationType.systems().get(registrationSystem++);
                         var id = Objects.requireNonNull(system.id(), "system id");
                         var previous = systems.putIfAbsent(id, system);
-                        if (previous != null && previous != system) throw new IllegalArgumentException("Different systems share id " + id);
+                        if (previous != null && previous != system)
+                            throw new IllegalArgumentException("Different systems share id " + id);
                         if (!registrationIds.add(id)) throw new IllegalArgumentException("System bound twice: " + id);
                         owners.computeIfAbsent(id, _ -> new ObjectLinkedOpenHashSet<>()).add(registrationType);
                     }
@@ -364,363 +796,9 @@ public final class ComponentMap<E> {
         }
 
         public List<SavedBinding<E, ?>> result() {
-            if (phase != 6 || !current()) throw new IllegalStateException("Component binding capture is incomplete or stale");
+            if (phase != 6 || !current())
+                throw new IllegalStateException("Component binding capture is incomplete or stale");
             return cachedResult == null ? ObjectLists.unmodifiable(captured) : cachedResult;
-        }
-    }
-
-    /** Private proof: TopologicalComponentMap.Node already froze this exact immutable set. */
-    private static final class FrozenDependencies<E> extends AbstractSet<ComponentType<E, ?>> {
-        private final Set<ComponentType<E, ?>> values;
-        private FrozenDependencies(Set<ComponentType<E, ?>> values) { this.values = values; }
-        @Override public @NotNull Iterator<ComponentType<E, ?>> iterator() { return values.iterator(); }
-        @Override public int size() { return values.size(); }
-    }
-
-    /**
-     * Unsorted assembly for exceptional lifecycle cleanup when a broken dependency graph cannot be
-     * ordered. This deliberately does not validate the graph and must not replace save validation.
-     */
-    public List<SavedBinding<E, ?>> assemblyBindings() {
-        var result = new ObjectArrayList<SavedBinding<E, ?>>();
-        for (var node : components.assemblyComponents()) {
-            result.add(node.component().saved(node.dependencies()));
-        }
-        return ObjectLists.unmodifiable(result);
-    }
-
-    /** Captures component dependency order, independently of assembly order, for lifecycle cleanup. */
-    public List<SavedBinding<E, ?>> orderedBindings() {
-        return Objects.requireNonNull(orderedBindings(new RecipeWorkBudget(Long.MAX_VALUE)));
-        }
-
-    /** Original component dependency order, charged before each current publication visit. */
-    @Nullable
-    public List<SavedBinding<E, ?>> orderedBindings(RecipeWorkBudget work) {
-        var result = new ObjectArrayList<SavedBinding<E, ?>>();
-        var ordered = components.orderedComponents(work);
-        if (ordered == null) return null;
-        for (var node : ordered) {
-            if (!work.take()) return null;
-            result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
-        }
-        return ObjectLists.unmodifiable(result);
-    }
-
-    /** Constraints for dependents not yet installed also survive a save/reload. */
-    public Map<ComponentType<E, ?>, Set<ComponentType<E, ?>>> snapshotPendingDependencies() {
-        return components.pendingDependencies();
-    }
-
-    public record SavedBinding<E, C>(ComponentType<E, C> type, C component, Set<ComponentType<E, ?>> dependencies) {
-        public SavedBinding {
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(component);
-            dependencies = dependencies instanceof FrozenDependencies<?> ? dependencies
-                : ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies));
-        }
-    }
-
-    /** Downstream mods can reset the components owned by their machine or process. */
-    @SuppressWarnings("unused")
-    public void clear() {
-        components.clear();
-        types.clear();
-    }
-
-    /** Downstream mods can add ordering constraints while assembling components. */
-    @SuppressWarnings("unused")
-    public void addDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) {
-        components.addDependency(dependent, dependency);
-    }
-
-    /** Downstream mods can remove ordering constraints when their assembly changes. */
-    @SuppressWarnings("unused")
-    public void removeDependency(ComponentType<E, ?> dependent, ComponentType<E, ?> dependency) {
-        components.removeDependency(dependent, dependency);
-    }
-
-    /**
-     * Captures all phases before invoking any callback.
-     */
-    public void tick(E owner) {
-        var entries = orderedTickEntries();
-        for (var entry : entries) {
-            entry.pre(owner);
-        }
-        for (var entry : entries) {
-            entry.tick(owner);
-        }
-        for (var entry : entries) {
-            entry.post(owner);
-        }
-    }
-
-    /**
-     * Captures the plain tick's exact dispatch without running callbacks. A scheduler may advance
-     * one normal callback at a time, retaining this cursor while that callback's deferred work is
-     * settled. It must not advance or finish until that work is confirmed. This cursor preserves
-     * the plain tick's fail-fast post policy; process-body cleanup uses {@link #beginTick} instead.
-     * The caller supplies execution ownership for the entity throughout every suspended interval.
-     */
-    public TickDispatch<E> captureDispatch(E owner) {
-        return new TickDispatch<>(owner, orderedTickEntries());
-    }
-
-    /** One captured, owner-thread plain dispatch, including intervals between callbacks. */
-    public static final class TickDispatch<E> {
-        private final Thread creator = Thread.currentThread();
-        private final E owner;
-        private final List<TickEntry<E, ?>> entries;
-        private Phase phase = Phase.PREPARED;
-        private int cursor;
-        private boolean executing;
-
-        private TickDispatch(E owner, List<TickEntry<E, ?>> entries) {
-            this.owner = owner;
-            this.entries = entries;
-        }
-
-        /** Runs all captured pre callbacks once. A failure aborts every later phase. */
-        public void begin() {
-            requireBoundary();
-            if (phase != Phase.PREPARED) { throw new IllegalStateException("Component dispatch has already begun"); }
-            executing = true;
-            try {
-                for (var entry : entries) { entry.pre(owner); }
-                phase = Phase.NORMAL;
-            } catch (RuntimeException | Error failure) {
-                phase = Phase.ABORTED;
-                throw failure;
-            } finally { executing = false; }
-        }
-
-        /**
-         * Invokes exactly the next normal callback, returning false only when none remain. The
-         * callback is consumed before entry; neither failure nor a later resume can replay it.
-         */
-        public boolean advance() {
-            requireBoundary();
-            if (phase != Phase.NORMAL) { throw new IllegalStateException("Component dispatch is not in its normal phase"); }
-            if (cursor == entries.size()) { return false; }
-            executing = true;
-            try {
-                entries.get(cursor++).tick(owner);
-                return true;
-            } catch (RuntimeException | Error failure) {
-                phase = Phase.ABORTED;
-                throw failure;
-            } finally { executing = false; }
-        }
-
-        /**
-         * Runs post only after all normal callbacks and their caller-owned deferred work. Like
-         * plain tick, the first post failure stops later post callbacks and cannot be replayed.
-         */
-        public void finish() {
-            requireBoundary();
-            if (phase != Phase.NORMAL || cursor != entries.size()) {
-                throw new IllegalStateException("Component dispatch still has unfinished normal callbacks");
-            }
-            phase = Phase.FINISHED;
-            executing = true;
-            try { for (var entry : entries) { entry.post(owner); } }
-            finally { executing = false; }
-        }
-
-        /**
-         * Stops an unstarted or suspended dispatch without post, for example when deferred normal
-         * work failed. The caller must still retain and settle that work before releasing ownership.
-         */
-        public void abort() {
-            requireBoundary();
-            if (phase == Phase.FINISHED) { throw new IllegalStateException("Component dispatch already finished"); }
-            phase = Phase.ABORTED;
-        }
-
-        private void requireBoundary() {
-            if (Thread.currentThread() != creator || executing) {
-                throw new IllegalStateException("Component dispatch requires its owner outside callbacks");
-            }
-        }
-
-        private enum Phase { PREPARED, NORMAL, ABORTED, FINISHED }
-    }
-
-    /**
-     * Captures one dispatch for pre, tick, body and post. Pre/tick faults abort before body and post,
-     * preserving PM's process callback boundary and the plain tick's fail-fast behavior. Once body
-     * starts, every captured post callback runs in order, even after a body or earlier post fault.
-     * A body fault remains primary; post faults are suppressed rather than replacing it.
-     */
-    public void tick(E owner, Runnable body) {
-        Objects.requireNonNull(body);
-        var session = beginTick(owner);
-        Throwable primary = null;
-        try {
-            body.run();
-        } catch (RuntimeException | Error failure) {
-            primary = failure;
-            throw failure;
-        } finally {
-            session.finish(primary);
-        }
-    }
-
-    /**
-     * Starts one captured dispatch and runs all pre callbacks, then all tick callbacks. A callback
-     * failure produces no session and never enters post. The caller retains the successful session
-     * across its business stages and finishes only after their complete or compensated boundary.
-     */
-    public TickSession<E> beginTick(E owner) {
-        var entries = orderedTickEntries();
-        var session = new TickSession<>(owner, entries);
-        for (var entry : entries) {
-            entry.pre(owner);
-        }
-        for (var entry : entries) {
-            entry.tick(owner);
-        }
-        return session;
-    }
-
-    /** One owner-thread post boundary for exactly the entries captured before pre/tick execution. */
-    public static final class TickSession<E> {
-        private final Thread creator = Thread.currentThread();
-        private final E owner;
-        private final List<TickEntry<E, ?>> entries;
-        private boolean finished;
-
-        private TickSession(E owner, List<TickEntry<E, ?>> entries) {
-            this.owner = owner;
-            this.entries = entries;
-        }
-
-        /** Attempts every captured post once, aggregating faults after later posts have run. */
-        public void finish() { finish(null); }
-
-        /**
-         * Attach every post fault to an existing primary without throwing it; its caller owns that
-         * fault. Without a primary, throw the aggregated post fault. Reject replay and callback
-         * reentry even when the original post dispatch failed.
-         */
-        public void finish(@Nullable Throwable primary) {
-            if (Thread.currentThread() != creator) {
-                throw new IllegalStateException("Component tick session must finish on its creating thread");
-            }
-            if (finished) {
-                throw new IllegalStateException("Component tick session already entered its post boundary");
-            }
-            finished = true;
-            postAll(owner, entries, primary);
-        }
-    }
-
-    private static <E> void postAll(E owner, List<TickEntry<E, ?>> entries, @Nullable Throwable primary) {
-        Throwable failure = primary;
-        for (var entry : entries) {
-            try {
-                entry.post(owner);
-            } catch (RuntimeException | Error cleanupFailure) {
-                if (failure == null) {
-                    failure = cleanupFailure;
-                } else if (failure != cleanupFailure) {
-                    failure.addSuppressed(cleanupFailure);
-                }
-            }
-        }
-        if (primary == null) {
-            if (failure instanceof RuntimeException runtime) {
-                throw runtime;
-            }
-            if (failure instanceof Error error) {
-                throw error;
-            }
-        }
-    }
-
-    private List<TickEntry<E, ?>> orderedTickEntries() {
-        if (dispatchRevision == components.revision()) {
-            return dispatch;
-        }
-        var entries = new ObjectArrayList<TickEntry<E, ?>>();
-        for (var node : orderWithSystems(components)) { node.component().appendEntries(entries); }
-        dispatch = ObjectLists.unmodifiable(entries);
-        dispatchRevision = components.revision();
-        return dispatch;
-    }
-
-    private static <E, C> List<TopologicalComponentMap.Node<ComponentType<E, ?>, C>> orderWithSystems(
-            TopologicalComponentMap<ComponentType<E, ?>, C> components) {
-        var graph = new TopologicalComponentMap<ComponentType<E, ?>, C>();
-        var bySystem = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<ComponentType<E, ?>>>();
-        var systemDefinitions = new Object2ObjectOpenHashMap<ResourceLocation, ComponentSystem<E, ?>>();
-        for (var node : components.orderedComponents()) {
-            graph.add(node.key(), node.component(), node.dependencies());
-            for (var system : node.key().systems()) {
-                var id = Objects.requireNonNull(system.id(), "system id");
-                var previous = systemDefinitions.putIfAbsent(id, system);
-                if (previous != null && previous != system) {
-                    throw new IllegalArgumentException("Different systems share id " + id);
-                }
-                var owners = bySystem.computeIfAbsent(id, ignored -> new ObjectArrayList<>());
-                if (owners.contains(node.key())) {
-                    throw new IllegalArgumentException("System bound twice: " + id);
-                }
-                owners.add(node.key());
-            }
-        }
-        for (var node : components.orderedComponents()) {
-            for (var system : node.key().systems()) {
-                for (var after : system.runAfter()) {
-                    var owners = bySystem.get(after);
-                    if (owners != null) {
-                        for (var other : owners) {
-                            if (other != node.key()) {
-                                graph.addDependency(node.key(), other);
-                            }
-                        }
-                    }
-                }
-                for (var before : system.runBefore()) {
-                    var owners = bySystem.get(before);
-                    if (owners != null) {
-                        for (var other : owners) {
-                            if (other != node.key()) {
-                                graph.addDependency(other, node.key());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return graph.orderedComponents();
-    }
-
-    private record Binding<E, C>(ComponentType<E, C> type, C component) {
-        SavedBinding<E, C> saved(Set<ComponentType<E, ?>> dependencies) {
-            return new SavedBinding<>(type, component, dependencies);
-        }
-
-        void appendEntries(ObjectArrayList<TickEntry<E, ?>> entries) {
-            // PM preserves the declared order of multiple systems attached to one component.
-            for (var system : type.systems()) {
-                entries.add(new TickEntry<>(system, component));
-            }
-        }
-    }
-
-    private record TickEntry<E, C>(ComponentSystem<E, C> system, C component) {
-        void pre(E owner) {
-            system.onPreTick(owner, component);
-        }
-
-        void tick(E owner) {
-            system.onTick(owner, component);
-        }
-
-        void post(E owner) {
-            system.onPostTick(owner, component);
         }
     }
 }

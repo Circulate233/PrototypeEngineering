@@ -51,6 +51,21 @@ class ProcessAbortEffectsTest {
     private static final ResourceLocation SCORE = id("score");
     private static final ProcessResult.Failure CANCELLED = new ProcessResult.Failure("cancelled");
 
+    private static NumericAttributeModifier addition(String name, double amount) {
+        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("process_abort_test", name);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(KEY_TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, () -> {
+        });
+    }
+
     @Test
     void cancellationRemovesOnlyOwnedEffectsAndChoicesWithoutEndOrHistoricalRefund() {
         var fixture = new Fixture();
@@ -211,7 +226,9 @@ class ProcessAbortEffectsTest {
         var failing = new AtomicBoolean();
         var primary = new IllegalStateException("foreign applier failed");
         var overlay = new RecipeOverlayType<Integer, Integer>(id("throwing_addition"), fixture.probe.type, (base, amount) -> {
-            if (failing.get()) { throw primary; }
+            if (failing.get()) {
+                throw primary;
+            }
             return base + amount;
         });
         var layers = RecipeOverlays.getOrCreate(process);
@@ -294,30 +311,43 @@ class ProcessAbortEffectsTest {
         assertTrue(SelectiveState.getOrCreate(orphaned).abortReceipts().isEmpty());
     }
 
-    private static NumericAttributeModifier addition(String name, double amount) {
-        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("process_abort_test", name); }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(KEY_TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, () -> { });
-    }
-
     private record Reserved(RecipeProcess process, RequirementPath path, ResourceReservation reservation)
         implements RequirementTransaction {
-        @Override public ProcessResult result() { checkScope(); return ProcessResult.SUCCESS; }
-        @Override public List<ResourceReservation> reservations() { checkScope(); return List.of(reservation); }
-        @Override public void commit() { checkScope(); }
-        @Override public void rollback() { checkScope(); }
-        private void checkScope() { assertEquals(path, process.requirementPath()); }
+        @Override
+        public ProcessResult result() {
+            checkScope();
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public List<ResourceReservation> reservations() {
+            checkScope();
+            return List.of(reservation);
+        }
+
+        @Override
+        public void commit() {
+            checkScope();
+        }
+
+        @Override
+        public void rollback() {
+            checkScope();
+        }
+
+        private void checkScope() {
+            assertEquals(path, process.requirementPath());
+        }
     }
 
     private record Decision(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private static final class Probe implements RecipeRequirementSystem<Integer> {
@@ -337,34 +367,39 @@ class ProcessAbortEffectsTest {
             this.output = output;
         }
 
-        @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+        private static Reserved reserved(RecipeProcess process, ReservationResult result) {
+            assertEquals(ReservationResult.Status.ACCEPTED, result.status());
+            return new Reserved(process, process.requirementPath(), Objects.requireNonNull(result.reservation()));
+        }
+
+        @Override
+        public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             return List.of(input.context(), output.context());
         }
 
-        @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+        @Override
+        public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             starts++;
             return startResult == ProcessResult.SUCCESS ? reserved(process,
                 input.reserveExtract(input.snapshot(), MATERIAL, requirement.payload())) : new Decision(startResult);
         }
 
-        @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+        @Override
+        public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             return tickResult == ProcessResult.SUCCESS ? RequirementTransaction.SUCCESS : new Decision(tickResult);
         }
 
-        @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+        @Override
+        public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             ends++;
             return reserved(process, output.reserveInsert(output.snapshot(), MATERIAL, requirement.payload()));
         }
 
-        @Override public void cancel(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+        @Override
+        public void cancel(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             assertTrue(process.state().lifecycle().isTerminal());
             cancellations.add(process.requirementPath());
             cancelledPayloads.add(requirement.payload());
-        }
-
-        private static Reserved reserved(RecipeProcess process, ReservationResult result) {
-            assertEquals(ReservationResult.Status.ACCEPTED, result.status());
-            return new Reserved(process, process.requirementPath(), Objects.requireNonNull(result.reservation()));
         }
     }
 
@@ -377,7 +412,9 @@ class ProcessAbortEffectsTest {
         private final RecipeOverlayType<Integer, Integer> addition = new RecipeOverlayType<>(id("addition"), probe.type, Integer::sum);
         private int modifierApplications;
 
-        private Fixture() { input.insert(MATERIAL, 20, Actionable.MODULATE); }
+        private Fixture() {
+            input.insert(MATERIAL, 20, Actionable.MODULATE);
+        }
 
         private RecipeProcess process(RecipeRequirement<?>... requirements) {
             return new RecipeProcess(machine, new MachineRecipe(id("recipe"), 10, ObjectArrayList.of(requirements)), 17);

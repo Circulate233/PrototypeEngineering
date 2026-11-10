@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.component;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -7,18 +8,17 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.AbstractSet;
 import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.Map;
 import java.util.Collections;
 import java.util.Iterator;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.AbstractSet;
-import org.jetbrains.annotations.NotNull;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * PM's soft dependency graph, with a cached Kahn ordering. Missing dependencies become active when
@@ -51,10 +51,14 @@ public final class TopologicalComponentMap<K, C> {
         add(key, component, ObjectSets.emptySet());
     }
 
-    /** Replace an existing value without moving its node or changing any ordering constraints. */
+    /**
+     * Replace an existing value without moving its node or changing any ordering constraints.
+     */
     public void replaceValue(K key, C component) {
         var node = nodes.get(key);
-        if (node == null) { throw new IllegalArgumentException("Cannot replace an absent component: " + key); }
+        if (node == null) {
+            throw new IllegalArgumentException("Cannot replace an absent component: " + key);
+        }
         nodes.put(key, new Node<>(key, component, node.dependencies()));
         revision++;
     }
@@ -97,22 +101,16 @@ public final class TopologicalComponentMap<K, C> {
     /** All preflight precedes the caller's admitted atomic map writes. */
     void installPrepared(List<PreparedNode<K, C>> prepared) {
         for (var candidate : prepared) {
-            if (candidate.revision() != revision) throw new IllegalStateException("Component graph changed after insertion preparation");
+            if (candidate.revision() != revision)
+                throw new IllegalStateException("Component graph changed after insertion preparation");
         }
         for (var candidate : prepared) {
             var node = candidate.node();
-            nodes.remove(node.key()); nodes.put(node.key(), node); pending.remove(node.key()); revision++;
+            nodes.remove(node.key());
+            nodes.put(node.key(), node);
+            pending.remove(node.key());
+            revision++;
         }
-    }
-
-    record PreparedNode<K, C>(Node<K, C> node, long revision) { }
-
-    /** Only a private preparation can transfer its completed owned dependency set without copying. */
-    private static final class FrozenDependencies<K> extends AbstractSet<K> {
-        private final Set<K> owned;
-        private FrozenDependencies(Set<K> owned) { this.owned = owned; }
-        @Override public @NotNull Iterator<K> iterator() { return Collections.unmodifiableSet(owned).iterator(); }
-        @Override public int size() { return owned.size(); }
     }
 
     public void addDependency(K dependent, K dependency) {
@@ -149,7 +147,9 @@ public final class TopologicalComponentMap<K, C> {
         }
     }
 
-    /** Downstream mods can insert a component after an existing or pending target. */
+    /**
+     * Downstream mods can insert a component after an existing or pending target.
+     */
     @SuppressWarnings("unused")
     public void addAfter(K target, K key, C component) {
         add(key, component, ObjectSets.singleton(target));
@@ -200,7 +200,9 @@ public final class TopologicalComponentMap<K, C> {
         return ObjectLists.unmodifiable(new ObjectArrayList<>(nodes.values()));
     }
 
-    /** Package owner cursor: immutable nodes; the enclosing capture checks revision before use. */
+    /**
+     * Package owner cursor: immutable nodes; the enclosing capture checks revision before use.
+     */
     Iterator<Node<K, C>> assemblyIterator() {
         return nodes.values().iterator();
     }
@@ -216,7 +218,7 @@ public final class TopologicalComponentMap<K, C> {
      */
     public List<Node<K, C>> orderedComponents() {
         return Objects.requireNonNull(orderedComponents(new RecipeWorkBudget(Long.MAX_VALUE)));
-                }
+    }
 
     /** A publication must complete this original Kahn ordering in its current owner window. */
     @Nullable
@@ -280,17 +282,39 @@ public final class TopologicalComponentMap<K, C> {
         return cached;
     }
 
+    record PreparedNode<K, C>(Node<K, C> node, long revision) {
+    }
+
+    /** Only a private preparation can transfer its completed owned dependency set without copying. */
+    private static final class FrozenDependencies<K> extends AbstractSet<K> {
+        private final Set<K> owned;
+
+        private FrozenDependencies(Set<K> owned) {
+            this.owned = owned;
+        }
+
+        @Override
+        public @NotNull Iterator<K> iterator() {
+            return Collections.unmodifiableSet(owned).iterator();
+        }
+
+        @Override
+        public int size() {
+            return owned.size();
+        }
+    }
+
     public record Node<K, C>(K key, C component, Set<K> dependencies) {
         public Node {
             Objects.requireNonNull(key);
             Objects.requireNonNull(component);
             if (!(dependencies instanceof FrozenDependencies<?>)) {
                 var copy = new ObjectLinkedOpenHashSet<K>();
-            for (K dependency : dependencies) {
-                copy.add(Objects.requireNonNull(dependency));
+                for (K dependency : dependencies) {
+                    copy.add(Objects.requireNonNull(dependency));
+                }
+                dependencies = ObjectSets.unmodifiable(copy);
             }
-            dependencies = ObjectSets.unmodifiable(copy);
-        }
         }
     }
 }

@@ -56,6 +56,20 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
             throw new IllegalArgumentException("Animation state has no actual component binding");
     }
 
+    private static List<BlockPos> copyPositions(List<BlockPos> positions) {
+        if (positions.size() > MAX_POSITIONS) throw new IllegalArgumentException("Too many accepted positions");
+        var result = new ObjectArrayList<BlockPos>(positions.size());
+        for (var position : positions) result.add(Objects.requireNonNull(position).toImmutable());
+        return List.copyOf(result);
+    }
+
+    public static BlockPos sliceAnchor(BlockPos origin, BlockPos step, int index) {
+        if (index < 0) throw new IllegalArgumentException("Negative slice index");
+        return new BlockPos(Math.toIntExact((long) origin.getX() + (long) index * step.getX()),
+            Math.toIntExact((long) origin.getY() + (long) index * step.getY()),
+            Math.toIntExact((long) origin.getZ() + (long) index * step.getZ()));
+    }
+
     public StructureBounds bounds() {
         int minX = controller.getX(), minY = controller.getY(), minZ = controller.getZ();
         int maxX = minX, maxY = minY, maxZ = minZ;
@@ -89,13 +103,6 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
         return List.copyOf(result);
     }
 
-    private static List<BlockPos> copyPositions(List<BlockPos> positions) {
-        if (positions.size() > MAX_POSITIONS) throw new IllegalArgumentException("Too many accepted positions");
-        var result = new ObjectArrayList<BlockPos>(positions.size());
-        for (var position : positions) result.add(Objects.requireNonNull(position).toImmutable());
-        return List.copyOf(result);
-    }
-
     public record CatalogToken(UUID session, long sequence) {
         public CatalogToken {
             Objects.requireNonNull(session);
@@ -117,12 +124,5 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
             if (kind == StructurePreviewProvider.Kind.SLICE && repetitions > 0)
                 sliceAnchor(origin, sliceStep, repetitions - 1);
         }
-    }
-
-    public static BlockPos sliceAnchor(BlockPos origin, BlockPos step, int index) {
-        if (index < 0) throw new IllegalArgumentException("Negative slice index");
-        return new BlockPos(Math.toIntExact((long) origin.getX() + (long) index * step.getX()),
-            Math.toIntExact((long) origin.getY() + (long) index * step.getY()),
-            Math.toIntExact((long) origin.getZ() + (long) index * step.getZ()));
     }
 }

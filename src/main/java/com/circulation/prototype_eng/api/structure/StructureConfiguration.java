@@ -1,9 +1,9 @@
 package com.circulation.prototype_eng.api.structure;
 
 import ae2.api.orientation.BlockOrientation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * One live configuration generation, never persisted as permission. Its identity must change on
@@ -14,7 +14,8 @@ import org.jetbrains.annotations.Nullable;
 public final class StructureConfiguration {
     private final MachineStructure definition;
     private final BlockOrientation orientation;
-    @Nullable private final StructureCatalog catalog;
+    @Nullable
+    private final StructureCatalog catalog;
 
     public StructureConfiguration(MachineStructure definition, BlockOrientation orientation) {
         this(null, definition, orientation);
@@ -29,8 +30,16 @@ public final class StructureConfiguration {
             throw new IllegalArgumentException("Definition is not canonical in its structure catalog generation");
     }
 
-    public MachineStructure definition() { return definition; }
-    public BlockOrientation orientation() { return orientation; }
+    public MachineStructure definition() {
+        return definition;
+    }
 
-    @Nullable public StructureCatalog catalog() { return catalog; }
+    public BlockOrientation orientation() {
+        return orientation;
+    }
+
+    @Nullable
+    public StructureCatalog catalog() {
+        return catalog;
+    }
 }

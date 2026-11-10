@@ -153,6 +153,11 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return group.title() == null ? id.toString() : group.title().getLocal();
     }
 
+    private static boolean validLevelInput(GuiTextField input, Entry entry, int minimum) {
+        int value = ResearchContainer.levelInput(input.getText());
+        return value >= minimum && value <= ResearchRegistry.INSTANCE.require(entry.id()).maxLevel();
+    }
+
     @Override
     public void initGui() {
         xSize = Math.min(440, width - 8);
@@ -219,7 +224,10 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             contents.clear();
             displayed = null;
         }
-        if (drawnDatabaseMode != container.databaseMode) { displayed = null; showingOperations = false; }
+        if (drawnDatabaseMode != container.databaseMode) {
+            displayed = null;
+            showingOperations = false;
+        }
         drawnDatabaseMode = container.databaseMode;
         primary.width = drawnDatabaseMode ? columnWidth : columnWidth / 2;
         if (drawnDatabaseMode) {
@@ -307,11 +315,6 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             button.displayString = fit(groupTitle(entry, group), columnWidth - 8);
             button.enabled = !container.actionQueued && entry.selectedGroup() == null && !group.equals(selectedGroup);
         }
-    }
-
-    private static boolean validLevelInput(GuiTextField input, Entry entry, int minimum) {
-        int value = ResearchContainer.levelInput(input.getText());
-        return value >= minimum && value <= ResearchRegistry.INSTANCE.require(entry.id()).maxLevel();
     }
 
     private void updateDatabaseControls() {
@@ -463,8 +466,14 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                 case 10 ->
                     container.requestView(view.tab(), Math.max(0, view.offset() - ResearchGuiSnapshot.MAX_ROWS), null, 0);
                 case 11 -> container.requestView(view.tab(), view.offset() + view.rows().size(), null, 0);
-                case 12 -> { showingOperations = false; showingDescription = true; }
-                case 13 -> { showingOperations = false; showingDescription = false; }
+                case 12 -> {
+                    showingOperations = false;
+                    showingDescription = true;
+                }
+                case 13 -> {
+                    showingOperations = false;
+                    showingDescription = false;
+                }
                 case 14 ->
                     container.requestView(view.tab(), view.offset(), view.selected(), Math.max(0, view.detailOffset() - ResearchGuiSnapshot.MAX_DETAILS));
                 case 15 ->
@@ -709,7 +718,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
     protected void keyTyped(char character, int keyCode) throws IOException {
         if (showingOperations && !container.databaseMode
             && (forgottenLevel.textboxKeyTyped(character, keyCode) || adminTarget.textboxKeyTyped(character, keyCode)
-                || adminLevel.textboxKeyTyped(character, keyCode))) return;
+            || adminLevel.textboxKeyTyped(character, keyCode))) return;
         super.keyTyped(character, keyCode);
     }
 

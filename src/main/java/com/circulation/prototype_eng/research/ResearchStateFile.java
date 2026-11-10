@@ -18,7 +18,9 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Sole owner of the research file; compressed data uses PN's sync, atomic replace and final force. */
+/**
+ * Sole owner of the research file; compressed data uses PN's sync, atomic replace and final force.
+ */
 @SuppressWarnings("unused") // Server persistence calls this independent file owner.
 public final class ResearchStateFile {
     private final Path target;
@@ -29,13 +31,19 @@ public final class ResearchStateFile {
         this.codec = Objects.requireNonNull(codec);
     }
 
-    /** Only a genuinely absent path starts an empty world; unreadable/corrupt files fail visibly. */
+    /**
+     * Only a genuinely absent path starts an empty world; unreadable/corrupt files fail visibly.
+     */
     public Optional<ResearchWorldSnapshot> read() throws IOException {
-        if (Files.notExists(target)) { return Optional.empty(); }
+        if (Files.notExists(target)) {
+            return Optional.empty();
+        }
         if (!Files.readAttributes(target, BasicFileAttributes.class).isRegularFile()) {
             throw new IOException("Research state is not a regular file: " + target);
         }
-        if (!Files.isReadable(target)) { throw new AccessDeniedException(target.toString()); }
+        if (!Files.isReadable(target)) {
+            throw new AccessDeniedException(target.toString());
+        }
         try (var input = Files.newInputStream(target)) {
             var root = CompressedStreamTools.readCompressed(input);
             StrictNbt.requireKeys(root, "data");
@@ -49,7 +57,9 @@ public final class ResearchStateFile {
         if (parent == null || !Files.readAttributes(parent, BasicFileAttributes.class).isDirectory()) {
             throw new IOException("Research state parent is not a directory: " + target);
         }
-        if (!Files.isWritable(parent)) { throw new AccessDeniedException(parent.toString()); }
+        if (!Files.isWritable(parent)) {
+            throw new AccessDeniedException(parent.toString());
+        }
         var temporary = Files.createTempFile(parent, "prototype-eng-research-", ".tmp");
         boolean moved = false;
         try {
@@ -62,18 +72,31 @@ public final class ResearchStateFile {
             }
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             moved = true;
-            try (var output = FileChannel.open(target, StandardOpenOption.WRITE)) { output.force(true); }
+            try (var output = FileChannel.open(target, StandardOpenOption.WRITE)) {
+                output.force(true);
+            }
         } catch (IOException | RuntimeException | Error failure) {
             if (!moved) {
-                try { Files.deleteIfExists(temporary); }
-                catch (IOException | RuntimeException | Error cleanup) { if (cleanup != failure) { failure.addSuppressed(cleanup); } }
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException | RuntimeException | Error cleanup) {
+                    if (cleanup != failure) {
+                        failure.addSuppressed(cleanup);
+                    }
+                }
             }
             throw failure;
         }
     }
 
     private static final class SyncOutputStream extends FilterOutputStream {
-        private SyncOutputStream(FileOutputStream output) { super(output); }
-        @Override public void close() throws IOException { flush(); }
+        private SyncOutputStream(FileOutputStream output) {
+            super(output);
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush();
+        }
     }
 }

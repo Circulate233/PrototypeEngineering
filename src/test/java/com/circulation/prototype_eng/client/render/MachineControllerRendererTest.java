@@ -14,9 +14,56 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.UnaryOperator;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineControllerRendererTest {
+    @Test
+    void independentTypedBoundsHookExtendsTheNativeDistanceAndFiniteGlobalHintAvoidsNaNCorners() {
+        var renderer = new Renderer();
+        var tile = new IndependentTile();
+        assertTrue(renderer.maximumDistanceSquared(tile) > 400 * 400);
+        renderer.extents = MachineControllerRenderer.CONSERVATIVE_BOUNDS;
+        assertEquals(Double.MAX_VALUE, renderer.maximumDistanceSquared(tile));
+        var bounds = renderer.bounds(tile);
+        assertTrue(Double.isFinite(bounds.minX));
+        assertTrue(Double.isFinite(bounds.maxX));
+        // A zero plane coefficient remains zero for this finite native hint, unlike infinite corners.
+        assertEquals(0, 0 * bounds.minY, 0);
+        assertTrue(bounds.minX < 0 && bounds.maxX > 0);
+    }
+
+    @Test
+    void sharedCameraOriginUsesNegativeSafeGridAndRejectsInvalidOrOverflowingCoordinates() {
+        assertEquals(new BlockPos(-256, 0, 256), MachineModelRenderState.worldOrigin(-.1, 255.9, 511.99, 8));
+        assertEquals(new BlockPos(-512, 0, 512), MachineModelRenderState.worldOrigin(-.1, 255.9, 512, 16));
+        assertEquals(BlockPos.ORIGIN, MachineModelRenderState.worldOrigin(1, 127, 255, 0));
+        assertThrows(IllegalArgumentException.class, () -> MachineModelRenderState.worldOrigin(Double.NaN, 0, 0, 8));
+        assertThrows(IllegalArgumentException.class, () -> MachineModelRenderState.worldOrigin(0x1p63, 0, 0, 8));
+        assertThrows(ArithmeticException.class, () -> MachineModelRenderState.worldOrigin(Integer.MAX_VALUE + 256.0, 0, 0, 8));
+        assertThrows(ArithmeticException.class, () -> MachineModelRenderState.worldOrigin(-1, 0, 0, Integer.MAX_VALUE));
+    }
+
+    @Test
+    void typedExtensionUsesItsIndependentClassAndNativeWorkerQueryNeverEntersTheOwnerViewHook() throws Exception {
+        var renderer = new Renderer();
+        var tile = new IndependentTile();
+        assertSame(IndependentTile.class, renderer.tileClass());
+        assertNull(renderer.view(tile));
+        assertSame(tile, renderer.captured);
+        renderer.captured = null;
+        var result = new CompletableFuture<Boolean>();
+        var worker = Thread.ofPlatform().start(() -> result.complete(renderer.isGlobalRenderer(tile)));
+        worker.join(5000);
+        assertFalse(worker.isAlive());
+        assertTrue(result.get());
+        assertNull(renderer.captured);
+    }
+
     private static final class IndependentTile extends AEBaseTile implements MachineControllerHost {
         @Override
         public AEBaseTile blockEntity() {
@@ -79,47 +126,5 @@ class MachineControllerRendererTest {
         public AxisAlignedBB bounds(IndependentTile tile) {
             return extents;
         }
-    }
-
-    @Test
-    void independentTypedBoundsHookExtendsTheNativeDistanceAndFiniteGlobalHintAvoidsNaNCorners() {
-        var renderer = new Renderer();
-        var tile = new IndependentTile();
-        assertTrue(renderer.maximumDistanceSquared(tile) > 400 * 400);
-        renderer.extents = MachineControllerRenderer.CONSERVATIVE_BOUNDS;
-        assertEquals(Double.MAX_VALUE, renderer.maximumDistanceSquared(tile));
-        var bounds = renderer.bounds(tile);
-        assertTrue(Double.isFinite(bounds.minX));
-        assertTrue(Double.isFinite(bounds.maxX));
-        // A zero plane coefficient remains zero for this finite native hint, unlike infinite corners.
-        assertEquals(0, 0 * bounds.minY, 0);
-        assertTrue(bounds.minX < 0 && bounds.maxX > 0);
-    }
-
-    @Test
-    void sharedCameraOriginUsesNegativeSafeGridAndRejectsInvalidOrOverflowingCoordinates() {
-        assertEquals(new BlockPos(-256, 0, 256), MachineModelRenderState.worldOrigin(-.1, 255.9, 511.99, 8));
-        assertEquals(new BlockPos(-512, 0, 512), MachineModelRenderState.worldOrigin(-.1, 255.9, 512, 16));
-        assertEquals(BlockPos.ORIGIN, MachineModelRenderState.worldOrigin(1, 127, 255, 0));
-        assertThrows(IllegalArgumentException.class, () -> MachineModelRenderState.worldOrigin(Double.NaN, 0, 0, 8));
-        assertThrows(IllegalArgumentException.class, () -> MachineModelRenderState.worldOrigin(0x1p63, 0, 0, 8));
-        assertThrows(ArithmeticException.class, () -> MachineModelRenderState.worldOrigin(Integer.MAX_VALUE + 256.0, 0, 0, 8));
-        assertThrows(ArithmeticException.class, () -> MachineModelRenderState.worldOrigin(-1, 0, 0, Integer.MAX_VALUE));
-    }
-
-    @Test
-    void typedExtensionUsesItsIndependentClassAndNativeWorkerQueryNeverEntersTheOwnerViewHook() throws Exception {
-        var renderer = new Renderer();
-        var tile = new IndependentTile();
-        assertSame(IndependentTile.class, renderer.tileClass());
-        assertNull(renderer.view(tile));
-        assertSame(tile, renderer.captured);
-        renderer.captured = null;
-        var result = new CompletableFuture<Boolean>();
-        var worker = Thread.ofPlatform().start(() -> result.complete(renderer.isGlobalRenderer(tile)));
-        worker.join(5000);
-        assertFalse(worker.isAlive());
-        assertTrue(result.get());
-        assertNull(renderer.captured);
     }
 }

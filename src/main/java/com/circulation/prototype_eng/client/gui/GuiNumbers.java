@@ -10,9 +10,12 @@ final class GuiNumbers {
     private static final NumberFormat GROUPED = NumberFormat.getIntegerInstance(Locale.US);
     private static final DecimalFormat DECIMAL = new DecimalFormat("0.0", DecimalFormatSymbols.getInstance(Locale.US));
 
-    private GuiNumbers() {}
+    private GuiNumbers() {
+    }
 
-    static String grouped(long value) { return GROUPED.format(value); }
+    static String grouped(long value) {
+        return GROUPED.format(value);
+    }
 
     static String compact(long value) {
         long amount = Math.max(0, value);

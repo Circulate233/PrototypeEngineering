@@ -14,9 +14,46 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class SchedulerBoundaryTest {
+    private static ExecutorService auxiliary() {
+        return Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static void holdUntilChecked(CountDownLatch entered, CountDownLatch cleanup, CountDownLatch release) {
+        try {
+            await(entered);
+            assertFalse(cleanup.await(100, TimeUnit.MILLISECONDS), "Cleanup ran while an accepted worker still owned its task");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    private static void clearInterrupt() {
+        Thread.interrupted();
+    }
+
     @Test
     void mainSelfCleanupRunsAfterCallbackExitAndBeforeConcurrentCapture() {
         Thread owner = Thread.currentThread();
@@ -26,7 +63,11 @@ class SchedulerBoundaryTest {
         try (var scheduler = new TaskScheduler(owner, 1, 1)) {
             var removed = new Task(ExecutionMode.CONCURRENT, () -> fail("Removed machine executed"));
             var added = new Task(ExecutionMode.CONCURRENT, () -> log.add("new-worker")) {
-                @Override public Set<?> affinityKeys() { log.add("capture"); return Set.of(); }
+                @Override
+                public Set<?> affinityKeys() {
+                    log.add("capture");
+                    return Set.of();
+                }
             };
             self[0] = new Task(ExecutionMode.MAIN_THREAD, () -> {
                 callbackActive[0] = true;
@@ -75,10 +116,15 @@ class SchedulerBoundaryTest {
                         log.add("first");
                         throw firstCleanup;
                     });
-                    scheduler.runAtBoundary(() -> { log.add("second"); throw secondCleanup; });
+                    scheduler.runAtBoundary(() -> {
+                        log.add("second");
+                        throw secondCleanup;
+                    });
                     scheduler.runAtBoundary(() -> log.add("last"));
                     throw mainFailure;
-                } finally { callbackActive[0] = false; }
+                } finally {
+                    callbackActive[0] = false;
+                }
             }, ExecutionMode.MAIN_THREAD);
             scheduler.submit(() -> fail("Ordinary work continued after boundary failure"), ExecutionMode.MAIN_THREAD);
             assertSame(mainFailure, assertThrows(IllegalStateException.class, scheduler::tick));
@@ -106,16 +152,24 @@ class SchedulerBoundaryTest {
                     cleanup.countDown();
                 });
                 entered.countDown();
-                try { await(release); }
-                finally { exited.countDown(); }
+                try {
+                    await(release);
+                } finally {
+                    exited.countDown();
+                }
             }, ExecutionMode.CONCURRENT);
-            scheduler.submit(() -> { await(entered); throw failure; }, ExecutionMode.CONCURRENT);
+            scheduler.submit(() -> {
+                await(entered);
+                throw failure;
+            }, ExecutionMode.CONCURRENT);
             var observation = observer.submit(() -> holdUntilChecked(entered, cleanup, release));
             try {
                 assertSame(failure, assertThrows(IllegalStateException.class, scheduler::tick));
                 assertEquals(0, cleanup.getCount());
                 observation.get(5, TimeUnit.SECONDS);
-            } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
         }
     }
 
@@ -133,8 +187,11 @@ class SchedulerBoundaryTest {
                     cleanup.countDown();
                 });
                 entered.countDown();
-                try { await(release); }
-                finally { exited.countDown(); }
+                try {
+                    await(release);
+                } finally {
+                    exited.countDown();
+                }
             }, ExecutionMode.CONCURRENT);
             var interruption = interrupter.submit(() -> {
                 await(entered);
@@ -146,10 +203,15 @@ class SchedulerBoundaryTest {
                 assertInstanceOf(InterruptedException.class, failure.getCause());
                 assertTrue(owner.isInterrupted());
                 assertEquals(0, cleanup.getCount());
-            } finally { clearInterrupt(); release.countDown(); }
+            } finally {
+                clearInterrupt();
+                release.countDown();
+            }
             interruption.get(5, TimeUnit.SECONDS);
             assertThrows(IllegalStateException.class, scheduler::tick);
-        } finally { clearInterrupt(); }
+        } finally {
+            clearInterrupt();
+        }
     }
 
     @Test
@@ -168,7 +230,10 @@ class SchedulerBoundaryTest {
                 scheduler.runAtBoundary(() -> log.add("second"));
             }).get(5, TimeUnit.SECONDS);
             assertTrue(log.isEmpty());
-            scheduler.runAtBoundary(() -> { assertSame(owner, Thread.currentThread()); log.add("third"); });
+            scheduler.runAtBoundary(() -> {
+                assertSame(owner, Thread.currentThread());
+                log.add("third");
+            });
             assertEquals(List.of("first-enter", "first-exit", "second", "third", "nested"), List.copyOf(log));
         }
     }
@@ -178,9 +243,24 @@ class SchedulerBoundaryTest {
         var log = new ConcurrentLinkedQueue<String>();
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1)) {
             var guarded = new Task(ExecutionMode.CONCURRENT, () -> log.add("worker")) {
-                @Override public ExecutionMode executionMode() { rejectRequest(); return super.executionMode(); }
-                @Override public boolean active() { rejectRequest(); return super.active(); }
-                @Override public Set<?> affinityKeys() { rejectRequest(); return Set.of(); }
+                @Override
+                public ExecutionMode executionMode() {
+                    rejectRequest();
+                    return super.executionMode();
+                }
+
+                @Override
+                public boolean active() {
+                    rejectRequest();
+                    return super.active();
+                }
+
+                @Override
+                public Set<?> affinityKeys() {
+                    rejectRequest();
+                    return Set.of();
+                }
+
                 private void rejectRequest() {
                     assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> fail("Metadata action accepted")));
                 }
@@ -197,13 +277,16 @@ class SchedulerBoundaryTest {
     void faultedTickStillDrainsForeignCleanupWhileKeepingOrdinaryAdmissionRevoked() throws Exception {
         var log = new ConcurrentLinkedQueue<String>();
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1); var sender = auxiliary()) {
-            var machine = new Task(ExecutionMode.MAIN_THREAD, () -> { throw new IllegalStateException("machine failed"); });
+            var machine = new Task(ExecutionMode.MAIN_THREAD, () -> {
+                throw new IllegalStateException("machine failed");
+            });
             scheduler.register(machine);
             assertThrows(IllegalStateException.class, scheduler::tick);
             sender.submit(() -> scheduler.runAtBoundary(() -> {
                 scheduler.unregister(machine);
                 assertThrows(IllegalStateException.class, () -> scheduler.register(machine));
-                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {}, ExecutionMode.MAIN_THREAD));
+                assertThrows(IllegalStateException.class, () -> scheduler.submit(() -> {
+                }, ExecutionMode.MAIN_THREAD));
                 log.add("cleanup");
             })).get(5, TimeUnit.SECONDS);
             assertTrue(log.isEmpty());
@@ -214,7 +297,8 @@ class SchedulerBoundaryTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // Injected lanes transfer ownership to the scheduler.
+    @SuppressWarnings("resource")
+        // Injected lanes transfer ownership to the scheduler.
     void closeDrainsForeignAndLateRequestsAfterOwnedExecutorsTerminate() throws Exception {
         Thread owner = Thread.currentThread();
         var entered = new CountDownLatch(1);
@@ -225,8 +309,11 @@ class SchedulerBoundaryTest {
         var workers = new ShutdownExecutor(shutdown, false);
         workers.execute(() -> {
             entered.countDown();
-            try { await(release); }
-            finally { exited.countDown(); }
+            try {
+                await(release);
+            } finally {
+                exited.countDown();
+            }
         });
         await(entered);
         try (var scheduler = new TaskScheduler(owner, 1, 1, workers, new ExecutorService[]{auxiliary()}); var sender = auxiliary()) {
@@ -245,17 +332,25 @@ class SchedulerBoundaryTest {
                 assertTrue(log.isEmpty());
                 release.countDown();
             });
-            try { scheduler.close(); }
-            finally { release.countDown(); }
+            try {
+                scheduler.close();
+            } finally {
+                release.countDown();
+            }
             late.get(5, TimeUnit.SECONDS);
             assertEquals(List.of("first", "late"), List.copyOf(log));
-            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {}));
-            sender.submit(() -> assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {}))).get(5, TimeUnit.SECONDS);
-        } finally { release.countDown(); }
+            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {
+            }));
+            sender.submit(() -> assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {
+            }))).get(5, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test
-    @SuppressWarnings("resource") // Injected lanes transfer ownership to the scheduler.
+    @SuppressWarnings("resource")
+        // Injected lanes transfer ownership to the scheduler.
     void failedCloseWithoutTerminationRetainsActionsAndCannotDrainAtIdleOrFaultedTick() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -264,8 +359,11 @@ class SchedulerBoundaryTest {
         var workers = new ShutdownExecutor(new CountDownLatch(1), true);
         workers.execute(() -> {
             entered.countDown();
-            try { await(release); }
-            finally { exited.countDown(); }
+            try {
+                await(release);
+            } finally {
+                exited.countDown();
+            }
         });
         await(entered);
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1, workers, new ExecutorService[]{auxiliary()}); var sender = auxiliary()) {
@@ -283,12 +381,18 @@ class SchedulerBoundaryTest {
             scheduler.close();
             assertEquals(List.of("queued-before-close", "queued-after-close"), List.copyOf(log));
             assertTrue(workers.isTerminated());
-            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {}));
-        } finally { workers.failShutdown = false; release.countDown(); workers.shutdown(); }
+            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {
+            }));
+        } finally {
+            workers.failShutdown = false;
+            release.countDown();
+            workers.shutdown();
+        }
     }
 
     @Test
-    @SuppressWarnings("resource") // Injected lanes transfer ownership to the scheduler.
+    @SuppressWarnings("resource")
+        // Injected lanes transfer ownership to the scheduler.
     void shutdownFailureWithProvenTerminationStillDrainsAndClosesOwnerAdmission() throws Exception {
         var workers = new ShutdownExecutor(new CountDownLatch(1), false);
         workers.failAfterShutdown = true;
@@ -300,7 +404,8 @@ class SchedulerBoundaryTest {
             })).get(5, TimeUnit.SECONDS);
             assertSame(workers.failure, assertThrows(IllegalStateException.class, scheduler::close));
             assertEquals(List.of("cleanup"), List.copyOf(log));
-            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {}));
+            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {
+            }));
         }
     }
 
@@ -316,40 +421,42 @@ class SchedulerBoundaryTest {
                     scheduler.runAtBoundary(() -> log.add("nested"));
                     throw first;
                 });
-                scheduler.runAtBoundary(() -> { log.add("second"); throw second; });
+                scheduler.runAtBoundary(() -> {
+                    log.add("second");
+                    throw second;
+                });
             }).get(5, TimeUnit.SECONDS);
             assertSame(first, assertThrows(IllegalStateException.class, scheduler::close));
             assertArrayEquals(new Throwable[]{second}, first.getSuppressed());
             assertEquals(List.of("first", "second", "nested"), List.copyOf(log));
-            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {}));
+            assertThrows(IllegalStateException.class, () -> scheduler.runAtBoundary(() -> {
+            }));
         }
     }
 
-    private static ExecutorService auxiliary() { return Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory()); }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-
-    private static void holdUntilChecked(CountDownLatch entered, CountDownLatch cleanup, CountDownLatch release) {
-        try {
-            await(entered);
-            assertFalse(cleanup.await(100, TimeUnit.MILLISECONDS), "Cleanup ran while an accepted worker still owned its task");
-        } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-        finally { release.countDown(); }
-    }
-
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    private static void clearInterrupt() { Thread.interrupted(); }
-
     private static class Task implements ScheduledTask {
-        private ExecutionMode mode;
         private final Runnable action;
-        private Task(ExecutionMode mode, Runnable action) { this.mode = mode; this.action = action; }
-        @Override public void onSchedule() { action.run(); }
-        @Override public ExecutionMode executionMode() { return mode; }
-        @Override public boolean active() { return true; }
+        private ExecutionMode mode;
+
+        private Task(ExecutionMode mode, Runnable action) {
+            this.mode = mode;
+            this.action = action;
+        }
+
+        @Override
+        public void onSchedule() {
+            action.run();
+        }
+
+        @Override
+        public ExecutionMode executionMode() {
+            return mode;
+        }
+
+        @Override
+        public boolean active() {
+            return true;
+        }
     }
 
     private static final class ShutdownExecutor extends AbstractExecutorService {
@@ -358,18 +465,46 @@ class SchedulerBoundaryTest {
         private final IllegalStateException failure = new IllegalStateException("shutdown failed before termination");
         private boolean failShutdown;
         private boolean failAfterShutdown;
-        private ShutdownExecutor(CountDownLatch shutdown, boolean failShutdown) { this.shutdown = shutdown; this.failShutdown = failShutdown; }
-        @Override public void execute(@NotNull Runnable command) { delegate.execute(command); }
-        @Override public void shutdown() {
-            if (failShutdown) { throw failure; }
+
+        private ShutdownExecutor(CountDownLatch shutdown, boolean failShutdown) {
+            this.shutdown = shutdown;
+            this.failShutdown = failShutdown;
+        }
+
+        @Override
+        public void execute(@NotNull Runnable command) {
+            delegate.execute(command);
+        }
+
+        @Override
+        public void shutdown() {
+            if (failShutdown) {
+                throw failure;
+            }
             delegate.shutdown();
             shutdown.countDown();
-            if (failAfterShutdown) { throw failure; }
+            if (failAfterShutdown) {
+                throw failure;
+            }
         }
-        @Override public @NotNull List<Runnable> shutdownNow() { return delegate.shutdownNow(); }
-        @Override public boolean isShutdown() { return delegate.isShutdown(); }
-        @Override public boolean isTerminated() { return delegate.isTerminated(); }
-        @Override public boolean awaitTermination(long timeout, @NotNull TimeUnit unit) throws InterruptedException {
+
+        @Override
+        public @NotNull List<Runnable> shutdownNow() {
+            return delegate.shutdownNow();
+        }
+
+        @Override
+        public boolean isShutdown() {
+            return delegate.isShutdown();
+        }
+
+        @Override
+        public boolean isTerminated() {
+            return delegate.isTerminated();
+        }
+
+        @Override
+        public boolean awaitTermination(long timeout, @NotNull TimeUnit unit) throws InterruptedException {
             return delegate.awaitTermination(timeout, unit);
         }
     }

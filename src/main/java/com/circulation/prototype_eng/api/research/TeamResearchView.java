@@ -23,13 +23,17 @@ public final class TeamResearchView {
     private final Object2IntMap<ResourceLocation> startableResearchTargets;
     private final ObjectSet<ResourceLocation> blacklist;
 
-    /** Copies a calculated projection; authoritative source capture belongs to ResearchEligibility. */
+    /**
+     * Copies a calculated projection; authoritative source capture belongs to ResearchEligibility.
+     */
     public TeamResearchView(ResearchRegistry registry, String teamId, Collection<UUID> members,
                             Object2IntMap<ResourceLocation> sharedLevels,
                             Object2IntMap<ResourceLocation> startableResearchTargets,
                             Collection<ResourceLocation> blacklist) {
         this.registry = Objects.requireNonNull(registry);
-        if (!registry.isFrozen()) { throw new IllegalStateException("Research view requires a frozen registry"); }
+        if (!registry.isFrozen()) {
+            throw new IllegalStateException("Research view requires a frozen registry");
+        }
         this.teamId = Objects.requireNonNull(teamId);
         if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
             throw new IllegalArgumentException("Research team id must be canonical non-blank text");
@@ -63,15 +67,41 @@ public final class TeamResearchView {
         this.startableResearchTargets = ResearchSnapshots.levels(targets);
     }
 
-    public ResearchRegistry registry() { return registry; }
-    public String teamId() { return teamId; }
-    public ObjectSet<UUID> members() { return members; }
-    public Object2IntMap<ResourceLocation> sharedLevels() { return sharedLevels; }
-    public Object2IntMap<ResourceLocation> startableResearchTargets() { return startableResearchTargets; }
-    public ObjectSet<ResourceLocation> blacklistedResearchIds() { return blacklist; }
-    public int completedLevel(ResourceLocation id) { return sharedLevels.getInt(Objects.requireNonNull(id)); }
-    public boolean isStartable(ResourceLocation id) { return startableResearchTargets.containsKey(Objects.requireNonNull(id)); }
-    public int startableTargetLevel(ResourceLocation id) { return startableResearchTargets.getInt(Objects.requireNonNull(id)); }
+    public ResearchRegistry registry() {
+        return registry;
+    }
+
+    public String teamId() {
+        return teamId;
+    }
+
+    public ObjectSet<UUID> members() {
+        return members;
+    }
+
+    public Object2IntMap<ResourceLocation> sharedLevels() {
+        return sharedLevels;
+    }
+
+    public Object2IntMap<ResourceLocation> startableResearchTargets() {
+        return startableResearchTargets;
+    }
+
+    public ObjectSet<ResourceLocation> blacklistedResearchIds() {
+        return blacklist;
+    }
+
+    public int completedLevel(ResourceLocation id) {
+        return sharedLevels.getInt(Objects.requireNonNull(id));
+    }
+
+    public boolean isStartable(ResourceLocation id) {
+        return startableResearchTargets.containsKey(Objects.requireNonNull(id));
+    }
+
+    public int startableTargetLevel(ResourceLocation id) {
+        return startableResearchTargets.getInt(Objects.requireNonNull(id));
+    }
 
     private Object2IntMap<ResourceLocation> immutableLevels(Object2IntMap<ResourceLocation> source) {
         var copy = new Object2IntOpenHashMap<ResourceLocation>();
@@ -83,7 +113,9 @@ public final class TeamResearchView {
                 || level > 0 && (definition.specialOnly() || blacklist.contains(id))) {
                 throw new IllegalArgumentException("Invalid effective research level for " + id + ": " + level);
             }
-            if (level > 0) { copy.put(id, level); }
+            if (level > 0) {
+                copy.put(id, level);
+            }
         }
         return ResearchSnapshots.levels(copy);
     }

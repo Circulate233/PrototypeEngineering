@@ -1,26 +1,26 @@
 package com.circulation.prototype_eng.api.client.jei;
 
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.localization.RecipeText;
 import net.minecraft.util.ResourceLocation;
-import net.minecraft.client.resources.JeiTestLocale;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class MachineRecipePoolJeiTest {
-    private static ResourceLocation id(String value) { return new ResourceLocation("pool_jei_test", value); }
+    private static ResourceLocation id(String value) {
+        return new ResourceLocation("pool_jei_test", value);
+    }
 
     @Test
     void defaultPageKeepsStaticBindingsWithoutADuplicateMachineList() {

@@ -74,8 +74,54 @@ class RecipeProcessPersistenceTest {
     private static final Key ALTERNATE = new Key(KEY_TYPE, "alternate");
     private static final ResourceLocation SCORE = id("score");
     private static final long CAPACITY = 10000;
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt(location -> location.equals(KEY_TYPE.getId()) ? KEY_TYPE : null);
+
+    private static RecipeProcessNbt codec(MachineRecipe recipe) {
+        return builder(recipe).build();
+    }
+
+    private static RecipeProcessNbt.Builder builder(MachineRecipe recipe) {
+        return RecipeProcessNbt.builder(recipe, "revision-1").resources(KEYS).attributes(new AttributeModifierNbt());
+    }
+
+    private static RecipeProcess process(Environment env, MachineRecipe recipe) {
+        return new RecipeProcess(env.machine, recipe, 17);
+    }
+
+    private static MachineRecipe recipe(int duration, RecipeRequirement<?>... requirements) {
+        return new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements));
+    }
+
+    private static RecipeRequirement<EnergyRequirement> energy(long input, long tick, long output) {
+        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(input, tick, 0, output, false));
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return List.of(new GenericStack(key, amount));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("process_persistence_test", name);
+    }
+
+    private static NBTTagCompound data(NBTTagCompound tag, ComponentType<RecipeProcess, ?> type) {
+        var components = tag.getTagList("Components", Constants.NBT.TAG_COMPOUND);
+        for (int i = 0; i < components.tagCount(); i++) {
+            var entry = components.getCompoundTagAt(i);
+            if (entry.getString("Type").equals(type.id().toString())) {
+                return entry.getCompoundTag("Data");
+            }
+        }
+        throw new AssertionError("Saved component is absent: " + type.id());
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(KEY_TYPE, CAPACITY);
+        return new SlottedResourceBuffer(4, capacities, NO_OP);
+    }
 
     @Test
     void blockedTickAndEndRoundTripsKeepCommittedStartResourceEnergyAndInputChoice() {
@@ -158,7 +204,9 @@ class RecipeProcessPersistenceTest {
                     restored = codec.decode(restoredEnv.machine, codec.encode(restored));
                     restoredEnv.input.insert(MATERIAL, removed, Actionable.MODULATE);
                 }
-                if (tick == 4) { restoredEnv.generated.receiveEnergy(CAPACITY, Actionable.MODULATE); }
+                if (tick == 4) {
+                    restoredEnv.generated.receiveEnergy(CAPACITY, Actionable.MODULATE);
+                }
                 var result = restored.tick();
                 if (tick == 4) {
                     assertInstanceOf(ProcessResult.Blocked.class, result);
@@ -166,7 +214,9 @@ class RecipeProcessPersistenceTest {
                     restored = codec.decode(restoredEnv.machine, codec.encode(restored));
                     restoredEnv.generated.extractEnergy(CAPACITY, Actionable.MODULATE);
                     assertSame(ProcessResult.SUCCESS, restored.tick());
-                } else { assertSame(ProcessResult.SUCCESS, result); }
+                } else {
+                    assertSame(ProcessResult.SUCCESS, result);
+                }
                 assertEquals(baseline.state(), restored.state());
                 assertEquals(baselineEnv.balances(), restoredEnv.balances());
                 var saved = codec.encode(restored);
@@ -189,7 +239,8 @@ class RecipeProcessPersistenceTest {
         var resource = RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(
             stacks(MATERIAL, 2), stacks(MATERIAL, 1), List.of(), stacks(PRODUCT, 3), false));
         int[] applications = {0};
-        var candidate = new RecipeRequirementType<String>(id("candidate_type"), new RecipeRequirementSystem<>() { })
+        var candidate = new RecipeRequirementType<String>(id("candidate_type"), new RecipeRequirementSystem<>() {
+        })
             .requirement(id("candidate"), "optional");
         var selection = RecipeRequirements.SELECTIVE.requirement(id("choice"), new SelectiveRequirement(List.of(candidate), List.of(
             new SelectiveModifierDescriptor(id("effect"), context -> {
@@ -322,13 +373,18 @@ class RecipeProcessPersistenceTest {
         boolean[] failRollback = {false};
         var rollbackFault = new IllegalStateException("rollback violated its contract");
         var external = new RecipeRequirementType<Integer>(id("external"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                 var material = env.input.reserveExtract(env.input.snapshot(), MATERIAL, 2);
                 var energy = env.energy.reserveExtractEnergy(env.energy.energySnapshot(), 3);
                 assertEquals(ReservationResult.Status.ACCEPTED, material.status());
                 assertEquals(ReservationResult.Status.ACCEPTED, energy.status());
                 return new Transaction(List.of(Objects.requireNonNull(material.reservation()), Objects.requireNonNull(energy.reservation())),
-                    () -> { if (failRollback[0]) { throw rollbackFault; } });
+                    () -> {
+                        if (failRollback[0]) {
+                            throw rollbackFault;
+                        }
+                    });
             }
         }).requirement(id("external_instance"), 1);
         var recipe = recipe(1, external);
@@ -358,8 +414,16 @@ class RecipeProcessPersistenceTest {
         var failure = new IllegalStateException("post completion notification failed");
         int[] notifications = {0};
         var post = new ComponentType<RecipeProcess, Box>(id("post"), _ -> new Box(), List.of(new ComponentSystem<>() {
-            @Override public ResourceLocation id() { return RecipeProcessPersistenceTest.id("post_system"); }
-            @Override public void onPostTick(RecipeProcess process, Box component) { notifications[0]++; throw failure; }
+            @Override
+            public ResourceLocation id() {
+                return RecipeProcessPersistenceTest.id("post_system");
+            }
+
+            @Override
+            public void onPostTick(RecipeProcess process, Box component) {
+                notifications[0]++;
+                throw failure;
+            }
         }));
         var codec = builder(recipe).component(post, new BoxCodec("post", new ObjectArrayList<>())).build();
         var original = process(env, recipe);
@@ -383,42 +447,32 @@ class RecipeProcessPersistenceTest {
         assertEquals(7, env.generated.storedEnergy());
     }
 
-    private static RecipeProcessNbt codec(MachineRecipe recipe) { return builder(recipe).build(); }
-    private static RecipeProcessNbt.Builder builder(MachineRecipe recipe) {
-        return RecipeProcessNbt.builder(recipe, "revision-1").resources(KEYS).attributes(new AttributeModifierNbt());
-    }
-    private static RecipeProcess process(Environment env, MachineRecipe recipe) { return new RecipeProcess(env.machine, recipe, 17); }
-    private static MachineRecipe recipe(int duration, RecipeRequirement<?>... requirements) {
-        return new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements));
-    }
-    private static RecipeRequirement<EnergyRequirement> energy(long input, long tick, long output) {
-        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(input, tick, 0, output, false));
-    }
-    private static List<GenericStack> stacks(Key key, long amount) { return List.of(new GenericStack(key, amount)); }
-    private static ResourceLocation id(String name) { return new ResourceLocation("process_persistence_test", name); }
-    private static NBTTagCompound data(NBTTagCompound tag, ComponentType<RecipeProcess, ?> type) {
-        var components = tag.getTagList("Components", Constants.NBT.TAG_COMPOUND);
-        for (int i = 0; i < components.tagCount(); i++) {
-            var entry = components.getCompoundTagAt(i);
-            if (entry.getString("Type").equals(type.id().toString())) { return entry.getCompoundTag("Data"); }
-        }
-        throw new AssertionError("Saved component is absent: " + type.id());
-    }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(KEY_TYPE, CAPACITY);
-        return new SlottedResourceBuffer(4, capacities, NO_OP);
-    }
-
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
-    private record Balances(long material, long alternateInput, long product, long alternateOutput, long energy, long generated) { }
-    private record Transaction(List<ResourceReservation> reservations, Runnable cleanup) implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { }
-        @Override public void rollback() { cleanup.run(); }
+
+    private record Balances(long material, long alternateInput, long product, long alternateOutput, long energy,
+                            long generated) {
+    }
+
+    private record Transaction(List<ResourceReservation> reservations,
+                               Runnable cleanup) implements RequirementTransaction {
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+            cleanup.run();
+        }
     }
 
     private static final class Environment {
@@ -427,40 +481,64 @@ class RecipeProcessPersistenceTest {
         private final EnergyBuffer energy = new EnergyBuffer(CAPACITY, NO_OP);
         private final EnergyBuffer generated = new EnergyBuffer(CAPACITY, NO_OP);
         private final MachineInstance machine = new MachineInstance();
+
         private Environment() {
             machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Ports(input, output)), List.of(energy), List.of(generated)));
         }
+
         private void feed(long material, long amount) {
             input.insert(MATERIAL, material, Actionable.MODULATE);
             energy.receiveEnergy(amount, Actionable.MODULATE);
         }
+
         private Balances balances() {
             return new Balances(input.amount(MATERIAL), input.amount(ALTERNATE), output.amount(PRODUCT), output.amount(ALTERNATE),
                 energy.storedEnergy(), generated.storedEnergy());
         }
     }
 
-    /** Deliberately retains codec tags to test the enclosing process codec's defensive copying. */
+    /**
+     * Deliberately retains codec tags to test the enclosing process codec's defensive copying.
+     */
     private static final class Box {
         private NBTTagCompound tag = new NBTTagCompound();
         private boolean restored;
-        private int value() { return tag.getInteger("Value"); }
-        private void set(int value) { tag.setInteger("Value", value); restored = true; }
+
+        private int value() {
+            return tag.getInteger("Value");
+        }
+
+        private void set(int value) {
+            tag.setInteger("Value", value);
+            restored = true;
+        }
     }
 
     private static class BoxCodec implements ProcessComponentCodec<Box> {
         private final String name;
         private final List<String> events;
-        private BoxCodec(String name, List<String> events) { this.name = name; this.events = events; }
-        @Override public NBTTagCompound encode(RecipeProcess process, Box component) { return component.tag; }
-        @Override public void restore(RecipeProcess process, Box component, NBTTagCompound data) {
+
+        private BoxCodec(String name, List<String> events) {
+            this.name = name;
+            this.events = events;
+        }
+
+        @Override
+        public NBTTagCompound encode(RecipeProcess process, Box component) {
+            return component.tag;
+        }
+
+        @Override
+        public void restore(RecipeProcess process, Box component, NBTTagCompound data) {
             StrictNbt.requireKeys(data, "Value");
             StrictNbt.requireInt(data, "Value");
             component.tag = data;
             component.restored = true;
             events.add("restore:" + name);
         }
-        @Override public void validate(RecipeProcess process, Box component) {
+
+        @Override
+        public void validate(RecipeProcess process, Box component) {
             assertTrue(component.restored);
             events.add("validate:" + name);
         }
@@ -474,6 +552,7 @@ class RecipeProcessPersistenceTest {
         private final ComponentType<RecipeProcess, Box> third;
         private final ComponentType<RecipeProcess, Box> future;
         private boolean inspectDependencies;
+
         private ExtensionFixture(MachineRecipe recipe) {
             this.recipe = recipe;
             second = type("second", List.of());
@@ -481,35 +560,55 @@ class RecipeProcessPersistenceTest {
             first = type("first", List.of(second));
             future = type("future", List.of());
         }
+
         private ComponentType<RecipeProcess, Box> type(String name, List<ComponentType<RecipeProcess, ?>> dependencies) {
-            return new ComponentType<>(id(name), _ -> { events.add("create:" + name); return new Box(); }, List.of(new ComponentSystem<>() {
-                @Override public ResourceLocation id() { return RecipeProcessPersistenceTest.id(name + "_system"); }
-                @Override public void onTick(RecipeProcess owner, Box component) { events.add("tick:" + name); }
+            return new ComponentType<>(id(name), _ -> {
+                events.add("create:" + name);
+                return new Box();
+            }, List.of(new ComponentSystem<>() {
+                @Override
+                public ResourceLocation id() {
+                    return RecipeProcessPersistenceTest.id(name + "_system");
+                }
+
+                @Override
+                public void onTick(RecipeProcess owner, Box component) {
+                    events.add("tick:" + name);
+                }
             }), dependencies);
         }
+
         private RecipeProcessNbt codec() {
             return builder(recipe).component(first, componentCodec("first")).component(second, componentCodec("second"))
-                .component(third, componentCodec("third")).component(future, componentCodec("future"))
-                .validator(process -> {
-                    if (inspectDependencies) {
-                        assertTrue(Objects.requireNonNull(process.components().get(first)).restored);
-                        assertTrue(Objects.requireNonNull(process.components().get(second)).restored);
-                        assertTrue(Objects.requireNonNull(process.components().get(third)).restored);
-                    }
-                    events.add("validate:host");
-                }).build();
+                                  .component(third, componentCodec("third")).component(future, componentCodec("future"))
+                                  .validator(process -> {
+                                      if (inspectDependencies) {
+                                          assertTrue(Objects.requireNonNull(process.components().get(first)).restored);
+                                          assertTrue(Objects.requireNonNull(process.components().get(second)).restored);
+                                          assertTrue(Objects.requireNonNull(process.components().get(third)).restored);
+                                      }
+                                      events.add("validate:host");
+                                  }).build();
         }
+
         private ProcessComponentCodec<Box> componentCodec(String name) {
             return new BoxCodec(name, events) {
-                @Override public void restore(RecipeProcess process, Box component, NBTTagCompound data) {
+                @Override
+                public void restore(RecipeProcess process, Box component, NBTTagCompound data) {
                     if (inspectDependencies) {
                         assertTrue(process.components().get(first) != null && process.components().get(second) != null && process.components().get(third) != null);
-                        if (name.equals("first")) { assertFalse(Objects.requireNonNull(process.components().get(second)).restored); }
-                        if (name.equals("second")) { assertTrue(Objects.requireNonNull(process.components().get(third)).restored); }
+                        if (name.equals("first")) {
+                            assertFalse(Objects.requireNonNull(process.components().get(second)).restored);
+                        }
+                        if (name.equals("second")) {
+                            assertTrue(Objects.requireNonNull(process.components().get(third)).restored);
+                        }
                     }
                     super.restore(process, component, data);
                 }
-                @Override public void validate(RecipeProcess process, Box component) {
+
+                @Override
+                public void validate(RecipeProcess process, Box component) {
                     if (inspectDependencies) {
                         assertTrue(Objects.requireNonNull(process.components().get(first)).restored);
                         assertTrue(Objects.requireNonNull(process.components().get(second)).restored);

@@ -13,14 +13,21 @@ import java.util.Objects;
  * applies descriptors in order, including repeated descriptors, and returns their local undo boundary.
  */
 public final class RecipeOverlayPipeline {
-    private RecipeOverlayPipeline() { }
+    private RecipeOverlayPipeline() {
+    }
 
-    /** Include this transaction in the host's stage when its writes must remain compensatable. */
+    /**
+     * Include this transaction in the host's stage when its writes must remain compensatable.
+     */
     public static RequirementTransaction acquire(RecipeProcess process, List<RecipeOverlayModifierDescriptor> descriptors) {
         Objects.requireNonNull(process);
         var instructions = new ObjectArrayList<>(descriptors);
-        for (var descriptor : instructions) { Objects.requireNonNull(descriptor); }
-        if (instructions.isEmpty()) { return RequirementTransaction.SUCCESS; }
+        for (var descriptor : instructions) {
+            Objects.requireNonNull(descriptor);
+        }
+        if (instructions.isEmpty()) {
+            return RequirementTransaction.SUCCESS;
+        }
         var transaction = new OverlayTransaction();
         try {
             for (int ordinal = 0; ordinal < instructions.size(); ordinal++) {
@@ -37,13 +44,17 @@ public final class RecipeOverlayPipeline {
             try {
                 transaction.rollback();
             } catch (RuntimeException | Error cleanup) {
-                if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                if (failure != cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
             }
             throw failure;
         }
     }
 
-    /** Applies persistent layers now and relinquishes undo; callers choose the invocation timing. */
+    /**
+     * Applies persistent layers now and relinquishes undo; callers choose the invocation timing.
+     */
     public static void apply(RecipeProcess process, List<RecipeOverlayModifierDescriptor> descriptors) {
         var transaction = acquire(process, descriptors);
         transaction.commit();
@@ -54,25 +65,51 @@ public final class RecipeOverlayPipeline {
         private final ObjectArrayList<RecipeOverlays.Change> changes = new ObjectArrayList<>();
         private boolean finished;
 
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { }
-        @Override public void complete() { finish(false); }
-        @Override public void rollback() { finish(true); }
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void complete() {
+            finish(false);
+        }
+
+        @Override
+        public void rollback() {
+            finish(true);
+        }
 
         private void finish(boolean undo) {
-            if (finished) { return; }
+            if (finished) {
+                return;
+            }
             Throwable failure = null;
             for (int index = changes.size() - 1; index >= 0; index--) {
                 try {
-                    if (undo) { changes.get(index).rollback(); }
-                    else { changes.get(index).complete(); }
+                    if (undo) {
+                        changes.get(index).rollback();
+                    } else {
+                        changes.get(index).complete();
+                    }
                 } catch (RuntimeException | Error cleanup) {
-                    if (failure == null) { failure = cleanup; }
-                    else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                    if (failure == null) {
+                        failure = cleanup;
+                    } else if (failure != cleanup) {
+                        failure.addSuppressed(cleanup);
+                    }
                 }
             }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
             finished = true;
             changes.clear();
         }

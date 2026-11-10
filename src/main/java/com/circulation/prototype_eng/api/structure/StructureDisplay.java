@@ -7,7 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** Visual choices and BOM grouping only; none of these fields participate in matching. */
+/**
+ * Visual choices and BOM grouping only; none of these fields participate in matching.
+ */
 public record StructureDisplay(String key, List<BlockOption> options, @Nullable String tileNbt) {
     public StructureDisplay {
         Objects.requireNonNull(key);

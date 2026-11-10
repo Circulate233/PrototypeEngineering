@@ -2,10 +2,15 @@ package com.circulation.prototype_eng.structure;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
 import com.circulation.prototype_eng.api.structure.StructureMatch;
+import com.circulation.prototype_eng.api.structure.StructureMatchResult;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
+import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
+import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.api.structure.StructureReadPlan;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
@@ -14,15 +19,12 @@ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
-import java.util.List;
-import java.util.Objects;
-import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.structure.StructureMatchResult;
-import com.circulation.prototype_eng.api.structure.StructureOperation;
-import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
+
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
 /**
  * Greedy consecutive slices. Validators run once at the base; children run once at the last matched
  * slice, with zero matches placing children one sliceOffset before the base. Child failure does not
@@ -165,7 +167,10 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
 
     @Override
     public void collectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
-        if (budgeted) { beginCollectReads(plan, anchor, controller).run(); return; }
+        if (budgeted) {
+            beginCollectReads(plan, anchor, controller).run();
+            return;
+        }
         Objects.requireNonNull(plan);
         Objects.requireNonNull(controller);
         BlockPos origin = StructurePattern.add(anchor, offset);
@@ -294,11 +299,14 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // The default cursor retains its immutable declaration and private builder.
     public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos anchor, BlockPos controller) {
-        Objects.requireNonNull(plan); Objects.requireNonNull(anchor); Objects.requireNonNull(controller);
+        Objects.requireNonNull(plan);
+        Objects.requireNonNull(anchor);
+        Objects.requireNonNull(controller);
         if (!budgeted) return MachineStructure.super.beginCollectReads(plan, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
-            @Nullable private StructureOperation<Void> pending;
+            @Nullable
+            private StructureOperation<Void> pending;
             private long patternIndex;
             private int validatorIndex, childIndex;
             private long childCount = minCount;
@@ -313,13 +321,17 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                     begun = true;
                 }
                 while (!patternsComplete) {
-                    if (patternIndex == maxCount) { patternsComplete = true; break; }
+                    if (patternIndex == maxCount) {
+                        patternsComplete = true;
+                        break;
+                    }
                     if (pending == null) {
                         if (!work.take()) return false;
                         pending = pattern.beginCollectReads(plan, sliceOrigin(origin, Math.toIntExact(patternIndex)), controller);
                     }
                     if (!pending.advance(work)) return false;
-                    pending = null; patternIndex++;
+                    pending = null;
+                    patternIndex++;
                 }
                 while (validatorIndex < validators.size()) {
                     if (pending == null) {
@@ -327,7 +339,8 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                         pending = validators.get(validatorIndex).beginCollectReads(plan, origin);
                     }
                     if (!pending.advance(work)) return false;
-                    pending = null; validatorIndex++;
+                    pending = null;
+                    validatorIndex++;
                 }
                 while (!children.isEmpty() && childCount <= maxCount) {
                     while (childIndex < children.size()) {
@@ -336,9 +349,11 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                             pending = children.get(childIndex).beginCollectReads(plan, sliceOrigin(origin, Math.toIntExact(childCount - 1)), controller);
                         }
                         if (!pending.advance(work)) return false;
-                        pending = null; childIndex++;
+                        pending = null;
+                        childIndex++;
                     }
-                    childIndex = 0; childCount++;
+                    childIndex = 0;
+                    childCount++;
                 }
                 finish(null);
                 return true;
@@ -347,20 +362,29 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
     }
 
     @Override
-    @SuppressWarnings("ReturnOfInnerClass") // Only the explicit private default instance owns this greedy matching cursor.
+    @SuppressWarnings("ReturnOfInnerClass")
+    // Only the explicit private default instance owns this greedy matching cursor.
     public StructureOperation<StructureMatchResult> beginMatch(StructureSnapshot snapshot, BlockPos anchor, BlockPos controller) {
-        Objects.requireNonNull(snapshot); Objects.requireNonNull(anchor); Objects.requireNonNull(controller);
+        Objects.requireNonNull(snapshot);
+        Objects.requireNonNull(anchor);
+        Objects.requireNonNull(controller);
         if (!budgeted) return MachineStructure.super.beginMatch(snapshot, anchor, controller);
         var origin = StructurePattern.add(anchor, offset);
         return new StructureOperation<>() {
             private final ObjectLinkedOpenHashSet<BlockPos> matchedBlocks = new ObjectLinkedOpenHashSet<>();
             private final ObjectArrayList<StructureMatch> matchedChildren = new ObjectArrayList<>();
-            @Nullable private StructureOperation<StructurePredicateResult> patternWork;
-            @Nullable private StructureOperation<StructurePredicateResult> validator;
-            @Nullable private StructureOperation<StructureMatchResult> child;
-            @Nullable private StructureOperation<StructureMatch> freeze;
-            @Nullable private Iterator<BlockPos> positions;
-            @Nullable private BlockPos currentOrigin;
+            @Nullable
+            private StructureOperation<StructurePredicateResult> patternWork;
+            @Nullable
+            private StructureOperation<StructurePredicateResult> validator;
+            @Nullable
+            private StructureOperation<StructureMatchResult> child;
+            @Nullable
+            private StructureOperation<StructureMatch> freeze;
+            @Nullable
+            private Iterator<BlockPos> positions;
+            @Nullable
+            private BlockPos currentOrigin;
             private int count, validatorIndex, childIndex;
             private boolean patternsComplete;
 
@@ -369,30 +393,43 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                 Objects.requireNonNull(work);
                 if (complete()) return true;
                 while (!patternsComplete) {
-                    if (count == maxCount) { patternsComplete = true; break; }
+                    if (count == maxCount) {
+                        patternsComplete = true;
+                        break;
+                    }
                     if (patternWork == null) {
                         if (!work.take()) return false;
                         currentOrigin = sliceOrigin(origin, count);
                         if (!snapshot.isAreaLoaded(pattern.at(currentOrigin))) {
-                            finish(StructureMatchResult.unavailable()); return true;
+                            finish(StructureMatchResult.unavailable());
+                            return true;
                         }
                         patternWork = pattern.beginMatch(snapshot, currentOrigin, controller);
                     }
                     if (!patternWork.advance(work)) return false;
                     var status = Objects.requireNonNull(patternWork.result());
                     if (status == StructurePredicateResult.UNAVAILABLE) {
-                        finish(StructureMatchResult.unavailable()); return true;
+                        finish(StructureMatchResult.unavailable());
+                        return true;
                     }
-                    if (status == StructurePredicateResult.MISMATCH) { patternsComplete = true; break; }
+                    if (status == StructurePredicateResult.MISMATCH) {
+                        patternsComplete = true;
+                        break;
+                    }
                     if (positions == null) positions = pattern.blocks().keySet().iterator();
                     while (positions.hasNext()) {
                         if (!work.take()) return false;
                         var position = StructurePattern.add(Objects.requireNonNull(currentOrigin), positions.next());
                         if (!position.equals(controller)) matchedBlocks.add(position);
                     }
-                    patternWork = null; positions = null; count++;
+                    patternWork = null;
+                    positions = null;
+                    count++;
                 }
-                if (count < minCount) { finish(StructureMatchResult.mismatch()); return true; }
+                if (count < minCount) {
+                    finish(StructureMatchResult.mismatch());
+                    return true;
+                }
                 while (validatorIndex < validators.size()) {
                     if (validator == null) {
                         if (!work.take()) return false;
@@ -401,9 +438,11 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                     if (!validator.advance(work)) return false;
                     var status = Objects.requireNonNull(validator.result());
                     if (status != StructurePredicateResult.MATCHED) {
-                        finish(new StructureMatchResult(status, null)); return true;
+                        finish(new StructureMatchResult(status, null));
+                        return true;
                     }
-                    validator = null; validatorIndex++;
+                    validator = null;
+                    validatorIndex++;
                 }
                 while (childIndex < children.size()) {
                     if (child == null) {
@@ -413,9 +452,13 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                     }
                     if (!child.advance(work)) return false;
                     var outcome = Objects.requireNonNull(child.result());
-                    if (outcome.status() != StructurePredicateResult.MATCHED) { finish(outcome); return true; }
+                    if (outcome.status() != StructurePredicateResult.MATCHED) {
+                        finish(outcome);
+                        return true;
+                    }
                     matchedChildren.add(Objects.requireNonNull(outcome.match()));
-                    child = null; childIndex++;
+                    child = null;
+                    childIndex++;
                 }
                 if (freeze == null) {
                     if (!work.take()) return false;

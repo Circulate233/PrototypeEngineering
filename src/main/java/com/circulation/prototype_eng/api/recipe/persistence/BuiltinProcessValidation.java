@@ -29,7 +29,9 @@ public final class BuiltinProcessValidation {
     private BuiltinProcessValidation() {
     }
 
-    /** Applies strict resource-group checks when historical overlays preserve those groups. */
+    /**
+     * Applies strict resource-group checks when historical overlays preserve those groups.
+     */
     @SuppressWarnings("unused")
     public static void validate(RecipeProcess process, RecipeDefinitionIndex index) {
         validate(process, index, true);
@@ -232,7 +234,17 @@ public final class BuiltinProcessValidation {
     }
 
     private record Walker(RecipeProcess process, RecipeDefinitionIndex index, Map<ResourceInputLocks.Key, AEKey> locks,
-                           Map<RequirementPath, SelectiveState.SelectionSnapshot> selections, boolean stableResourceGroups) {
+                          Map<RequirementPath, SelectiveState.SelectionSnapshot> selections,
+                          boolean stableResourceGroups) {
+
+        private static boolean within(RequirementPath path, RequirementPath subtree) {
+            for (var ancestor = path; ancestor != null; ancestor = ancestor.parent()) {
+                if (ancestor.equals(subtree)) {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         private void require(RecipeRequirement<?> requirement, RequirementPath path, Execution execution) {
             if (index.require(path) != requirement) {
@@ -302,18 +314,10 @@ public final class BuiltinProcessValidation {
                 }
             }
         }
-
-        private static boolean within(RequirementPath path, RequirementPath subtree) {
-            for (var ancestor = path; ancestor != null; ancestor = ancestor.parent()) {
-                if (ancestor.equals(subtree)) {
-                    return true;
-                }
-            }
-            return false;
-        }
     }
 
-    private record Execution(boolean repeatedTicks, boolean endCompleted, Window window) { }
+    private record Execution(boolean repeatedTicks, boolean endCompleted, Window window) {
+    }
 
     private record Window(int time, boolean scaled) {
         private static final Window NONE = new Window(-1, false);

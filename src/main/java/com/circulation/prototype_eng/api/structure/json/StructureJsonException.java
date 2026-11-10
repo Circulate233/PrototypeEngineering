@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.structure.json;
 
-/** A definition error retains the source and exact field/reference path across both loading phases. */
+/**
+ * A definition error retains the source and exact field/reference path across both loading phases.
+ */
 public final class StructureJsonException extends IllegalArgumentException {
     private final String source;
     private final String path;

@@ -9,8 +9,8 @@ import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
-import com.circulation.prototype_eng.structure.tool.StructureToolExport;
 import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
+import com.circulation.prototype_eng.structure.tool.StructureToolExport;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.ItemStack;
@@ -20,11 +20,10 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.common.Loader;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-
-import org.jetbrains.annotations.NotNull;
 
 /** AE window actions are bound to the exact tool stack and world that opened the screen. */
 public final class StructureToolContainer extends AEBaseContainer {
@@ -33,20 +32,14 @@ public final class StructureToolContainer extends AEBaseContainer {
     private final ItemStack tool;
     private final World world;
     private final boolean builder;
+    @GuiSync(0)
+    public String state = "{}";
     private boolean closed;
     private boolean exportQueued;
     private StructureToolExport.Capture export;
     private NBTTagCompound exportSettings;
-    @GuiSync(0)
-    public String state = "{}";
     private String decoded = "";
     private NBTTagCompound snapshot = new NBTTagCompound();
-
-    public static @Nullable StructureToolContainer open(InventoryPlayer inventory, int slot) {
-        if (slot < 0 || slot >= inventory.getSizeInventory() || !(inventory.getStackInSlot(slot).getItem() instanceof StructureToolItem))
-            return null;
-        return new StructureToolContainer(inventory, slot);
-    }
 
     private StructureToolContainer(InventoryPlayer inventory, int slot) {
         super(inventory, null);
@@ -60,6 +53,12 @@ public final class StructureToolContainer extends AEBaseContainer {
             if (!builder) autoInitialize();
             synchronize();
         }
+    }
+
+    public static @Nullable StructureToolContainer open(InventoryPlayer inventory, int slot) {
+        if (slot < 0 || slot >= inventory.getSizeInventory() || !(inventory.getStackInSlot(slot).getItem() instanceof StructureToolItem))
+            return null;
+        return new StructureToolContainer(inventory, slot);
     }
 
     public boolean builder() {
@@ -153,35 +152,52 @@ public final class StructureToolContainer extends AEBaseContainer {
         synchronize();
     }
 
-    private void autoInitialize() { autoInitialize(() -> { }); }
+    private void autoInitialize() {
+        autoInitialize(() -> {
+        });
+    }
+
     private void autoInitialize(Runnable after) {
-        var tag = data(); var box = ScannerState.box(tag);
+        var tag = data();
+        var box = ScannerState.box(tag);
         if (box == null || tag.getInteger("dimension") != world.provider.getDimension() || box.exceeds(StructureToolExport.MAX_VOLUME)
-            || !tag.getBoolean("exportOriginAuto") && !tag.getBoolean("previewAuto")) { after.run(); return; }
+            || !tag.getBoolean("exportOriginAuto") && !tag.getBoolean("previewAuto")) {
+            after.run();
+            return;
+        }
         var captured = tag.copy();
         for (var pos : BlockPos.getAllInBoxMutable(box.min(), box.max())) {
             if (world.isBlockLoaded(pos) && world.getTileEntity(pos) instanceof MachineControllerHost host) {
                 host.readGuiAtBoundary(() -> {
                     if (!canInteractWith(getPlayer()) || !data().equals(captured) || host.blockEntity().getWorld() != world
-                        || world.getTileEntity(host.blockEntity().getPos()) != host) { exportQueued = false; return; }
+                        || world.getTileEntity(host.blockEntity().getPos()) != host) {
+                        exportQueued = false;
+                        return;
+                    }
                     var current = data();
-                    if (current.getBoolean("exportOriginAuto")) ScannerState.origin(current, host.blockEntity().getPos());
+                    if (current.getBoolean("exportOriginAuto"))
+                        ScannerState.origin(current, host.blockEntity().getPos());
                     if (current.getBoolean("previewAuto")) ScannerState.orientation(current, host.orientation());
-                    synchronize(); after.run();
+                    synchronize();
+                    after.run();
                 });
                 return;
             }
         }
         after.run();
     }
+
     private void startExport() {
         exportQueued = true;
         autoInitialize(() -> {
             exportQueued = false;
             if (!active()) return;
-            var tag = data(); var box = ScannerState.box(tag); var origin = ScannerState.origin(tag);
+            var tag = data();
+            var box = ScannerState.box(tag);
+            var origin = ScannerState.origin(tag);
             if (box == null || origin == null || tag.getInteger("dimension") != world.provider.getDimension()) {
-                getPlayer().sendMessage(StructureToolText.NeedSelection.text()); return;
+                getPlayer().sendMessage(StructureToolText.NeedSelection.text());
+                return;
             }
             exportSettings = tag.copy();
             export = new StructureToolExport.Capture(world, box, origin, ScannerState.worldToTemplate(tag), tag.getBoolean(ScannerState.Field.NBT.key), false);

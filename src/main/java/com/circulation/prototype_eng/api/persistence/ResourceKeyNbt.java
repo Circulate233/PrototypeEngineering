@@ -14,7 +14,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 
-/** AE resource persistence with explicit type resolution and no missing-content replacement. */
+/**
+ * AE resource persistence with explicit type resolution and no missing-content replacement.
+ */
 public final class ResourceKeyNbt implements NbtCodec<AEKey> {
     private final Function<ResourceLocation, AEKeyType> resolver;
 
@@ -22,7 +24,9 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
         this(AEKeyTypes::get);
     }
 
-    /** The resolver must keep each resource type ID bound to the same AEKeyType instance. */
+    /**
+     * The resolver must keep each resource type ID bound to the same AEKeyType instance.
+     */
     public ResourceKeyNbt(Function<ResourceLocation, AEKeyType> resolver) {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
     }
@@ -54,7 +58,9 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
         return key;
     }
 
-    /** Entries use Key (compound) and Quantity (positive long); order and repeated keys are retained. */
+    /**
+     * Entries use Key (compound) and Quantity (positive long); order and repeated keys are retained.
+     */
     public NBTTagList writeStacks(List<GenericStack> stacks) {
         Objects.requireNonNull(stacks, "stacks");
         var list = new NBTTagList();
@@ -71,7 +77,9 @@ public final class ResourceKeyNbt implements NbtCodec<AEKey> {
         return list;
     }
 
-    /** Validates the complete list before returning any decoded result. */
+    /**
+     * Validates the complete list before returning any decoded result.
+     */
     public List<GenericStack> readStacks(NBTTagList list) {
         StrictNbt.requireListElements(list, Constants.NBT.TAG_COMPOUND);
         var stacks = new ObjectArrayList<GenericStack>(list.tagCount());

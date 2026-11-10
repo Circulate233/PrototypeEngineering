@@ -1,23 +1,18 @@
 package com.circulation.prototype_eng.api.recipe.probability;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.random.RandomGenerator;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
-/** Weighted draws without replacement of candidate entries, preserving PM's random-output semantics. */
+/**
+ * Weighted draws without replacement of candidate entries, preserving PM's random-output semantics.
+ */
 public final class WeightedSampling {
     private WeightedSampling() {
-    }
-
-    /** Nonpositive weights are retained as data but ignored by sampling. */
-    public record Weighted<T>(T value, int weight) {
-        public Weighted {
-            Objects.requireNonNull(value, "value");
-        }
     }
 
     /**
@@ -136,6 +131,15 @@ public final class WeightedSampling {
                 throw new IllegalStateException("Weighted draw is incomplete");
             }
             return ObjectLists.unmodifiable(results);
+        }
+    }
+
+    /**
+     * Nonpositive weights are retained as data but ignored by sampling.
+     */
+    public record Weighted<T>(T value, int weight) {
+        public Weighted {
+            Objects.requireNonNull(value, "value");
         }
     }
 }

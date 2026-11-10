@@ -21,12 +21,49 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransactionRecoveryTest {
     private static final RecipeProcess.Tick TICK = new RecipeProcess.Tick(4, 6, 2, 3);
 
-    @Test void unknownRollbackKeepsTheRealProcessAcquiredUntilExactProofAllowsRetry() {
+    private static RecipeProcess process() {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 10, List.of()), 17);
+    }
+
+    private static EnergyBuffer energy() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        energy.receiveEnergy(100, Actionable.MODULATE);
+        return energy;
+    }
+
+    private static RequirementTransaction acquire(RecipeProcess process, String name, Effect effect, boolean nested) {
+        var type = new RecipeRequirementType<>(id("effect"), new RecipeRequirementSystem<Effect>() {
+            @Override
+            public RequirementTransaction tick(RecipeProcess owner, RecipeRequirement<Effect> requirement) {
+                var value = requirement.payload();
+                value.process = owner;
+                value.path = owner.requirementPath();
+                return value;
+            }
+        });
+        var requirement = type.requirement(id(name), effect);
+        return process.withTickContext(TICK, () -> nested
+            ? process.acquireRequirement(type.requirement(id("parent"), effect), () -> requirement.acquire(process, RecipeStage.TICK))
+            : requirement.acquire(process, RecipeStage.TICK));
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("external_recovery", path);
+    }
+
+    @Test
+    void unknownRollbackKeepsTheRealProcessAcquiredUntilExactProofAllowsRetry() {
         var process = process();
         var energy = energy();
         var first = new Effect();
@@ -62,7 +99,8 @@ class TransactionRecoveryTest {
         assertThrows(NullPointerException.class, process::tickContext, "Recovery must restore the enclosing timeline scope");
     }
 
-    @Test void confirmedRollbackAfterMutationClosesTheAcquisitionWithoutReplayingItsCallback() {
+    @Test
+    void confirmedRollbackAfterMutationClosesTheAcquisitionWithoutReplayingItsCallback() {
         var process = process();
         var first = new Effect();
         var second = new Effect();
@@ -80,7 +118,8 @@ class TransactionRecoveryTest {
         assertThrows(IllegalStateException.class, b::complete, "A confirmed rollback cannot change direction");
     }
 
-    @Test void completionRecoveryRetainsNestedRequirementPathsAndTheOriginalFrozenTick() {
+    @Test
+    void completionRecoveryRetainsNestedRequirementPathsAndTheOriginalFrozenTick() {
         var process = process();
         var energy = energy();
         var first = new Effect();
@@ -113,7 +152,8 @@ class TransactionRecoveryTest {
         assertNotNull(second.path.parent());
     }
 
-    @Test void aQueryFailurePreservesTheExactAcquisitionUntilItsTerminalStateCanBeConfirmed() {
+    @Test
+    void aQueryFailurePreservesTheExactAcquisitionUntilItsTerminalStateCanBeConfirmed() {
         var process = process();
         var effect = new Effect();
         effect.proof = true;
@@ -134,7 +174,8 @@ class TransactionRecoveryTest {
         batch.finish();
     }
 
-    @Test void aCompletionFaultAfterItsEffectStillCompletesEveryOtherTransactionAndNeverReplaysCommit() {
+    @Test
+    void aCompletionFaultAfterItsEffectStillCompletesEveryOtherTransactionAndNeverReplaysCommit() {
         var process = process();
         var first = new Effect();
         var second = new Effect();
@@ -155,7 +196,8 @@ class TransactionRecoveryTest {
         batch.finish();
     }
 
-    @Test void terminalListenersCannotReenterTheSameAcquisitionAndReplayItsEffects() {
+    @Test
+    void terminalListenersCannotReenterTheSameAcquisitionAndReplayItsEffects() {
         var process = process();
         var effect = new Effect();
         var transaction = acquire(process, "reentrant", effect, false);
@@ -176,44 +218,19 @@ class TransactionRecoveryTest {
         batch.finish();
     }
 
-    private static RecipeProcess process() {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 10, List.of()), 17);
-    }
-
-    private static EnergyBuffer energy() {
-        var energy = new EnergyBuffer(100, () -> {});
-        energy.receiveEnergy(100, Actionable.MODULATE);
-        return energy;
-    }
-
-    private static RequirementTransaction acquire(RecipeProcess process, String name, Effect effect, boolean nested) {
-        var type = new RecipeRequirementType<>(id("effect"), new RecipeRequirementSystem<Effect>() {
-            @Override public RequirementTransaction tick(RecipeProcess owner, RecipeRequirement<Effect> requirement) {
-                var value = requirement.payload();
-                value.process = owner;
-                value.path = owner.requirementPath();
-                return value;
-            }
-        });
-        var requirement = type.requirement(id(name), effect);
-        return process.withTickContext(TICK, () -> nested
-            ? process.acquireRequirement(type.requirement(id("parent"), effect), () -> requirement.acquire(process, RecipeStage.TICK))
-            : requirement.acquire(process, RecipeStage.TICK));
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("external_recovery", path);
-    }
-
     private static final class Effect implements RequirementTransaction {
         private final IllegalStateException failure = new IllegalStateException("terminal acknowledgement failed");
         private RecipeProcess process;
         private RequirementPath path;
         private List<ResourceReservation> reservations = List.of();
-        private Runnable onCommit = () -> {};
-        private Runnable onRollback = () -> {};
-        private Runnable onQuery = () -> {};
-        @Nullable private RuntimeException queryFailure;
+        private Runnable onCommit = () -> {
+        };
+        private Runnable onRollback = () -> {
+        };
+        private Runnable onQuery = () -> {
+        };
+        @Nullable
+        private RuntimeException queryFailure;
         private boolean proof;
         private boolean failRollbackBefore;
         private boolean failRollbackAfter;
@@ -231,32 +248,70 @@ class TransactionRecoveryTest {
             assertEquals(path, process.requirementPath());
         }
 
-        @Override public ProcessResult result() { scope(); return ProcessResult.SUCCESS; }
-        @Override public List<? extends ResourceReservation> reservations() { scope(); return reservations; }
-        @Override public void commit() { scope(); commits++; applied = true; onCommit.run(); }
-        @Override public void complete() {
+        @Override
+        public ProcessResult result() {
+            scope();
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public List<? extends ResourceReservation> reservations() {
+            scope();
+            return reservations;
+        }
+
+        @Override
+        public void commit() {
+            scope();
+            commits++;
+            applied = true;
+            onCommit.run();
+        }
+
+        @Override
+        public void complete() {
             scope();
             completions++;
-            if (failCompleteBefore) { throw failure; }
+            if (failCompleteBefore) {
+                throw failure;
+            }
             completed = true;
-            if (failCompleteAfter) { throw failure; }
+            if (failCompleteAfter) {
+                throw failure;
+            }
         }
-        @Override public void rollback() {
+
+        @Override
+        public void rollback() {
             scope();
             rollbacks++;
             onRollback.run();
-            if (failRollbackBefore) { throw failure; }
+            if (failRollbackBefore) {
+                throw failure;
+            }
             applied = false;
             rolledBack = true;
-            if (failRollbackAfter) { throw failure; }
+            if (failRollbackAfter) {
+                throw failure;
+            }
         }
-        @Override public Resolution resolution() {
+
+        @Override
+        public Resolution resolution() {
             scope();
             onQuery.run();
-            if (queryFailure != null) { throw queryFailure; }
-            if (!proof) { return Resolution.UNKNOWN; }
-            if (completed) { return Resolution.COMPLETED; }
-            if (rolledBack) { return Resolution.ROLLED_BACK; }
+            if (queryFailure != null) {
+                throw queryFailure;
+            }
+            if (!proof) {
+                return Resolution.UNKNOWN;
+            }
+            if (completed) {
+                return Resolution.COMPLETED;
+            }
+            if (rolledBack) {
+                return Resolution.ROLLED_BACK;
+            }
             return Resolution.REVERSIBLE;
         }
     }

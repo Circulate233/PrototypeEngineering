@@ -14,7 +14,9 @@ import java.util.function.BooleanSupplier;
 public interface DataCenterStorage {
     DataCenterResearchSnapshot snapshot();
 
-    /** Owner-only proof of the exact contents, including changes that later restore equal contents. */
+    /**
+     * Owner-only proof of the exact contents, including changes that later restore equal contents.
+     */
     boolean current(DataCenterResearchSnapshot snapshot);
 
     default Capture capture() {
@@ -26,10 +28,14 @@ public interface DataCenterStorage {
         return downloadResearch(researchId, requestedLevel, cloud, () -> true);
     }
 
-    /** Recheck the caller's read-only authority immediately before publishing physical changes. */
+    /**
+     * Recheck the caller's read-only authority immediately before publishing physical changes.
+     */
     Result downloadResearch(ResourceLocation researchId, int requestedLevel, TeamResearchView cloud, BooleanSupplier current);
 
-    /** Atomically validate all disk entries before publishing any of them. Item consumption belongs to its caller. */
+    /**
+     * Atomically validate all disk entries before publishing any of them. Item consumption belongs to its caller.
+     */
     default Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud) {
         return storeFromDisk(entries, cloud, () -> true);
     }
@@ -46,14 +52,19 @@ public interface DataCenterStorage {
 
     Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current);
 
-    record Capture(DataCenterResearchSnapshot snapshot, BooleanSupplier current) {
-        public Capture { Objects.requireNonNull(snapshot); Objects.requireNonNull(current); }
-    }
-
     enum Result {
         UPDATED, UNCHANGED, SPECIAL_ONLY_REJECTED, ITEM_ONLY_REJECTED, MISSING_CLOUD_RESEARCH_LEVEL,
         DATA_CENTER_LEVEL_TOO_LOW, MUTEX_BLOCKED, CAPACITY_FULL, STALE_CONTEXT;
 
-        public boolean accepted() { return this == UPDATED || this == UNCHANGED; }
+        public boolean accepted() {
+            return this == UPDATED || this == UNCHANGED;
+        }
+    }
+
+    record Capture(DataCenterResearchSnapshot snapshot, BooleanSupplier current) {
+        public Capture {
+            Objects.requireNonNull(snapshot);
+            Objects.requireNonNull(current);
+        }
     }
 }

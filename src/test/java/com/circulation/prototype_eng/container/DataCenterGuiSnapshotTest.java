@@ -15,19 +15,81 @@ import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import java.util.UUID;
-import java.util.Objects;
-import java.util.function.Consumer;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
-import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.*;
-import static org.junit.jupiter.api.Assertions.*;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Consumer;
+
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.EMPTY;
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.Entry;
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.MAX_PACKET_BYTES;
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.MAX_ROWS;
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.Request;
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.Selection;
+import static com.circulation.prototype_eng.container.DataCenterGuiSnapshot.capture;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class DataCenterGuiSnapshotTest {
     private static final UUID DATABASE = new UUID(0, 41);
 
-    @Test void unionIsSortedPagedAndPreservesOnlyAnExactVisibleSelection() {
+    private static void rejects(Consumer<ByteBuf> mutation) {
+        var buffer = Unpooled.buffer();
+        try {
+            EMPTY.writeToPacket(buffer);
+            mutation.accept(buffer);
+            assertThrows(IllegalArgumentException.class, () -> new DataCenterGuiSnapshot(buffer));
+        } finally {
+            buffer.release();
+        }
+    }
+
+    private static Fixture fixture() {
+        var registry = new ResearchRegistry();
+        var shared = new Object2IntOpenHashMap<ResourceLocation>();
+        for (int i = 12; i >= 0; i--) {
+            register(registry, ordinary(i), false, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
+            shared.put(ordinary(i), 3);
+        }
+        register(registry, id("item"), false, ResearchDownloadDeliveryPolicy.ITEM_ONLY);
+        register(registry, id("special"), true, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
+        shared.put(id("item"), 2);
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        registry.freeze(resources);
+        var cloud = new TeamResearchView(registry, "team", ObjectList.of(new UUID(0, 1)), shared,
+            Object2IntMaps.emptyMap(), ObjectList.of());
+        var stored = new Object2IntOpenHashMap<ResourceLocation>();
+        stored.put(ordinary(2), 1);
+        stored.put(id("item"), 2);
+        stored.put(id("special"), 2);
+        return new Fixture(registry, new DataCenterPlayerView("team", Decision.ALLOWED, Decision.ALLOWED, false,
+            new DataCenterResearchSnapshot(DATABASE, 2, 16, 7, stored), cloud));
+    }
+
+    private static void register(ResearchRegistry registry, ResourceLocation id, boolean special, ResearchDownloadDeliveryPolicy policy) {
+        registry.register(ResearchDefinition.builder(id).maxLevel(3).specialOnly(special).deliveryPolicy(policy)
+                                            .startCondition(_ -> fail("Database display invoked a start condition"))
+                                            .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+    }
+
+    private static ResourceLocation ordinary(int index) {
+        return id("ordinary_" + (index < 10 ? "0" : "") + index);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("test_database_gui", path);
+    }
+
+    @Test
+    void unionIsSortedPagedAndPreservesOnlyAnExactVisibleSelection() {
         var fixture = fixture();
         var first = capture(fixture.view(), fixture.registry(), new Request(0, null));
         assertEquals(15, first.total());
@@ -45,7 +107,8 @@ class DataCenterGuiSnapshotTest {
         assertEquals(changedLevel.rows().getFirst().selection(), changedLevel.selected());
     }
 
-    @Test void specialAndItemOnlyEntriesAppearOnlyWhenStoredAndNeverDownload() {
+    @Test
+    void specialAndItemOnlyEntriesAppearOnlyWhenStoredAndNeverDownload() {
         var fixture = fixture();
         var first = capture(fixture.view(), fixture.registry(), new Request(0, null));
         var item = first.find(new Selection(id("item"), 0));
@@ -65,7 +128,8 @@ class DataCenterGuiSnapshotTest {
         assertTrue(cloudOnly.rows().stream().noneMatch(row -> row.id().equals(id("item"))));
     }
 
-    @Test void permissionsSavingAndOfflineStateDisableDownloadsWithoutHidingAllowedCloud() {
+    @Test
+    void permissionsSavingAndOfflineStateDisableDownloadsWithoutHidingAllowedCloud() {
         var fixture = fixture();
         var request = new Request(0, new Selection(ordinary(0), 3));
         var allowed = capture(fixture.view(), fixture.registry(), request);
@@ -88,7 +152,8 @@ class DataCenterGuiSnapshotTest {
         assertNull(denied.selected());
     }
 
-    @Test void capacityTierAndAlreadyStoredLevelsControlAdmission() {
+    @Test
+    void capacityTierAndAlreadyStoredLevelsControlAdmission() {
         var fixture = fixture();
         var database = Objects.requireNonNull(fixture.view().dataCenter());
         var full = new DataCenterResearchSnapshot(DATABASE, 2, 3, 0, database.storedResearch());
@@ -107,7 +172,8 @@ class DataCenterGuiSnapshotTest {
         assertFalse(unchanged.canDownload(unchanged.find(new Selection(ordinary(0), 3))));
     }
 
-    @Test void lastDrawnIdentityRejectsReplacementDatabaseTeamLevelAndDisappearingRows() {
+    @Test
+    void lastDrawnIdentityRejectsReplacementDatabaseTeamLevelAndDisappearingRows() {
         var fixture = fixture();
         var page = capture(fixture.view(), fixture.registry(), new Request(0, null));
         var selection = new Selection(ordinary(0), 3);
@@ -119,7 +185,8 @@ class DataCenterGuiSnapshotTest {
         assertFalse(next.contains("team", DATABASE, selection));
     }
 
-    @Test void roundTripPreservesIdentityMetadataAndFollowingGuiSyncField() {
+    @Test
+    void roundTripPreservesIdentityMetadataAndFollowingGuiSyncField() {
         var fixture = fixture();
         var page = capture(fixture.view(), fixture.registry(), new Request(6, null));
         var buffer = Unpooled.buffer();
@@ -129,22 +196,28 @@ class DataCenterGuiSnapshotTest {
             assertEquals(page, new DataCenterGuiSnapshot(buffer));
             assertEquals(123456, buffer.readInt());
             assertFalse(buffer.isReadable());
-        } finally { buffer.release(); }
+        } finally {
+            buffer.release();
+        }
         assertEquals(DATABASE, page.dataCenterId());
         assertEquals(2, page.level());
         assertEquals(16, page.capacity());
         assertEquals(3, page.storedCount());
     }
 
-    @Test void emptySnapshotRoundTripsWithoutInventingAnActiveDatabase() {
+    @Test
+    void emptySnapshotRoundTripsWithoutInventingAnActiveDatabase() {
         var buffer = Unpooled.buffer();
         try {
             EMPTY.writeToPacket(buffer);
             assertEquals(EMPTY, new DataCenterGuiSnapshot(buffer));
-        } finally { buffer.release(); }
+        } finally {
+            buffer.release();
+        }
     }
 
-    @Test void packetRejectsInvalidVersionBooleanPermissionLengthAndTrailingBody() {
+    @Test
+    void packetRejectsInvalidVersionBooleanPermissionLengthAndTrailingBody() {
         rejects(buffer -> buffer.setByte(4, 2));
         rejects(buffer -> buffer.setByte(5, 2));
         rejects(buffer -> buffer.setByte(8, 255)); // EMPTY has a zero-length team string at byte 7.
@@ -154,46 +227,12 @@ class DataCenterGuiSnapshotTest {
         rejects(buffer -> buffer.setByte(31, MAX_ROWS + 1));
         rejects(buffer -> buffer.setInt(0, MAX_PACKET_BYTES + 1));
         rejects(buffer -> buffer.writerIndex(buffer.writerIndex() - 1));
-        rejects(buffer -> { buffer.writeByte(0); buffer.setInt(0, buffer.getInt(0) + 1); });
+        rejects(buffer -> {
+            buffer.writeByte(0);
+            buffer.setInt(0, buffer.getInt(0) + 1);
+        });
     }
 
-    private static void rejects(Consumer<ByteBuf> mutation) {
-        var buffer = Unpooled.buffer();
-        try {
-            EMPTY.writeToPacket(buffer);
-            mutation.accept(buffer);
-            assertThrows(IllegalArgumentException.class, () -> new DataCenterGuiSnapshot(buffer));
-        } finally { buffer.release(); }
+    private record Fixture(ResearchRegistry registry, DataCenterPlayerView view) {
     }
-
-    private static Fixture fixture() {
-        var registry = new ResearchRegistry();
-        var shared = new Object2IntOpenHashMap<ResourceLocation>();
-        for (int i = 12; i >= 0; i--) {
-            register(registry, ordinary(i), false, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
-            shared.put(ordinary(i), 3);
-        }
-        register(registry, id("item"), false, ResearchDownloadDeliveryPolicy.ITEM_ONLY);
-        register(registry, id("special"), true, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
-        shared.put(id("item"), 2);
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        registry.freeze(resources);
-        var cloud = new TeamResearchView(registry, "team", ObjectList.of(new UUID(0, 1)), shared,
-            Object2IntMaps.emptyMap(), ObjectList.of());
-        var stored = new Object2IntOpenHashMap<ResourceLocation>();
-        stored.put(ordinary(2), 1); stored.put(id("item"), 2); stored.put(id("special"), 2);
-        return new Fixture(registry, new DataCenterPlayerView("team", Decision.ALLOWED, Decision.ALLOWED, false,
-            new DataCenterResearchSnapshot(DATABASE, 2, 16, 7, stored), cloud));
-    }
-
-    private static void register(ResearchRegistry registry, ResourceLocation id, boolean special, ResearchDownloadDeliveryPolicy policy) {
-        registry.register(ResearchDefinition.builder(id).maxLevel(3).specialOnly(special).deliveryPolicy(policy)
-            .startCondition(_ -> fail("Database display invoked a start condition"))
-            .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-    }
-
-    private static ResourceLocation ordinary(int index) { return id("ordinary_" + (index < 10 ? "0" : "") + index); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("test_database_gui", path); }
-    private record Fixture(ResearchRegistry registry, DataCenterPlayerView view) { }
 }

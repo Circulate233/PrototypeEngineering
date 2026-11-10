@@ -6,23 +6,24 @@ import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskCommit;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskCommit;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import java.util.Map;
-import org.jetbrains.annotations.Nullable;
-
-/** PN database rules with one atomic content publication and monotonic owner-side revision. */
+/**
+ * PN database rules with one atomic content publication and monotonic owner-side revision.
+ */
 public final class ResearchDataCenter implements DataCenterStorage {
     private final ResearchRegistry registry;
     private final Runnable ownerCheck;
@@ -52,7 +53,9 @@ public final class ResearchDataCenter implements DataCenterStorage {
     }
 
 
-    /** Restore the complete atomic component state, retaining every unresolved import receipt. */
+    /**
+     * Restore the complete atomic component state, retaining every unresolved import receipt.
+     */
     public static ResearchDataCenter restore(State saved, ResearchRegistry registry, Runnable ownerCheck, Runnable changed) {
         var restored = restore(saved.contents(), registry, ownerCheck, changed);
         for (var receipt : saved.receipts().values()) {
@@ -92,13 +95,15 @@ public final class ResearchDataCenter implements DataCenterStorage {
         if (!Objects.requireNonNull(current).getAsBoolean() || state != before || !commit.matchesBefore(before.contents())) {
             return Result.STALE_CONTEXT;
         }
-        if (!commit.teamId().equals(cloud.teamId())) throw new IllegalArgumentException("Disk import belongs to another team");
+        if (!commit.teamId().equals(cloud.teamId()))
+            throw new IllegalArgumentException("Disk import belongs to another team");
         var data = new ResearchDiskData(registry, commit.diskTier(), commit.entries());
         var prepared = ResearchDiskImport.prepare(commit.operationId(), commit.actor(), commit.teamId(), data, before.contents(), cloud);
         if (!prepared.result().accepted()) {
             return Objects.requireNonNull(prepared.result().storageResult());
         }
-        if (!Objects.requireNonNull(prepared.commit()).equals(commit)) throw new IllegalArgumentException("Disk import differs from validated intent");
+        if (!Objects.requireNonNull(prepared.commit()).equals(commit))
+            throw new IllegalArgumentException("Disk import differs from validated intent");
         if (!current.getAsBoolean() || state != before) return Result.STALE_CONTEXT;
         var receipts = new Object2ObjectOpenHashMap<>(before.receipts());
         receipts.put(commit.operationId(), commit);
@@ -109,14 +114,17 @@ public final class ResearchDataCenter implements DataCenterStorage {
         return Result.UPDATED;
     }
 
-    /** Remove only exact terminal evidence; callers must still reliably persist a missing receipt. */
+    /**
+     * Remove only exact terminal evidence; callers must still reliably persist a missing receipt.
+     */
     public void removeDiskReceipt(ResearchDiskCommit commit, BooleanSupplier current) {
         ownerCheck.run();
         Objects.requireNonNull(commit);
         var before = state;
         if (!commit.before().dataCenterId().equals(before.contents().dataCenterId()))
             throw new IllegalArgumentException("Disk receipt belongs to another database");
-        if (!Objects.requireNonNull(current).getAsBoolean() || state != before) throw new IllegalStateException("Database import binding is stale");
+        if (!Objects.requireNonNull(current).getAsBoolean() || state != before)
+            throw new IllegalStateException("Database import binding is stale");
         var existing = before.receipts().get(commit.operationId());
         if (existing == null) return;
         if (!existing.equals(commit)) throw new IllegalStateException("Conflicting database import receipt");
@@ -126,29 +134,6 @@ public final class ResearchDataCenter implements DataCenterStorage {
         state = new State(new DataCenterResearchSnapshot(snapshot.dataCenterId(), snapshot.level(), snapshot.capacity(),
             Math.incrementExact(snapshot.revision()), snapshot.storedResearch()), receipts);
         changed.run();
-    }
-
-    /** One publication and serialization boundary for contents and all unresolved operation receipts. */
-    public record State(DataCenterResearchSnapshot contents, Map<UUID, ResearchDiskCommit> receipts) {
-        public State {
-            Objects.requireNonNull(contents);
-            var stable = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>();
-            for (var entry : Objects.requireNonNull(receipts).entrySet()) {
-                var commit = Objects.requireNonNull(entry.getValue());
-                if (!Objects.requireNonNull(entry.getKey()).equals(commit.operationId())
-                    || !commit.before().dataCenterId().equals(contents.dataCenterId())
-                    || commit.before().level() != contents.level() || commit.before().capacity() != contents.capacity()) {
-                    throw new IllegalArgumentException("Database receipt identity or metadata differs");
-                }
-                for (var stored : commit.after().storedResearch().object2IntEntrySet()) {
-                    if (contents.storedResearch().getInt(stored.getKey()) < stored.getIntValue()) {
-                        throw new IllegalArgumentException("Database contents lost a committed disk import");
-                    }
-                }
-                stable.put(entry.getKey(), commit);
-            }
-            receipts = Object2ObjectMaps.unmodifiable(stable);
-        }
     }
 
     @Override
@@ -270,12 +255,18 @@ public final class ResearchDataCenter implements DataCenterStorage {
 
     private boolean mutexBlocked(ResearchDefinition candidate, int target, Object2IntMap<ResourceLocation> visible) {
         for (var rule : candidate.mutexRulesForLevel(target)) {
-            if (visible.getInt(rule.researchId()) >= rule.minLevel()) { return true; }
+            if (visible.getInt(rule.researchId()) >= rule.minLevel()) {
+                return true;
+            }
         }
         for (var entry : visible.object2IntEntrySet()) {
-            if (entry.getKey().equals(candidate.id()) || entry.getIntValue() < 1) { continue; }
+            if (entry.getKey().equals(candidate.id()) || entry.getIntValue() < 1) {
+                continue;
+            }
             for (var rule : registry.require(entry.getKey()).mutexRulesForLevel(entry.getIntValue())) {
-                if (rule.researchId().equals(candidate.id()) && target >= rule.minLevel()) { return true; }
+                if (rule.researchId().equals(candidate.id()) && target >= rule.minLevel()) {
+                    return true;
+                }
             }
         }
         return false;
@@ -303,6 +294,33 @@ public final class ResearchDataCenter implements DataCenterStorage {
     }
 
     private void requireCloud(TeamResearchView cloud) {
-        if (Objects.requireNonNull(cloud).registry() != registry) { throw new IllegalArgumentException("Data-center cloud has another research registry"); }
+        if (Objects.requireNonNull(cloud).registry() != registry) {
+            throw new IllegalArgumentException("Data-center cloud has another research registry");
+        }
+    }
+
+    /**
+     * One publication and serialization boundary for contents and all unresolved operation receipts.
+     */
+    public record State(DataCenterResearchSnapshot contents, Map<UUID, ResearchDiskCommit> receipts) {
+        public State {
+            Objects.requireNonNull(contents);
+            var stable = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>();
+            for (var entry : Objects.requireNonNull(receipts).entrySet()) {
+                var commit = Objects.requireNonNull(entry.getValue());
+                if (!Objects.requireNonNull(entry.getKey()).equals(commit.operationId())
+                    || !commit.before().dataCenterId().equals(contents.dataCenterId())
+                    || commit.before().level() != contents.level() || commit.before().capacity() != contents.capacity()) {
+                    throw new IllegalArgumentException("Database receipt identity or metadata differs");
+                }
+                for (var stored : commit.after().storedResearch().object2IntEntrySet()) {
+                    if (contents.storedResearch().getInt(stored.getKey()) < stored.getIntValue()) {
+                        throw new IllegalArgumentException("Database contents lost a committed disk import");
+                    }
+                }
+                stable.put(entry.getKey(), commit);
+            }
+            receipts = Object2ObjectMaps.unmodifiable(stable);
+        }
     }
 }

@@ -4,7 +4,9 @@ import ae2.core.localization.LocalizationEnum;
 
 import java.util.Objects;
 
-/** Dynamic addon structure titles use the same AE2S contract as recipe pool titles. */
+/**
+ * Dynamic addon structure titles use the same AE2S contract as recipe pool titles.
+ */
 public record StructureTitle(String translationKey) implements LocalizationEnum {
     public StructureTitle {
         Objects.requireNonNull(translationKey);

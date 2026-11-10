@@ -13,7 +13,9 @@ import net.minecraft.util.ResourceLocation;
 import java.io.Serial;
 import java.util.Objects;
 
-/** Immutable exact integer adjustment of a team's complete per-tick computing resource vector. */
+/**
+ * Immutable exact integer adjustment of a team's complete per-tick computing resource vector.
+ */
 public final class NetworkResourceModifier {
     public static final NetworkResourceModifier EMPTY = new Builder().build();
     private static final long ONE_MILLION = 1_000_000L;
@@ -32,35 +34,15 @@ public final class NetworkResourceModifier {
         }
     }
 
-    public static Builder builder() { return new Builder(); }
-
-    public Object2LongMap<NetworkResourceType> flatAdjustments() { return flat; }
-
-    public Object2LongMap<NetworkResourceType> multiplierPpmAdjustments() { return multiplierPpm; }
-
-    /** Copies non-negative quantities and rejects conflicting metadata for a shared resource id. */
-    public static Object2LongMap<NetworkResourceType> copyResources(Object2LongMap<NetworkResourceType> resources) {
-        return freeze(copy(resources, true, new Object2ObjectOpenHashMap<>()));
+    public static Builder builder() {
+        return new Builder();
     }
 
-    /** Applies floor((base + flat) * (1_000_000 + ppm) / 1_000_000), rejecting intermediate overflow. */
-    public Object2LongMap<NetworkResourceType> apply(Object2LongMap<NetworkResourceType> base) {
-        var metadata = new Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType>();
-        var quantities = copy(base, true, metadata);
-        for (var type : flat.keySet()) { requireConsistentType(type, metadata); }
-        for (var type : multiplierPpm.keySet()) { requireConsistentType(type, metadata); }
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
-        result.defaultReturnValue(0L);
-        for (var type : metadata.values()) {
-            long adjustedBase = Math.addExact(quantities.getLong(type), flat.getLong(type));
-            long factor = Math.addExact(ONE_MILLION, multiplierPpm.getLong(type));
-            long numerator = Math.multiplyExact(adjustedBase, factor);
-            if (adjustedBase < 0L || factor < 0L || numerator < 0L) {
-                throw new IllegalArgumentException("Computing resource modifier produces a negative value for " + type.id());
-            }
-            result.put(type, Math.floorDiv(numerator, ONE_MILLION));
-        }
-        return freeze(result);
+    /**
+     * Copies non-negative quantities and rejects conflicting metadata for a shared resource id.
+     */
+    public static Object2LongMap<NetworkResourceType> copyResources(Object2LongMap<NetworkResourceType> resources) {
+        return freeze(copy(resources, true, new Object2ObjectOpenHashMap<>()));
     }
 
     private static Object2LongOpenHashMap<NetworkResourceType> copy(
@@ -81,7 +63,7 @@ public final class NetworkResourceModifier {
     }
 
     private static void requireConsistentType(NetworkResourceType type,
-        Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType> metadata) {
+                                              Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType> metadata) {
         Objects.requireNonNull(type, "Computing resource type");
         var retained = metadata.putIfAbsent(type.id(), type);
         if (retained != null && !retained.equals(type)) {
@@ -93,9 +75,46 @@ public final class NetworkResourceModifier {
         return Object2LongMaps.unmodifiable(new FrozenResources(quantities));
     }
 
-    /** Frozen entries close the setValue mutation route left open by fastutil's map/set wrappers. */
+    public Object2LongMap<NetworkResourceType> flatAdjustments() {
+        return flat;
+    }
+
+    public Object2LongMap<NetworkResourceType> multiplierPpmAdjustments() {
+        return multiplierPpm;
+    }
+
+    /**
+     * Applies floor((base + flat) * (1_000_000 + ppm) / 1_000_000), rejecting intermediate overflow.
+     */
+    public Object2LongMap<NetworkResourceType> apply(Object2LongMap<NetworkResourceType> base) {
+        var metadata = new Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType>();
+        var quantities = copy(base, true, metadata);
+        for (var type : flat.keySet()) {
+            requireConsistentType(type, metadata);
+        }
+        for (var type : multiplierPpm.keySet()) {
+            requireConsistentType(type, metadata);
+        }
+        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        result.defaultReturnValue(0L);
+        for (var type : metadata.values()) {
+            long adjustedBase = Math.addExact(quantities.getLong(type), flat.getLong(type));
+            long factor = Math.addExact(ONE_MILLION, multiplierPpm.getLong(type));
+            long numerator = Math.multiplyExact(adjustedBase, factor);
+            if (adjustedBase < 0L || factor < 0L || numerator < 0L) {
+                throw new IllegalArgumentException("Computing resource modifier produces a negative value for " + type.id());
+            }
+            result.put(type, Math.floorDiv(numerator, ONE_MILLION));
+        }
+        return freeze(result);
+    }
+
+    /**
+     * Frozen entries close the setValue mutation route left open by fastutil's map/set wrappers.
+     */
     private static final class FrozenResources extends AbstractObject2LongMap<NetworkResourceType> {
-        @Serial private static final long serialVersionUID = 1L;
+        @Serial
+        private static final long serialVersionUID = 1L;
         private final Object2LongOpenHashMap<NetworkResourceType> quantities;
         private final ObjectSet<Object2LongMap.Entry<NetworkResourceType>> entries;
 
@@ -108,10 +127,25 @@ public final class NetworkResourceModifier {
             this.entries = ObjectSets.unmodifiable(entries);
         }
 
-        @Override public long getLong(Object key) { return quantities.getLong(key); }
-        @Override public boolean containsKey(Object key) { return quantities.containsKey(key); }
-        @Override public int size() { return quantities.size(); }
-        @Override public ObjectSet<Object2LongMap.Entry<NetworkResourceType>> object2LongEntrySet() { return entries; }
+        @Override
+        public long getLong(Object key) {
+            return quantities.getLong(key);
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return quantities.containsKey(key);
+        }
+
+        @Override
+        public int size() {
+            return quantities.size();
+        }
+
+        @Override
+        public ObjectSet<Object2LongMap.Entry<NetworkResourceType>> object2LongEntrySet() {
+            return entries;
+        }
     }
 
     public static final class Builder {
@@ -119,7 +153,8 @@ public final class NetworkResourceModifier {
         private final Object2LongOpenHashMap<NetworkResourceType> multiplierPpm = new Object2LongOpenHashMap<>();
         private final Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType> metadata = new Object2ObjectOpenHashMap<>();
 
-        private Builder() { }
+        private Builder() {
+        }
 
         public Builder flat(NetworkResourceType type, long amount) {
             add(flat, type, amount);
@@ -131,7 +166,9 @@ public final class NetworkResourceModifier {
             return this;
         }
 
-        public NetworkResourceModifier build() { return new NetworkResourceModifier(this); }
+        public NetworkResourceModifier build() {
+            return new NetworkResourceModifier(this);
+        }
 
         private void add(Object2LongOpenHashMap<NetworkResourceType> target, NetworkResourceType type, long amount) {
             requireConsistentType(type, metadata);

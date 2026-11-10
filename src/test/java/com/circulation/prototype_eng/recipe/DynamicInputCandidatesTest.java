@@ -1,11 +1,27 @@
 package com.circulation.prototype_eng.recipe;
 
+import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.matching.ResourceMatchers;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.recipe.requirement.DynamicInputCandidates;
+import com.circulation.prototype_eng.recipe.requirement.NbtLongArrayAccess;
+import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -20,38 +36,50 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import org.junit.jupiter.api.Test;
 
+import javax.annotation.Nonnull;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import ae2.api.config.Actionable;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
-import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.recipe.requirement.NbtLongArrayAccess;
-import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
-import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-import com.circulation.prototype_eng.storage.BufferedResourceHatch;
-import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import javax.annotation.Nonnull;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DynamicInputCandidatesTest {
     private static final NamedResourceMatcher ALL = new NamedResourceMatcher(id("all"), (_, _) -> true);
+
+    private static NBTTagCompound nested(int first, int second, boolean reversed) {
+        var nested = new NBTTagCompound();
+        // These two names share Java's string hash; their insertion order must still be irrelevant.
+        if (reversed) {
+            nested.setInteger("BB", second);
+            nested.setInteger("Aa", first);
+        } else {
+            nested.setInteger("Aa", first);
+            nested.setInteger("BB", second);
+        }
+        var tag = new NBTTagCompound();
+        tag.setTag("nested", nested);
+        return tag;
+    }
+
+    private static NBTTagCompound orderedList(int first, int second) {
+        var list = new NBTTagList();
+        list.appendTag(new NBTTagInt(first));
+        list.appendTag(new NBTTagInt(second));
+        var tag = new NBTTagCompound();
+        tag.setTag("list", list);
+        return tag;
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("dynamic_test", path);
+    }
 
     @Test
     void allSourceKeysAreSortedBeforeTruncationAndPresentationKeysDoNotFilterRuntimeKeys() {
@@ -211,43 +239,18 @@ class DynamicInputCandidatesTest {
         }
     }
 
-    private static NBTTagCompound nested(int first, int second, boolean reversed) {
-        var nested = new NBTTagCompound();
-        // These two names share Java's string hash; their insertion order must still be irrelevant.
-        if (reversed) {
-            nested.setInteger("BB", second);
-            nested.setInteger("Aa", first);
-        } else {
-            nested.setInteger("Aa", first);
-            nested.setInteger("BB", second);
-        }
-        var tag = new NBTTagCompound();
-        tag.setTag("nested", nested);
-        return tag;
-    }
-
-    private static NBTTagCompound orderedList(int first, int second) {
-        var list = new NBTTagList();
-        list.appendTag(new NBTTagInt(first));
-        list.appendTag(new NBTTagInt(second));
-        var tag = new NBTTagCompound();
-        tag.setTag("list", list);
-        return tag;
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("dynamic_test", path);
-    }
-
     private static final class TaggedKeyType extends AEKeyType {
         private TaggedKeyType(String name) {
             super(id(name), TaggedKey.class, new TextComponentString(name));
         }
 
-        @Override public AEKey readFromPacket(PacketBuffer input) {
+        @Override
+        public AEKey readFromPacket(PacketBuffer input) {
             throw new UnsupportedOperationException("This fixture exercises snapshot keys");
         }
-        @Override public AEKey loadKeyFromTag(NBTTagCompound tag) {
+
+        @Override
+        public AEKey loadKeyFromTag(NBTTagCompound tag) {
             return new TaggedKey(this, tag, "");
         }
     }
@@ -263,20 +266,59 @@ class DynamicInputCandidatesTest {
             this.discriminator = discriminator;
         }
 
-        @Override public AEKeyType getType() { return type; }
-        @Override public AEKey dropSecondary() { return this; }
-        @Override public Object getPrimaryKey() { return type; }
-        @Override public ResourceLocation getId() { return id("same_resource"); }
-        @Override public Object getReadOnlyStack() { return this; }
-        @Override public NBTTagCompound toTag() { return tag.copy(); }
-        @Override public NBTBase get(String componentId) { return tag.getTag(componentId); }
-        @Override protected ITextComponent computeDisplayName() { return new TextComponentString(discriminator); }
-        @Override public void writeToPacket(PacketBuffer output) {
+        @Override
+        public AEKeyType getType() {
+            return type;
+        }
+
+        @Override
+        public AEKey dropSecondary() {
+            return this;
+        }
+
+        @Override
+        public Object getPrimaryKey() {
+            return type;
+        }
+
+        @Override
+        public ResourceLocation getId() {
+            return id("same_resource");
+        }
+
+        @Override
+        public Object getReadOnlyStack() {
+            return this;
+        }
+
+        @Override
+        public NBTTagCompound toTag() {
+            return tag.copy();
+        }
+
+        @Override
+        public NBTBase get(String componentId) {
+            return tag.getTag(componentId);
+        }
+
+        @Override
+        protected ITextComponent computeDisplayName() {
+            return new TextComponentString(discriminator);
+        }
+
+        @Override
+        public void writeToPacket(PacketBuffer output) {
             throw new UnsupportedOperationException("This fixture exercises snapshot keys");
         }
-        @Override public boolean equals(Object other) {
+
+        @Override
+        public boolean equals(Object other) {
             return other instanceof TaggedKey key && type == key.type && tag.equals(key.tag) && discriminator.equals(key.discriminator);
         }
-        @Override public int hashCode() { return Objects.hash(type, tag, discriminator); }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(type, tag, discriminator);
+        }
     }
 }

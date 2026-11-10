@@ -18,14 +18,40 @@ import java.util.UUID;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkTeamBudgetTest {
     private static final UUID MACHINE = new UUID(1L, 1L);
     private static final ResourceLocation FIRST_SLOT = new ResourceLocation("test", "first_slot");
     private static final ResourceLocation SECOND_SLOT = new ResourceLocation("test", "second_slot");
 
-    @Test void insufficientDimensionPreservesTheWholeBalanceAndAllowsTheSameOperationToRetry() {
+    private static NetworkTeamBudget budget(long tick, Object2LongMap<NetworkResourceType> capacity) {
+        var registry = new NetworkResourceRegistry();
+        registry.freeze();
+        return new NetworkTeamBudget(tick, registry, capacity, ownerCheck());
+    }
+
+    private static Runnable ownerCheck() {
+        var owner = Thread.currentThread();
+        return () -> {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Network budget owner required");
+            }
+        };
+    }
+
+    private static Object2LongOpenHashMap<NetworkResourceType> amounts(NetworkResourceType type, long amount) {
+        var values = new Object2LongOpenHashMap<NetworkResourceType>();
+        values.put(type, amount);
+        return values;
+    }
+
+    @Test
+    void insufficientDimensionPreservesTheWholeBalanceAndAllowsTheSameOperationToRetry() {
         var capacity = amounts(NetworkResources.COMPUTE, 10L);
         capacity.put(NetworkResources.QUBIT, 2L);
         try (var budget = budget(1L, capacity)) {
@@ -54,7 +80,8 @@ class NetworkTeamBudgetTest {
         }
     }
 
-    @Test void machineSlotsShareOneLeaseWhileCustomLogicalDimensionsHaveIndependentLongCapacity() {
+    @Test
+    void machineSlotsShareOneLeaseWhileCustomLogicalDimensionsHaveIndependentLongCapacity() {
         var registry = new NetworkResourceRegistry();
         var custom = registry.register(new NetworkResourceType(new ResourceLocation("test", "parallel"), true, 0L));
         registry.freeze();
@@ -76,10 +103,11 @@ class NetworkTeamBudgetTest {
         }
     }
 
-    @Test void staleAuthorityAndClosedBooksRejectCommitsButCompensateOnlyTheirIssuingTick() {
+    @Test
+    void staleAuthorityAndClosedBooksRejectCommitsButCompensateOnlyTheirIssuingTick() {
         try (var oldBook = budget(3L, amounts(NetworkResources.COMPUTE, 10L));
              var newBook = budget(4L, amounts(NetworkResources.COMPUTE, 10L))) {
-            var authorized = new boolean[] {true};
+            var authorized = new boolean[]{true};
             var stale = Objects.requireNonNull(oldBook.reserve(new Operation(MACHINE, FIRST_SLOT, 0L), amounts(NetworkResources.COMPUTE, 4L), () -> authorized[0]));
             var committed = Objects.requireNonNull(oldBook.reserve(new Operation(MACHINE, FIRST_SLOT, 1L), amounts(NetworkResources.COMPUTE, 3L), () -> true));
             var pending = Objects.requireNonNull(oldBook.reserve(new Operation(MACHINE, FIRST_SLOT, 2L), amounts(NetworkResources.COMPUTE, 2L), () -> true));
@@ -105,7 +133,8 @@ class NetworkTeamBudgetTest {
         }
     }
 
-    @Test void acceptedOperationKeysStayConsumedAfterTerminalStatesAndSequencesAllowNewRounds() {
+    @Test
+    void acceptedOperationKeysStayConsumedAfterTerminalStatesAndSequencesAllowNewRounds() {
         try (var budget = budget(5L, amounts(NetworkResources.COMPUTE, 10L))) {
             var firstOperation = new Operation(MACHINE, FIRST_SLOT, 0L);
             var requirement = amounts(NetworkResources.COMPUTE, 2L);
@@ -125,7 +154,8 @@ class NetworkTeamBudgetTest {
         }
     }
 
-    @Test void workersMayReadImmutableSupplyButCannotReadOrChangeOwnerState() throws Exception {
+    @Test
+    void workersMayReadImmutableSupplyButCannotReadOrChangeOwnerState() throws Exception {
         var capacity = amounts(NetworkResources.COMPUTE, 10L);
         capacity.put(NetworkResources.THREAD, 1L);
         try (var budget = budget(6L, capacity)) {
@@ -158,24 +188,5 @@ class NetworkTeamBudgetTest {
             receipt.rollback();
             assertEquals(10L, budget.availableResources().getLong(NetworkResources.COMPUTE));
         }
-    }
-
-    private static NetworkTeamBudget budget(long tick, Object2LongMap<NetworkResourceType> capacity) {
-        var registry = new NetworkResourceRegistry();
-        registry.freeze();
-        return new NetworkTeamBudget(tick, registry, capacity, ownerCheck());
-    }
-
-    private static Runnable ownerCheck() {
-        var owner = Thread.currentThread();
-        return () -> {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Network budget owner required"); }
-        };
-    }
-
-    private static Object2LongOpenHashMap<NetworkResourceType> amounts(NetworkResourceType type, long amount) {
-        var values = new Object2LongOpenHashMap<NetworkResourceType>();
-        values.put(type, amount);
-        return values;
     }
 }

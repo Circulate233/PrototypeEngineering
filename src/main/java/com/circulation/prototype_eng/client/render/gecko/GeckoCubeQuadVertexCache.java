@@ -10,10 +10,6 @@ import javax.vecmath.Matrix4f;
 public final class GeckoCubeQuadVertexCache {
     private final Reference2ObjectOpenHashMap<GeoCube, CubeData> cache = new Reference2ObjectOpenHashMap<>();
 
-    CubeData get(GeoCube cube) {
-        return cache.computeIfAbsent(cube, GeckoCubeQuadVertexCache::bake);
-    }
-
     private static CubeData bake(GeoCube cube) {
         int count = 0;
         for (var quad : cube.quads)
@@ -39,6 +35,10 @@ public final class GeckoCubeQuadVertexCache {
         stack.rotate(cube);
         stack.moveBackFromPivot(cube);
         return new CubeData(xs, ys, zs, uv, new Matrix4f(stack.model()), new Matrix3f(stack.normal()));
+    }
+
+    CubeData get(GeoCube cube) {
+        return cache.computeIfAbsent(cube, GeckoCubeQuadVertexCache::bake);
     }
 
     record CubeData(float[] xs, float[] ys, float[] zs, int[] uv, Matrix4f model, Matrix3f normal) {

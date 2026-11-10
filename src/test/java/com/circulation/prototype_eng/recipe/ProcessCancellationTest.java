@@ -39,7 +39,14 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ProcessCancellationTest {
     private static final KeyType TYPE = new KeyType("cancel");
@@ -47,12 +54,60 @@ class ProcessCancellationTest {
     private static final Key PRODUCT = new Key(TYPE, "product");
     private static final ProcessResult.Failure REASON = new ProcessResult.Failure("cancel.test.reason");
 
+    private static void install(RecipeProcess process, String name, ProcessAbortListener listener) {
+        ComponentType<RecipeProcess, ProcessAbortListener> type = new ComponentType<>(id(name), _ -> listener, List.of());
+        process.components().create(type, process);
+    }
+
+    private static RecipeRequirement<Boolean> guard(String name, RecipeStage failedStage, Runnable cancel) {
+        return new RecipeRequirementType<Boolean>(new ResourceLocation("zzz_cancel_test", name), new RecipeRequirementSystem<>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return result(RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return result(RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return result(RecipeStage.END);
+            }
+
+            private RequirementTransaction result(RecipeStage stage) {
+                return failedStage == stage ? new Rejected(REASON) : RequirementTransaction.SUCCESS;
+            }
+
+            @Override
+            public void cancel(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                cancel.run();
+            }
+        }).requirement(id(name), true);
+    }
+
+    private static SlottedResourceBuffer buffer(long capacity) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, capacity);
+        return new SlottedResourceBuffer(1, capacities, () -> {
+        });
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("cancel_test", name);
+    }
+
     @Test
     void cancellationOfNewRunningAndBlockedWorkKeepsCommittedHistoryAndNeverExecutesEnd() {
         for (var point : Point.values()) {
             var env = new Environment();
-            if (point == Point.TICK_BLOCKED) { env.input.extract(MATERIAL, 17, Actionable.MODULATE); }
-            if (point == Point.END_BLOCKED) { env.output.insert(PRODUCT, 9, Actionable.MODULATE); }
+            if (point == Point.TICK_BLOCKED) {
+                env.input.extract(MATERIAL, 17, Actionable.MODULATE);
+            }
+            if (point == Point.END_BLOCKED) {
+                env.output.insert(PRODUCT, 9, Actionable.MODULATE);
+            }
             var process = env.process(2);
             int[] aborted = {0};
             install(process, "state_listener", current -> {
@@ -61,8 +116,12 @@ class ProcessCancellationTest {
                 aborted[0]++;
             });
             assertTrue(env.host.start(process));
-            if (point != Point.NEW) { env.machine.onSchedule(); }
-            if (point == Point.END_BLOCKED) { env.machine.onSchedule(); }
+            if (point != Point.NEW) {
+                env.machine.onSchedule();
+            }
+            if (point == Point.END_BLOCKED) {
+                env.machine.onSchedule();
+            }
             if (point == Point.TICK_BLOCKED || point == Point.END_BLOCKED) {
                 assertInstanceOf(ProcessResult.Blocked.class, process.state().result());
             }
@@ -127,7 +186,11 @@ class ProcessCancellationTest {
             assertTrue(env.host.start(process));
             env.machine.onSchedule();
             assertNull(process.host());
-            long expectedInput = switch (failedStage) { case START -> 20; case TICK -> 17; case END -> 15; };
+            long expectedInput = switch (failedStage) {
+                case START -> 20;
+                case TICK -> 17;
+                case END -> 15;
+            };
             assertEquals(expectedInput, env.input.amount(MATERIAL));
             assertEquals(0, env.output.amount(PRODUCT));
             env.assertReleased();
@@ -148,7 +211,10 @@ class ProcessCancellationTest {
         var dependentFailure = new IllegalArgumentException("dependent component");
         var baseFailure = new IllegalStateException("base component");
         var first = guard("a", null, () -> events.add("requirement-a"));
-        var last = guard("z", null, () -> { events.add("requirement-z"); throw primary; });
+        var last = guard("z", null, () -> {
+            events.add("requirement-z");
+            throw primary;
+        });
         var process = env.process(2, first, last);
         ComponentType<RecipeProcess, ProcessAbortListener> base = new ComponentType<>(id("base"), _ -> current -> {
             events.add("base");
@@ -204,7 +270,9 @@ class ProcessCancellationTest {
             var process = new RecipeProcess(machine, new MachineRecipe(id(name), 3, List.of()), 17);
             install(process, name, _ -> {
                 events.add(name);
-                if (name.equals("b")) { throw middleFailure; }
+                if (name.equals("b")) {
+                    throw middleFailure;
+                }
             });
             assertTrue(host.startIn(name, process));
             processes.add(process);
@@ -257,53 +325,44 @@ class ProcessCancellationTest {
         process.requirePersistenceBoundary();
     }
 
-    private static void install(RecipeProcess process, String name, ProcessAbortListener listener) {
-        ComponentType<RecipeProcess, ProcessAbortListener> type = new ComponentType<>(id(name), _ -> listener, List.of());
-        process.components().create(type, process);
-    }
-
-    private static RecipeRequirement<Boolean> guard(String name, RecipeStage failedStage, Runnable cancel) {
-        return new RecipeRequirementType<Boolean>(new ResourceLocation("zzz_cancel_test", name), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                return result(RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                return result(RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                return result(RecipeStage.END);
-            }
-            private RequirementTransaction result(RecipeStage stage) {
-                return failedStage == stage ? new Rejected(REASON) : RequirementTransaction.SUCCESS;
-            }
-            @Override public void cancel(RecipeProcess process, RecipeRequirement<Boolean> requirement) { cancel.run(); }
-        }).requirement(id(name), true);
-    }
+    private enum Point {NEW, RUNNING, TICK_BLOCKED, END_BLOCKED}
 
     private record Rejected(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { fail("Rejected stage must not commit"); }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+            fail("Rejected stage must not commit");
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
+
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
-    private enum Point { NEW, RUNNING, TICK_BLOCKED, END_BLOCKED }
 
     private static final class Environment {
         private final MachineInstance machine = new MachineInstance();
         private final SlottedResourceBuffer input = buffer(100);
         private final SlottedResourceBuffer output = buffer(10);
-        private final EnergyBuffer energy = new EnergyBuffer(100, () -> { });
+        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {
+        });
         private final MachineWorkSlots host = new MachineWorkSlots(machine, List.of());
         private final RecipeRequirement<ResourceRequirement> io = RecipeRequirements.RESOURCES.requirement(id("io"),
             new ResourceRequirement(List.of(new GenericStack(MATERIAL, 3)), List.of(new GenericStack(MATERIAL, 2)),
                 List.of(), List.of(new GenericStack(PRODUCT, 2)), false));
+
         private Environment() {
             input.insert(MATERIAL, 20, Actionable.MODULATE);
             energy.restore(30);
             machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Ports(input, output)), List.of(energy), List.of()));
             machine.components().put(MachineWorkSlots.TYPE, host);
         }
+
         private RecipeProcess process(int duration, RecipeRequirement<?>... extras) {
             var requirements = new ObjectArrayList<RecipeRequirement<?>>();
             requirements.add(io);
@@ -311,17 +370,11 @@ class ProcessCancellationTest {
             requirements.addAll(List.of(extras));
             return new RecipeProcess(machine, new MachineRecipe(id("recipe"), duration, requirements), 17);
         }
+
         private void assertReleased() {
             assertEquals(input.amount(MATERIAL), input.availableAmount(MATERIAL));
             assertEquals(10 - output.amount(PRODUCT), output.insert(PRODUCT, 100, Actionable.SIMULATE));
             assertEquals(energy.storedEnergy(), energy.energySnapshot().availableEnergy());
         }
     }
-
-    private static SlottedResourceBuffer buffer(long capacity) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, capacity);
-        return new SlottedResourceBuffer(1, capacities, () -> { });
-    }
-    private static ResourceLocation id(String name) { return new ResourceLocation("cancel_test", name); }
 }

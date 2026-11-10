@@ -18,13 +18,19 @@ import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteOrder;
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Exercises the actual cache continuation and ownership logic through its package-local model/GL seam.
@@ -41,58 +47,6 @@ class PreviewBlockModelsTest {
         for (var position : positions)
             builder.addCell(new StructurePreviewModel.Cell(position, StructurePreviewPath.ROOT, 0, 0, null, false));
         return builder.freeze(new StructureBounds(BlockPos.ORIGIN, BlockPos.ORIGIN));
-    }
-
-    private static final class Mesh implements PreviewBlockModelCache.LayerMesh {
-        int closes, draws;
-        RuntimeException closeFailure;
-
-        @Override
-        public void draw() {
-            draws++;
-        }
-
-        @Override
-        public void close() {
-            closes++;
-            if (closeFailure != null) throw closeFailure;
-        }
-    }
-
-    private static final class RecordingBaker implements PreviewBlockModelCache.ChunkBaker {
-        final ObjectArrayList<StructurePreviewModel.Cell> cells = new ObjectArrayList<>();
-        final ObjectArrayList<Integer> uploads = new ObjectArrayList<>();
-        final ObjectArrayList<Mesh> meshes = new ObjectArrayList<>();
-        int closes;
-        boolean empty;
-        Runnable appendCallback, uploadCallback;
-        int failUpload = -1;
-        int appendRemainder;
-        Error closeError;
-
-        @Override
-        public boolean appendStep(StructurePreviewModel.Cell cell) {
-            cells.add(cell);
-            if (appendCallback != null) appendCallback.run();
-            return appendRemainder-- <= 0;
-        }
-
-        @Override
-        public PreviewBlockModelCache.LayerMesh upload(int layer) {
-            uploads.add(layer);
-            if (layer == failUpload) throw new IllegalStateException("failed upload");
-            if (uploadCallback != null) uploadCallback.run();
-            if (empty) return null;
-            var mesh = new Mesh();
-            meshes.add(mesh);
-            return mesh;
-        }
-
-        @Override
-        public void close() {
-            closes++;
-            if (closeError != null) throw closeError;
-        }
     }
 
     private static PreviewBlockModelCache.Ready complete(PreviewBlockModelCache cache, StructurePreviewModel model) {
@@ -447,5 +401,57 @@ class PreviewBlockModelsTest {
             });
         cpu.present(input, List.of(second, first), 2, () -> true, data -> emitted.add(data[0]));
         assertEquals(List.of(16, 0), emitted);
+    }
+
+    private static final class Mesh implements PreviewBlockModelCache.LayerMesh {
+        int closes, draws;
+        RuntimeException closeFailure;
+
+        @Override
+        public void draw() {
+            draws++;
+        }
+
+        @Override
+        public void close() {
+            closes++;
+            if (closeFailure != null) throw closeFailure;
+        }
+    }
+
+    private static final class RecordingBaker implements PreviewBlockModelCache.ChunkBaker {
+        final ObjectArrayList<StructurePreviewModel.Cell> cells = new ObjectArrayList<>();
+        final ObjectArrayList<Integer> uploads = new ObjectArrayList<>();
+        final ObjectArrayList<Mesh> meshes = new ObjectArrayList<>();
+        int closes;
+        boolean empty;
+        Runnable appendCallback, uploadCallback;
+        int failUpload = -1;
+        int appendRemainder;
+        Error closeError;
+
+        @Override
+        public boolean appendStep(StructurePreviewModel.Cell cell) {
+            cells.add(cell);
+            if (appendCallback != null) appendCallback.run();
+            return appendRemainder-- <= 0;
+        }
+
+        @Override
+        public PreviewBlockModelCache.LayerMesh upload(int layer) {
+            uploads.add(layer);
+            if (layer == failUpload) throw new IllegalStateException("failed upload");
+            if (uploadCallback != null) uploadCallback.run();
+            if (empty) return null;
+            var mesh = new Mesh();
+            meshes.add(mesh);
+            return mesh;
+        }
+
+        @Override
+        public void close() {
+            closes++;
+            if (closeError != null) throw closeError;
+        }
     }
 }

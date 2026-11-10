@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.config.Actionable;
-import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.ComponentSystem;
+import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -16,6 +16,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegis
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessAbortListener;
@@ -40,8 +41,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("resource") // Fixture-local registries own these listeners for the whole scenario.
 class MachineLifecycleProcessTest {
@@ -51,6 +56,10 @@ class MachineLifecycleProcessTest {
     private static final MachineRecipe RECIPE = new MachineRecipe(id("process"), 3, List.of(ENERGY), Set.of(GROUP));
     private static final MachineWorkSlotsNbt CODEC = new MachineWorkSlotsNbt("layout-v1",
         List.of(RecipeProcessNbt.builder(RECIPE, "recipe-v1").build()));
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("lifecycle_process_test", path);
+    }
 
     @Test
     void structureLossPausesExistingWorkAndAdmissionButOtherComponentsKeepTicking() {
@@ -105,7 +114,8 @@ class MachineLifecycleProcessTest {
             assertEquals(state, resumed.state());
             var loaded = new ObjectArrayList<MachineLifecycleEvent.LoadBoundary>();
             restored.registry.register(new MachineLifecycleListener() {
-                @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                @Override
+                public void onLoaded(MachineLifecycleEvent.Loaded event) {
                     loaded.add(event.boundary());
                     assertEquals(state, restored.process().state());
                     assertFalse(event.context().formed());
@@ -131,23 +141,30 @@ class MachineLifecycleProcessTest {
         for (int point = 0; point < 3; point++) {
             var fixture = new Fixture();
             fixture.loadAndForm();
-            if (point == 2) { fixture.input.extractEnergy(17, Actionable.MODULATE); }
+            if (point == 2) {
+                fixture.input.extractEnergy(17, Actionable.MODULATE);
+            }
             var process = new RecipeProcess(fixture.machine, RECIPE, 1);
             int[] aborts = {0};
             var abortType = new ComponentType<RecipeProcess, ProcessAbortListener>(id("abort"), _ -> ignored -> aborts[0]++, List.of());
             process.components().create(abortType, process);
             assertTrue(fixture.slots.start(process));
-            if (point != 0) { fixture.machine.onSchedule(); }
+            if (point != 0) {
+                fixture.machine.onSchedule();
+            }
             var state = process.state();
             long energy = fixture.input.storedEnergy();
             var events = new ObjectArrayList<String>();
             fixture.registry.register(new MachineLifecycleListener() {
-                @Override public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
+                @Override
+                public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
                     assertFalse(fixture.machine.canProcessRecipes());
                     assertEquals(state, process.state());
                     events.add("broken");
                 }
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
                     assertEquals(MachineLifecycleEvent.UnloadReason.INVALIDATED, event.reason());
                     assertTrue(fixture.slots.activeProcesses().isEmpty());
                     events.add("unloaded");
@@ -182,19 +199,26 @@ class MachineLifecycleProcessTest {
         var second = new RecipeProcess(fixture.machine, RECIPE, 2);
         var cancellationFault = new IllegalStateException("owned effect failed");
         var abortType = new ComponentType<RecipeProcess, ProcessAbortListener>(id("failed_abort"),
-            _ -> ignored -> { throw cancellationFault; }, List.of());
+            _ -> ignored -> {
+                throw cancellationFault;
+            }, List.of());
         second.components().create(abortType, second);
         assertTrue(slots.start(first));
         assertTrue(slots.start(second));
         var events = new ObjectArrayList<String>();
         var brokenFault = new IllegalArgumentException("broken hook failed");
         fixture.registry.register(new MachineLifecycleListener() {
-            @Override public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
+            @Override
+            public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
                 fixture.machine.components().remove(MachineWorkSlots.TYPE);
                 events.add("broken");
                 throw brokenFault;
             }
-            @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("unloaded"); }
+
+            @Override
+            public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                events.add("unloaded");
+            }
         });
         assertSame(brokenFault, assertThrows(IllegalArgumentException.class, fixture.lifecycle::controllerBroken));
         assertEquals(List.of(cancellationFault), List.of(brokenFault.getSuppressed()));
@@ -236,15 +260,25 @@ class MachineLifecycleProcessTest {
         var process = new RecipeProcess(fixture.machine, RECIPE, 1);
         var fault = new IllegalStateException("process callback failed");
         var system = new ComponentSystem<RecipeProcess, String>() {
-            @Override public ResourceLocation id() { return MachineLifecycleProcessTest.id("faulting_system"); }
-            @Override public void onTick(RecipeProcess owner, String component) { throw fault; }
+            @Override
+            public ResourceLocation id() {
+                return MachineLifecycleProcessTest.id("faulting_system");
+            }
+
+            @Override
+            public void onTick(RecipeProcess owner, String component) {
+                throw fault;
+            }
         };
         var type = new ComponentType<>(id("faulting_component"), _ -> "owned-state", List.of(system));
         process.components().create(type, process);
         assertTrue(fixture.slots.start(process));
         int[] unloads = {0};
         fixture.registry.register(new MachineLifecycleListener() {
-            @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { unloads[0]++; }
+            @Override
+            public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                unloads[0]++;
+            }
         });
         assertSame(fault, assertThrows(IllegalStateException.class, fixture.machine::onSchedule));
         assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
@@ -264,20 +298,32 @@ class MachineLifecycleProcessTest {
             var fixture = new Fixture();
             var events = new ObjectArrayList<String>();
             MachineLifecycleListener first = new MachineLifecycleListener() {
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("first"); }
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                    events.add("first");
+                }
             };
             MachineLifecycleListener second = new MachineLifecycleListener() {
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("second"); }
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                    events.add("second");
+                }
             };
             var firstType = new ComponentType<MachineInstance, MachineLifecycleListener>(id("first"), _ -> first, List.of());
             var secondType = new ComponentType<MachineInstance, MachineLifecycleListener>(id("second"), _ -> second, List.of());
             fixture.machine.components().put(firstType, first);
             fixture.machine.components().put(secondType, second);
             fixture.registry.register(new MachineLifecycleListener() {
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("global"); }
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                    events.add("global");
+                }
             });
             var removedGlobal = fixture.registry.register(new MachineLifecycleListener() {
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("removed-global"); }
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                    events.add("removed-global");
+                }
             });
             fixture.loadAndForm();
             assertTrue(removedGlobal.cancel());
@@ -287,8 +333,9 @@ class MachineLifecycleProcessTest {
             fixture.machine.components().addDependency(firstType, secondType);
             fixture.machine.components().addDependency(secondType, firstType);
             assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
-            if (destroy) { assertThrows(IllegalStateException.class, fixture.lifecycle::controllerBroken); }
-            else {
+            if (destroy) {
+                assertThrows(IllegalStateException.class, fixture.lifecycle::controllerBroken);
+            } else {
                 assertThrows(IllegalStateException.class,
                     () -> fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
             }
@@ -297,7 +344,9 @@ class MachineLifecycleProcessTest {
             if (destroy) {
                 assertEquals(RecipeProcess.Lifecycle.CANCELLED, process.state().lifecycle());
                 assertNull(process.host());
-            } else { assertEquals(before, process.state()); }
+            } else {
+                assertEquals(before, process.state());
+            }
             assertEquals(15, fixture.input.storedEnergy());
             assertEquals(0, fixture.output.storedEnergy());
             assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
@@ -306,8 +355,6 @@ class MachineLifecycleProcessTest {
             assertEquals(3, events.size());
         }
     }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("lifecycle_process_test", path); }
 
     private static final class Fixture {
         final MachineInstance machine = new MachineInstance();
@@ -320,7 +367,9 @@ class MachineLifecycleProcessTest {
         int admissionChecks;
 
         Fixture() {
-            this(new EnergyBuffer(100, () -> {}), new EnergyBuffer(100, () -> {}));
+            this(new EnergyBuffer(100, () -> {
+            }), new EnergyBuffer(100, () -> {
+            }));
             input.receiveEnergy(20, Actionable.MODULATE);
         }
 
@@ -330,12 +379,22 @@ class MachineLifecycleProcessTest {
             machine.components().put(MachineWorkSlots.TYPE, slots);
             var catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "lifecycle.pool", List.of(RECIPE))));
             var scanner = new RecipeScanner(slots, catalog, () -> 1);
-            var scanning = new RecipeScanningSystem(new ScanLimits(10, 10), _ -> { admissionChecks++; return true; });
+            var scanning = new RecipeScanningSystem(new ScanLimits(10, 10), _ -> {
+                admissionChecks++;
+                return true;
+            });
             var scanType = new ComponentType<>(id("scanner"), _ -> scanner, List.of(scanning));
             machine.components().put(scanType, scanner);
             var auxiliary = new MachineSystem<int[]>() {
-                @Override public ResourceLocation id() { return MachineLifecycleProcessTest.id("auxiliary"); }
-                @Override public void onTick(MachineInstance owner, int[] component) { auxiliaryTicks++; }
+                @Override
+                public ResourceLocation id() {
+                    return MachineLifecycleProcessTest.id("auxiliary");
+                }
+
+                @Override
+                public void onTick(MachineInstance owner, int[] component) {
+                    auxiliaryTicks++;
+                }
             };
             var auxiliaryType = new ComponentType<>(id("auxiliary"), _ -> new int[0], List.of(auxiliary));
             machine.components().create(auxiliaryType, machine);
@@ -346,16 +405,33 @@ class MachineLifecycleProcessTest {
             lifecycle.form(hatches());
         }
 
-        MachineHatches hatches() { return new MachineHatches(List.of(), List.of(input), List.of(output)); }
-        RecipeProcess process() { return Objects.requireNonNull(slots.requireSlot("main").process()); }
+        MachineHatches hatches() {
+            return new MachineHatches(List.of(), List.of(input), List.of(output));
+        }
+
+        RecipeProcess process() {
+            return Objects.requireNonNull(slots.requireSlot("main").process());
+        }
     }
 
     private static final class Host implements MachineLifecycleHost {
         private final Thread serverThread = Thread.currentThread();
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("controller"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new UnsupportedOperationException("Logical fixture has no Minecraft world"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != serverThread) { throw new IllegalStateException("Not the test server thread"); }
+
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("controller"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new UnsupportedOperationException("Logical fixture has no Minecraft world");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != serverThread) {
+                throw new IllegalStateException("Not the test server thread");
+            }
         }
     }
 }

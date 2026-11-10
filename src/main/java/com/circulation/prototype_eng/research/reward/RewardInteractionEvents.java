@@ -23,7 +23,8 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 @SuppressWarnings("unused") // Forge discovers these static event subscribers.
 public final class RewardInteractionEvents {
-    private RewardInteractionEvents() { }
+    private RewardInteractionEvents() {
+    }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onItemPickup(EntityItemPickupEvent event) {
@@ -49,21 +50,29 @@ public final class RewardInteractionEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onAttack(AttackEntityEvent event) {
-        if (blocksInventoryAction(event.getEntityPlayer())) { event.setCanceled(true); }
+        if (blocksInventoryAction(event.getEntityPlayer())) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (blocksInventoryAction(event.getPlayer())) { event.setCanceled(true); }
+        if (blocksInventoryAction(event.getPlayer())) {
+            event.setCanceled(true);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onItemUse(LivingEntityUseItemEvent event) {
         // Finish is not cancelable and runs after onItemUseFinish has already applied its effects.
         if (!(event instanceof LivingEntityUseItemEvent.Start || event instanceof LivingEntityUseItemEvent.Tick
-            || event instanceof LivingEntityUseItemEvent.Stop)) { return; }
+            || event instanceof LivingEntityUseItemEvent.Stop)) {
+            return;
+        }
         if (!(event.getEntityLiving() instanceof EntityPlayer player) || player.world.isRemote
-            || !(RewardItemProtection.isProtected(event.getItem()) || RewardItemProtection.hasProtectedInventory(player))) { return; }
+            || !(RewardItemProtection.isProtected(event.getItem()) || RewardItemProtection.hasProtectedInventory(player))) {
+            return;
+        }
         if (event instanceof LivingEntityUseItemEvent.Tick) {
             // Cleanroom converts canceled Tick to duration -1, then calls onItemUseFinish for <= 0.
             // Clear the active stack first so that continuation cannot finish or release a bow shot.

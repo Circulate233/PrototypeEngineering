@@ -15,9 +15,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** PM standard effects decoded into existing detached query predicates; no live matching callbacks. */
+/**
+ * PM standard effects decoded into existing detached query predicates; no live matching callbacks.
+ */
 public final class BuiltinStructurePredicates {
-    private BuiltinStructurePredicates() {}
+    private BuiltinStructurePredicates() {
+    }
 
     public static void register(StructurePredicateRegistry registry) {
         constant(registry, "any", StructurePredicates.all(List.of()));

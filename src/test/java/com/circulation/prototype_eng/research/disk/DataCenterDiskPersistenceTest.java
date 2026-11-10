@@ -26,7 +26,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Actual native Anvil file readback without bootstrapping a server, tile registry or player. */
+/**
+ * Actual native Anvil file readback without bootstrapping a server, tile registry or player.
+ */
 class DataCenterDiskPersistenceTest {
     private static final ResourceLocation MACHINE = id("machine");
     private static final ResourceLocation STORAGE = id("storage");
@@ -104,7 +106,7 @@ class DataCenterDiskPersistenceTest {
         var expected = DataCenterStorageNbt.encodeState(committed());
         var wrongOwner = tile(expected);
         wrongOwner.getCompoundTag("Machine").getCompoundTag("Runtime").getTagList("Components", 10).getCompoundTagAt(0)
-            .setTag("Data", new PersistentMachineIdentity(IDENTITY.machineId(), new UUID(0, 9)).encode());
+                  .setTag("Data", new PersistentMachineIdentity(IDENTITY.machineId(), new UUID(0, 9)).encode());
         writeChunk(wrongOwner);
         assertThrows(IOException.class, () -> verify(expected));
         var wrongNative = tile(expected);
@@ -130,7 +132,7 @@ class DataCenterDiskPersistenceTest {
         assertThrows(IOException.class, () -> verify(expected));
         var duplicate = tile(expected);
         duplicate.getCompoundTag("Machine").getCompoundTag("Runtime").getTagList("Components", 10)
-            .appendTag(component(STORAGE, expected));
+                 .appendTag(component(STORAGE, expected));
         writeChunk(duplicate);
         assertThrows(IOException.class, () -> verify(expected));
     }

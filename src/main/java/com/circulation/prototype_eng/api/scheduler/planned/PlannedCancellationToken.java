@@ -7,18 +7,25 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Cooperative cancellation with one retained reason and independently removable registrations. */
+/**
+ * Cooperative cancellation with one retained reason and independently removable registrations.
+ */
 public final class PlannedCancellationToken {
     private final Object cancellationLock = new Object();
     private final ObjectLinkedOpenHashSet<Registration> registrations = new ObjectLinkedOpenHashSet<>();
-    @Nullable private volatile Reason cancellationReason;
+    @Nullable
+    private volatile Reason cancellationReason;
 
-    /** Claims all current registrations once; every callback runs outside the registration lock. */
+    /**
+     * Claims all current registrations once; every callback runs outside the registration lock.
+     */
     public boolean cancel(Reason reason) {
         Objects.requireNonNull(reason, "Planned cancellation reason");
         ObjectArrayList<Registration> callbacks;
         synchronized (cancellationLock) {
-            if (cancellationReason != null) { return false; }
+            if (cancellationReason != null) {
+                return false;
+            }
             callbacks = new ObjectArrayList<>(registrations);
             cancellationReason = reason;
             registrations.clear();
@@ -28,28 +35,48 @@ public final class PlannedCancellationToken {
             try {
                 registration.handler.accept(reason);
             } catch (Throwable failure) {
-                if (firstFailure == null) { firstFailure = failure; }
-                else if (firstFailure != failure) { firstFailure.addSuppressed(failure); }
+                if (firstFailure == null) {
+                    firstFailure = failure;
+                } else if (firstFailure != failure) {
+                    firstFailure.addSuppressed(failure);
+                }
             }
         }
-        if (firstFailure instanceof RuntimeException failure) { throw failure; }
-        if (firstFailure instanceof Error failure) { throw failure; }
-        if (firstFailure != null) { throw new IllegalStateException("Planned cancellation callback failed", firstFailure); }
+        if (firstFailure instanceof RuntimeException failure) {
+            throw failure;
+        }
+        if (firstFailure instanceof Error failure) {
+            throw failure;
+        }
+        if (firstFailure != null) {
+            throw new IllegalStateException("Planned cancellation callback failed", firstFailure);
+        }
         return true;
     }
 
-    public boolean cancelled() { return cancellationReason != null; }
-    public @Nullable Reason reason() { return cancellationReason; }
+    public boolean cancelled() {
+        return cancellationReason != null;
+    }
 
-    /** Registers without a check/register race; an already cancelled token invokes it synchronously. */
+    public @Nullable Reason reason() {
+        return cancellationReason;
+    }
+
+    /**
+     * Registers without a check/register race; an already cancelled token invokes it synchronously.
+     */
     public Registration onCancel(Consumer<Reason> handler) {
         var registration = new Registration(this, Objects.requireNonNull(handler, "Planned cancellation handler"));
         Reason currentReason;
         synchronized (cancellationLock) {
             currentReason = cancellationReason;
-            if (currentReason == null) { registrations.add(registration); }
+            if (currentReason == null) {
+                registrations.add(registration);
+            }
         }
-        if (currentReason != null) { handler.accept(currentReason); }
+        if (currentReason != null) {
+            handler.accept(currentReason);
+        }
         return registration;
     }
 
@@ -81,8 +108,11 @@ public final class PlannedCancellationToken {
             this.handler = handler;
         }
 
-        /** Removes this registration if cancellation has not already claimed its callback. */
-        @Override public void close() {
+        /**
+         * Removes this registration if cancellation has not already claimed its callback.
+         */
+        @Override
+        public void close() {
             synchronized (token.cancellationLock) {
                 token.registrations.remove(this);
             }

@@ -51,7 +51,78 @@ class MachineWorkSlotsTest {
     private static final KeyType KEY_TYPE = new KeyType("work_slots");
     private static final Key MATERIAL = new Key(KEY_TYPE, "material");
     private static final Key PRODUCT = new Key(KEY_TYPE, "product");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static MachineInstance machine(int capacity) {
+        var machine = new MachineInstance();
+        machine.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, capacity);
+        return machine;
+    }
+
+    private static MachineWorkSlots installedHost(MachineInstance machine, List<WorkSlotDefinition> definitions) {
+        var host = new MachineWorkSlots(machine, definitions);
+        machine.components().put(MachineWorkSlots.TYPE, host);
+        return host;
+    }
+
+    private static List<WorkSlotDefinition> definitions(String... names) {
+        var definitions = new ObjectArrayList<WorkSlotDefinition>();
+        for (var name : names) {
+            definitions.add(new WorkSlotDefinition(name));
+        }
+        return definitions;
+    }
+
+    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
+        return new MachineRecipe(id(name), duration, ObjectArrayList.of(requirements));
+    }
+
+    private static MachineRecipe groupedRecipe(String name, ResourceLocation group) {
+        return new MachineRecipe(id(name), 4, List.of(), Set.of(group));
+    }
+
+    private static RecipeProcess process(MachineInstance owner, MachineRecipe recipe) {
+        return new RecipeProcess(owner, recipe, 17);
+    }
+
+    private static RecipeRequirement<Boolean> outcome(String name, Supplier<ProcessResult> result) {
+        return new RecipeRequirementType<Boolean>(id(name + "_type"), new RecipeRequirementSystem<>() {
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return new Outcome(result.get());
+            }
+        }).requirement(id(name + "_instance"), true);
+    }
+
+    private static void addPostCallback(RecipeProcess process, Runnable callback) {
+        var type = new ComponentType<RecipeProcess, Runnable>(id("callback"), _ -> callback, List.of(new ComponentSystem<>() {
+            @Override
+            public ResourceLocation id() {
+                return MachineWorkSlotsTest.id("callback_system");
+            }
+
+            @Override
+            public void onPostTick(RecipeProcess owner, Runnable component) {
+                component.run();
+            }
+        }));
+        process.components().create(type, process);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(KEY_TYPE, 100);
+        return new SlottedResourceBuffer(2, capacities, NO_OP);
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return List.of(new GenericStack(key, amount));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("work_slots_test", name);
+    }
 
     @Test
     void machineScheduleInvokesTheSelectedExecutorOncePerProcessAndAdvancesOnlyOnce() {
@@ -254,7 +325,9 @@ class MachineWorkSlotsTest {
         var first = process(machine, recipe("first", 3));
         var second = process(machine, recipe("second", 3));
         var failure = new IllegalStateException("post tick failed");
-        addPostCallback(first, () -> { throw failure; });
+        addPostCallback(first, () -> {
+            throw failure;
+        });
         assertTrue(host.start(first));
         assertTrue(host.start(second));
         var before = host.snapshot();
@@ -355,67 +428,20 @@ class MachineWorkSlotsTest {
         assertEquals(1, newRight.state().successfulTicks());
     }
 
-    private static MachineInstance machine(int capacity) {
-        var machine = new MachineInstance();
-        machine.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, capacity);
-        return machine;
-    }
-
-    private static MachineWorkSlots installedHost(MachineInstance machine, List<WorkSlotDefinition> definitions) {
-        var host = new MachineWorkSlots(machine, definitions);
-        machine.components().put(MachineWorkSlots.TYPE, host);
-        return host;
-    }
-
-    private static List<WorkSlotDefinition> definitions(String... names) {
-        var definitions = new ObjectArrayList<WorkSlotDefinition>();
-        for (var name : names) { definitions.add(new WorkSlotDefinition(name)); }
-        return definitions;
-    }
-
-    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
-        return new MachineRecipe(id(name), duration, ObjectArrayList.of(requirements));
-    }
-
-    private static MachineRecipe groupedRecipe(String name, ResourceLocation group) {
-        return new MachineRecipe(id(name), 4, List.of(), Set.of(group));
-    }
-
-    private static RecipeProcess process(MachineInstance owner, MachineRecipe recipe) {
-        return new RecipeProcess(owner, recipe, 17);
-    }
-
-    private static RecipeRequirement<Boolean> outcome(String name, Supplier<ProcessResult> result) {
-        return new RecipeRequirementType<Boolean>(id(name + "_type"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                return new Outcome(result.get());
-            }
-        }).requirement(id(name + "_instance"), true);
-    }
-
-    private static void addPostCallback(RecipeProcess process, Runnable callback) {
-        var type = new ComponentType<RecipeProcess, Runnable>(id("callback"), _ -> callback, List.of(new ComponentSystem<>() {
-            @Override public ResourceLocation id() { return MachineWorkSlotsTest.id("callback_system"); }
-            @Override public void onPostTick(RecipeProcess owner, Runnable component) { component.run(); }
-        }));
-        process.components().create(type, process);
-    }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(KEY_TYPE, 100);
-        return new SlottedResourceBuffer(2, capacities, NO_OP);
-    }
-
-    private static List<GenericStack> stacks(Key key, long amount) { return List.of(new GenericStack(key, amount)); }
-    private static ResourceLocation id(String name) { return new ResourceLocation("work_slots_test", name); }
-
     private record Outcome(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
 }

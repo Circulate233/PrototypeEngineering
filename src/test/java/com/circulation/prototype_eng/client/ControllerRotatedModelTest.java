@@ -17,10 +17,49 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ControllerRotatedModelTest {
-    @Test void allNativeOrientationsMapToTheOriginalCanonicalTopAndTurnOrder() {
+    private static IBakedModel model(BakedQuad quad, @Nullable EnumFacing cullSide) {
+        return new IBakedModel() {
+            @Override
+            public @NotNull List<BakedQuad> getQuads(@Nullable IBlockState state, @Nullable EnumFacing side, long rand) {
+                return side == cullSide ? List.of(quad) : List.of();
+            }
+
+            @Override
+            public boolean isAmbientOcclusion() {
+                return true;
+            }
+
+            @Override
+            public boolean isGui3d() {
+                return true;
+            }
+
+            @Override
+            public boolean isBuiltInRenderer() {
+                return false;
+            }
+
+            @Override
+            public @NotNull TextureAtlasSprite getParticleTexture() {
+                return quad.getSprite();
+            }
+
+            @Override
+            public @NotNull ItemOverrideList getOverrides() {
+                return ItemOverrideList.NONE;
+            }
+        };
+    }
+
+    @Test
+    void allNativeOrientationsMapToTheOriginalCanonicalTopAndTurnOrder() {
         for (var front : EnumFacing.VALUES) {
             var orientation = OrientationToolOrientations.canonical(front);
             for (int twist = 0; twist < 4; twist++) {
@@ -30,7 +69,8 @@ class ControllerRotatedModelTest {
         }
     }
 
-    @Test void horizontalTwistsRotateBothGeometryAndLightingFacesWithoutChangingTextureCoordinates() {
+    @Test
+    void horizontalTwistsRotateBothGeometryAndLightingFacesWithoutChangingTextureCoordinates() {
         int[] vertices = new int[28];
         for (int i = 0; i < 4; i++) {
             vertices[i * 7] = Float.floatToRawIntBits(.5f);
@@ -39,15 +79,39 @@ class ControllerRotatedModelTest {
             vertices[i * 7 + 4] = Float.floatToRawIntBits(.25f);
             vertices[i * 7 + 6] = 127 << 8;
         }
-        var sprite = new TextureAtlasSprite("parity_test") {};
+        var sprite = new TextureAtlasSprite("parity_test") {
+        };
         var source = new BakedQuad(vertices, 3, EnumFacing.UP, sprite, false, DefaultVertexFormats.ITEM);
         var base = new IBakedModel() {
-            @Override public @NotNull List<BakedQuad> getQuads(@Nullable IBlockState state, @Nullable EnumFacing side, long rand) { return side == EnumFacing.UP ? List.of(source) : List.of(); }
-            @Override public boolean isAmbientOcclusion() { return true; }
-            @Override public boolean isGui3d() { return true; }
-            @Override public boolean isBuiltInRenderer() { return false; }
-            @Override public @NotNull TextureAtlasSprite getParticleTexture() { return sprite; }
-            @Override public @NotNull ItemOverrideList getOverrides() { return ItemOverrideList.NONE; }
+            @Override
+            public @NotNull List<BakedQuad> getQuads(@Nullable IBlockState state, @Nullable EnumFacing side, long rand) {
+                return side == EnumFacing.UP ? List.of(source) : List.of();
+            }
+
+            @Override
+            public boolean isAmbientOcclusion() {
+                return true;
+            }
+
+            @Override
+            public boolean isGui3d() {
+                return true;
+            }
+
+            @Override
+            public boolean isBuiltInRenderer() {
+                return false;
+            }
+
+            @Override
+            public @NotNull TextureAtlasSprite getParticleTexture() {
+                return sprite;
+            }
+
+            @Override
+            public @NotNull ItemOverrideList getOverrides() {
+                return ItemOverrideList.NONE;
+            }
         };
         for (var orientation : BlockOrientation.values()) {
             var front = orientation.getSide(RelativeSide.FRONT);
@@ -70,8 +134,11 @@ class ControllerRotatedModelTest {
             assertEquals(1f, Float.intBitsToFloat(vertices[1]), "The shared source model remains unchanged");
         }
     }
-    @Test void unculledQuadsStayUnculledAndCullSideIsIndependentOfLightingFace() {
-        var sprite = new TextureAtlasSprite("cull_test") {};
+
+    @Test
+    void unculledQuadsStayUnculledAndCullSideIsIndependentOfLightingFace() {
+        var sprite = new TextureAtlasSprite("cull_test") {
+        };
         var source = new BakedQuad(new int[28], -1, EnumFacing.UP, sprite, true, DefaultVertexFormats.ITEM);
         var unculled = new ControllerRotatedModel(model(source, null), EnumFacing.NORTH, 1);
         assertEquals(EnumFacing.EAST, unculled.getQuads(null, null, 0).getFirst().getFace());
@@ -82,7 +149,8 @@ class ControllerRotatedModelTest {
         assertTrue(culled.getQuads(null, null, 0).isEmpty());
     }
 
-    @Test void extendedVertexStrideAndLightmapArePreservedWithoutInventingNormals() {
+    @Test
+    void extendedVertexStrideAndLightmapArePreservedWithoutInventingNormals() {
         var format = new VertexFormat(DefaultVertexFormats.BLOCK).addElement(DefaultVertexFormats.NORMAL_3B).addElement(DefaultVertexFormats.PADDING_1B);
         int stride = format.getIntegerSize();
         int[] vertices = new int[stride * 4];
@@ -97,7 +165,8 @@ class ControllerRotatedModelTest {
             vertices[i * stride + 7] = 127 << 8;
         }
         int[] original = vertices.clone();
-        var sprite = new TextureAtlasSprite("format_test") {};
+        var sprite = new TextureAtlasSprite("format_test") {
+        };
         var source = new BakedQuad(vertices, -1, EnumFacing.UP, sprite, false, format);
         var rotated = new ControllerRotatedModel(model(source, EnumFacing.UP), EnumFacing.NORTH, 1);
         var result = rotated.getQuads(null, EnumFacing.EAST, 0).getFirst();
@@ -107,21 +176,11 @@ class ControllerRotatedModelTest {
         for (int i = 0; i < 4; i++) {
             assertEquals(1f, Float.intBitsToFloat(data[i * stride]));
             assertEquals(.5f, Float.intBitsToFloat(data[i * stride + 1]));
-            for (int element = 3; element <= 6; element++) assertEquals(original[i * stride + element], data[i * stride + element]);
+            for (int element = 3; element <= 6; element++)
+                assertEquals(original[i * stride + element], data[i * stride + element]);
             assertEquals(127, data[i * stride + 7]);
         }
         assertArrayEquals(original, source.getVertexData());
-    }
-
-    private static IBakedModel model(BakedQuad quad, @Nullable EnumFacing cullSide) {
-        return new IBakedModel() {
-            @Override public @NotNull List<BakedQuad> getQuads(@Nullable IBlockState state, @Nullable EnumFacing side, long rand) { return side == cullSide ? List.of(quad) : List.of(); }
-            @Override public boolean isAmbientOcclusion() { return true; }
-            @Override public boolean isGui3d() { return true; }
-            @Override public boolean isBuiltInRenderer() { return false; }
-            @Override public @NotNull TextureAtlasSprite getParticleTexture() { return quad.getSprite(); }
-            @Override public @NotNull ItemOverrideList getOverrides() { return ItemOverrideList.NONE; }
-        };
     }
 
 }

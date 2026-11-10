@@ -4,8 +4,8 @@ import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
-import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
@@ -278,6 +278,39 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
             throw new IllegalStateException("Client machine render snapshots require their owner thread");
     }
 
+    public static final class View {
+        private final Owner owner;
+        private final MachineRenderSnapshot snapshot;
+        private final StructureCatalogView catalog;
+        private final MachineRenderBindings.View bindings;
+        private final Object resourceEpoch;
+
+        private View(Owner owner, MachineRenderSnapshot snapshot, StructureCatalogView catalog, MachineRenderBindings.View bindings, Object resourceEpoch) {
+            this.owner = owner;
+            this.snapshot = snapshot;
+            this.catalog = catalog;
+            this.bindings = bindings;
+            this.resourceEpoch = resourceEpoch;
+        }
+
+        public MachineRenderSnapshot snapshot() {
+            return snapshot;
+        }
+
+        public MachineRenderBindings.View bindings() {
+            return bindings;
+        }
+    }
+
+    @SuppressWarnings("ClassCanBeRecord") // Subscription identity distinguishes two registrations of one Runnable.
+    private static final class Listener {
+        private final Runnable callback;
+
+        private Listener(Runnable callback) {
+            this.callback = callback;
+        }
+    }
+
     public final class Owner implements AutoCloseable {
         private final Object world, tile, connection;
         private final BlockPos position;
@@ -314,39 +347,6 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
                 owners.remove(position);
                 invalidate();
             }
-        }
-    }
-
-    public static final class View {
-        private final Owner owner;
-        private final MachineRenderSnapshot snapshot;
-        private final StructureCatalogView catalog;
-        private final MachineRenderBindings.View bindings;
-        private final Object resourceEpoch;
-
-        private View(Owner owner, MachineRenderSnapshot snapshot, StructureCatalogView catalog, MachineRenderBindings.View bindings, Object resourceEpoch) {
-            this.owner = owner;
-            this.snapshot = snapshot;
-            this.catalog = catalog;
-            this.bindings = bindings;
-            this.resourceEpoch = resourceEpoch;
-        }
-
-        public MachineRenderSnapshot snapshot() {
-            return snapshot;
-        }
-
-        public MachineRenderBindings.View bindings() {
-            return bindings;
-        }
-    }
-
-    @SuppressWarnings("ClassCanBeRecord") // Subscription identity distinguishes two registrations of one Runnable.
-    private static final class Listener {
-        private final Runnable callback;
-
-        private Listener(Runnable callback) {
-            this.callback = callback;
         }
     }
 }

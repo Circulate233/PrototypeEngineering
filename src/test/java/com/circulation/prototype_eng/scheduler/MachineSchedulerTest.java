@@ -19,8 +19,8 @@ import com.circulation.prototype_eng.testsupport.TestResources;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import org.junit.jupiter.api.Test;
 import org.jetbrains.annotations.Nullable;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
@@ -28,9 +28,34 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class MachineSchedulerTest {
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("machine_scheduler_test", path);
+    }
+
+    private static void installTick(MachineInstance machine, Consumer<MachineInstance> action) {
+        var system = new MachineSystem<String>() {
+            @Override
+            public ResourceLocation id() {
+                return MachineSchedulerTest.id("record_tick");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, String component) {
+                action.accept(owner);
+            }
+        };
+        machine.components().create(new ComponentType<>(id("record_component"), _ -> "state", List.of(system)), machine);
+    }
+
     @Test
     void loadedUnformedMachineRunsAllComponentPhasesAndUnloadStopsExecution() {
         Thread owner = Thread.currentThread();
@@ -38,13 +63,27 @@ class MachineSchedulerTest {
         var log = new ConcurrentLinkedQueue<String>();
         var threads = new ConcurrentLinkedQueue<Thread>();
         var system = new MachineSystem<String>() {
-            @Override public ResourceLocation id() { return MachineSchedulerTest.id("phases"); }
-            @Override public void onPreTick(MachineInstance machine, String component) { record("pre"); }
-            @Override public void onTick(MachineInstance machine, String component) {
+            @Override
+            public ResourceLocation id() {
+                return MachineSchedulerTest.id("phases");
+            }
+
+            @Override
+            public void onPreTick(MachineInstance machine, String component) {
+                record("pre");
+            }
+
+            @Override
+            public void onTick(MachineInstance machine, String component) {
                 assertFalse(machine.canProcessRecipes());
                 record("normal");
             }
-            @Override public void onPostTick(MachineInstance machine, String component) { record("post"); }
+
+            @Override
+            public void onPostTick(MachineInstance machine, String component) {
+                record("post");
+            }
+
             private void record(String phase) {
                 log.add(phase);
                 threads.add(Thread.currentThread());
@@ -79,10 +118,12 @@ class MachineSchedulerTest {
     void resourceAndEnergyAliasesConnectThreeMachinesIntoOneSerialStableLane() {
         Thread owner = Thread.currentThread();
         var keyType = new TestResources.KeyType("scheduler_resources");
-        var shared = new SlottedResourceBuffer(1, Map.of(keyType, 32L), () -> {});
+        var shared = new SlottedResourceBuffer(1, Map.of(keyType, 32L), () -> {
+        });
         var firstView = new InputView(shared);
         var secondView = new InputView(shared);
-        var energy = new EnergyBuffer(32, () -> {});
+        var energy = new EnergyBuffer(32, () -> {
+        });
         var first = new Fixture("resource");
         var bridge = new Fixture("bridge");
         var third = new Fixture("energy");
@@ -110,7 +151,9 @@ class MachineSchedulerTest {
             scheduler.tick();
             assertEquals(List.of("resource", "bridge", "energy", "resource", "bridge", "energy"), List.copyOf(log));
             assertEquals(1, Set.copyOf(threads).size());
-            for (Fixture fixture : List.of(first, bridge, third)) { fixture.machine.requirePersistenceBoundary(); }
+            for (Fixture fixture : List.of(first, bridge, third)) {
+                fixture.machine.requirePersistenceBoundary();
+            }
 
             bridge.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             log.clear();
@@ -186,16 +229,6 @@ class MachineSchedulerTest {
         }
     }
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("machine_scheduler_test", path); }
-
-    private static void installTick(MachineInstance machine, Consumer<MachineInstance> action) {
-        var system = new MachineSystem<String>() {
-            @Override public ResourceLocation id() { return MachineSchedulerTest.id("record_tick"); }
-            @Override public void onTick(MachineInstance owner, String component) { action.accept(owner); }
-        };
-        machine.components().create(new ComponentType<>(id("record_component"), _ -> "state", List.of(system)), machine);
-    }
-
     private static final class Fixture {
         private final String name;
         private final MachineInstance machine = new MachineInstance();
@@ -206,23 +239,53 @@ class MachineSchedulerTest {
             lifecycle = new MachineLifecycle(machine, new Host(Thread.currentThread(), name), new MachineLifecycleRegistry());
         }
 
-        private void load() { lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH); }
-    }
-
-    private record Host(Thread owner, String name) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(id(name), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new UnsupportedOperationException("No live World in scheduler logic tests"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Not the fixture owner thread"); }
+        private void load() {
+            lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
         }
     }
 
-    @SuppressWarnings("ClassCanBeRecord") // Distinct adapter identities must not become equal and hide storage-alias scheduling bugs.
+    private record Host(Thread owner, String name) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id(name), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new UnsupportedOperationException("No live World in scheduler logic tests");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Not the fixture owner thread");
+            }
+        }
+    }
+
+    @SuppressWarnings("ClassCanBeRecord")
+    // Distinct adapter identities must not become equal and hide storage-alias scheduling bugs.
     private static final class InputView implements ResourceHatch {
         private final ResourceStorage storage;
-        private InputView(ResourceStorage storage) { this.storage = storage; }
-        @Override public ResourceStorage input() { return storage; }
-        @Override @Nullable public ResourceStorage output() { return null; }
-        @Override public boolean isValid() { return storage.isValid(); }
+
+        private InputView(ResourceStorage storage) {
+            this.storage = storage;
+        }
+
+        @Override
+        public ResourceStorage input() {
+            return storage;
+        }
+
+        @Override
+        @Nullable
+        public ResourceStorage output() {
+            return null;
+        }
+
+        @Override
+        public boolean isValid() {
+            return storage.isValid();
+        }
     }
 }

@@ -47,9 +47,16 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Real world/database rules and native single-slot evidence; failures never start Minecraft. */
+/**
+ * Real world/database rules and native single-slot evidence; failures never start Minecraft.
+ */
 class ResearchWorldDiskImportTest {
     private static final UUID PLAYER = new UUID(0, 1);
     private static final UUID DATABASE = new UUID(0, 2);
@@ -57,9 +64,28 @@ class ResearchWorldDiskImportTest {
     private static final ResourceLocation RESEARCH = new ResourceLocation("disk_world_test", "special");
     private static final ResourceLocation LOOP = new ResourceLocation("disk_world_test", "loop");
     private static final int SLOT = 5;
-    @TempDir Path directory;
+    @TempDir
+    Path directory;
 
-    @Test void nativeDiskImportSavesEachEffectBeforeConsumingOneExactSlot() {
+    private static NBTTagCompound inventory(int count) {
+        var stack = new NBTTagCompound();
+        stack.setString("id", "disk_world_test:disk");
+        stack.setShort("Damage", (short) 0);
+        stack.setByte("Count", (byte) count);
+        stack.setByte("Slot", (byte) PlayerInventoryNbt.encodedSlot(SLOT));
+        var caps = new NBTTagCompound();
+        caps.setInteger("stored", 42);
+        stack.setTag("ForgeCaps", caps);
+        var list = new NBTTagList();
+        list.appendTag(stack);
+        var image = new NBTTagCompound();
+        image.setTag("inventory", list);
+        image.setInteger("selectedSlot", 0);
+        return image;
+    }
+
+    @Test
+    void nativeDiskImportSavesEachEffectBeforeConsumingOneExactSlot() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         assertEquals(ResearchDiskImportResult.Status.COMPLETED, fixture.request(world).status());
@@ -76,7 +102,8 @@ class ResearchWorldDiskImportTest {
             && saved.diskImports().getFirst().status() == ResearchDiskOperation.Status.DATABASE_COMMITTED));
     }
 
-    @Test void repeatedNonceReturnsOriginalResultWithoutAnotherDiskOrDatabaseEffect() {
+    @Test
+    void repeatedNonceReturnsOriginalResultWithoutAnotherDiskOrDatabaseEffect() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         var first = fixture.request(world);
@@ -88,7 +115,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(ResearchDiskImportResult.Status.NONCE_CONFLICT, fixture.request(world, different).status());
     }
 
-    @Test void deniedPermissionNeverPreparesPlayerOrWritesDatabase() {
+    @Test
+    void deniedPermissionNeverPreparesPlayerOrWritesDatabase() {
         var fixture = new Fixture(directory);
         var world = new ResearchWorld(fixture.registry, fixture.resources, (_, _) -> ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER, fixture.saves);
         assertEquals(ResearchDiskImportResult.Status.PERMISSION_DENIED, fixture.request(world).status());
@@ -97,7 +125,8 @@ class ResearchWorldDiskImportTest {
         assertTrue(world.snapshot().diskImports().isEmpty());
     }
 
-    @Test void foreignDatabaseOwnerIsRejectedBeforeCapturingOrConsumingDisk() {
+    @Test
+    void foreignDatabaseOwnerIsRejectedBeforeCapturingOrConsumingDisk() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         var foreign = new ResearchDataCenters.Target(DATABASE, new UUID(0, 9), fixture.target.location());
@@ -108,7 +137,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void higherDiskTierIsRejectedEvenWhenItsCompletedResearchFitsDatabase() {
+    @Test
+    void higherDiskTierIsRejectedEvenWhenItsCompletedResearchFitsDatabase() {
         var fixture = new Fixture(directory);
         fixture.data = new ResearchDiskData(fixture.registry, 4, Object2IntMaps.singleton(RESEARCH, 90));
         var world = fixture.world();
@@ -121,7 +151,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void initialWorldSaveFailureHasNoPlayerReceiptOrDatabaseAttempt() {
+    @Test
+    void initialWorldSaveFailureHasNoPlayerReceiptOrDatabaseAttempt() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         fixture.saves.reject = saved -> !saved.diskImports().isEmpty();
@@ -131,7 +162,8 @@ class ResearchWorldDiskImportTest {
         assertTrue(world.savePending());
     }
 
-    @Test void failedPlayerPreparationRemainsUnarmedAndCanCancelAfterTeamChange() {
+    @Test
+    void failedPlayerPreparationRemainsUnarmedAndCanCancelAfterTeamChange() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         fixture.inventory.failPrepared = true;
@@ -146,7 +178,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(3, PlayerInventoryNbt.stack(fixture.inventory.image, SLOT).getByte("Count"));
     }
 
-    @Test void armedWorldSaveFailureDoesNotEnterDatabaseAndRestoredUnarmedCanCancel() {
+    @Test
+    void armedWorldSaveFailureDoesNotEnterDatabaseAndRestoredUnarmedCanCancel() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         fixture.saves.reject = saved -> !saved.diskImports().isEmpty() && saved.diskImports().getFirst().databaseArmed();
@@ -160,7 +193,8 @@ class ResearchWorldDiskImportTest {
             restarted.abortDiskImport(PLAYER, saved.diskImports().getFirst().id(), fixture.inventory, 1).status());
     }
 
-    @Test void firstAttemptExplicitDatabaseRejectionSafelyAbortsPreparedMaterial() {
+    @Test
+    void firstAttemptExplicitDatabaseRejectionSafelyAbortsPreparedMaterial() {
         var fixture = new Fixture(directory);
         fixture.storage.rejectCommit = true;
         var world = fixture.world();
@@ -170,7 +204,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void unknownArmedCallCannotCancelOrTreatRejectedRetryAsNoPreviousEffect() {
+    @Test
+    void unknownArmedCallCannotCancelOrTreatRejectedRetryAsNoPreviousEffect() {
         var fixture = new Fixture(directory);
         fixture.storage.failBeforeCommit = true;
         var world = fixture.world();
@@ -186,7 +221,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(ResearchDiskOperation.Status.PREPARED, world.pendingDiskImports(PLAYER).getFirst().status());
     }
 
-    @Test void matchingDatabaseAfterContentsWithoutReceiptNeverProveImportSuccess() {
+    @Test
+    void matchingDatabaseAfterContentsWithoutReceiptNeverProveImportSuccess() {
         var fixture = new Fixture(directory);
         fixture.storage.failBeforeCommit = true;
         var world = fixture.world();
@@ -201,7 +237,8 @@ class ResearchWorldDiskImportTest {
         assertNotNull(fixture.inventory.receipt);
     }
 
-    @Test void unknownArmedCallDoesNotRetryWhenBackendWouldNowAcceptAndBeforeStillMatches() {
+    @Test
+    void unknownArmedCallDoesNotRetryWhenBackendWouldNowAcceptAndBeforeStillMatches() {
         var fixture = new Fixture(directory);
         fixture.storage.failBeforeCommit = true;
         var world = fixture.world();
@@ -219,7 +256,8 @@ class ResearchWorldDiskImportTest {
         assertNotNull(fixture.inventory.receipt);
     }
 
-    @Test void unavailablePersistenceIsRejectedBeforePlayerOrWorldPreparation() {
+    @Test
+    void unavailablePersistenceIsRejectedBeforePlayerOrWorldPreparation() {
         var fixture = new Fixture(directory);
         fixture.storage.available = false;
         var world = fixture.world();
@@ -229,7 +267,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(0, fixture.storage.commits);
     }
 
-    @Test void publishedDatabaseReceiptRecoversAfterCallbackFailureWithoutCurrentTeamAuthority() {
+    @Test
+    void publishedDatabaseReceiptRecoversAfterCallbackFailureWithoutCurrentTeamAuthority() {
         var fixture = new Fixture(directory);
         fixture.storage.failAfterCommit = true;
         var world = fixture.world();
@@ -241,7 +280,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void databaseFileBarrierFailurePreservesReceiptAndDoesNotConsumeUntilReadback() {
+    @Test
+    void databaseFileBarrierFailurePreservesReceiptAndDoesNotConsumeUntilReadback() {
         var fixture = new Fixture(directory);
         fixture.storage.failPersist = true;
         var world = fixture.world();
@@ -253,7 +293,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void databaseCommittedWorldWriteFailureRestoresAndConsumesOnlyAfterItsExactCheckpoint() {
+    @Test
+    void databaseCommittedWorldWriteFailureRestoresAndConsumesOnlyAfterItsExactCheckpoint() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         fixture.saves.reject = saved -> !saved.diskImports().isEmpty()
@@ -268,7 +309,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void ordinaryDatabaseUpdatesKeepImportReceiptAndRecoveryPersistsCompleteCurrentContents() {
+    @Test
+    void ordinaryDatabaseUpdatesKeepImportReceiptAndRecoveryPersistsCompleteCurrentContents() {
         var fixture = new Fixture(directory);
         fixture.storage.failPersist = true;
         var world = fixture.world();
@@ -283,7 +325,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void recoveryRejectsAnotherPhysicalTargetEvenWithTheSameDatabaseUuid() {
+    @Test
+    void recoveryRejectsAnotherPhysicalTargetEvenWithTheSameDatabaseUuid() {
         var fixture = new Fixture(directory);
         fixture.storage.failAfterCommit = true;
         var world = fixture.world();
@@ -298,7 +341,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void committedPlayerSaveFailureRetriesAfterImageWithoutConsumingAgain() {
+    @Test
+    void committedPlayerSaveFailureRetriesAfterImageWithoutConsumingAgain() {
         var fixture = new Fixture(directory);
         fixture.inventory.failCommitted = true;
         var world = fixture.world();
@@ -310,7 +354,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void preparedPlayerAfterImageIsUnknownAndNeverAllowsAnotherConsumption() {
+    @Test
+    void preparedPlayerAfterImageIsUnknownAndNeverAllowsAnotherConsumption() {
         var fixture = new Fixture(directory);
         fixture.inventory.failCommitted = true;
         var world = fixture.world();
@@ -321,7 +366,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void completedWorldWriteFailureKeepsBothReceiptsUntilWorldDurability() {
+    @Test
+    void completedWorldWriteFailureKeepsBothReceiptsUntilWorldDurability() {
         var fixture = new Fixture(directory);
         var world = fixture.world();
         fixture.saves.reject = saved -> !saved.diskImports().isEmpty()
@@ -334,7 +380,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void cleanupFailureAndLaterInventoryChangesDoNotReconsumeOrRequireOldAfterForever() {
+    @Test
+    void cleanupFailureAndLaterInventoryChangesDoNotReconsumeOrRequireOldAfterForever() {
         var fixture = new Fixture(directory);
         fixture.storage.failClear = true;
         var world = fixture.world();
@@ -348,7 +395,8 @@ class ResearchWorldDiskImportTest {
         assertEquals(7, PlayerInventoryNbt.stack(fixture.inventory.image, SLOT).getByte("Count"));
     }
 
-    @Test void abortingWorldSaveFailureDoesNotDeletePreparedPlayerEvidence() {
+    @Test
+    void abortingWorldSaveFailureDoesNotDeletePreparedPlayerEvidence() {
         var fixture = new Fixture(directory);
         fixture.inventory.failPrepared = true;
         var world = fixture.world();
@@ -362,18 +410,6 @@ class ResearchWorldDiskImportTest {
         fixture.saves.reject = _ -> false;
         assertEquals(ResearchDiskImportResult.Status.ABORTED, world.abortDiskImport(PLAYER, operation.id(), fixture.inventory, 1).status());
         assertNull(fixture.inventory.receipt);
-    }
-
-    private static NBTTagCompound inventory(int count) {
-        var stack = new NBTTagCompound();
-        stack.setString("id", "disk_world_test:disk");
-        stack.setShort("Damage", (short) 0);
-        stack.setByte("Count", (byte) count);
-        stack.setByte("Slot", (byte) PlayerInventoryNbt.encodedSlot(SLOT));
-        var caps = new NBTTagCompound(); caps.setInteger("stored", 42); stack.setTag("ForgeCaps", caps);
-        var list = new NBTTagList(); list.appendTag(stack);
-        var image = new NBTTagCompound(); image.setTag("inventory", list); image.setInteger("selectedSlot", 0);
-        return image;
     }
 
     private static final class Fixture {
@@ -390,19 +426,24 @@ class ResearchWorldDiskImportTest {
             new ObjectOpenHashSet<>(ObjectList.of(PLAYER)), Optional.of(PLAYER));
         final ResearchPermissionContext permission = new ResearchPermissionContext(PLAYER, "team", PLAYER, "team", false, false, false);
         ResearchDiskData data;
+
         Fixture(Path directory) {
             resources.freeze();
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(100).specialOnly(true)
-                .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                                .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(LOOP).maxLevel(100).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze(resources);
             codec = new ResearchWorldNbt(registry, resources, new ResourceKeyNbt(_ -> null));
             data = new ResearchDiskData(registry, 3, Object2IntMaps.singleton(RESEARCH, 90));
             storage = new Storage(registry, saves, directory);
         }
-        ResearchWorld world() { return new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, saves); }
+
+        ResearchWorld world() {
+            return new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, saves);
+        }
+
         ResearchWorld restore(ResearchWorldSnapshot saved) {
             var world = world();
             var decoded = codec.decode(codec.encode(saved));
@@ -410,10 +451,15 @@ class ResearchWorldDiskImportTest {
             saves.durable = decoded;
             return world;
         }
-        ResearchDiskImportResult request(ResearchWorld world) { return request(world, intent); }
+
+        ResearchDiskImportResult request(ResearchWorld world) {
+            return request(world, intent);
+        }
+
         ResearchDiskImportResult request(ResearchWorld world, ResearchDiskOperation.Intent request) {
             return world.requestDiskImport(request, membership, permission, target, storage, inventory, _ -> data, 1, () -> true, () -> true, () -> true);
         }
+
         ResearchDiskImportResult recover(ResearchWorld world, boolean allowed) {
             var operation = world.pendingDiskImports(PLAYER).getFirst();
             return world.recoverDiskImport(PLAYER, operation.id(), inventory,
@@ -426,7 +472,9 @@ class ResearchWorldDiskImportTest {
         final ObjectArrayList<ResearchWorldSnapshot> attempts = new ObjectArrayList<>();
         ResearchWorldSnapshot durable;
         Predicate<ResearchWorldSnapshot> reject = _ -> false;
-        @Override public void accept(ResearchWorldSnapshot saved) {
+
+        @Override
+        public void accept(ResearchWorldSnapshot saved) {
             attempts.add(saved);
             if (reject.test(saved)) throw new IllegalStateException("world persistence failed");
             durable = saved;
@@ -440,19 +488,46 @@ class ResearchWorldDiskImportTest {
         int consumptions;
         boolean failPrepared;
         boolean failCommitted;
-        Inventory(Saves saves) { this.saves = saves; }
-        @Override public UUID playerId() { return PLAYER; }
-        @Override public ResearchDownloadMaterial capture(UUID id, int slot) { return ResearchDownloadMaterial.prepare(PLAYER, id, slot, image); }
-        @Override public ResearchDownloadMaterial find(UUID id) { return receipt != null && receipt.operationId().equals(id) ? receipt : null; }
-        @Override public ObjectList<ResearchDownloadMaterial> operations() { return receipt == null ? ObjectList.of() : ObjectList.of(receipt); }
-        @Override public boolean matches(NBTTagCompound expected) { return image.equals(expected); }
-        @Override public void recordPrepared(ResearchDownloadMaterial prepared) {
+
+        Inventory(Saves saves) {
+            this.saves = saves;
+        }
+
+        @Override
+        public UUID playerId() {
+            return PLAYER;
+        }
+
+        @Override
+        public ResearchDownloadMaterial capture(UUID id, int slot) {
+            return ResearchDownloadMaterial.prepare(PLAYER, id, slot, image);
+        }
+
+        @Override
+        public ResearchDownloadMaterial find(UUID id) {
+            return receipt != null && receipt.operationId().equals(id) ? receipt : null;
+        }
+
+        @Override
+        public ObjectList<ResearchDownloadMaterial> operations() {
+            return receipt == null ? ObjectList.of() : ObjectList.of(receipt);
+        }
+
+        @Override
+        public boolean matches(NBTTagCompound expected) {
+            return image.equals(expected);
+        }
+
+        @Override
+        public void recordPrepared(ResearchDownloadMaterial prepared) {
             assertEquals(ResearchDiskOperation.Status.PREPARED, saves.durable.diskImports().getFirst().status());
             assertTrue(matches(prepared.inventoryBefore()));
             receipt = prepared;
             if (failPrepared) throw new IllegalStateException("prepared player save failed");
         }
-        @Override public boolean consume(ResearchDownloadMaterial material) {
+
+        @Override
+        public boolean consume(ResearchDownloadMaterial material) {
             assertEquals(ResearchDiskOperation.Status.DATABASE_COMMITTED, saves.durable.diskImports().getFirst().status());
             assertTrue(matches(material.inventoryBefore()));
             image = material.inventoryAfter();
@@ -461,13 +536,17 @@ class ResearchWorldDiskImportTest {
             persistCommitted(material.operationId());
             return true;
         }
-        @Override public void persistCommitted(UUID id) {
+
+        @Override
+        public void persistCommitted(UUID id) {
             assertEquals(id, receipt.operationId());
             assertEquals(ResearchDownloadMaterial.Status.COMMITTED, receipt.status());
             assertTrue(matches(receipt.inventoryAfter()));
             if (failCommitted) throw new IllegalStateException("committed player save failed");
         }
-        @Override public void removePrepared(UUID id) {
+
+        @Override
+        public void removePrepared(UUID id) {
             assertEquals(ResearchDiskOperation.Status.ABORTING, saves.durable.diskImports().getFirst().status());
             if (receipt != null) {
                 assertEquals(id, receipt.operationId());
@@ -476,7 +555,9 @@ class ResearchWorldDiskImportTest {
             }
             receipt = null;
         }
-        @Override public void removeCommitted(UUID id) {
+
+        @Override
+        public void removeCommitted(UUID id) {
             assertEquals(ResearchDiskOperation.Status.COMPLETED, saves.durable.diskImports().getFirst().status());
             if (receipt != null) {
                 assertEquals(id, receipt.operationId());
@@ -487,10 +568,10 @@ class ResearchWorldDiskImportTest {
     }
 
     private static final class Storage implements ResearchDiskStorage {
-        ResearchDataCenter delegate;
         final ResearchRegistry registry;
         final Saves saves;
         final Path file;
+        ResearchDataCenter delegate;
         int commits;
         int attempts;
         boolean rejectCommit;
@@ -499,20 +580,53 @@ class ResearchWorldDiskImportTest {
         boolean failPersist;
         boolean failClear;
         boolean available = true;
+
         Storage(ResearchRegistry registry, Saves saves, Path directory) {
             this.registry = registry;
             this.saves = saves;
             file = directory.resolve("database.dat");
-            delegate = new ResearchDataCenter(DATABASE, 3, 8, registry, () -> { }, () -> { });
+            delegate = new ResearchDataCenter(DATABASE, 3, 8, registry, () -> {
+            }, () -> {
+            });
         }
-        @Override public DataCenterResearchSnapshot snapshot() { return delegate.snapshot(); }
-        @Override public boolean current(DataCenterResearchSnapshot snapshot) { return delegate.current(snapshot); }
-        @Override public boolean diskPersistenceAvailable() { return available; }
-        @Override public Result downloadResearch(ResourceLocation id, int level, TeamResearchView cloud, BooleanSupplier current) { return delegate.downloadResearch(id, level, cloud, current); }
-        @Override public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) { return delegate.storeFromDisk(entries, cloud, current); }
-        @Override public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) { return delegate.synchronizeLoopingResearch(cloud, current); }
-        @Override public ResearchDiskCommit receipt(UUID id) { return delegate.receipt(id); }
-        @Override public Result commitDisk(ResearchDiskCommit commit, TeamResearchView cloud, BooleanSupplier current) {
+
+        @Override
+        public DataCenterResearchSnapshot snapshot() {
+            return delegate.snapshot();
+        }
+
+        @Override
+        public boolean current(DataCenterResearchSnapshot snapshot) {
+            return delegate.current(snapshot);
+        }
+
+        @Override
+        public boolean diskPersistenceAvailable() {
+            return available;
+        }
+
+        @Override
+        public Result downloadResearch(ResourceLocation id, int level, TeamResearchView cloud, BooleanSupplier current) {
+            return delegate.downloadResearch(id, level, cloud, current);
+        }
+
+        @Override
+        public Result storeFromDisk(Object2IntMap<ResourceLocation> entries, TeamResearchView cloud, BooleanSupplier current) {
+            return delegate.storeFromDisk(entries, cloud, current);
+        }
+
+        @Override
+        public Result synchronizeLoopingResearch(TeamResearchView cloud, BooleanSupplier current) {
+            return delegate.synchronizeLoopingResearch(cloud, current);
+        }
+
+        @Override
+        public ResearchDiskCommit receipt(UUID id) {
+            return delegate.receipt(id);
+        }
+
+        @Override
+        public Result commitDisk(ResearchDiskCommit commit, TeamResearchView cloud, BooleanSupplier current) {
             assertTrue(saves.durable.diskImports().getFirst().databaseArmed());
             attempts++;
             if (failBeforeCommit) throw new IllegalStateException("unknown database attempt");
@@ -523,34 +637,46 @@ class ResearchWorldDiskImportTest {
             if (failAfterCommit) throw new IllegalStateException("database callback failed after publishing");
             return result;
         }
-        @Override public void persistDisk(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
+
+        @Override
+        public void persistDisk(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
             assertEquals(commit, delegate.receipt(commit.operationId()));
             persist(physicalCurrent);
         }
-        @Override public void clearDiskReceipt(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
+
+        @Override
+        public void clearDiskReceipt(ResearchDiskCommit commit, BooleanSupplier physicalCurrent) {
             assertEquals(ResearchDiskOperation.Status.COMPLETED, saves.durable.diskImports().getFirst().status());
             if (failClear) throw new IllegalStateException("database cleanup failed");
             delegate.removeDiskReceipt(commit, physicalCurrent);
             persist(physicalCurrent);
         }
+
         private void persist(BooleanSupplier physicalCurrent) {
             assertTrue(physicalCurrent.getAsBoolean());
             if (failPersist) throw new IllegalStateException("database native save failed");
             var encoded = DataCenterStorageNbt.encodeState(delegate.persistentState());
             try {
-                try (var output = Files.newOutputStream(file)) { CompressedStreamTools.writeCompressed(encoded, output); }
+                try (var output = Files.newOutputStream(file)) {
+                    CompressedStreamTools.writeCompressed(encoded, output);
+                }
                 NBTTagCompound read;
-                try (var input = Files.newInputStream(file)) { read = CompressedStreamTools.readCompressed(input); }
+                try (var input = Files.newInputStream(file)) {
+                    read = CompressedStreamTools.readCompressed(input);
+                }
                 assertEquals(encoded, DataCenterStorageNbt.encodeState(DataCenterStorageNbt.decodeState(read, registry)));
                 assertEquals(encoded, read);
             } catch (IOException error) {
                 throw new IllegalStateException("native database test persistence failed", error);
             }
         }
+
         void reload() {
             try (var input = Files.newInputStream(file)) {
                 delegate = ResearchDataCenter.restore(DataCenterStorageNbt.decodeState(CompressedStreamTools.readCompressed(input), registry),
-                    registry, () -> { }, () -> { });
+                    registry, () -> {
+                    }, () -> {
+                    });
             } catch (IOException error) {
                 throw new IllegalStateException("native database test reload failed", error);
             }

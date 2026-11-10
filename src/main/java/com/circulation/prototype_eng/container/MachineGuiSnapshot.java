@@ -9,17 +9,19 @@ import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.network.PacketBuffer;
+
 import java.util.List;
 import java.util.Objects;
+
 /**
  * Immutable, bounded display data. Capture only after scheduler join; never retain runtime objects.
  */
 public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset,
                                  List<Entry> entries, WorkSlotStatus overallStatus) implements PacketWritable {
     public static final int MAX_ROWS = 7;
+    public static final MachineGuiSnapshot EMPTY = new MachineGuiSnapshot(false, false, 0, 0, List.of());
     private static final int MAX_TEXT = 1024;
     private static final int MAX_ARGUMENTS = 16;
-    public static final MachineGuiSnapshot EMPTY = new MachineGuiSnapshot(false, false, 0, 0, List.of());
 
     public MachineGuiSnapshot {
         Objects.requireNonNull(overallStatus);
@@ -89,6 +91,50 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result, overall);
     }
 
+    private static WorkSlotStatus combine(WorkSlotStatus first, WorkSlotStatus second) {
+        if (first == WorkSlotStatus.FAILED || second == WorkSlotStatus.FAILED) return WorkSlotStatus.FAILED;
+        if (first == WorkSlotStatus.BLOCKED || second == WorkSlotStatus.BLOCKED) return WorkSlotStatus.BLOCKED;
+        return first == WorkSlotStatus.RUNNING || second == WorkSlotStatus.RUNNING ? WorkSlotStatus.RUNNING : WorkSlotStatus.IDLE;
+    }
+
+    private static WorkSlotStatus readStatus(ByteBuf data) {
+        int status = data.readUnsignedByte();
+        if (status >= WorkSlotStatus.values().length) throw new IllegalArgumentException("Invalid machine GUI status");
+        return WorkSlotStatus.values()[status];
+    }
+
+    private static List<Entry> readEntries(PacketBuffer packet) {
+        int count = packet.readUnsignedByte();
+        if (count > MAX_ROWS) {
+            throw new IllegalArgumentException("Too many machine GUI rows");
+        }
+        var entries = new ObjectArrayList<Entry>(count);
+        for (int i = 0; i < count; i++) {
+            String name = packet.readString(MAX_TEXT);
+            String recipe = packet.readString(MAX_TEXT);
+            int status = packet.readUnsignedByte();
+            if (status >= WorkSlotStatus.values().length) {
+                throw new IllegalArgumentException("Invalid work-slot status");
+            }
+            int percent = packet.readUnsignedByte();
+            String reason = packet.readString(MAX_TEXT);
+            int size = packet.readUnsignedByte();
+            if (size > MAX_ARGUMENTS) {
+                throw new IllegalArgumentException("Too many reason arguments");
+            }
+            var arguments = new ObjectArrayList<String>(size);
+            for (int j = 0; j < size; j++) {
+                arguments.add(packet.readString(MAX_TEXT));
+            }
+            entries.add(new Entry(name, recipe, WorkSlotStatus.values()[status], percent, reason, arguments));
+        }
+        return entries;
+    }
+
+    private static String bounded(String text) {
+        return text.substring(0, Math.min(text.length(), MAX_TEXT));
+    }
+
     @Override
     public void writeToPacket(ByteBuf data) {
         data.writeBoolean(formed).writeBoolean(active).writeInt(totalSlots).writeInt(offset).writeByte(entries.size());
@@ -104,49 +150,20 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         packet.writeByte(overallStatus.ordinal());
     }
 
-    private static WorkSlotStatus combine(WorkSlotStatus first, WorkSlotStatus second) {
-        if (first == WorkSlotStatus.FAILED || second == WorkSlotStatus.FAILED) return WorkSlotStatus.FAILED;
-        if (first == WorkSlotStatus.BLOCKED || second == WorkSlotStatus.BLOCKED) return WorkSlotStatus.BLOCKED;
-        return first == WorkSlotStatus.RUNNING || second == WorkSlotStatus.RUNNING ? WorkSlotStatus.RUNNING : WorkSlotStatus.IDLE;
-    }
-
-    private static WorkSlotStatus readStatus(ByteBuf data) {
-        int status = data.readUnsignedByte();
-        if (status >= WorkSlotStatus.values().length) throw new IllegalArgumentException("Invalid machine GUI status");
-        return WorkSlotStatus.values()[status];
-    }
-
-    private static List<Entry> readEntries(PacketBuffer packet) {
-        int count = packet.readUnsignedByte();
-        if (count > MAX_ROWS) { throw new IllegalArgumentException("Too many machine GUI rows"); }
-        var entries = new ObjectArrayList<Entry>(count);
-        for (int i = 0; i < count; i++) {
-            String name = packet.readString(MAX_TEXT);
-            String recipe = packet.readString(MAX_TEXT);
-            int status = packet.readUnsignedByte();
-            if (status >= WorkSlotStatus.values().length) { throw new IllegalArgumentException("Invalid work-slot status"); }
-            int percent = packet.readUnsignedByte();
-            String reason = packet.readString(MAX_TEXT);
-            int size = packet.readUnsignedByte();
-            if (size > MAX_ARGUMENTS) { throw new IllegalArgumentException("Too many reason arguments"); }
-            var arguments = new ObjectArrayList<String>(size);
-            for (int j = 0; j < size; j++) { arguments.add(packet.readString(MAX_TEXT)); }
-            entries.add(new Entry(name, recipe, WorkSlotStatus.values()[status], percent, reason, arguments));
-        }
-        return entries;
-    }
-
-    private static String bounded(String text) { return text.substring(0, Math.min(text.length(), MAX_TEXT)); }
-
-    public record Entry(String name, String recipe, WorkSlotStatus status, int percent, String reason, List<String> arguments) {
+    public record Entry(String name, String recipe, WorkSlotStatus status, int percent, String reason,
+                        List<String> arguments) {
         public Entry {
             name = bounded(name);
             recipe = bounded(recipe);
             reason = bounded(reason);
             Objects.requireNonNull(status);
-            if (percent < 0 || percent > 100) { throw new IllegalArgumentException("Invalid recipe progress"); }
+            if (percent < 0 || percent > 100) {
+                throw new IllegalArgumentException("Invalid recipe progress");
+            }
             var copy = new ObjectArrayList<String>();
-            for (int i = 0; i < Math.min(MAX_ARGUMENTS, arguments.size()); i++) { copy.add(bounded(arguments.get(i))); }
+            for (int i = 0; i < Math.min(MAX_ARGUMENTS, arguments.size()); i++) {
+                copy.add(bounded(arguments.get(i)));
+            }
             arguments = ObjectLists.unmodifiable(copy);
         }
     }

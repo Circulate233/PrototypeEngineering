@@ -78,10 +78,6 @@ public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, 
                 throw new IllegalArgumentException("Invalid animation sample");
         }
 
-        public double ticks() {
-            return timeKey * stepTicks;
-        }
-
         public static Sample at(double ticks, double stepTicks, int snap) {
             if (!Double.isFinite(ticks) || ticks < 0 || snap < 1 || !Double.isFinite(stepTicks) || stepTicks <= 0)
                 throw new IllegalArgumentException("Invalid animation clock");
@@ -89,6 +85,10 @@ public record GeckoRenderRequest(Owner owner, StructureRenderAnchors.Part part, 
             if (raw > Long.MAX_VALUE) throw new IllegalArgumentException("Animation clock overflow");
             long key = (long) raw;
             return new Sample(key - key % snap, stepTicks);
+        }
+
+        public double ticks() {
+            return timeKey * stepTicks;
         }
     }
 }

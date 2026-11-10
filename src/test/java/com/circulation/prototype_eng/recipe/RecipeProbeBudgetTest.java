@@ -8,28 +8,28 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.FixedIoScanConstraint;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanPreparation;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanProbes;
-import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
-import com.circulation.prototype_eng.api.storage.ResourceStorage;
+import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
-import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.recipe.requirement.ResourceRequirementSystem;
+import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -37,17 +37,17 @@ import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
+import java.util.AbstractList;
 import java.util.List;
 import java.util.Objects;
-import java.util.AbstractList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -56,7 +56,9 @@ class RecipeProbeBudgetTest {
     private static final Key INPUT = new Key(TYPE, "input");
     private static final Key OUTPUT = new Key(TYPE, "output");
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("probe_budget_test", path); }
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("probe_budget_test", path);
+    }
 
     private static RecipeProcess process(MachineInstance machine, RecipeRequirement<?>... requirements) {
         return new RecipeProcess(machine, new MachineRecipe(id("recipe"), 2, List.of(requirements)), 17);
@@ -65,7 +67,102 @@ class RecipeProbeBudgetTest {
     private static SlottedResourceBuffer buffer() {
         var capacities = new Reference2LongArrayMap<AEKeyType>();
         capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(3, capacities, () -> {});
+        return new SlottedResourceBuffer(3, capacities, () -> {
+        });
+    }
+
+    /**
+     * Runs real kernel/source methods directly; it is not a mock scheduler or parallelism proof.
+     */
+    private static ProcessResult complete(RecipeScanProbes.Session session) {
+        for (int call = 0; call < 10000; call++) {
+            var work = new RecipeWorkBudget(1);
+            for (var source : session.sources()) {
+                if (session.resolvingSources())
+                    session.finishSourceResolution(source, source.resolveWithinBudget(work));
+                else if (source.state() == ResourceBatch.SourceState.RESERVED) source.applyWithinBudget(work);
+            }
+            var computation = session.computation();
+            if (computation != null && computation.advance(work)) session.finishComputation(computation);
+            if (session.advance(work, () -> true)) return session.result();
+        }
+        throw new AssertionError("Probe did not complete its real acquisition/rollback cursors");
+    }
+
+    private static RequirementTransaction projection(String name, List<String> events, AtomicInteger local) {
+        events.add("prepare_" + name);
+        local.incrementAndGet();
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+                throw new AssertionError("Preparation cannot commit");
+            }
+
+            @Override
+            public void complete() {
+                throw new AssertionError("Preparation cannot complete");
+            }
+
+            @Override
+            public void rollback() {
+                events.add("rollback_" + name);
+                local.decrementAndGet();
+            }
+        };
+    }
+
+    private static RequirementTransaction flatReservationFailure(SlottedResourceBuffer input, AtomicInteger listed,
+                                                                 AtomicInteger rolledBack, AtomicInteger results) {
+        var tokens = new ObjectArrayList<ResourceReservation>();
+        for (int token = 0; token < 20; token++) {
+            var reservation = input.reserveExtract(input.snapshot(), INPUT, 1).reservation();
+            assertNotNull(reservation);
+            tokens.add(reservation);
+        }
+        var inventory = new AbstractList<ResourceReservation>() {
+            @Override
+            public ResourceReservation get(int index) {
+                listed.incrementAndGet();
+                return tokens.get(index);
+            }
+
+            @Override
+            public int size() {
+                return tokens.size();
+            }
+        };
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                if (results != null) results.incrementAndGet();
+                return new ProcessResult.Blocked("Flat child rejected after acquiring real holds");
+            }
+
+            @Override
+            public List<ResourceReservation> reservations() {
+                return inventory;
+            }
+
+            @Override
+            public void commit() {
+                throw new AssertionError("A failed flat child must not stage");
+            }
+
+            @Override
+            public void complete() {
+                throw new AssertionError("A failed flat child must not complete");
+            }
+
+            @Override
+            public void rollback() {
+                rolledBack.incrementAndGet();
+            }
+        };
     }
 
     @Test
@@ -81,7 +178,8 @@ class RecipeProbeBudgetTest {
         var session = Objects.requireNonNull(process.beginTick());
         var stage = Objects.requireNonNull(session.nextStage());
         stage.acquirePreparedWithinBudget(new RecipeWorkBudget(10000));
-        for (int step = 0; step < 100 && stage.computation() == null; step++) stage.resumePreparedWithinBudget(new RecipeWorkBudget(10000));
+        for (int step = 0; step < 100 && stage.computation() == null; step++)
+            stage.resumePreparedWithinBudget(new RecipeWorkBudget(10000));
         var facts = Objects.requireNonNull(stage.computation());
         assertTrue(facts.advance(new RecipeWorkBudget(10000)));
         stage.retainPreparedFacts(facts);
@@ -92,19 +190,32 @@ class RecipeProbeBudgetTest {
             process.retainPureFacts(RecipeStage.TICK, facts);
             return null;
         });
-        process.withPreparationContext(parentPath, () -> { process.retainPureFacts(RecipeStage.START, facts); return null; });
+        process.withPreparationContext(parentPath, () -> {
+            process.retainPureFacts(RecipeStage.START, facts);
+            return null;
+        });
         stage.withdrawPreparedFacts(facts);
         process.withPreparationContext(childPath, () -> {
             assertNull(process.pureFacts(RecipeStage.START));
             assertSame(facts, process.pureFacts(RecipeStage.TICK));
             return null;
         });
-        process.withPreparationContext(parentPath, () -> { assertSame(facts, process.pureFacts(RecipeStage.START)); return null; });
+        process.withPreparationContext(parentPath, () -> {
+            assertSame(facts, process.pureFacts(RecipeStage.START));
+            return null;
+        });
         RecipePureComputation replacement = RecipeWorkBudget::take;
-        process.withPreparationContext(childPath, () -> { process.retainPureFacts(RecipeStage.START, replacement); return null; });
+        process.withPreparationContext(childPath, () -> {
+            process.retainPureFacts(RecipeStage.START, replacement);
+            return null;
+        });
         stage.withdrawPreparedFacts(facts);
-        process.withPreparationContext(childPath, () -> { assertSame(replacement, process.pureFacts(RecipeStage.START)); return null; });
-        for (int step = 0; step < 100 && stage.preparationPending(); step++) stage.resumePreparedWithinBudget(new RecipeWorkBudget(10000));
+        process.withPreparationContext(childPath, () -> {
+            assertSame(replacement, process.pureFacts(RecipeStage.START));
+            return null;
+        });
+        for (int step = 0; step < 100 && stage.preparationPending(); step++)
+            stage.resumePreparedWithinBudget(new RecipeWorkBudget(10000));
         assertFalse(stage.preparationPending());
         assertSame(ProcessResult.SUCCESS, stage.settleSynchronously());
         session.finish();
@@ -112,21 +223,6 @@ class RecipeProbeBudgetTest {
         assertEquals(18, input.availableAmount(INPUT));
         assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
         process.requirePersistenceBoundary();
-    }
-
-    /** Runs real kernel/source methods directly; it is not a mock scheduler or parallelism proof. */
-    private static ProcessResult complete(RecipeScanProbes.Session session) {
-        for (int call = 0; call < 10000; call++) {
-            var work = new RecipeWorkBudget(1);
-            for (var source : session.sources()) {
-                if (session.resolvingSources()) session.finishSourceResolution(source, source.resolveWithinBudget(work));
-                else if (source.state() == ResourceBatch.SourceState.RESERVED) source.applyWithinBudget(work);
-            }
-            var computation = session.computation();
-            if (computation != null && computation.advance(work)) session.finishComputation(computation);
-            if (session.advance(work, () -> true)) return session.result();
-        }
-        throw new AssertionError("Probe did not complete its real acquisition/rollback cursors");
     }
 
     @Test
@@ -159,7 +255,8 @@ class RecipeProbeBudgetTest {
     }
 
     @Test
-    @SuppressWarnings("ReturnOfInnerClass") // Fixture callbacks intentionally retain the original transaction and preparation state.
+    @SuppressWarnings("ReturnOfInnerClass")
+        // Fixture callbacks intentionally retain the original transaction and preparation state.
     void oneUnitSlicesRetainPreparationAndAcquireEachStartOnceThenRollbackInReverseOrder() {
         var machine = new MachineInstance();
         var events = new ObjectArrayList<String>();
@@ -167,15 +264,31 @@ class RecipeProbeBudgetTest {
         RecipeScanPreparation first = _ -> projection("first", events, local);
         RecipeScanPreparation second = _ -> projection("second", events, local);
         var type = new RecipeRequirementType<Boolean>(id("ordered"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 assertTrue(process.probing());
                 assertEquals(2, local.get());
                 events.add("start_" + requirement.id().getPath());
                 return new RequirementTransaction() {
-                    @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                    @Override public void commit() { throw new AssertionError("Flat probe must not commit"); }
-                    @Override public void complete() { throw new AssertionError("Probe must not complete"); }
-                    @Override public void rollback() { events.add("undo_" + requirement.id().getPath()); }
+                    @Override
+                    public ProcessResult result() {
+                        return ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public void commit() {
+                        throw new AssertionError("Flat probe must not commit");
+                    }
+
+                    @Override
+                    public void complete() {
+                        throw new AssertionError("Probe must not complete");
+                    }
+
+                    @Override
+                    public void rollback() {
+                        events.add("undo_" + requirement.id().getPath());
+                    }
                 };
             }
         });
@@ -198,7 +311,8 @@ class RecipeProbeBudgetTest {
         var events = new ObjectArrayList<String>();
         var starts = new AtomicInteger();
         var type = new RecipeRequirementType<Boolean>(id("cancelled"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 starts.incrementAndGet();
                 return RequirementTransaction.SUCCESS;
             }
@@ -220,13 +334,25 @@ class RecipeProbeBudgetTest {
         var proof = new AtomicReference<>(ReversibleTransaction.Resolution.UNKNOWN);
         var process = process(new MachineInstance());
         var session = RecipeScanProbes.begin(process, List.of(_ -> new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { }
-            @Override public void rollback() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+            }
+
+            @Override
+            public void rollback() {
                 rollbackCalls.incrementAndGet();
                 throw new IllegalStateException("No terminal proof yet");
             }
-            @Override public Resolution resolution() { return proof.get(); }
+
+            @Override
+            public Resolution resolution() {
+                return proof.get();
+            }
         }), List.of());
         assertFalse(session.advance(new RecipeWorkBudget(1), () -> true));
         session.cancel();
@@ -262,7 +388,8 @@ class RecipeProbeBudgetTest {
     }
 
     @Test
-    @SuppressWarnings("ReturnOfInnerClass") // Fixture callbacks intentionally retain the original transaction and preparation state.
+    @SuppressWarnings("ReturnOfInnerClass")
+        // Fixture callbacks intentionally retain the original transaction and preparation state.
     void aNestedSelectorWaitsForTheRejectedCheckpointRollbackBeforeItsNextCandidateAndFinallyRestoresStorage() {
         var input = buffer();
         var output = buffer();
@@ -272,29 +399,59 @@ class RecipeProbeBudgetTest {
         var effects = new AtomicInteger();
         var starts = new AtomicInteger();
         var type = new RecipeRequirementType<Boolean>(id("rejected"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 starts.incrementAndGet();
                 return new RequirementTransaction() {
                     private boolean committed;
-                    @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                    @Override public void commit() { committed = true; effects.incrementAndGet(); }
-                    @Override public void complete() { throw new AssertionError("Probe cannot complete checkpoint effects"); }
-                    @Override public void rollback() { if (committed) effects.decrementAndGet(); }
+
+                    @Override
+                    public ProcessResult result() {
+                        return ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public void commit() {
+                        committed = true;
+                        effects.incrementAndGet();
+                    }
+
+                    @Override
+                    public void complete() {
+                        throw new AssertionError("Probe cannot complete checkpoint effects");
+                    }
+
+                    @Override
+                    public void rollback() {
+                        if (committed) effects.decrementAndGet();
+                    }
                 };
             }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 assertEquals(1, effects.get());
                 return new RequirementTransaction() {
-                    @Override public ProcessResult result() { return new ProcessResult.Blocked("first candidate rejected"); }
-                    @Override public void commit() { }
-                    @Override public void rollback() { }
+                    @Override
+                    public ProcessResult result() {
+                        return new ProcessResult.Blocked("first candidate rejected");
+                    }
+
+                    @Override
+                    public void commit() {
+                    }
+
+                    @Override
+                    public void rollback() {
+                    }
                 };
             }
         });
         var rejected = RecipeRequirements.CHECKPOINT.requirement(id("first_checkpoint"), new CheckpointRequirement(0, type.requirement(id("first_child"), true)));
         var resourceSystem = new ResourceRequirementSystem();
         var acceptedType = new RecipeRequirementType<ResourceRequirement>(id("accepted"), new RecipeRequirementSystem<>() {
-            @Override public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement, RecipeStage stage) {
+            @Override
+            public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement, RecipeStage stage) {
                 assertEquals(0, effects.get(), "Rejected candidate must finish reverse cleanup before the next capture");
                 return resourceSystem.prepare(process, requirement, stage);
             }
@@ -313,17 +470,6 @@ class RecipeProbeBudgetTest {
         process.requirePersistenceBoundary();
     }
 
-    private static RequirementTransaction projection(String name, List<String> events, AtomicInteger local) {
-        events.add("prepare_" + name);
-        local.incrementAndGet();
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { throw new AssertionError("Preparation cannot commit"); }
-            @Override public void complete() { throw new AssertionError("Preparation cannot complete"); }
-            @Override public void rollback() { events.add("rollback_" + name); local.decrementAndGet(); }
-        };
-    }
-
     @Test
     void aFlatRejectedChildInsideACheckpointRestoresItsRealHoldsBeforeTryingTheNextChild() {
         var input = buffer();
@@ -334,7 +480,8 @@ class RecipeProbeBudgetTest {
         var rejected = new AtomicInteger();
         var accepted = new AtomicInteger();
         var type = new RecipeRequirementType<Boolean>(id("flat_child"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 if (requirement.payload()) {
                     assertEquals(20, input.availableAmount(INPUT), "Flat rejection must undo its holds before the next capture");
                     accepted.incrementAndGet();
@@ -352,7 +499,8 @@ class RecipeProbeBudgetTest {
             int before = listed.get();
             var work = new RecipeWorkBudget(1);
             for (var source : session.sources()) {
-                if (session.resolvingSources()) session.finishSourceResolution(source, source.resolveWithinBudget(work));
+                if (session.resolvingSources())
+                    session.finishSourceResolution(source, source.resolveWithinBudget(work));
                 else if (source.state() == ResourceBatch.SourceState.RESERVED) source.applyWithinBudget(work);
             }
             var computation = session.computation();
@@ -381,8 +529,12 @@ class RecipeProbeBudgetTest {
         var results = new AtomicInteger();
         var next = new AtomicInteger();
         var type = new RecipeRequirementType<Boolean>(id("cancel_flat_child"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                if (requirement.payload()) { next.incrementAndGet(); return RequirementTransaction.SUCCESS; }
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                if (requirement.payload()) {
+                    next.incrementAndGet();
+                    return RequirementTransaction.SUCCESS;
+                }
                 return flatReservationFailure(input, listed, rolledBack, results);
             }
         });
@@ -390,7 +542,8 @@ class RecipeProbeBudgetTest {
             type.requirement(id("cancel_flat_rejected"), false), type.requirement(id("cancel_flat_next"), true))));
         var process = process(machine, choice);
         var session = RecipeScanProbes.begin(process, List.of(), List.of());
-        for (int call = 0; listed.get() < 5 && call < 1000; call++) session.advance(new RecipeWorkBudget(1), () -> true);
+        for (int call = 0; listed.get() < 5 && call < 1000; call++)
+            session.advance(new RecipeWorkBudget(1), () -> true);
         assertEquals(5, listed.get());
         session.cancel();
         complete(session);
@@ -403,32 +556,9 @@ class RecipeProbeBudgetTest {
         process.requirePersistenceBoundary();
     }
 
-    private static RequirementTransaction flatReservationFailure(SlottedResourceBuffer input, AtomicInteger listed,
-                                                                 AtomicInteger rolledBack, AtomicInteger results) {
-        var tokens = new ObjectArrayList<ResourceReservation>();
-        for (int token = 0; token < 20; token++) {
-            var reservation = input.reserveExtract(input.snapshot(), INPUT, 1).reservation();
-            assertNotNull(reservation);
-            tokens.add(reservation);
-        }
-        var inventory = new AbstractList<ResourceReservation>() {
-            @Override public ResourceReservation get(int index) { listed.incrementAndGet(); return tokens.get(index); }
-            @Override public int size() { return tokens.size(); }
-        };
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() {
-                if (results != null) results.incrementAndGet();
-                return new ProcessResult.Blocked("Flat child rejected after acquiring real holds");
-            }
-            @Override public List<ResourceReservation> reservations() { return inventory; }
-            @Override public void commit() { throw new AssertionError("A failed flat child must not stage"); }
-            @Override public void complete() { throw new AssertionError("A failed flat child must not complete"); }
-            @Override public void rollback() { rolledBack.incrementAndGet(); }
-        };
-    }
-
     @Test
-    @SuppressWarnings("ReturnOfInnerClass") // Fixture callbacks intentionally retain the original transaction and preparation state.
+    @SuppressWarnings("ReturnOfInnerClass")
+        // Fixture callbacks intentionally retain the original transaction and preparation state.
     void aFlatChildKeepsTwoPreparedPausesInOneRejectedSuffixWhileTheCheckpointPrefixRemainsApplied() {
         var input = buffer();
         input.insert(INPUT, 20, Actionable.MODULATE);
@@ -438,14 +568,25 @@ class RecipeProbeBudgetTest {
         var rejected = new AtomicInteger();
         var next = new AtomicInteger();
         var type = new RecipeRequirementType<Boolean>(id("history_child"), new RecipeRequirementSystem<>() {
-            @Override public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<Boolean> requirement, RecipeStage stage) {
+            @Override
+            public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<Boolean> requirement, RecipeStage stage) {
                 if (stage != RecipeStage.START) return null;
                 return new RequirementPreparation() {
                     private final ObjectArrayList<ResourceReservation> cumulative = new ObjectArrayList<>();
                     private int cursor;
-                    @Override public boolean ownerWorkMetered() { return true; }
-                    @Override public RecipePureComputation computation() { return null; }
-                    @Override public RequirementTransaction acquire() {
+
+                    @Override
+                    public boolean ownerWorkMetered() {
+                        return true;
+                    }
+
+                    @Override
+                    public RecipePureComputation computation() {
+                        return null;
+                    }
+
+                    @Override
+                    public RequirementTransaction acquire() {
                         if (requirement.payload()) {
                             assertEquals(18, input.amount(INPUT), "The outer successful prefix stays applied during child cleanup");
                             assertEquals(18, input.availableAmount(INPUT), "Both prepared child holds must be gone before the next candidate");
@@ -459,14 +600,32 @@ class RecipeProbeBudgetTest {
                             cumulative.add(token);
                             pauses.incrementAndGet();
                             return new PreparedRequirement(this) {
-                                @Override public List<ResourceReservation> reservations() { return cumulative; }
+                                @Override
+                                public List<ResourceReservation> reservations() {
+                                    return cumulative;
+                                }
                             };
                         }
                         return new RequirementTransaction() {
-                            @Override public ProcessResult result() { return new ProcessResult.Blocked("Failed after two original preparation pauses"); }
-                            @Override public List<ResourceReservation> reservations() { return cumulative; }
-                            @Override public void commit() { throw new AssertionError("Failed child must not stage"); }
-                            @Override public void rollback() { rejected.incrementAndGet(); }
+                            @Override
+                            public ProcessResult result() {
+                                return new ProcessResult.Blocked("Failed after two original preparation pauses");
+                            }
+
+                            @Override
+                            public List<ResourceReservation> reservations() {
+                                return cumulative;
+                            }
+
+                            @Override
+                            public void commit() {
+                                throw new AssertionError("Failed child must not stage");
+                            }
+
+                            @Override
+                            public void rollback() {
+                                rejected.incrementAndGet();
+                            }
                         };
                     }
                 };
@@ -491,6 +650,9 @@ class RecipeProbeBudgetTest {
     }
 
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.context().isValid() && output.context().isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.context().isValid() && output.context().isValid();
+        }
     }
 }

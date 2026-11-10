@@ -2,12 +2,12 @@ package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.Tags;
 import net.minecraftforge.common.config.Configuration;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.Locale;
-import org.jetbrains.annotations.Nullable;
+import java.util.Objects;
 
 /** Server defaults and explicit reloads; running sessions apply requests at a joined tick boundary. */
 public final class SchedulerConfig {
@@ -15,11 +15,13 @@ public final class SchedulerConfig {
     private static Settings settings = new Settings(Math.max(2, PROCESSORS), Math.clamp(PROCESSORS, 2, 8));
     private static File configurationFile;
 
-    private SchedulerConfig() { }
+    private SchedulerConfig() {
+    }
 
     public static void load(File directory) {
         configurationFile = new File(Objects.requireNonNull(directory), Tags.MOD_ID + "/scheduler.cfg");
-        reload(); }
+        reload();
+    }
 
     public static Settings reload() {
         if (configurationFile == null) throw new IllegalStateException("Scheduler configuration has not been loaded");
@@ -43,7 +45,9 @@ public final class SchedulerConfig {
         return settings;
     }
 
-    public static Settings settings() { return settings; }
+    public static Settings settings() {
+        return settings;
+    }
 
     private static WorkerStrategy configuredWorkerStrategy(Configuration config) {
         var name = config.getString("workerStrategy", "scheduler", "PLATFORM_POOL",
@@ -53,6 +57,24 @@ public final class SchedulerConfig {
         if (strategy != null) return strategy;
         config.get("scheduler", "workerStrategy", "PLATFORM_POOL").set("PLATFORM_POOL");
         return WorkerStrategy.PLATFORM_POOL;
+    }
+
+    /** Actual executor creation choices inside the original scheduler, with identical ownership rules. */
+    public enum WorkerStrategy {
+        PLATFORM_POOL, VIRTUAL_PER_TASK;
+
+        @Nullable
+        public static WorkerStrategy fromName(String name) {
+            return switch (name.toUpperCase(Locale.ROOT)) {
+                case "PLATFORM_POOL" -> PLATFORM_POOL;
+                case "VIRTUAL_PER_TASK" -> VIRTUAL_PER_TASK;
+                default -> null;
+            };
+        }
+
+        public String policyLabel() {
+            return this == PLATFORM_POOL ? "JAVA" : "JAVA/VIRTUAL_PER_TASK";
+        }
     }
 
     public record Settings(int workerThreads, int laneCount, Duration plannedTimeout, boolean metricsEnabled,
@@ -66,6 +88,7 @@ public final class SchedulerConfig {
             this(workerThreads, laneCount, plannedTimeout, metricsEnabled, metricsLogIntervalTicks, metricsWindowTicks,
                 WorkerStrategy.PLATFORM_POOL);
         }
+
         public Settings {
             if (workerThreads < 1 || laneCount < 1)
                 throw new IllegalArgumentException("Scheduler thread counts must be positive");
@@ -91,24 +114,6 @@ public final class SchedulerConfig {
         public Settings withWorkerStrategy(WorkerStrategy strategy) {
             return new Settings(workerThreads, laneCount, plannedTimeout, metricsEnabled, metricsLogIntervalTicks,
                 metricsWindowTicks, strategy);
-        }
-    }
-
-    /** Actual executor creation choices inside the original scheduler, with identical ownership rules. */
-    public enum WorkerStrategy {
-        PLATFORM_POOL, VIRTUAL_PER_TASK;
-
-        public String policyLabel() {
-            return this == PLATFORM_POOL ? "JAVA" : "JAVA/VIRTUAL_PER_TASK";
-        }
-
-        @Nullable
-        public static WorkerStrategy fromName(String name) {
-            return switch (name.toUpperCase(Locale.ROOT)) {
-                case "PLATFORM_POOL" -> PLATFORM_POOL;
-                case "VIRTUAL_PER_TASK" -> VIRTUAL_PER_TASK;
-                default -> null;
-            };
         }
     }
 }

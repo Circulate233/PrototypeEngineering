@@ -4,7 +4,9 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 
 import java.util.Objects;
 
-/** Fired in PostInit before any JSON predicate or validator is resolved. */
+/**
+ * Fired in PostInit before any JSON predicate or validator is resolved.
+ */
 public final class StructurePredicateRegistrationEvent extends Event {
     private final StructurePredicateRegistry registry;
 

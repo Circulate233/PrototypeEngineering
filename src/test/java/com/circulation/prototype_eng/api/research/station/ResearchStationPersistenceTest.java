@@ -2,12 +2,12 @@ package com.circulation.prototype_eng.api.research.station;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
-import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
@@ -20,6 +20,7 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -44,10 +45,9 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.testsupport.TestResources;
-import com.circulation.prototype_eng.localization.GuiText;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -68,27 +68,134 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
-import static com.circulation.prototype_eng.api.research.station.StationFixtures.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.Entry;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.OWNER;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.TYPE;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.id;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchStationPersistenceTest {
     private static final TestResources.Key RAW = new TestResources.Key(TYPE, "saved_raw");
     private static final TestResources.Key PRODUCT = new TestResources.Key(TYPE, "saved_product");
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt(location -> location.equals(TYPE.getId()) ? TYPE : null);
 
-    @Test void cleanupRestorationCancelsTheSavedRealOwnerAfterATeamMoveWithoutAnyWorkLeaseOrMaterialGrant() {
+    private static ResearchDefinition definition(Function<RecipeStage, RequirementTransaction> action) {
+        return definition(action, _ -> {
+        });
+    }
+
+    private static ResearchDefinition definition(Function<RecipeStage, RequirementTransaction> action, Consumer<RecipeProcess> cancellation) {
+        var observer = new RecipeRequirementType<>(id("saved_observer_type"), new RecipeRequirementSystem<Function<RecipeStage, RequirementTransaction>>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) {
+                return requirement.payload().apply(RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) {
+                return requirement.payload().apply(RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) {
+                return requirement.payload().apply(RecipeStage.END);
+            }
+
+            @Override
+            public void cancel(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) {
+                cancellation.accept(process);
+            }
+        }).requirement(id("saved_observer"), action);
+        var stage = ResearchLevelStage.builder(1, 1).researchTier(2)
+                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 3, 3).build())
+                                      .materialPersistence("saved-station-v1", codec -> codec.resources(KEYS))
+                                      .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("saved_io"), new ResourceRequirement(
+                                          List.of(new GenericStack(RAW, 2)), List.of(new GenericStack(RAW, 1)), List.of(), List.of(new GenericStack(PRODUCT, 2)), false)))
+                                      .materialRequirement(observer).build();
+        return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage).build();
+    }
+
+    private static ResearchStations.Site site(StationFixtures fixture, Entry station) {
+        var identity = fixture.identity(station);
+        return new ResearchStations.Site(identity.identity(), identity.location());
+    }
+
+    private static Entry reload(StationFixtures fixture, Entry station, ResearchStations.Site site, NBTTagCompound saved) {
+        return reload(fixture, station, site, saved, fixture.world);
+    }
+
+    private static Entry reload(StationFixtures fixture, Entry station, ResearchStations.Site site, NBTTagCompound saved, Object worldIdentity) {
+        var host = new MachineLifecycleHost() {
+            @Override
+            public Object worldIdentity() {
+                return worldIdentity;
+            }
+
+            @Override
+            public MachineIdentity identity() {
+                return site.location();
+            }
+
+            @Override
+            public UUID placementPlayer() {
+                return site.identity().ownerId();
+            }
+
+            @Override
+            public World world() {
+                throw new AssertionError("No game world in station persistence tests");
+            }
+
+            @Override
+            public void requireServerThread() {
+            }
+        };
+        var machine = station.assembly().restore(host, saved, new MachineLifecycleRegistry());
+        return fixture.attach(machine, station.assembly(), station.role());
+    }
+
+    private static void put(Entry station, TestResources.Key key, long amount, boolean output) {
+        assertEquals(amount, Objects.requireNonNull(output ? station.warehouse().output() : station.warehouse().input()).insert(key, amount, Actionable.MODULATE));
+    }
+
+    private static long amount(Entry station, TestResources.Key key, boolean output) {
+        return Objects.requireNonNull(output ? station.warehouse().output() : station.warehouse().input()).amount(key);
+    }
+
+    private static ResearchStationWork.Context context(long time) {
+        return new ResearchStationWork.Context(time, Set.of(OWNER), () -> true);
+    }
+
+    private static PlannedDeadline deadline() {
+        return PlannedDeadline.after(Duration.ofSeconds(5));
+    }
+
+    @Test
+    void cleanupRestorationCancelsTheSavedRealOwnerAfterATeamMoveWithoutAnyWorkLeaseOrMaterialGrant() {
         var phases = new ObjectArrayList<RecipeStage>();
         var cancelled = new AtomicReference<RecipeProcess>();
         int[] cancellationCalls = {0};
-        try (var moving = new MovingTeamFixture(definition(phase -> { phases.add(phase); return RequirementTransaction.SUCCESS; }, process -> {
-            cancellationCalls[0]++; cancelled.set(process);
+        try (var moving = new MovingTeamFixture(definition(phase -> {
+            phases.add(phase);
+            return RequirementTransaction.SUCCESS;
+        }, process -> {
+            cancellationCalls[0]++;
+            cancelled.set(process);
         })); var lanes = new Lanes()) {
             var fixture = moving.fixture;
             var station = moving.station;
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
             var original = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             assertEquals(ResearchStationWork.Status.WAITING, original.work.advance(capture, context(1), lanes.tasks, deadline()).status());
@@ -115,17 +222,21 @@ class ResearchStationPersistenceTest {
             assertNull(restored.work.snapshot().segment());
             var view = new TeamResearchView(fixture.research, "team", Set.of(), Object2IntMaps.emptyMap(), Object2IntMaps.emptyMap(), Set.of(id("research")));
             var prune = restored.queue.preparePrune(view);
-            prune.commit(); prune.complete();
+            prune.commit();
+            prune.complete();
             assertEquals(0, restored.queue.size());
             assertEquals(0, restored.player.completedLevel(id("research")));
         }
     }
 
-    @Test void cleanupRequiresEveryExactPhysicalSiteButCanCancelOnAReloadedUnformedOwnerWithoutNetworkPublication() {
+    @Test
+    void cleanupRequiresEveryExactPhysicalSiteButCanCancelOnAReloadedUnformedOwnerWithoutNetworkPublication() {
         int[] cancelled = {0};
         try (var fixture = new StationFixtures(10, 100, 2, definition(_ -> RequirementTransaction.SUCCESS, _ -> cancelled[0]++)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true); fixture.refresh();
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            fixture.refresh();
             var state = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             state.work.advance(capture, context(1), lanes.tasks, deadline());
@@ -152,15 +263,20 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void throwingRestoredCancellationRetainsTheSameFaultedProcessAndNeverDecodesOrCancelsItAgain() {
+    @Test
+    void throwingRestoredCancellationRetainsTheSameFaultedProcessAndNeverDecodesOrCancelsItAgain() {
         var failure = new IllegalStateException("restored cancellation failed");
         int[] calls = {0};
         var cancelled = new AtomicReference<RecipeProcess>();
         try (var fixture = new StationFixtures(10, 100, 2, definition(_ -> RequirementTransaction.SUCCESS, process -> {
-            calls[0]++; cancelled.set(process); throw failure;
+            calls[0]++;
+            cancelled.set(process);
+            throw failure;
         })); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true); fixture.refresh();
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
+            fixture.refresh();
             var state = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             state.work.advance(capture, context(1), lanes.tasks, deadline());
@@ -187,7 +303,8 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void restoredSitesRequireTheOriginalOwnersLocationsAndOneCurrentWorldSession() {
+    @Test
+    void restoredSitesRequireTheOriginalOwnersLocationsAndOneCurrentWorldSession() {
         try (var fixture = new StationFixtures(10, 2)) {
             var first = fixture.station(2, 0);
             var second = fixture.station(2, 0);
@@ -216,7 +333,8 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void chunkReloadRestoresEveryOriginalStationAndItsPrimaryWithoutAddingOtherCandidates() {
+    @Test
+    void chunkReloadRestoresEveryOriginalStationAndItsPrimaryWithoutAddingOtherCandidates() {
         try (var fixture = new StationFixtures(10, 2)) {
             var first = fixture.station(2, 0);
             var second = fixture.station(2, 0);
@@ -244,11 +362,16 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void blockedEndResumesOnTheReloadedOriginalStationWithoutRepayingZeroSpeedStartOrTick() {
+    @Test
+    void blockedEndResumesOnTheReloadedOriginalStationWithoutRepayingZeroSpeedStartOrTick() {
         var phases = new ObjectArrayList<RecipeStage>();
-        try (var fixture = new StationFixtures(10, 100, 2, definition(phase -> { phases.add(phase); return RequirementTransaction.SUCCESS; })); var lanes = new Lanes()) {
+        try (var fixture = new StationFixtures(10, 100, 2, definition(phase -> {
+            phases.add(phase);
+            return RequirementTransaction.SUCCESS;
+        })); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
             station.machine().attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 0);
             fixture.refresh();
             var state = new State(fixture);
@@ -268,7 +391,8 @@ class ResearchStationPersistenceTest {
             assertNull(fixture.selector.restore("team", 2, capture.sites()));
 
             var replacement = reload(fixture, station, capture.sites().getFirst(), stationTag);
-            put(replacement, RAW, 7, false); put(replacement, PRODUCT, 98, true);
+            put(replacement, RAW, 7, false);
+            put(replacement, PRODUCT, 98, true);
             replacement.machine().attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 9);
             fixture.nextTick();
             var restoredSources = Objects.requireNonNull(fixture.selector.restore("team", 2, state.work.sites()));
@@ -287,11 +411,13 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void restoringStoresTheTagDefensivelyAndOnlyDecodesAgainstTheExactRealCapture() {
+    @Test
+    void restoringStoresTheTagDefensivelyAndOnlyDecodesAgainstTheExactRealCapture() {
         try (var fixture = new StationFixtures(10, 100, 2, definition(_ -> RequirementTransaction.SUCCESS)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
             var other = fixture.station(2, 2);
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
             fixture.refresh();
             var original = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
@@ -317,11 +443,16 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void savedProcessCanResumeAndCancelWithoutAnyCurrentNumericGrant() {
+    @Test
+    void savedProcessCanResumeAndCancelWithoutAnyCurrentNumericGrant() {
         var phases = new ObjectArrayList<RecipeStage>();
-        try (var fixture = new StationFixtures(10, 0, 2, definition(phase -> { phases.add(phase); return RequirementTransaction.SUCCESS; }))) {
+        try (var fixture = new StationFixtures(10, 0, 2, definition(phase -> {
+            phases.add(phase);
+            return RequirementTransaction.SUCCESS;
+        }))) {
             var station = fixture.station(2, 0);
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
             fixture.refresh();
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             var state = new State(fixture);
@@ -344,10 +475,12 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void savedQueueKeyAndDeferredCodecValidationNeverReplaceTheStoredSessionOnFailure() {
+    @Test
+    void savedQueueKeyAndDeferredCodecValidationNeverReplaceTheStoredSessionOnFailure() {
         try (var fixture = new StationFixtures(10, 100, 2, definition(_ -> RequirementTransaction.SUCCESS)); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
-            put(station, RAW, 10, false); put(station, PRODUCT, 100, true);
+            put(station, RAW, 10, false);
+            put(station, PRODUCT, 100, true);
             fixture.refresh();
             var original = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
@@ -359,7 +492,8 @@ class ResearchStationPersistenceTest {
             assertThrows(IllegalStateException.class, () -> state.work.restore(new ResearchStationWork.Saved(-1,
                 new ResearchStationWork.SavedSegment(incorrect, saved.sites(), saved.processTag()))));
             assertNull(state.work.key());
-            var corrupt = saved.processTag(); corrupt.setString("Revision", "different");
+            var corrupt = saved.processTag();
+            corrupt.setString("Revision", "different");
             state.work.restore(new ResearchStationWork.Saved(-1, new ResearchStationWork.SavedSegment(saved.key(), saved.sites(), corrupt)));
             assertThrows(IllegalArgumentException.class, () -> state.work.resume(capture));
             assertNull(state.work.sources());
@@ -368,7 +502,8 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    @Test void schedulerStopPreservesThePaidMaterialSessionAndItsExactBusyEndParticipants() {
+    @Test
+    void schedulerStopPreservesThePaidMaterialSessionAndItsExactBusyEndParticipants() {
         var fence = new AtomicReference<StorageFence>();
         var stationRef = new AtomicReference<Entry>();
         boolean[] block = {true};
@@ -378,7 +513,10 @@ class ResearchStationPersistenceTest {
             }
             return RequirementTransaction.SUCCESS;
         })); var lanes = new Lanes()) {
-            var station = fixture.station(2, 0); stationRef.set(station); put(station, RAW, 10, false); fixture.refresh();
+            var station = fixture.station(2, 0);
+            stationRef.set(station);
+            put(station, RAW, 10, false);
+            fixture.refresh();
             var state = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             try {
@@ -387,7 +525,8 @@ class ResearchStationPersistenceTest {
                 assertThrows(IllegalStateException.class, state.work::snapshot);
                 assertFalse(state.work.suspend());
                 state.work.requestStop(PlannedCancellationToken.Reason.EPOCH_CHANGED);
-                block[0] = false; Objects.requireNonNull(fence.getAndSet(null)).release();
+                block[0] = false;
+                Objects.requireNonNull(fence.getAndSet(null)).release();
                 assertEquals(ResearchStationWork.Status.WAITING, state.work.resolve(deadline()).status());
                 assertEquals(7, amount(station, RAW, false));
                 assertEquals(0, amount(station, PRODUCT, true));
@@ -397,7 +536,12 @@ class ResearchStationPersistenceTest {
                 var restored = Objects.requireNonNull(fixture.selector.restore("team", 2, state.work.sites()));
                 assertEquals(ResearchStationWork.Status.COMPLETED, state.work.advance(restored, context(2), lanes.tasks, deadline()).status());
                 assertEquals(7, amount(station, RAW, false));
-            } finally { var remaining = fence.getAndSet(null); if (remaining != null) { remaining.release(); } }
+            } finally {
+                var remaining = fence.getAndSet(null);
+                if (remaining != null) {
+                    remaining.release();
+                }
+            }
         }
     }
 
@@ -462,62 +606,16 @@ class ResearchStationPersistenceTest {
         }
     }
 
-    private static ResearchDefinition definition(Function<RecipeStage, RequirementTransaction> action) {
-        return definition(action, _ -> { });
-    }
-
-    private static ResearchDefinition definition(Function<RecipeStage, RequirementTransaction> action, Consumer<RecipeProcess> cancellation) {
-        var observer = new RecipeRequirementType<>(id("saved_observer_type"), new RecipeRequirementSystem<Function<RecipeStage, RequirementTransaction>>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) { return requirement.payload().apply(RecipeStage.START); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) { return requirement.payload().apply(RecipeStage.TICK); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) { return requirement.payload().apply(RecipeStage.END); }
-            @Override public void cancel(RecipeProcess process, RecipeRequirement<Function<RecipeStage, RequirementTransaction>> requirement) { cancellation.accept(process); }
-        }).requirement(id("saved_observer"), action);
-        var stage = ResearchLevelStage.builder(1, 1).researchTier(2)
-            .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 3, 3).build())
-            .materialPersistence("saved-station-v1", codec -> codec.resources(KEYS))
-            .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("saved_io"), new ResourceRequirement(
-                List.of(new GenericStack(RAW, 2)), List.of(new GenericStack(RAW, 1)), List.of(), List.of(new GenericStack(PRODUCT, 2)), false)))
-            .materialRequirement(observer).build();
-        return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage).build();
-    }
-
-    private static ResearchStations.Site site(StationFixtures fixture, Entry station) {
-        var identity = fixture.identity(station);
-        return new ResearchStations.Site(identity.identity(), identity.location());
-    }
-
-    private static Entry reload(StationFixtures fixture, Entry station, ResearchStations.Site site, NBTTagCompound saved) {
-        return reload(fixture, station, site, saved, fixture.world);
-    }
-
-    private static Entry reload(StationFixtures fixture, Entry station, ResearchStations.Site site, NBTTagCompound saved, Object worldIdentity) {
-        var host = new MachineLifecycleHost() {
-            @Override public Object worldIdentity() { return worldIdentity; }
-            @Override public MachineIdentity identity() { return site.location(); }
-            @Override public UUID placementPlayer() { return site.identity().ownerId(); }
-            @Override public World world() { throw new AssertionError("No game world in station persistence tests"); }
-            @Override public void requireServerThread() { }
-        };
-        var machine = station.assembly().restore(host, saved, new MachineLifecycleRegistry());
-        return fixture.attach(machine, station.assembly(), station.role());
-    }
-
-    private static void put(Entry station, TestResources.Key key, long amount, boolean output) {
-        assertEquals(amount, Objects.requireNonNull(output ? station.warehouse().output() : station.warehouse().input()).insert(key, amount, Actionable.MODULATE));
-    }
-    private static long amount(Entry station, TestResources.Key key, boolean output) { return Objects.requireNonNull(output ? station.warehouse().output() : station.warehouse().input()).amount(key); }
-    private static ResearchStationWork.Context context(long time) { return new ResearchStationWork.Context(time, Set.of(OWNER), () -> true); }
-    private static PlannedDeadline deadline() { return PlannedDeadline.after(Duration.ofSeconds(5)); }
-
     private static final class State {
         private final TeamResearchQueue queue;
         private final PlayerResearchState player = new PlayerResearchState(OWNER);
         private final ResearchStationWork work;
+
         private State(StationFixtures fixture) {
             this(fixture, new TeamResearchQueue(fixture.research, fixture.resources, "team"));
             queue.enqueue(id("research"), 1, OWNER, 0);
         }
+
         private State(StationFixtures fixture, TeamResearchQueue queue) {
             this.queue = queue;
             work = new ResearchStationWork(queue, new TeamOwnedResearch("team", fixture.research), Map.of(OWNER, player));
@@ -529,7 +627,13 @@ class ResearchStationPersistenceTest {
         private final ExecutorService first = Executors.newSingleThreadExecutor();
         private final ExecutorService second = Executors.newSingleThreadExecutor();
         private final PlannedTaskExecutor tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{first, second});
-        @Override public void close() { first.close(); second.close(); workers.close(); }
+
+        @Override
+        public void close() {
+            first.close();
+            second.close();
+            workers.close();
+        }
     }
 
     private static final class MovingTeamFixture implements AutoCloseable {
@@ -551,7 +655,10 @@ class ResearchStationPersistenceTest {
 
         private Entry role(NetworkDeviceRole role) {
             var supply = new Object2LongOpenHashMap<NetworkResourceType>();
-            if (role == NetworkDeviceRole.NETWORK_CENTER) { supply.put(NetworkResources.THREAD, 10); supply.put(NetworkResources.COMPUTE, 100); }
+            if (role == NetworkDeviceRole.NETWORK_CENTER) {
+                supply.put(NetworkResources.THREAD, 10);
+                supply.put(NetworkResources.COMPUTE, 100);
+            }
             var component = MachineNetworkDevice.component(id("moving_role_" + fixture.positions), fixture.ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, 2, Objects.requireNonNull(machine.lifecycle()).formed(),
                     identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
@@ -559,7 +666,8 @@ class ResearchStationPersistenceTest {
         }
 
         private void dataCenter() {
-            var storage = MachineDataCenterStorage.component(id("moving_storage"), fixture.ownership, 2, 10, fixture.research, _ -> { });
+            var storage = MachineDataCenterStorage.component(id("moving_storage"), fixture.ownership, 2, 10, fixture.research, _ -> {
+            });
             var component = MachineNetworkDevice.capturedComponent(id("moving_data_role"), fixture.ownership,
                 (machine, identity) -> Objects.requireNonNull(machine.components().get(storage)).networkCapture(identity,
                     Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
@@ -568,15 +676,29 @@ class ResearchStationPersistenceTest {
 
         private Entry attach(ComponentType<MachineInstance, MachineNetworkDevice> role, ComponentType<MachineInstance, MachineDataCenterStorage> storage) {
             var typeBuilder = MachineType.builder(id("moving_machine_" + fixture.positions), GuiText.ResourceStorage, id("structure")).component(fixture.ownership).component(role);
-            if (storage != null) { typeBuilder.component(storage); }
+            if (storage != null) {
+                typeBuilder.component(storage);
+            }
             var type = typeBuilder.build();
             var builder = MachineAssembly.builder(type, "moving-v1").component(fixture.ownership, MachineOwnership.CODEC).recreated(role);
-            if (storage != null) { builder.component(storage, MachineDataCenterStorage.CODEC); }
+            if (storage != null) {
+                builder.component(storage, MachineDataCenterStorage.CODEC);
+            }
             var assembly = builder.build();
             return fixture.attach(assembly.create(fixture.host(type.id(), 0, OWNER, fixture.world), new MachineLifecycleRegistry()), assembly, role);
         }
 
-        private void move() { network.endTick(); teamId = "new_team"; network.beginTick(1); assertTrue(network.refresh()); }
-        @Override public void close() { fixture.close(); network.close(); }
+        private void move() {
+            network.endTick();
+            teamId = "new_team";
+            network.beginTick(1);
+            assertTrue(network.refresh());
+        }
+
+        @Override
+        public void close() {
+            fixture.close();
+            network.close();
+        }
     }
 }

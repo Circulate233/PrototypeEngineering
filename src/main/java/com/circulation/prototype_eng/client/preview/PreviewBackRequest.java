@@ -8,12 +8,21 @@ public final class PreviewBackRequest {
     private final BooleanSupplier buttonsReleased;
     private final Runnable back;
     private boolean pending;
+
     public PreviewBackRequest(BooleanSupplier buttonsReleased, Runnable back) {
         this.buttonsReleased = Objects.requireNonNull(buttonsReleased);
         this.back = Objects.requireNonNull(back);
     }
-    public void mousePress() { pending = true; }
-    public void keyPress() { pending = true; finishReleased(); }
+
+    public void mousePress() {
+        pending = true;
+    }
+
+    public void keyPress() {
+        pending = true;
+        finishReleased();
+    }
+
     public void finishReleased() {
         if (!pending || !buttonsReleased.getAsBoolean()) return;
         pending = false;

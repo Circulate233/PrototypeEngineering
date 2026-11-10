@@ -11,13 +11,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Tests the native key boundary and buffered-wheel ownership without an LWJGL device or game bootstrap. */
 class JeiRecipeInputsTest {
     @Test
+    void nativeRuntimeRebuildRevokesOldWrapperOnTheSameScreen() {
+        var screen = new GuiScreen() {
+        };
+        JeiRecipeInputs.reset();
+        JeiRecipeInputs.observe(screen, (_, _, _) -> {
+                throw new AssertionError("Retired runtime wrapper was retained");
+            },
+            20, 30, 174, 160);
+        JeiRecipeInputs.reset();
+        assertFalse(JeiRecipeInputs.scroll(screen, 21, 31, -120));
+        int[] calls = {0};
+        JeiRecipeInputs.observe(screen, (_, _, _) -> {
+            calls[0]++;
+            return true;
+        }, 20, 30, 174, 160);
+        assertTrue(JeiRecipeInputs.scroll(screen, 21, 31, -120));
+        assertEquals(1, calls[0]);
+        JeiRecipeInputs.reset();
+    }
+
+    @Test
     void actualNativeKeyPreRevokesOldWrapperBeforeAnotherBufferedWheelOnSameScreen() {
-        var screen = new GuiScreen() {};
+        var screen = new GuiScreen() {
+        };
         JeiRecipeInputs.keyboard(new GuiScreenEvent.KeyboardInputEvent.Pre(screen));
         int[] oldPage = {0};
         JeiRecipeInputs.observe(screen, (x, y, delta) -> {
-            assertEquals(1, x); assertEquals(1, y); assertEquals(-120, delta);
-            oldPage[0]++; return true;
+            assertEquals(1, x);
+            assertEquals(1, y);
+            assertEquals(-120, delta);
+            oldPage[0]++;
+            return true;
         }, 20, 30, 174, 160);
         assertTrue(JeiRecipeInputs.scroll(screen, 21, 31, -120));
         assertEquals(1, oldPage[0]);
@@ -27,8 +52,11 @@ class JeiRecipeInputsTest {
         assertEquals(1, oldPage[0]);
         int[] currentPage = {0};
         JeiRecipeInputs.observe(screen, (x, y, delta) -> {
-            assertEquals(1, x); assertEquals(1, y); assertEquals(-120, delta);
-            currentPage[0]++; return true;
+            assertEquals(1, x);
+            assertEquals(1, y);
+            assertEquals(-120, delta);
+            currentPage[0]++;
+            return true;
         }, 20, 30, 174, 160);
         assertTrue(JeiRecipeInputs.scroll(screen, 21, 31, -120));
         assertEquals(1, currentPage[0]);
@@ -38,18 +66,24 @@ class JeiRecipeInputsTest {
 
     @Test
     void wheelPassedToNativeLayoutCannotBeConsumedByOldObservationOnNextBufferedEvent() {
-        var screen = new GuiScreen() {};
+        var screen = new GuiScreen() {
+        };
         JeiRecipeInputs.keyboard(new GuiScreenEvent.KeyboardInputEvent.Pre(screen));
         int[] calls = {0};
         JeiRecipeInputs.observe(screen, (x, y, delta) -> {
-            assertEquals(1, x); assertEquals(1, y); assertEquals(-120, delta);
-            calls[0]++; return false;
+            assertEquals(1, x);
+            assertEquals(1, y);
+            assertEquals(-120, delta);
+            calls[0]++;
+            return false;
         }, 20, 30, 174, 160);
         assertFalse(JeiRecipeInputs.scroll(screen, 21, 31, -120));
         assertFalse(JeiRecipeInputs.scroll(screen, 21, 31, -120));
         assertEquals(1, calls[0]);
         // A wheel outside the old wrapper may itself change native page/category.
-        JeiRecipeInputs.observe(screen, (_, _, _) -> { throw new AssertionError("Outside wheel must not reach old wrapper"); },
+        JeiRecipeInputs.observe(screen, (_, _, _) -> {
+                throw new AssertionError("Outside wheel must not reach old wrapper");
+            },
             20, 30, 174, 160);
         assertFalse(JeiRecipeInputs.scroll(screen, 200, 31, -120));
         assertFalse(JeiRecipeInputs.scroll(screen, 21, 31, -120));

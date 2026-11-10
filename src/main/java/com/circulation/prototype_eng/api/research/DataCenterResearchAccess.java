@@ -13,7 +13,9 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
-/** Physical database operations at an exclusive owner boundary, sharing the current tick's network budget. */
+/**
+ * Physical database operations at an exclusive owner boundary, sharing the current tick's network budget.
+ */
 public final class DataCenterResearchAccess {
     private final ResearchWorld world;
     private final NetworkRuntime network;
@@ -24,6 +26,10 @@ public final class DataCenterResearchAccess {
         this.world = Objects.requireNonNull(world);
         this.network = Objects.requireNonNull(network);
         this.centers = Objects.requireNonNull(centers);
+    }
+
+    private static Result result(Status status) {
+        return new Result(status, null);
     }
 
     public Result download(OwnerTeamResolution membership, ResearchPermissionContext permission,
@@ -41,10 +47,14 @@ public final class DataCenterResearchAccess {
             if (physical == null) return result(Status.NO_ACTIVE_DATA_CENTER);
             return publish(physical, () -> physical.storage().downloadResearch(researchId, level,
                 Objects.requireNonNull(cloud.view()), () -> !world.savePending() && cloud.current().getAsBoolean() && physical.current()));
-        } finally { executing = false; }
+        } finally {
+            executing = false;
+        }
     }
 
-    /** No player permission or source mutation is involved in the automatic upgrade of stored research. */
+    /**
+     * No player permission or source mutation is involved in the automatic upgrade of stored research.
+     */
     public Result synchronize(OwnerTeamResolution membership, BooleanSupplier current) {
         Objects.requireNonNull(current);
         enter();
@@ -56,12 +66,17 @@ public final class DataCenterResearchAccess {
             if (physical == null) return result(Status.NO_ACTIVE_DATA_CENTER);
             return publish(physical, () -> physical.storage().synchronizeLoopingResearch(Objects.requireNonNull(cloud.view()),
                 () -> !world.savePending() && cloud.current().getAsBoolean() && physical.current()));
-        } finally { executing = false; }
+        } finally {
+            executing = false;
+        }
     }
 
-    /** Separate state and download permissions; viewing never invokes a research start condition or saves. */
-    @Nullable public DataCenterPlayerView view(OwnerTeamResolution membership, ResearchPermissionContext permission,
-                                               BooleanSupplier current) {
+    /**
+     * Separate state and download permissions; viewing never invokes a research start condition or saves.
+     */
+    @Nullable
+    public DataCenterPlayerView view(OwnerTeamResolution membership, ResearchPermissionContext permission,
+                                     BooleanSupplier current) {
         enter();
         try {
             var cloud = world.captureCloud(membership, permission, Action.REQUEST_DATA_CENTER_STATE, current);
@@ -75,10 +90,13 @@ public final class DataCenterResearchAccess {
             if (!cloud.current().getAsBoolean() || physical != null && !physical.current()) return null;
             return new DataCenterPlayerView(membership.teamId(), Decision.ALLOWED, download.decision(), world.savePending(),
                 physical == null ? null : physical.snapshot(), cloud.view());
-        } finally { executing = false; }
+        } finally {
+            executing = false;
+        }
     }
 
-    @Nullable private ResearchDataCenters.Capture selected(String teamId) {
+    @Nullable
+    private ResearchDataCenters.Capture selected(String teamId) {
         var plan = network.plan();
         var team = plan == null ? null : plan.teams().get(teamId);
         return team == null || team.dataCenterId() == null ? null : centers.capture(teamId, team.dataCenterId());
@@ -103,9 +121,7 @@ public final class DataCenterResearchAccess {
         executing = true;
     }
 
-    private static Result result(Status status) { return new Result(status, null); }
-
-    public enum Status { COMPLETED, PERMISSION_DENIED, NO_ACTIVE_DATA_CENTER, SAVE_PENDING, STALE_CONTEXT }
+    public enum Status {COMPLETED, PERMISSION_DENIED, NO_ACTIVE_DATA_CENTER, SAVE_PENDING, STALE_CONTEXT}
 
     public record Result(Status status, @Nullable DataCenterStorage.Result storageResult) {
         public Result {

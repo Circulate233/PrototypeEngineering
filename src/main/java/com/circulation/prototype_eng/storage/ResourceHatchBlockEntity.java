@@ -2,10 +2,20 @@ package com.circulation.prototype_eng.storage;
 
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
+import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
+import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
+import com.circulation.prototype_eng.api.storage.HatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.HatchTier;
+import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
+import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
+import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
@@ -16,22 +26,14 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
+import net.minecraftforge.items.CapabilityItemHandler;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import ae2.tile.AEBaseTile;
-import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
-import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
-import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.api.storage.HatchConfiguration;
-import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
-import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
-import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
-import net.minecraftforge.items.CapabilityItemHandler;
+
 public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
     private static final VarHandle STORAGE_DIRTY;
 
@@ -42,20 +44,21 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             throw new ExceptionInInitializerError(failure);
         }
     }
+
+    private final Reference2ObjectMap<Capability<?>, Object> adapters = new Reference2ObjectOpenHashMap<>();
     private final HatchConfigurationRequest configurationRequest = new HatchConfigurationRequest();
     private final HatchAutoTransfer autoTransfer = new HatchAutoTransfer();
-
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
     private boolean pendingConfiguration;
-    private final Reference2ObjectMap<Capability<?>, Object> adapters = new Reference2ObjectOpenHashMap<>();
     private HatchMode mode;
     private HatchTier tier;
     private ResourceHatchConfiguration effective;
     private long observedTargetRevision = -1;
     private boolean configurationNotification;
     private BufferedResourceHatch hatch;
-    @Nullable private String allocationLocation;
+    @Nullable
+    private String allocationLocation;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
     private boolean autoInput;
@@ -192,7 +195,9 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         return mode;
     }
 
-    public HatchTier tier() { return tier; }
+    public HatchTier tier() {
+        return tier;
+    }
 
     @SuppressWarnings("unused") // Public downstream layout query; the default GUI reads each side's actual size.
     public int slotsPerSide() {
@@ -273,10 +278,31 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         configurationNotification = false;
     }
 
-    @Override public boolean autoInput() { return autoInput; }
-    @Override public boolean autoOutput() { return autoOutput; }
-    @Override public void setAutoInput(boolean value) { if (autoInput != value) { autoInput = value; markDirty(); } }
-    @Override public void setAutoOutput(boolean value) { if (autoOutput != value) { autoOutput = value; markDirty(); } }
+    @Override
+    public boolean autoInput() {
+        return autoInput;
+    }
+
+    @Override
+    public boolean autoOutput() {
+        return autoOutput;
+    }
+
+    @Override
+    public void setAutoInput(boolean value) {
+        if (autoInput != value) {
+            autoInput = value;
+            markDirty();
+        }
+    }
+
+    @Override
+    public void setAutoOutput(boolean value) {
+        if (autoOutput != value) {
+            autoOutput = value;
+            markDirty();
+        }
+    }
 
     @Override
     public long maxFluidInputRate() {

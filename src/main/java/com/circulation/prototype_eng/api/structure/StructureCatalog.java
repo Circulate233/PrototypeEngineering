@@ -1,15 +1,17 @@
 package com.circulation.prototype_eng.api.structure;
 
+import ae2.api.orientation.BlockOrientation;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
+
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
-import ae2.api.orientation.BlockOrientation;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+
 /**
  * Immutable complete candidate generation, including shapes not directly referenced by machines.
  */

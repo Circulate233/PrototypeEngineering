@@ -40,6 +40,17 @@ public class JeiQueryIdentityIndex {
         return index;
     }
 
+    private static void observe(String uid, AEKey key, Object2ObjectOpenHashMap<String, AEKey> observed,
+                                ObjectOpenHashSet<String> ambiguous) {
+        if (uid == null || uid.isBlank()) {
+            return;
+        }
+        var previous = observed.putIfAbsent(uid, key);
+        if (previous != null && !previous.equals(key)) {
+            ambiguous.add(uid);
+        }
+    }
+
     private <T> void captureConverter(IngredientConverter<T> converter, IIngredientRegistry registry,
                                       Collection<JeiRecipeDisplay> displays) {
         captureConverter(converter, registry.getIngredientHelper(converter.getIngredientType()),
@@ -70,17 +81,6 @@ public class JeiQueryIdentityIndex {
                     }
                 }
             }
-        }
-    }
-
-    private static void observe(String uid, AEKey key, Object2ObjectOpenHashMap<String, AEKey> observed,
-                                ObjectOpenHashSet<String> ambiguous) {
-        if (uid == null || uid.isBlank()) {
-            return;
-        }
-        var previous = observed.putIfAbsent(uid, key);
-        if (previous != null && !previous.equals(key)) {
-            ambiguous.add(uid);
         }
     }
 

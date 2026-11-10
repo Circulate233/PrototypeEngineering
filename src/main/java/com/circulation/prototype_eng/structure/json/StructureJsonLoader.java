@@ -29,13 +29,15 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
-/** Strict PreInit DTO capture, followed by explicit PostInit resolution of one complete candidate. */
+/**
+ * Strict PreInit DTO capture, followed by explicit PostInit resolution of one complete candidate.
+ */
 public final class StructureJsonLoader {
     private final List<Data> definitions;
 
@@ -47,15 +49,18 @@ public final class StructureJsonLoader {
         return new StructureJsonLoader(List.of());
     }
 
-    /** Empty directories are a valid pure library; no sample machines or registry calls occur here. */
+    /**
+     * Empty directories are a valid pure library; no sample machines or registry calls occur here.
+     */
     public static StructureJsonLoader readDirectory(Path directory) {
         if (Files.notExists(directory)) return empty();
-        if (!Files.isDirectory(directory)) throw new StructureJsonException(directory.toString(), "$", "Structure root is not an accessible directory");
+        if (!Files.isDirectory(directory))
+            throw new StructureJsonException(directory.toString(), "$", "Structure root is not an accessible directory");
         var sources = new Object2ObjectLinkedOpenHashMap<String, String>();
         try (var paths = Files.walk(directory)) {
             var files = paths.filter(Files::isRegularFile)
-                .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
-                .sorted(Comparator.comparing(path -> directory.relativize(path).toString().replace('\\', '/'))).toList();
+                             .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
+                             .sorted(Comparator.comparing(path -> directory.relativize(path).toString().replace('\\', '/'))).toList();
             for (var file : files) {
                 String source = directory.relativize(file).toString().replace('\\', '/');
                 try {
@@ -70,14 +75,17 @@ public final class StructureJsonLoader {
         return readSources(sources);
     }
 
-    /** Stable source ordering also supports Java callers supplying detached JSON text. */
+    /**
+     * Stable source ordering also supports Java callers supplying detached JSON text.
+     */
     public static StructureJsonLoader readSources(Map<String, String> sources) {
         var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>();
         for (var source : sources.keySet().stream().sorted().toList()) {
             var root = StructureJsonParameters.read(source, new StringReader(Objects.requireNonNull(sources.get(source))));
             var definition = data(root);
             var prior = definitions.putIfAbsent(definition.id, definition);
-            if (prior != null) throw root.at("id").error("Duplicate structure ID " + definition.id + "; first declared in " + prior.location.source());
+            if (prior != null)
+                throw root.at("id").error("Duplicate structure ID " + definition.id + "; first declared in " + prior.location.source());
         }
         return new StructureJsonLoader(new ObjectArrayList<>(definitions.values()));
     }
@@ -86,7 +94,8 @@ public final class StructureJsonLoader {
         root.fields("id", "translationKey", "type", "offset", "hideWorldBlocks", "pattern", "validators", "children", "minCount", "maxCount", "sliceOffset");
         var id = root.id("id");
         String type = root.string("type");
-        if (!type.equals("template") && !type.equals("slice")) throw root.at("type").error("Expected template or slice");
+        if (!type.equals("template") && !type.equals("slice"))
+            throw root.at("type").error("Expected template or slice");
         int min = 0, max = 0;
         BlockPos sliceOffset = BlockPos.ORIGIN;
         if (type.equals("slice")) {
@@ -103,11 +112,13 @@ public final class StructureJsonLoader {
         var positions = new ObjectLinkedOpenHashSet<BlockPos>();
         for (var entry : root.array("pattern")) {
             var cell = cell(entry);
-            if (!positions.add(cell.position)) throw entry.at("pos").error("Duplicate pattern coordinate " + cell.position);
+            if (!positions.add(cell.position))
+                throw entry.at("pos").error("Duplicate pattern coordinate " + cell.position);
             elements.add(cell);
         }
         var children = new ObjectArrayList<Reference>();
-        if (root.has("children")) for (var child : root.array("children")) children.add(new Reference(child.id(), child));
+        if (root.has("children"))
+            for (var child : root.array("children")) children.add(new Reference(child.id(), child));
         return new Data(id, root.has("translationKey") ? root.nonBlank("translationKey") : null, type,
             root.position("offset", BlockPos.ORIGIN), root.bool("hideWorldBlocks", false), List.copyOf(elements),
             specs(root, "validators"), List.copyOf(children), min, max, sliceOffset, root);
@@ -119,9 +130,11 @@ public final class StructureJsonLoader {
         var options = new ObjectArrayList<Option>();
         if (entry.has("blockId")) options.add(option(entry, false));
         else if (entry.has("meta") || entry.has("nbt")) throw entry.error("meta/nbt require blockId");
-        if (entry.has("alternatives")) for (var alternative : entry.array("alternatives")) options.add(option(alternative, true));
+        if (entry.has("alternatives"))
+            for (var alternative : entry.array("alternatives")) options.add(option(alternative, true));
         var predicates = specs(entry, "predicates");
-        if (options.isEmpty() && predicates.isEmpty()) throw entry.error("Pattern cell needs a block option or predicate");
+        if (options.isEmpty() && predicates.isEmpty())
+            throw entry.error("Pattern cell needs a block option or predicate");
         Display display = null;
         if (entry.has("display")) {
             var spec = entry.at("display");
@@ -155,52 +168,6 @@ public final class StructureJsonLoader {
         return List.copyOf(specs);
     }
 
-    /** Resolves JSON/Java references together, never consulting the already published catalog. */
-    public StructureCatalog resolve(StructureCatalog javaDefinitions, StructurePredicateRegistry factories, StructureBlockResolver blocks) {
-        Objects.requireNonNull(factories);
-        Objects.requireNonNull(blocks);
-        var pending = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>();
-        var resolved = new Object2ObjectLinkedOpenHashMap<>(javaDefinitions.definitions());
-        for (var definition : definitions) {
-            if (resolved.containsKey(definition.id)) throw definition.location.at("id").error("JSON/Java structure ID conflict: " + definition.id);
-            pending.put(definition.id, definition);
-        }
-        // Explicit DFS frames preserve reference identity without imposing Java recursion depth on DAGs.
-        for (var definition : definitions) {
-            if (resolved.containsKey(definition.id)) continue;
-            var stack = new ObjectArrayList<Frame>();
-            var visiting = new ObjectLinkedOpenHashSet<ResourceLocation>();
-            stack.add(new Frame(definition));
-            visiting.add(definition.id);
-            while (!stack.isEmpty()) {
-                var frame = stack.getLast();
-                if (frame.nextChild < frame.data.children.size()) {
-                    var reference = frame.data.children.get(frame.nextChild);
-                    var child = resolved.get(reference.id);
-                    if (child != null) {
-                        frame.children.add(child.shape());
-                        frame.nextChild++;
-                    } else {
-                        var childData = pending.get(reference.id);
-                        if (childData == null) throw reference.location.error("Unknown child structure: " + reference.id);
-                        if (!visiting.add(reference.id)) {
-                            String cycle = String.join(" -> ", visiting.stream().map(ResourceLocation::toString).toList()) + " -> " + reference.id;
-                            throw reference.location.error("Structure reference cycle: " + cycle);
-                        }
-                        stack.add(new Frame(childData));
-                    }
-                } else {
-                    resolved.put(frame.data.id, build(frame.data, frame.children, factories, blocks));
-                    visiting.remove(frame.data.id);
-                    stack.removeLast();
-                }
-            }
-        }
-        var ordered = new ObjectArrayList<>(javaDefinitions.definitions().values());
-        for (var definition : definitions) ordered.add(resolved.get(definition.id));
-        return new StructureCatalog(ordered);
-    }
-
     private static StructureDefinition build(Data data, List<MachineStructure> children,
                                              StructurePredicateRegistry factories, StructureBlockResolver blocks) {
         var pattern = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
@@ -222,7 +189,8 @@ public final class StructureJsonLoader {
             pattern.put(cell.position, StructurePredicates.all(parts));
             String defaultKey = data.id + "@" + cell.position.getX() + "," + cell.position.getY() + "," + cell.position.getZ();
             if (cell.display != null) displays.put(cell.position, display(cell.display, defaultKey, blocks));
-            else if (!defaultDisplay.isEmpty()) displays.put(cell.position, new StructureDisplay(defaultKey, defaultDisplay, null));
+            else if (!defaultDisplay.isEmpty())
+                displays.put(cell.position, new StructureDisplay(defaultKey, defaultDisplay, null));
         }
         var validators = new ObjectArrayList<StructurePredicate>();
         for (var spec : data.validators) validators.add(factories.create(spec.identifier, spec.parameters, blocks));
@@ -260,15 +228,77 @@ public final class StructureJsonLoader {
         return new StructureDisplay(data.key == null ? defaultKey : data.key, new ObjectArrayList<>(choices), data.tileNbt);
     }
 
-    private record Data(ResourceLocation id, @Nullable String translationKey, String type, BlockPos offset, boolean hide,
+    /**
+     * Resolves JSON/Java references together, never consulting the already published catalog.
+     */
+    public StructureCatalog resolve(StructureCatalog javaDefinitions, StructurePredicateRegistry factories, StructureBlockResolver blocks) {
+        Objects.requireNonNull(factories);
+        Objects.requireNonNull(blocks);
+        var pending = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>();
+        var resolved = new Object2ObjectLinkedOpenHashMap<>(javaDefinitions.definitions());
+        for (var definition : definitions) {
+            if (resolved.containsKey(definition.id))
+                throw definition.location.at("id").error("JSON/Java structure ID conflict: " + definition.id);
+            pending.put(definition.id, definition);
+        }
+        // Explicit DFS frames preserve reference identity without imposing Java recursion depth on DAGs.
+        for (var definition : definitions) {
+            if (resolved.containsKey(definition.id)) continue;
+            var stack = new ObjectArrayList<Frame>();
+            var visiting = new ObjectLinkedOpenHashSet<ResourceLocation>();
+            stack.add(new Frame(definition));
+            visiting.add(definition.id);
+            while (!stack.isEmpty()) {
+                var frame = stack.getLast();
+                if (frame.nextChild < frame.data.children.size()) {
+                    var reference = frame.data.children.get(frame.nextChild);
+                    var child = resolved.get(reference.id);
+                    if (child != null) {
+                        frame.children.add(child.shape());
+                        frame.nextChild++;
+                    } else {
+                        var childData = pending.get(reference.id);
+                        if (childData == null)
+                            throw reference.location.error("Unknown child structure: " + reference.id);
+                        if (!visiting.add(reference.id)) {
+                            String cycle = String.join(" -> ", visiting.stream().map(ResourceLocation::toString).toList()) + " -> " + reference.id;
+                            throw reference.location.error("Structure reference cycle: " + cycle);
+                        }
+                        stack.add(new Frame(childData));
+                    }
+                } else {
+                    resolved.put(frame.data.id, build(frame.data, frame.children, factories, blocks));
+                    visiting.remove(frame.data.id);
+                    stack.removeLast();
+                }
+            }
+        }
+        var ordered = new ObjectArrayList<>(javaDefinitions.definitions().values());
+        for (var definition : definitions) ordered.add(resolved.get(definition.id));
+        return new StructureCatalog(ordered);
+    }
+
+    private record Data(ResourceLocation id, @Nullable String translationKey, String type, BlockPos offset,
+                        boolean hide,
                         List<Cell> pattern, List<Spec> validators, List<Reference> children,
-                        int min, int max, BlockPos sliceOffset, StructureJsonParameters location) {}
-    private record Cell(BlockPos position, List<Option> options, List<Spec> predicates, @Nullable Display display) {}
-    private record Option(ResourceLocation id, int meta, Map<String, String> nbt, StructureJsonParameters location) {}
-    private record Spec(StructureJsonParameters identifier, StructureJsonParameters parameters) {}
-    private record Reference(ResourceLocation id, StructureJsonParameters location) {}
+                        int min, int max, BlockPos sliceOffset, StructureJsonParameters location) {
+    }
+
+    private record Cell(BlockPos position, List<Option> options, List<Spec> predicates, @Nullable Display display) {
+    }
+
+    private record Option(ResourceLocation id, int meta, Map<String, String> nbt, StructureJsonParameters location) {
+    }
+
+    private record Spec(StructureJsonParameters identifier, StructureJsonParameters parameters) {
+    }
+
+    private record Reference(ResourceLocation id, StructureJsonParameters location) {
+    }
+
     private record Display(@Nullable String key, List<Option> blocks, List<StructureJsonParameters> regex,
-                           @Nullable String tileNbt, StructureJsonParameters location) {}
+                           @Nullable String tileNbt, StructureJsonParameters location) {
+    }
 
     private static final class Frame {
         private final Data data;

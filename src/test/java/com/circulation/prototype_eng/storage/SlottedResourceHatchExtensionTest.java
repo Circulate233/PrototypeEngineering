@@ -22,6 +22,16 @@ class SlottedResourceHatchExtensionTest {
     private static final KeyType TARGET = new KeyType("clear_target");
     private static final KeyType OTHER = new KeyType("clear_other");
 
+    private static ExternalHatch hatch() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TARGET, 1_000);
+        capacities.put(OTHER, 1_000);
+        return new ExternalHatch(new SlottedResourceBuffer(3, capacities, () -> {
+        }),
+            new SlottedResourceBuffer(2, capacities, () -> {
+            }));
+    }
+
     @Test
     void externalAsymmetricHatchUsesSharedAdaptersAndClearsOnlyUnreservedTargetContents() {
         var hatch = hatch();
@@ -110,15 +120,8 @@ class SlottedResourceHatchExtensionTest {
         assertEquals(0, hatch.input().amount(key));
     }
 
-    private static ExternalHatch hatch() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TARGET, 1_000);
-        capacities.put(OTHER, 1_000);
-        return new ExternalHatch(new SlottedResourceBuffer(3, capacities, () -> { }),
-            new SlottedResourceBuffer(2, capacities, () -> { }));
-    }
-
-    private record ExternalHatch(SlottedResourceStorage input, SlottedResourceStorage output) implements SlottedResourceHatch {
+    private record ExternalHatch(SlottedResourceStorage input,
+                                 SlottedResourceStorage output) implements SlottedResourceHatch {
         @Override
         public boolean isValid() {
             return input.isValid() && output.isValid();

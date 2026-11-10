@@ -1,16 +1,21 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import java.nio.charset.StandardCharsets;
-import java.io.InputStreamReader;
-
 import net.minecraft.client.resources.IResourceManager;
+import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib3.file.GeoModelLoader;
 import software.bernie.geckolib3.geo.render.built.GeoModel;
-import org.jetbrains.annotations.Nullable;
+
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 /** An instance is held by one exact cache slot; retirement cannot insert it into a successor slot. */
 public final class GeckoGeoModelInstances {
     private GeckoGeoModelInstances() {
+    }
+
+    @FunctionalInterface
+    public interface ModelOperation<T> {
+        T bake(GeoModel model, GeckoModelBaker baker, @Nullable GeckoAnimatedBoneIndex index) throws Exception;
     }
 
     public static final class Instance {
@@ -44,10 +49,5 @@ public final class GeckoGeoModelInstances {
             }
             return operation.bake(model, baker, index);
         }
-    }
-
-    @FunctionalInterface
-    public interface ModelOperation<T> {
-        T bake(GeoModel model, GeckoModelBaker baker, @Nullable GeckoAnimatedBoneIndex index) throws Exception;
     }
 }

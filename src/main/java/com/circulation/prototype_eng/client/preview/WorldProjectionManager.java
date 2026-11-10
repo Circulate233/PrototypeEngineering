@@ -1,10 +1,10 @@
 package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
-import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
+import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
@@ -33,10 +33,10 @@ public final class WorldProjectionManager implements AutoCloseable {
     private final PreviewBlockModels blockModels;
     private final AutoCloseable catalogSubscription;
     private final AutoCloseable closeSubscription;
-    private boolean closed;
     private final BufferBuilder buffer = new BufferBuilder(1 << 16);
     private final WorldVertexBufferUploader uploader = new WorldVertexBufferUploader();
     private final FloatBuffer colorBuffer = BufferUtils.createFloatBuffer(4);
+    private boolean closed;
 
     public WorldProjectionManager(StructurePreviews previews, ClientStructureCatalog catalog) {
         this.previews = previews;
@@ -44,6 +44,20 @@ public final class WorldProjectionManager implements AutoCloseable {
         blockModels = new PreviewBlockModels(previews);
         catalogSubscription = catalog.onInvalidated(blockModels::invalidate);
         closeSubscription = previews.onClosed(this::close);
+    }
+
+    private static Color color(StructureProjectionState.Sample sample, boolean outline, StructureProjectionOptions.Style style) {
+        if (outline && style == StructureProjectionOptions.Style.BOX_AND_OUTLINE)
+            return sample.status() == StructureProjectionState.Status.UNLOADED
+                ? new Color(1.0f, 0.85f, 0.2f, 0.35f) : new Color(1.0f, 1.0f, 1.0f, 0.28f);
+        if (!outline && sample.status() != StructureProjectionState.Status.UNLOADED)
+            return sample.cell().display() == null ? new Color(0.78f, 0.78f, 0.78f, 0.22f) : new Color(0.55f, 0.85f, 1.0f, 0.32f);
+        return switch (sample.status()) {
+            case DISPLAY_MATCH -> new Color(0.2f, 1.0f, 0.2f, 0.2f);
+            case MISSING, DIFFERENT -> new Color(1.0f, 0.2f, 0.2f, 0.55f);
+            case UNLOADED -> new Color(1.0f, 0.85f, 0.2f, 0.25f);
+            case UNKNOWN -> new Color(0.7f, 0.7f, 0.7f, 0.25f);
+        };
     }
 
     private void requireOwner() {
@@ -198,20 +212,6 @@ public final class WorldProjectionManager implements AutoCloseable {
             if (building) buffer.finishDrawing();
             buffer.reset();
         }
-    }
-
-    private static Color color(StructureProjectionState.Sample sample, boolean outline, StructureProjectionOptions.Style style) {
-        if (outline && style == StructureProjectionOptions.Style.BOX_AND_OUTLINE)
-            return sample.status() == StructureProjectionState.Status.UNLOADED
-                ? new Color(1.0f, 0.85f, 0.2f, 0.35f) : new Color(1.0f, 1.0f, 1.0f, 0.28f);
-        if (!outline && sample.status() != StructureProjectionState.Status.UNLOADED)
-            return sample.cell().display() == null ? new Color(0.78f, 0.78f, 0.78f, 0.22f) : new Color(0.55f, 0.85f, 1.0f, 0.32f);
-        return switch (sample.status()) {
-            case DISPLAY_MATCH -> new Color(0.2f, 1.0f, 0.2f, 0.2f);
-            case MISSING, DIFFERENT -> new Color(1.0f, 0.2f, 0.2f, 0.55f);
-            case UNLOADED -> new Color(1.0f, 0.85f, 0.2f, 0.25f);
-            case UNKNOWN -> new Color(0.7f, 0.7f, 0.7f, 0.25f);
-        };
     }
 
     // PM putGhostAabb: six faces, slightly shrunk to avoid fighting with real blocks.

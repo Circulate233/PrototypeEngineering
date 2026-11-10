@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -19,12 +20,13 @@ import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.Iterator;
 
-/** Stable dynamic alternatives from all available source keys, without storage or world access. */
+/**
+ * Stable dynamic alternatives from all available source keys, without storage or world access.
+ */
 public final class DynamicInputCandidates {
     private static final Comparator<String> RESOURCE_ID_ORDER = Comparator.nullsFirst(Comparator.naturalOrder());
 
@@ -84,6 +86,77 @@ public final class DynamicInputCandidates {
             result.add(matches.get(index));
         }
         return ObjectLists.unmodifiable(result);
+    }
+
+    private static ObjectArrayList<AEKey> matching(Collection<AEKey> availableKeys, DynamicInputGroup group) {
+        Objects.requireNonNull(availableKeys, "availableKeys");
+        Objects.requireNonNull(group, "group");
+        var matches = new ObjectArrayList<AEKey>();
+        var seen = new ObjectOpenHashSet<AEKey>();
+        for (var key : availableKeys) {
+            Objects.requireNonNull(key, "available key");
+            if (seen.add(key) && group.matcher().matches(key, group.pattern())) {
+                matches.add(key);
+            }
+        }
+        return matches;
+    }
+
+    private static int compare(StableKey first, StableKey second) {
+        int order = first.typeId().compareTo(second.typeId());
+        if (order == 0) {
+            order = RESOURCE_ID_ORDER.compare(first.resourceId(), second.resourceId());
+        }
+        return order != 0 ? order : Arrays.compareUnsigned(first.tag(), second.tag());
+    }
+
+    private static byte[] canonical(NBTTagCompound tag) {
+        Objects.requireNonNull(tag, "serialized key");
+        var bytes = new ByteArrayOutputStream();
+        try (var output = new DataOutputStream(bytes)) {
+            writeCanonical(tag, output);
+        } catch (IOException failure) {
+            // The destination is memory; encoding failures indicate an invalid/unserializable key.
+            throw new UncheckedIOException("Cannot encode stable resource identity", failure);
+        }
+        return bytes.toByteArray();
+    }
+
+    private static void writeCanonical(NBTBase tag, DataOutputStream output) throws IOException {
+        output.writeByte(tag.getId());
+        switch (tag) {
+            case NBTTagCompound compound -> {
+                var names = new ObjectArrayList<>(compound.getKeySet());
+                names.sort(Comparator.naturalOrder());
+                output.writeInt(names.size());
+                for (var name : names) {
+                    writeString(name, output);
+                    writeCanonical(Objects.requireNonNull(compound.getTag(name), "compound value"), output);
+                }
+            }
+            case NBTTagList list -> {
+                output.writeByte(list.getTagType());
+                output.writeInt(list.tagCount());
+                for (int index = 0; index < list.tagCount(); index++) {
+                    writeCanonical(list.get(index), output);
+                }
+            }
+            case NBTTagString string -> writeString(string.getString(), output);
+            default -> {
+                // Public binary serialization includes every numeric/array value, including long arrays
+                // that have no public getter in 1.12. No reflection or potentially abbreviated toString.
+                var leaf = new NBTTagCompound();
+                leaf.setTag("value", tag);
+                CompressedStreamTools.write(leaf, output);
+            }
+        }
+    }
+
+    private static void writeString(String value, DataOutputStream output) throws IOException {
+        output.writeInt(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            output.writeChar(value.charAt(index));
+        }
     }
 
     /**
@@ -263,77 +336,6 @@ public final class DynamicInputCandidates {
         @Override
         public int result() {
             return result;
-        }
-    }
-
-    private static ObjectArrayList<AEKey> matching(Collection<AEKey> availableKeys, DynamicInputGroup group) {
-        Objects.requireNonNull(availableKeys, "availableKeys");
-        Objects.requireNonNull(group, "group");
-        var matches = new ObjectArrayList<AEKey>();
-        var seen = new ObjectOpenHashSet<AEKey>();
-        for (var key : availableKeys) {
-            Objects.requireNonNull(key, "available key");
-            if (seen.add(key) && group.matcher().matches(key, group.pattern())) {
-                matches.add(key);
-            }
-        }
-        return matches;
-    }
-
-    private static int compare(StableKey first, StableKey second) {
-        int order = first.typeId().compareTo(second.typeId());
-        if (order == 0) {
-            order = RESOURCE_ID_ORDER.compare(first.resourceId(), second.resourceId());
-        }
-        return order != 0 ? order : Arrays.compareUnsigned(first.tag(), second.tag());
-    }
-
-    private static byte[] canonical(NBTTagCompound tag) {
-        Objects.requireNonNull(tag, "serialized key");
-        var bytes = new ByteArrayOutputStream();
-        try (var output = new DataOutputStream(bytes)) {
-            writeCanonical(tag, output);
-        } catch (IOException failure) {
-            // The destination is memory; encoding failures indicate an invalid/unserializable key.
-            throw new UncheckedIOException("Cannot encode stable resource identity", failure);
-        }
-        return bytes.toByteArray();
-    }
-
-    private static void writeCanonical(NBTBase tag, DataOutputStream output) throws IOException {
-        output.writeByte(tag.getId());
-        switch (tag) {
-            case NBTTagCompound compound -> {
-                var names = new ObjectArrayList<>(compound.getKeySet());
-                names.sort(Comparator.naturalOrder());
-                output.writeInt(names.size());
-                for (var name : names) {
-                    writeString(name, output);
-                    writeCanonical(Objects.requireNonNull(compound.getTag(name), "compound value"), output);
-                }
-            }
-            case NBTTagList list -> {
-                output.writeByte(list.getTagType());
-                output.writeInt(list.tagCount());
-                for (int index = 0; index < list.tagCount(); index++) {
-                    writeCanonical(list.get(index), output);
-                }
-            }
-            case NBTTagString string -> writeString(string.getString(), output);
-            default -> {
-                // Public binary serialization includes every numeric/array value, including long arrays
-                // that have no public getter in 1.12. No reflection or potentially abbreviated toString.
-                var leaf = new NBTTagCompound();
-                leaf.setTag("value", tag);
-                CompressedStreamTools.write(leaf, output);
-            }
-        }
-    }
-
-    private static void writeString(String value, DataOutputStream output) throws IOException {
-        output.writeInt(value.length());
-        for (int index = 0; index < value.length(); index++) {
-            output.writeChar(value.charAt(index));
         }
     }
 

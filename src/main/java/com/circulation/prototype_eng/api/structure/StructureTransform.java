@@ -24,8 +24,8 @@ public final class StructureTransform {
         up = orientation.rotate(EnumFacing.UP);
         south = orientation.rotate(EnumFacing.SOUTH);
         inverseOrdinal = BlockOrientation.get(
-                orientation.resultingRotate(EnumFacing.NORTH),
-                orientation.resultingRotate(EnumFacing.UP)).ordinal();
+            orientation.resultingRotate(EnumFacing.NORTH),
+            orientation.resultingRotate(EnumFacing.UP)).ordinal();
     }
 
     private static StructureTransform[] createRotations() {
@@ -37,18 +37,22 @@ public final class StructureTransform {
         return rotations;
     }
 
-    /** Rotates offsets expressed in NORTH_UP into the target orientation. */
+    /**
+     * Rotates offsets expressed in NORTH_UP into the target orientation.
+     */
     public static StructureTransform of(BlockOrientation orientation) {
         return ROTATIONS[Objects.requireNonNull(orientation, "orientation").ordinal()];
     }
 
-    /** Rotates offsets already expressed in {@code from} into {@code to}. */
+    /**
+     * Rotates offsets already expressed in {@code from} into {@code to}.
+     */
     public static StructureTransform between(BlockOrientation from, BlockOrientation to) {
         Objects.requireNonNull(from, "from");
         Objects.requireNonNull(to, "to");
         return of(BlockOrientation.get(
-                to.rotate(from.resultingRotate(EnumFacing.NORTH)),
-                to.rotate(from.resultingRotate(EnumFacing.UP))));
+            to.rotate(from.resultingRotate(EnumFacing.NORTH)),
+            to.rotate(from.resultingRotate(EnumFacing.UP))));
     }
 
     /**
@@ -62,12 +66,14 @@ public final class StructureTransform {
         long y = position.getY();
         long z = position.getZ();
         return new BlockPos(
-                Math.toIntExact(x * east.getXOffset() + y * up.getXOffset() + z * south.getXOffset()),
-                Math.toIntExact(x * east.getYOffset() + y * up.getYOffset() + z * south.getYOffset()),
-                Math.toIntExact(x * east.getZOffset() + y * up.getZOffset() + z * south.getZOffset()));
+            Math.toIntExact(x * east.getXOffset() + y * up.getXOffset() + z * south.getXOffset()),
+            Math.toIntExact(x * east.getYOffset() + y * up.getYOffset() + z * south.getYOffset()),
+            Math.toIntExact(x * east.getZOffset() + y * up.getZOffset() + z * south.getZOffset()));
     }
 
-    /** Rotates a direction with the same signed permutation used for coordinates. */
+    /**
+     * Rotates a direction with the same signed permutation used for coordinates.
+     */
     public EnumFacing apply(EnumFacing direction) {
         Objects.requireNonNull(direction, "direction");
         return switch (direction) {

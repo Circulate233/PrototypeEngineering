@@ -58,6 +58,15 @@ class SchedulerReconfigurationTest {
         return Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
     }
 
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
     @Test
     @SuppressWarnings("resource")
         // Both injected executors transfer ownership to the scheduler under test.
@@ -236,15 +245,6 @@ class SchedulerReconfigurationTest {
             }, ExecutionMode.CONCURRENT);
             scheduler.tick();
             assertSame(initial, scheduler.effectiveSettings());
-        }
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(failure);
         }
     }
 

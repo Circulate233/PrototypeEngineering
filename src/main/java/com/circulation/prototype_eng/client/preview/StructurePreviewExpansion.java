@@ -61,6 +61,14 @@ public final class StructurePreviewExpansion {
         definitions = view.entries().values().iterator();
     }
 
+    private static BlockPos add(BlockPos left, BlockPos right) {
+        return new BlockPos(Math.addExact(left.getX(), right.getX()), Math.addExact(left.getY(), right.getY()), Math.addExact(left.getZ(), right.getZ()));
+    }
+
+    private static BlockPos multiply(BlockPos position, long count) {
+        return new BlockPos(Math.toIntExact(position.getX() * count), Math.toIntExact(position.getY() * count), Math.toIntExact(position.getZ() * count));
+    }
+
     public @Nullable StructurePreviewModel model() {
         return model;
     }
@@ -167,14 +175,6 @@ public final class StructurePreviewExpansion {
             return;
         }
         stack.removeLast();
-    }
-
-    private static BlockPos add(BlockPos left, BlockPos right) {
-        return new BlockPos(Math.addExact(left.getX(), right.getX()), Math.addExact(left.getY(), right.getY()), Math.addExact(left.getZ(), right.getZ()));
-    }
-
-    private static BlockPos multiply(BlockPos position, long count) {
-        return new BlockPos(Math.toIntExact(position.getX() * count), Math.toIntExact(position.getY() * count), Math.toIntExact(position.getZ() * count));
     }
 
     private static final class Frame {

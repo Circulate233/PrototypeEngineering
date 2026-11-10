@@ -16,17 +16,14 @@ import java.util.Objects;
  * they are not inventory slots, JVM lanes, or identities that may be saved for later execution.
  */
 public final class InputAllocation {
-    public enum Kind { SPLITTABLE, SINGLE_SOURCE, CUSTOM }
-
     public static final InputAllocation SPLITTABLE = new InputAllocation(Kind.SPLITTABLE,
         new ResourceLocation(Tags.MOD_ID, "splittable"), null);
     public static final InputAllocation SINGLE_SOURCE = new InputAllocation(Kind.SINGLE_SOURCE,
         new ResourceLocation(Tags.MOD_ID, "single_source"), null);
-
     private final Kind kind;
     private final ResourceLocation id;
-    @Nullable private final Strategy strategy;
-
+    @Nullable
+    private final Strategy strategy;
     private InputAllocation(Kind kind, ResourceLocation id, @Nullable Strategy strategy) {
         this.kind = kind;
         this.id = Objects.requireNonNull(id);
@@ -38,14 +35,21 @@ public final class InputAllocation {
         return new InputAllocation(Kind.CUSTOM, id, Objects.requireNonNull(strategy));
     }
 
-    public Kind kind() { return kind; }
-    public ResourceLocation id() { return id; }
+    public Kind kind() {
+        return kind;
+    }
+
+    public ResourceLocation id() {
+        return id;
+    }
 
     /** Called by acquisition on its owner, once per frozen proposal, never under a storage lock. */
     public List<Portion> allocate(Context context) {
         if (strategy == null) throw new IllegalStateException("Built-in allocation has no custom callback");
         return Objects.requireNonNull(strategy.allocate(context), "Custom allocation returned null");
     }
+
+    public enum Kind {SPLITTABLE, SINGLE_SOURCE, CUSTOM}
 
     @FunctionalInterface
     public interface Strategy {
@@ -56,6 +60,19 @@ public final class InputAllocation {
          * external mutable state or perform effects: probes and later attempts may call this again.
          */
         List<Portion> allocate(Context context);
+    }
+
+    /** Frozen facts only. A null resource denotes independent FE, never an artificial AEKey. */
+    public interface Context {
+        RecipeStage stage();
+
+        int projection();
+
+        @Nullable AEKey resource();
+
+        long amount();
+
+        List<Source> sources();
     }
 
     /**
@@ -79,14 +96,5 @@ public final class InputAllocation {
         public Portion {
             if (source < 0 || amount <= 0) throw new IllegalArgumentException("Invalid allocation portion");
         }
-    }
-
-    /** Frozen facts only. A null resource denotes independent FE, never an artificial AEKey. */
-    public interface Context {
-        RecipeStage stage();
-        int projection();
-        @Nullable AEKey resource();
-        long amount();
-        List<Source> sources();
     }
 }

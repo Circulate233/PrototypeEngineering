@@ -7,13 +7,18 @@ import it.unimi.dsi.fastutil.objects.Object2LongMap;
 
 import java.util.function.Function;
 
-/** Detached tests enter the same resolved-key registration boundary used by the public ItemStack adapter. */
+/**
+ * Detached tests enter the same resolved-key registration boundary used by the public ItemStack adapter.
+ */
 public final class ComputerSupplyFixtures {
     public static final TestResources.KeyType TYPE = new TestResources.KeyType("computer_component_items");
 
-    private ComputerSupplyFixtures() { }
+    private ComputerSupplyFixtures() {
+    }
 
-    public static AEKey key(String name) { return new TestResources.Key(TYPE, name); }
+    public static AEKey key(String name) {
+        return new TestResources.Key(TYPE, name);
+    }
 
     public static void register(NetworkComputerComponentRegistry registry, AEKey key, Function<MachineInstance, NetworkComputerComponent.Capture> capture) {
         registry.registerKey(key, capture);

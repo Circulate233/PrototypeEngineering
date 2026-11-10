@@ -1,12 +1,12 @@
 package com.circulation.prototype_eng.structure.tool;
 
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.client.preview.StructurePreviewExpansion;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -17,7 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructureBuildPlanTest {
     private static final ResourceLocation ROOT = new ResourceLocation("test", "root"), CHILD = new ResourceLocation("test", "child");

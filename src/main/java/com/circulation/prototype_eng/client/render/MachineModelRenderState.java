@@ -18,40 +18,57 @@ import java.util.function.BooleanSupplier;
 
 /** Client-only collection of exact accepted views. Workers receive immutable requests and identity tokens. */
 public class MachineModelRenderState implements AutoCloseable {
+    private static final List<GeckoModelBaker.BakeMode> ANIMATED = List.of(GeckoModelBaker.BakeMode.PERMANENT_STATIC_ONLY,
+        GeckoModelBaker.BakeMode.TEMP_STATIC_ONLY, GeckoModelBaker.BakeMode.ANIMATED_ONLY);
     private final ModelBuildCache cache;
     private final MachineRenderOptions options;
     private final MachineModelHides hides = new MachineModelHides();
     private final Reference2ObjectOpenHashMap<AEBaseTile, State> states = new Reference2ObjectOpenHashMap<>();
     private final ObjectArrayList<MachineModelPasses.Entry> pending = new ObjectArrayList<>();
-    private static final List<GeckoModelBaker.BakeMode> ANIMATED = List.of(GeckoModelBaker.BakeMode.PERMANENT_STATIC_ONLY,
-        GeckoModelBaker.BakeMode.TEMP_STATIC_ONLY, GeckoModelBaker.BakeMode.ANIMATED_ONLY);
-
-    private static final class State {
-        final GeckoRenderRequest.Owner owner = new GeckoRenderRequest.Owner();
-        final GeckoRenderRequest.Epoch bindingEpoch = new GeckoRenderRequest.Epoch();
-        final Object world;
-        final BlockPos origin;
-        List<StructureRenderAnchors.Anchor> geometry;
-        ClientMachineRenderSnapshots.View view;
-        BooleanSupplier accepted;
-        AxisAlignedBB bounds;
-        boolean complete;
-        MachineModelHides.@Nullable Lease hidden;
-
-        State(Object world, List<StructureRenderAnchors.Anchor> geometry, ClientMachineRenderSnapshots.View view, BooleanSupplier accepted, BlockPos origin) {
-            this.world = world;
-            this.origin = origin;
-            this.geometry = geometry;
-            this.view = view;
-            this.accepted = accepted;
-            var bounds = view.snapshot().bounds();
-            this.bounds = new AxisAlignedBB(bounds.min(), bounds.max().add(1, 1, 1));
-        }
-    }
 
     public MachineModelRenderState(ModelBuildCache cache, MachineRenderOptions options) {
         this.cache = cache;
         this.options = options;
+    }
+
+    /** A coarse camera frame keeps nearby machines in the same native draw bucket. */
+    static BlockPos worldOrigin(double cameraX, double cameraY, double cameraZ, int renderDistanceChunks) {
+        long grid = Math.max(256L, Math.max(2L, renderDistanceChunks) * 32L);
+        return new BlockPos(snap(cameraX, grid), snap(cameraY, grid), snap(cameraZ, grid));
+    }
+
+    private static int snap(double camera, long grid) {
+        double coordinate = Math.floor(camera);
+        if (!Double.isFinite(coordinate) || coordinate < Long.MIN_VALUE || coordinate >= 0x1p63)
+            throw new IllegalArgumentException("Invalid render camera coordinate: " + camera);
+        return Math.toIntExact(Math.multiplyExact(Math.floorDiv((long) coordinate, grid), grid));
+    }
+
+    private static BlockPos currentWorldOrigin() {
+        return worldOrigin(TileEntityRendererDispatcher.staticPlayerX, TileEntityRendererDispatcher.staticPlayerY,
+            TileEntityRendererDispatcher.staticPlayerZ, Minecraft.getMinecraft().gameSettings.renderDistanceChunks);
+    }
+
+    private static boolean sameGeometry(List<StructureRenderAnchors.Anchor> first, List<StructureRenderAnchors.Anchor> second) {
+        if (first.size() != second.size()) return false;
+        for (int i = 0; i < first.size(); i++) {
+            var a = first.get(i);
+            var b = second.get(i);
+            if (!a.part().equals(b.part()) || !a.origin().equals(b.origin()) || a.orientation() != b.orientation() || !a.binding().equals(b.binding()))
+                return false;
+        }
+        return true;
+    }
+
+    private static void closeEntries(List<MachineModelPasses.Entry> entries) {
+        Throwable failure = null;
+        for (var entry : entries)
+            try {
+                entry.lease().close();
+            } catch (RuntimeException | Error exception) {
+                failure = BuiltModelBuffers.append(failure, exception);
+            }
+        BuiltModelBuffers.rethrow(failure);
     }
 
     public <T extends AEBaseTile & MachineControllerHost> void submit(T tile, ClientMachineRenderSnapshots.View view,
@@ -141,35 +158,6 @@ public class MachineModelRenderState implements AutoCloseable {
         }
     }
 
-    /** A coarse camera frame keeps nearby machines in the same native draw bucket. */
-    static BlockPos worldOrigin(double cameraX, double cameraY, double cameraZ, int renderDistanceChunks) {
-        long grid = Math.max(256L, Math.max(2L, renderDistanceChunks) * 32L);
-        return new BlockPos(snap(cameraX, grid), snap(cameraY, grid), snap(cameraZ, grid));
-    }
-
-    private static int snap(double camera, long grid) {
-        double coordinate = Math.floor(camera);
-        if (!Double.isFinite(coordinate) || coordinate < Long.MIN_VALUE || coordinate >= 0x1p63)
-            throw new IllegalArgumentException("Invalid render camera coordinate: " + camera);
-        return Math.toIntExact(Math.multiplyExact(Math.floorDiv((long) coordinate, grid), grid));
-    }
-
-    private static BlockPos currentWorldOrigin() {
-        return worldOrigin(TileEntityRendererDispatcher.staticPlayerX, TileEntityRendererDispatcher.staticPlayerY,
-            TileEntityRendererDispatcher.staticPlayerZ, Minecraft.getMinecraft().gameSettings.renderDistanceChunks);
-    }
-
-    private static boolean sameGeometry(List<StructureRenderAnchors.Anchor> first, List<StructureRenderAnchors.Anchor> second) {
-        if (first.size() != second.size()) return false;
-        for (int i = 0; i < first.size(); i++) {
-            var a = first.get(i);
-            var b = second.get(i);
-            if (!a.part().equals(b.part()) || !a.origin().equals(b.origin()) || a.orientation() != b.orientation() || !a.binding().equals(b.binding()))
-                return false;
-        }
-        return true;
-    }
-
     public void flush() {
         if (pending.isEmpty()) return;
         var entries = new ObjectArrayList<>(pending);
@@ -221,9 +209,6 @@ public class MachineModelRenderState implements AutoCloseable {
         if (state == null || state.view != view || !state.origin.equals(currentWorldOrigin()) || !state.complete || state.geometry.stream().anyMatch(anchor -> anchor.binding().forceGlobalRenderer()))
             return MachineControllerRenderer.CONSERVATIVE_BOUNDS;
         return state.bounds;
-    }
-
-    private record OwnedView(AEBaseTile tile, State state, ClientMachineRenderSnapshots.View view) {
     }
 
     private Runnable failureRevoker() {
@@ -335,14 +320,29 @@ public class MachineModelRenderState implements AutoCloseable {
         BuiltModelBuffers.rethrow(failure);
     }
 
-    private static void closeEntries(List<MachineModelPasses.Entry> entries) {
-        Throwable failure = null;
-        for (var entry : entries)
-            try {
-                entry.lease().close();
-            } catch (RuntimeException | Error exception) {
-                failure = BuiltModelBuffers.append(failure, exception);
-            }
-        BuiltModelBuffers.rethrow(failure);
+    private static final class State {
+        final GeckoRenderRequest.Owner owner = new GeckoRenderRequest.Owner();
+        final GeckoRenderRequest.Epoch bindingEpoch = new GeckoRenderRequest.Epoch();
+        final Object world;
+        final BlockPos origin;
+        List<StructureRenderAnchors.Anchor> geometry;
+        ClientMachineRenderSnapshots.View view;
+        BooleanSupplier accepted;
+        AxisAlignedBB bounds;
+        boolean complete;
+        MachineModelHides.@Nullable Lease hidden;
+
+        State(Object world, List<StructureRenderAnchors.Anchor> geometry, ClientMachineRenderSnapshots.View view, BooleanSupplier accepted, BlockPos origin) {
+            this.world = world;
+            this.origin = origin;
+            this.geometry = geometry;
+            this.view = view;
+            this.accepted = accepted;
+            var bounds = view.snapshot().bounds();
+            this.bounds = new AxisAlignedBB(bounds.min(), bounds.max().add(1, 1, 1));
+        }
+    }
+
+    private record OwnedView(AEBaseTile tile, State state, ClientMachineRenderSnapshots.View view) {
     }
 }

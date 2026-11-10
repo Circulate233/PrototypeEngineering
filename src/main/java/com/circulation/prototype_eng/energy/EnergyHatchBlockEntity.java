@@ -1,9 +1,22 @@
 package com.circulation.prototype_eng.energy;
 
+import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
+import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
+import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
+import com.circulation.prototype_eng.api.storage.HatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.HatchTier;
+import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
+import com.circulation.prototype_eng.block.EnergyHatchBlock;
+import com.circulation.prototype_eng.storage.HatchAutoTransfer;
+import com.circulation.prototype_eng.storage.HatchConfigurationNbt;
+import com.circulation.prototype_eng.storage.HatchConfigurationRequest;
+import com.circulation.prototype_eng.storage.HatchReplacement;
+import com.circulation.prototype_eng.storage.HatchStorageChanges;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
@@ -14,22 +27,11 @@ import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.energy.CapabilityEnergy;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Objects;
-import ae2.tile.AEBaseTile;
-import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
-import com.circulation.prototype_eng.block.EnergyHatchBlock;
-import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.api.storage.HatchConfiguration;
-import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
-import com.circulation.prototype_eng.api.storage.ReconfigurableHatch;
-import com.circulation.prototype_eng.storage.HatchAutoTransfer;
-import com.circulation.prototype_eng.storage.HatchConfigurationNbt;
-import com.circulation.prototype_eng.storage.HatchConfigurationRequest;
-import com.circulation.prototype_eng.storage.HatchReplacement;
-import com.circulation.prototype_eng.storage.HatchStorageChanges;
+
 /**
  * PM's tiered input/output/IO energy hatch, retaining separate machine and automation directions.
  */
@@ -46,7 +48,6 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
 
     private final HatchConfigurationRequest configurationRequest = new HatchConfigurationRequest();
     private final HatchAutoTransfer autoTransfer = new HatchAutoTransfer();
-
     @SuppressWarnings("unused") // Worker writes and server-tick drains use STORAGE_DIRTY.
     private boolean storageDirty;
     private HatchTier tier;
@@ -54,7 +55,8 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     private HatchMode mode;
     private EnergyBuffer buffer;
     private EnergyBuffer outputBuffer;
-    @Nullable private String allocationLocation;
+    @Nullable
+    private String allocationLocation;
     private EnergyHatchStorage balances;
     private EnergyHatchConfiguration effective;
     private long observedTargetRevision = -1;
@@ -65,9 +67,12 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     private boolean autoInput;
     private boolean autoOutput;
 
-    /** Forge instantiates registered tile entities through this constructor when loading NBT. */
+    /**
+     * Forge instantiates registered tile entities through this constructor when loading NBT.
+     */
     @SuppressWarnings("unused")
-    public EnergyHatchBlockEntity() { this(HatchMode.INPUT, HatchTier.LV1);
+    public EnergyHatchBlockEntity() {
+        this(HatchMode.INPUT, HatchTier.LV1);
         pendingConfiguration = true;
     }
 
@@ -102,7 +107,8 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         var location = allocationLocation();
         if (location == null || location.equals(allocationLocation)) return;
         buffer.context().bindSourceIdentity(location + (mode.hasInput() ? "/input" : "/output"));
-        if (outputBuffer != null && outputBuffer != buffer) outputBuffer.context().bindSourceIdentity(location + "/output");
+        if (outputBuffer != null && outputBuffer != buffer)
+            outputBuffer.context().bindSourceIdentity(location + "/output");
         allocationLocation = location;
     }
 
@@ -274,12 +280,30 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         world.notifyBlockUpdate(pos, state, state, 3);
         configurationNotification = false;
     }
-    public HatchTier tier() { return tier; }
-    public HatchMode mode() { return mode; }
-    public long maxInputRate() { return maxInputRate; }
-    public long maxOutputRate() { return maxOutputRate; }
-    public boolean autoInput() { return autoInput; }
-    public boolean autoOutput() { return autoOutput; }
+
+    public HatchTier tier() {
+        return tier;
+    }
+
+    public HatchMode mode() {
+        return mode;
+    }
+
+    public long maxInputRate() {
+        return maxInputRate;
+    }
+
+    public long maxOutputRate() {
+        return maxOutputRate;
+    }
+
+    public boolean autoInput() {
+        return autoInput;
+    }
+
+    public boolean autoOutput() {
+        return autoOutput;
+    }
 
     @SuppressWarnings("unused") // Public native transfer query.
     public long effectiveInputRate() {
@@ -307,8 +331,16 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         maxOutputRate = value;
         settingsChanged();
     }
-    public void setAutoInput(boolean value) { autoInput = value; settingsChanged(); }
-    public void setAutoOutput(boolean value) { autoOutput = value; settingsChanged(); }
+
+    public void setAutoInput(boolean value) {
+        autoInput = value;
+        settingsChanged();
+    }
+
+    public void setAutoOutput(boolean value) {
+        autoOutput = value;
+        settingsChanged();
+    }
 
     private void settingsChanged() {
         markDirty();
@@ -318,9 +350,9 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @Override
     public boolean hasCapability(@NotNull Capability<?> capability, @Nullable EnumFacing side) {
         return !isInvalid() && (capability == CapabilityEnergy.ENERGY
-                || capability == HatchCapabilities.ENERGY_INPUT && mode.hasInput()
-                || capability == HatchCapabilities.ENERGY_OUTPUT && mode.hasOutput())
-                || super.hasCapability(capability, side);
+            || capability == HatchCapabilities.ENERGY_INPUT && mode.hasInput()
+            || capability == HatchCapabilities.ENERGY_OUTPUT && mode.hasOutput())
+            || super.hasCapability(capability, side);
     }
 
     @Override
@@ -454,8 +486,24 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
         return buffer != null && buffer.hasTransferReservation()
             || outputBuffer != null && outputBuffer != buffer && outputBuffer.hasTransferReservation();
     }
-    @Override public @NotNull NBTTagCompound getUpdateTag() { return writeToNBT(new NBTTagCompound()); }
-    @Override public SPacketUpdateTileEntity getUpdatePacket() { return new SPacketUpdateTileEntity(pos, 0, getUpdateTag()); }
-    @Override public void onDataPacket(@NotNull NetworkManager network, SPacketUpdateTileEntity packet) { readFromNBT(packet.getNbtCompound()); }
-    @Override public void handleUpdateTag(@NotNull NBTTagCompound tag) { readFromNBT(tag); }
+
+    @Override
+    public @NotNull NBTTagCompound getUpdateTag() {
+        return writeToNBT(new NBTTagCompound());
+    }
+
+    @Override
+    public SPacketUpdateTileEntity getUpdatePacket() {
+        return new SPacketUpdateTileEntity(pos, 0, getUpdateTag());
+    }
+
+    @Override
+    public void onDataPacket(@NotNull NetworkManager network, SPacketUpdateTileEntity packet) {
+        readFromNBT(packet.getNbtCompound());
+    }
+
+    @Override
+    public void handleUpdateTag(@NotNull NBTTagCompound tag) {
+        readFromNBT(tag);
+    }
 }

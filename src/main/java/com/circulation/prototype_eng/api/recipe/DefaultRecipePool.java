@@ -5,6 +5,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
@@ -15,12 +16,14 @@ public final class DefaultRecipePool implements RecipePool {
     private final String translationKey;
     private final List<MachineRecipe> recipes;
     private final List<MachineType> machines;
+    private final @Nullable String existingJeiPageId;
 
     public DefaultRecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes) {
-        this(id, translationKey, recipes, List.of());
+        this(id, translationKey, recipes, List.of(), null);
     }
 
-    private DefaultRecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes, List<MachineType> machines) {
+    private DefaultRecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes, List<MachineType> machines,
+                              @Nullable String existingJeiPageId) {
         this.id = Objects.requireNonNull(id);
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
@@ -35,6 +38,7 @@ public final class DefaultRecipePool implements RecipePool {
         }
         this.recipes = ObjectLists.unmodifiable(copy);
         this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
+        this.existingJeiPageId = existingJeiPageId;
     }
 
     @Override
@@ -58,7 +62,22 @@ public final class DefaultRecipePool implements RecipePool {
     }
 
     @Override
+    public boolean hasExistingJeiPage() {
+        return existingJeiPageId != null;
+    }
+
+    @Override
+    public @Nullable String existingJeiPageId() {
+        return existingJeiPageId;
+    }
+
+    /** Immutable addon binding; the external category is resolved when HEI registration is complete. */
+    public DefaultRecipePool withExistingJeiPage(@Nullable String categoryUid) {
+        return new DefaultRecipePool(id, translationKey, recipes, machines, categoryUid);
+    }
+
+    @Override
     public DefaultRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
-        return new DefaultRecipePool(id, translationKey, recipes, machines);
+        return new DefaultRecipePool(id, translationKey, recipes, machines, existingJeiPageId);
     }
 }

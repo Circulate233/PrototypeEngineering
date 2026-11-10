@@ -1,15 +1,15 @@
 package com.circulation.prototype_eng.api.structure;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.Collections;
 
 /**
  * Frozen potential reads, including optional slices and validator positions outside the pattern.
@@ -25,8 +25,13 @@ public final class StructureReadPlan {
         this.reads = Collections.unmodifiableList(reads);
     }
 
-    public List<StructureBounds> areas() { return areas; }
-    public List<Read<?>> reads() { return reads; }
+    public List<StructureBounds> areas() {
+        return areas;
+    }
+
+    public List<Read<?>> reads() {
+        return reads;
+    }
 
     public record Read<T>(BlockPos position, StructureQuery<T> query) {
         public Read {
@@ -41,7 +46,10 @@ public final class StructureReadPlan {
         private final ObjectArrayList<Read<?>> reads = new ObjectArrayList<>();
         private final Object2ObjectOpenHashMap<ResourceLocation, StructureQuery<?>> types = new Object2ObjectOpenHashMap<>();
 
-        public Builder area(StructureBounds bounds) { areas.add(Objects.requireNonNull(bounds)); return this; }
+        public Builder area(StructureBounds bounds) {
+            areas.add(Objects.requireNonNull(bounds));
+            return this;
+        }
 
         public <T> Builder read(BlockPos position, StructureQuery<T> query) {
             var request = new Read<>(position, query);
@@ -50,14 +58,19 @@ public final class StructureReadPlan {
                 throw new IllegalArgumentException("Different structure queries share ID: " + query.id());
             }
             areas.add(StructureBounds.at(request.position()));
-            if (uniqueReads.add(request)) { reads.add(request); }
+            if (uniqueReads.add(request)) {
+                reads.add(request);
+            }
             return this;
         }
 
-        public StructureReadPlan build() { return Objects.requireNonNull(beginBuild().run()); }
+        public StructureReadPlan build() {
+            return Objects.requireNonNull(beginBuild().run());
+        }
 
         /** The builder must remain unchanged until this private freeze computation completes. */
-        @SuppressWarnings("ReturnOfInnerClass") // The private freeze cursor owns its builder traversal until completion.
+        @SuppressWarnings("ReturnOfInnerClass")
+        // The private freeze cursor owns its builder traversal until completion.
         public StructureOperation<StructureReadPlan> beginBuild() {
             var areaIterator = areas.iterator();
             var readIterator = reads.iterator();

@@ -27,7 +27,11 @@ import java.util.UUID;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkPlannerTest {
     private static final UUID OWNER = uuid(100);
@@ -43,7 +47,33 @@ class NetworkPlannerTest {
         return registry;
     }
 
-    @Test void selectsCentersByLevelThenAgeAndDataCentersByLevelResearchThenAgeIncludingFullStorage() {
+    private static OwnerTeamResolver teams() {
+        return owner -> OwnerTeamResolution.resolved(owner, owner.equals(OWNER) ? "team" : "other",
+            OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty());
+    }
+
+    private static NetworkDeviceSnapshot device(long id, NetworkDeviceRole role, int level, boolean formed,
+                                                long order, long amount, int research) {
+        return new NetworkDeviceSnapshot(identity(id), role, level, formed, order, resources(amount),
+            NetworkResourceModifier.EMPTY, role == NetworkDeviceRole.DATA_CENTER ? 10 : 0, research);
+    }
+
+    private static Object2LongMap<NetworkResourceType> resources(long amount) {
+        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        result.put(COMPUTE, amount);
+        return result;
+    }
+
+    private static PersistentMachineIdentity identity(long id) {
+        return new PersistentMachineIdentity(uuid(id), OWNER);
+    }
+
+    private static UUID uuid(long id) {
+        return new UUID(0, id);
+    }
+
+    @Test
+    void selectsCentersByLevelThenAgeAndDataCentersByLevelResearchThenAgeIncludingFullStorage() {
         var devices = List.of(
             device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 1, 0, 0),
             device(2, NetworkDeviceRole.NETWORK_CENTER, 2, true, 10, 0, 0),
@@ -70,7 +100,8 @@ class NetworkPlannerTest {
         assertEquals(0, team.resourcesPerTick().getLong(COMPUTE));
     }
 
-    @Test void sumsOnlySelectedCenterEligibleComputersAndCurrentTeamParticipantsBeforeOneModifierApplication() {
+    @Test
+    void sumsOnlySelectedCenterEligibleComputersAndCurrentTeamParticipantsBeforeOneModifierApplication() {
         var modifier = NetworkResourceModifier.builder().flat(COMPUTE, 3).multiplierPpm(COMPUTE, 500_000).build();
         var center = new NetworkDeviceSnapshot(identity(1), NetworkDeviceRole.NETWORK_CENTER, 2, true, 0,
             resources(2), modifier, 0, 0);
@@ -94,7 +125,8 @@ class NetworkPlannerTest {
         assertThrows(UnsupportedOperationException.class, () -> plan.teams().entrySet().iterator().next().setValue(null));
     }
 
-    @Test void captureResolvesEachOwnerOnceAndWorkerPlanningUsesOnlyFrozenInput() throws Exception {
+    @Test
+    void captureResolvesEachOwnerOnceAndWorkerPlanningUsesOnlyFrozenInput() throws Exception {
         var ownerThread = Thread.currentThread();
         var calls = new Object2IntOpenHashMap<UUID>();
         OwnerTeamResolver resolver = owner -> {
@@ -120,9 +152,12 @@ class NetworkPlannerTest {
         assertEquals(1, plan.epoch());
     }
 
-    @Test void duplicateDevicesAndParticipantsOrStaleParticipantEpochRejectBeforeAnyOwnerQueries() {
+    @Test
+    void duplicateDevicesAndParticipantsOrStaleParticipantEpochRejectBeforeAnyOwnerQueries() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, 0, 0);
-        OwnerTeamResolver forbidden = _ -> { throw new AssertionError("Invalid input must fail before querying teams"); };
+        OwnerTeamResolver forbidden = _ -> {
+            throw new AssertionError("Invalid input must fail before querying teams");
+        };
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center, center), List.of(), forbidden));
         var contribution = new NetworkContribution(uuid(10), OWNER, 1, 0, resources(3));
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(contribution, contribution), forbidden));
@@ -134,7 +169,8 @@ class NetworkPlannerTest {
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(conflict), forbidden));
     }
 
-    @Test void noCenterAndRejectedOwnerKeepDistinctStatesAndDoNotCreateCapacity() {
+    @Test
+    void noCenterAndRejectedOwnerKeepDistinctStatesAndDoNotCreateCapacity() {
         var orphan = device(1, NetworkDeviceRole.COMPUTER, 0, true, 0, 100, 0);
         var unformed = device(2, NetworkDeviceRole.DATA_CENTER, 0, false, 1, 100, 0);
         var rejected = new NetworkDeviceSnapshot(new PersistentMachineIdentity(uuid(3), OTHER_OWNER),
@@ -150,7 +186,8 @@ class NetworkPlannerTest {
         assertTrue(plan.teams().isEmpty());
     }
 
-    @Test void inconsistentOrMismatchedOwnerSnapshotsAndProviderFailuresAbortCapture() {
+    @Test
+    void inconsistentOrMismatchedOwnerSnapshotsAndProviderFailuresAbortCapture() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, 0, 0);
         var secondOwner = new NetworkContribution(uuid(30), OTHER_OWNER, 1, 0, resources(1));
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(secondOwner),
@@ -165,10 +202,13 @@ class NetworkPlannerTest {
         assertThrows(IllegalArgumentException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(),
             _ -> teams().resolve(OTHER_OWNER)));
         var failure = new IllegalStateException("team backend failed");
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), _ -> { throw failure; })));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), _ -> {
+            throw failure;
+        })));
     }
 
-    @Test void accumulationAndExactModifierOverflowAbortTheWholePlan() {
+    @Test
+    void accumulationAndExactModifierOverflowAbortTheWholePlan() {
         var center = device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 0, Long.MAX_VALUE, 0);
         var computer = device(2, NetworkDeviceRole.COMPUTER, 1, true, 1, 1, 0);
         var overflow = NetworkPlanner.capture(RESOURCES, 1, List.of(center, computer), List.of(), teams());
@@ -176,24 +216,4 @@ class NetworkPlannerTest {
         var intermediate = NetworkPlanner.capture(RESOURCES, 1, List.of(center), List.of(), teams());
         assertThrows(ArithmeticException.class, () -> NetworkPlanner.plan(intermediate));
     }
-
-    private static OwnerTeamResolver teams() {
-        return owner -> OwnerTeamResolution.resolved(owner, owner.equals(OWNER) ? "team" : "other",
-            OwnerTeamType.SERVER, ObjectSet.of(owner), Optional.empty());
-    }
-
-    private static NetworkDeviceSnapshot device(long id, NetworkDeviceRole role, int level, boolean formed,
-            long order, long amount, int research) {
-        return new NetworkDeviceSnapshot(identity(id), role, level, formed, order, resources(amount),
-            NetworkResourceModifier.EMPTY, role == NetworkDeviceRole.DATA_CENTER ? 10 : 0, research);
-    }
-
-    private static Object2LongMap<NetworkResourceType> resources(long amount) {
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
-        result.put(COMPUTE, amount);
-        return result;
-    }
-
-    private static PersistentMachineIdentity identity(long id) { return new PersistentMachineIdentity(uuid(id), OWNER); }
-    private static UUID uuid(long id) { return new UUID(0, id); }
 }

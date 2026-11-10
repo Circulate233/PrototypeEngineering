@@ -8,10 +8,10 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
@@ -48,6 +48,45 @@ class ResourceInputResolutionTest {
     private static final Key B = new Key(FIRST, "b");
     private static final Key C = new Key(SECOND, "c");
     private static final NamedResourceMatcher ALL = new NamedResourceMatcher(id("all"), (_, _) -> true);
+
+    private static RecipeRequirement<ResourceRequirement> resource(List<GenericStack> fixed, List<FuzzyInputGroup> fuzzy,
+                                                                   List<DynamicInputGroup> dynamic, ResourceChance chance) {
+        return RecipeRequirements.RESOURCES.requirement(id("resources"), new ResourceRequirement(fixed, List.of(), List.of(),
+            List.of(), false, chance, null, fuzzy, dynamic));
+    }
+
+    private static ResourceInputLocks.Key lock(RecipeRequirement<?> requirement, ResourceInputLocks.Kind kind, int group) {
+        return new ResourceInputLocks.Key(requirement.path(null), RecipeStage.START, kind, group);
+    }
+
+    private static RecipeRequirement<String> gate(boolean[] active, boolean failCommit) {
+        var type = new RecipeRequirementType<>(new ResourceLocation("zz_resolution_test", "gate"), new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return new GateTransaction(active, failCommit);
+            }
+        });
+        return type.requirement(id("gate"), "gate");
+    }
+
+    private static RecipeProcess process(List<? extends ResourceHatch> hatches, int parallelism, RecipeRequirement<?>... requirements) {
+        var machine = new MachineInstance();
+        machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(new ObjectArrayList<>(hatches), List.of(), List.of()));
+        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), 0, ObjectArrayList.of(requirements)), 19);
+    }
+
+    private static BufferedResourceHatch hatch() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST, 32);
+        capacities.put(SECOND, 32);
+        return new BufferedResourceHatch(HatchMode.INPUT, 3, capacities, () -> {
+        });
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("resolution_test", path);
+    }
 
     @Test
     void fixedAndEarlierGroupDemandParticipateBeforeChoosingLaterAlternativesAcrossTypes() {
@@ -197,48 +236,21 @@ class ResourceInputResolutionTest {
         assertEquals(C, locks.get(new ResourceInputLocks.Key(child.path(second.path(null)), RecipeStage.START, ResourceInputLocks.Kind.FUZZY, 0)));
     }
 
-    private static RecipeRequirement<ResourceRequirement> resource(List<GenericStack> fixed, List<FuzzyInputGroup> fuzzy,
-                                                                    List<DynamicInputGroup> dynamic, ResourceChance chance) {
-        return RecipeRequirements.RESOURCES.requirement(id("resources"), new ResourceRequirement(fixed, List.of(), List.of(),
-            List.of(), false, chance, null, fuzzy, dynamic));
-    }
-
-    private static ResourceInputLocks.Key lock(RecipeRequirement<?> requirement, ResourceInputLocks.Kind kind, int group) {
-        return new ResourceInputLocks.Key(requirement.path(null), RecipeStage.START, kind, group);
-    }
-
-    private static RecipeRequirement<String> gate(boolean[] active, boolean failCommit) {
-        var type = new RecipeRequirementType<>(new ResourceLocation("zz_resolution_test", "gate"), new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return new GateTransaction(active, failCommit);
-            }
-        });
-        return type.requirement(id("gate"), "gate");
-    }
-
     private record GateTransaction(boolean[] active, boolean failCommit) implements RequirementTransaction {
-        @Override public ProcessResult result() {
+        @Override
+        public ProcessResult result() {
             return active[0] && !failCommit ? new ProcessResult.Blocked("external.wait") : ProcessResult.SUCCESS;
         }
-        @Override public void commit() {
-            if (active[0] && failCommit) { throw new IllegalStateException("External business commit failed"); }
+
+        @Override
+        public void commit() {
+            if (active[0] && failCommit) {
+                throw new IllegalStateException("External business commit failed");
+            }
         }
-        @Override public void rollback() { }
-    }
 
-    private static RecipeProcess process(List<? extends ResourceHatch> hatches, int parallelism, RecipeRequirement<?>... requirements) {
-        var machine = new MachineInstance();
-        machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
-        machine.components().put(MachineHatches.TYPE, new MachineHatches(new ObjectArrayList<>(hatches), List.of(), List.of()));
-        return new RecipeProcess(machine, new MachineRecipe(id("recipe"), 0, ObjectArrayList.of(requirements)), 19);
+        @Override
+        public void rollback() {
+        }
     }
-
-    private static BufferedResourceHatch hatch() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST, 32);
-        capacities.put(SECOND, 32);
-        return new BufferedResourceHatch(HatchMode.INPUT, 3, capacities, () -> { });
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("resolution_test", path); }
 }

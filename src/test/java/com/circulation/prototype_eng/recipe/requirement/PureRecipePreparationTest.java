@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
 import ae2.api.config.Actionable;
-import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -55,6 +55,9 @@ import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.util.ResourceLocation;
+import org.junit.jupiter.api.Test;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -65,8 +68,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import net.minecraft.util.ResourceLocation;
-import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

@@ -1,16 +1,18 @@
 package com.circulation.prototype_eng.api.recipe.requirement;
 
+import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
-import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
+import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import java.util.function.Supplier;
 
-/** Typed payload binding avoids the unchecked component/system cast in PM's stage executor. */
+/**
+ * Typed payload binding avoids the unchecked component/system cast in PM's stage executor.
+ */
 public final class RecipeRequirement<C> {
     private final ResourceLocation id;
     private final RecipeRequirementType<C> type;
@@ -34,27 +36,86 @@ public final class RecipeRequirement<C> {
         this.payload = Objects.requireNonNull(payload);
     }
 
-    public ResourceLocation id() { return id; }
-    public RecipeRequirementType<C> type() { return type; }
-    public C payload() { return payload; }
+    private static RequirementPreparation ownerFacts(RecipeProcess process, RecipeStage stage, RequirementPreparation prepared) {
+        return new RequirementPreparation() {
+            @Override
+            public boolean ownerWorkMetered() {
+                return prepared.ownerWorkMetered();
+            }
 
-    /** Canonical immutable definition retained by effective views returned to requirement callbacks. */
-    public RecipeRequirement<C> definition() { return definition; }
+            @Override
+            public boolean captureOnlyPreparation() {
+                return prepared.captureOnlyPreparation();
+            }
 
-    /** An immutable effective view retaining identity and the original definition, without editing either. */
+            @Override
+            public @Nullable RecipePureComputation computation() {
+                return prepared.computation();
+            }
+
+            @Override
+            public RequirementTransaction acquire() {
+                return prepared.acquire();
+            }
+
+            @Override
+            public void retainPureFacts() {
+                prepared.retainPureFacts();
+            }
+
+            @Override
+            public void withdrawPureFacts(RecipePureComputation expected) {
+                process.withdrawPureFacts(stage, expected);
+                prepared.withdrawPureFacts(expected);
+            }
+        };
+    }
+
+    public ResourceLocation id() {
+        return id;
+    }
+
+    public RecipeRequirementType<C> type() {
+        return type;
+    }
+
+    public C payload() {
+        return payload;
+    }
+
+    /**
+     * Canonical immutable definition retained by effective views returned to requirement callbacks.
+     */
+    public RecipeRequirement<C> definition() {
+        return definition;
+    }
+
+    /**
+     * An immutable effective view retaining identity and the original definition, without editing either.
+     */
     public RecipeRequirement<C> withPayload(C replacement) {
         return payload == replacement ? this : new RecipeRequirement<>(definition, replacement);
     }
 
-    /** Root paths are shared by all processes; nested wrappers add only their own ancestry. */
+    /**
+     * Root paths are shared by all processes; nested wrappers add only their own ancestry.
+     */
     public RequirementPath path(@Nullable RequirementPath parent) {
         return parent == null ? rootPath : new RequirementPath(parent, type.id(), id);
     }
 
-    /** Structural declaration lets alternative owners establish isolation before any child effects. */
+    /**
+     * Structural declaration lets alternative owners establish isolation before any child effects.
+     */
     public boolean usesContinuations() {
-        if (type.system().continuedAcquisition(payload)) { return true; }
-        for (var child : type.system().children(payload)) { if (child.usesContinuations()) { return true; } }
+        if (type.system().continuedAcquisition(payload)) {
+            return true;
+        }
+        for (var child : type.system().children(payload)) {
+            if (child.usesContinuations()) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -75,20 +136,6 @@ public final class RecipeRequirement<C> {
             };
             return process.usesPurePreparation() ? new PreparedRequirement(() -> process.withSynchronousRequirements(callback)) : callback.get();
         });
-    }
-
-    private static RequirementPreparation ownerFacts(RecipeProcess process, RecipeStage stage, RequirementPreparation prepared) {
-        return new RequirementPreparation() {
-            @Override public boolean ownerWorkMetered() { return prepared.ownerWorkMetered(); }
-            @Override public boolean captureOnlyPreparation() { return prepared.captureOnlyPreparation(); }
-            @Override public @Nullable RecipePureComputation computation() { return prepared.computation(); }
-            @Override public RequirementTransaction acquire() { return prepared.acquire(); }
-            @Override public void retainPureFacts() { prepared.retainPureFacts(); }
-            @Override public void withdrawPureFacts(RecipePureComputation expected) {
-                process.withdrawPureFacts(stage, expected);
-                prepared.withdrawPureFacts(expected);
-            }
-        };
     }
 
     /**
@@ -153,7 +200,9 @@ public final class RecipeRequirement<C> {
         });
     }
 
-    /** Terminal cleanup preserves the same effective definition and nested path as normal callbacks. */
+    /**
+     * Terminal cleanup preserves the same effective definition and nested path as normal callbacks.
+     */
     public void cancel(RecipeProcess process) {
         process.cancelRequirement(this, () -> {
             var overlays = process.components().get(RecipeOverlays.TYPE);

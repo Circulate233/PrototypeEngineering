@@ -1,13 +1,13 @@
 package com.circulation.prototype_eng.api.recipe;
 
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import com.circulation.prototype_eng.api.machine.MachineType;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import java.util.Set;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Server-safe pool and optional pure candidate strategy; client pages bind separately.
@@ -20,6 +20,16 @@ public interface RecipePool {
     List<MachineRecipe> recipes();
 
     List<MachineType> machines();
+
+    /** Whether this pool delegates JEI recipes to a category supplied by another registration. */
+    default boolean hasExistingJeiPage() {
+        return false;
+    }
+
+    /** Exact HEI category UID; null or blank keeps this library's ordinary page registration. */
+    default @Nullable String existingJeiPageId() {
+        return null;
+    }
 
     /** Create this implementation's immutable canonical definition with complete registrations and
      * static reverse bindings. Retain strategy/configuration and exactly the supplied instances/order.

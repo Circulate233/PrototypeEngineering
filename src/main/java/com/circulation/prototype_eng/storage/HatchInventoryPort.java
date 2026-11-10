@@ -5,19 +5,22 @@ import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.List;
+import java.util.Objects;
 
-import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
-
-/** Slot view for automation. A slot retains its input/output role even in mixed hatches. */
+/**
+ * Slot view for automation. A slot retains its input/output role even in mixed hatches.
+ */
 public final class HatchInventoryPort implements GenericInternalInventory {
-    @Nullable private final SlottedResourceStorage input;
-    @Nullable private final SlottedResourceStorage output;
+    @Nullable
+    private final SlottedResourceStorage input;
+    @Nullable
+    private final SlottedResourceStorage output;
     private final List<StorageContext> contexts;
     private final ThreadLocal<Boolean> batching = new ThreadLocal<>();
 

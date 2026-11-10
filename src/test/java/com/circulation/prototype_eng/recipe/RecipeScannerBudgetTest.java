@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -17,6 +18,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -27,15 +29,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 
 class RecipeScannerBudgetTest {
-    private static ResourceLocation id(String path) { return new ResourceLocation("scanner_budget_test", path); }
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("scanner_budget_test", path);
+    }
 
     private static RecipeCatalog catalog(List<MachineRecipe> recipes) {
         return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "scanner.budget", recipes)));
@@ -46,9 +48,21 @@ class RecipeScannerBudgetTest {
         for (int index = 0; index < 256; index++) {
             String name = "capacity_" + index;
             machine.attributes().addModifier(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, new AttributeModifier() {
-                @Override public String id() { return name; }
-                @Override public Operation operation() { return Operation.ADDITION; }
-                @Override public double apply(double base, double current) { calls.incrementAndGet(); return current; }
+                @Override
+                public String id() {
+                    return name;
+                }
+
+                @Override
+                public Operation operation() {
+                    return Operation.ADDITION;
+                }
+
+                @Override
+                public double apply(double base, double current) {
+                    calls.incrementAndGet();
+                    return current;
+                }
             });
         }
         return calls;
@@ -62,7 +76,8 @@ class RecipeScannerBudgetTest {
         var host = new MachineWorkSlots(machine, List.of());
         var factories = new AtomicInteger();
         var scanner = new RecipeScanner(host, catalog(List.of(new MachineRecipe(id("capacity_blocked"), 1, List.of()))), (owner, recipe, seed, tuning) -> {
-            factories.incrementAndGet(); return new RecipeProcess(owner, recipe, seed, tuning);
+            factories.incrementAndGet();
+            return new RecipeProcess(owner, recipe, seed, tuning);
         }, List.of(), List.of(), _ -> false, () -> 17);
         var attempt = scanner.beginScan(new ScanLimits(1, 1));
         assertEquals(RecipeScanner.Status.YIELDED, attempt.advance(new RecipeWorkBudget(1), () -> true).status());
@@ -130,23 +145,35 @@ class RecipeScannerBudgetTest {
     }
 
     @Test
-    @SuppressWarnings("ReturnOfInnerClass") // Fixture callbacks retain exact acquisition counters.
+    @SuppressWarnings("ReturnOfInnerClass")
+        // Fixture callbacks retain exact acquisition counters.
     void aSingleAttemptVisitsManyBlockedCandidatesAndAdmitsOnceWithoutRecreatingOrRecountingItsProbe() {
         var callbacks = new AtomicInteger();
         var factories = new AtomicInteger();
         var seeds = new AtomicInteger();
         var type = new RecipeRequirementType<Boolean>(id("guard"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 callbacks.incrementAndGet();
                 return new RequirementTransaction() {
-                    @Override public ProcessResult result() { return new ProcessResult.Blocked("unavailable"); }
-                    @Override public void commit() { }
-                    @Override public void rollback() { }
+                    @Override
+                    public ProcessResult result() {
+                        return new ProcessResult.Blocked("unavailable");
+                    }
+
+                    @Override
+                    public void commit() {
+                    }
+
+                    @Override
+                    public void rollback() {
+                    }
                 };
             }
         });
         var recipes = new ObjectArrayList<MachineRecipe>();
-        for (int index = 0; index < 64; index++) recipes.add(new MachineRecipe(id("blocked_" + index), 1, List.of(type.requirement(id("guard_requirement"), true))));
+        for (int index = 0; index < 64; index++)
+            recipes.add(new MachineRecipe(id("blocked_" + index), 1, List.of(type.requirement(id("guard_requirement"), true))));
         var accepted = new MachineRecipe(id("accepted"), 1, List.of());
         recipes.add(accepted);
         var machine = new MachineInstance();
@@ -196,20 +223,37 @@ class RecipeScannerBudgetTest {
         }, List.of(), List.of(), _ -> false, () -> 17, List.of(_ -> {
             prepared.incrementAndGet();
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void rollback() { undone.incrementAndGet(); }
-                @Override public void commit() { throw new AssertionError("Preparation cannot commit"); }
-                @Override public void complete() { throw new AssertionError("Preparation cannot complete"); }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void rollback() {
+                    undone.incrementAndGet();
+                }
+
+                @Override
+                public void commit() {
+                    throw new AssertionError("Preparation cannot commit");
+                }
+
+                @Override
+                public void complete() {
+                    throw new AssertionError("Preparation cannot complete");
+                }
             };
         }));
         var attempt = scanner.beginScan(new ScanLimits(1, 1));
-        for (int call = 0; call < 100 && prepared.get() == 0; call++) attempt.advance(new RecipeWorkBudget(1), () -> true);
+        for (int call = 0; call < 100 && prepared.get() == 0; call++)
+            attempt.advance(new RecipeWorkBudget(1), () -> true);
         assertEquals(1, prepared.get());
         assertTrue(attempt.hasObligations());
         assertThrows(IllegalStateException.class, attempt::releasePureYield);
         assertThrows(IllegalStateException.class, () -> scanner.beginScan(new ScanLimits(1, 1)));
         attempt.cancel();
-        for (int call = 0; call < 100 && !attempt.finished(); call++) attempt.advance(new RecipeWorkBudget(1), () -> false);
+        for (int call = 0; call < 100 && !attempt.finished(); call++)
+            attempt.advance(new RecipeWorkBudget(1), () -> false);
         assertTrue(attempt.finished());
         assertFalse(attempt.hasObligations());
         assertEquals(1, initialized.get());
@@ -220,7 +264,8 @@ class RecipeScannerBudgetTest {
     @Test
     void aLargeEmptyGroupScopeActuallyYieldsBeforeExhaustionAndTheSynchronousScanRemainsCompatible() {
         var recipes = new ObjectArrayList<MachineRecipe>();
-        for (int index = 0; index < 500; index++) recipes.add(new MachineRecipe(id("foreign_" + index), 1, List.of(), Set.of(id("other"))));
+        for (int index = 0; index < 500; index++)
+            recipes.add(new MachineRecipe(id("foreign_" + index), 1, List.of(), Set.of(id("other"))));
         var missingGroups = new ObjectLinkedOpenHashSet<ResourceLocation>();
         for (int index = 0; index < 500; index++) missingGroups.add(id("missing_group_" + index));
         var machine = new MachineInstance();
@@ -228,9 +273,11 @@ class RecipeScannerBudgetTest {
         var scanner = new RecipeScanner(host, catalog(recipes), () -> 17);
         var attempt = scanner.beginScan(new ScanLimits(1, 1));
         assertEquals(RecipeScanner.Status.YIELDED, attempt.advance(new RecipeWorkBudget(0), () -> true).status());
-        for (int call = 0; call < 10; call++) assertEquals(RecipeScanner.Status.YIELDED, attempt.advance(new RecipeWorkBudget(1), () -> true).status());
+        for (int call = 0; call < 10; call++)
+            assertEquals(RecipeScanner.Status.YIELDED, attempt.advance(new RecipeWorkBudget(1), () -> true).status());
         RecipeScanner.Result result = null;
-        for (int call = 0; call < 4 * missingGroups.size() && !attempt.finished(); call++) result = attempt.advance(new RecipeWorkBudget(1), () -> true);
+        for (int call = 0; call < 4 * missingGroups.size() && !attempt.finished(); call++)
+            result = attempt.advance(new RecipeWorkBudget(1), () -> true);
         assertTrue(attempt.finished());
         assertEquals(RecipeScanner.Status.EXHAUSTED, Objects.requireNonNull(result).status());
         assertEquals(0, result.candidates());
@@ -242,7 +289,8 @@ class RecipeScannerBudgetTest {
         var smallScanner = new RecipeScanner(smallHost, catalog(recipes), () -> 17);
         var small = smallScanner.beginScan(new ScanLimits(1, 1));
         RecipeScanner.Result smallResult = null;
-        for (int call = 0; call < 32 && !small.finished(); call++) smallResult = small.advance(new RecipeWorkBudget(1), () -> true);
+        for (int call = 0; call < 32 && !small.finished(); call++)
+            smallResult = small.advance(new RecipeWorkBudget(1), () -> true);
         assertTrue(small.finished(), "A single missing group uses the frozen posting table without traversing foreign recipes");
         assertEquals(RecipeScanner.Status.EXHAUSTED, Objects.requireNonNull(smallResult).status());
         assertEquals(0, smallResult.candidates());

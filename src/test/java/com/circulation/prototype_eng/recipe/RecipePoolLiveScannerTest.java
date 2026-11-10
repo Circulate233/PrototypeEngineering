@@ -9,16 +9,16 @@ import com.circulation.prototype_eng.api.machine.RecipeController;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
-import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
@@ -46,10 +46,15 @@ class RecipePoolLiveScannerTest {
     private static final Key B = new Key(TYPE, "b");
     private static final Key OUTPUT = new Key(TYPE, "output");
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("live_pool_scanner_test", path); }
-    private static BufferedResourceHatch hatch() {
-        return new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 100L), () -> { });
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("live_pool_scanner_test", path);
     }
+
+    private static BufferedResourceHatch hatch() {
+        return new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 100L), () -> {
+        });
+    }
+
     private static SimpleRecipePool.Entry entry(String path, Key input) {
         return SimpleRecipePool.Entry.create(id(path), 2, new GenericStack(input, 1), new GenericStack(OUTPUT, 1), Set.of());
     }
@@ -71,9 +76,11 @@ class RecipePoolLiveScannerTest {
         for (RecipeController owner : List.of(new MultithreadController(), new CrossRecipeController())) {
             owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
             owner.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 1);
-            var old = entry("old", A); var fresh = entry("fresh", B);
+            var old = entry("old", A);
+            var fresh = entry("fresh", B);
             var catalog = new RecipeCatalog(List.of(new SimpleRecipePool(id("pool"), "live.pool", List.of(old, fresh))));
-            var hatch = hatch(); var input = Objects.requireNonNull(hatch.input());
+            var hatch = hatch();
+            var input = Objects.requireNonNull(hatch.input());
             assertEquals(1, input.insert(A, 1, Actionable.MODULATE));
             owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(), List.of()));
             var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("slot")), Set.of());
@@ -83,7 +90,10 @@ class RecipePoolLiveScannerTest {
             assertEquals(RecipeScanner.Status.YIELDED, step(first, 10000).status());
             for (int slice = 0; slice < 10000 && first.hasObligations(); slice++) step(first, 1);
             assertTrue(host.activeProcesses().isEmpty());
-            if (!first.finished()) { assertFalse(first.hasObligations()); first.releasePureYield(); }
+            if (!first.finished()) {
+                assertFalse(first.hasObligations());
+                first.releasePureYield();
+            }
             assertEquals(1, input.extract(A, 1, Actionable.MODULATE));
             assertEquals(2, input.insert(B, 2, Actionable.MODULATE));
             assertEquals(RecipeScanner.Status.ADMITTED, scanner.scan(new ScanLimits(32, 32)).status());
@@ -95,7 +105,8 @@ class RecipePoolLiveScannerTest {
     void partialDiscoverySurvivesRepeatedNewTickYieldsAndOneUnitValidationCanFinish() {
         int[] selections = {0};
         var owner = new CrossRecipeController() {
-            @Override public List<RecipePool> getRecipePools(RecipeCatalog catalog) {
+            @Override
+            public List<RecipePool> getRecipePools(RecipeCatalog catalog) {
                 selections[0]++;
                 return catalog.pools();
             }
@@ -135,25 +146,34 @@ class RecipePoolLiveScannerTest {
         var recipe = new MachineRecipe(id("restored_slot"), 2, List.of());
         var catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("restored_pool"), "live.pool", List.of(recipe))));
         var host = owner.createRecipeHost(List.of(), Set.of());
-        boolean[] entered = {false}; boolean[] allowCreation = {false};
+        boolean[] entered = {false};
+        boolean[] allowCreation = {false};
         var factory = new RecipeProcessFactory() {
-            @Override public RecipeProcess create(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
+            @Override
+            public RecipeProcess create(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
                 return new RecipeProcess(machine, definition, seed, tuning);
             }
 
             @Override
-            @SuppressWarnings("ReturnOfInnerClass") // Retains this real fixture's unpublished factory candidate across its controlled pure yield.
+            @SuppressWarnings("ReturnOfInnerClass")
+            // Retains this real fixture's unpublished factory candidate across its controlled pure yield.
             public Creation beginCreation(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
                 entered[0] = true;
                 return new Creation() {
                     private RecipeProcess process;
-                    @Override public boolean advance(RecipeWorkBudget budget) {
+
+                    @Override
+                    public boolean advance(RecipeWorkBudget budget) {
                         if (process != null) return true;
                         if (!budget.take() || !allowCreation[0]) return false;
                         process = create(machine, definition, seed, tuning);
                         return true;
                     }
-                    @Override public RecipeProcess result() { return Objects.requireNonNull(process); }
+
+                    @Override
+                    public RecipeProcess result() {
+                        return Objects.requireNonNull(process);
+                    }
                 };
             }
         };

@@ -11,6 +11,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PersistentMachineIdentityTest {
+    private static void assertRejectedWithoutMutation(NBTTagCompound tag) {
+        var before = tag.copy();
+        assertThrows(IllegalArgumentException.class, () -> PersistentMachineIdentity.decode(tag));
+        assertEquals(before, tag);
+    }
+
+    private static PersistentMachineIdentity identity() {
+        return new PersistentMachineIdentity(new UUID(1, 2), new UUID(3, 4));
+    }
+
     @Test
     void fullUuidBitsRoundTripWithoutBorrowingOrMutatingEncodedCompounds() {
         var identity = new PersistentMachineIdentity(new UUID(Long.MIN_VALUE, Long.MAX_VALUE), new UUID(-1, 0));
@@ -68,15 +78,5 @@ class PersistentMachineIdentityTest {
             assertRejectedWithoutMutation(extra);
         }
         assertThrows(NullPointerException.class, () -> PersistentMachineIdentity.decode(null));
-    }
-
-    private static void assertRejectedWithoutMutation(NBTTagCompound tag) {
-        var before = tag.copy();
-        assertThrows(IllegalArgumentException.class, () -> PersistentMachineIdentity.decode(tag));
-        assertEquals(before, tag);
-    }
-
-    private static PersistentMachineIdentity identity() {
-        return new PersistentMachineIdentity(new UUID(1, 2), new UUID(3, 4));
     }
 }

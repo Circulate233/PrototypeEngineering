@@ -5,8 +5,8 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
-import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
+import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
@@ -31,13 +31,40 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.circulation.prototype_eng.api.research.station.StationFixtures.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.Entry;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.OWNER;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.TYPE;
+import static com.circulation.prototype_eng.api.research.station.StationFixtures.id;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchStationAdmissionTest {
     private static final TestResources.Key MATERIAL = new TestResources.Key(TYPE, "admission_material");
 
-    @Test void samePublicationNumericConsumptionInsideTheConditionRejectsTheOriginalBalanceWithoutReplayingTheCallback() {
+    private static ResearchDefinition definition(int tier, ResearchStartCondition condition) {
+        return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                 .startCondition(condition).stage(ResearchLevelStage.builder(1, 1).researchTier(tier)
+                                                                                    .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10, 3).build())
+                                                                                    .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("admission_io"), new ResourceRequirement(
+                                                                                        List.of(new GenericStack(MATERIAL, 5)), List.of(), List.of(), List.of(), false))).build()).build();
+    }
+
+    private static TeamResearchQueue queue(StationFixtures fixture) {
+        return new TeamResearchQueue(fixture.research, fixture.resources, "team");
+    }
+
+    private static TeamResearchStart.Result start(StationFixtures fixture, TeamResearchQueue queue, ResearchStations.Admission admission) {
+        var view = new TeamResearchView(fixture.research, "team", Set.of(OWNER), Object2IntMaps.emptyMap(), Object2IntMaps.emptyMap(), Set.of());
+        var actor = new ResearchPermissionContext(OWNER, "team", null, "team", false, false, false);
+        var start = new TeamResearchStart(fixture.research, fixture.resources, ResearchPermissionPolicy.DEFAULT);
+        return start.start(new TeamResearchStart.Request(queue, view, actor, id("research"), 1, admission.environment(), 1, admission::current));
+    }
+
+    @Test
+    void samePublicationNumericConsumptionInsideTheConditionRejectsTheOriginalBalanceWithoutReplayingTheCallback() {
         var permits = new NetworkRuntime.WorkPermit[1];
         int[] callbacks = {0};
         var definition = definition(2, context -> {
@@ -75,7 +102,8 @@ class ResearchStationAdmissionTest {
         }
     }
 
-    @Test void actualMissingStationDataCenterAndCenterProduceTheirNormalAdmissionDenials() {
+    @Test
+    void actualMissingStationDataCenterAndCenterProduceTheirNormalAdmissionDenials() {
         try (var fixture = new StationFixtures(1, 100, 2, definition(2, ResearchStartCondition.ALWAYS_ALLOWED))) {
             fixture.refresh();
             var queue = queue(fixture);
@@ -85,10 +113,11 @@ class ResearchStationAdmissionTest {
             assertEquals(2, noStation.environment().dataCenterLevel());
             assertEquals(0, noStation.environment().highestResearchStationLevel());
             assertEquals(TeamResearchStart.Status.STATION_LEVEL_INSUFFICIENT, start(fixture, queue, noStation).status());
-            fixture.station(1, 0); fixture.refresh();
+            fixture.station(1, 0);
+            fixture.refresh();
             assertEquals(TeamResearchStart.Status.STATION_LEVEL_INSUFFICIENT, start(fixture, queue, fixture.selector.admission("team")).status());
             var data = fixture.entries.stream().filter(entry -> entry.machine().components().assemblyBindings().stream()
-                .anyMatch(binding -> binding.component() instanceof MachineDataCenterStorage)).findFirst().orElseThrow();
+                                                                     .anyMatch(binding -> binding.component() instanceof MachineDataCenterStorage)).findFirst().orElseThrow();
             Objects.requireNonNull(data.machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             fixture.refresh();
             var noData = fixture.selector.admission("team");
@@ -108,7 +137,8 @@ class ResearchStationAdmissionTest {
         }
     }
 
-    @Test void highestStationIsAcrossDimensionsAndRequiresTheActualLevelAuthorizedDevicePermit() {
+    @Test
+    void highestStationIsAcrossDimensionsAndRequiresTheActualLevelAuthorizedDevicePermit() {
         try (var fixture = new StationFixtures(1, 100, 3, definition(3, ResearchStartCondition.ALWAYS_ALLOWED))) {
             fixture.station(2, 0);
             fixture.station(3, 9);
@@ -129,7 +159,8 @@ class ResearchStationAdmissionTest {
         }
     }
 
-    @Test void captureAndAdmissionPreserveMaterialEnergyAndNumericBalanceWithoutTakingStationLeases() {
+    @Test
+    void captureAndAdmissionPreserveMaterialEnergyAndNumericBalanceWithoutTakingStationLeases() {
         int[] callbacks = {0};
         var definition = definition(2, context -> {
             callbacks[0]++;
@@ -162,7 +193,8 @@ class ResearchStationAdmissionTest {
         }
     }
 
-    @Test void sourceMutationInsideTheRealStartConditionCannotSubstituteANewPublicationToAdmit() {
+    @Test
+    void sourceMutationInsideTheRealStartConditionCannotSubstituteANewPublicationToAdmit() {
         var fixtureRef = new StationFixtures[1];
         var replacedSource = new Entry[1];
         int[] callbacks = {0};
@@ -188,12 +220,15 @@ class ResearchStationAdmissionTest {
         }
     }
 
-    @Test void selectedDataCenterAndOriginalPublicationRemainFrozenWhenPhysicalLevelsOrTicksChange() {
+    @Test
+    void selectedDataCenterAndOriginalPublicationRemainFrozenWhenPhysicalLevelsOrTicksChange() {
         try (var fixture = new StationFixtures(1, 1)) {
-            fixture.station(3, 0); fixture.refresh();
+            fixture.station(3, 0);
+            fixture.refresh();
             var original = fixture.selector.admission("team");
             assertEquals(1, original.environment().dataCenterLevel());
-            fixture.dataCenter(2); fixture.refresh();
+            fixture.dataCenter(2);
+            fixture.refresh();
             assertFalse(original.current());
             assertEquals(1, original.environment().dataCenterLevel());
             var replaced = fixture.selector.admission("team");
@@ -204,7 +239,8 @@ class ResearchStationAdmissionTest {
         }
     }
 
-    @Test void absentCenterSnapshotDetectsANewRegisteredCenterThroughTheCapturedIdentityRevision() {
+    @Test
+    void absentCenterSnapshotDetectsANewRegisteredCenterThroughTheCapturedIdentityRevision() {
         try (var fixture = new StationFixtures(1, 2)) {
             Objects.requireNonNull(fixture.entries.getFirst().machine().lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             fixture.refresh();
@@ -216,22 +252,5 @@ class ResearchStationAdmissionTest {
             assertEquals(0, absent.environment().networkCenterLevel());
             assertEquals(3, fixture.selector.admission("team").environment().networkCenterLevel());
         }
-    }
-
-    private static ResearchDefinition definition(int tier, ResearchStartCondition condition) {
-        return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-            .startCondition(condition).stage(ResearchLevelStage.builder(1, 1).researchTier(tier)
-                .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10, 3).build())
-                .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("admission_io"), new ResourceRequirement(
-                    List.of(new GenericStack(MATERIAL, 5)), List.of(), List.of(), List.of(), false))).build()).build();
-    }
-
-    private static TeamResearchQueue queue(StationFixtures fixture) { return new TeamResearchQueue(fixture.research, fixture.resources, "team"); }
-
-    private static TeamResearchStart.Result start(StationFixtures fixture, TeamResearchQueue queue, ResearchStations.Admission admission) {
-        var view = new TeamResearchView(fixture.research, "team", Set.of(OWNER), Object2IntMaps.emptyMap(), Object2IntMaps.emptyMap(), Set.of());
-        var actor = new ResearchPermissionContext(OWNER, "team", null, "team", false, false, false);
-        var start = new TeamResearchStart(fixture.research, fixture.resources, ResearchPermissionPolicy.DEFAULT);
-        return start.start(new TeamResearchStart.Request(queue, view, actor, id("research"), 1, admission.environment(), 1, admission::current));
     }
 }

@@ -24,14 +24,55 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class ResourceBatchSequentialTest {
     private static final KeyType TYPE = new KeyType("batch_sequence");
     private static final Key MATERIAL = new Key(TYPE, "material");
     private static final Key OUTPUT = new Key(TYPE, "output");
 
-    @Test void segmentsReuseExactSourcesAndKeepBusinessProvisionalUntilOneFinalValidation() {
+    private static ResourceBatch sequential(List<StorageContext> declared, List<? extends ResourceReservation> tokens,
+                                            List<? extends ReversibleTransaction> business) {
+        return Objects.requireNonNull(ResourceBatch.tryAcquireSequential(declared, tokens, business));
+    }
+
+    private static void batchContext(StorageContext context) {
+        context.requireFenceAccess();
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100L);
+        return new SlottedResourceBuffer(1, capacities, () -> {
+        });
+    }
+
+    private static ResourceReservation accepted(ReservationResult result) {
+        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
+        return Objects.requireNonNull(result.reservation());
+    }
+
+    private static ObservedToken observed(ReservationResult result) {
+        return new ObservedToken(accepted(result));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Source did not reach its boundary");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    @Test
+    void segmentsReuseExactSourcesAndKeepBusinessProvisionalUntilOneFinalValidation() {
         var storage = buffer();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
         var input = observed(storage.reserveExtract(storage.snapshot(), MATERIAL, 100));
@@ -83,7 +124,8 @@ class ResourceBatchSequentialTest {
         assertEquals(1, input.completions);
     }
 
-    @Test void reverseSettlementRestoresThreeDependentSegmentsAndTheirOriginalSlot() {
+    @Test
+    void reverseSettlementRestoresThreeDependentSegmentsAndTheirOriginalSlot() {
         var storage = buffer();
         storage.insert(MATERIAL, 100, Actionable.MODULATE);
         var firstToken = observed(storage.reserveExtract(storage.snapshot(), MATERIAL, 100));
@@ -118,14 +160,19 @@ class ResourceBatchSequentialTest {
         assertEquals(0, third.validations);
     }
 
-    @Test void emptySegmentsRetainDeclaredDomainsAndCanIntroduceAStableSourceLater() throws Exception {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void emptySegmentsRetainDeclaredDomainsAndCanIntroduceAStableSourceLater() throws Exception {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var batch = sequential(List.of(energy.context()), List.of(), List.of());
         assertTrue(batch.sources().isEmpty());
         assertTrue(batch.stage(() -> true));
         var entered = new CountDownLatch(1);
-        var reader = new FutureTask<>(() -> { entered.countDown(); return energy.savedEnergy(); });
+        var reader = new FutureTask<>(() -> {
+            entered.countDown();
+            return energy.savedEnergy();
+        });
         Thread.ofPlatform().daemon().start(reader);
         await(entered);
         assertFalse(reader.isDone());
@@ -139,7 +186,8 @@ class ResourceBatchSequentialTest {
         var source = batch.sources().getFirst();
         assertTrue(source.apply());
         assertTrue(batch.stage(() -> true));
-        batch.acquireNext(() -> {});
+        batch.acquireNext(() -> {
+        });
         batch.append(List.of(), List.of());
         assertEquals(ResourceBatch.SourceState.APPLIED, source.state());
         assertTrue(batch.stage(() -> true));
@@ -150,8 +198,10 @@ class ResourceBatchSequentialTest {
         assertEquals(40, reader.get(5, TimeUnit.SECONDS));
     }
 
-    @Test void unknownDependentRollbackStopsBeforeItsPredecessorAndLaterProofResumesInOrder() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void unknownDependentRollbackStopsBeforeItsPredecessorAndLaterProofResumesInOrder() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var input = observed(energy.reserveExtractEnergy(energy.energySnapshot(), 100));
         var batch = sequential(List.of(energy.context()), List.of(input), List.of());
@@ -162,11 +212,19 @@ class ResourceBatchSequentialTest {
         var fault = new IllegalStateException("dependent rollback acknowledgement unavailable");
         var tokens = new ArrayList<ObservedToken>();
         batch.acquireNext(() -> tokens.add(new ObservedToken(accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 100))) {
-            @Override public void rollback() {
-                if (!proof[0]) { rollbacks++; throw fault; }
+            @Override
+            public void rollback() {
+                if (!proof[0]) {
+                    rollbacks++;
+                    throw fault;
+                }
                 super.rollback();
             }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         }));
         batch.append(tokens, List.of());
         assertTrue(source.apply());
@@ -187,8 +245,10 @@ class ResourceBatchSequentialTest {
         assertEquals(100, energy.savedEnergy());
     }
 
-    @Test void exactTerminalProofAfterAThrowAllowsPredecessorRollbackWithoutReplayingTheSuccessor() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void exactTerminalProofAfterAThrowAllowsPredecessorRollbackWithoutReplayingTheSuccessor() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var output = observed(energy.reserveReceiveEnergy(energy.energySnapshot(), 100));
         var batch = sequential(List.of(energy.context()), List.of(output), List.of());
         var source = batch.sources().getFirst();
@@ -197,7 +257,11 @@ class ResourceBatchSequentialTest {
         var fault = new IllegalStateException("acknowledgement failed after compensation");
         var tokens = new ArrayList<ObservedToken>();
         batch.acquireNext(() -> tokens.add(new ObservedToken(accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 60))) {
-            @Override public void rollback() { super.rollback(); throw fault; }
+            @Override
+            public void rollback() {
+                super.rollback();
+                throw fault;
+            }
         }));
         batch.append(tokens, List.of());
         assertTrue(source.apply());
@@ -211,13 +275,18 @@ class ResourceBatchSequentialTest {
         assertEquals(0, energy.savedEnergy());
     }
 
-    @Test void aFailedExposureKeepsBothAppliedAndPendingExactTokensForCompensation() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void aFailedExposureKeepsBothAppliedAndPendingExactTokensForCompensation() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var first = observed(energy.reserveExtractEnergy(energy.energySnapshot(), 30));
         var fault = new IllegalStateException("exposure failed before returning holds");
         var second = new ObservedToken(accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 40))) {
-            @Override public void exposeApplied() { throw fault; }
+            @Override
+            public void exposeApplied() {
+                throw fault;
+            }
         };
         var third = observed(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         var batch = sequential(List.of(), List.of(first, second, third), List.of());
@@ -235,9 +304,12 @@ class ResourceBatchSequentialTest {
         assertEquals(0, third.applies);
     }
 
-    @Test void appendRejectionPreflightsAllIdentitiesDomainsAndCapabilitiesWithoutChangingExistingParticipants() {
-        var energy = new EnergyBuffer(100, () -> {});
-        var other = new EnergyBuffer(100, () -> {});
+    @Test
+    void appendRejectionPreflightsAllIdentitiesDomainsAndCapabilitiesWithoutChangingExistingParticipants() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        var other = new EnergyBuffer(100, () -> {
+        });
         var initial = observed(energy.reserveReceiveEnergy(energy.energySnapshot(), 10));
         var business = new Business("initial", new ArrayList<>());
         var batch = sequential(List.of(), List.of(initial), List.of(business));
@@ -253,8 +325,15 @@ class ResourceBatchSequentialTest {
         assertThrows(IllegalArgumentException.class, () -> batch.append(List.of(valid.getFirst(), initial), List.of()));
         assertThrows(IllegalArgumentException.class, () -> batch.append(List.of(valid.getFirst(), valid.getFirst()), List.of()));
         var unsupported = new ObservedToken(valid.getFirst()) {
-            @Override public boolean supportsSequentialUse() { return false; }
-            @Override public void exposeApplied() { fail("Capability must be checked before exposure"); }
+            @Override
+            public boolean supportsSequentialUse() {
+                return false;
+            }
+
+            @Override
+            public void exposeApplied() {
+                fail("Capability must be checked before exposure");
+            }
         };
         assertThrows(IllegalArgumentException.class, () -> batch.append(List.of(unsupported), List.of()));
         assertThrows(IllegalArgumentException.class, () -> batch.append(valid, List.of(business)));
@@ -270,11 +349,16 @@ class ResourceBatchSequentialTest {
         assertEquals(0, energy.savedEnergy());
     }
 
-    @Test void unsupportedInitialTokensAreRejectedBeforeClaimAndBusyDeclaredDomainsKeepCallerOwnership() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void unsupportedInitialTokensAreRejectedBeforeClaimAndBusyDeclaredDomainsKeepCallerOwnership() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var token = observed(energy.reserveReceiveEnergy(energy.energySnapshot(), 20));
         var unsupported = new ObservedToken(token) {
-            @Override public boolean supportsSequentialUse() { return false; }
+            @Override
+            public boolean supportsSequentialUse() {
+                return false;
+            }
         };
         assertThrows(IllegalArgumentException.class,
             () -> ResourceBatch.tryAcquireSequential(List.of(energy.context()), List.of(unsupported), List.of()));
@@ -286,8 +370,10 @@ class ResourceBatchSequentialTest {
         assertEquals(1, token.rollbacks);
     }
 
-    @Test void throwingNextAcquisitionCanRegisterItsExactParticipantsWithoutReplayingAcquisition() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void throwingNextAcquisitionCanRegisterItsExactParticipantsWithoutReplayingAcquisition() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var first = observed(energy.reserveReceiveEnergy(energy.energySnapshot(), 40));
         var batch = sequential(List.of(), List.of(first), List.of());
         var source = batch.sources().getFirst();
@@ -305,7 +391,8 @@ class ResourceBatchSequentialTest {
         assertThrows(IllegalStateException.class, batch::finish);
         assertThrows(IllegalStateException.class, batch::rollback);
         assertEquals(ResourceBatch.Decision.OPEN, batch.decision(), "Unregistered effects retain the acquisition window");
-        assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {}));
+        assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {
+        }));
         batch.append(acquired, List.of());
         assertTrue(batch.rollback());
         assertTrue(source.resolve());
@@ -314,16 +401,22 @@ class ResourceBatchSequentialTest {
         assertEquals(0, energy.savedEnergy());
     }
 
-    @Test void authorizationLossDuringAStagedCommitReversesPriorAndNewBusinessWithoutFinalValidation() {
+    @Test
+    void authorizationLossDuringAStagedCommitReversesPriorAndNewBusinessWithoutFinalValidation() {
         var events = new ArrayList<String>();
         var first = new Business("first", events);
         boolean[] authorized = {true};
         var second = new Business("second", events) {
-            @Override public void commit() { super.commit(); authorized[0] = false; }
+            @Override
+            public void commit() {
+                super.commit();
+                authorized[0] = false;
+            }
         };
         var batch = sequential(List.of(), List.of(), List.of(first));
         assertTrue(batch.stage(() -> true));
-        batch.acquireNext(() -> {});
+        batch.acquireNext(() -> {
+        });
         batch.append(List.of(), List.of(second));
         assertFalse(batch.stage(() -> authorized[0]));
         assertEquals(ResourceBatch.Decision.ROLLBACK, batch.decision());
@@ -336,11 +429,17 @@ class ResourceBatchSequentialTest {
         assertEquals(0, second.validations);
     }
 
-    @Test void finalValidationRejectionCompensatesAllPreviouslyStagedEffectsWithoutReplayingBusiness() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void finalValidationRejectionCompensatesAllPreviouslyStagedEffectsWithoutReplayingBusiness() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var output = observed(energy.reserveReceiveEnergy(energy.energySnapshot(), 40));
         var transaction = new Business("stage", new ArrayList<>()) {
-            @Override public boolean validateCommit() { super.validateCommit(); return false; }
+            @Override
+            public boolean validateCommit() {
+                super.validateCommit();
+                return false;
+            }
         };
         var batch = sequential(List.of(), List.of(output), List.of(transaction));
         var source = batch.sources().getFirst();
@@ -357,13 +456,15 @@ class ResourceBatchSequentialTest {
         assertEquals(0, transaction.completions);
     }
 
-    @Test void finalCommitProcessesOnlyTheUnstagedSegmentAndValidatesEveryBusinessExactlyOnce() {
+    @Test
+    void finalCommitProcessesOnlyTheUnstagedSegmentAndValidatesEveryBusinessExactlyOnce() {
         var events = new ArrayList<String>();
         var first = new Business("first", events);
         var second = new Business("second", events);
         var batch = sequential(List.of(), List.of(), List.of(first));
         assertTrue(batch.stage(() -> true));
-        batch.acquireNext(() -> {});
+        batch.acquireNext(() -> {
+        });
         batch.append(List.of(), List.of(second));
         assertTrue(batch.commit(() -> true));
         assertEquals(1, first.prepares);
@@ -377,8 +478,10 @@ class ResourceBatchSequentialTest {
         batch.finish();
     }
 
-    @Test void anUnsupportedNextTokenIsRegisteredForOriginalSourceCleanupBeforeAnyFenceRelease() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void anUnsupportedNextTokenIsRegisteredForOriginalSourceCleanupBeforeAnyFenceRelease() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var input = observed(energy.reserveExtractEnergy(energy.energySnapshot(), 100));
         var batch = sequential(List.of(), List.of(input), List.of());
@@ -387,9 +490,21 @@ class ResourceBatchSequentialTest {
         assertTrue(batch.stage(() -> true));
         var tokens = new ArrayList<ObservedToken>();
         batch.acquireNext(() -> tokens.add(new ObservedToken(accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 100))) {
-            @Override public boolean supportsSequentialUse() { return false; }
-            @Override public void rollback() { context().requireFenceAccess(); super.rollback(); }
-            @Override public void exposeApplied() { fail("Rejected acquisitions must never expose"); }
+            @Override
+            public boolean supportsSequentialUse() {
+                return false;
+            }
+
+            @Override
+            public void rollback() {
+                context().requireFenceAccess();
+                super.rollback();
+            }
+
+            @Override
+            public void exposeApplied() {
+                fail("Rejected acquisitions must never expose");
+            }
         }));
         assertFalse(tokens.getFirst().supportsSequentialUse());
         batch.appendForRollback(tokens, List.of());
@@ -407,16 +522,29 @@ class ResourceBatchSequentialTest {
         assertEquals(100, energy.savedEnergy());
     }
 
-    @Test void unknownBusinessRollbackRetainsItsPredecessorAndPreventsSourceCompensationUntilConfirmed() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void unknownBusinessRollbackRetainsItsPredecessorAndPreventsSourceCompensationUntilConfirmed() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var token = observed(energy.reserveReceiveEnergy(energy.energySnapshot(), 40));
         var events = new ArrayList<String>();
         var first = new Business("first", events);
         boolean[] proof = {false};
         var fault = new IllegalStateException("business compensation unknown");
         var second = new Business("second", events) {
-            @Override public void rollback() { if (!proof[0]) { rollbacks++; throw fault; } super.rollback(); }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                if (!proof[0]) {
+                    rollbacks++;
+                    throw fault;
+                }
+                super.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         var batch = sequential(List.of(), List.of(token), List.of(first, second));
         var source = batch.sources().getFirst();
@@ -436,26 +564,39 @@ class ResourceBatchSequentialTest {
         assertEquals(0, energy.savedEnergy());
     }
 
-    @Test void stagingAndAcquisitionRequireActualSourceExitAndOwnerAccessDoesNotOpenAnAppendWindow() throws Exception {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void stagingAndAcquisitionRequireActualSourceExitAndOwnerAccessDoesNotOpenAnAppendWindow() throws Exception {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var entered = new CountDownLatch(1);
         var exit = new CountDownLatch(1);
         var token = new ObservedToken(accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 40))) {
-            @Override public void apply() { entered.countDown(); await(exit); super.apply(); }
+            @Override
+            public void apply() {
+                entered.countDown();
+                await(exit);
+                super.apply();
+            }
         };
         var batch = sequential(List.of(), List.of(token), List.of());
-        assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {}));
-        batch.access(() -> {});
+        assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {
+        }));
+        batch.access(() -> {
+        });
         assertThrows(IllegalStateException.class, () -> batch.append(List.of(), List.of()));
         try (var lane = Executors.newSingleThreadExecutor()) {
             var running = lane.submit(batch.sources().getFirst()::apply);
             try {
                 await(entered);
                 assertThrows(IllegalStateException.class, () -> batch.stage(() -> true));
-                assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {}));
-                assertThrows(IllegalStateException.class, () -> batch.access(() -> {}));
+                assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {
+                }));
+                assertThrows(IllegalStateException.class, () -> batch.access(() -> {
+                }));
                 assertFalse(batch.rollback());
-            } finally { exit.countDown(); }
+            } finally {
+                exit.countDown();
+            }
             assertTrue(running.get(5, TimeUnit.SECONDS));
             assertTrue(batch.rollback());
             assertTrue(lane.submit(batch.sources().getFirst()::resolve).get(5, TimeUnit.SECONDS));
@@ -464,15 +605,28 @@ class ResourceBatchSequentialTest {
         assertEquals(0, energy.savedEnergy());
     }
 
-    @Test void ordinaryBatchesKeepHoldsAndAttemptAllRollbackTokensDespiteAnUnknownSuccessor() {
-        var energy = new EnergyBuffer(100, () -> {});
+    @Test
+    void ordinaryBatchesKeepHoldsAndAttemptAllRollbackTokensDespiteAnUnknownSuccessor() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var first = observed(energy.reserveExtractEnergy(energy.energySnapshot(), 20));
         boolean[] proof = {false};
         var fault = new IllegalStateException("ordinary successor unknown");
         var second = new ObservedToken(accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 30))) {
-            @Override public void rollback() { if (!proof[0]) { rollbacks++; throw fault; } super.rollback(); }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                if (!proof[0]) {
+                    rollbacks++;
+                    throw fault;
+                }
+                super.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         var batch = Objects.requireNonNull(ResourceBatch.tryAcquire(List.of(first, second), List.of()));
         var source = batch.sources().getFirst();
@@ -480,7 +634,8 @@ class ResourceBatchSequentialTest {
         assertEquals(0, first.exposures);
         batch.access(() -> assertEquals(0, energy.energySnapshot().availableCapacity()));
         assertThrows(IllegalStateException.class, () -> batch.stage(() -> true));
-        assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {}));
+        assertThrows(IllegalStateException.class, () -> batch.acquireNext(() -> {
+        }));
         assertTrue(batch.rollback());
         assertSame(fault, assertThrows(IllegalStateException.class, source::resolve));
         assertEquals(1, first.rollbacks);
@@ -491,31 +646,6 @@ class ResourceBatchSequentialTest {
         assertEquals(100, energy.savedEnergy());
     }
 
-    private static ResourceBatch sequential(List<StorageContext> declared, List<? extends ResourceReservation> tokens,
-                                            List<? extends ReversibleTransaction> business) {
-        return Objects.requireNonNull(ResourceBatch.tryAcquireSequential(declared, tokens, business));
-    }
-
-    private static void batchContext(StorageContext context) { context.requireFenceAccess(); }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100L);
-        return new SlottedResourceBuffer(1, capacities, () -> {});
-    }
-
-    private static ResourceReservation accepted(ReservationResult result) {
-        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
-        return Objects.requireNonNull(result.reservation());
-    }
-
-    private static ObservedToken observed(ReservationResult result) { return new ObservedToken(accepted(result)); }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Source did not reach its boundary"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-
     private static class ObservedToken implements ResourceReservation {
         private final ResourceReservation delegate;
         int applies;
@@ -523,20 +653,58 @@ class ResourceBatchSequentialTest {
         int completions;
         int rollbacks;
 
-        private ObservedToken(ResourceReservation delegate) { this.delegate = delegate; }
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public void apply() { applies++; delegate.apply(); }
-        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
-        @Override public void exposeApplied() { exposures++; delegate.exposeApplied(); }
-        @Override public void complete() { completions++; delegate.complete(); }
-        @Override public void rollback() { rollbacks++; delegate.rollback(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
+        private ObservedToken(ResourceReservation delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public void apply() {
+            applies++;
+            delegate.apply();
+        }
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return delegate.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            exposures++;
+            delegate.exposeApplied();
+        }
+
+        @Override
+        public void complete() {
+            completions++;
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            delegate.rollback();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
     }
 
     private static class Business implements ReversibleTransaction {
-        private final String name;
         final List<String> events;
+        private final String name;
         int prepares;
         int commits;
         int validations;
@@ -544,12 +712,45 @@ class ResourceBatchSequentialTest {
         int rollbacks;
         private Resolution resolution = Resolution.REVERSIBLE;
 
-        private Business(String name, List<String> events) { this.name = name; this.events = events; }
-        @Override public boolean prepareCommit() { prepares++; return true; }
-        @Override public void commit() { commits++; events.add("commit:" + name); }
-        @Override public boolean validateCommit() { validations++; return true; }
-        @Override public void complete() { completions++; resolution = Resolution.COMPLETED; }
-        @Override public void rollback() { rollbacks++; events.add("rollback:" + name); resolution = Resolution.ROLLED_BACK; }
-        @Override public Resolution resolution() { return resolution; }
+        private Business(String name, List<String> events) {
+            this.name = name;
+            this.events = events;
+        }
+
+        @Override
+        public boolean prepareCommit() {
+            prepares++;
+            return true;
+        }
+
+        @Override
+        public void commit() {
+            commits++;
+            events.add("commit:" + name);
+        }
+
+        @Override
+        public boolean validateCommit() {
+            validations++;
+            return true;
+        }
+
+        @Override
+        public void complete() {
+            completions++;
+            resolution = Resolution.COMPLETED;
+        }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            events.add("rollback:" + name);
+            resolution = Resolution.ROLLED_BACK;
+        }
+
+        @Override
+        public Resolution resolution() {
+            return resolution;
+        }
     }
 }

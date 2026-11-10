@@ -1,21 +1,21 @@
 package com.circulation.prototype_eng.client.gui;
 
-import net.minecraft.client.gui.FontRenderer;
-import net.minecraft.client.gui.GuiTextField;
-import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.FontRenderer;
+import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
-import org.lwjgl.input.Keyboard;
 import org.jetbrains.annotations.NotNull;
+import org.lwjgl.input.Keyboard;
 
 /** Borderless rate field with a matching hit/clip area and four-pixel horizontal text padding. */
 final class HatchRateField extends GuiTextField {
     private final int left, top, areaWidth;
+    private final FontRenderer font;
+    private final GuiClip clip = new GuiClip();
     private int selectionAnchor;
     private long lastClick;
     private int blink;
-    private final FontRenderer font;
-    private final GuiClip clip = new GuiClip();
 
     HatchRateField(int id, FontRenderer font, int left, int top, int areaWidth) {
         super(id, font, left + 4, top, areaWidth - 8, 10);
@@ -28,7 +28,8 @@ final class HatchRateField extends GuiTextField {
         setMaxStringLength(Integer.MAX_VALUE);
     }
 
-    @Override public boolean mouseClicked(int mouseX, int mouseY, int button) {
+    @Override
+    public boolean mouseClicked(int mouseX, int mouseY, int button) {
         boolean inside = mouseX >= left && mouseX < left + areaWidth && mouseY >= top && mouseY < top + 10;
         setFocused(inside);
         if (!inside) return false;
@@ -66,20 +67,26 @@ final class HatchRateField extends GuiTextField {
         return text.length();
     }
 
-    @Override public void setFocused(boolean focused) {
+    @Override
+    public void setFocused(boolean focused) {
         if (focused != isFocused()) blink = 0;
         super.setFocused(focused);
         if (!focused) setCursorPositionZero();
     }
 
-    @Override public void setText(@NotNull String text) {
+    @Override
+    public void setText(@NotNull String text) {
         super.setText(text);
         if (!isFocused()) setCursorPositionZero();
     }
 
-    @Override public void updateCursorCounter() { if (isFocused()) blink++; }
+    @Override
+    public void updateCursorCounter() {
+        if (isFocused()) blink++;
+    }
 
-    @Override public boolean textboxKeyTyped(char character, int key) {
+    @Override
+    public boolean textboxKeyTyped(char character, int key) {
         if (!isFocused()) return false;
         int current = getSelectionEnd(), next;
         if (key == Keyboard.KEY_LEFT || key == Keyboard.KEY_RIGHT) {
@@ -112,7 +119,8 @@ final class HatchRateField extends GuiTextField {
         return true;
     }
 
-    @Override public void drawTextBox() {
+    @Override
+    public void drawTextBox() {
         if (!getVisible()) return;
         clip.draw(left + 1, top + 1, areaWidth - 2, 8, () -> {
             String text = getText();
@@ -131,7 +139,9 @@ final class HatchRateField extends GuiTextField {
                     GlStateManager.translate(caret, y - 1, 0);
                     GlStateManager.scale(.6f, 1, 1);
                     drawRect(0, 0, 1, 9, 0xffffffff);
-                } finally { GlStateManager.popMatrix(); }
+                } finally {
+                    GlStateManager.popMatrix();
+                }
             }
             GlStateManager.enableDepth();
         });

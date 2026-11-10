@@ -28,10 +28,34 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchDefinitionTest {
-    @Test void evaluatesStageRelativeDemandExactlyAndEnforcesIndependentSegmentCap() {
+    private static ResearchDefinition.Builder definition(String name, int maxLevel) {
+        return ResearchDefinition.builder(id(name)).maxLevel(maxLevel).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
+    }
+
+    private static ResearchLevelStage.Builder stage(int first, int last) {
+        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+    }
+
+    private static NetworkResourceRegistry resources() {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        return resources;
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("prototype_eng_test", path);
+    }
+
+    @Test
+    void evaluatesStageRelativeDemandExactlyAndEnforcesIndependentSegmentCap() {
         var type = new NetworkResourceType(id("limited"), false, 20);
         var formula = ResearchResourceFormula.builder().affine(type, 100, 10, 20).build();
         assertEquals(100, formula.demandsAt(5, 5).getLong(type));
@@ -45,7 +69,8 @@ class ResearchDefinitionTest {
         assertThrows(UnsupportedOperationException.class, () -> formula.baseDemands().object2LongEntrySet().iterator().next().setValue(0));
     }
 
-    @Test void coversAnUnboundedTailWithoutPermittingAnExtraOverlappingMaxLevelStage() {
+    @Test
+    void coversAnUnboundedTailWithoutPermittingAnExtraOverlappingMaxLevelStage() {
         var tail = stage(3, Integer.MAX_VALUE).build();
         var definition = definition("tail", Integer.MAX_VALUE).stage(stage(1, 2).build()).stage(tail).build();
         assertSame(tail, definition.stageForLevel(Integer.MAX_VALUE));
@@ -55,7 +80,8 @@ class ResearchDefinitionTest {
         assertThrows(IllegalArgumentException.class, () -> definition.stageForLevel(0));
     }
 
-    @Test void registryPublishesNothingAfterFailedValidationAndAcceptsRepairedReferences() {
+    @Test
+    void registryPublishesNothingAfterFailedValidationAndAcceptsRepairedReferences() {
         var registry = new ResearchRegistry();
         registry.register(definition("dependent", 1).stage(stage(1, 1).prerequisite(id("missing"), 1).build()).build());
         assertThrows(IllegalArgumentException.class, () -> registry.freeze(resources()));
@@ -68,7 +94,8 @@ class ResearchDefinitionTest {
         assertThrows(IllegalStateException.class, () -> registry.register(definition("late", 1).stage(stage(1, 1).build()).build()));
     }
 
-    @Test void rejectsCyclesAndAsymmetryAcrossEveryCoveredStage() {
+    @Test
+    void rejectsCyclesAndAsymmetryAcrossEveryCoveredStage() {
         var cyclic = new ResearchRegistry();
         cyclic.register(definition("a", 1).stage(stage(1, 1).prerequisite(id("b"), 1).build()).build());
         cyclic.register(definition("b", 1).stage(stage(1, 1).prerequisite(id("a"), 1).build()).build());
@@ -82,11 +109,12 @@ class ResearchDefinitionTest {
         var symmetric = new ResearchRegistry();
         symmetric.register(definition("a", Integer.MAX_VALUE).stage(stage(1, Integer.MAX_VALUE).mutex(id("b"), 1).build()).build());
         symmetric.register(definition("b", Integer.MAX_VALUE).stage(stage(1, 2).mutex(id("a"), 1).build())
-            .stage(stage(3, Integer.MAX_VALUE).mutex(id("a"), 1).build()).build());
+                                                             .stage(stage(3, Integer.MAX_VALUE).mutex(id("a"), 1).build()).build());
         assertDoesNotThrow(() -> symmetric.freeze(resources()));
     }
 
-    @Test void rejectsUnregisteredOrConflictingComputingMetadata() {
+    @Test
+    void rejectsUnregisteredOrConflictingComputingMetadata() {
         var unknown = new NetworkResourceType(id("unknown"), false, 0);
         var registry = new ResearchRegistry();
         registry.register(definition("unknown", 1).stage(stage(1, 1)
@@ -99,7 +127,8 @@ class ResearchDefinitionTest {
         assertThrows(IllegalArgumentException.class, () -> conflictingRegistry.freeze(resources()));
     }
 
-    @Test void retainsSparseRewardChoicesAndProtectsEveryPublicEntryFromMutation() {
+    @Test
+    void retainsSparseRewardChoicesAndProtectsEveryPublicEntryFromMutation() {
         var reward = new RewardGroup(id("choice"), List.of(new RewardChild.Event(id("event"), (_, _) -> RewardEventAction.Result.APPLIED)));
         var stage = stage(1, Integer.MAX_VALUE).prerequisite(id("prerequisite"), 1).rewardGroup(Integer.MAX_VALUE, reward).build();
         assertEquals(1, stage.rewardGroupsByLevel().size());
@@ -111,7 +140,8 @@ class ResearchDefinitionTest {
         assertThrows(IllegalArgumentException.class, () -> stage(1, 1).rewardGroup(1, reward).rewardGroup(1, reward).build());
     }
 
-    @Test void conditionReceivesIndependentIdentityLevelTeamAndResourceSnapshots() {
+    @Test
+    void conditionReceivesIndependentIdentityLevelTeamAndResourceSnapshots() {
         var levels = new Object2IntOpenHashMap<ResourceLocation>();
         levels.put(id("a"), 2);
         levels.defaultReturnValue(99);
@@ -124,7 +154,7 @@ class ResearchDefinitionTest {
         amounts.clear();
         var calls = new AtomicInteger();
         var definition = definition("target", 3).specialOnly().itemDownloadLevelCost(0).stage(stage(1, 3).build())
-            .unlock(id("effect"), id("target"), 2).startCondition(input -> {
+                                                .unlock(id("effect"), id("target"), 2).startCondition(input -> {
                 calls.incrementAndGet();
                 return Objects.equals(input.playerId(), actor) && Objects.equals(input.teamId(), "team") && input.targetLevel() == 3
                     && input.teamHasNetworkCenter() && input.teamSharedResearchLevels().getInt(id("a")) == 2
@@ -142,9 +172,10 @@ class ResearchDefinitionTest {
         assertFalse(definition.unlocks(new ResearchUnlockQuery(id("effect"), id("target"), 1)));
     }
 
-    @Test void manualStagesRejectNumericAndUnsupportedCompleteMaterialEffects() {
+    @Test
+    void manualStagesRejectNumericAndUnsupportedCompleteMaterialEffects() {
         assertThrows(IllegalArgumentException.class, () -> stage(1, 1).researchTier(0)
-            .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 1, 1).build()).build());
+                                                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 1, 1).build()).build());
         var chance = new ResourceRequirement(List.of(), List.of(), List.of(), List.of(), false, new ResourceChance(50, null), null);
         var requirement = RecipeRequirements.RESOURCES.requirement(id("chance"), chance);
         assertThrows(IllegalArgumentException.class, () -> stage(1, 1).researchTier(0).materialRequirement(requirement).build());
@@ -152,25 +183,14 @@ class ResearchDefinitionTest {
         assertSame(requirement, ordinary.materialRequirements().getFirst());
         var fixed = new ResourceRequirement(List.of(), List.of());
         assertDoesNotThrow(() -> stage(1, 1).researchTier(0)
-            .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("default_allocation"), fixed)).build());
+                                            .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("default_allocation"), fixed)).build());
         for (var policy : List.of(InputAllocation.SINGLE_SOURCE,
-            InputAllocation.custom(id("custom"), _ -> { throw new AssertionError("Definition validation cannot invoke allocation"); }))) {
+            InputAllocation.custom(id("custom"), _ -> {
+                throw new AssertionError("Definition validation cannot invoke allocation");
+            }))) {
             var allocated = RecipeRequirements.RESOURCES.requirement(id("allocated"), fixed.withInputAllocation(policy));
             assertThrows(IllegalArgumentException.class, () -> stage(1, 1).researchTier(0).materialRequirement(allocated).build());
             assertSame(allocated, stage(1, 1).materialRequirement(allocated).build().materialRequirements().getFirst());
         }
     }
-
-    private static ResearchDefinition.Builder definition(String name, int maxLevel) {
-        return ResearchDefinition.builder(id(name)).maxLevel(maxLevel).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM);
-    }
-    private static ResearchLevelStage.Builder stage(int first, int last) {
-        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
-    }
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
-    }
-    private static ResourceLocation id(String path) { return new ResourceLocation("prototype_eng_test", path); }
 }

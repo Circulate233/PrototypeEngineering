@@ -55,8 +55,13 @@ class WeightedSamplingTest {
             this.values = values;
         }
 
-        @Override public long nextLong() { throw new AssertionError("A bounded draw is required"); }
-        @Override public long nextLong(long bound) {
+        @Override
+        public long nextLong() {
+            throw new AssertionError("A bounded draw is required");
+        }
+
+        @Override
+        public long nextLong(long bound) {
             long value = values[index++];
             assertTrue(value >= 0 && value < bound);
             return value;

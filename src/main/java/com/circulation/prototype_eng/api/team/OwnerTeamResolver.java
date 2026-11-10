@@ -9,6 +9,8 @@ import java.util.UUID;
  */
 @FunctionalInterface
 public interface OwnerTeamResolver {
-    /** Queries persistent player state, including owners who are currently offline. */
+    /**
+     * Queries persistent player state, including owners who are currently offline.
+     */
     OwnerTeamResolution resolve(UUID ownerId);
 }

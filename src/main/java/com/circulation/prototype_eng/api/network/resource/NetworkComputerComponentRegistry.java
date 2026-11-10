@@ -11,13 +11,18 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.function.Function;
 
-/** Loading-time exact AE item identities; one immutable publication closes registration before world use. */
+/**
+ * Loading-time exact AE item identities; one immutable publication closes registration before world use.
+ */
 public final class NetworkComputerComponentRegistry {
     public static final NetworkComputerComponentRegistry INSTANCE = new NetworkComputerComponentRegistry();
     private final Object2ObjectOpenHashMap<AEKey, Function<MachineInstance, NetworkComputerComponent.Capture>> registrations = new Object2ObjectOpenHashMap<>();
-    @Nullable private volatile Frozen frozen;
+    @Nullable
+    private volatile Frozen frozen;
 
-    /** Registration keys must identify exactly one item; count is absent from the AEItemKey identity. */
+    /**
+     * Registration keys must identify exactly one item; count is absent from the AEItemKey identity.
+     */
     public void register(ItemStack item, NetworkComputerComponent provider) {
         Objects.requireNonNull(item);
         Objects.requireNonNull(provider);
@@ -28,9 +33,13 @@ public final class NetworkComputerComponentRegistry {
         registerKey(key, machine -> provider.capture(key.toStack(), machine));
     }
 
-    /** Internal identity boundary shared by real item registration and detached adapter verification. */
+    /**
+     * Internal identity boundary shared by real item registration and detached adapter verification.
+     */
     void registerKey(AEKey key, Function<MachineInstance, NetworkComputerComponent.Capture> capture) {
-        if (frozen != null) { throw new IllegalStateException("Computer component registration has ended"); }
+        if (frozen != null) {
+            throw new IllegalStateException("Computer component registration has ended");
+        }
         Objects.requireNonNull(key);
         Objects.requireNonNull(capture);
         if (registrations.putIfAbsent(key, capture) != null) {
@@ -39,7 +48,9 @@ public final class NetworkComputerComponentRegistry {
     }
 
     public void freeze(NetworkResourceRegistry resources) {
-        if (frozen != null) { throw new IllegalStateException("Computer component registry already frozen"); }
+        if (frozen != null) {
+            throw new IllegalStateException("Computer component registry already frozen");
+        }
         if (!Objects.requireNonNull(resources).isFrozen()) {
             throw new IllegalStateException("Computer components require frozen computing resources");
         }
@@ -47,11 +58,15 @@ public final class NetworkComputerComponentRegistry {
         registrations.clear();
     }
 
-    /** Unknown items are ordinary inventory contents and supply nothing. */
+    /**
+     * Unknown items are ordinary inventory contents and supply nothing.
+     */
     NetworkComputerComponent.Capture capture(AEKey key, MachineInstance computer) {
         var current = requireFrozen();
         var provider = current.providers.get(key);
-        if (provider == null) { throw new IllegalArgumentException("Unregistered computer component item"); }
+        if (provider == null) {
+            throw new IllegalArgumentException("Unregistered computer component item");
+        }
         var capture = Objects.requireNonNull(provider.apply(computer), "Computer component supply capture");
         var supplied = capture.resourcesPerItem();
         var validated = new Object2LongOpenHashMap<NetworkResourceType>();
@@ -66,16 +81,24 @@ public final class NetworkComputerComponentRegistry {
         return new NetworkComputerComponent.Capture(validated, capture.current());
     }
 
-    void requireReady() { requireFrozen(); }
+    void requireReady() {
+        requireFrozen();
+    }
 
-    boolean registered(AEKey key) { return requireFrozen().providers.containsKey(key); }
+    boolean registered(AEKey key) {
+        return requireFrozen().providers.containsKey(key);
+    }
 
     private Frozen requireFrozen() {
         var current = frozen;
-        if (current == null) { throw new IllegalStateException("Computer component registry is not ready"); }
+        if (current == null) {
+            throw new IllegalStateException("Computer component registry is not ready");
+        }
         return current;
     }
 
-    private record Frozen(Object2ObjectOpenHashMap<AEKey, Function<MachineInstance, NetworkComputerComponent.Capture>> providers,
-                          NetworkResourceRegistry resources) { }
+    private record Frozen(
+        Object2ObjectOpenHashMap<AEKey, Function<MachineInstance, NetworkComputerComponent.Capture>> providers,
+        NetworkResourceRegistry resources) {
+    }
 }

@@ -9,8 +9,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequiremen
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -19,8 +19,8 @@ import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.client.resources.JeiTestLocale;
+import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

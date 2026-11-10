@@ -22,11 +22,26 @@ class TransactionGroupBudgetFailureTest {
         var callbacks = new AtomicInteger();
         var child = new ReversibleTransaction() {
             private Resolution state = Resolution.REVERSIBLE;
-            @Override public void commit() { }
-            @Override public void rollback() { callbacks.incrementAndGet(); state = Resolution.ROLLED_BACK; throw fatal; }
-            @Override public Resolution resolution() { return state; }
+
+            @Override
+            public void commit() {
+            }
+
+            @Override
+            public void rollback() {
+                callbacks.incrementAndGet();
+                state = Resolution.ROLLED_BACK;
+                throw fatal;
+            }
+
+            @Override
+            public Resolution resolution() {
+                return state;
+            }
         };
-        var group = TransactionGroup.frozen(List.of(TransactionGroup.callbacks(() -> { }, () -> { }, later::incrementAndGet), child));
+        var group = TransactionGroup.frozen(List.of(TransactionGroup.callbacks(() -> {
+        }, () -> {
+        }, later::incrementAndGet), child));
         assertFalse(group.rollbackWithinBudget(new RecipeWorkBudget(1)), "Selecting the real composite child retains its original callback");
         assertEquals(0, callbacks.get());
         var lastCredit = new RecipeWorkBudget(1);
@@ -47,11 +62,25 @@ class TransactionGroupBudgetFailureTest {
         var fatal = new StackOverflowError("exact query");
         var queries = new AtomicInteger();
         var child = new ReversibleTransaction() {
-            @Override public void commit() { }
-            @Override public void rollback() { throw ordinary; }
-            @Override public Resolution resolution() { queries.incrementAndGet(); throw fatal; }
+            @Override
+            public void commit() {
+            }
+
+            @Override
+            public void rollback() {
+                throw ordinary;
+            }
+
+            @Override
+            public Resolution resolution() {
+                queries.incrementAndGet();
+                throw fatal;
+            }
         };
-        var group = TransactionGroup.frozen(List.of(child, TransactionGroup.callbacks(() -> { }, () -> { }, () -> { })));
+        var group = TransactionGroup.frozen(List.of(child, TransactionGroup.callbacks(() -> {
+        }, () -> {
+        }, () -> {
+        })));
         assertSame(ordinary, assertThrows(IllegalStateException.class, () -> group.rollbackWithinBudget(new RecipeWorkBudget(20))));
         assertNull(group.resolutionWithinBudget(new RecipeWorkBudget(1)));
         var lastCredit = new RecipeWorkBudget(1);

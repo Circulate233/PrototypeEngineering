@@ -1,19 +1,21 @@
 package com.circulation.prototype_eng.machine.render;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-
-import java.util.Collections;
-import java.util.Objects;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class MachineAnimationStateTest {
     @Test

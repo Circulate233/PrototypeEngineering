@@ -19,7 +19,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Default tiered energy hatch; independent entities extend HatchBlock with their own entity type. */
+/**
+ * Default tiered energy hatch; independent entities extend HatchBlock with their own entity type.
+ */
 public class EnergyHatchBlock extends HatchBlock<EnergyHatchBlockEntity> {
     private final HatchMode mode;
     private final HatchTier tier;

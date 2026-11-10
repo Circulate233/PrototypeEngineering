@@ -1,28 +1,29 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import javax.vecmath.Vector3f;
-import javax.vecmath.Point3f;
-
-import net.minecraft.util.EnumFacing;
-
-import java.util.Arrays;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.util.EnumFacing;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 import software.bernie.geckolib3.geo.render.built.GeoModel;
 
+import javax.vecmath.Point3f;
+import javax.vecmath.Vector3f;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static com.circulation.prototype_eng.client.render.BModelFixtures.*;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.bone;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.cube;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.model;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GeckoModelGeometryTest {
     static Map<MachineRenderPass, int[]> packed(GeoModel model, GeckoModelBaker.BakeMode mode, Set<String> active, Set<String> potential) {

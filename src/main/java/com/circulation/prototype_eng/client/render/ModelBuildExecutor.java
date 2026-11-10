@@ -4,8 +4,8 @@ import com.circulation.prototype_eng.client.render.gecko.GeckoModelBuildTask;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /** Dedicated CPU executor. Closing never joins workers that may be waiting for a client mapping reply. */

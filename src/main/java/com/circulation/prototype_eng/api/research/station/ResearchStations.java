@@ -6,9 +6,11 @@ import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
+import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleContext;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
@@ -27,19 +29,18 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-
-import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleContext;
 import java.util.function.Predicate;
-import net.minecraft.util.ResourceLocation;
 
-/** Owner-side station selection. One dimension and world session share one material pool per segment. */
+/**
+ * Owner-side station selection. One dimension and world session share one material pool per segment.
+ */
 public final class ResearchStations {
     private final MachineIdentityRegistry identities;
     private final Runnable ownerCheck;
@@ -60,42 +61,142 @@ public final class ResearchStations {
         this.absenceProof = Objects.requireNonNull(absenceProof);
     }
 
+    static List<Site> validatedSites(List<Site> sites) {
+        var saved = List.copyOf(sites);
+        if (saved.isEmpty()) {
+            throw new IllegalArgumentException("A material segment requires physical stations");
+        }
+        int dimension = saved.getFirst().location().dimension();
+        var ids = new ObjectLinkedOpenHashSet<UUID>();
+        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>();
+        for (var site : saved) {
+            if (!ids.add(site.identity().machineId()) || !locations.add(site.location()) || site.location().dimension() != dimension) {
+                throw new IllegalArgumentException("Saved stations must be distinct and in one dimension");
+            }
+        }
+        return saved;
+    }
+
+    private static MachineHatches pool(List<MachineHatches> sources) {
+        var resources = new ObjectArrayList<ResourceHatch>();
+        var inputs = new ObjectArrayList<EnergyInput>();
+        var outputs = new ObjectArrayList<EnergyOutput>();
+        for (var hatches : sources) {
+            resources.addAll(hatches.resources());
+            inputs.addAll(hatches.energyInputs());
+            outputs.addAll(hatches.energyOutputs());
+        }
+        return new MachineHatches(resources, inputs, outputs);
+    }
+
+    @Nullable
+    private static Station candidate(MachineIdentityRegistry.Registration identity, MachineInstance machine, String teamId, int tier) {
+        var binding = attachment(machine);
+        if (binding == null) {
+            return null;
+        }
+        var permit = binding.role.workPermit();
+        if (!eligible(permit, identity, teamId, tier)) {
+            return null;
+        }
+        var result = new Station(identity, machine, binding.type, binding.role, MachineHatches.get(machine), Objects.requireNonNull(permit));
+        return result.physicallyCurrent() ? result : null;
+    }
+
+    @Nullable
+    private static RoleBinding attachment(MachineInstance machine) {
+        ComponentType<MachineInstance, ?> roleType = null;
+        MachineNetworkDevice role = null;
+        for (var binding : machine.components().assemblyBindings()) {
+            if (binding.component() instanceof MachineNetworkDevice device) {
+                if (role != null) {
+                    throw new IllegalStateException("Machine has multiple network attachments");
+                }
+                role = device;
+                roleType = binding.type();
+            }
+        }
+        return role == null ? null : new RoleBinding(Objects.requireNonNull(roleType), role);
+    }
+
+    private static boolean eligible(@Nullable NetworkRuntime.WorkPermit permit, MachineIdentityRegistry.Registration identity, String teamId, int tier) {
+        if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) {
+            return false;
+        }
+        var snapshot = permit.deviceSnapshot();
+        var dataCenter = permit.dataCenterResearch();
+        return snapshot.identity().equals(identity.identity()) && snapshot.loadOrder() == identity.loadOrder()
+            && snapshot.role() == NetworkDeviceRole.RESEARCH_STATION && snapshot.formed() && snapshot.level() >= tier
+            && dataCenter != null && dataCenter.level() >= tier;
+    }
+
+    private static boolean lease(NetworkRuntime.WorkPermit permit) {
+        var status = permit.requestLease();
+        return status == NetworkTeamBudget.LeaseStatus.GRANTED || status == NetworkTeamBudget.LeaseStatus.ALREADY_GRANTED;
+    }
+
+    private static boolean physicalCurrent(MachineIdentityRegistry.Registration identity, MachineInstance machine, MachineHatches hatches) {
+        var lifecycle = machine.lifecycle();
+        return identity.unique() && identity.runtimeIdentity() == machine && lifecycle != null && lifecycle.state() == MachineLifecycle.State.LOADED
+            && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
+            && MachineHatches.get(machine) == hatches && hatches.resources().stream().allMatch(ResourceHatch::isValid)
+            && hatches.energyInputs().stream().allMatch(EnergyInput::isValid) && hatches.energyOutputs().stream().allMatch(EnergyOutput::isValid);
+    }
+
     public boolean absent(Site site) {
         ownerCheck.run();
         return absenceProof.test(Objects.requireNonNull(site));
     }
 
-    /** Capture admission facts without selecting a material pool, taking a lease or consuming work. */
+    /**
+     * Capture admission facts without selecting a material pool, taking a lease or consuming work.
+     */
     public Admission admission(String teamId) {
         ownerCheck.run();
-        if (Objects.requireNonNull(teamId).isBlank()) { throw new IllegalArgumentException("Research admission requires a team"); }
+        if (Objects.requireNonNull(teamId).isBlank()) {
+            throw new IllegalArgumentException("Research admission requires a team");
+        }
         long revision = identities.revision();
         AdmissionDevice center = null;
         var stations = new ObjectArrayList<AdmissionDevice>();
         for (var identity : identities.uniqueRegistrations()) {
-            if (!(identity.runtimeIdentity() instanceof MachineInstance machine)) { continue; }
+            if (!(identity.runtimeIdentity() instanceof MachineInstance machine)) {
+                continue;
+            }
             var binding = attachment(machine);
-            if (binding == null) { continue; }
+            if (binding == null) {
+                continue;
+            }
             var permit = binding.role.workPermit();
-            if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) { continue; }
+            if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) {
+                continue;
+            }
             var snapshot = permit.deviceSnapshot();
             var state = binding.role.state();
-            if (!snapshot.identity().equals(identity.identity()) || snapshot.loadOrder() != identity.loadOrder() || !snapshot.formed()) { continue; }
+            if (!snapshot.identity().equals(identity.identity()) || snapshot.loadOrder() != identity.loadOrder() || !snapshot.formed()) {
+                continue;
+            }
             if (state == NetworkWorkState.ACTIVE_CENTER && snapshot.role() == NetworkDeviceRole.NETWORK_CENTER) {
-                if (center != null) { throw new IllegalStateException("Team has multiple active physical network centers"); }
+                if (center != null) {
+                    throw new IllegalStateException("Team has multiple active physical network centers");
+                }
                 center = new AdmissionDevice(identity, machine, binding, permit, NetworkWorkState.ACTIVE_CENTER);
             } else if (state == NetworkWorkState.ACTIVE_DEVICE && snapshot.role() == NetworkDeviceRole.RESEARCH_STATION) {
                 stations.add(new AdmissionDevice(identity, machine, binding, permit, NetworkWorkState.ACTIVE_DEVICE));
             }
         }
-        if (center == null) { return new Admission(this, revision, new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), List.of()); }
+        if (center == null) {
+            return new Admission(this, revision, new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), List.of());
+        }
         int level = center.permit.deviceSnapshot().level();
         var dataCenter = center.permit.dataCenterResearch();
         int highestStation = 0;
         var sources = new ObjectArrayList<AdmissionDevice>();
         sources.add(center);
         for (var station : stations) {
-            if (station.permit.epoch() != center.permit.epoch() || station.permit.tick() != center.permit.tick()) { continue; }
+            if (station.permit.epoch() != center.permit.epoch() || station.permit.tick() != center.permit.tick()) {
+                continue;
+            }
             highestStation = Math.max(highestStation, station.permit.deviceSnapshot().level());
             sources.add(station);
         }
@@ -103,23 +204,39 @@ public final class ResearchStations {
             highestStation, center.permit.availableResources()), sources);
     }
 
-    /** Lease acquisition precedes queue.planSegment; station count scales numeric grant limits, not material copies. */
-    @Nullable public Capture capture(String teamId, int requiredTier) {
+    /**
+     * Lease acquisition precedes queue.planSegment; station count scales numeric grant limits, not material copies.
+     */
+    @Nullable
+    public Capture capture(String teamId, int requiredTier) {
         ownerCheck.run();
-        if (Objects.requireNonNull(teamId).isBlank() || requiredTier < 1) { throw new IllegalArgumentException("Station selection requires a team and positive tier"); }
+        if (Objects.requireNonNull(teamId).isBlank() || requiredTier < 1) {
+            throw new IllegalArgumentException("Station selection requires a team and positive tier");
+        }
         var byDimension = new Int2ObjectOpenHashMap<ObjectArrayList<Station>>();
         for (var identity : identities.uniqueRegistrations()) {
-            if (!(identity.runtimeIdentity() instanceof MachineInstance machine)) { continue; }
+            if (!(identity.runtimeIdentity() instanceof MachineInstance machine)) {
+                continue;
+            }
             var station = candidate(identity, machine, teamId, requiredTier);
-            if (station != null) { byDimension.computeIfAbsent(identity.location().dimension(), _ -> new ObjectArrayList<>()).add(station); }
+            if (station != null) {
+                byDimension.computeIfAbsent(identity.location().dimension(), _ -> new ObjectArrayList<>()).add(station);
+            }
         }
-        if (byDimension.isEmpty()) { return null; }
+        if (byDimension.isEmpty()) {
+            return null;
+        }
         var dimensions = new IntArrayList(byDimension.keySet());
         dimensions.sort(Integer::compare);
         int dimension = dimensions.getInt(0);
         if (lastDimensions.containsKey(teamId)) {
             int previous = lastDimensions.getInt(teamId);
-            for (int next : dimensions) { if (next > previous) { dimension = next; break; } }
+            for (int next : dimensions) {
+                if (next > previous) {
+                    dimension = next;
+                    break;
+                }
+            }
         }
         lastDimensions.put(teamId, dimension);
         var candidates = byDimension.get(dimension);
@@ -127,9 +244,13 @@ public final class ResearchStations {
         Object worldIdentity = candidates.getFirst().identity.worldIdentity();
         var leased = new ObjectArrayList<Station>();
         for (var station : candidates) {
-            if (station.identity.worldIdentity() == worldIdentity && station.physicallyCurrent() && lease(station.permit)) { leased.add(station); }
+            if (station.identity.worldIdentity() == worldIdentity && station.physicallyCurrent() && lease(station.permit)) {
+                leased.add(station);
+            }
         }
-        if (leased.isEmpty()) { return null; }
+        if (leased.isEmpty()) {
+            return null;
+        }
         var result = new Capture(this, teamId, requiredTier, dimension, leased, pool(leased.stream().map(Station::hatches).toList()));
         return result.current() ? result : null;
     }
@@ -174,8 +295,11 @@ public final class ResearchStations {
         return result.current() ? result : null;
     }
 
-    /** Reacquire only real physical owners for terminal cleanup, even after their network team changes. */
-    @Nullable public CleanupSources restoreForCleanup(List<Site> sites) {
+    /**
+     * Reacquire only real physical owners for terminal cleanup, even after their network team changes.
+     */
+    @Nullable
+    public CleanupSources restoreForCleanup(List<Site> sites) {
         ownerCheck.run();
         var saved = validatedSites(sites);
         var registered = uniqueById();
@@ -184,11 +308,18 @@ public final class ResearchStations {
         for (var site : saved) {
             var identity = registered.get(site.identity().machineId());
             if (identity == null || !identity.identity().equals(site.identity()) || !identity.location().equals(site.location())
-                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) { return null; }
-            if (worldIdentity == null) { worldIdentity = identity.worldIdentity(); }
-            else if (identity.worldIdentity() != worldIdentity) { return null; }
+                || !(identity.runtimeIdentity() instanceof MachineInstance machine)) {
+                return null;
+            }
+            if (worldIdentity == null) {
+                worldIdentity = identity.worldIdentity();
+            } else if (identity.worldIdentity() != worldIdentity) {
+                return null;
+            }
             var restoredSite = new PhysicalSite(identity, machine, MachineHatches.get(machine));
-            if (!restoredSite.current()) { return null; }
+            if (!restoredSite.current()) {
+                return null;
+            }
             restored.add(restoredSite);
         }
         var result = new CleanupSources(this, saved, restored, pool(restored.stream().map(PhysicalSite::hatches).toList()));
@@ -197,11 +328,15 @@ public final class ResearchStations {
 
     private Object2ObjectOpenHashMap<UUID, MachineIdentityRegistry.Registration> uniqueById() {
         var registered = new Object2ObjectOpenHashMap<UUID, MachineIdentityRegistry.Registration>();
-        for (var identity : identities.uniqueRegistrations()) { registered.put(identity.identity().machineId(), identity); }
+        for (var identity : identities.uniqueRegistrations()) {
+            registered.put(identity.identity().machineId(), identity);
+        }
         return registered;
     }
 
-    /** Observe the original registration during ControllerBroken, before Unloaded closes it. */
+    /**
+     * Observe the original registration during ControllerBroken, before Unloaded closes it.
+     */
     @Nullable
     public Site destroyedSite(MachineLifecycleContext context) {
         ownerCheck.run();
@@ -216,32 +351,6 @@ public final class ResearchStations {
             }
         }
         return null;
-    }
-
-    static List<Site> validatedSites(List<Site> sites) {
-        var saved = List.copyOf(sites);
-        if (saved.isEmpty()) { throw new IllegalArgumentException("A material segment requires physical stations"); }
-        int dimension = saved.getFirst().location().dimension();
-        var ids = new ObjectLinkedOpenHashSet<UUID>();
-        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>();
-        for (var site : saved) {
-            if (!ids.add(site.identity().machineId()) || !locations.add(site.location()) || site.location().dimension() != dimension) {
-                throw new IllegalArgumentException("Saved stations must be distinct and in one dimension");
-            }
-        }
-        return saved;
-    }
-
-    private static MachineHatches pool(List<MachineHatches> sources) {
-        var resources = new ObjectArrayList<ResourceHatch>();
-        var inputs = new ObjectArrayList<EnergyInput>();
-        var outputs = new ObjectArrayList<EnergyOutput>();
-        for (var hatches : sources) {
-            resources.addAll(hatches.resources());
-            inputs.addAll(hatches.energyInputs());
-            outputs.addAll(hatches.energyOutputs());
-        }
-        return new MachineHatches(resources, inputs, outputs);
     }
 
     /**
@@ -268,31 +377,11 @@ public final class ResearchStations {
         return result.current() ? result : null;
     }
 
-    @Nullable private static Station candidate(MachineIdentityRegistry.Registration identity, MachineInstance machine, String teamId, int tier) {
-        var binding = attachment(machine);
-        if (binding == null) { return null; }
-        var permit = binding.role.workPermit();
-        if (!eligible(permit, identity, teamId, tier)) { return null; }
-        var result = new Station(identity, machine, binding.type, binding.role, MachineHatches.get(machine), Objects.requireNonNull(permit));
-        return result.physicallyCurrent() ? result : null;
+    private record RoleBinding(ComponentType<MachineInstance, ?> type, MachineNetworkDevice role) {
     }
 
-    @Nullable private static RoleBinding attachment(MachineInstance machine) {
-        ComponentType<MachineInstance, ?> roleType = null;
-        MachineNetworkDevice role = null;
-        for (var binding : machine.components().assemblyBindings()) {
-            if (binding.component() instanceof MachineNetworkDevice device) {
-                if (role != null) { throw new IllegalStateException("Machine has multiple network attachments"); }
-                role = device;
-                roleType = binding.type();
-            }
-        }
-        return role == null ? null : new RoleBinding(Objects.requireNonNull(roleType), role);
-    }
-
-    private record RoleBinding(ComponentType<MachineInstance, ?> type, MachineNetworkDevice role) { }
-
-    private record AdmissionDevice(MachineIdentityRegistry.Registration identity, MachineInstance machine, RoleBinding binding,
+    private record AdmissionDevice(MachineIdentityRegistry.Registration identity, MachineInstance machine,
+                                   RoleBinding binding,
                                    NetworkRuntime.WorkPermit permit, NetworkWorkState state) {
         private boolean current() {
             var lifecycle = machine.lifecycle();
@@ -300,20 +389,6 @@ public final class ResearchStations {
                 && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
                 && machine.components().get(binding.type) == binding.role && binding.role.state() == state && permit.authorized();
         }
-    }
-
-    private static boolean eligible(@Nullable NetworkRuntime.WorkPermit permit, MachineIdentityRegistry.Registration identity, String teamId, int tier) {
-        if (permit == null || !permit.current() || !permit.teamId().equals(teamId)) { return false; }
-        var snapshot = permit.deviceSnapshot();
-        var dataCenter = permit.dataCenterResearch();
-        return snapshot.identity().equals(identity.identity()) && snapshot.loadOrder() == identity.loadOrder()
-            && snapshot.role() == NetworkDeviceRole.RESEARCH_STATION && snapshot.formed() && snapshot.level() >= tier
-            && dataCenter != null && dataCenter.level() >= tier;
-    }
-
-    private static boolean lease(NetworkRuntime.WorkPermit permit) {
-        var status = permit.requestLease();
-        return status == NetworkTeamBudget.LeaseStatus.GRANTED || status == NetworkTeamBudget.LeaseStatus.ALREADY_GRANTED;
     }
 
     private record Station(MachineIdentityRegistry.Registration identity, MachineInstance machine,
@@ -326,34 +401,38 @@ public final class ResearchStations {
         }
     }
 
-    private static boolean physicalCurrent(MachineIdentityRegistry.Registration identity, MachineInstance machine, MachineHatches hatches) {
-        var lifecycle = machine.lifecycle();
-        return identity.unique() && identity.runtimeIdentity() == machine && lifecycle != null && lifecycle.state() == MachineLifecycle.State.LOADED
-            && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
-            && MachineHatches.get(machine) == hatches && hatches.resources().stream().allMatch(ResourceHatch::isValid)
-            && hatches.energyInputs().stream().allMatch(EnergyInput::isValid) && hatches.energyOutputs().stream().allMatch(EnergyOutput::isValid);
-    }
-
-    private record PhysicalSite(MachineIdentityRegistry.Registration identity, MachineInstance machine, MachineHatches hatches) {
-        private boolean current() { return physicalCurrent(identity, machine, hatches); }
+    private record PhysicalSite(MachineIdentityRegistry.Registration identity, MachineInstance machine,
+                                MachineHatches hatches) {
+        private boolean current() {
+            return physicalCurrent(identity, machine, hatches);
+        }
     }
 
     /**
      * Only physical identity and location are persistent; world sessions, runtimes and permits are not.
      */
-    public record Site(PersistentMachineIdentity identity, MachineIdentity location, @Nullable ResourceLocation controllerBlockId) {
+    public record Site(PersistentMachineIdentity identity, MachineIdentity location,
+                       @Nullable ResourceLocation controllerBlockId) {
         public Site(PersistentMachineIdentity identity, MachineIdentity location) {
             this(identity, location, null);
         }
-        public Site { Objects.requireNonNull(identity); Objects.requireNonNull(location); }
 
-        /** The block provenance is recovery evidence, not an additional runtime identity. */
+        public Site {
+            Objects.requireNonNull(identity);
+            Objects.requireNonNull(location);
+        }
+
+        /**
+         * The block provenance is recovery evidence, not an additional runtime identity.
+         */
         public boolean sameStation(Site other) {
             return identity.equals(other.identity) && location.equals(other.location);
         }
     }
 
-    /** Frozen original network facts; revalidation never obtains replacement permission after callbacks. */
+    /**
+     * Frozen original network facts; revalidation never obtains replacement permission after callbacks.
+     */
     public static final class Admission {
         private final ResearchStations selector;
         private final long revision;
@@ -367,15 +446,22 @@ public final class ResearchStations {
             this.sources = List.copyOf(sources);
         }
 
-        public TeamResearchStart.Environment environment() { return environment; }
+        public TeamResearchStart.Environment environment() {
+            return environment;
+        }
+
         public boolean current() {
             selector.ownerCheck.run();
-            if (selector.identities.revision() != revision || !sources.stream().allMatch(AdmissionDevice::current)) { return false; }
+            if (selector.identities.revision() != revision || !sources.stream().allMatch(AdmissionDevice::current)) {
+                return false;
+            }
             return sources.isEmpty() || environment.availableResources().equals(sources.getFirst().permit.availableResources());
         }
     }
 
-    /** Physical-only recovery proof. This type grants no forward work, network lease or numeric supply. */
+    /**
+     * Physical-only recovery proof. This type grants no forward work, network lease or numeric supply.
+     */
     public static final class CleanupSources {
         private final ResearchStations selector;
         private final List<Site> sites;
@@ -389,13 +475,27 @@ public final class ResearchStations {
             this.hatches = hatches;
         }
 
-        public List<Site> sites() { return sites; }
-        public MachineInstance primary() { return physical.getFirst().machine(); }
-        public MachineHatches hatches() { return hatches; }
-        public boolean current() { selector.ownerCheck.run(); return physical.stream().allMatch(PhysicalSite::current); }
+        public List<Site> sites() {
+            return sites;
+        }
+
+        public MachineInstance primary() {
+            return physical.getFirst().machine();
+        }
+
+        public MachineHatches hatches() {
+            return hatches;
+        }
+
+        public boolean current() {
+            selector.ownerCheck.run();
+            return physical.stream().allMatch(PhysicalSite::current);
+        }
     }
 
-    /** Immutable site/source identities with replaceable per-tick authority; no station registry or numeric reservation. */
+    /**
+     * Immutable site/source identities with replaceable per-tick authority; no station registry or numeric reservation.
+     */
     public static final class Capture {
         private final ResearchStations selector;
         private final String teamId;
@@ -427,24 +527,54 @@ public final class ResearchStations {
             stationIds = ObjectSets.unmodifiable(ids);
         }
 
-        public String teamId() { return teamId; }
-        @SuppressWarnings("unused") // Consumers retain the tier alongside the frozen station/source contract.
-        public int requiredTier() { return requiredTier; }
-        public int dimension() { return dimension; }
-        public ObjectSet<UUID> stationIds() { return stationIds; }
-        public List<Site> sites() { return sites; }
-        public List<MachineInstance> machines() { return machines; }
-        public MachineInstance primary() { return stations.getFirst().machine; }
-        public MachineHatches hatches() { return hatches; }
-        public Object2LongMap<NetworkResourceType> numericResources() { return stations.getFirst().permit.numericResources(); }
+        public String teamId() {
+            return teamId;
+        }
 
-        /** Owner-only version/binding proofs remain valid inside source fences; no inventory is re-read or locked. */
+        @SuppressWarnings("unused") // Consumers retain the tier alongside the frozen station/source contract.
+        public int requiredTier() {
+            return requiredTier;
+        }
+
+        public int dimension() {
+            return dimension;
+        }
+
+        public ObjectSet<UUID> stationIds() {
+            return stationIds;
+        }
+
+        public List<Site> sites() {
+            return sites;
+        }
+
+        public List<MachineInstance> machines() {
+            return machines;
+        }
+
+        public MachineInstance primary() {
+            return stations.getFirst().machine;
+        }
+
+        public MachineHatches hatches() {
+            return hatches;
+        }
+
+        public Object2LongMap<NetworkResourceType> numericResources() {
+            return stations.getFirst().permit.numericResources();
+        }
+
+        /**
+         * Owner-only version/binding proofs remain valid inside source fences; no inventory is re-read or locked.
+         */
         public boolean current() {
             selector.ownerCheck.run();
             long epoch = stations.getFirst().permit.epoch();
             long tick = stations.getFirst().permit.tick();
             for (var station : stations) {
-                if (station.permit.epoch() != epoch || station.permit.tick() != tick || !station.physicallyCurrent() || !station.permit.authorized()) { return false; }
+                if (station.permit.epoch() != epoch || station.permit.tick() != tick || !station.physicallyCurrent() || !station.permit.authorized()) {
+                    return false;
+                }
             }
             return stations.stream().allMatch(Station::physicallyCurrent);
         }

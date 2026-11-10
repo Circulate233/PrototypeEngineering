@@ -9,9 +9,13 @@ import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
  * method may acquire resources or replay callbacks; the next acquireNext starts a new candidate.
  */
 public interface RequirementAlternatives extends RequirementContinuation {
-    /** Whether the next acquisition begins a new independently rejectable candidate. */
+    /**
+     * Whether the next acquisition begins a new independently rejectable candidate.
+     */
     boolean startsAlternative();
 
-    /** Advances the cursor after the rejected candidate's exact compensation has completed. */
+    /**
+     * Advances the cursor after the rejected candidate's exact compensation has completed.
+     */
     void rejectAlternative(ProcessResult rejected);
 }

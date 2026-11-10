@@ -7,7 +7,9 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Objects;
 import java.util.Set;
 
-/** Startup factory registration only; shape publication remains owned by MachineTypeRegistry. */
+/**
+ * Startup factory registration only; shape publication remains owned by MachineTypeRegistry.
+ */
 public final class StructurePredicateRegistry {
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, Registration> factories = new Object2ObjectLinkedOpenHashMap<>();
     private boolean frozen;
@@ -48,5 +50,6 @@ public final class StructurePredicateRegistry {
         }
     }
 
-    private record Registration(Set<String> fields, StructurePredicateFactory factory) {}
+    private record Registration(Set<String> fields, StructurePredicateFactory factory) {
+    }
 }

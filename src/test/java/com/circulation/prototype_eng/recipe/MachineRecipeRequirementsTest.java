@@ -37,23 +37,91 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class MachineRecipeRequirementsTest {
     private static final ComponentType<MachineInstance, MachineRecipeRequirements> PROVIDER =
         new ComponentType<>(id("provider"), _ -> _ -> List.of(), List.of());
     private static final ResourceLocation SCORE = id("score");
 
-    @Test void providedNestedRequirementsExecuteAndAbortThroughTheirActualFrozenPaths() {
+    private static void assertProbeScope(RecipeProcess process, RequirementPath path, RecipeProcess.Tick tick) {
+        assertTrue(process.probing());
+        assertEquals(path, process.requirementPath());
+        assertSame(tick, process.tickContext());
+    }
+
+    private static MachineInstance owner(List<RecipeRequirement<?>> roots) {
+        var owner = new MachineInstance();
+        owner.components().put(PROVIDER, _ -> roots);
+        return owner;
+    }
+
+    private static EnergyBuffer energy(long amount) {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        energy.receiveEnergy(amount, Actionable.MODULATE);
+        return energy;
+    }
+
+    private static RecipeRequirement<String> observer(String name,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action, List<String> events) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.END);
+            }
+
+            @Override
+            public void cancel(RecipeProcess process, RecipeRequirement<String> requirement) {
+                events.add("cancel:" + name);
+            }
+        };
+        return new RecipeRequirementType<>(id(name), system).requirement(id(name), "value");
+    }
+
+    private static ResourceLocation id(String value) {
+        return new ResourceLocation("machine_requirement_test", value);
+    }
+
+    @Test
+    void providedNestedRequirementsExecuteAndAbortThroughTheirActualFrozenPaths() {
         var events = new ObjectArrayList<String>();
         var leaf = observer("leaf", (current, phase) -> {
             assertFalse(current.probing());
             var path = current.requirementPath();
             assertNotNull(Objects.requireNonNull(path.parent()).parent());
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { assertEquals(path, current.requirementPath()); events.add(phase.name()); }
-                @Override public void rollback() { }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    assertEquals(path, current.requirementPath());
+                    events.add(phase.name());
+                }
+
+                @Override
+                public void rollback() {
+                }
             };
         }, events);
         var selection = RecipeRequirements.SELECTIVE.requirement(id("selection"), new SelectiveRequirement(List.of(leaf)));
@@ -77,7 +145,8 @@ class MachineRecipeRequirementsTest {
         active.requirePersistenceBoundary();
     }
 
-    @Test void codecRestoresProvidedSelectionAndItsExactOverlayTargetsWithoutRerunningStart() {
+    @Test
+    void codecRestoresProvidedSelectionAndItsExactOverlayTargetsWithoutRerunningStart() {
         var energy = energy(100);
         var leaf = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(0, 1, 0, 0, false));
         int[] modifierCalls = {0};
@@ -110,7 +179,8 @@ class MachineRecipeRequirementsTest {
         restored.requirePersistenceBoundary();
     }
 
-    @Test void savedGraphRejectsDeletedOrChangedProviderRootsAndMissingNestedOwnership() {
+    @Test
+    void savedGraphRejectsDeletedOrChangedProviderRootsAndMissingNestedOwnership() {
         var leaf = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(0, 0, 0, 0, false));
         var selection = RecipeRequirements.SELECTIVE.requirement(id("selection"), new SelectiveRequirement(List.of(leaf)));
         var recipe = new MachineRecipe(id("recipe"), 2, List.of());
@@ -129,7 +199,8 @@ class MachineRecipeRequirementsTest {
         original.requirePersistenceBoundary();
     }
 
-    @Test void fixedIoAdmissionIncludesProvidedTickCosts() {
+    @Test
+    void fixedIoAdmissionIncludesProvidedTickCosts() {
         var requirement = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(0, 10, 0, 0, false));
         var owner = owner(List.of(requirement));
         owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(energy(5)), List.of()));
@@ -138,11 +209,13 @@ class MachineRecipeRequirementsTest {
         process.requirePersistenceBoundary();
     }
 
-    @Test void captureRejectsConflictingRootsAndFreezesProviderDeclarationLists() {
+    @Test
+    void captureRejectsConflictingRootsAndFreezesProviderDeclarationLists() {
         var base = observer("same", (_, _) -> RequirementTransaction.SUCCESS, new ObjectArrayList<>());
         var recipe = new MachineRecipe(id("recipe"), 2, List.of(base));
         assertThrows(IllegalArgumentException.class, () -> new RecipeProcess(owner(List.of(base)), recipe, 17));
-        var aliasedType = new RecipeRequirementType<>(base.type().id(), new RecipeRequirementSystem<String>() { });
+        var aliasedType = new RecipeRequirementType<>(base.type().id(), new RecipeRequirementSystem<String>() {
+        });
         var aliased = aliasedType.requirement(id("other"), "value");
         assertThrows(IllegalArgumentException.class, () -> new RecipeProcess(owner(List.of(aliased)), recipe, 17));
         assertThrows(IllegalArgumentException.class, () -> new RecipeProcess(owner(List.of(base.withPayload("changed"))),
@@ -158,7 +231,8 @@ class MachineRecipeRequirementsTest {
         assertSame(recipe.orderedRequirements(), new RecipeProcess(new MachineInstance(), recipe, 17).orderedRequirements());
     }
 
-    @Test void explicitProbeScopeCoversAcquisitionAndCleanupWithoutMistakingOrdinaryNewProcesses() {
+    @Test
+    void explicitProbeScopeCoversAcquisitionAndCleanupWithoutMistakingOrdinaryNewProcesses() {
         var events = new ObjectArrayList<String>();
         var requirement = observer("probe", (current, phase) -> {
             events.add((current.probing() ? "probe:" : "work:") + phase);
@@ -167,9 +241,21 @@ class MachineRecipeRequirementsTest {
                 assertThrows(IllegalStateException.class, current::cancel);
             }
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { assertFalse(current.probing()); }
-                @Override public void rollback() { assertTrue(current.probing()); events.add("cleanup:" + phase); }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    assertFalse(current.probing());
+                }
+
+                @Override
+                public void rollback() {
+                    assertTrue(current.probing());
+                    events.add("cleanup:" + phase);
+                }
             };
         }, events);
         var process = new RecipeProcess(owner(List.of(requirement)), new MachineRecipe(id("recipe"), 0, List.of()), 17);
@@ -181,7 +267,8 @@ class MachineRecipeRequirementsTest {
         process.requirePersistenceBoundary();
     }
 
-    @Test void deferredProbeCleanupAndQueriesRestoreTheirOriginalFlagPathAndTick() {
+    @Test
+    void deferredProbeCleanupAndQueriesRestoreTheirOriginalFlagPathAndTick() {
         var process = new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 2, List.of()), 17);
         var tick = new RecipeProcess.Tick(0, 1, 0, 1);
         boolean[] recoverable = {false};
@@ -190,14 +277,28 @@ class MachineRecipeRequirementsTest {
             assertTrue(current.probing());
             return new RequirementTransaction() {
                 private Resolution resolution = Resolution.UNKNOWN;
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public void commit() { fail("Probes never commit business"); }
-                @Override public void rollback() {
+
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public void commit() {
+                    fail("Probes never commit business");
+                }
+
+                @Override
+                public void rollback() {
                     assertProbeScope(current, path, tick);
-                    if (!recoverable[0]) { throw new IllegalStateException("uncertain probe cleanup"); }
+                    if (!recoverable[0]) {
+                        throw new IllegalStateException("uncertain probe cleanup");
+                    }
                     resolution = Resolution.ROLLED_BACK;
                 }
-                @Override public Resolution resolution() {
+
+                @Override
+                public Resolution resolution() {
                     assertProbeScope(current, path, tick);
                     return resolution == Resolution.ROLLED_BACK ? resolution : recoverable[0] ? Resolution.REVERSIBLE : Resolution.UNKNOWN;
                 }
@@ -214,41 +315,4 @@ class MachineRecipeRequirementsTest {
         assertFalse(process.probing());
         assertThrows(NullPointerException.class, process::tickContext);
     }
-
-    private static void assertProbeScope(RecipeProcess process, RequirementPath path, RecipeProcess.Tick tick) {
-        assertTrue(process.probing());
-        assertEquals(path, process.requirementPath());
-        assertSame(tick, process.tickContext());
-    }
-
-    private static MachineInstance owner(List<RecipeRequirement<?>> roots) {
-        var owner = new MachineInstance();
-        owner.components().put(PROVIDER, _ -> roots);
-        return owner;
-    }
-
-    private static EnergyBuffer energy(long amount) {
-        var energy = new EnergyBuffer(100, () -> {});
-        energy.receiveEnergy(amount, Actionable.MODULATE);
-        return energy;
-    }
-
-    private static RecipeRequirement<String> observer(String name,
-            BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action, List<String> events) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.END);
-            }
-            @Override public void cancel(RecipeProcess process, RecipeRequirement<String> requirement) { events.add("cancel:" + name); }
-        };
-        return new RecipeRequirementType<>(id(name), system).requirement(id(name), "value");
-    }
-
-    private static ResourceLocation id(String value) { return new ResourceLocation("machine_requirement_test", value); }
 }

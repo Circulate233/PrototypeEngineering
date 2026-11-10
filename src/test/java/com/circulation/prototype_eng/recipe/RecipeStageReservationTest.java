@@ -41,6 +41,35 @@ class RecipeStageReservationTest {
     private static final Runnable NO_OP = () -> {
     };
 
+    private static SlottedResourceBuffer buffer(Runnable onChanged) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, onChanged);
+    }
+
+    private static TrackedReservation reserve(SlottedResourceBuffer storage, boolean insert, String name, List<String> events) {
+        var result = insert ? storage.reserveInsert(storage.snapshot(), MATERIAL, 30)
+            : storage.reserveExtract(storage.snapshot(), MATERIAL, 30);
+        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
+        return new TrackedReservation(Objects.requireNonNull(result.reservation()), name, events, null, null);
+    }
+
+    private static RecipeRequirement<String> requirement(String name, Supplier<RequirementTransaction> acquire) {
+        var location = new ResourceLocation("external_stage", name);
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.get();
+            }
+        };
+        return new RecipeRequirementType<>(location, system).requirement(location, "immutable_payload");
+    }
+
+    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
+        var recipe = new MachineRecipe(new ResourceLocation("external_stage", "recipe"), 1, ObjectArrayList.of(requirements));
+        return new RecipeProcess(new MachineInstance(), recipe, 1);
+    }
+
     @Test
     void laterRequirementCommitFaultCompensatesBusinessBeforeAllResourceTokens() {
         var input = buffer(NO_OP);
@@ -53,36 +82,36 @@ class RecipeStageReservationTest {
         var process = process(
             requirement("a_input", () -> new Transaction(ProcessResult.SUCCESS,
                 List.of(reserve(input, false, "input", events)), () -> {
-                    events.add("business:first");
-                    business[0] = 2;
-                    applied[0] = true;
-                }, NO_OP, () -> {
-                    input.context().requireLock();
-                    output.context().requireLock();
-                    events.add("undo:first");
-                    if (applied[0]) {
-                        business[0] -= 2;
-                    }
-                })),
+                events.add("business:first");
+                business[0] = 2;
+                applied[0] = true;
+            }, NO_OP, () -> {
+                input.context().requireLock();
+                output.context().requireLock();
+                events.add("undo:first");
+                if (applied[0]) {
+                    business[0] -= 2;
+                }
+            })),
             requirement("b_output", () -> new Transaction(ProcessResult.SUCCESS,
                 List.of(reserve(output, true, "output", events)), () -> {
-                    assertEquals(50, input.amount(MATERIAL));
-                    assertEquals(30, output.amount(MATERIAL));
-                    assertEquals(2, business[0]);
-                    events.add("business:second");
-                    business[0] += 5;
-                    applied[1] = true;
-                    throw primary;
-                }, NO_OP, () -> {
-                    input.context().requireLock();
-                    output.context().requireLock();
-                    assertEquals(50, input.amount(MATERIAL));
-                    assertEquals(30, output.amount(MATERIAL));
-                    events.add("undo:second");
-                    if (applied[1]) {
-                        business[0] -= 5;
-                    }
-                })));
+                assertEquals(50, input.amount(MATERIAL));
+                assertEquals(30, output.amount(MATERIAL));
+                assertEquals(2, business[0]);
+                events.add("business:second");
+                business[0] += 5;
+                applied[1] = true;
+                throw primary;
+            }, NO_OP, () -> {
+                input.context().requireLock();
+                output.context().requireLock();
+                assertEquals(50, input.amount(MATERIAL));
+                assertEquals(30, output.amount(MATERIAL));
+                events.add("undo:second");
+                if (applied[1]) {
+                    business[0] -= 5;
+                }
+            })));
 
         assertSame(primary, assertThrows(IllegalStateException.class,
             () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
@@ -178,9 +207,9 @@ class RecipeStageReservationTest {
         var events = new ObjectArrayList<String>();
         var process = process(requirement("input", () -> new Transaction(ProcessResult.SUCCESS,
             List.of(reserve(input, false, "input", events)), () -> {
-                events.add("business");
-                failNotification[0] = true;
-            }, () -> events.add("complete:business"), () -> events.add("undo"))));
+            events.add("business");
+            failNotification[0] = true;
+        }, () -> events.add("complete:business"), () -> events.add("undo"))));
 
         assertSame(primary, assertThrows(IllegalStateException.class,
             () -> RecipeStageExecutor.execute(process, RecipeStage.START)));
@@ -245,37 +274,9 @@ class RecipeStageReservationTest {
         assertEquals(List.of("apply:input", "apply:output", "undo", "rollback:output", "rollback:input"), events);
     }
 
-    private static SlottedResourceBuffer buffer(Runnable onChanged) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, onChanged);
-    }
-
-    private static TrackedReservation reserve(SlottedResourceBuffer storage, boolean insert, String name, List<String> events) {
-        var result = insert ? storage.reserveInsert(storage.snapshot(), MATERIAL, 30)
-            : storage.reserveExtract(storage.snapshot(), MATERIAL, 30);
-        assertEquals(ReservationResult.Status.ACCEPTED, result.status());
-        return new TrackedReservation(Objects.requireNonNull(result.reservation()), name, events, null, null);
-    }
-
-    private static RecipeRequirement<String> requirement(String name, Supplier<RequirementTransaction> acquire) {
-        var location = new ResourceLocation("external_stage", name);
-        var system = new RecipeRequirementSystem<String>() {
-            @Override
-            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.get();
-            }
-        };
-        return new RecipeRequirementType<>(location, system).requirement(location, "immutable_payload");
-    }
-
-    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
-        var recipe = new MachineRecipe(new ResourceLocation("external_stage", "recipe"), 1, ObjectArrayList.of(requirements));
-        return new RecipeProcess(new MachineInstance(), recipe, 1);
-    }
-
     private record Transaction(ProcessResult result, List<? extends ResourceReservation> reservations,
-                               Runnable onCommit, Runnable onComplete, Runnable onRollback) implements RequirementTransaction {
+                               Runnable onCommit, Runnable onComplete,
+                               Runnable onRollback) implements RequirementTransaction {
         @Override
         public void commit() {
             onCommit.run();

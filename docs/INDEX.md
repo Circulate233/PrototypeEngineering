@@ -4,6 +4,7 @@
 
 ## 当前检查点
 
+- 局部定义替换A/B首次专项106 tests/14 suites有1个容量base夹具失败，A的8项均通过；B同时修末次recipeWorkAllowed回调后缺少代复验的真实准入洞。`definition_registry_implementation`（high）现继续C服务器Publication/session/PN依赖接线，`definition_scanner_implementation`（high）独占扫描器及新增MachineWorkSlots窄修，`definition_replacement_audit`（max）复核。入口 `build/staging/definition-replacement/{registry-versioning,scanner-generation,server-publication}/` 和 `ab-first-results/`。当前未完整验证/提交，D/E JEI与远端声明仍须后继实现。
 - 当前总 goal 为 active。本批已本地提交 `e35604e` 结构纯计划缓存、`2c55f70` 仓室配置/自动IO、`812c0f9` 大槽窗口/禁用滑块；未推送。完整1814 tests/237 suites全零，73Java与两语言本机全级零/完整读回，MCP build成功；精确候选编译与独立复核通过，原暂存及工作字节保留。自动IO部分结算/回调重入、邻居和同TE内容变化的公平刷新已修复；材料提示仅槽位数量/槽位容量，AE默认等价与比例API保持，自动IO默认关闭，能源用户限额默认-1、0禁止且保留profile配置上限。证据从 `build/staging/chat-goal-recovery-2026-11-10/handoff.md` 进入。
 - 2026-11-10 总 goal 已恢复。本批已实现输入来源策略、跨控制器周期结构检查并发、PN 外部网络参与者；独立复核发现的问题均已修复。完整构建 1744 tests / 224 suites 全零，37 Java 本机全级零及完整读回一致，MCP build 成功。已本地提交 `b49f62c` / `239b52d` / `ad8c584`，未推送；入口 `build/staging/resumed-goal-plan/plan.md`、`unified/third-results/` 及同目录 `exact-commit-preparation/`。
 - GUI/两件工具修复已提交 `73233cb` / `7bcb5e5`；用户最新回复“尚未复验”。范围结构选择器、机械构建器、仓室/控制器、JEI 与样板导入的实机结果仍待用户，不能以构建通过替代。入口 [结构工具](structure-tools.md)、[GUI 修复](gui-parity.md)、[JEI](jei.md)。新反馈优先。
@@ -11,7 +12,7 @@
 
 ## 下一步
 
-1. 收束局部定义替换的可执行方案并按文件边界实施；同ID替换仅影响后续使用，旧进程、预留、补偿及持久责任保持原定义，避免通用热重载或远程执行闭包。
+1. 按已复核方案完成定义替换A版本/目录、B扫描、C服务端发布、D/E客户端显示与声明。先推进A并对齐后继接口；同ID替换仅影响后续使用，旧进程、预留、补偿及持久责任保持原定义，避免通用热重载或远程执行闭包。
 2. 本批三个阶段已完成验证与本地提交，不重复实施；详细实际检查、失败修复与79路径精确候选从恢复stage/handoff进入。继续保留背景、原暂存许可证删除和未跟踪测试。
 3. 按 `build/staging/resumed-goal-plan/crafttweaker-plan.md` 补齐已由原调用链确认的 Java 前提，再接 CT。不恢复 MUI/GUI DSL 或独立 Modern；ZSData 沿普通桥接组件和现有 codec。RESCAN/isCore 在 PM 真实创建路径未生效，不新造迁移语义。
 4. 游戏测试由用户自行启动；运行边界示例见 `run/visual-examples/README.md`。GUI 复验结果未到时继续已授权总目标。

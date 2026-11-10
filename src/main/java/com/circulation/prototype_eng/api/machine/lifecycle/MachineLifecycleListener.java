@@ -8,12 +8,21 @@ package com.circulation.prototype_eng.api.machine.lifecycle;
  */
 @SuppressWarnings("unused") // Callback parameters are consumed by external listener implementations.
 public interface MachineLifecycleListener {
-    default void onLoaded(MachineLifecycleEvent.Loaded event) {}
-    default void onUnloaded(MachineLifecycleEvent.Unloaded event) {}
-    default void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {}
-    default void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {}
+    default void onLoaded(MachineLifecycleEvent.Loaded event) {
+    }
 
-    /** Saved controller destroyed before assembly; distinct from a loaded machine's callbacks. */
+    default void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+    }
+
+    default void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
+    }
+
+    default void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
+    }
+
+    /**
+     * Saved controller destroyed before assembly; distinct from a loaded machine's callbacks.
+     */
     default void onUnassembledControllerBroken(MachineLifecycleEvent.UnassembledControllerBroken event) {
     }
 }

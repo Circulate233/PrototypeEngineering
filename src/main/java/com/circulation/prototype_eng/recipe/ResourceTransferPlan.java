@@ -14,7 +14,7 @@ import java.util.Objects;
  * public recipe definition and does not implement PM's transactional requirement contract.
  */
 public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> inputs, List<GenericStack> outputs,
-                            int durationTicks, long energyPerTick) {
+                                   int durationTicks, long energyPerTick) {
     public ResourceTransferPlan {
         Objects.requireNonNull(id, "id");
         if (durationTicks < 1 || energyPerTick < 0) {
@@ -29,7 +29,9 @@ public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> input
         for (GenericStack stack : stacks) {
             Objects.requireNonNull(stack, "resource stack");
             Objects.requireNonNull(stack.what(), "resource key");
-            if (stack.amount() <= 0) { throw new IllegalArgumentException("Recipe amounts must be positive"); }
+            if (stack.amount() <= 0) {
+                throw new IllegalArgumentException("Recipe amounts must be positive");
+            }
             if (stack.amount() > Long.MAX_VALUE - amounts.getLong(stack.what())) {
                 throw new ArithmeticException("long overflow");
             }

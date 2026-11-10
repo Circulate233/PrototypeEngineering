@@ -18,17 +18,24 @@ public interface ReversibleTransaction {
      * Coordinators and composite wrappers must never replay this attempt, even after rejection or
      * failure. The default preserves existing transactions without additional preparation effects.
      */
-    default boolean prepareCommit() { return true; }
+    default boolean prepareCommit() {
+        return true;
+    }
 
     /**
      * One read-only owner check after all business commits and before the batch decides completion.
      * False still chooses ordinary whole-batch compensation. Check the original captured authority
      * and content; do not mutate or reacquire work. Wrappers preserve the original callback scope.
      */
-    default boolean validateCommit() { return true; }
+    default boolean validateCommit() {
+        return true;
+    }
 
     void commit();
-    default void complete() { }
+
+    default void complete() {
+    }
+
     void rollback();
 
     /**
@@ -38,7 +45,9 @@ public interface ReversibleTransaction {
      * it never authorizes replaying commit. UNKNOWN leaves confirmation pending. Terminal states
      * certify that the transition must not be repeated. Queries must retain the original scope.
      */
-    default Resolution resolution() { return Resolution.UNKNOWN; }
+    default Resolution resolution() {
+        return Resolution.UNKNOWN;
+    }
 
     /**
      * Resumes preparation on this exact transaction and caller scope. Null means work yield,
@@ -59,21 +68,27 @@ public interface ReversibleTransaction {
         return budget.take() ? validateCommit() : null;
     }
 
-    /** True completes this original commit; false yields its same cursor with full undo retained. */
+    /**
+     * True completes this original commit; false yields its same cursor with full undo retained.
+     */
     default boolean commitWithinBudget(RecipeWorkBudget budget) {
         if (!budget.take()) return false;
         commit();
         return true;
     }
 
-    /** True confirms original completion; false yields, without certifying any terminal outcome. */
+    /**
+     * True confirms original completion; false yields, without certifying any terminal outcome.
+     */
     default boolean completeWithinBudget(RecipeWorkBudget budget) {
         if (!budget.take()) return false;
         complete();
         return true;
     }
 
-    /** True confirms original rollback; false yields, without replaying an uncertain callback. */
+    /**
+     * True confirms original rollback; false yields, without replaying an uncertain callback.
+     */
     default boolean rollbackWithinBudget(RecipeWorkBudget budget) {
         if (!budget.take()) return false;
         rollback();
@@ -89,5 +104,5 @@ public interface ReversibleTransaction {
         return budget.take() ? resolution() : null;
     }
 
-    enum Resolution { UNKNOWN, REVERSIBLE, COMPLETED, ROLLED_BACK }
+    enum Resolution {UNKNOWN, REVERSIBLE, COMPLETED, ROLLED_BACK}
 }

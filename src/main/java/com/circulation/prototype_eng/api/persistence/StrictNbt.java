@@ -9,12 +9,16 @@ import net.minecraftforge.common.util.Constants;
 
 import java.util.Objects;
 
-/** Required fields use their exact NBT types; numeric coercion and missing-field defaults are rejected. */
+/**
+ * Required fields use their exact NBT types; numeric coercion and missing-field defaults are rejected.
+ */
 public final class StrictNbt {
     private StrictNbt() {
     }
 
-    /** Rejects unknown fields. Required fields are checked by the individual readers. */
+    /**
+     * Rejects unknown fields. Required fields are checked by the individual readers.
+     */
     public static void requireKeys(NBTTagCompound tag, String... allowed) {
         Objects.requireNonNull(tag, "tag");
         Objects.requireNonNull(allowed, "allowed");
@@ -29,12 +33,16 @@ public final class StrictNbt {
         }
     }
 
-    /** Returns a borrowed input tag. A decoder must copy it before passing it to an external codec. */
+    /**
+     * Returns a borrowed input tag. A decoder must copy it before passing it to an external codec.
+     */
     public static NBTTagCompound requireCompound(NBTTagCompound tag, String key) {
         return (NBTTagCompound) requireTag(tag, key, Constants.NBT.TAG_COMPOUND);
     }
 
-    /** Returns a borrowed list after validating its declared and actual element types. */
+    /**
+     * Returns a borrowed list after validating its declared and actual element types.
+     */
     public static NBTTagList requireList(NBTTagCompound tag, String key, int elementType) {
         var list = (NBTTagList) requireTag(tag, key, Constants.NBT.TAG_LIST);
         requireListElements(list, elementType);

@@ -19,8 +19,8 @@ import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransacti
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.StorageContext;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -30,10 +30,88 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class RecipeTickSessionTest {
-    @Test void realStagesSettleOnSourceLanesBeforeTheNextFrozenTimelineAndOnePost() throws Exception {
+    private static RecipeProcess process(MachineInstance owner, int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(owner, new MachineRecipe(id("recipe"), duration, List.of(requirements)), 1);
+    }
+
+    private static MachineInstance machine(EnergyBuffer energy) {
+        var machine = new MachineInstance();
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(energy), List.of(energy)));
+        return machine;
+    }
+
+    private static EnergyBuffer energy() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        energy.receiveEnergy(100, Actionable.MODULATE);
+        return energy;
+    }
+
+    private static RecipeRequirement<EnergyRequirement> energyRequirement() {
+        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 3, 0, 1, false));
+    }
+
+    private static RecipeRequirement<String> observer(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id("observer"), system).requirement(id("observer"), "value");
+    }
+
+    private static void components(RecipeProcess process, List<String> events) {
+        process.components().create(new ComponentType<>(id("component"), _ -> "value", List.of(new ComponentSystem<RecipeProcess, String>() {
+            @Override
+            public ResourceLocation id() {
+                return RecipeTickSessionTest.id("component_system");
+            }
+
+            @Override
+            public void onPreTick(RecipeProcess owner, String component) {
+                assertThrows(IllegalStateException.class, owner::beginTick);
+                events.add("pre");
+            }
+
+            @Override
+            public void onTick(RecipeProcess owner, String component) {
+                events.add("component");
+            }
+
+            @Override
+            public void onPostTick(RecipeProcess owner, String component) {
+                assertThrows(IllegalStateException.class, owner::beginTick);
+                events.add("post");
+            }
+        })), process);
+    }
+
+    private static ResourceLocation id(String value) {
+        return new ResourceLocation("tick_session_test", value);
+    }
+
+    @Test
+    void realStagesSettleOnSourceLanesBeforeTheNextFrozenTimelineAndOnePost() throws Exception {
         var energy = energy();
         var machine = machine(energy);
         machine.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 0);
@@ -42,12 +120,25 @@ class RecipeTickSessionTest {
             events.add(phase.name());
             if (phase == RecipeStage.START) {
                 return new RequirementTransaction() {
-                    @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                    @Override public void commit() { current.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 1); }
-                    @Override public void rollback() { current.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 0); }
+                    @Override
+                    public ProcessResult result() {
+                        return ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public void commit() {
+                        current.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 1);
+                    }
+
+                    @Override
+                    public void rollback() {
+                        current.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 0);
+                    }
                 };
             }
-            if (phase == RecipeStage.TICK) { assertEquals(new RecipeProcess.Tick(0, 1, 0, 1), current.tickContext()); }
+            if (phase == RecipeStage.TICK) {
+                assertEquals(new RecipeProcess.Tick(0, 1, 0, 1), current.tickContext());
+            }
             return RequirementTransaction.SUCCESS;
         }));
         components(process, events);
@@ -61,10 +152,14 @@ class RecipeTickSessionTest {
                 assertThrows(IllegalStateException.class, session::nextStage);
                 assertThrows(IllegalStateException.class, session::finish);
                 assertFalse(stage.settleBatch(null));
-                for (var source : batch.sources()) { assertTrue(lane.submit(source::apply).get(5, TimeUnit.SECONDS)); }
+                for (var source : batch.sources()) {
+                    assertTrue(lane.submit(source::apply).get(5, TimeUnit.SECONDS));
+                }
                 assertTrue(batch.commit(() -> true));
                 assertFalse(stage.settleBatch(null), "Business completion alone does not release the stage");
-                for (var source : batch.sources()) { assertTrue(lane.submit(source::resolve).get(5, TimeUnit.SECONDS)); }
+                for (var source : batch.sources()) {
+                    assertTrue(lane.submit(source::resolve).get(5, TimeUnit.SECONDS));
+                }
                 batch.finish();
                 assertTrue(stage.settleBatch(null));
                 assertThrows(IllegalStateException.class, stage::acquire);
@@ -79,7 +174,8 @@ class RecipeTickSessionTest {
         process.requirePersistenceBoundary();
     }
 
-    @Test void zeroSpeedStillExecutesOnlyOneTickAndOldHandlesCannotReenterTheNextSession() {
+    @Test
+    void zeroSpeedStillExecutesOnlyOneTickAndOldHandlesCannotReenterTheNextSession() {
         var process = process(new MachineInstance(), 2);
         process.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 0);
         var first = Objects.requireNonNull(process.beginTick());
@@ -105,7 +201,8 @@ class RecipeTickSessionTest {
         process.requirePersistenceBoundary();
     }
 
-    @Test void zeroDurationHasStartAndEndWithoutInventingATick() {
+    @Test
+    void zeroDurationHasStartAndEndWithoutInventingATick() {
         var phases = new ObjectArrayList<RecipeStage>();
         var process = process(new MachineInstance(), 0, observer((_, phase) -> {
             phases.add(phase);
@@ -122,14 +219,25 @@ class RecipeTickSessionTest {
         assertEquals(0, process.state().successfulTicks());
     }
 
-    @Test void sharedRoundCompensatesBothProcessesAndPreservesExactSourceIdentity() {
+    @Test
+    void sharedRoundCompensatesBothProcessesAndPreservesExactSourceIdentity() {
         var energy = energy();
         var first = process(machine(energy), 1, energyRequirement());
         var primary = new IllegalStateException("second commit");
         var second = process(machine(energy), 1, energyRequirement(), observer((_, _) -> new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { throw primary; }
-            @Override public void rollback() { }
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+                throw primary;
+            }
+
+            @Override
+            public void rollback() {
+            }
         }));
         var sessions = List.of(Objects.requireNonNull(first.beginTick()), Objects.requireNonNull(second.beginTick()));
         var stages = new ObjectArrayList<RecipeProcess.Stage>();
@@ -144,10 +252,17 @@ class RecipeTickSessionTest {
         assertSame(primary, assertThrows(IllegalStateException.class, () -> batch.commit(() -> true)));
         assertTrue(batch.rollback());
         assertTrue(batch.sources().getFirst().resolve());
-        for (var stage : stages) { assertFalse(stage.settleBatch(primary)); }
+        for (var stage : stages) {
+            assertFalse(stage.settleBatch(primary));
+        }
         batch.finish();
-        for (var stage : stages) { assertTrue(stage.settleBatch(primary)); }
-        for (var session : sessions) { assertNull(session.nextStage()); session.finish(); }
+        for (var stage : stages) {
+            assertTrue(stage.settleBatch(primary));
+        }
+        for (var session : sessions) {
+            assertNull(session.nextStage());
+            session.finish();
+        }
         assertEquals(100, energy.savedEnergy());
         for (var process : List.of(first, second)) {
             assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
@@ -156,7 +271,8 @@ class RecipeTickSessionTest {
         }
     }
 
-    @Test void ordinaryFaultPostsImmediatelyButDeferredFaultWaitsForExactBusinessConfirmation() {
+    @Test
+    void ordinaryFaultPostsImmediatelyButDeferredFaultWaitsForExactBusinessConfirmation() {
         for (boolean deferred : new boolean[]{false, true}) {
             var events = new ObjectArrayList<String>();
             var effect = new RecoverableEffect();
@@ -189,7 +305,9 @@ class RecipeTickSessionTest {
                 assertTrue(Objects.requireNonNull(batch).resolveBusiness());
                 batch.finish();
                 assertTrue(stage.settleBatch(null));
-            } else { assertTrue(stage.resolveSynchronously()); }
+            } else {
+                assertTrue(stage.resolveSynchronously());
+            }
             assertNull(session.nextStage());
             session.finish();
             assertEquals(List.of("pre", "component", "post"), events);
@@ -200,7 +318,8 @@ class RecipeTickSessionTest {
         }
     }
 
-    @Test void leaseRejectsCallbackReentryEvenWhenAllRequirementsReturnTheSuccessSingleton() {
+    @Test
+    void leaseRejectsCallbackReentryEvenWhenAllRequirementsReturnTheSuccessSingleton() {
         var events = new ObjectArrayList<String>();
         var process = process(new MachineInstance(), 0, observer((current, _) -> {
             var session = Objects.requireNonNull(current.pendingTick());
@@ -216,15 +335,27 @@ class RecipeTickSessionTest {
         process.requirePersistenceBoundary();
     }
 
-    @Test void rejectedStageRollsBackOnceAndDoesNotRepeatPreOrAttemptLaterStages() {
+    @Test
+    void rejectedStageRollsBackOnceAndDoesNotRepeatPreOrAttemptLaterStages() {
         var events = new ObjectArrayList<String>();
         var blocked = new ProcessResult.Blocked("wait");
         var process = process(new MachineInstance(), 1, observer((_, phase) -> {
             events.add(phase.name());
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return blocked; }
-                @Override public void commit() { fail("Rejected stage committed"); }
-                @Override public void rollback() { events.add("rollback"); }
+                @Override
+                public ProcessResult result() {
+                    return blocked;
+                }
+
+                @Override
+                public void commit() {
+                    fail("Rejected stage committed");
+                }
+
+                @Override
+                public void rollback() {
+                    events.add("rollback");
+                }
             };
         }));
         components(process, events);
@@ -242,7 +373,8 @@ class RecipeTickSessionTest {
         assertEquals(List.of("pre", "component", "START", "rollback", "post"), events);
     }
 
-    @Test void sourceConfirmationPinsTheStageAfterEveryBusinessTransactionAlreadyCompleted() {
+    @Test
+    void sourceConfirmationPinsTheStageAfterEveryBusinessTransactionAlreadyCompleted() {
         var energy = energy();
         var events = new ObjectArrayList<String>();
         var recoverable = new boolean[1];
@@ -251,22 +383,58 @@ class RecipeTickSessionTest {
         var process = process(new MachineInstance(), 1, observer((_, _) -> {
             var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 10).reservation());
             var delayed = new ResourceReservation() {
-                @Override public StorageContext context() { return token.context(); }
-                @Override public boolean canApply() { return token.canApply(); }
-                @Override public void apply() { token.apply(); }
-                @Override public void complete() {
+                @Override
+                public StorageContext context() {
+                    return token.context();
+                }
+
+                @Override
+                public boolean canApply() {
+                    return token.canApply();
+                }
+
+                @Override
+                public void apply() {
+                    token.apply();
+                }
+
+                @Override
+                public void complete() {
                     completions[0]++;
-                    if (!recoverable[0]) { throw primary; }
+                    if (!recoverable[0]) {
+                        throw primary;
+                    }
                     token.complete();
                 }
-                @Override public void rollback() { token.rollback(); }
-                @Override public Resolution resolution() { return recoverable[0] ? token.resolution() : Resolution.UNKNOWN; }
+
+                @Override
+                public void rollback() {
+                    token.rollback();
+                }
+
+                @Override
+                public Resolution resolution() {
+                    return recoverable[0] ? token.resolution() : Resolution.UNKNOWN;
+                }
             };
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public List<? extends ResourceReservation> reservations() { return List.of(delayed); }
-                @Override public void commit() { }
-                @Override public void rollback() { }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public List<? extends ResourceReservation> reservations() {
+                    return List.of(delayed);
+                }
+
+                @Override
+                public void commit() {
+                }
+
+                @Override
+                public void rollback() {
+                }
             };
         }));
         components(process, events);
@@ -295,10 +463,15 @@ class RecipeTickSessionTest {
         assertThrows(IllegalStateException.class, process::requirePersistenceBoundary);
     }
 
-    @Test void notificationFaultAfterReleaseStopsLaterRoundsWithoutReplayingCommittedResources() {
+    @Test
+    void notificationFaultAfterReleaseStopsLaterRoundsWithoutReplayingCommittedResources() {
         boolean[] armed = {false};
         var primary = new IllegalStateException("notification");
-        var energy = new EnergyBuffer(100, () -> { if (armed[0]) { throw primary; } });
+        var energy = new EnergyBuffer(100, () -> {
+            if (armed[0]) {
+                throw primary;
+            }
+        });
         energy.receiveEnergy(100, Actionable.MODULATE);
         var events = new ObjectArrayList<String>();
         var process = process(machine(energy), 1, energyRequirement());
@@ -323,13 +496,25 @@ class RecipeTickSessionTest {
         assertThrows(IllegalStateException.class, process::requirePersistenceBoundary);
     }
 
-    @Test void partialAcquisitionFaultKeepsItsOriginalErrorAndRunsOrdinaryPostAfterCompensation() {
+    @Test
+    void partialAcquisitionFaultKeepsItsOriginalErrorAndRunsOrdinaryPostAfterCompensation() {
         var events = new ObjectArrayList<String>();
         var primary = new IllegalStateException("result failed");
         var process = process(new MachineInstance(), 1, observer((_, _) -> new RequirementTransaction() {
-            @Override public ProcessResult result() { throw primary; }
-            @Override public void commit() { fail("Faulted acquisition committed"); }
-            @Override public void rollback() { events.add("rollback"); }
+            @Override
+            public ProcessResult result() {
+                throw primary;
+            }
+
+            @Override
+            public void commit() {
+                fail("Faulted acquisition committed");
+            }
+
+            @Override
+            public void rollback() {
+                events.add("rollback");
+            }
         }));
         components(process, events);
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
@@ -338,7 +523,8 @@ class RecipeTickSessionTest {
         assertThrows(IllegalStateException.class, process::requirePersistenceBoundary);
     }
 
-    @Test void preparedStageCanBeDiscardedByItsOwnerWithoutAcquiringAnyRequirement() throws Exception {
+    @Test
+    void preparedStageCanBeDiscardedByItsOwnerWithoutAcquiringAnyRequirement() throws Exception {
         var events = new ObjectArrayList<String>();
         var process = process(new MachineInstance(), 1, observer((_, _) -> {
             fail("Cancellation before acquisition must not execute a requirement");
@@ -360,58 +546,6 @@ class RecipeTickSessionTest {
         assertTrue(process.cancel());
     }
 
-    private static RecipeProcess process(MachineInstance owner, int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(owner, new MachineRecipe(id("recipe"), duration, List.of(requirements)), 1);
-    }
-
-    private static MachineInstance machine(EnergyBuffer energy) {
-        var machine = new MachineInstance();
-        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(energy), List.of(energy)));
-        return machine;
-    }
-
-    private static EnergyBuffer energy() {
-        var energy = new EnergyBuffer(100, () -> { });
-        energy.receiveEnergy(100, Actionable.MODULATE);
-        return energy;
-    }
-
-    private static RecipeRequirement<EnergyRequirement> energyRequirement() {
-        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 3, 0, 1, false));
-    }
-
-    private static RecipeRequirement<String> observer(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return action.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(id("observer"), system).requirement(id("observer"), "value");
-    }
-
-    private static void components(RecipeProcess process, List<String> events) {
-        process.components().create(new ComponentType<>(id("component"), _ -> "value", List.of(new ComponentSystem<RecipeProcess, String>() {
-            @Override public ResourceLocation id() { return RecipeTickSessionTest.id("component_system"); }
-            @Override public void onPreTick(RecipeProcess owner, String component) {
-                assertThrows(IllegalStateException.class, owner::beginTick);
-                events.add("pre");
-            }
-            @Override public void onTick(RecipeProcess owner, String component) { events.add("component"); }
-            @Override public void onPostTick(RecipeProcess owner, String component) {
-                assertThrows(IllegalStateException.class, owner::beginTick);
-                events.add("post");
-            }
-        })), process);
-    }
-
-    private static ResourceLocation id(String value) { return new ResourceLocation("tick_session_test", value); }
-
     private static final class RecoverableEffect implements RequirementTransaction {
         private final IllegalStateException failure = new IllegalStateException("pending completion");
         private boolean recoverable;
@@ -419,11 +553,32 @@ class RecipeTickSessionTest {
         private int commits;
         private int completions;
 
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { commits++; }
-        @Override public void complete() { completions++; if (!recoverable) { throw failure; } completed = true; }
-        @Override public void rollback() { fail("Already decided completion"); }
-        @Override public Resolution resolution() {
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+            commits++;
+        }
+
+        @Override
+        public void complete() {
+            completions++;
+            if (!recoverable) {
+                throw failure;
+            }
+            completed = true;
+        }
+
+        @Override
+        public void rollback() {
+            fail("Already decided completion");
+        }
+
+        @Override
+        public Resolution resolution() {
             return completed ? Resolution.COMPLETED : recoverable ? Resolution.REVERSIBLE : Resolution.UNKNOWN;
         }
     }

@@ -156,7 +156,7 @@ class MachineAttributesTest {
         assertThrows(UnsupportedOperationException.class, () -> snapshot.get(SPEED).modifiers().clear());
         assertThrows(UnsupportedOperationException.class, () -> snapshot.entrySet().iterator().next().setValue(saved));
         assertThrows(UnsupportedOperationException.class, () -> snapshot.get(SPEED).modifiers().entrySet().iterator().next()
-            .setValue(new NumericAttributeModifier("add", 99, ADDITION)));
+                                                                        .setValue(new NumericAttributeModifier("add", 99, ADDITION)));
 
         child.setBase(SPEED, 100);
         child.removeModifier(SPEED, "add");
@@ -214,12 +214,26 @@ class MachineAttributesTest {
     }
 
     private record DoubleCurrent(String id) implements AttributeModifier {
-        @Override public Operation operation() { return ADDITION; }
-        @Override public double apply(double base, double current) { return current * 2; }
+        @Override
+        public Operation operation() {
+            return ADDITION;
+        }
+
+        @Override
+        public double apply(double base, double current) {
+            return current * 2;
+        }
     }
 
     private record FixedResult(String id, double result) implements AttributeModifier {
-        @Override public Operation operation() { return ADDITION; }
-        @Override public double apply(double base, double current) { return result; }
+        @Override
+        public Operation operation() {
+            return ADDITION;
+        }
+
+        @Override
+        public double apply(double base, double current) {
+            return result;
+        }
     }
 }

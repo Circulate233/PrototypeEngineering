@@ -6,16 +6,19 @@ import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import net.minecraft.nbt.NBTTagCompound;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Objects;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import org.jetbrains.annotations.NotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 class EnergyHatchBlockEntityTest {
     @Test
     void mixedDirectionsKeepMachineRequirementsAndExternalTransfersInSeparateBalances() {

@@ -2,8 +2,8 @@ package com.circulation.prototype_eng.energy;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
-import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.StorageContext;
@@ -36,7 +36,8 @@ class EnergyReservationTest {
 
     @Test
     void quantityAndCapacityHoldsProtectTheSharedBalanceUntilBatchCompletion() {
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         var forge = new ForgeEnergyPort(energy, HatchMode.MIXED);
         energy.restore(60);
         var take = accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 30));
@@ -56,7 +57,8 @@ class EnergyReservationTest {
 
     @Test
     void lowerLimitsCancelPendingWorkAndLongBoundaryTransfersKeepCompensationExact() {
-        var energy = new EnergyBuffer(Long.MAX_VALUE, () -> {});
+        var energy = new EnergyBuffer(Long.MAX_VALUE, () -> {
+        });
         energy.restore(Long.MAX_VALUE - 3);
         var stale = energy.energySnapshot();
         var give = accepted(energy.reserveReceiveEnergy(stale, 3));
@@ -87,9 +89,11 @@ class EnergyReservationTest {
         var material = new Key(type, "material");
         var capacities = new Reference2LongArrayMap<AEKeyType>();
         capacities.put(type, 20);
-        var resources = new SlottedResourceBuffer(1, capacities, () -> {});
+        var resources = new SlottedResourceBuffer(1, capacities, () -> {
+        });
         resources.insert(material, 10, Actionable.MODULATE);
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.restore(70);
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -98,7 +102,8 @@ class EnergyReservationTest {
         var takeEnergy = new PausedReservation(accepted(energy.reserveExtractEnergy(energy.energySnapshot(), 20)), entered, release);
         var giveEnergy = accepted(energy.reserveReceiveEnergy(energy.energySnapshot(), 10));
         var fault = new IllegalStateException("later participant failed");
-        var broken = new FailingReservation(new StorageContext(() -> {}), fault);
+        var broken = new FailingReservation(new StorageContext(() -> {
+        }), fault);
 
         // Bound teardown even when this test exposes a real storage deadlock.
         @SuppressWarnings("resource")
@@ -132,7 +137,8 @@ class EnergyReservationTest {
 
     @Test
     void concurrentReservationsCompeteForOneBalanceAndReleaseItForTheNextBatch() throws Exception {
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.restore(100);
         var ready = new CountDownLatch(2);
         var start = new CountDownLatch(1);
@@ -184,11 +190,28 @@ class EnergyReservationTest {
 
     private record PausedReservation(ResourceReservation delegate, CountDownLatch entered,
                                      CountDownLatch release) implements ResourceReservation {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public void complete() { delegate.complete(); }
-        @Override public void rollback() { delegate.rollback(); }
-        @Override public void apply() {
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public void complete() {
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
+            delegate.rollback();
+        }
+
+        @Override
+        public void apply() {
             delegate.apply();
             entered.countDown();
             try {
@@ -201,9 +224,26 @@ class EnergyReservationTest {
     }
 
     private record FailingReservation(StorageContext context, RuntimeException failure) implements ResourceReservation {
-        @Override public boolean canApply() { context.requireLock(); return true; }
-        @Override public void apply() { context.requireLock(); throw failure; }
-        @Override public void complete() { throw new AssertionError("A failed apply cannot complete"); }
-        @Override public void rollback() { context.requireLock(); }
+        @Override
+        public boolean canApply() {
+            context.requireLock();
+            return true;
+        }
+
+        @Override
+        public void apply() {
+            context.requireLock();
+            throw failure;
+        }
+
+        @Override
+        public void complete() {
+            throw new AssertionError("A failed apply cannot complete");
+        }
+
+        @Override
+        public void rollback() {
+            context.requireLock();
+        }
     }
 }

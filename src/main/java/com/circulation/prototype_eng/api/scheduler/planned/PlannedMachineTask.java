@@ -12,6 +12,8 @@ import org.jetbrains.annotations.Nullable;
  * its binding and mode must remain stable for one captured execution, or forward work is revoked.
  */
 public interface PlannedMachineTask extends ScheduledTask {
-    /** Current real machine, or null when the host has no assembled machine. This grants no authority. */
+    /**
+     * Current real machine, or null when the host has no assembled machine. This grants no authority.
+     */
     @Nullable MachineInstance plannedMachine();
 }

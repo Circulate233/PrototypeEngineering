@@ -4,9 +4,9 @@ import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.proxy.ClientProxy;
-import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
+import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
@@ -26,6 +26,30 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
 
     protected MachineControllerRenderer(Class<T> tileClass) {
         this.tileClass = Objects.requireNonNull(tileClass);
+    }
+
+    public static @Nullable AxisAlignedBB ownedBounds(TileEntity tile) {
+        var registered = TileEntityRendererDispatcher.instance.getRenderer(tile.getClass());
+        return registered instanceof MachineControllerRenderer<?> renderer ? bounds(renderer, tile) : null;
+    }
+
+    private static <T extends AEBaseTile & MachineControllerHost> AxisAlignedBB bounds(MachineControllerRenderer<T> renderer, TileEntity tile) {
+        var bounds = renderer.bounds(renderer.tileClass.cast(tile));
+        return bounds == TileEntity.INFINITE_EXTENT_AABB ? CONSERVATIVE_BOUNDS : bounds;
+    }
+
+    public static AxisAlignedBB nativeBounds(TileEntity tile) {
+        var bounds = ownedBounds(tile);
+        return bounds == null ? tile.getRenderBoundingBox() : bounds;
+    }
+
+    public static double nativeMaximumDistanceSquared(TileEntity tile) {
+        var registered = TileEntityRendererDispatcher.instance.getRenderer(tile.getClass());
+        return registered instanceof MachineControllerRenderer<?> renderer ? maximumDistanceSquared(renderer, tile) : tile.getMaxRenderDistanceSquared();
+    }
+
+    private static <T extends AEBaseTile & MachineControllerHost> double maximumDistanceSquared(MachineControllerRenderer<T> renderer, TileEntity tile) {
+        return renderer.maximumDistanceSquared(renderer.tileClass.cast(tile));
     }
 
     public final Class<T> tileClass() {
@@ -64,30 +88,6 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
         double z = Math.max(Math.abs(bounds.minZ - tile.getPos().getZ()), Math.abs(bounds.maxZ - tile.getPos().getZ()));
         double distance = 64 + Math.sqrt(x * x + y * y + z * z);
         return distance * distance;
-    }
-
-    public static @Nullable AxisAlignedBB ownedBounds(TileEntity tile) {
-        var registered = TileEntityRendererDispatcher.instance.getRenderer(tile.getClass());
-        return registered instanceof MachineControllerRenderer<?> renderer ? bounds(renderer, tile) : null;
-    }
-
-    private static <T extends AEBaseTile & MachineControllerHost> AxisAlignedBB bounds(MachineControllerRenderer<T> renderer, TileEntity tile) {
-        var bounds = renderer.bounds(renderer.tileClass.cast(tile));
-        return bounds == TileEntity.INFINITE_EXTENT_AABB ? CONSERVATIVE_BOUNDS : bounds;
-    }
-
-    public static AxisAlignedBB nativeBounds(TileEntity tile) {
-        var bounds = ownedBounds(tile);
-        return bounds == null ? tile.getRenderBoundingBox() : bounds;
-    }
-
-    public static double nativeMaximumDistanceSquared(TileEntity tile) {
-        var registered = TileEntityRendererDispatcher.instance.getRenderer(tile.getClass());
-        return registered instanceof MachineControllerRenderer<?> renderer ? maximumDistanceSquared(renderer, tile) : tile.getMaxRenderDistanceSquared();
-    }
-
-    private static <T extends AEBaseTile & MachineControllerHost> double maximumDistanceSquared(MachineControllerRenderer<T> renderer, TileEntity tile) {
-        return renderer.maximumDistanceSquared(renderer.tileClass.cast(tile));
     }
 
     @Override

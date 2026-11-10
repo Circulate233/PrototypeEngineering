@@ -19,7 +19,8 @@ import org.lwjgl.opengl.GL14;
 /** PM scanner endpoint, selected region and small-region block outlines. */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID, value = Side.CLIENT)
 public final class ScannerSelectionRenderer {
-    private ScannerSelectionRenderer() {}
+    private ScannerSelectionRenderer() {
+    }
 
     @SubscribeEvent
     public static void render(RenderWorldLastEvent event) {

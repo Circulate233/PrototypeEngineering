@@ -22,8 +22,8 @@ import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
-import org.junit.jupiter.api.Test;
 import net.minecraft.util.ResourceLocation;
+import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Objects;
@@ -37,13 +37,23 @@ class ExternalOverlayPersistenceTest {
     private static final Key ORIGINAL = new Key(TYPE, "original");
     private static final Key REPLACEMENT = new Key(TYPE, "replacement");
 
+    private static ResourceRequirement group(AEKey key) {
+        return new ResourceRequirement(List.of(), List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS,
+            null, List.of(new FuzzyInputGroup(List.of(key), 1)), List.of());
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("external_overlay_test", path);
+    }
+
     @Test
     void customGroupHistorySurvivesLayerRemovalAndHostValidationRejectsCorruptChoices() {
         var requirement = RecipeRequirements.RESOURCES.requirement(id("input"), group(ORIGINAL));
         var recipe = new MachineRecipe(id("recipe"), 4, List.of(requirement));
         var capacity = new Reference2LongArrayMap<AEKeyType>();
         capacity.put(TYPE, 20);
-        var hatch = new BufferedResourceHatch(HatchMode.INPUT, 1, capacity, () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.INPUT, 1, capacity, () -> {
+        });
         var input = Objects.requireNonNull(hatch.input());
         input.insert(REPLACEMENT, 6, Actionable.MODULATE);
         var machine = new MachineInstance();
@@ -86,11 +96,4 @@ class ExternalOverlayPersistenceTest {
         assertEquals(REPLACEMENT, ResourceInputLocks.getOrCreate(withoutLayer).get(lock));
         assertEquals(5, input.availableAmount(REPLACEMENT));
     }
-
-    private static ResourceRequirement group(AEKey key) {
-        return new ResourceRequirement(List.of(), List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS,
-            null, List.of(new FuzzyInputGroup(List.of(key), 1)), List.of());
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("external_overlay_test", path); }
 }

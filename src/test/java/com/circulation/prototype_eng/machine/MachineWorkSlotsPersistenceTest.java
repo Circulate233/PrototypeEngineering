@@ -63,6 +63,38 @@ class MachineWorkSlotsPersistenceTest {
     private static final List<WorkSlotDefinition> LAYOUT = List.of(new WorkSlotDefinition("running", Set.of(GROUP)),
         new WorkSlotDefinition("blocked", Set.of(GROUP)), new WorkSlotDefinition("idle", Set.of(GROUP), false, WorkSlotRestartPolicy.RESCAN));
 
+    private static NBTTagList slots(NBTTagCompound tag) {
+        return tag.getTagList("Slots", 10);
+    }
+
+    private static NBTTagCompound probeData(NBTTagCompound tag) {
+        var components = slots(tag).getCompoundTagAt(0).getCompoundTag("Process").getTagList("Components", 10);
+        for (int index = 0; index < components.tagCount(); index++) {
+            var component = components.getCompoundTagAt(index);
+            if (component.getString("Type").equals(PROBE.id().toString())) {
+                return component.getCompoundTag("Data");
+            }
+        }
+        throw new AssertionError("Saved probe component is absent");
+    }
+
+    private static RecipeRequirement<ResourceRequirement> io(long start, long tick, long end) {
+        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(stacks(MATERIAL, start), stacks(MISSING, tick),
+            List.of(), stacks(PRODUCT, end), false));
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return amount == 0 ? List.of() : List.of(new GenericStack(key, amount));
+    }
+
+    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?> requirement) {
+        return new MachineRecipe(id(name), duration, List.of(requirement), Set.of(GROUP));
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("work_slots_test", path);
+    }
+
     @Test
     void restoresRunningBlockedAndIdleFailureAboveCurrentCapacityWithoutReplayingStart() {
         var fixture = new Fixture();
@@ -78,9 +110,13 @@ class MachineWorkSlotsPersistenceTest {
         assertNull(fixture.host.requireSlot("idle").process());
         assertEquals(new ProcessResult.Failure("work.failed", List.of("idle")), fixture.host.requireSlot("idle").result());
         for (var slot : before) {
-            if (slot.process() != null) { assertNull(slot.process().host()); }
+            if (slot.process() != null) {
+                assertNull(slot.process().host());
+            }
         }
-        for (var process : fixture.host.activeProcesses()) { assertSame(fixture.host, process.host()); }
+        for (var process : fixture.host.activeProcesses()) {
+            assertSame(fixture.host, process.host());
+        }
         var extra = new RecipeProcess(fixture.machine, fixture.runningRecipe, 91);
         assertFalse(fixture.host.startIn("idle", extra));
         assertNull(extra.host());
@@ -128,11 +164,15 @@ class MachineWorkSlotsPersistenceTest {
             int decodedBefore = fixture.probes.decoded.size();
             assertThrows(IllegalArgumentException.class, () -> fixture.codec.restore(fixture.host, malformed));
             assertEquals(old, fixture.host.snapshot());
-            for (var process : fixture.host.activeProcesses()) { assertSame(fixture.host, process.host()); }
+            for (var process : fixture.host.activeProcesses()) {
+                assertSame(fixture.host, process.host());
+            }
             for (int decodedIndex = decodedBefore; decodedIndex < fixture.probes.decoded.size(); decodedIndex++) {
                 assertNull(fixture.probes.decoded.get(decodedIndex).host());
             }
-            if (index == 0) { assertEquals(2, fixture.probes.decoded.size() - decodedBefore); }
+            if (index == 0) {
+                assertEquals(2, fixture.probes.decoded.size() - decodedBefore);
+            }
         }
         assertEquals(3, fixture.executions);
         assertEquals(7, fixture.input.amount(MATERIAL));
@@ -195,34 +235,22 @@ class MachineWorkSlotsPersistenceTest {
         assertEquals(7, fixture.input.amount(MATERIAL));
     }
 
-    private static NBTTagList slots(NBTTagCompound tag) {
-        return tag.getTagList("Slots", 10);
-    }
+    private enum FailedStart implements RequirementTransaction {
+        INSTANCE;
 
-    private static NBTTagCompound probeData(NBTTagCompound tag) {
-        var components = slots(tag).getCompoundTagAt(0).getCompoundTag("Process").getTagList("Components", 10);
-        for (int index = 0; index < components.tagCount(); index++) {
-            var component = components.getCompoundTagAt(index);
-            if (component.getString("Type").equals(PROBE.id().toString())) { return component.getCompoundTag("Data"); }
+        @Override
+        public ProcessResult result() {
+            return new ProcessResult.Failure("work.failed", List.of("idle"));
         }
-        throw new AssertionError("Saved probe component is absent");
-    }
 
-    private static RecipeRequirement<ResourceRequirement> io(long start, long tick, long end) {
-        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(stacks(MATERIAL, start), stacks(MISSING, tick),
-            List.of(), stacks(PRODUCT, end), false));
-    }
+        @Override
+        public void commit() {
+            throw new AssertionError("Rejected work cannot commit");
+        }
 
-    private static List<GenericStack> stacks(Key key, long amount) {
-        return amount == 0 ? List.of() : List.of(new GenericStack(key, amount));
-    }
-
-    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?> requirement) {
-        return new MachineRecipe(id(name), duration, List.of(requirement), Set.of(GROUP));
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("work_slots_test", path);
+        @Override
+        public void rollback() {
+        }
     }
 
     private static final class Probe {
@@ -232,21 +260,18 @@ class MachineWorkSlotsPersistenceTest {
     private static final class ProbeCodec implements ProcessComponentCodec<Probe> {
         private final ObjectArrayList<RecipeProcess> decoded = new ObjectArrayList<>();
 
-        @Override public NBTTagCompound encode(RecipeProcess process, Probe component) { return component.data.copy(); }
-        @Override public void restore(RecipeProcess process, Probe component, NBTTagCompound data) {
+        @Override
+        public NBTTagCompound encode(RecipeProcess process, Probe component) {
+            return component.data.copy();
+        }
+
+        @Override
+        public void restore(RecipeProcess process, Probe component, NBTTagCompound data) {
             StrictNbt.requireKeys(data, "Stamp");
             StrictNbt.requireInt(data, "Stamp");
             component.data = data.copy();
             decoded.add(process);
         }
-    }
-
-    private enum FailedStart implements RequirementTransaction {
-        INSTANCE;
-
-        @Override public ProcessResult result() { return new ProcessResult.Failure("work.failed", List.of("idle")); }
-        @Override public void commit() { throw new AssertionError("Rejected work cannot commit"); }
-        @Override public void rollback() { }
     }
 
     private static final class Fixture {
@@ -262,13 +287,17 @@ class MachineWorkSlotsPersistenceTest {
         private Fixture() {
             var capacities = new Reference2LongArrayMap<AEKeyType>();
             capacities.put(TYPE, 100);
-            var hatch = new BufferedResourceHatch(HatchMode.MIXED, 2, capacities, () -> { });
+            var hatch = new BufferedResourceHatch(HatchMode.MIXED, 2, capacities, () -> {
+            });
             input = Objects.requireNonNull(hatch.input());
             output = Objects.requireNonNull(hatch.output());
             input.insert(MATERIAL, 10, Actionable.MODULATE);
             machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(), List.of()));
             machine.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, 3);
-            host = new MachineWorkSlots(machine, LAYOUT, Set.of(), process -> { executions++; process.tick(); });
+            host = new MachineWorkSlots(machine, LAYOUT, Set.of(), process -> {
+                executions++;
+                process.tick();
+            });
             var blockedRecipe = recipe("blocked", 5, io(1, 1, 2));
             var running = new RecipeProcess(machine, runningRecipe, 11);
             var blocked = new RecipeProcess(machine, blockedRecipe, 12);
@@ -276,7 +305,8 @@ class MachineWorkSlotsPersistenceTest {
                 process.components().create(PROBE, process).data.setInteger("Stamp", 1);
             }
             var failureType = new RecipeRequirementType<>(id("failure"), new RecipeRequirementSystem<String>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
                     return FailedStart.INSTANCE;
                 }
             });

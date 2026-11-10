@@ -43,9 +43,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Fault-injected world transactions use native NBT and real research sources without game startup. */
+/**
+ * Fault-injected world transactions use native NBT and real research sources without game startup.
+ */
 class ResearchWorldDownloadTest {
     private static final UUID PLAYER = new UUID(0, 1);
     private static final UUID OFFLINE = new UUID(0, 2);
@@ -54,7 +62,39 @@ class ResearchWorldDownloadTest {
     private static final TestResources.KeyType TYPE = new TestResources.KeyType("world_download_output");
     private static final TestResources.Key ITEM = new TestResources.Key(TYPE, "native_output");
 
-    @Test void frozenDownloadChargesEveryOriginalMemberOnceAndSavesEachEffectBeforeDelivery() {
+    private static PlayerResearchState.Snapshot source(ResearchWorldSnapshot snapshot, UUID player) {
+        return snapshot.players().stream().filter(value -> value.playerUuid().equals(player)).findFirst().orElseThrow();
+    }
+
+    private static NBTTagCompound output() {
+        var result = new NBTTagCompound();
+        result.setString("id", "world_download_test:output");
+        result.setByte("Count", (byte) 1);
+        result.setShort("Damage", (short) 7);
+        var tag = new NBTTagCompound();
+        tag.setString("research", RESEARCH.toString());
+        tag.setInteger("level", 4);
+        result.setTag("tag", tag);
+        var caps = new NBTTagCompound();
+        caps.setInteger("stored", 42);
+        result.setTag("ForgeCaps", caps);
+        return result;
+    }
+
+    private static NBTTagCompound inventory() {
+        var stack = output();
+        stack.setByte("Slot", (byte) PlayerInventoryNbt.encodedSlot(5));
+        stack.setByte("Count", (byte) 3);
+        var list = new NBTTagList();
+        list.appendTag(stack);
+        var result = new NBTTagCompound();
+        result.setTag("inventory", list);
+        result.setInteger("selectedSlot", 0);
+        return result;
+    }
+
+    @Test
+    void frozenDownloadChargesEveryOriginalMemberOnceAndSavesEachEffectBeforeDelivery() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         assertTrue(world.trackedPlayers().containsAll(ObjectList.of(PLAYER, OFFLINE)));
@@ -77,7 +117,8 @@ class ResearchWorldDownloadTest {
             && saved.downloads().getFirst().status() == ResearchDownloadOperation.Status.SOURCES_COMMITTED));
     }
 
-    @Test void missingAuthorizationPreservesPreparedAndItsOriginalReservations() {
+    @Test
+    void missingAuthorizationPreservesPreparedAndItsOriginalReservations() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         assertEquals(ResearchDownloadResult.Status.PENDING, fixture.recover(world, _ -> false).getFirst().status());
@@ -88,7 +129,8 @@ class ResearchWorldDownloadTest {
         assertEquals(ResearchDownloadOperation.Status.PREPARED, world.pendingDownloadOperations(PLAYER).getFirst().status());
     }
 
-    @Test void authorizationLostAfterMaterialCommitDoesNotEraseOriginalSourceObligation() {
+    @Test
+    void authorizationLostAfterMaterialCommitDoesNotEraseOriginalSourceObligation() {
         var fixture = new Fixture();
         var allowed = new AtomicBoolean(true);
         fixture.inventory.afterConsume = () -> allowed.set(false);
@@ -99,7 +141,8 @@ class ResearchWorldDownloadTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void sourceSaveFailureKeepsAfterValuesAndReservationUntilExactPendingWriteSucceeds() {
+    @Test
+    void sourceSaveFailureKeepsAfterValuesAndReservationUntilExactPendingWriteSucceeds() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         fixture.saves.reject = saved -> !saved.downloads().isEmpty()
@@ -120,7 +163,8 @@ class ResearchWorldDownloadTest {
         assertTrue(world.player(PLAYER).completeAtLeast(RESEARCH, 4));
     }
 
-    @Test void committedMaterialSurvivesWorldWriteFailureAndRestartWithoutRecheckingAuthorization() {
+    @Test
+    void committedMaterialSurvivesWorldWriteFailureAndRestartWithoutRecheckingAuthorization() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         fixture.saves.reject = saved -> !saved.downloads().isEmpty()
@@ -135,7 +179,8 @@ class ResearchWorldDownloadTest {
         assertEquals(2, restarted.player(PLAYER).completedLevel(RESEARCH));
     }
 
-    @Test void sourceCommittedRecoveryDoesNotRequireCurrentLevelsEqualFrozenAfter() {
+    @Test
+    void sourceCommittedRecoveryDoesNotRequireCurrentLevelsEqualFrozenAfter() {
         var fixture = new Fixture();
         var original = fixture.restore(fixture.initial());
         fixture.inventory.failRemove = true;
@@ -156,7 +201,8 @@ class ResearchWorldDownloadTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void preparedAfterImageIsUncertainAndNeverProvesThisOperationConsumedMaterial() {
+    @Test
+    void preparedAfterImageIsUncertainAndNeverProvesThisOperationConsumedMaterial() {
         var fixture = new Fixture();
         var initial = fixture.initial();
         fixture.inventory.receipt = initial.downloads().getFirst().material();
@@ -169,7 +215,8 @@ class ResearchWorldDownloadTest {
         assertEquals(0, fixture.adapter.deliveries);
     }
 
-    @Test void materialCommittedWithoutAnExactPlayerReceiptNeverChargesOrIssuesOutput() {
+    @Test
+    void materialCommittedWithoutAnExactPlayerReceiptNeverChargesOrIssuesOutput() {
         var fixture = new Fixture();
         var initial = fixture.initial();
         var prepared = initial.downloads().getFirst().armed();
@@ -180,7 +227,8 @@ class ResearchWorldDownloadTest {
         assertEquals(0, fixture.adapter.deliveries);
     }
 
-    @Test void completeOutputPlanMustBeDurableBeforeAnyAdapterPrepareOrEffect() {
+    @Test
+    void completeOutputPlanMustBeDurableBeforeAnyAdapterPrepareOrEffect() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         fixture.saves.reject = saved -> !saved.downloads().isEmpty()
@@ -195,7 +243,8 @@ class ResearchWorldDownloadTest {
         assertEquals(1, fixture.adapter.deliveries);
     }
 
-    @Test void lostDeliveryCommitReplyRestartsFromObservationWithoutReplacingTheItem() {
+    @Test
+    void lostDeliveryCommitReplyRestartsFromObservationWithoutReplacingTheItem() {
         var fixture = new Fixture();
         fixture.adapter.failCommit = true;
         var world = fixture.restore(fixture.initial());
@@ -209,7 +258,8 @@ class ResearchWorldDownloadTest {
         assertEquals(1, fixture.adapter.plans);
     }
 
-    @Test void missingDeliveryEvidenceRemainsPendingAndDoesNotProveAbsence() {
+    @Test
+    void missingDeliveryEvidenceRemainsPendingAndDoesNotProveAbsence() {
         var fixture = new Fixture();
         fixture.adapter.failCommit = true;
         var world = fixture.restore(fixture.initial());
@@ -222,7 +272,8 @@ class ResearchWorldDownloadTest {
         assertEquals(ItemDeliveryFragment.Status.DELIVERING, world.pendingDownloadOperations(PLAYER).getFirst().fragments().getFirst().status());
     }
 
-    @Test void terminalNonceRetryRepeatsCleanupAndRejectsDifferentIntentWithoutReevaluation() {
+    @Test
+    void terminalNonceRetryRepeatsCleanupAndRejectsDifferentIntentWithoutReevaluation() {
         var fixture = new Fixture();
         var initial = fixture.initial();
         var intent = initial.downloads().getFirst().intent();
@@ -241,7 +292,8 @@ class ResearchWorldDownloadTest {
         assertEquals(releases + 2, fixture.adapter.releases);
     }
 
-    @Test void rejectedConversionChangesNeitherInventoryNorSourceAndCreatesNoPendingOperation() {
+    @Test
+    void rejectedConversionChangesNeitherInventoryNorSourceAndCreatesNoPendingOperation() {
         var fixture = new Fixture();
         var initial = fixture.initial();
         var world = fixture.restore(new ResearchWorldSnapshot(1, initial.players(), initial.teams()));
@@ -255,7 +307,8 @@ class ResearchWorldDownloadTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void explicitAbortRequiresExactUnconsumedMaterialAndDurablyReleasesReservations() {
+    @Test
+    void explicitAbortRequiresExactUnconsumedMaterialAndDurablyReleasesReservations() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         assertEquals(ResearchDownloadResult.Status.ABORTED, world.abortItemDownload(PLAYER, OPERATION, fixture.inventory, 1).status());
@@ -266,7 +319,8 @@ class ResearchWorldDownloadTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void blacklistedOrdinaryResearchIsRejectedBeforeItsMaterialConversionCallback() {
+    @Test
+    void blacklistedOrdinaryResearchIsRejectedBeforeItsMaterialConversionCallback() {
         var fixture = new Fixture();
         var initial = fixture.initial();
         var team = initial.teams().getFirst();
@@ -280,7 +334,8 @@ class ResearchWorldDownloadTest {
         assertEquals(3, world.player(PLAYER).completedLevel(RESEARCH));
     }
 
-    @Test void zeroCostDownloadCreatesEveryEmptyOriginalMemberSourceBeforeEvaluatingMaterial() {
+    @Test
+    void zeroCostDownloadCreatesEveryEmptyOriginalMemberSourceBeforeEvaluatingMaterial() {
         var fixture = new Fixture(0);
         var world = new ResearchWorld(fixture.registry, fixture.resources, ResearchPermissionPolicy.DEFAULT, fixture.saves);
         var intent = new ResearchDownloadOperation.Intent(PLAYER, new UUID(0, 4), new UUID(0, 5), "original_team", RESEARCH, 4, 5);
@@ -293,7 +348,8 @@ class ResearchWorldDownloadTest {
         assertEquals(0, fixture.inventory.consumptions);
     }
 
-    @Test void armedSaveFailurePreventsPlayerReceiptAndMaterialEffects() {
+    @Test
+    void armedSaveFailurePreventsPlayerReceiptAndMaterialEffects() {
         var fixture = new Fixture();
         var world = fixture.restore(fixture.initial());
         fixture.saves.reject = saved -> !saved.downloads().isEmpty() && saved.downloads().getFirst().materialArmed();
@@ -305,7 +361,8 @@ class ResearchWorldDownloadTest {
         assertEquals(1, fixture.inventory.consumptions);
     }
 
-    @Test void strictWorldNbtRejectsDuplicateNoncesAndCorruptedNativeOutput() {
+    @Test
+    void strictWorldNbtRejectsDuplicateNoncesAndCorruptedNativeOutput() {
         var fixture = new Fixture();
         var initial = fixture.initial();
         var operation = initial.downloads().getFirst();
@@ -320,35 +377,6 @@ class ResearchWorldDownloadTest {
         assertThrows(IllegalArgumentException.class, () -> fixture.codec.decode(corrupted));
     }
 
-    private static PlayerResearchState.Snapshot source(ResearchWorldSnapshot snapshot, UUID player) {
-        return snapshot.players().stream().filter(value -> value.playerUuid().equals(player)).findFirst().orElseThrow();
-    }
-    private static NBTTagCompound output() {
-        var result = new NBTTagCompound();
-        result.setString("id", "world_download_test:output");
-        result.setByte("Count", (byte) 1);
-        result.setShort("Damage", (short) 7);
-        var tag = new NBTTagCompound();
-        tag.setString("research", RESEARCH.toString());
-        tag.setInteger("level", 4);
-        result.setTag("tag", tag);
-        var caps = new NBTTagCompound();
-        caps.setInteger("stored", 42);
-        result.setTag("ForgeCaps", caps);
-        return result;
-    }
-    private static NBTTagCompound inventory() {
-        var stack = output();
-        stack.setByte("Slot", (byte) PlayerInventoryNbt.encodedSlot(5));
-        stack.setByte("Count", (byte) 3);
-        var list = new NBTTagList();
-        list.appendTag(stack);
-        var result = new NBTTagCompound();
-        result.setTag("inventory", list);
-        result.setInteger("selectedSlot", 0);
-        return result;
-    }
-
     private static final class Fixture {
         final ResearchRegistry registry = new ResearchRegistry();
         final NetworkResourceRegistry resources = new NetworkResourceRegistry();
@@ -356,17 +384,20 @@ class ResearchWorldDownloadTest {
         final Saves saves = new Saves();
         final Inventory inventory = new Inventory();
         final Adapter adapter = new Adapter(saves);
+
         Fixture() {
             this(1);
         }
+
         Fixture(int cost) {
             resources.freeze();
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(4).itemDownloadLevelCost(cost)
-                .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, 4).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+                                                .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                                .stage(ResearchLevelStage.builder(1, 4).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.freeze(resources);
             codec = new ResearchWorldNbt(registry, resources, new ResourceKeyNbt(id -> TYPE.getId().equals(id) ? TYPE : null));
         }
+
         ResearchWorldSnapshot initial() {
             var first = new PlayerResearchState(PLAYER);
             first.completeAtLeast(RESEARCH, 3);
@@ -377,7 +408,8 @@ class ResearchWorldDownloadTest {
             var members = new ObjectOpenHashSet<>(ObjectList.of(PLAYER, OFFLINE));
             var membership = OwnerTeamResolution.resolved(PLAYER, team.teamId(), OwnerTeamType.PLAYER, members, Optional.of(PLAYER));
             var players = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
-            players.put(PLAYER, first); players.put(OFFLINE, offline);
+            players.put(PLAYER, first);
+            players.put(OFFLINE, offline);
             var levels = new Object2IntOpenHashMap<ResourceLocation>();
             levels.put(RESEARCH, 4);
             var plan = new ResearchDownloadSources(registry).evaluate(registry.require(RESEARCH), 4, membership,
@@ -390,6 +422,7 @@ class ResearchWorldDownloadTest {
                 new ResearchWorldSnapshot.Team(team.teamId(), members, new ObjectOpenHashSet<>(), team.snapshot(), queue.snapshot(), ObjectList.of())),
                 ObjectList.of(operation), ObjectList.of());
         }
+
         ResearchWorld restore(ResearchWorldSnapshot saved) {
             var world = new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, saves);
             var decoded = codec.decode(codec.encode(saved));
@@ -397,16 +430,22 @@ class ResearchWorldDownloadTest {
             saves.durable = decoded;
             return world;
         }
+
         ObjectList<ResearchDownloadResult> recover(ResearchWorld world, Predicate<ResearchDownloadOperation> allowed) {
             return world.recoverItemDownloads(PLAYER, inventory, adapter, 1, () -> true, allowed);
         }
+
         ResearchDownloadResult request(ResearchWorld world, ResearchDownloadOperation.Intent intent, AtomicInteger evaluations) {
             var membership = OwnerTeamResolution.resolved(PLAYER, intent.teamId(), OwnerTeamType.PLAYER,
                 new ObjectOpenHashSet<>(ObjectList.of(PLAYER, OFFLINE)), Optional.of(PLAYER));
             var permission = new ResearchPermissionContext(PLAYER, intent.teamId(), PLAYER, intent.teamId(), true, false, false);
-            var levels = new Object2IntOpenHashMap<ResourceLocation>(); levels.put(RESEARCH, 4);
+            var levels = new Object2IntOpenHashMap<ResourceLocation>();
+            levels.put(RESEARCH, 4);
             return world.requestItemDownload(intent, membership, permission, new DataCenterResearchSnapshot(intent.databaseId(), 1, 16, 0, levels), inventory,
-                _ -> { evaluations.incrementAndGet(); return ResearchItemDownloadEvaluation.noEvent(); }, 1, adapter, () -> true, () -> true);
+                _ -> {
+                    evaluations.incrementAndGet();
+                    return ResearchItemDownloadEvaluation.noEvent();
+                }, 1, adapter, () -> true, () -> true);
         }
     }
 
@@ -415,7 +454,9 @@ class ResearchWorldDownloadTest {
         final IllegalStateException failure = new IllegalStateException("world save failed");
         Predicate<ResearchWorldSnapshot> reject = _ -> false;
         ResearchWorldSnapshot durable;
-        @Override public void accept(ResearchWorldSnapshot value) {
+
+        @Override
+        public void accept(ResearchWorldSnapshot value) {
             attempts.add(value);
             if (reject.test(value)) throw failure;
             durable = value;
@@ -427,17 +468,42 @@ class ResearchWorldDownloadTest {
         ResearchDownloadMaterial receipt;
         int consumptions;
         boolean failRemove;
-        Runnable afterConsume = () -> { };
-        @Override public UUID playerId() { return PLAYER; }
-        @Override public ResearchDownloadMaterial capture(UUID id, int slot) { return ResearchDownloadMaterial.prepare(PLAYER, id, slot, image); }
-        @Override public ResearchDownloadMaterial find(UUID id) { return receipt != null && receipt.operationId().equals(id) ? receipt : null; }
-        @Override public ObjectList<ResearchDownloadMaterial> operations() { return receipt == null ? ObjectList.of() : ObjectList.of(receipt); }
-        @Override public boolean matches(NBTTagCompound expected) { return image.equals(expected); }
-        @Override public void recordPrepared(ResearchDownloadMaterial prepared) {
+        Runnable afterConsume = () -> {
+        };
+
+        @Override
+        public UUID playerId() {
+            return PLAYER;
+        }
+
+        @Override
+        public ResearchDownloadMaterial capture(UUID id, int slot) {
+            return ResearchDownloadMaterial.prepare(PLAYER, id, slot, image);
+        }
+
+        @Override
+        public ResearchDownloadMaterial find(UUID id) {
+            return receipt != null && receipt.operationId().equals(id) ? receipt : null;
+        }
+
+        @Override
+        public ObjectList<ResearchDownloadMaterial> operations() {
+            return receipt == null ? ObjectList.of() : ObjectList.of(receipt);
+        }
+
+        @Override
+        public boolean matches(NBTTagCompound expected) {
+            return image.equals(expected);
+        }
+
+        @Override
+        public void recordPrepared(ResearchDownloadMaterial prepared) {
             assertTrue(matches(prepared.inventoryBefore()));
             receipt = prepared;
         }
-        @Override public boolean consume(ResearchDownloadMaterial prepared) {
+
+        @Override
+        public boolean consume(ResearchDownloadMaterial prepared) {
             if (!matches(prepared.inventoryBefore())) return false;
             receipt = prepared.committed();
             image = prepared.inventoryAfter();
@@ -445,16 +511,22 @@ class ResearchWorldDownloadTest {
             afterConsume.run();
             return true;
         }
-        @Override public void persistCommitted(UUID id) {
+
+        @Override
+        public void persistCommitted(UUID id) {
             assertNotNull(find(id));
             assertEquals(ResearchDownloadMaterial.Status.COMMITTED, receipt.status());
             assertTrue(matches(receipt.inventoryAfter()));
         }
-        @Override public void removePrepared(UUID id) {
+
+        @Override
+        public void removePrepared(UUID id) {
             if (receipt != null) assertTrue(matches(receipt.inventoryBefore()));
             receipt = null;
         }
-        @Override public void removeCommitted(UUID id) {
+
+        @Override
+        public void removeCommitted(UUID id) {
             if (failRemove) throw new IllegalStateException("material cleanup failed");
             if (receipt != null) assertEquals(ResearchDownloadMaterial.Status.COMMITTED, receipt.status());
             receipt = null;
@@ -471,11 +543,18 @@ class ResearchWorldDownloadTest {
         int releases;
         boolean failCommit;
         boolean proveAbsence = true;
-        Adapter(Saves saves) { this.saves = saves; }
-        @Override public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, AEKey resource, long amount) {
+
+        Adapter(Saves saves) {
+            this.saves = saves;
+        }
+
+        @Override
+        public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, AEKey resource, long amount) {
             throw new AssertionError("Downloads must use their frozen native template");
         }
-        @Override public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, NBTTagCompound template, long amount) {
+
+        @Override
+        public ObjectList<ItemDeliveryFragment> plan(ItemDeliveryKey parent, NBTTagCompound template, long amount) {
             plans++;
             assertEquals(output(), template);
             var id = new UUID(0, 100);
@@ -483,28 +562,43 @@ class ResearchWorldDownloadTest {
                 ItemDeliveryTemplates.taggedLeaf(template, Math.toIntExact(amount), parent, id), new ItemDeliveryFragment.Inventory(8),
                 Optional.empty(), ItemDeliveryFragment.Status.PLANNED));
         }
-        @Override public Scan scan(ObjectList<ItemDeliveryFragment> delivering) {
+
+        @Override
+        public Scan scan(ObjectList<ItemDeliveryFragment> delivering) {
             var absent = new ObjectOpenHashSet<UUID>();
-            if (proveAbsence) for (var fragment : delivering) if (!physical.contains(fragment.id())) absent.add(fragment.id());
+            if (proveAbsence)
+                for (var fragment : delivering) if (!physical.contains(fragment.id())) absent.add(fragment.id());
             return new Scan(physical, new Object2ObjectOpenHashMap<>(), absent);
         }
-        @Override public boolean canDeliver(ItemDeliveryFragment fragment) { return true; }
-        @Override public void prepare(ItemDeliveryFragment fragment) {
+
+        @Override
+        public boolean canDeliver(ItemDeliveryFragment fragment) {
+            return true;
+        }
+
+        @Override
+        public void prepare(ItemDeliveryFragment fragment) {
             prepares++;
             assertEquals(ResearchDownloadOperation.Status.DELIVERING, saves.durable.downloads().getFirst().status());
             assertEquals(ItemDeliveryFragment.Status.PLANNED, saves.durable.downloads().getFirst().fragments().getFirst().status());
         }
-        @Override public Delivery deliver(ItemDeliveryFragment fragment) {
+
+        @Override
+        public Delivery deliver(ItemDeliveryFragment fragment) {
             assertEquals(ItemDeliveryFragment.Status.DELIVERING, saves.durable.downloads().getFirst().fragments().getFirst().status());
             assertTrue(physical.add(fragment.id()), "A frozen output fragment must not be issued twice");
             deliveries++;
             return new Delivery(fragment.count(), Optional.empty());
         }
-        @Override public void commit(ItemDeliveryFragment fragment, Delivery delivery) {
+
+        @Override
+        public void commit(ItemDeliveryFragment fragment, Delivery delivery) {
             commits++;
             if (failCommit) throw new IllegalStateException("delivery commit reply lost");
         }
-        @Override public void release(ItemDeliveryFragment fragment) {
+
+        @Override
+        public void release(ItemDeliveryFragment fragment) {
             assertEquals(ItemDeliveryFragment.Status.CONFIRMED, fragment.status());
             releases++;
         }

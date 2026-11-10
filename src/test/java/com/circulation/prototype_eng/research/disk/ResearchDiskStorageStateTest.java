@@ -55,7 +55,7 @@ class ResearchDiskStorageStateTest {
             if (id.equals(BLOCKER)) stage.mutex(LOOP, 1);
             if (id.equals(LOOP)) stage.mutex(BLOCKER, 1);
             registry.register(ResearchDefinition.builder(id).maxLevel(10).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(stage.build()).build());
+                                                .stage(stage.build()).build());
         }
         registry.freeze(resources);
         return registry;
@@ -76,7 +76,8 @@ class ResearchDiskStorageStateTest {
         var registry = registry();
         var player = new PlayerResearchState(ACTOR);
         var failure = new AtomicReference<RuntimeException>(new IllegalStateException("dirty failed after publication"));
-        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> { }, () -> {
+        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> {
+        }, () -> {
             if (failure.get() != null) throw failure.get();
         });
         var commit = prepare(storage, registry, cloud(registry, player));
@@ -91,7 +92,9 @@ class ResearchDiskStorageStateTest {
         assertEquals(DataCenterStorage.Result.UPDATED, storage.synchronizeLoopingResearch(cloud(registry, player)));
         assertEquals(DataCenterStorage.Result.UPDATED, storage.downloadResearch(OTHER, 1, cloud(registry, player)));
         var restored = ResearchDataCenter.restore(DataCenterStorageNbt.decodeState(DataCenterStorageNbt.encodeState(storage.persistentState()), registry),
-            registry, () -> { }, () -> { });
+            registry, () -> {
+            }, () -> {
+            });
         assertEquals(commit, restored.receipt(OPERATION));
         assertEquals(7, restored.snapshot().storedResearch().getInt(LOOP));
         assertEquals(1, restored.snapshot().storedResearch().getInt(OTHER));
@@ -104,7 +107,9 @@ class ResearchDiskStorageStateTest {
     void mutexAndFinalAuthorityRejectionsPublishNeitherBatchNorReceipt() {
         var registry = registry();
         var player = new PlayerResearchState(ACTOR);
-        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> { }, () -> { });
+        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> {
+        }, () -> {
+        });
         var commit = prepare(storage, registry, cloud(registry, player));
         var before = storage.capture();
         player.completeAtLeast(BLOCKER, 1);
@@ -123,7 +128,9 @@ class ResearchDiskStorageStateTest {
     void unchangedContentsStillPublishReceiptAndRejectConflictingOperationIdentity() {
         var registry = registry();
         var player = new PlayerResearchState(ACTOR);
-        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> { }, () -> { });
+        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> {
+        }, () -> {
+        });
         storage.storeFromDisk(Object2IntMaps.singleton(LOOP, 5), cloud(registry, player));
         var commit = prepare(storage, registry, cloud(registry, player));
         var before = storage.capture();
@@ -141,7 +148,8 @@ class ResearchDiskStorageStateTest {
         var registry = registry();
         var player = new PlayerResearchState(ACTOR);
         var failure = new AtomicReference<RuntimeException>();
-        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> { }, () -> {
+        var storage = new ResearchDataCenter(DATABASE, 1, 3, registry, () -> {
+        }, () -> {
             if (failure.get() != null) throw failure.get();
         });
         var commit = prepare(storage, registry, cloud(registry, player));

@@ -39,10 +39,74 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("resource") // Fixture registries own subscriptions for their complete scenario.
 class MachineControllerTest {
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("machine_controller_test", name);
+    }
+
+    private static MachineType.Builder declaration(ExecutionMode mode) {
+        return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape")).executionMode(mode).attribute(id("speed"), 7);
+    }
+
+    private static MachineAssembly assembly(ComponentType<MachineInstance, Counter> component, ExecutionMode mode) {
+        return MachineAssembly.builder(declaration(mode).component(component).build(), "v1").component(component, new CounterCodec()).build();
+    }
+
+    private static ComponentType<MachineInstance, Counter> counterType(Action action) {
+        return counterType(action, () -> {
+        });
+    }
+
+    private static ComponentType<MachineInstance, Counter> counterType(Action action, Runnable factory) {
+        var system = new MachineSystem<Counter>() {
+            @Override
+            public ResourceLocation id() {
+                return MachineControllerTest.id("counter_tick");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, Counter counter) {
+                action.run.accept(owner);
+                counter.progress++;
+            }
+        };
+        return new ComponentType<>(id("counter"), _ -> {
+            factory.run();
+            return new Counter();
+        }, List.of(system));
+    }
+
+    private static Counter counter(MachineInstance machine, ComponentType<MachineInstance, Counter> type) {
+        return Objects.requireNonNull(machine.components().get(type));
+    }
+
+    private static MachineInstance runtime(MachineController controller) {
+        return Objects.requireNonNull(controller.machine());
+    }
+
+    private static TaskScheduler scheduler() {
+        return new TaskScheduler(Thread.currentThread(), 1, 1);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
     @Test
     void restoredDataIsPublishedToEveryLoadListenerBeforeTheControllerRegistersAndTicks() {
         var component = counterType(new Action());
@@ -56,7 +120,8 @@ class MachineControllerTest {
             var registry = new MachineLifecycleRegistry();
             for (String name : List.of("first", "second")) {
                 registry.register(new MachineLifecycleListener() {
-                    @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                    @Override
+                    public void onLoaded(MachineLifecycleEvent.Loaded event) {
                         assertEquals(0, scheduler.registeredCount());
                         assertEquals(12, counter(event.context().machine(), component).progress);
                         assertEquals(9, event.context().machine().attributes().value(id("speed")));
@@ -85,16 +150,29 @@ class MachineControllerTest {
         try (var scheduler = scheduler()) {
             var registry = new MachineLifecycleRegistry();
             registry.register(new MachineLifecycleListener() {
-                @Override public void onLoaded(MachineLifecycleEvent.Loaded event) { log.add("loaded:first"); }
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                @Override
+                public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                    log.add("loaded:first");
+                }
+
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
                     assertSame(MachineLifecycleEvent.UnloadReason.INVALIDATED, event.reason());
                     log.add("unloaded:first");
                     throw firstCleanup;
                 }
             });
             registry.register(new MachineLifecycleListener() {
-                @Override public void onLoaded(MachineLifecycleEvent.Loaded event) { log.add("loaded:second"); }
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { log.add("unloaded:second"); throw secondCleanup; }
+                @Override
+                public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                    log.add("loaded:second");
+                }
+
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                    log.add("unloaded:second");
+                    throw secondCleanup;
+                }
             });
             var controller = new MachineController(assembly, new Host(), scheduler, registry);
             controller.load(null);
@@ -118,20 +196,23 @@ class MachineControllerTest {
         var group = id("group");
         var recipe = new MachineRecipe(id("recipe"), 3, List.of(), Set.of(group));
         var type = declaration(ExecutionMode.MAIN_THREAD).component(component).component(MachineWorkSlots.TYPE)
-            .workSlot(new WorkSlotDefinition("main", Set.of(group))).build();
+                                                         .workSlot(new WorkSlotDefinition("main", Set.of(group))).build();
         var assembly = MachineAssembly.builder(type, "v1").component(component, new CounterCodec())
-            .workSlots(new MachineWorkSlotsNbt("slots-v1", List.of(RecipeProcessNbt.builder(recipe, "recipe-v1").build()))).build();
+                                      .workSlots(new MachineWorkSlotsNbt("slots-v1", List.of(RecipeProcessNbt.builder(recipe, "recipe-v1").build()))).build();
         var log = new ObjectArrayList<String>();
         boolean[] inCallback = {false};
         var owned = new RecipeProcess[1];
         try (var scheduler = scheduler()) {
             var registry = new MachineLifecycleRegistry();
             registry.register(new MachineLifecycleListener() {
-                @Override public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
+                @Override
+                public void onControllerBroken(MachineLifecycleEvent.ControllerBroken event) {
                     assertFalse(inCallback[0]);
                     log.add("broken");
                 }
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
                     assertFalse(inCallback[0]);
                     assertEquals(RecipeProcess.Lifecycle.CANCELLED, owned[0].state().lifecycle());
                     log.add("unloaded:" + event.reason());
@@ -157,7 +238,10 @@ class MachineControllerTest {
                     controller.controllerBroken();
                     assertEquals(List.of("enter"), log);
                     assertEquals(RecipeProcess.Lifecycle.NEW, owned[0].state().lifecycle());
-                } finally { inCallback[0] = false; log.add("exit"); }
+                } finally {
+                    inCallback[0] = false;
+                    log.add("exit");
+                }
             };
             scheduler.tick();
             assertEquals(List.of("enter", "exit", "broken", "cancelled", "unloaded:INVALIDATED"), log);
@@ -186,7 +270,8 @@ class MachineControllerTest {
              var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
             var registry = new MachineLifecycleRegistry();
             registry.register(new MachineLifecycleListener() {
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
                     assertSame(owner, Thread.currentThread());
                     assertEquals(0, exited.getCount());
                     assertEquals(0, otherExited.getCount());
@@ -200,21 +285,32 @@ class MachineControllerTest {
                 assertNotSame(owner, Thread.currentThread());
                 controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
                 entered.countDown();
-                try { await(release); }
-                finally { exited.countDown(); }
+                try {
+                    await(release);
+                } finally {
+                    exited.countDown();
+                }
                 throw failure;
             };
             scheduler.submit(() -> {
                 otherEntered.countDown();
-                try { await(release); }
-                finally { otherExited.countDown(); }
+                try {
+                    await(release);
+                } finally {
+                    otherExited.countDown();
+                }
             }, ExecutionMode.CONCURRENT);
             var observation = observer.submit(() -> {
                 await(entered);
                 await(otherEntered);
-                try { assertFalse(cleanup.await(100, TimeUnit.MILLISECONDS)); }
-                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
-                finally { release.countDown(); }
+                try {
+                    assertFalse(cleanup.await(100, TimeUnit.MILLISECONDS));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(interrupted);
+                } finally {
+                    release.countDown();
+                }
             });
             try {
                 assertSame(failure, assertThrows(IllegalStateException.class, scheduler::tick));
@@ -224,8 +320,12 @@ class MachineControllerTest {
                 controller.controllerBroken();
                 assertThrows(IllegalStateException.class, scheduler::tick);
                 assertEquals(1, log.size());
-            } finally { release.countDown(); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test
@@ -237,15 +337,23 @@ class MachineControllerTest {
             int[] rejected = {0};
             boolean[] inspect = {false};
             var metadata = new ScheduledTask() {
-                @Override public void onSchedule() { }
-                @Override public ExecutionMode executionMode() {
+                @Override
+                public void onSchedule() {
+                }
+
+                @Override
+                public ExecutionMode executionMode() {
                     if (inspect[0]) {
                         assertThrows(IllegalStateException.class, () -> controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
                         rejected[0]++;
                     }
                     return ExecutionMode.MAIN_THREAD;
                 }
-                @Override public boolean active() { return true; }
+
+                @Override
+                public boolean active() {
+                    return true;
+                }
             };
             scheduler.register(metadata);
             inspect[0] = true;
@@ -299,7 +407,8 @@ class MachineControllerTest {
         try (var scheduler = scheduler()) {
             var registry = new MachineLifecycleRegistry();
             registry.register(new MachineLifecycleListener() {
-                @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                @Override
+                public void onLoaded(MachineLifecycleEvent.Loaded event) {
                     assertEquals(List.of("main:enter", "main:exit", "factory"), log);
                     assertEquals(0, scheduler.registeredCount());
                     log.add("loaded");
@@ -362,7 +471,9 @@ class MachineControllerTest {
                 if (owner == runtime(oldController)) {
                     log.add("old");
                     oldController.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
-                } else { log.add("new"); }
+                } else {
+                    log.add("new");
+                }
             };
             scheduler.tick();
             assertEquals(List.of("old", "new"), log);
@@ -386,7 +497,11 @@ class MachineControllerTest {
         try (var scheduler = scheduler()) {
             var registry = new MachineLifecycleRegistry();
             registry.register(new MachineLifecycleListener() {
-                @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { unloads[0]++; throw failure; }
+                @Override
+                public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                    unloads[0]++;
+                    throw failure;
+                }
             });
             var controller = new MachineController(assembly(component, ExecutionMode.MAIN_THREAD), new Host(), scheduler, registry);
             controller.load(null);
@@ -401,52 +516,25 @@ class MachineControllerTest {
         }
     }
 
-    private static ResourceLocation id(String name) { return new ResourceLocation("machine_controller_test", name); }
-
-    private static MachineType.Builder declaration(ExecutionMode mode) {
-        return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape")).executionMode(mode).attribute(id("speed"), 7);
+    private static final class Counter {
+        private int progress;
     }
 
-    private static MachineAssembly assembly(ComponentType<MachineInstance, Counter> component, ExecutionMode mode) {
-        return MachineAssembly.builder(declaration(mode).component(component).build(), "v1").component(component, new CounterCodec()).build();
-    }
-
-    private static ComponentType<MachineInstance, Counter> counterType(Action action) { return counterType(action, () -> {}); }
-
-    private static ComponentType<MachineInstance, Counter> counterType(Action action, Runnable factory) {
-        var system = new MachineSystem<Counter>() {
-            @Override public ResourceLocation id() { return MachineControllerTest.id("counter_tick"); }
-            @Override public void onTick(MachineInstance owner, Counter counter) {
-                action.run.accept(owner);
-                counter.progress++;
-            }
+    private static final class Action {
+        private Consumer<MachineInstance> run = _ -> {
         };
-        return new ComponentType<>(id("counter"), _ -> { factory.run(); return new Counter(); }, List.of(system));
     }
-
-    private static Counter counter(MachineInstance machine, ComponentType<MachineInstance, Counter> type) {
-        return Objects.requireNonNull(machine.components().get(type));
-    }
-
-    private static MachineInstance runtime(MachineController controller) { return Objects.requireNonNull(controller.machine()); }
-
-    private static TaskScheduler scheduler() { return new TaskScheduler(Thread.currentThread(), 1, 1); }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-
-    private static final class Counter { private int progress; }
-    private static final class Action { private Consumer<MachineInstance> run = _ -> {}; }
 
     private static final class CounterCodec implements MachineComponentCodec<Counter> {
-        @Override public NBTTagCompound encode(MachineInstance owner, Counter counter) {
+        @Override
+        public NBTTagCompound encode(MachineInstance owner, Counter counter) {
             var tag = new NBTTagCompound();
             tag.setInteger("Progress", counter.progress);
             return tag;
         }
-        @Override public Counter restore(MachineInstance owner, Counter fresh, NBTTagCompound saved) {
+
+        @Override
+        public Counter restore(MachineInstance owner, Counter fresh, NBTTagCompound saved) {
             fresh.progress = saved.getInteger("Progress");
             return fresh;
         }
@@ -454,10 +542,22 @@ class MachineControllerTest {
 
     private static final class Host implements MachineLifecycleHost {
         private final Thread owner = Thread.currentThread();
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("Pure controller tests cannot access a Minecraft World"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Controller requires the fixture owner thread"); }
+
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("Pure controller tests cannot access a Minecraft World");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Controller requires the fixture owner thread");
+            }
         }
     }
 }

@@ -22,19 +22,25 @@ import net.minecraftforge.common.util.Constants;
 import java.util.List;
 
 final class BuiltinProcessCodecs {
-    private BuiltinProcessCodecs() { }
+    private BuiltinProcessCodecs() {
+    }
 
     static ProcessComponentCodec<RecipeOverlays> overlays(List<RecipeOverlayNbt.Binding<?, ?>> bindings) {
         var frozen = ObjectLists.unmodifiable(new ObjectArrayList<>(bindings));
         var ids = new ObjectOpenHashSet<ResourceLocation>();
         for (var binding : frozen) {
-            if (!ids.add(binding.type().id())) { throw new IllegalArgumentException("Duplicate overlay codec: " + binding.type().id()); }
+            if (!ids.add(binding.type().id())) {
+                throw new IllegalArgumentException("Duplicate overlay codec: " + binding.type().id());
+            }
         }
         return new ProcessComponentCodec<>() {
-            @Override public NBTTagCompound encode(RecipeProcess process, RecipeOverlays component) {
+            @Override
+            public NBTTagCompound encode(RecipeProcess process, RecipeOverlays component) {
                 return new RecipeOverlayNbt(new RecipeDefinitionIndex(process), frozen).encode(component.snapshot());
             }
-            @Override public void restore(RecipeProcess process, RecipeOverlays component, NBTTagCompound data) {
+
+            @Override
+            public void restore(RecipeProcess process, RecipeOverlays component, NBTTagCompound data) {
                 component.restore(new RecipeOverlayNbt(new RecipeDefinitionIndex(process), frozen).decode(data));
             }
         };
@@ -42,7 +48,8 @@ final class BuiltinProcessCodecs {
 
     static ProcessComponentCodec<ResourceInputLocks> locks(ResourceKeyNbt resources) {
         return new ProcessComponentCodec<>() {
-            @Override public NBTTagCompound encode(RecipeProcess process, ResourceInputLocks component) {
+            @Override
+            public NBTTagCompound encode(RecipeProcess process, ResourceInputLocks component) {
                 var list = new NBTTagList();
                 component.snapshot().forEach((key, value) -> {
                     var entry = new NBTTagCompound();
@@ -58,7 +65,8 @@ final class BuiltinProcessCodecs {
                 return tag;
             }
 
-            @Override public void restore(RecipeProcess process, ResourceInputLocks component, NBTTagCompound data) {
+            @Override
+            public void restore(RecipeProcess process, ResourceInputLocks component, NBTTagCompound data) {
                 StrictNbt.requireKeys(data, "Choices");
                 var list = StrictNbt.requireList(data, "Choices", Constants.NBT.TAG_COMPOUND);
                 var choices = new Object2ObjectLinkedOpenHashMap<ResourceInputLocks.Key, AEKey>();
@@ -79,14 +87,17 @@ final class BuiltinProcessCodecs {
 
     static ProcessComponentCodec<RequirementAttributeState> requirementAttributes() {
         return new ProcessComponentCodec<>() {
-            @Override public NBTTagCompound encode(RecipeProcess process, RequirementAttributeState component) {
+            @Override
+            public NBTTagCompound encode(RecipeProcess process, RequirementAttributeState component) {
                 var snapshot = component.snapshot();
                 var tag = new NBTTagCompound();
                 tag.setTag("Owned", attributeReferences(snapshot.owned()));
                 tag.setTag("Aborted", attributeReferences(snapshot.aborted()));
                 return tag;
             }
-            @Override public void restore(RecipeProcess process, RequirementAttributeState component, NBTTagCompound data) {
+
+            @Override
+            public void restore(RecipeProcess process, RequirementAttributeState component, NBTTagCompound data) {
                 StrictNbt.requireKeys(data, "Owned", "Aborted");
                 component.restore(new RequirementAttributeState.Snapshot(attributeReferences(data, "Owned"), attributeReferences(data, "Aborted")));
             }
@@ -117,7 +128,8 @@ final class BuiltinProcessCodecs {
 
     static ProcessComponentCodec<SelectiveState> selections() {
         return new ProcessComponentCodec<>() {
-            @Override public NBTTagCompound encode(RecipeProcess process, SelectiveState component) {
+            @Override
+            public NBTTagCompound encode(RecipeProcess process, SelectiveState component) {
                 var index = new RecipeDefinitionIndex(process);
                 var list = new NBTTagList();
                 component.snapshot().forEach((path, selection) -> {
@@ -178,7 +190,8 @@ final class BuiltinProcessCodecs {
                 return tag;
             }
 
-            @Override public void restore(RecipeProcess process, SelectiveState component, NBTTagCompound data) {
+            @Override
+            public void restore(RecipeProcess process, SelectiveState component, NBTTagCompound data) {
                 var index = new RecipeDefinitionIndex(process);
                 StrictNbt.requireKeys(data, "Selections", "AbortReceipts");
                 var list = StrictNbt.requireList(data, "Selections", Constants.NBT.TAG_COMPOUND);
@@ -234,7 +247,9 @@ final class BuiltinProcessCodecs {
                     throw new IllegalArgumentException("Saved selections mix active ownership with abort receipts");
                 }
                 component.restore(selections);
-                if (!receipts.isEmpty()) { component.restoreAbortReceipts(receipts); }
+                if (!receipts.isEmpty()) {
+                    component.restoreAbortReceipts(receipts);
+                }
             }
         };
     }

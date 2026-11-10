@@ -13,9 +13,12 @@ import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 
-/** BasicEntry snapshots also reject entry.setValue, unlike an unmodifiable set of live hash entries. */
+/**
+ * BasicEntry snapshots also reject entry.setValue, unlike an unmodifiable set of live hash entries.
+ */
 public final class ResearchSnapshots {
-    private ResearchSnapshots() { }
+    private ResearchSnapshots() {
+    }
 
     public static Object2IntMap<ResourceLocation> levels(Object2IntMap<ResourceLocation> source) {
         return Object2IntMaps.unmodifiable(new FrozenLevels(source));
@@ -33,14 +36,31 @@ public final class ResearchSnapshots {
             values = new Object2IntOpenHashMap<>(source);
             values.defaultReturnValue(0);
             var snapshot = new ObjectOpenHashSet<Object2IntMap.Entry<ResourceLocation>>();
-            for (var entry : source.object2IntEntrySet()) { snapshot.add(new BasicEntry<>(entry.getKey(), entry.getIntValue())); }
+            for (var entry : source.object2IntEntrySet()) {
+                snapshot.add(new BasicEntry<>(entry.getKey(), entry.getIntValue()));
+            }
             entries = ObjectSets.unmodifiable(snapshot);
         }
 
-        @Override public ObjectSet<Object2IntMap.Entry<ResourceLocation>> object2IntEntrySet() { return entries; }
-        @Override public int getInt(Object key) { return values.getInt(key); }
-        @Override public boolean containsKey(Object key) { return values.containsKey(key); }
-        @Override public int size() { return values.size(); }
+        @Override
+        public ObjectSet<Object2IntMap.Entry<ResourceLocation>> object2IntEntrySet() {
+            return entries;
+        }
+
+        @Override
+        public int getInt(Object key) {
+            return values.getInt(key);
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return values.containsKey(key);
+        }
+
+        @Override
+        public int size() {
+            return values.size();
+        }
     }
 
     private static final class FrozenSparse<V> extends AbstractInt2ObjectMap<V> {
@@ -50,13 +70,30 @@ public final class ResearchSnapshots {
         private FrozenSparse(Int2ObjectMap<V> source) {
             values = new Int2ObjectOpenHashMap<>(source);
             var snapshot = new ObjectOpenHashSet<Int2ObjectMap.Entry<V>>();
-            for (var entry : source.int2ObjectEntrySet()) { snapshot.add(new BasicEntry<>(entry.getIntKey(), entry.getValue())); }
+            for (var entry : source.int2ObjectEntrySet()) {
+                snapshot.add(new BasicEntry<>(entry.getIntKey(), entry.getValue()));
+            }
             entries = ObjectSets.unmodifiable(snapshot);
         }
 
-        @Override public ObjectSet<Int2ObjectMap.Entry<V>> int2ObjectEntrySet() { return entries; }
-        @Override public V get(int key) { return values.get(key); }
-        @Override public boolean containsKey(int key) { return values.containsKey(key); }
-        @Override public int size() { return values.size(); }
+        @Override
+        public ObjectSet<Int2ObjectMap.Entry<V>> int2ObjectEntrySet() {
+            return entries;
+        }
+
+        @Override
+        public V get(int key) {
+            return values.get(key);
+        }
+
+        @Override
+        public boolean containsKey(int key) {
+            return values.containsKey(key);
+        }
+
+        @Override
+        public int size() {
+            return values.size();
+        }
     }
 }

@@ -2,17 +2,18 @@ package com.circulation.prototype_eng.research;
 
 import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
-import com.circulation.prototype_eng.api.research.DataCenterStorage;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
+import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.ResearchDataCenters;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
+import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
@@ -50,6 +51,8 @@ import com.circulation.prototype_eng.research.manual.MinecraftManualResearchInve
 import com.circulation.prototype_eng.research.reward.MinecraftItemDeliveryAdapter;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
+import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
+import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -67,15 +70,15 @@ import net.minecraft.util.EnumHand;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.WorldServer;
-import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.DimensionManager;
+import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.eventhandler.Event;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import org.jetbrains.annotations.Nullable;
 
@@ -88,9 +91,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import com.circulation.prototype_eng.api.research.ResearchLevelResult;
-import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
-import com.feed_the_beast.ftblib.lib.data.TeamType;
 import java.util.function.Supplier;
 
 /**
@@ -104,7 +104,9 @@ public final class ServerResearch {
     private ServerResearch() {
     }
 
-    /** Carrier items are handled before a controller's normal right-click GUI activation. */
+    /**
+     * Carrier items are handled before a controller's normal right-click GUI activation.
+     */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onResearchDiskInteraction(PlayerInteractEvent.RightClickBlock event) {
         if (event.isCanceled() || event.getUseItem() == Event.Result.DENY) return;
@@ -328,10 +330,12 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
-    /** Physical right-click entry; captures the original tile, held slot and item identity before queueing. */
+    /**
+     * Physical right-click entry; captures the original tile, held slot and item identity before queueing.
+     */
     @SuppressWarnings("resource")
     public static void requestDiskImport(EntityPlayerMP actor, BlockPos pos, EnumHand hand, EnumFacing facing,
-                                          Consumer<ResearchDiskImportResult> result) {
+                                         Consumer<ResearchDiskImportResult> result) {
         var current = actorSession(actor);
         Objects.requireNonNull(result);
         var position = Objects.requireNonNull(pos).toImmutable();
@@ -361,7 +365,8 @@ public final class ServerResearch {
             DataCenterStorage clickedStorage = null;
             for (var binding : machine.components().assemblyBindings()) {
                 if (!(binding.component() instanceof DataCenterStorage storage)) continue;
-                if (clickedStorage != null) throw new IllegalStateException("Clicked machine has multiple data-center storage bindings");
+                if (clickedStorage != null)
+                    throw new IllegalStateException("Clicked machine has multiple data-center storage bindings");
                 clickedStorage = storage;
             }
             if (clickedStorage == null) {
@@ -383,10 +388,12 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
-    /** Java hosts name their exact expected team, physical database and single native inventory slot. */
+    /**
+     * Java hosts name their exact expected team, physical database and single native inventory slot.
+     */
     @SuppressWarnings({"resource", "unused"}) // Public Java request for external item/host integrations.
     public static void requestDiskImport(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId, int slot,
-                                          UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
+                                         UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
         var current = actorSession(actor);
         Objects.requireNonNull(expectedTeam);
         Objects.requireNonNull(expectedDataCenterId);
@@ -398,7 +405,7 @@ public final class ServerResearch {
     }
 
     private static void performDiskImport(Session current, EntityPlayerMP actor, String expectedTeam, UUID databaseId,
-                                           int slot, UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
+                                          int slot, UUID nonce, BooleanSupplier ownerCurrent, Consumer<ResearchDiskImportResult> result) {
         if (!currentActor(current, actor) || !ownerCurrent.getAsBoolean()) {
             result.accept(staleDiskImport());
             return;
@@ -445,7 +452,9 @@ public final class ServerResearch {
         return new ResearchDiskImportResult(ResearchDiskImportResult.Status.STALE_CONTEXT, null, null);
     }
 
-    /** Explicit cancellation remains available after team changes while the world proves no database attempt. */
+    /**
+     * Explicit cancellation remains available after team changes while the world proves no database attempt.
+     */
     @SuppressWarnings({"resource", "unused"}) // Public Java cancellation for an original pending operation.
     public static void requestDiskImportCancel(EntityPlayerMP actor, UUID operationId, Consumer<ResearchDiskImportResult> result) {
         var current = actorSession(actor);
@@ -624,8 +633,9 @@ public final class ServerResearch {
      */
     public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
                                     BooleanSupplier ownerCurrent, Consumer<TeamResearchStart.Result> result) {
-        requestStart(actor, id, target, expectedTeam, ownerCurrent, result, () -> {});
-        }
+        requestStart(actor, id, target, expectedTeam, ownerCurrent, result, () -> {
+        });
+    }
 
     public static void requestStart(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
                                     BooleanSupplier ownerCurrent, Consumer<TeamResearchStart.Result> result, Runnable finalized) {
@@ -655,8 +665,9 @@ public final class ServerResearch {
 
     public static void requestReward(EntityPlayerMP actor, ResourceLocation id, int level, ResourceLocation group,
                                      BooleanSupplier ownerCurrent, Consumer<ResearchRewardClaimer.Result> result) {
-        requestReward(actor, id, level, group, ownerCurrent, result, () -> {});
-        }
+        requestReward(actor, id, level, group, ownerCurrent, result, () -> {
+        });
+    }
 
     public static void requestReward(EntityPlayerMP actor, ResourceLocation id, int level, ResourceLocation group,
                                      BooleanSupplier ownerCurrent, Consumer<ResearchRewardClaimer.Result> result, Runnable finalized) {
@@ -752,7 +763,8 @@ public final class ServerResearch {
      */
     public static void requestTakeover(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
                                        long expectedEntryId, BooleanSupplier ownerCurrent, Consumer<ManualResearch.Status> result) {
-        requestTakeover(actor, id, target, expectedTeam, expectedEntryId, ownerCurrent, result, () -> {});
+        requestTakeover(actor, id, target, expectedTeam, expectedEntryId, ownerCurrent, result, () -> {
+        });
     }
 
     public static void requestTakeover(EntityPlayerMP actor, ResourceLocation id, int target, @Nullable String expectedTeam,
@@ -775,9 +787,9 @@ public final class ServerResearch {
 
     public static void requestBlacklist(EntityPlayerMP actor, ResourceLocation id, boolean blacklisted, @Nullable String expectedTeam,
                                         BooleanSupplier ownerCurrent, Consumer<ResearchPermissionPolicy.Decision> result) {
-        requestBlacklist(actor, id, blacklisted, expectedTeam, ownerCurrent, result,
-                () -> {});
-        }
+        requestBlacklist(actor, id, blacklisted, expectedTeam, ownerCurrent, result, () -> {
+        });
+    }
 
     public static void requestBlacklist(EntityPlayerMP actor, ResourceLocation id, boolean blacklisted, @Nullable String expectedTeam,
                                         BooleanSupplier ownerCurrent, Consumer<ResearchPermissionPolicy.Decision> result, Runnable finalized) {
@@ -816,13 +828,14 @@ public final class ServerResearch {
 
     @SuppressWarnings("unused") // Public Java callers need no container projection.
     public static void requestForget(EntityPlayerMP actor, ResourceLocation id, int forgottenLevel,
-                                      BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
-        requestForget(actor, id, forgottenLevel, null, -1, ownerCurrent, result, () -> {});
+                                     BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
+        requestForget(actor, id, forgottenLevel, null, -1, ownerCurrent, result, () -> {
+        });
     }
 
     public static void requestForget(EntityPlayerMP actor, ResourceLocation id, int forgottenLevel,
-                                      @Nullable String expectedTeam, int expectedBefore, BooleanSupplier ownerCurrent,
-                                      Consumer<ResearchLevelResult> result, Runnable finalized) {
+                                     @Nullable String expectedTeam, int expectedBefore, BooleanSupplier ownerCurrent,
+                                     Consumer<ResearchLevelResult> result, Runnable finalized) {
         var current = actorSession(actor);
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
         submitLevelAction(current, () -> levelCurrent(current, actor, expectedTeam, actor.getUniqueID(), null, ownerCurrent,
@@ -833,7 +846,8 @@ public final class ServerResearch {
     @SuppressWarnings("unused") // Public Java callers need no container projection.
     public static void requestAdminPlayerLevel(EntityPlayerMP actor, UUID target, ResourceLocation id, int level,
                                                BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
-        requestAdminPlayerLevel(actor, target, id, level, null, ownerCurrent, result, () -> {});
+        requestAdminPlayerLevel(actor, target, id, level, null, ownerCurrent, result, () -> {
+        });
     }
 
     public static void requestAdminPlayerLevel(EntityPlayerMP actor, UUID target, ResourceLocation id, int level,
@@ -850,7 +864,8 @@ public final class ServerResearch {
     @SuppressWarnings("unused") // Public Java callers need no container projection.
     public static void requestAdminTeamLevel(EntityPlayerMP actor, String target, ResourceLocation id, int level,
                                              BooleanSupplier ownerCurrent, Consumer<ResearchLevelResult> result) {
-        requestAdminTeamLevel(actor, target, id, level, null, ownerCurrent, result, () -> {});
+        requestAdminTeamLevel(actor, target, id, level, null, ownerCurrent, result, () -> {
+        });
     }
 
     public static void requestAdminTeamLevel(EntityPlayerMP actor, String target, ResourceLocation id, int level,
@@ -858,16 +873,12 @@ public final class ServerResearch {
                                              Consumer<ResearchLevelResult> result, Runnable finalized) {
         var current = actorSession(actor);
         Objects.requireNonNull(target);
-        if (target.isBlank() || target.length() > 256 || !target.equals(target.trim())) throw new IllegalArgumentException("Invalid target team");
+        if (target.isBlank() || target.length() > 256 || !target.equals(target.trim()))
+            throw new IllegalArgumentException("Invalid target team");
         ResearchRegistry.INSTANCE.require(Objects.requireNonNull(id));
         submitLevelAction(current, () -> levelCurrent(current, actor, expectedTeam, null, target, ownerCurrent,
             (membership, permission, proof) -> current.world.setTeamResearchLevel(target,
                 membership == null ? Set.of() : membership.members(), permission, id, level, operationTime(current), proof)), result, finalized);
-    }
-
-    @FunctionalInterface
-    private interface LevelOperation {
-        ResearchLevelResult apply(@Nullable OwnerTeamResolution membership, ResearchPermissionContext permission, BooleanSupplier current);
     }
 
     private static ResearchLevelResult levelCurrent(Session current, EntityPlayerMP actor, @Nullable String expectedTeam,
@@ -882,14 +893,16 @@ public final class ServerResearch {
         var liveTeam = targetTeam == null ? null : levelTeam(current, targetTeam);
         if (liveTeam != null) {
             for (var member : liveTeam.getMembers()) {
-                if (member == null || member.getId() == null) throw new IllegalStateException("Invalid target team member");
+                if (member == null || member.getId() == null)
+                    throw new IllegalStateException("Invalid target team member");
                 seeds.add(member.getId());
             }
         }
         var captures = capture(current, seeds);
         if (unavailable(captures)) return ResearchLevelResult.RECOVERY_PENDING;
         var actorTeam = Objects.requireNonNull(captures.get(actor.getUniqueID()));
-        if (!actorTeam.accepted() || expectedTeam != null && !expectedTeam.equals(actorTeam.teamId())) return ResearchLevelResult.STALE_CONTEXT;
+        if (!actorTeam.accepted() || expectedTeam != null && !expectedTeam.equals(actorTeam.teamId()))
+            return ResearchLevelResult.STALE_CONTEXT;
         var actorPermission = permission(current, actor, actorTeam);
         if (actorPermission == null) return ResearchLevelResult.STALE_CONTEXT;
         OwnerTeamResolution membership = null;
@@ -937,11 +950,13 @@ public final class ServerResearch {
     }
 
     private static boolean currentLevelTeam(Session current, String id, @Nullable ForgeTeam captured, Set<UUID> members) {
-        if (!Universe.loaded() || Universe.get().server != current.server || levelTeam(current, id) != captured) return false;
+        if (!Universe.loaded() || Universe.get().server != current.server || levelTeam(current, id) != captured)
+            return false;
         var now = new ObjectOpenHashSet<UUID>();
         if (captured != null) {
             for (var member : captured.getMembers()) {
-                if (member == null || member.getId() == null) throw new IllegalStateException("Invalid target team member");
+                if (member == null || member.getId() == null)
+                    throw new IllegalStateException("Invalid target team member");
                 now.add(member.getId());
             }
         }
@@ -963,17 +978,24 @@ public final class ServerResearch {
         try {
             ServerTaskSchedulers.forServer(current.server).submit(() -> runFinalized(action, finalized), ExecutionMode.MAIN_THREAD);
         } catch (RuntimeException | Error failure) {
-            try { finalized.run(); }
-            catch (RuntimeException | Error cleanup) { if (cleanup != failure) failure.addSuppressed(cleanup); }
+            try {
+                finalized.run();
+            } catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) failure.addSuppressed(cleanup);
+            }
             throw failure;
         }
     }
 
     public static void runFinalized(Runnable action, Runnable finalized) {
-        try { action.run(); }
-        catch (RuntimeException | Error failure) {
-            try { finalized.run(); }
-            catch (RuntimeException | Error cleanup) { if (cleanup != failure) failure.addSuppressed(cleanup); }
+        try {
+            action.run();
+        } catch (RuntimeException | Error failure) {
+            try {
+                finalized.run();
+            } catch (RuntimeException | Error cleanup) {
+                if (cleanup != failure) failure.addSuppressed(cleanup);
+            }
             throw failure;
         }
         finalized.run();
@@ -1371,6 +1393,11 @@ public final class ServerResearch {
         if (!server.isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Research operations require the authoritative server thread");
         }
+    }
+
+    @FunctionalInterface
+    private interface LevelOperation {
+        ResearchLevelResult apply(@Nullable OwnerTeamResolution membership, ResearchPermissionContext permission, BooleanSupplier current);
     }
 
     private static final class Session {

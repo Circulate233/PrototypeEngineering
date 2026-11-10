@@ -14,7 +14,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Exact local attribute ownership for built-in requirements, including nested canonical paths. */
+/**
+ * Exact local attribute ownership for built-in requirements, including nested canonical paths.
+ */
 public final class RequirementAttributeState implements ProcessAbortListener {
     public static final ComponentType<RecipeProcess, RequirementAttributeState> TYPE = new ComponentType<>(
         new ResourceLocation(Tags.MOD_ID, "requirement_attributes"), RequirementAttributeState::new, ObjectLists.emptyList());
@@ -23,14 +25,18 @@ public final class RequirementAttributeState implements ProcessAbortListener {
     private final Object2ObjectLinkedOpenHashMap<Reference, AttributeModifier> owned = new Object2ObjectLinkedOpenHashMap<>();
     private final ObjectLinkedOpenHashSet<Reference> aborted = new ObjectLinkedOpenHashSet<>();
 
-    private RequirementAttributeState(RecipeProcess process) { this.process = process; }
+    private RequirementAttributeState(RecipeProcess process) {
+        this.process = process;
+    }
 
     public static RequirementAttributeState getOrCreate(RecipeProcess process) {
         var existing = process.components().get(TYPE);
         return existing == null ? process.components().create(TYPE, process) : existing;
     }
 
-    /** Existing foreign IDs remain untouched and are never claimed by this requirement. */
+    /**
+     * Existing foreign IDs remain untouched and are never claimed by this requirement.
+     */
     @Nullable
     public Installation install(RequirementPath path, ResourceLocation attribute, AttributeModifier modifier) {
         var reference = new Reference(path, attribute);
@@ -40,12 +46,16 @@ public final class RequirementAttributeState implements ProcessAbortListener {
             return null;
         }
         var renamed = new RenamedAttributeModifier(reference.modifierId(), Objects.requireNonNull(modifier));
-        if (!process.attributes().addModifier(attribute, renamed)) { return null; }
+        if (!process.attributes().addModifier(attribute, renamed)) {
+            return null;
+        }
         owned.put(reference, renamed);
         return new Installation(reference, renamed);
     }
 
-    /** Freezes the exact objects for deferred END completion; START parameters need not remain current. */
+    /**
+     * Freezes the exact objects for deferred END completion; START parameters need not remain current.
+     */
     public List<Installation> ownedAt(RequirementPath path) {
         var result = new ObjectArrayList<Installation>();
         owned.forEach((reference, modifier) -> {
@@ -57,7 +67,9 @@ public final class RequirementAttributeState implements ProcessAbortListener {
         return ObjectLists.unmodifiable(result);
     }
 
-    /** Used by START rollback and END completion; only this exact installation can be removed. */
+    /**
+     * Used by START rollback and END completion; only this exact installation can be removed.
+     */
     public void remove(Installation installation) {
         remove(installation, false);
     }
@@ -72,7 +84,9 @@ public final class RequirementAttributeState implements ProcessAbortListener {
             throw new IllegalStateException("Requirement attribute disappeared before cleanup: " + reference);
         }
         owned.remove(reference);
-        if (abort) { aborted.add(reference); }
+        if (abort) {
+            aborted.add(reference);
+        }
     }
 
     private void requireInstalled(Reference reference, AttributeModifier expected) {
@@ -81,10 +95,14 @@ public final class RequirementAttributeState implements ProcessAbortListener {
         }
     }
 
-    /** Successful abort receipts verify absence; unrelated factory attributes are preserved. */
+    /**
+     * Successful abort receipts verify absence; unrelated factory attributes are preserved.
+     */
     @Override
     public void onAborted(RecipeProcess owner) {
-        if (owner != process) { throw new IllegalArgumentException("Attribute state belongs to another process"); }
+        if (owner != process) {
+            throw new IllegalArgumentException("Attribute state belongs to another process");
+        }
         var installations = new ObjectArrayList<Installation>();
         owned.forEach((reference, modifier) -> installations.add(new Installation(reference, modifier)));
         Throwable failure = null;
@@ -92,23 +110,36 @@ public final class RequirementAttributeState implements ProcessAbortListener {
             try {
                 remove(installations.get(index), true);
             } catch (RuntimeException | Error cleanup) {
-                if (failure == null) { failure = cleanup; }
-                else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                if (failure == null) {
+                    failure = cleanup;
+                } else if (failure != cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
             }
         }
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
     }
 
     public Snapshot snapshot() {
         owned.forEach(this::requireInstalled);
-        for (var reference : aborted) { requireAbsent(reference); }
+        for (var reference : aborted) {
+            requireAbsent(reference);
+        }
         return new Snapshot(new ObjectArrayList<>(owned.keySet()), new ObjectArrayList<>(aborted));
     }
 
-    /** Binds restored local modifiers without applying them; receipts never replay cleanup. */
+    /**
+     * Binds restored local modifiers without applying them; receipts never replay cleanup.
+     */
     public void restore(Snapshot snapshot) {
-        if (!owned.isEmpty() || !aborted.isEmpty()) { throw new IllegalStateException("Attribute restore requires fresh state"); }
+        if (!owned.isEmpty() || !aborted.isEmpty()) {
+            throw new IllegalStateException("Attribute restore requires fresh state");
+        }
         var restored = new Object2ObjectLinkedOpenHashMap<Reference, AttributeModifier>();
         var receipts = new ObjectLinkedOpenHashSet<Reference>();
         for (var reference : snapshot.owned()) {
@@ -138,7 +169,10 @@ public final class RequirementAttributeState implements ProcessAbortListener {
             Objects.requireNonNull(path);
             Objects.requireNonNull(attribute);
         }
-        public String modifierId() { return "req:" + path + ":" + attribute; }
+
+        public String modifierId() {
+            return "req:" + path + ":" + attribute;
+        }
     }
 
     public record Installation(Reference reference, AttributeModifier modifier) {

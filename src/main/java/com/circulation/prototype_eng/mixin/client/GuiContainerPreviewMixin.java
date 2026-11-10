@@ -16,10 +16,13 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 public abstract class GuiContainerPreviewMixin {
     @Redirect(method = "initGui", at = @At(value = "FIELD", target = "Lnet/minecraft/client/entity/EntityPlayerSP;openContainer:Lnet/minecraft/inventory/Container;", opcode = Opcodes.PUTFIELD), require = 1, allow = 1)
     private void prototype_eng$keepOriginalWindow(EntityPlayerSP player, Container local) {
-        if (!((Object) this instanceof StructurePreviewGui) && PreviewScreenTransitions.binding((GuiContainer) (Object) this, local)) player.openContainer = local;
+        if (!((Object) this instanceof StructurePreviewGui) && PreviewScreenTransitions.binding((GuiContainer) (Object) this, local))
+            player.openContainer = local;
     }
+
     @Redirect(method = "onGuiClosed", at = @At(value = "INVOKE", target = "Lnet/minecraft/inventory/Container;onContainerClosed(Lnet/minecraft/entity/player/EntityPlayer;)V"), require = 1, allow = 1)
     private void prototype_eng$suspendPreviewParent(Container container, EntityPlayer player) {
-        if (!PreviewScreenTransitions.suspending((GuiContainer) (Object) this, container)) container.onContainerClosed(player);
+        if (!PreviewScreenTransitions.suspending((GuiContainer) (Object) this, container))
+            container.onContainerClosed(player);
     }
 }

@@ -12,7 +12,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** One long FE balance with exact quantity/capacity holds and a shared concurrency boundary. */
+/**
+ * One long FE balance with exact quantity/capacity holds and a shared concurrency boundary.
+ */
 public final class EnergyBuffer implements EnergyHatch {
     private final long capacity;
     private final StorageContext context;
@@ -39,12 +41,31 @@ public final class EnergyBuffer implements EnergyHatch {
         context = new StorageContext(onChanged);
     }
 
+    private static void checkLimits(long maxReceive, long maxExtract) {
+        if (maxReceive < 0 || maxExtract < 0) {
+            throw new IllegalArgumentException("Negative energy transfer limit");
+        }
+    }
+
+    private static void checkRequest(long amount, Actionable mode) {
+        Objects.requireNonNull(mode, "mode");
+        if (amount < 0) {
+            throw new IllegalArgumentException("Amount must not be negative");
+        }
+    }
+
+    private static ReservationResult rejected(ReservationResult.Status status) {
+        return new ReservationResult(status, null);
+    }
+
     @Override
     public StorageContext context() {
         return context;
     }
 
-    /** Updates limits in place. Existing tokens are rechecked against lower limits before applying. */
+    /**
+     * Updates limits in place. Existing tokens are rechecked against lower limits before applying.
+     */
     public void setTransferLimits(long maxReceive, long maxExtract) {
         checkLimits(maxReceive, maxExtract);
         context.lock();
@@ -205,7 +226,9 @@ public final class EnergyBuffer implements EnergyHatch {
         }
     }
 
-    /** Restores committed energy only when no token owns quantity or refund capacity. */
+    /**
+     * Restores committed energy only when no token owns quantity or refund capacity.
+     */
     public void restore(long amount) {
         if (amount < 0 || amount > capacity) {
             throw new IllegalArgumentException("Saved energy is outside capacity");
@@ -225,7 +248,9 @@ public final class EnergyBuffer implements EnergyHatch {
         }
     }
 
-    /** Persistence retains the committed balance after transfer views have been invalidated. */
+    /**
+     * Persistence retains the committed balance after transfer views have been invalidated.
+     */
     public long savedEnergy() {
         context.lock();
         try {
@@ -253,31 +278,25 @@ public final class EnergyBuffer implements EnergyHatch {
         context.requireChange();
     }
 
-    private static void checkLimits(long maxReceive, long maxExtract) {
-        if (maxReceive < 0 || maxExtract < 0) {
-            throw new IllegalArgumentException("Negative energy transfer limit");
+    private void validateBalance(long amount, long extract, long receive) {
+        if (amount < 0 || amount > capacity) {
+            throw new IllegalStateException("Energy reservation lost its balance bounds");
+        }
+        if (extract < 0 || extract > amount
+            || receive < 0 || receive > capacity - amount) {
+            throw new IllegalStateException("Energy reservation lost its quantity or capacity rights");
         }
     }
 
-    private static void checkRequest(long amount, Actionable mode) {
-        Objects.requireNonNull(mode, "mode");
-        if (amount < 0) {
-            throw new IllegalArgumentException("Amount must not be negative");
-        }
-    }
-
-    private static ReservationResult rejected(ReservationResult.Status status) {
-        return new ReservationResult(status, null);
-    }
-
-    private enum State { PENDING, APPLIED, STAGED, COMMITTED, ROLLED_BACK }
+    private enum State {PENDING, APPLIED, STAGED, COMMITTED, ROLLED_BACK}
 
     private final class Reservation implements ResourceReservation {
         private final long amount;
         private final boolean receive;
         private State state = State.PENDING;
         private byte revisionChanges = 3;
-        @Nullable private StorageFence stagedFence;
+        @Nullable
+        private StorageFence stagedFence;
 
         private Reservation(long amount, boolean receive) {
             this.amount = amount;
@@ -301,9 +320,13 @@ public final class EnergyBuffer implements EnergyHatch {
             };
         }
 
-        @Override public boolean supportsSequentialUse() { return true; }
+        @Override
+        public boolean supportsSequentialUse() {
+            return true;
+        }
 
-        @Override public void exposeApplied() {
+        @Override
+        public void exposeApplied() {
             context.requireFenceAccess();
             requireState(State.APPLIED);
             context.requireReservedChange(revisionChanges);
@@ -350,7 +373,9 @@ public final class EnergyBuffer implements EnergyHatch {
         @Override
         public void complete() {
             context.requireLock();
-            if (state != State.APPLIED && state != State.STAGED) { throw new IllegalStateException("Cannot complete unapplied or terminal energy reservation"); }
+            if (state != State.APPLIED && state != State.STAGED) {
+                throw new IllegalStateException("Cannot complete unapplied or terminal energy reservation");
+            }
             requireStagedFence();
             release(false);
             state = State.COMMITTED;
@@ -430,16 +455,6 @@ public final class EnergyBuffer implements EnergyHatch {
             if (state != expected) {
                 throw new IllegalStateException("Energy reservation is " + state + ", expected " + expected);
             }
-        }
-    }
-
-    private void validateBalance(long amount, long extract, long receive) {
-        if (amount < 0 || amount > capacity) {
-            throw new IllegalStateException("Energy reservation lost its balance bounds");
-        }
-        if (extract < 0 || extract > amount
-            || receive < 0 || receive > capacity - amount) {
-            throw new IllegalStateException("Energy reservation lost its quantity or capacity rights");
         }
     }
 }

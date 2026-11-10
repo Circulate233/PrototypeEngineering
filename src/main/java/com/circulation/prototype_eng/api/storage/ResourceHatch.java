@@ -8,11 +8,15 @@ import org.jetbrains.annotations.Nullable;
  * Implementations share the physical balance's StorageContext across all adapter aliases.
  */
 public interface ResourceHatch {
-    /** Materials the machine can consume, or null if this hatch has no input. */
+    /**
+     * Materials the machine can consume, or null if this hatch has no input.
+     */
     @Nullable
     ResourceStorage input();
 
-    /** Storage for machine products, or null if this hatch has no output. */
+    /**
+     * Storage for machine products, or null if this hatch has no output.
+     */
     @Nullable
     ResourceStorage output();
 
@@ -25,13 +29,17 @@ public interface ResourceHatch {
         return storage == null ? null : storage.context();
     }
 
-    /** Stable identity of the output balance, distinct from input for a mixed hatch. */
+    /**
+     * Stable identity of the output balance, distinct from input for a mixed hatch.
+     */
     @Nullable
     default Object outputStorageIdentity() {
         var storage = output();
         return storage == null ? null : storage.context();
     }
 
-    /** Whether this particular host instance can still participate in work. */
+    /**
+     * Whether this particular host instance can still participate in work.
+     */
     boolean isValid();
 }

@@ -50,6 +50,18 @@ public final class ControllerRenderChunks {
             bytes = bytes.clone();
         }
 
+        public static Part decode(ControllerDisplayData display, NBTTagCompound tag) {
+            StrictNbt.requireKeys(tag, "Version", "SessionMost", "SessionLeast", "CatalogSequence", "Total", "Index", "Count", "Bytes");
+            if (StrictNbt.requireInt(tag, "Version") != 1 || !tag.hasKey("Bytes", Constants.NBT.TAG_BYTE_ARRAY))
+                throw new IllegalArgumentException("Invalid machine render chunk schema");
+            var part = new Part(display, new MachineRenderSnapshot.CatalogToken(new UUID(StrictNbt.requireLong(tag, "SessionMost"),
+                StrictNbt.requireLong(tag, "SessionLeast")), StrictNbt.requireLong(tag, "CatalogSequence")),
+                StrictNbt.requireInt(tag, "Total"), StrictNbt.requireInt(tag, "Index"), tag.getByteArray("Bytes"));
+            if (StrictNbt.requireInt(tag, "Count") != part.count())
+                throw new IllegalArgumentException("Conflicting machine render chunk count");
+            return part;
+        }
+
         @Override
         public byte[] bytes() {
             return bytes.clone();
@@ -71,18 +83,6 @@ public final class ControllerRenderChunks {
             tag.setInteger("Count", count());
             tag.setByteArray("Bytes", bytes.clone());
             return tag;
-        }
-
-        public static Part decode(ControllerDisplayData display, NBTTagCompound tag) {
-            StrictNbt.requireKeys(tag, "Version", "SessionMost", "SessionLeast", "CatalogSequence", "Total", "Index", "Count", "Bytes");
-            if (StrictNbt.requireInt(tag, "Version") != 1 || !tag.hasKey("Bytes", Constants.NBT.TAG_BYTE_ARRAY))
-                throw new IllegalArgumentException("Invalid machine render chunk schema");
-            var part = new Part(display, new MachineRenderSnapshot.CatalogToken(new UUID(StrictNbt.requireLong(tag, "SessionMost"),
-                StrictNbt.requireLong(tag, "SessionLeast")), StrictNbt.requireLong(tag, "CatalogSequence")),
-                StrictNbt.requireInt(tag, "Total"), StrictNbt.requireInt(tag, "Index"), tag.getByteArray("Bytes"));
-            if (StrictNbt.requireInt(tag, "Count") != part.count())
-                throw new IllegalArgumentException("Conflicting machine render chunk count");
-            return part;
         }
     }
 

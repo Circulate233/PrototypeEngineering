@@ -21,8 +21,6 @@ public record StructureProjectionOptions(Style style, boolean hideDisplayedMatch
             throw new IllegalArgumentException("Invalid projection presentation limits");
     }
 
-    public enum Style {BOX_OUTLINE, TRANSLUCENT_BOX, BOX_AND_OUTLINE, BLOCK_MODEL}
-
     /**
      * Retains C's existing source/API constructor; native VBO work uses its own PM chunk budgets.
      */
@@ -38,4 +36,6 @@ public record StructureProjectionOptions(Style style, boolean hideDisplayedMatch
     public StructureProjectionOptions() {
         this(Style.TRANSLUCENT_BOX, true, null, 2048, 2048, 4096, 64.0);
     }
+
+    public enum Style {BOX_OUTLINE, TRANSLUCENT_BOX, BOX_AND_OUTLINE, BLOCK_MODEL}
 }

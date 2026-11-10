@@ -1,27 +1,35 @@
 package com.circulation.prototype_eng.client.render;
 
-import net.minecraft.client.renderer.BufferBuilder;
-import net.minecraft.util.math.BlockPos;
-
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.ArrayList;
-import java.util.Objects;
-
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static com.circulation.prototype_eng.client.render.BModelFixtures.*;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.CpuUploader;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.request;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.resources;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelBufferOwnershipTest {
     @TempDir

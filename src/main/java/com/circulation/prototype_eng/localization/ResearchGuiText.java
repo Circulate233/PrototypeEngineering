@@ -3,10 +3,11 @@ package com.circulation.prototype_eng.localization;
 import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
+import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
-import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.disk.ResearchDiskImportResult;
+import com.circulation.prototype_eng.api.research.download.ResearchDownloadResult;
 import com.circulation.prototype_eng.api.research.manual.ManualResearch;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.reward.ResearchRewardClaimer;
@@ -14,7 +15,6 @@ import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.view.ResearchPlayerView;
 
 import java.util.Objects;
-import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 
 /**
  * Shared feedback is synchronized as an enum; translation happens on the receiving client.

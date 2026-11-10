@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
@@ -64,7 +65,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class FixedIoScanConstraintTest {
     private static final KeyType FIRST_TYPE = new KeyType("fixed_io_first");
@@ -73,8 +73,90 @@ class FixedIoScanConstraintTest {
     private static final Key PRODUCT = new Key(FIRST_TYPE, "product");
     private static final Key OTHER_PRODUCT = new Key(SECOND_TYPE, "product");
     private static final ResourceLocation GROUP = id("group");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
     private static final FixedIoScanConstraint CONSTRAINT = new FixedIoScanConstraint();
+
+    private static RecipeRequirement<Boolean> contextRequirement(String name, Environment env, ProbeStats stats, long amount,
+                                                                 ProcessResult result, RuntimeException acquisitionFailure,
+                                                                 RuntimeException cleanupFailure) {
+        return new RecipeRequirementType<Boolean>(new ResourceLocation("tick_context_test", name), new RecipeRequirementSystem<>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                stats.starts++;
+                return RequirementTransaction.SUCCESS;
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                stats.events.add("tick:" + name);
+                var tick = process.tickContext();
+                assertEquals(new RecipeProcess.Tick(0, 3.5, 0, 1), tick);
+                assertEquals(requirement.path(null), process.requirementPath());
+                if (acquisitionFailure != null) {
+                    throw acquisitionFailure;
+                }
+                var tokens = new ObjectArrayList<ResourceReservation>();
+                if (amount != 0) {
+                    var material = env.input.reserveExtract(env.input.snapshot(), MATERIAL, amount);
+                    var energy = env.energy.reserveExtractEnergy(env.energy.energySnapshot(), amount);
+                    assertEquals(ReservationResult.Status.ACCEPTED, material.status());
+                    assertEquals(ReservationResult.Status.ACCEPTED, energy.status());
+                    tokens.add(Objects.requireNonNull(material.reservation()));
+                    tokens.add(Objects.requireNonNull(energy.reservation()));
+                }
+                stats.active++;
+                return new ContextTransaction(process, process.requirementPath(), tick, tokens, result, stats, () -> {
+                    stats.events.add("rollback:" + name);
+                    stats.active--;
+                    if (cleanupFailure != null) {
+                        throw cleanupFailure;
+                    }
+                });
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                stats.ends++;
+                return RequirementTransaction.SUCCESS;
+            }
+        }).requirement(id(name), true);
+    }
+
+    private static RecipeRequirement<ResourceRequirement> io(String name, long start, long tickInput, long tickOutput,
+                                                             long end, boolean voidExcess) {
+        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(stacks(MATERIAL, start),
+            stacks(MATERIAL, tickInput), stacks(PRODUCT, tickOutput), stacks(PRODUCT, end), voidExcess));
+    }
+
+    private static RecipeRequirement<EnergyRequirement> energy(long start, long tickInput, long tickOutput, long end, boolean voidExcess) {
+        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(start, tickInput, tickOutput, end, voidExcess));
+    }
+
+    private static RecipeProcess process(Environment env, MachineRecipe recipe, int parallelism) {
+        var process = new RecipeProcess(env.machine, recipe, 17);
+        process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
+        return process;
+    }
+
+    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
+        return new MachineRecipe(id(name), duration, List.of(requirements), Set.of(GROUP));
+    }
+
+    private static SlottedResourceBuffer buffer(int slots, long capacity) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(FIRST_TYPE, capacity);
+        capacities.put(SECOND_TYPE, capacity);
+        return new SlottedResourceBuffer(slots, capacities, NO_OP);
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return amount == 0 ? List.of() : List.of(new GenericStack(key, amount));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("fixed_io_test", name);
+    }
 
     @Test
     void futureStageProbesAggregateRequirementsAndAliasesAndHonorEnergyOperationRates() {
@@ -205,10 +287,25 @@ class FixedIoScanConstraintTest {
         env.output.insert(PRODUCT, 10, Actionable.MODULATE);
         int[] callbacks = {0};
         var external = new RecipeRequirementType<Boolean>(id("external_type"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) { return unexpected(); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) { return unexpected(); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Boolean> requirement) { return unexpected(); }
-            private RequirementTransaction unexpected() { callbacks[0]++; throw new AssertionError("Unsupported stage executed"); }
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return unexpected();
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return unexpected();
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return unexpected();
+            }
+
+            private RequirementTransaction unexpected() {
+                callbacks[0]++;
+                throw new AssertionError("Unsupported stage executed");
+            }
         }).requirement(id("external"), true);
         var matcher = new NamedResourceMatcher(id("matcher"), (_, _) -> {
             callbacks[0]++;
@@ -244,8 +341,15 @@ class FixedIoScanConstraintTest {
         var callbackCandidate = process(env, recipe("callbacks", 3, fixed), 1);
         assertInstanceOf(ProcessResult.Blocked.class, CONSTRAINT.test(callbackCandidate));
         var type = new ComponentType<RecipeProcess, Boolean>(id("component"), _ -> true, List.of(new ComponentSystem<>() {
-            @Override public ResourceLocation id() { return FixedIoScanConstraintTest.id("component_system"); }
-            @Override public void onPreTick(RecipeProcess process, Boolean component) { callbacks[0]++; }
+            @Override
+            public ResourceLocation id() {
+                return FixedIoScanConstraintTest.id("component_system");
+            }
+
+            @Override
+            public void onPreTick(RecipeProcess process, Boolean component) {
+                callbacks[0]++;
+            }
         }));
         callbackCandidate.components().create(type, callbackCandidate);
         assertSame(ProcessResult.SUCCESS, CONSTRAINT.test(callbackCandidate));
@@ -323,51 +427,39 @@ class FixedIoScanConstraintTest {
         assertThrows(IllegalStateException.class, process::requirePersistenceBoundary);
     }
 
-    private static RecipeRequirement<Boolean> contextRequirement(String name, Environment env, ProbeStats stats, long amount,
-                                                                  ProcessResult result, RuntimeException acquisitionFailure,
-                                                                  RuntimeException cleanupFailure) {
-        return new RecipeRequirementType<Boolean>(new ResourceLocation("tick_context_test", name), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                stats.starts++;
-                return RequirementTransaction.SUCCESS;
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                stats.events.add("tick:" + name);
-                var tick = process.tickContext();
-                assertEquals(new RecipeProcess.Tick(0, 3.5, 0, 1), tick);
-                assertEquals(requirement.path(null), process.requirementPath());
-                if (acquisitionFailure != null) { throw acquisitionFailure; }
-                var tokens = new ObjectArrayList<ResourceReservation>();
-                if (amount != 0) {
-                    var material = env.input.reserveExtract(env.input.snapshot(), MATERIAL, amount);
-                    var energy = env.energy.reserveExtractEnergy(env.energy.energySnapshot(), amount);
-                    assertEquals(ReservationResult.Status.ACCEPTED, material.status());
-                    assertEquals(ReservationResult.Status.ACCEPTED, energy.status());
-                    tokens.add(Objects.requireNonNull(material.reservation()));
-                    tokens.add(Objects.requireNonNull(energy.reservation()));
-                }
-                stats.active++;
-                return new ContextTransaction(process, process.requirementPath(), tick, tokens, result, stats, () -> {
-                    stats.events.add("rollback:" + name);
-                    stats.active--;
-                    if (cleanupFailure != null) { throw cleanupFailure; }
-                });
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                stats.ends++;
-                return RequirementTransaction.SUCCESS;
-            }
-        }).requirement(id(name), true);
-    }
-
     private record ContextTransaction(RecipeProcess process, RequirementPath path, RecipeProcess.Tick tick,
                                       List<ResourceReservation> tokens, ProcessResult outcome, ProbeStats stats,
                                       Runnable cleanup) implements RequirementTransaction {
-        @Override public ProcessResult result() { checkScope(); return outcome; }
-        @Override public List<ResourceReservation> reservations() { checkScope(); return tokens; }
-        @Override public void commit() { checkScope(); stats.commits++; }
-        @Override public void complete() { checkScope(); stats.completes++; }
-        @Override public void rollback() { checkScope(); cleanup.run(); }
+        @Override
+        public ProcessResult result() {
+            checkScope();
+            return outcome;
+        }
+
+        @Override
+        public List<ResourceReservation> reservations() {
+            checkScope();
+            return tokens;
+        }
+
+        @Override
+        public void commit() {
+            checkScope();
+            stats.commits++;
+        }
+
+        @Override
+        public void complete() {
+            checkScope();
+            stats.completes++;
+        }
+
+        @Override
+        public void rollback() {
+            checkScope();
+            cleanup.run();
+        }
+
         private void checkScope() {
             assertSame(tick, process.tickContext());
             assertEquals(path, process.requirementPath());
@@ -390,6 +482,7 @@ class FixedIoScanConstraintTest {
         private final EnergyBuffer energy = new EnergyBuffer(100, 100, 6, NO_OP);
         private final EnergyBuffer generated = new EnergyBuffer(100, 6, 100, NO_OP);
         private final MachineWorkSlots host;
+
         private Environment() {
             input.insert(MATERIAL, 20, Actionable.MODULATE);
             energy.restore(50);
@@ -399,6 +492,7 @@ class FixedIoScanConstraintTest {
             host = new MachineWorkSlots(machine, List.of(new WorkSlotDefinition("main", Set.of(GROUP))));
             machine.components().put(MachineWorkSlots.TYPE, host);
         }
+
         private void assertReleased() {
             assertEquals(input.amount(MATERIAL), input.availableAmount(MATERIAL));
             assertEquals(10 - output.amount(PRODUCT), output.insert(PRODUCT, 100, Actionable.SIMULATE));
@@ -408,34 +502,12 @@ class FixedIoScanConstraintTest {
     }
 
     private record Ports(ResourceStorage input, ResourceStorage output) implements ResourceHatch {
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
-    private record Stages(RecipeStage input, RecipeStage output) { }
 
-    private static RecipeRequirement<ResourceRequirement> io(String name, long start, long tickInput, long tickOutput,
-                                                             long end, boolean voidExcess) {
-        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(stacks(MATERIAL, start),
-            stacks(MATERIAL, tickInput), stacks(PRODUCT, tickOutput), stacks(PRODUCT, end), voidExcess));
+    private record Stages(RecipeStage input, RecipeStage output) {
     }
-    private static RecipeRequirement<EnergyRequirement> energy(long start, long tickInput, long tickOutput, long end, boolean voidExcess) {
-        return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(start, tickInput, tickOutput, end, voidExcess));
-    }
-    private static RecipeProcess process(Environment env, MachineRecipe recipe, int parallelism) {
-        var process = new RecipeProcess(env.machine, recipe, 17);
-        process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
-        return process;
-    }
-    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
-        return new MachineRecipe(id(name), duration, List.of(requirements), Set.of(GROUP));
-    }
-    private static SlottedResourceBuffer buffer(int slots, long capacity) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(FIRST_TYPE, capacity);
-        capacities.put(SECOND_TYPE, capacity);
-        return new SlottedResourceBuffer(slots, capacities, NO_OP);
-    }
-    private static List<GenericStack> stacks(Key key, long amount) {
-        return amount == 0 ? List.of() : List.of(new GenericStack(key, amount));
-    }
-    private static ResourceLocation id(String name) { return new ResourceLocation("fixed_io_test", name); }
 }

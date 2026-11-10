@@ -15,52 +15,20 @@ import net.minecraftforge.common.util.Constants;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Strict versioned checkpoints. Decoding preserves the exact state; world loading calls restored(). */
+/**
+ * Strict versioned checkpoints. Decoding preserves the exact state; world loading calls restored().
+ */
 @SuppressWarnings("unused")
 public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSession> {
     private final ResearchRegistry registry;
 
-    public ManualResearchSessionNbt(ResearchRegistry registry) { this.registry = Objects.requireNonNull(registry); }
-
-    @Override public NBTTagCompound encode(ManualResearchSession value) {
-        validateDefinition(value);
-        var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
-        tag.setString("Id", value.id().toString());
-        tag.setString("Team", value.teamId());
-        var key = new NBTTagCompound();
-        key.setString("Research", value.queueKey().researchId().toString());
-        key.setInteger("Level", value.queueKey().targetLevel());
-        key.setLong("EntryId", value.queueKey().queueEntryId());
-        tag.setTag("QueueKey", key);
-        tag.setLong("LastActivity", value.lastActivity());
-        tag.setString("Status", value.status().name());
-        if (value.contributor() != null) { tag.setString("Contributor", value.contributor().toString()); }
-        if (value.pauseReason() != null) { tag.setString("PauseReason", value.pauseReason().name()); }
-        tag.setTag("Work", encodeWork(value.work()));
-        if (value.materialIntent() != null) { tag.setTag("Material", encodeMaterialIntent(value.materialIntent())); }
-        if (value.completionIntent() != null) { tag.setTag("Completion", encodeCompletion(value.completionIntent())); }
-        return tag;
+    public ManualResearchSessionNbt(ResearchRegistry registry) {
+        this.registry = Objects.requireNonNull(registry);
     }
 
-    @Override public ManualResearchSession decode(NBTTagCompound tag) {
-        StrictNbt.requireKeys(tag, "Version", "Id", "Team", "QueueKey", "LastActivity", "Status", "Contributor", "PauseReason", "Work", "Material", "Completion");
-        if (StrictNbt.requireInt(tag, "Version") != 1) { throw new IllegalArgumentException("Unknown manual research save version"); }
-        var key = StrictNbt.requireCompound(tag, "QueueKey");
-        StrictNbt.requireKeys(key, "Research", "Level", "EntryId");
-        var saved = new ManualResearchSession(uuid(StrictNbt.requireString(tag, "Id")), StrictNbt.requireString(tag, "Team"),
-            new TeamResearchQueue.Key(StrictNbt.requireId(key, "Research"), StrictNbt.requireInt(key, "Level"), StrictNbt.requireLong(key, "EntryId")),
-            tag.hasKey("Contributor") ? uuid(StrictNbt.requireString(tag, "Contributor")) : null,
-            StrictNbt.requireLong(tag, "LastActivity"), ManualResearchSession.Status.valueOf(StrictNbt.requireString(tag, "Status")),
-            tag.hasKey("PauseReason") ? ManualResearchSession.PauseReason.valueOf(StrictNbt.requireString(tag, "PauseReason")) : null,
-            decodeWork(StrictNbt.requireList(tag, "Work", Constants.NBT.TAG_COMPOUND)),
-            tag.hasKey("Material") ? decodeMaterialIntent(StrictNbt.requireCompound(tag, "Material")) : null,
-            tag.hasKey("Completion") ? decodeCompletion(StrictNbt.requireCompound(tag, "Completion")) : null);
-        validateDefinition(saved);
-        return saved;
-    }
-
-    /** Shared with the player's persistent material receipt: the whole intent remains unchanged. */
+    /**
+     * Shared with the player's persistent material receipt: the whole intent remains unchanged.
+     */
     public static NBTTagCompound encodeMaterialIntent(ManualResearchSession.MaterialIntent value) {
         Objects.requireNonNull(value);
         var tag = new NBTTagCompound();
@@ -99,7 +67,9 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
             var tag = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(tag, "Requirement", "Input", "Amount");
             var key = new ManualMaterialKey(StrictNbt.requireId(tag, "Requirement"), StrictNbt.requireInt(tag, "Input"));
-            if (amounts.containsKey(key)) { throw new IllegalArgumentException("Duplicate saved manual material key"); }
+            if (amounts.containsKey(key)) {
+                throw new IllegalArgumentException("Duplicate saved manual material key");
+            }
             amounts.put(key, StrictNbt.requireLong(tag, "Amount"));
         }
         return ManualResearchSession.immutableWork(amounts);
@@ -127,33 +97,12 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
             var baseline = saved.getCompoundTagAt(index);
             StrictNbt.requireKeys(baseline, "Player", "Level");
             var player = uuid(StrictNbt.requireString(baseline, "Player"));
-            if (baselines.containsKey(player)) { throw new IllegalArgumentException("Duplicate saved manual completion member"); }
+            if (baselines.containsKey(player)) {
+                throw new IllegalArgumentException("Duplicate saved manual completion member");
+            }
             baselines.put(player, StrictNbt.requireInt(baseline, "Level"));
         }
         return new ManualResearchSession.CompletionIntent(StrictNbt.requireLong(tag, "WorldTime"), baselines);
-    }
-
-    private void validateDefinition(ManualResearchSession value) {
-        var stage = registry.require(value.queueKey().researchId()).stageForLevel(value.queueKey().targetLevel());
-        if (stage.researchTier() != 0) { throw new IllegalArgumentException("Manual session requires tier-zero research"); }
-        var required = new Object2LongOpenHashMap<ManualMaterialKey>();
-        for (var requirement : stage.materialRequirements()) {
-            var payload = (ResourceRequirement) requirement.payload();
-            for (int index = 0; index < payload.inputs().size(); index++) {
-                required.put(new ManualMaterialKey(requirement.id(), index), payload.inputs().get(index).amount());
-            }
-        }
-        validateWork(value.work(), required);
-        var material = value.materialIntent();
-        if (material != null) { validateWork(material.pendingWork(), required); validateWork(material.expectedWork(), required); }
-        if (value.completionIntent() != null) {
-            var projected = material == null ? value.work() : material.expectedWork();
-            for (var entry : required.object2LongEntrySet()) {
-                if (projected.getLong(entry.getKey()) != entry.getLongValue()) {
-                    throw new IllegalArgumentException("Manual completion has unfinished materials");
-                }
-            }
-        }
     }
 
     private static void validateWork(Object2LongMap<ManualMaterialKey> work, Object2LongMap<ManualMaterialKey> required) {
@@ -166,7 +115,87 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
 
     private static UUID uuid(String text) {
         var id = UUID.fromString(text);
-        if (!id.toString().equals(text)) { throw new IllegalArgumentException("Noncanonical manual research UUID"); }
+        if (!id.toString().equals(text)) {
+            throw new IllegalArgumentException("Noncanonical manual research UUID");
+        }
         return id;
+    }
+
+    @Override
+    public NBTTagCompound encode(ManualResearchSession value) {
+        validateDefinition(value);
+        var tag = new NBTTagCompound();
+        tag.setInteger("Version", 1);
+        tag.setString("Id", value.id().toString());
+        tag.setString("Team", value.teamId());
+        var key = new NBTTagCompound();
+        key.setString("Research", value.queueKey().researchId().toString());
+        key.setInteger("Level", value.queueKey().targetLevel());
+        key.setLong("EntryId", value.queueKey().queueEntryId());
+        tag.setTag("QueueKey", key);
+        tag.setLong("LastActivity", value.lastActivity());
+        tag.setString("Status", value.status().name());
+        if (value.contributor() != null) {
+            tag.setString("Contributor", value.contributor().toString());
+        }
+        if (value.pauseReason() != null) {
+            tag.setString("PauseReason", value.pauseReason().name());
+        }
+        tag.setTag("Work", encodeWork(value.work()));
+        if (value.materialIntent() != null) {
+            tag.setTag("Material", encodeMaterialIntent(value.materialIntent()));
+        }
+        if (value.completionIntent() != null) {
+            tag.setTag("Completion", encodeCompletion(value.completionIntent()));
+        }
+        return tag;
+    }
+
+    @Override
+    public ManualResearchSession decode(NBTTagCompound tag) {
+        StrictNbt.requireKeys(tag, "Version", "Id", "Team", "QueueKey", "LastActivity", "Status", "Contributor", "PauseReason", "Work", "Material", "Completion");
+        if (StrictNbt.requireInt(tag, "Version") != 1) {
+            throw new IllegalArgumentException("Unknown manual research save version");
+        }
+        var key = StrictNbt.requireCompound(tag, "QueueKey");
+        StrictNbt.requireKeys(key, "Research", "Level", "EntryId");
+        var saved = new ManualResearchSession(uuid(StrictNbt.requireString(tag, "Id")), StrictNbt.requireString(tag, "Team"),
+            new TeamResearchQueue.Key(StrictNbt.requireId(key, "Research"), StrictNbt.requireInt(key, "Level"), StrictNbt.requireLong(key, "EntryId")),
+            tag.hasKey("Contributor") ? uuid(StrictNbt.requireString(tag, "Contributor")) : null,
+            StrictNbt.requireLong(tag, "LastActivity"), ManualResearchSession.Status.valueOf(StrictNbt.requireString(tag, "Status")),
+            tag.hasKey("PauseReason") ? ManualResearchSession.PauseReason.valueOf(StrictNbt.requireString(tag, "PauseReason")) : null,
+            decodeWork(StrictNbt.requireList(tag, "Work", Constants.NBT.TAG_COMPOUND)),
+            tag.hasKey("Material") ? decodeMaterialIntent(StrictNbt.requireCompound(tag, "Material")) : null,
+            tag.hasKey("Completion") ? decodeCompletion(StrictNbt.requireCompound(tag, "Completion")) : null);
+        validateDefinition(saved);
+        return saved;
+    }
+
+    private void validateDefinition(ManualResearchSession value) {
+        var stage = registry.require(value.queueKey().researchId()).stageForLevel(value.queueKey().targetLevel());
+        if (stage.researchTier() != 0) {
+            throw new IllegalArgumentException("Manual session requires tier-zero research");
+        }
+        var required = new Object2LongOpenHashMap<ManualMaterialKey>();
+        for (var requirement : stage.materialRequirements()) {
+            var payload = (ResourceRequirement) requirement.payload();
+            for (int index = 0; index < payload.inputs().size(); index++) {
+                required.put(new ManualMaterialKey(requirement.id(), index), payload.inputs().get(index).amount());
+            }
+        }
+        validateWork(value.work(), required);
+        var material = value.materialIntent();
+        if (material != null) {
+            validateWork(material.pendingWork(), required);
+            validateWork(material.expectedWork(), required);
+        }
+        if (value.completionIntent() != null) {
+            var projected = material == null ? value.work() : material.expectedWork();
+            for (var entry : required.object2LongEntrySet()) {
+                if (projected.getLong(entry.getKey()) != entry.getLongValue()) {
+                    throw new IllegalArgumentException("Manual completion has unfinished materials");
+                }
+            }
+        }
     }
 }

@@ -8,7 +8,9 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import java.util.List;
 import java.util.Objects;
 
-/** PM's weighted output entries: select up to pickCount distinct entries on each execution. */
+/**
+ * PM's weighted output entries: select up to pickCount distinct entries on each execution.
+ */
 public record RandomOutputPool(List<WeightedSampling.Weighted<GenericStack>> candidates, int pickCount) {
     public RandomOutputPool {
         if (pickCount < 0) {

@@ -8,10 +8,10 @@ import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.SelectiveRequirement;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
 import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
@@ -27,7 +27,6 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import javax.annotation.ParametersAreNonnullByDefault;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,13 +43,26 @@ class JeiCandidateDisplayTest {
     private static final IIngredientType<GenericStack> INGREDIENT = () -> GenericStack.class;
     private static final JeiRenderOptions ALTERNATIVES = new JeiRenderOptions(true, JeiRenderOptions.CandidateMode.ALTERNATIVES, 0);
 
-    private static GenericStack stack(String name, long amount) { return new GenericStack(new Key(TYPE, name), amount); }
+    private static GenericStack stack(String name, long amount) {
+        return new GenericStack(new Key(TYPE, name), amount);
+    }
 
     private static JeiRecipeIngredients ingredients(JeiRecipeDisplay display) {
         var converter = new IngredientConverter<GenericStack>() {
-            @Override public IIngredientType<GenericStack> getIngredientType() { return INGREDIENT; }
-            @Override public @Nullable GenericStack getIngredientFromStack(GenericStack stack) { return stack.what().getType() == TYPE ? stack : null; }
-            @Override public GenericStack getStackFromIngredient(GenericStack ingredient) { return ingredient; }
+            @Override
+            public IIngredientType<GenericStack> getIngredientType() {
+                return INGREDIENT;
+            }
+
+            @Override
+            public @Nullable GenericStack getIngredientFromStack(GenericStack stack) {
+                return stack.what().getType() == TYPE ? stack : null;
+            }
+
+            @Override
+            public GenericStack getStackFromIngredient(GenericStack ingredient) {
+                return ingredient;
+            }
         };
         var identities = new JeiQueryIdentityIndex();
         identities.captureConverter(converter, new JeiTestViews.IdentityHelper<>(ingredient ->
@@ -143,7 +155,8 @@ class JeiCandidateDisplayTest {
         assertEquals(List.of(List.of(stack("a", 2), stack("b", 5)),
             List.of(stack("catalyst_a", 1), stack("catalyst_b", 320))), pattern.inputs());
         assertEquals(List.of(List.of(stack("out_a", 3), stack("out_b", 160))), pattern.outputs());
-        for (var row : display.resources()) assertTrue(row.details().stream().anyMatch(line -> line.text() == JeiText.Alternative));
+        for (var row : display.resources())
+            assertTrue(row.details().stream().anyMatch(line -> line.text() == JeiText.Alternative));
     }
 
     @Test
@@ -173,7 +186,8 @@ class JeiCandidateDisplayTest {
         var builder = new JeiRecipeDisplay.Builder();
         for (int group = 0; group < 2; group++) {
             var candidates = builder.candidates(new JeiRecipeDisplay.CandidateGroup("same_name"));
-            for (int row = 0; row < 18; row++) candidates.resource(stack(group + "/" + row, row + 1), JeiRecipeDisplay.Role.INPUT);
+            for (int row = 0; row < 18; row++)
+                candidates.resource(stack(group + "/" + row, row + 1), JeiRecipeDisplay.Role.INPUT);
         }
         var display = builder.build();
         var ingredients = ingredients(display);

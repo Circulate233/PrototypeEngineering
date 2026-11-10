@@ -8,10 +8,11 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputatio
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.localization.RecipeText;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Explicit whole-recipe scan constraints. Bounds must exclude no feasible base amount, and checks
@@ -19,17 +20,26 @@ import org.jetbrains.annotations.Nullable;
  * An accepted constraint never replaces the mandatory transactional START probe.
  */
 public interface RecipeParallelismConstraint {
-    default int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) { return currentLimit; }
-    default ProcessResult test(RecipeProcess process) { return ProcessResult.SUCCESS; }
+    default int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
+        return currentLimit;
+    }
 
-    /** Existing external checks remain one cooperative callback; built-ins override their loops. */
+    default ProcessResult test(RecipeProcess process) {
+        return ProcessResult.SUCCESS;
+    }
+
+    /**
+     * Existing external checks remain one cooperative callback; built-ins override their loops.
+     */
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     default Check beginCheck(RecipeProcess process) {
         return new Check() {
             private boolean finished;
             private boolean cancelled;
             private ProcessResult result;
-            @Override public boolean advance(RecipeWorkBudget budget, BooleanSupplier forwardAllowed) {
+
+            @Override
+            public boolean advance(RecipeWorkBudget budget, BooleanSupplier forwardAllowed) {
                 if (finished) return true;
                 if (cancelled || !forwardAllowed.getAsBoolean()) {
                     result = RecipeText.Cancelled.blocked();
@@ -41,23 +51,49 @@ public interface RecipeParallelismConstraint {
                 finished = true;
                 return true;
             }
-            @Override public ProcessResult result() {
+
+            @Override
+            public ProcessResult result() {
                 if (!finished) throw new IllegalStateException("Constraint check is incomplete");
                 return result;
             }
-            @Override public void cancel() { cancelled = true; }
+
+            @Override
+            public void cancel() {
+                cancelled = true;
+            }
         };
     }
 
     interface Check {
         boolean advance(RecipeWorkBudget budget, BooleanSupplier forwardAllowed);
+
         ProcessResult result();
+
         void cancel();
-        default @Nullable RecipePureComputation computation() { return null; }
-        default void finishComputation(RecipePureComputation expected) { throw new IllegalArgumentException("No constraint computation"); }
-        default List<ResourceBatch.Source> sources() { return List.of(); }
-        default boolean resolvingSources() { return false; }
-        default void finishSourceResolution(ResourceBatch.Source expected, boolean resolved) { throw new IllegalArgumentException("No constraint source action"); }
-        default boolean hasObligations() { return false; }
+
+        default @Nullable RecipePureComputation computation() {
+            return null;
+        }
+
+        default void finishComputation(RecipePureComputation expected) {
+            throw new IllegalArgumentException("No constraint computation");
+        }
+
+        default List<ResourceBatch.Source> sources() {
+            return List.of();
+        }
+
+        default boolean resolvingSources() {
+            return false;
+        }
+
+        default void finishSourceResolution(ResourceBatch.Source expected, boolean resolved) {
+            throw new IllegalArgumentException("No constraint source action");
+        }
+
+        default boolean hasObligations() {
+            return false;
+        }
     }
 }

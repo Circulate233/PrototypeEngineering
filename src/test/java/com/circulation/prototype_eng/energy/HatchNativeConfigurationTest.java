@@ -5,11 +5,11 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
-import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
-import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ControllerData;
-import net.minecraft.util.ResourceLocation;
+import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
+import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

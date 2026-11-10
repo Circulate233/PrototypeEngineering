@@ -11,43 +11,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineModelHidesTest {
-    /** Exercises the actual adapter; only the dependency's native chunk-update calls are replaced. */
-    private static class Hides extends MachineModelHides {
-        @Override
-        protected boolean enabled() {
-            return true;
-        }
-
-        final Map<BlockPos, Collection<BlockPos>> nativeEntries = new Object2ObjectOpenHashMap<>();
-        final Set<BlockPos> hidden = new ObjectLinkedOpenHashSet<>();
-        int removals;
-        Runnable afterAdd = () -> {
-        };
-
-        @Override
-        protected Map<BlockPos, Collection<BlockPos>> entries() {
-            return nativeEntries;
-        }
-
-        @Override
-        protected void add(BlockPos controller, Collection<BlockPos> positions) {
-            nativeEntries.put(controller, positions);
-            hidden.addAll(positions);
-            afterAdd.run();
-        }
-
-        @Override
-        protected void remove(BlockPos controller) {
-            removals++;
-            nativeEntries.remove(controller);
-            hidden.clear();
-            nativeEntries.values().forEach(hidden::addAll);
-        }
-    }
-
     @Test
     void staleTickAttemptsEveryOwnedRemovalAndPreservesTheFirstNativeError() {
         var error = new AssertionError("native removal");
@@ -148,6 +120,40 @@ class MachineModelHidesTest {
             assertSame(original, assertThrows(AssertionError.class, () -> hides.acquire(new Object(), new Object(), BlockPos.ORIGIN, List.of(BlockPos.ORIGIN), () -> true)));
             assertTrue(hides.nativeEntries.isEmpty());
             assertEquals(1, hides.removals);
+        }
+    }
+
+    /** Exercises the actual adapter; only the dependency's native chunk-update calls are replaced. */
+    private static class Hides extends MachineModelHides {
+        final Map<BlockPos, Collection<BlockPos>> nativeEntries = new Object2ObjectOpenHashMap<>();
+        final Set<BlockPos> hidden = new ObjectLinkedOpenHashSet<>();
+        int removals;
+        Runnable afterAdd = () -> {
+        };
+
+        @Override
+        protected boolean enabled() {
+            return true;
+        }
+
+        @Override
+        protected Map<BlockPos, Collection<BlockPos>> entries() {
+            return nativeEntries;
+        }
+
+        @Override
+        protected void add(BlockPos controller, Collection<BlockPos> positions) {
+            nativeEntries.put(controller, positions);
+            hidden.addAll(positions);
+            afterAdd.run();
+        }
+
+        @Override
+        protected void remove(BlockPos controller) {
+            removals++;
+            nativeEntries.remove(controller);
+            hidden.clear();
+            nativeEntries.values().forEach(hidden::addAll);
         }
     }
 }

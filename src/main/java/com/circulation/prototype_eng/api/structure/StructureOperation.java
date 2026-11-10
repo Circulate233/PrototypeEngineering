@@ -17,6 +17,21 @@ public abstract class StructureOperation<T> {
     @Nullable
     private T value;
 
+    /** Existing external virtual operations keep their exact behavior at this cooperative boundary. */
+    public static <T> StructureOperation<T> call(Supplier<? extends T> action) {
+        Objects.requireNonNull(action);
+        return new StructureOperation<>() {
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
+                Objects.requireNonNull(work);
+                if (complete()) return true;
+                if (!work.take()) return false;
+                finish(action.get());
+                return true;
+            }
+        };
+    }
+
     public abstract boolean advance(RecipeWorkBudget work);
 
     public final boolean complete() {
@@ -41,20 +56,5 @@ public abstract class StructureOperation<T> {
         if (!advance(new RecipeWorkBudget(Long.MAX_VALUE)))
             throw new IllegalStateException("Structure operation exceeds the synchronous work range");
         return result();
-    }
-
-    /** Existing external virtual operations keep their exact behavior at this cooperative boundary. */
-    public static <T> StructureOperation<T> call(Supplier<? extends T> action) {
-        Objects.requireNonNull(action);
-        return new StructureOperation<>() {
-            @Override
-            public boolean advance(RecipeWorkBudget work) {
-                Objects.requireNonNull(work);
-                if (complete()) return true;
-                if (!work.take()) return false;
-                finish(action.get());
-                return true;
-            }
-        };
     }
 }

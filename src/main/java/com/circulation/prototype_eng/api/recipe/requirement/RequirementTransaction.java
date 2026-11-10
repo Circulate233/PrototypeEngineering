@@ -19,14 +19,25 @@ import java.util.List;
  */
 public interface RequirementTransaction extends ReversibleTransaction {
     RequirementTransaction SUCCESS = new RequirementTransaction() {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() {}
-        @Override public void rollback() {}
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     };
 
     ProcessResult result();
 
-    /** Stable, side-effect-free list of all acquired tokens, including a partially rejected acquisition. */
+    /**
+     * Stable, side-effect-free list of all acquired tokens, including a partially rejected acquisition.
+     */
     default List<? extends ResourceReservation> reservations() {
         return List.of();
     }
@@ -36,13 +47,20 @@ public interface RequirementTransaction extends ReversibleTransaction {
      * cursor is stable and side-effect-free to obtain. The enclosing executor owns every tail step;
      * this transaction must not also commit, complete or roll back those returned transactions.
      */
-    default @Nullable RequirementContinuation continuation() { return null; }
-
-    @Override void commit();
-
-    /** Release business undo information after all commits succeed. Must not reject or throw. */
-    @Override default void complete() {
+    default @Nullable RequirementContinuation continuation() {
+        return null;
     }
 
-    @Override void rollback();
+    @Override
+    void commit();
+
+    /**
+     * Release business undo information after all commits succeed. Must not reject or throw.
+     */
+    @Override
+    default void complete() {
+    }
+
+    @Override
+    void rollback();
 }

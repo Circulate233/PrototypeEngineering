@@ -3,8 +3,8 @@ package com.circulation.prototype_eng.client.render;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.ARBMapBufferRange;
 import org.lwjgl.opengl.GL11;
@@ -16,8 +16,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.ArrayDeque;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /** Native upload, client-array fallback and two-slot mapped writes; every native operation stays on client owner. */
@@ -25,36 +25,27 @@ public class ReusableModelVboUploader implements AutoCloseable {
     public static final int STRIDE = 28;
     private final ModelClientThread client;
     private final Map<Key, Entry> mapped = new Object2ObjectOpenHashMap<>();
-
-    private record Upload(int id, int bytes) {
-    }
-
     private final ArrayDeque<Upload> freeUploads = new ArrayDeque<>();
     private long freeUploadBytes;
     private @Nullable ByteBuffer mergeScratch;
     private boolean closed;
-
     public ReusableModelVboUploader(ModelClientThread client) {
         this.client = client;
     }
 
-    private record Key(GeckoRenderRequest.BaseKey base, MachineRenderPass pass) {
+    private static void enableArrays() {
+        GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+        GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+        GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
+        GL11.glEnableClientState(GL11.GL_NORMAL_ARRAY);
     }
 
-    private static final class Entry {
-        final Slot[] slots = new Slot[2];
-        boolean retired;
-    }
-
-    private static final class Slot {
-        final int id;
-        boolean writer;
-        int readers;
-        boolean deleted;
-
-        Slot(int id) {
-            this.id = id;
-        }
+    private static void disableArrays() {
+        GlStateManager.resetColor();
+        GL11.glDisableClientState(GL11.GL_NORMAL_ARRAY);
+        GL11.glDisableClientState(GL11.GL_COLOR_ARRAY);
+        GL11.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
+        GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
     }
 
     public @Nullable Ticket tryMap(GeckoRenderRequest request, MachineRenderPass pass, int capacity) {
@@ -370,62 +361,6 @@ public class ReusableModelVboUploader implements AutoCloseable {
         BuiltModelBuffers.rethrow(failure);
     }
 
-    public static final class Ticket {
-        private final Key key;
-        private final Entry entry;
-        private final Slot slot;
-        private final ByteBuffer bytes;
-        private final int capacity;
-        private volatile boolean finished;
-
-        private Ticket(Key key, Entry entry, Slot slot, ByteBuffer bytes, int capacity) {
-            this.key = key;
-            this.entry = entry;
-            this.slot = slot;
-            this.bytes = bytes;
-            this.capacity = capacity;
-        }
-
-        /** Only the task's worker writes this view until it dispatches exactly one finish/abort. */
-        public IntBuffer writerView() {
-            return bytes.asIntBuffer();
-        }
-
-        public boolean finished() {
-            return finished;
-        }
-    }
-
-    public static final class GpuDraw implements AutoCloseable {
-        private final ReusableModelVboUploader owner;
-        private final int id;
-        private final int vertices;
-        private final Runnable release;
-        private boolean released;
-
-        private GpuDraw(ReusableModelVboUploader owner, int id, int vertices, Runnable release) {
-            this.owner = owner;
-            this.id = id;
-            this.vertices = vertices;
-            this.release = release;
-        }
-
-        public void draw() {
-            owner.client.requireOwner();
-            if (released) throw new IllegalStateException("GPU slot already released");
-            owner.drawBuffer(id, vertices);
-        }
-
-        @Override
-        public void close() {
-            owner.client.execute(() -> {
-                if (released) return;
-                released = true;
-                release.run();
-            });
-        }
-    }
-
     protected boolean useVbo() {
         return OpenGlHelper.useVbo();
     }
@@ -492,15 +427,26 @@ public class ReusableModelVboUploader implements AutoCloseable {
             GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, STRIDE, 20L);
             GL11.glNormalPointer(GL11.GL_BYTE, STRIDE, 24L);
             GL11.glDrawArrays(GL11.GL_QUADS, 0, vertices);
-        } catch (RuntimeException | Error exception) { failure = exception; }
-        if (pushed) {
-            try { disableArrays(); }
-            catch (RuntimeException | Error cleanup) { failure = BuiltModelBuffers.append(failure, cleanup); }
-            try { GL11.glPopClientAttrib(); }
-            catch (RuntimeException | Error cleanup) { failure = BuiltModelBuffers.append(failure, cleanup); }
+        } catch (RuntimeException | Error exception) {
+            failure = exception;
         }
-        try { OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, previous); }
-        catch (RuntimeException | Error cleanup) { failure = BuiltModelBuffers.append(failure, cleanup); }
+        if (pushed) {
+            try {
+                disableArrays();
+            } catch (RuntimeException | Error cleanup) {
+                failure = BuiltModelBuffers.append(failure, cleanup);
+            }
+            try {
+                GL11.glPopClientAttrib();
+            } catch (RuntimeException | Error cleanup) {
+                failure = BuiltModelBuffers.append(failure, cleanup);
+            }
+        }
+        try {
+            OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, previous);
+        } catch (RuntimeException | Error cleanup) {
+            failure = BuiltModelBuffers.append(failure, cleanup);
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
@@ -523,30 +469,104 @@ public class ReusableModelVboUploader implements AutoCloseable {
             bytes.position(24);
             GL11.glNormalPointer(GL11.GL_BYTE, STRIDE, bytes);
             GL11.glDrawArrays(GL11.GL_QUADS, 0, vertices);
-        } catch (RuntimeException | Error exception) { failure = exception; }
-        if (pushed) {
-            try { disableArrays(); }
-            catch (RuntimeException | Error cleanup) { failure = BuiltModelBuffers.append(failure, cleanup); }
-            try { GL11.glPopClientAttrib(); }
-            catch (RuntimeException | Error cleanup) { failure = BuiltModelBuffers.append(failure, cleanup); }
+        } catch (RuntimeException | Error exception) {
+            failure = exception;
         }
-        try { OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, previous); }
-        catch (RuntimeException | Error cleanup) { failure = BuiltModelBuffers.append(failure, cleanup); }
+        if (pushed) {
+            try {
+                disableArrays();
+            } catch (RuntimeException | Error cleanup) {
+                failure = BuiltModelBuffers.append(failure, cleanup);
+            }
+            try {
+                GL11.glPopClientAttrib();
+            } catch (RuntimeException | Error cleanup) {
+                failure = BuiltModelBuffers.append(failure, cleanup);
+            }
+        }
+        try {
+            OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, previous);
+        } catch (RuntimeException | Error cleanup) {
+            failure = BuiltModelBuffers.append(failure, cleanup);
+        }
         BuiltModelBuffers.rethrow(failure);
     }
 
-    private static void enableArrays() {
-        GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY);
-        GL11.glEnableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
-        GL11.glEnableClientState(GL11.GL_COLOR_ARRAY);
-        GL11.glEnableClientState(GL11.GL_NORMAL_ARRAY);
+    private record Upload(int id, int bytes) {
     }
 
-    private static void disableArrays() {
-        GlStateManager.resetColor();
-        GL11.glDisableClientState(GL11.GL_NORMAL_ARRAY);
-        GL11.glDisableClientState(GL11.GL_COLOR_ARRAY);
-        GL11.glDisableClientState(GL11.GL_TEXTURE_COORD_ARRAY);
-        GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY);
+    private record Key(GeckoRenderRequest.BaseKey base, MachineRenderPass pass) {
+    }
+
+    private static final class Entry {
+        final Slot[] slots = new Slot[2];
+        boolean retired;
+    }
+
+    private static final class Slot {
+        final int id;
+        boolean writer;
+        int readers;
+        boolean deleted;
+
+        Slot(int id) {
+            this.id = id;
+        }
+    }
+
+    public static final class Ticket {
+        private final Key key;
+        private final Entry entry;
+        private final Slot slot;
+        private final ByteBuffer bytes;
+        private final int capacity;
+        private volatile boolean finished;
+
+        private Ticket(Key key, Entry entry, Slot slot, ByteBuffer bytes, int capacity) {
+            this.key = key;
+            this.entry = entry;
+            this.slot = slot;
+            this.bytes = bytes;
+            this.capacity = capacity;
+        }
+
+        /** Only the task's worker writes this view until it dispatches exactly one finish/abort. */
+        public IntBuffer writerView() {
+            return bytes.asIntBuffer();
+        }
+
+        public boolean finished() {
+            return finished;
+        }
+    }
+
+    public static final class GpuDraw implements AutoCloseable {
+        private final ReusableModelVboUploader owner;
+        private final int id;
+        private final int vertices;
+        private final Runnable release;
+        private boolean released;
+
+        private GpuDraw(ReusableModelVboUploader owner, int id, int vertices, Runnable release) {
+            this.owner = owner;
+            this.id = id;
+            this.vertices = vertices;
+            this.release = release;
+        }
+
+        public void draw() {
+            owner.client.requireOwner();
+            if (released) throw new IllegalStateException("GPU slot already released");
+            owner.drawBuffer(id, vertices);
+        }
+
+        @Override
+        public void close() {
+            owner.client.execute(() -> {
+                if (released) return;
+                released = true;
+                release.run();
+            });
+        }
     }
 }

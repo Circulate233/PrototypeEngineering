@@ -22,8 +22,9 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
             throw new IllegalArgumentException("Structure slice time must be positive");
     }
 
-    public enum FinalMode { COOPERATIVE, STRICT }
-    public enum Status { IDLE, YIELD, MATCHED, MISMATCH, UNAVAILABLE, NEEDS_MORE_BUDGET, EXPIRED }
+    public enum FinalMode {COOPERATIVE, STRICT}
+
+    public enum Status {IDLE, YIELD, MATCHED, MISMATCH, UNAVAILABLE, NEEDS_MORE_BUDGET, EXPIRED}
 
     /** Counts successful units on either thread, including a cooperative tail beyond its soft slice. */
     public static final class Work extends RecipeWorkBudget {
@@ -52,7 +53,10 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
         public boolean take(long units) {
             if (units < 0) throw new IllegalArgumentException("Negative structure work cost");
             if (deadline.expired(System.nanoTime())) return false;
-            if (!cooperative && sliceDeadline.expired(System.nanoTime())) { exhausted = true; return false; }
+            if (!cooperative && sliceDeadline.expired(System.nanoTime())) {
+                exhausted = true;
+                return false;
+            }
             if (!cooperative && !super.take(units)) {
                 exhausted = true;
                 if (units > allowance) atomicMinimum = Math.max(atomicMinimum, units);
@@ -63,26 +67,51 @@ public record StructureCheckPolicy(long workUnits, Duration sliceTime, Duration 
             return true;
         }
 
-        public long spent() { return spent; }
-        public boolean expired() { return deadline.expired(System.nanoTime()); }
-        public boolean exhausted() { return exhausted; }
+        public long spent() {
+            return spent;
+        }
+
+        public boolean expired() {
+            return deadline.expired(System.nanoTime());
+        }
+
+        public boolean exhausted() {
+            return exhausted;
+        }
+
         /** An indivisible live read or installation cannot safely retain only a cross-tick prefix. */
-        public long atomicMinimum() { return atomicMinimum; }
+        public long atomicMinimum() {
+            return atomicMinimum;
+        }
+
         /** A borrowed batch could not read any fact before its local time window ended. */
-        public void atomicTimeInsufficient() { atomicTimeInsufficient = true; }
-        public boolean needsAtomicTime() { return atomicTimeInsufficient; }
+        public void atomicTimeInsufficient() {
+            atomicTimeInsufficient = true;
+        }
+
+        public boolean needsAtomicTime() {
+            return atomicTimeInsufficient;
+        }
+
         /** Admission consumes allowance; actual accepted writes/callbacks are recorded separately. */
         public boolean reserveAtomic(long units) {
             if (!take(units)) return false;
             spent -= units;
             return true;
         }
-        public void completeReserved() { spent = Math.incrementExact(spent); }
+
+        public void completeReserved() {
+            spent = Math.incrementExact(spent);
+        }
+
         /** Borrowed ports must close even after expiry; this cost cannot revoke accepted cleanup. */
         public void recordCleanup() {
             super.take(Math.min(1, remaining()));
             spent = Math.incrementExact(spent);
         }
-        public Work tail(boolean cooperative) { return new Work(remaining(), deadline, sliceDeadline, cooperative); }
+
+        public Work tail(boolean cooperative) {
+            return new Work(remaining(), deadline, sliceDeadline, cooperative);
+        }
     }
 }

@@ -29,10 +29,32 @@ import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class MachineScheduledExecutionTest {
-    @Test void retainedExecutionRejectsSaveLifecycleAndOrdinaryTicksBetweenOwnerCallbacks() {
+    private static RecipeProcess process(MachineWorkSlots slots, String name) {
+        var process = new RecipeProcess(slots.owner(), new MachineRecipe(id(name), 1, List.of()), 1);
+        assertTrue(slots.start(process));
+        return process;
+    }
+
+    private static MachineHatches emptyHatches() {
+        return new MachineHatches(List.of(), List.of(), List.of());
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("scheduled_execution_test", path);
+    }
+
+    @Test
+    void retainedExecutionRejectsSaveLifecycleAndOrdinaryTicksBetweenOwnerCallbacks() {
         var fixture = new Fixture();
         fixture.load();
         var handle = Objects.requireNonNull(fixture.lifecycle.beginScheduled());
@@ -55,7 +77,8 @@ class MachineScheduledExecutionTest {
         assertTrue(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
     }
 
-    @Test void observedReplacementStillRetainsTheGateAfterTheOriginalWorkSlotsAreReinstalled() {
+    @Test
+    void observedReplacementStillRetainsTheGateAfterTheOriginalWorkSlotsAreReinstalled() {
         var fixture = new Fixture();
         fixture.load();
         var originalProcess = process(fixture.slots, "original");
@@ -104,24 +127,52 @@ class MachineScheduledExecutionTest {
         fixture.slots.requireQuiescent();
     }
 
-    @Test void unknownRetiredCleanupRetainsOwnershipUntilExactConfirmationWithoutReplayingRefund() {
+    @Test
+    void unknownRetiredCleanupRetainsOwnershipUntilExactConfirmationWithoutReplayingRefund() {
         var fixture = new Fixture();
-        var energy = new EnergyBuffer(100, () -> {});
+        var energy = new EnergyBuffer(100, () -> {
+        });
         assertEquals(100, energy.receiveEnergy(100, Actionable.MODULATE));
         boolean[] confirmed = {false};
         int[] rollbackCalls = {0};
         var failure = new IllegalStateException("refund applied but confirmation unknown");
         var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process,
-                    RecipeRequirement<String> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process,
+                                                RecipeRequirement<String> requirement) {
                 var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation());
                 var delayed = new ResourceReservation() {
-                    @Override public StorageContext context() { return token.context(); }
-                    @Override public boolean canApply() { return token.canApply(); }
-                    @Override public void apply() { token.apply(); }
-                    @Override public void complete() { token.complete(); }
-                    @Override public void rollback() { rollbackCalls[0]++; token.rollback(); throw failure; }
-                    @Override public Resolution resolution() { return confirmed[0] ? token.resolution() : Resolution.UNKNOWN; }
+                    @Override
+                    public StorageContext context() {
+                        return token.context();
+                    }
+
+                    @Override
+                    public boolean canApply() {
+                        return token.canApply();
+                    }
+
+                    @Override
+                    public void apply() {
+                        token.apply();
+                    }
+
+                    @Override
+                    public void complete() {
+                        token.complete();
+                    }
+
+                    @Override
+                    public void rollback() {
+                        rollbackCalls[0]++;
+                        token.rollback();
+                        throw failure;
+                    }
+
+                    @Override
+                    public Resolution resolution() {
+                        return confirmed[0] ? token.resolution() : Resolution.UNKNOWN;
+                    }
                 };
                 return new AbandonedRequirement(List.of(delayed));
             }
@@ -163,7 +214,8 @@ class MachineScheduledExecutionTest {
         assertTrue(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
     }
 
-    @Test void retirementBetweenCallbacksAllowsCleanupAndReleaseWithoutRecordingAFault() {
+    @Test
+    void retirementBetweenCallbacksAllowsCleanupAndReleaseWithoutRecordingAFault() {
         var fixture = new Fixture();
         fixture.load();
         var handle = Objects.requireNonNull(fixture.lifecycle.beginScheduled());
@@ -180,16 +232,21 @@ class MachineScheduledExecutionTest {
         assertTrue(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
     }
 
-    @Test void actualBusinessFaultRemainsFatalAfterDeferredCleanupAndGateRelease() {
+    @Test
+    void actualBusinessFaultRemainsFatalAfterDeferredCleanupAndGateRelease() {
         var fixture = new Fixture();
         fixture.load();
         var handle = Objects.requireNonNull(fixture.lifecycle.beginScheduled());
         var primary = new AssertionError("business failed");
         var cleanupFailure = new IllegalArgumentException("cleanup failed");
-        assertSame(primary, assertThrows(AssertionError.class, () -> handle.run(() -> { throw primary; })));
+        assertSame(primary, assertThrows(AssertionError.class, () -> handle.run(() -> {
+            throw primary;
+        })));
         assertFalse(handle.run(() -> fail("A runtime fault cannot resume forward work")));
         assertSame(cleanupFailure, assertThrows(IllegalArgumentException.class,
-            () -> handle.cleanup(() -> { throw cleanupFailure; })));
+            () -> handle.cleanup(() -> {
+                throw cleanupFailure;
+            })));
         handle.recordFailure(primary);
         assertSame(primary, handle.failure());
         assertArrayEquals(new Throwable[]{cleanupFailure}, primary.getSuppressed());
@@ -204,14 +261,17 @@ class MachineScheduledExecutionTest {
         assertTrue(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
     }
 
-    @Test void ownerCallbacksRejectHandleReentryAndForeignThreadsCannotReleaseTheGate() throws Exception {
+    @Test
+    void ownerCallbacksRejectHandleReentryAndForeignThreadsCannotReleaseTheGate() throws Exception {
         var fixture = new Fixture();
         fixture.load();
         var handle = Objects.requireNonNull(fixture.lifecycle.beginScheduled());
         Runnable rejectReentry = () -> {
             assertThrows(IllegalStateException.class, handle::tryFinish);
-            assertThrows(IllegalStateException.class, () -> handle.run(() -> {}));
-            assertThrows(IllegalStateException.class, () -> handle.cleanup(() -> {}));
+            assertThrows(IllegalStateException.class, () -> handle.run(() -> {
+            }));
+            assertThrows(IllegalStateException.class, () -> handle.cleanup(() -> {
+            }));
             assertThrows(IllegalStateException.class, () -> handle.recordFailure(new AssertionError("reentrant")));
         };
         assertTrue(handle.run(rejectReentry));
@@ -219,8 +279,10 @@ class MachineScheduledExecutionTest {
         try (var worker = Executors.newSingleThreadExecutor()) {
             worker.submit(() -> {
                 assertThrows(IllegalStateException.class, handle::tryFinish);
-                assertThrows(IllegalStateException.class, () -> handle.run(() -> {}));
-                assertThrows(IllegalStateException.class, () -> handle.cleanup(() -> {}));
+                assertThrows(IllegalStateException.class, () -> handle.run(() -> {
+                }));
+                assertThrows(IllegalStateException.class, () -> handle.cleanup(() -> {
+                }));
                 assertThrows(IllegalStateException.class, () -> handle.recordFailure(new AssertionError("foreign")));
                 assertThrows(IllegalStateException.class, fixture.lifecycle::beginScheduled);
                 assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
@@ -231,13 +293,15 @@ class MachineScheduledExecutionTest {
         assertNull(handle.failure());
         var next = Objects.requireNonNull(fixture.lifecycle.beginScheduled());
         assertThrows(IllegalStateException.class, handle::tryFinish);
-        assertThrows(IllegalStateException.class, () -> handle.cleanup(() -> {}));
+        assertThrows(IllegalStateException.class, () -> handle.cleanup(() -> {
+        }));
         assertThrows(IllegalStateException.class, fixture.machine::onSchedule);
         assertTrue(next.tryFinish());
         fixture.machine.requirePersistenceBoundary();
     }
 
-    @Test void declinedNewExecutionReleasesItsGateAndOrdinarySchedulingKeepsOriginalFaultSemantics() {
+    @Test
+    void declinedNewExecutionReleasesItsGateAndOrdinarySchedulingKeepsOriginalFaultSemantics() {
         var fixture = new Fixture();
         assertNull(fixture.lifecycle.beginScheduled());
         fixture.load();
@@ -245,31 +309,38 @@ class MachineScheduledExecutionTest {
         assertTrue(handle.tryFinish());
         var primary = new IllegalArgumentException("ordinary failure");
         assertSame(primary, assertThrows(IllegalArgumentException.class,
-            () -> fixture.lifecycle.runScheduled(() -> { throw primary; })));
+            () -> fixture.lifecycle.runScheduled(() -> {
+                throw primary;
+            })));
         assertThrows(IllegalStateException.class, fixture.lifecycle::beginScheduled);
         assertTrue(fixture.lifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
     }
 
-    private static RecipeProcess process(MachineWorkSlots slots, String name) {
-        var process = new RecipeProcess(slots.owner(), new MachineRecipe(id(name), 1, List.of()), 1);
-        assertTrue(slots.start(process));
-        return process;
-    }
-
-    private static MachineHatches emptyHatches() { return new MachineHatches(List.of(), List.of(), List.of()); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("scheduled_execution_test", path); }
-
     private record AbandonedRequirement(List<ResourceReservation> reservations) implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { fail("Abandoned stage must not commit"); }
-        @Override public void rollback() { }
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+            fail("Abandoned stage must not commit");
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private static final class Fixture {
         private final MachineInstance machine = new MachineInstance();
         private final MachineLifecycle lifecycle = new MachineLifecycle(machine, new Host(), new MachineLifecycleRegistry());
         private final MachineWorkSlots slots = new MachineWorkSlots(machine, List.of());
-        private Fixture() { machine.components().put(MachineWorkSlots.TYPE, slots); }
+
+        private Fixture() {
+            machine.components().put(MachineWorkSlots.TYPE, slots);
+        }
+
         private void load() {
             lifecycle.load(MachineLifecycleEvent.LoadBoundary.FRESH);
             lifecycle.form(emptyHatches());
@@ -278,10 +349,22 @@ class MachineScheduledExecutionTest {
 
     private static final class Host implements MachineLifecycleHost {
         private final Thread owner = Thread.currentThread();
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new UnsupportedOperationException("Logical fixture has no game world"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Not the fixture owner"); }
+
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new UnsupportedOperationException("Logical fixture has no game world");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Not the fixture owner");
+            }
         }
     }
 }

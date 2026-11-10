@@ -14,7 +14,11 @@ public final class GuiClip {
     private final IntBuffer viewport = BufferUtils.createIntBuffer(4), previous = BufferUtils.createIntBuffer(4);
 
     public void draw(float x, float y, float width, float height, Runnable content) {
-        model.clear(); projection.clear(); viewport.clear(); first.clear(); second.clear();
+        model.clear();
+        projection.clear();
+        viewport.clear();
+        first.clear();
+        second.clear();
         GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, model);
         GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, projection);
         GL11.glGetInteger(GL11.GL_VIEWPORT, viewport);
@@ -27,14 +31,18 @@ public final class GuiClip {
         if (GL11.glIsEnabled(GL11.GL_SCISSOR_TEST)) {
             previous.clear();
             GL11.glGetInteger(GL11.GL_SCISSOR_BOX, previous);
-            left = Math.max(left, previous.get(0)); bottom = Math.max(bottom, previous.get(1));
-            right = Math.min(right, previous.get(0) + previous.get(2)); top = Math.min(top, previous.get(1) + previous.get(3));
+            left = Math.max(left, previous.get(0));
+            bottom = Math.max(bottom, previous.get(1));
+            right = Math.min(right, previous.get(0) + previous.get(2));
+            top = Math.min(top, previous.get(1) + previous.get(3));
         }
         GL11.glPushAttrib(GL11.GL_SCISSOR_BIT);
         try {
             GL11.glEnable(GL11.GL_SCISSOR_TEST);
             GL11.glScissor(left, bottom, Math.max(0, right - left), Math.max(0, top - bottom));
             content.run();
-        } finally { GL11.glPopAttrib(); }
+        } finally {
+            GL11.glPopAttrib();
+        }
     }
 }

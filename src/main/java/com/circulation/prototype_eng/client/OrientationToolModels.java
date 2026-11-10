@@ -7,9 +7,12 @@ import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.model.ModelLoader;
 
-/** Client predicates and model registration never initialize from the server item constructor. */
+/**
+ * Client predicates and model registration never initialize from the server item constructor.
+ */
 public final class OrientationToolModels {
-    private OrientationToolModels() { }
+    private OrientationToolModels() {
+    }
 
     public static void registerModels() {
         var item = OrientationToolItems.TOOL;

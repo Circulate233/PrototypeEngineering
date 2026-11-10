@@ -46,7 +46,9 @@ public final class HatchCapabilities {
 
     @Nullable
     public static EnergyOutput findEnergyOutput(@Nullable TileEntity host, @Nullable EnumFacing side) {
-        if (host == null || host.isInvalid() || ENERGY_OUTPUT == null) { return null; }
+        if (host == null || host.isInvalid() || ENERGY_OUTPUT == null) {
+            return null;
+        }
         EnergyOutput output = host.getCapability(ENERGY_OUTPUT, side);
         return output != null && output.isValid() ? output : null;
     }

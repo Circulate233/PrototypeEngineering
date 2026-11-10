@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.client.gui;
 
-import net.minecraft.util.math.BlockPos;
-import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.container.StructureToolContainer;
@@ -13,6 +12,7 @@ import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -21,24 +21,23 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.Set;
-
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import java.util.function.Consumer;
 
 /** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
 final class BuilderStructureTree {
     private final StructureToolContainer container;
     private final Consumer<Set<BlockPos>> highlight;
-    private List<StructureBuildPlan.Cell> cells = List.of();
     private final Map<String, Boolean> expanded = new Object2ObjectLinkedOpenHashMap<>();
     private final Map<String, Integer> slices = new Object2ObjectLinkedOpenHashMap<>();
     private final List<Hit> hits = new ObjectArrayList<>();
     private final GuiClip clip = new GuiClip();
+    private List<StructureBuildPlan.Cell> cells = List.of();
     private StructureCatalogView catalog;
     private String key = "", selected, pressed;
     private Row root;
@@ -49,50 +48,9 @@ final class BuilderStructureTree {
     private int dragButton = -1, lastX, lastY;
     private Hit slider;
 
-    private static final class Row {
-        final String id, label;
-        final int kind;
-        final StructureDisplay display;
-        final StructureDisplay.BlockOption option;
-        final String path;
-        final int min, max, value;
-        final List<Row> children = new ObjectArrayList<>();
-
-        Row(String id, String label, int kind, StructureDisplay display, StructureDisplay.BlockOption option, String path, int min, int max, int value) {
-            this.id = id;
-            this.label = label;
-            this.kind = kind;
-            this.display = display;
-            this.option = option;
-            this.path = path;
-            this.min = min;
-            this.max = max;
-            this.value = value;
-        }
-    }
-
-    private record Hit(Row row, int x, int y, int width, int actionWidth) {
-        boolean contains(float px, float py) {
-            return px >= x && py >= y && px <= x + width && py <= y + 14;
-        }
-        boolean toggle(float px, float py) {
-            return !row.children.isEmpty() && px >= x + width - 15 && px <= x + width - 4 && py >= y + 1 && py <= y + 13;
-        }
-        boolean action(float px, float py) {
-            return actionWidth > 0 && px >= x + width - 4 - actionWidth && px <= x + width - 4 && py >= y + 2 && py <= y + 12;
-        }
-    }
-
-    private record Visit(Row row, int depth) {
-    }
-
     BuilderStructureTree(StructureToolContainer container, Consumer<Set<BlockPos>> highlight) {
         this.container = container;
         this.highlight = highlight;
-    }
-
-    private boolean open(Row row) {
-        return expanded.getOrDefault(row.id, row.kind == 0);
     }
 
     private static String offset(BlockPos pos) {
@@ -106,6 +64,24 @@ final class BuilderStructureTree {
     private static String name(StructureDisplay.BlockOption option) {
         var stack = stack(option);
         return stack.isEmpty() ? option.blockId().toString() : stack.getDisplayName();
+    }
+
+    private static void texturedState() {
+        GlStateManager.enableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0);
+        GlStateManager.color(1, 1, 1, 1);
+    }
+
+    private static void border(int x, int y, int width, int color) {
+        Gui.drawRect(x, y, x + width, y + 1, color);
+        Gui.drawRect(x, y + 13, x + width, y + 14, color);
+        Gui.drawRect(x, y, x + 1, y + 14, color);
+        Gui.drawRect(x + width - 1, y, x + width, y + 14, color);
+    }
+
+    private boolean open(Row row) {
+        return expanded.getOrDefault(row.id, row.kind == 0);
     }
 
     private void refresh(StructureCatalogView current, ResourceLocation id, BlockOrientation orientation) {
@@ -166,8 +142,10 @@ final class BuilderStructureTree {
     private void updateHighlight() {
         if (highlightedPath == null) return;
         var positions = new ObjectOpenHashSet<BlockPos>();
-        for (var cell : cells) if ((cell.path().equals(highlightedPath) || cell.path().startsWith(highlightedPath + "/"))
-            && (highlightedDisplay == null || highlightedDisplay.equals(cell.display()))) positions.add(cell.position());
+        for (var cell : cells)
+            if ((cell.path().equals(highlightedPath) || cell.path().startsWith(highlightedPath + "/"))
+                && (highlightedDisplay == null || highlightedDisplay.equals(cell.display())))
+                positions.add(cell.position());
         highlight.accept(positions);
     }
 
@@ -176,8 +154,10 @@ final class BuilderStructureTree {
         float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY;
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
         for (var hit : hits) {
-            minX = Math.min(minX, hit.x() - 4); minY = Math.min(minY, hit.y() - 2);
-            maxX = Math.max(maxX, hit.x() + hit.width() + 4); maxY = Math.max(maxY, hit.y() + 16);
+            minX = Math.min(minX, hit.x() - 4);
+            minY = Math.min(minY, hit.y() - 2);
+            maxX = Math.max(maxX, hit.x() + hit.width() + 4);
+            maxY = Math.max(maxY, hit.y() + 16);
         }
         if (!Objects.equals(initializedRoot, viewRoot)) {
             initializedRoot = viewRoot;
@@ -191,11 +171,6 @@ final class BuilderStructureTree {
         float maxPanY = height + 25 <= 192 ? minPanY : 21 - minY * scale;
         panX = Math.clamp(panX, minPanX, maxPanX);
         panY = Math.clamp(panY, minPanY, maxPanY);
-    }
-
-    private static void texturedState() {
-        GlStateManager.enableTexture2D(); GlStateManager.enableBlend();
-        GlStateManager.tryBlendFuncSeparate(770, 771, 1, 0); GlStateManager.color(1, 1, 1, 1);
     }
 
     void draw(StructureCatalogView current, ResourceLocation id, BlockOrientation orientation, int mx, int my) {
@@ -241,8 +216,9 @@ final class BuilderStructureTree {
                             }
                         Gui.drawRect(hit.x() + 5, hit.y() + 14, hit.x() + 7, last, 0xfff2f2f2);
                         Gui.drawRect(hit.x() + 7, hit.y() + 14, hit.x() + 8, last, 0xff696d88);
-                        for (var child : hits) if (hit.row().children.contains(child.row()))
-                            Gui.drawRect(hit.x() + 5, child.y() + 6, hit.x() + 8, child.y() + 8, 0xfff2f2f2);
+                        for (var child : hits)
+                            if (hit.row().children.contains(child.row()))
+                                Gui.drawRect(hit.x() + 5, child.y() + 6, hit.x() + 8, child.y() + 8, 0xfff2f2f2);
                     }
             } finally {
                 GlStateManager.popMatrix();
@@ -304,13 +280,6 @@ final class BuilderStructureTree {
         }
     }
 
-    private static void border(int x, int y, int width, int color) {
-        Gui.drawRect(x, y, x + width, y + 1, color);
-        Gui.drawRect(x, y + 13, x + width, y + 14, color);
-        Gui.drawRect(x, y, x + 1, y + 14, color);
-        Gui.drawRect(x + width - 1, y, x + width, y + 14, color);
-    }
-
     boolean press(int x, int y, int button) {
         if (x < 0 || y < 0 || x >= 185 || y >= 192) return false;
         if (button == 1 || button == 0 && y < 19) {
@@ -334,13 +303,17 @@ final class BuilderStructureTree {
                 else {
                     selected = row.id;
                     if (row != root && (row.kind == 0 || row.kind == 2)) {
-                        highlightedPath = row.path; highlightedDisplay = row.display; updateHighlight();
+                        highlightedPath = row.path;
+                        highlightedDisplay = row.display;
+                        updateHighlight();
                     }
                 }
                 return true;
             }
         if (selected == null) return false;
-        selected = null; highlightedPath = null; highlightedDisplay = null;
+        selected = null;
+        highlightedPath = null;
+        highlightedDisplay = null;
         highlight.accept(Set.of());
         return true;
     }
@@ -379,6 +352,45 @@ final class BuilderStructureTree {
         else panY += direction * 12;
         clampView();
         return true;
+    }
+
+    private static final class Row {
+        final String id, label;
+        final int kind;
+        final StructureDisplay display;
+        final StructureDisplay.BlockOption option;
+        final String path;
+        final int min, max, value;
+        final List<Row> children = new ObjectArrayList<>();
+
+        Row(String id, String label, int kind, StructureDisplay display, StructureDisplay.BlockOption option, String path, int min, int max, int value) {
+            this.id = id;
+            this.label = label;
+            this.kind = kind;
+            this.display = display;
+            this.option = option;
+            this.path = path;
+            this.min = min;
+            this.max = max;
+            this.value = value;
+        }
+    }
+
+    private record Hit(Row row, int x, int y, int width, int actionWidth) {
+        boolean contains(float px, float py) {
+            return px >= x && py >= y && px <= x + width && py <= y + 14;
+        }
+
+        boolean toggle(float px, float py) {
+            return !row.children.isEmpty() && px >= x + width - 15 && px <= x + width - 4 && py >= y + 1 && py <= y + 13;
+        }
+
+        boolean action(float px, float py) {
+            return actionWidth > 0 && px >= x + width - 4 - actionWidth && px <= x + width - 4 && py >= y + 2 && py <= y + 12;
+        }
+    }
+
+    private record Visit(Row row, int depth) {
     }
 
 }

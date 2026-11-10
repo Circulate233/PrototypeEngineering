@@ -32,6 +32,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SelectiveSpeedPresetsTest {
     private static final ResourceLocation SPEED = StandardMachineAttributes.PROCESS_SPEED;
 
+    private static RecipeRequirement<SelectiveRequirement> selector(String name, RecipeRequirement<?> candidate,
+                                                                    SelectiveModifierDescriptor... modifiers) {
+        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(List.of(candidate), List.of(modifiers)));
+    }
+
+    private static RecipeRequirement<Integer> candidate() {
+        return new RecipeRequirementType<Integer>(id("candidate_type"), new RecipeRequirementSystem<>() {
+        }).requirement(id("candidate"), 0);
+    }
+
+    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 10, List.of(requirements)), 17);
+    }
+
+    private static NumericAttributeModifier foreignAddition(double amount) {
+        return new NumericAttributeModifier("foreign", amount, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("selective_speed_test", name);
+    }
+
     @Test
     void selectedPresetsComposeWithInheritedAndForeignSpeedAndAdvanceActualProgress() {
         var choice = selector("choice", candidate(),
@@ -142,28 +164,6 @@ class SelectiveSpeedPresetsTest {
             assertTrue(process.cancel());
             assertEquals(1, process.attributes().value(SPEED), 1e-12);
         }
-    }
-
-    private static RecipeRequirement<SelectiveRequirement> selector(String name, RecipeRequirement<?> candidate,
-                                                                   SelectiveModifierDescriptor... modifiers) {
-        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(List.of(candidate), List.of(modifiers)));
-    }
-
-    private static RecipeRequirement<Integer> candidate() {
-        return new RecipeRequirementType<Integer>(id("candidate_type"), new RecipeRequirementSystem<>() {
-        }).requirement(id("candidate"), 0);
-    }
-
-    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 10, List.of(requirements)), 17);
-    }
-
-    private static NumericAttributeModifier foreignAddition(double amount) {
-        return new NumericAttributeModifier("foreign", amount, AttributeModifier.Operation.ADDITION);
-    }
-
-    private static ResourceLocation id(String name) {
-        return new ResourceLocation("selective_speed_test", name);
     }
 
     private record Business(int[] balance) implements RequirementTransaction {

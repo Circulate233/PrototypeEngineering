@@ -65,7 +65,47 @@ class RequirementAttributeStateTest {
     private static final ResourceLocation OTHER_SCORE = id("other_score");
     private static final ComponentType<RecipeProcess, Listener> LISTENER = new ComponentType<>(id("listener"), _ -> new Listener(), List.of());
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt(location -> location.equals(TYPE.getId()) ? TYPE : null);
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static RecipeProcessNbt codec(MachineRecipe recipe) {
+        return builder(recipe).build();
+    }
+
+    private static RecipeProcessNbt.Builder builder(MachineRecipe recipe) {
+        return RecipeProcessNbt.builder(recipe, "attribute_ownership_v2").resources(KEYS).component(LISTENER, new ListenerCodec());
+    }
+
+    private static Listener listener(RecipeProcess process) {
+        return Objects.requireNonNull(process.components().get(LISTENER));
+    }
+
+    private static NumericAttributeModifier modifier(String name, double amount) {
+        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static RecipeRequirement<AttributeRequirement> attribute(String name, ResourceLocation attribute, double amount, boolean start, boolean end) {
+        return RecipeRequirements.ATTRIBUTES.requirement(id(name), new AttributeRequirement(attribute, modifier(name, amount), start, end));
+    }
+
+    private static RecipeRequirement<ResourceRequirement> io() {
+        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(List.of(new GenericStack(MATERIAL, 1)),
+            List.of(new GenericStack(MATERIAL, 1)), List.of(), List.of(new GenericStack(PRODUCT, 1)), false));
+    }
+
+    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
+        return new MachineRecipe(id(name), duration, List.of(requirements), Set.of(GROUP));
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        return new SlottedResourceBuffer(2, capacities, NO_OP);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("attribute_state_test", path);
+    }
 
     @Test
     void defaultCodecRestoresActiveBuiltinOwnershipAndEndKeepsEffectiveParallelismUntilOutputsComplete() {
@@ -141,7 +181,8 @@ class RequirementAttributeStateTest {
         int[] checks = {0};
         var failure = new ProcessResult.Failure("business_failure");
         var failing = new RecipeRequirementType<Boolean>(id("failing_type"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction tick(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction tick(RecipeProcess owner, RecipeRequirement<Boolean> requirement) {
                 checks[0]++;
                 return new Outcome(failure);
             }
@@ -269,71 +310,72 @@ class RequirementAttributeStateTest {
         assertTrue(RequirementAttributeState.getOrCreate(restored).snapshot().owned().isEmpty());
     }
 
-    private static RecipeProcessNbt codec(MachineRecipe recipe) { return builder(recipe).build(); }
-    private static RecipeProcessNbt.Builder builder(MachineRecipe recipe) {
-        return RecipeProcessNbt.builder(recipe, "attribute_ownership_v2").resources(KEYS).component(LISTENER, new ListenerCodec());
-    }
-    private static Listener listener(RecipeProcess process) { return Objects.requireNonNull(process.components().get(LISTENER)); }
-    private static NumericAttributeModifier modifier(String name, double amount) {
-        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
-    }
-    private static RecipeRequirement<AttributeRequirement> attribute(String name, ResourceLocation attribute, double amount, boolean start, boolean end) {
-        return RecipeRequirements.ATTRIBUTES.requirement(id(name), new AttributeRequirement(attribute, modifier(name, amount), start, end));
-    }
-    private static RecipeRequirement<ResourceRequirement> io() {
-        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(List.of(new GenericStack(MATERIAL, 1)),
-            List.of(new GenericStack(MATERIAL, 1)), List.of(), List.of(new GenericStack(PRODUCT, 1)), false));
-    }
-    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
-        return new MachineRecipe(id(name), duration, List.of(requirements), Set.of(GROUP));
-    }
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(2, capacities, NO_OP);
-    }
-    private static ResourceLocation id(String path) { return new ResourceLocation("attribute_state_test", path); }
     private record Outcome(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
+
     private static final class Listener implements ProcessAbortListener {
         private int calls;
-        @Override public void onAborted(RecipeProcess process) { calls++; }
+
+        @Override
+        public void onAborted(RecipeProcess process) {
+            calls++;
+        }
     }
+
     private static final class ListenerCodec implements ProcessComponentCodec<Listener> {
-        @Override public NBTTagCompound encode(RecipeProcess process, Listener component) {
+        @Override
+        public NBTTagCompound encode(RecipeProcess process, Listener component) {
             var tag = new NBTTagCompound();
             tag.setInteger("Calls", component.calls);
             return tag;
         }
-        @Override public void restore(RecipeProcess process, Listener component, NBTTagCompound data) {
+
+        @Override
+        public void restore(RecipeProcess process, Listener component, NBTTagCompound data) {
             StrictNbt.requireKeys(data, "Calls");
             component.calls = StrictNbt.requireInt(data, "Calls");
         }
     }
+
     private static final class IdCodec implements NbtCodec<ResourceLocation> {
-        @Override public NBTTagCompound encode(ResourceLocation value) {
+        @Override
+        public NBTTagCompound encode(ResourceLocation value) {
             var tag = new NBTTagCompound();
             tag.setString("Id", value.toString());
             return tag;
         }
-        @Override public ResourceLocation decode(NBTTagCompound tag) {
+
+        @Override
+        public ResourceLocation decode(NBTTagCompound tag) {
             StrictNbt.requireKeys(tag, "Id");
             return StrictNbt.requireId(tag, "Id");
         }
     }
+
     private record Ports(@NotNull ResourceStorage input, @NotNull ResourceStorage output) implements ResourceHatch {
         private Ports {
             Objects.requireNonNull(input);
             Objects.requireNonNull(output);
         }
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
+
     private static final class Environment {
         private final MachineInstance machine = new MachineInstance();
         private final SlottedResourceBuffer input = buffer();
         private final SlottedResourceBuffer output = buffer();
+
         private Environment(long material) {
             machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
             machine.attributes().setBase(SCORE, 2);
@@ -341,6 +383,7 @@ class RequirementAttributeStateTest {
             machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Ports(input, output)), List.of(), List.of()));
             input.insert(MATERIAL, material, Actionable.MODULATE);
         }
+
         private RecipeProcess process(MachineRecipe recipe) {
             var process = new RecipeProcess(machine, recipe, 17);
             process.components().create(LISTENER, process);

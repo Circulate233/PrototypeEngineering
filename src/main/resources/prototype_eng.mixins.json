@@ -25,7 +25,8 @@
     "client.FallbackResourceManagerAccessor",
     "client.MinecraftPreviewGuiMixin",
     "client.GuiContainerPreviewMixin",
-    "client.GuiScreenPreviewMixin"
+    "client.GuiScreenPreviewMixin",
+    "client.ModRegistryRecipePoolPagesMixin"
   ],
   "injectors": {
     "defaultRequire": 1

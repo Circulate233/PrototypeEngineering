@@ -2,34 +2,33 @@ package com.circulation.prototype_eng.api.machine;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
+import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
+import com.circulation.prototype_eng.api.structure.StructureComponents;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
-
-import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
-import com.circulation.prototype_eng.api.structure.StructureComponents;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
-import java.util.List;
-import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
-import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import java.util.function.LongSupplier;
-import net.minecraft.util.ResourceLocation;
 
 /**
  * Per-machine component execution state. The scheduler must give this instance exclusive execution
@@ -48,22 +47,30 @@ public class MachineInstance implements PlannedMachineTask {
         new ReferenceOpenHashSet<>();
     private final Object2IntOpenHashMap<ResourceLocation> recipeThreadCounts =
         new Object2IntOpenHashMap<>();
-    private long recipeRosterRevision;
     private final ComponentMap<MachineInstance> components = new ComponentMap<>();
     private final MachineAttributes attributes = new MachineAttributes();
-    @Nullable private final MachineType type;
+    @Nullable
+    private final MachineType type;
+    private long recipeRosterRevision;
     @Nullable
     private MachineLifecycle lifecycle;
-    @Nullable private ObjectArrayList<BooleanSupplier> recipeWorkGates;
+    @Nullable
+    private ObjectArrayList<BooleanSupplier> recipeWorkGates;
 
-    /** Standalone execution has no declared machine type or world authority. */
-    public MachineInstance() { type = null; }
+    /**
+     * Standalone execution has no declared machine type or world authority.
+     */
+    public MachineInstance() {
+        type = null;
+    }
 
     /**
      * Retains the canonical declaration only. The controller must attach its host before creating
      * declared components; construction never invokes factories or reads an unattached world.
      */
-    public MachineInstance(MachineType type) { this.type = Objects.requireNonNull(type); }
+    public MachineInstance(MachineType type) {
+        this.type = Objects.requireNonNull(type);
+    }
 
     /** All logical hosts share this machine's allowance, including explicitly constructed external hosts. */
     public void registerRecipeHost(MachineWorkSlots host) {
@@ -84,12 +91,12 @@ public class MachineInstance implements PlannedMachineTask {
     }
 
     public MachineWorkSlots createRecipeHost(List<WorkSlotDefinition> definitions,
-                                            Set<ResourceLocation> groups) {
+                                             Set<ResourceLocation> groups) {
         return new MachineWorkSlots(this, definitions, groups);
     }
 
     public RecipeScanner createRecipeScanner(MachineWorkSlots host,
-        RecipeCatalog catalog, LongSupplier seeds) {
+                                             RecipeCatalog catalog, LongSupplier seeds) {
         if (host.owner() != this) throw new IllegalArgumentException("Foreign scanner host");
         return new RecipeScanner(host, catalog, seeds);
     }
@@ -103,18 +110,27 @@ public class MachineInstance implements PlannedMachineTask {
         return ObjectLists.unmodifiable(new ObjectArrayList<>(recipeScanners));
     }
 
-    public boolean supportsStableFixedInputLowerBounds() { return false; }
+    public boolean supportsStableFixedInputLowerBounds() {
+        return false;
+    }
 
-    public final int recipeThreadCount(ResourceLocation recipe) { return recipeThreadCounts.getInt(recipe); }
-    public final long recipeRosterRevision() { return recipeRosterRevision; }
+    public final int recipeThreadCount(ResourceLocation recipe) {
+        return recipeThreadCounts.getInt(recipe);
+    }
+
+    public final long recipeRosterRevision() {
+        return recipeRosterRevision;
+    }
 
     /** Same owner publication as attach/detach; reservations and attached processes count once. */
     public final void recordRecipeOccupant(RecipeProcess process) {
         if (process.owner() != this) throw new IllegalArgumentException("Foreign recipe occupant");
         if (recipeOccupants.contains(process)) return;
         var id = process.recipe().id();
-        if (recipeThreadCounts.getInt(id) == Integer.MAX_VALUE) throw new ArithmeticException("Recipe thread count overflow");
-        recipeOccupants.add(process); recipeThreadCounts.addTo(id, 1);
+        if (recipeThreadCounts.getInt(id) == Integer.MAX_VALUE)
+            throw new ArithmeticException("Recipe thread count overflow");
+        recipeOccupants.add(process);
+        recipeThreadCounts.addTo(id, 1);
         recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
     }
 
@@ -125,7 +141,10 @@ public class MachineInstance implements PlannedMachineTask {
         recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
     }
 
-    @Nullable public MachineType type() { return type; }
+    @Nullable
+    public MachineType type() {
+        return type;
+    }
 
     /**
      * The single runtime pool-selection override called by the recipe framework. Default declared
@@ -141,7 +160,9 @@ public class MachineInstance implements PlannedMachineTask {
         return type == null ? catalog.pools() : catalog.poolsFor(type);
     }
 
-    /** Host assembly boundary; an attached lifecycle cannot be replaced or shared across machines. */
+    /**
+     * Host assembly boundary; an attached lifecycle cannot be replaced or shared across machines.
+     */
     public void attachLifecycle(MachineLifecycle lifecycle) {
         Objects.requireNonNull(lifecycle);
         if (this.lifecycle != null || lifecycle.machine() != this) {
@@ -151,17 +172,27 @@ public class MachineInstance implements PlannedMachineTask {
     }
 
     @Nullable
-    public MachineLifecycle lifecycle() { return lifecycle; }
+    public MachineLifecycle lifecycle() {
+        return lifecycle;
+    }
 
     public boolean canProcessRecipes() {
-        if (!(lifecycle == null ? type == null : lifecycle.processingAllowed())) { return false; }
+        if (!(lifecycle == null ? type == null : lifecycle.processingAllowed())) {
+            return false;
+        }
         return recipeWorkAllowed();
     }
 
-    /** Additional permissions for low-level recipe APIs; formation remains the scheduler host's condition. */
+    /**
+     * Additional permissions for low-level recipe APIs; formation remains the scheduler host's condition.
+     */
     public boolean recipeWorkAllowed() {
         if (recipeWorkGates != null) {
-            for (var permission : recipeWorkGates) { if (!permission.getAsBoolean()) { return false; } }
+            for (var permission : recipeWorkGates) {
+                if (!permission.getAsBoolean()) {
+                    return false;
+                }
+            }
         }
         return true;
     }
@@ -175,9 +206,13 @@ public class MachineInstance implements PlannedMachineTask {
         Objects.requireNonNull(permission);
         if (lifecycle != null) {
             lifecycle.host().requireServerThread();
-            if (lifecycle.state() != MachineLifecycle.State.CREATED) { throw new IllegalStateException("Recipe gates require unpublished assembly"); }
+            if (lifecycle.state() != MachineLifecycle.State.CREATED) {
+                throw new IllegalStateException("Recipe gates require unpublished assembly");
+            }
         }
-        if (recipeWorkGates == null) { recipeWorkGates = new ObjectArrayList<>(); }
+        if (recipeWorkGates == null) {
+            recipeWorkGates = new ObjectArrayList<>();
+        }
         recipeWorkGates.add(permission);
     }
 
@@ -186,10 +221,16 @@ public class MachineInstance implements PlannedMachineTask {
         return this;
     }
 
-    /** Unformed machines still run their ordinary non-recipe components. */
-    @Override public boolean active() { return lifecycle == null ? type == null : lifecycle.schedulingAllowed(); }
+    /**
+     * Unformed machines still run their ordinary non-recipe components.
+     */
+    @Override
+    public boolean active() {
+        return lifecycle == null ? type == null : lifecycle.schedulingAllowed();
+    }
 
-    @Override public ExecutionMode executionMode() {
+    @Override
+    public ExecutionMode executionMode() {
         var scheduling = components.get(MachineScheduling.TYPE);
         return scheduling != null ? scheduling.mode() : type != null && type.hasExplicitExecutionMode()
             ? type.executionMode() : defaultExecutionMode();
@@ -234,24 +275,45 @@ public class MachineInstance implements PlannedMachineTask {
     }
 
     public void requirePersistenceBoundary() {
-        if (type != null && lifecycle == null) { throw new IllegalStateException("Declared machine has no attached lifecycle"); }
-        if (lifecycle != null) { lifecycle.requirePersistenceBoundary(); }
+        if (type != null && lifecycle == null) {
+            throw new IllegalStateException("Declared machine has no attached lifecycle");
+        }
+        if (lifecycle != null) {
+            lifecycle.requirePersistenceBoundary();
+        }
     }
 
-    /** Baseline attributes; mutate only while this machine has exclusive execution ownership. */
+    /**
+     * Baseline attributes; mutate only while this machine has exclusive execution ownership.
+     */
     public MachineAttributes attributes() {
         return attributes;
     }
 
-    public ComponentMap<MachineInstance> components() { return components; }
+    public ComponentMap<MachineInstance> components() {
+        return components;
+    }
 
-    /** Structure-derived ports are replaced together at each joined refresh and are never persisted. */
+    /**
+     * Structure-derived ports are replaced together at each joined refresh and are never persisted.
+     */
     public StructureComponents structureComponents() {
         var ports = components.get(StructureComponents.TYPE);
         return ports == null ? StructureComponents.EMPTY : ports;
     }
 
-    /** Runs all pre callbacks, all normal callbacks, then all post callbacks. Never swallows errors. */
+    /**
+     * Runs all pre callbacks, all normal callbacks, then all post callbacks. Never swallows errors.
+     */
     @Override
-    public void onSchedule() { if (lifecycle == null) { if (type != null) { throw new IllegalStateException("Declared machine has no attached lifecycle"); } components.tick(this); } else { lifecycle.runScheduled(() -> components.tick(this)); } }
+    public void onSchedule() {
+        if (lifecycle == null) {
+            if (type != null) {
+                throw new IllegalStateException("Declared machine has no attached lifecycle");
+            }
+            components.tick(this);
+        } else {
+            lifecycle.runScheduled(() -> components.tick(this));
+        }
+    }
 }

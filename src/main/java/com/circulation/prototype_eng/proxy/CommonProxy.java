@@ -4,76 +4,85 @@ import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.OrientationToolConfig;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
-import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
-import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
-import com.circulation.prototype_eng.api.research.ResearchRegistry;
-import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
-import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
+import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
+import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
+import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
+import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
+import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
+import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
+import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
+import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
+import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
+import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
+import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
+import com.circulation.prototype_eng.recipe.ServerRecipeDefinitions;
+import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
+import com.circulation.prototype_eng.api.research.ResearchRegistry;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistry;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistrationEvent;
+import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
+import com.circulation.prototype_eng.container.EnergyHatchContainer;
+import com.circulation.prototype_eng.container.ResearchContainer;
+import com.circulation.prototype_eng.container.ResourceHatchContainer;
+import com.circulation.prototype_eng.container.StructureToolContainer;
+import com.circulation.prototype_eng.machine.ControllerDisplayData;
+import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ServerMachineIdentities;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
+import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
 import com.circulation.prototype_eng.research.ServerResearch;
+import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.fml.common.network.NetworkRegistry;
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
-import net.minecraftforge.fml.common.event.FMLServerAboutToStartEvent;
-import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
-import com.circulation.prototype_eng.container.EnergyHatchContainer;
-import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
-import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
-import com.circulation.prototype_eng.container.ResearchContainer;
-import com.circulation.prototype_eng.container.ResourceHatchContainer;
-import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
-import net.minecraftforge.fml.common.network.IGuiHandler;
-import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
-import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistrationEvent;
-import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistry;
+import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
 import com.circulation.prototype_eng.structure.json.BuiltinStructurePredicates;
 import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
 import com.circulation.prototype_eng.structure.json.StructureJsonLoader;
-import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
 import com.circulation.prototype_eng.structure.reload.StructureNetwork;
 import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
-import java.nio.file.Path;
-import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.machine.ControllerDisplayData;
-import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
-import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
-import java.util.function.Consumer;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
-import org.jetbrains.annotations.Nullable;
 import net.minecraft.util.math.AxisAlignedBB;
-import com.circulation.prototype_eng.scheduler.SchedulerCommand;
-import com.circulation.prototype_eng.container.StructureToolContainer;
-import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
-import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerAboutToStartEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
+import net.minecraftforge.fml.common.network.IGuiHandler;
+import net.minecraftforge.fml.common.network.NetworkRegistry;
+import org.jetbrains.annotations.Nullable;
+
+import java.nio.file.Path;
+import java.util.function.Consumer;
+
 /**
  * Shared lifecycle for dedicated and integrated servers, inherited by the client proxy.
  */
 public class CommonProxy implements IGuiHandler {
-    public AxisAlignedBB controllerRenderBounds(MachineControllerBlockEntity tile) {
-        return new AxisAlignedBB(tile.getPos());
-    }
     private StructureJsonLoader structureData = StructureJsonLoader.empty();
     private Path structureDirectory;
     private StructureCatalog javaStructures;
     private StructurePredicateRegistry structureFactories;
+
+    public AxisAlignedBB controllerRenderBounds(MachineControllerBlockEntity tile) {
+        return new AxisAlignedBB(tile.getPos());
+    }
+
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
@@ -97,7 +106,8 @@ public class CommonProxy implements IGuiHandler {
         ResearchItemDownloadRegistry.INSTANCE.freeze(ResearchRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE));
         RecipeRegistry.INSTANCE.freeze(MachineTypeRegistry.INSTANCE.types());
-        NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.catalog(), ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
+        NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.snapshot(), ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
+        MinecraftForge.EVENT_BUS.post(new RecipeDeclarationRegistrationEvent(RecipeDeclarations.INSTANCE, RecipeRegistry.INSTANCE.snapshot()));
         var structurePredicates = new StructurePredicateRegistry();
         BuiltinStructurePredicates.register(structurePredicates);
         MinecraftForge.EVENT_BUS.post(new StructurePredicateRegistrationEvent(structurePredicates));
@@ -113,13 +123,17 @@ public class CommonProxy implements IGuiHandler {
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {
         ServerTaskSchedulers.start(event.getServer());
         try {
+            ServerRecipeDefinitions.start(event.getServer());
             ServerHatchConfigurations.start(event.getServer());
             ServerMachineIdentities.start(event.getServer());
             ServerNetworkRuntime.start(event.getServer());
             ServerStructureReloads.start(event.getServer(), structureDirectory, javaStructures, structureFactories);
         } catch (RuntimeException | Error failure) {
             try {
+                ServerRecipeDefinitions.stopping();
                 ServerTaskSchedulers.stop();
+                ServerRecipeDefinitions.stop();
+                ServerRecipeManifests.stop();
                 ServerHatchConfigurations.stop();
                 ServerStructureReloads.stop();
                 ServerNetworkRuntime.stop();
@@ -140,11 +154,16 @@ public class CommonProxy implements IGuiHandler {
     }
 
     public void serverStopping() {
+        ServerRecipeDefinitions.stopping();
+        ServerRecipeManifests.stop();
         ServerResearch.stop();
     }
 
     public void serverStopped() {
+        ServerRecipeDefinitions.stopping();
         ServerTaskSchedulers.stop();
+        ServerRecipeDefinitions.stop();
+        ServerRecipeManifests.stop();
         ServerHatchConfigurations.stop();
         ServerStructureReloads.stop();
         ServerResearch.stop();
@@ -159,9 +178,12 @@ public class CommonProxy implements IGuiHandler {
         throw new IllegalStateException("Server proxy cannot receive client hatch display configuration");
     }
 
-    /** Client override schedules onto the actual client thread; common class loads no client API. */
     public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
         throw new IllegalStateException("Server proxy cannot receive a client structure catalog");
+    }
+
+    public void receiveRecipeDefinitions(RecipeDefinitionManifestPacket packet, Object connection) {
+        throw new IllegalStateException("Server proxy cannot receive client recipe declaration manifests");
     }
 
     public boolean controllerDisplayConnectionCurrent(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {
@@ -205,5 +227,7 @@ public class CommonProxy implements IGuiHandler {
     }
 
     @Override
-    public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) { return null; }
+    public Object getClientGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
+        return null;
+    }
 }

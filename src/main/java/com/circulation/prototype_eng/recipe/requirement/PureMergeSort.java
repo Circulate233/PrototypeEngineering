@@ -2,23 +2,18 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 import java.util.function.BiFunction;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Stable bottom-up merge traversal; comparisons and moves retain their exact position.
  */
 class PureMergeSort<T> {
-    interface Comparison {
-        boolean advance(RecipeWorkBudget budget);
-
-        int result();
-    }
-
+    private final BiFunction<T, T, Comparison> comparison;
     private ObjectArrayList<T> values;
     private ObjectArrayList<T> buffer = new ObjectArrayList<>();
-    private final BiFunction<T, T, Comparison> comparison;
     private int width = 1;
     private int block;
     private int left;
@@ -93,6 +88,12 @@ class PureMergeSort<T> {
 
     List<T> result() {
         return values;
+    }
+
+    interface Comparison {
+        boolean advance(RecipeWorkBudget budget);
+
+        int result();
     }
 
     static class StringComparison implements Comparison {

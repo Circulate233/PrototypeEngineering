@@ -10,10 +10,14 @@ public interface AttributeModifier {
 
     Operation operation();
 
-    /** Original resolved base and the result of the preceding modifier, both finite. */
+    /**
+     * Original resolved base and the result of the preceding modifier, both finite.
+     */
     double apply(double base, double current);
 
-    /** Phases run in this order; registration order is preserved within each phase. */
+    /**
+     * Phases run in this order; registration order is preserved within each phase.
+     */
     enum Operation {
         ADDITION,
         MULTIPLY_BASE,

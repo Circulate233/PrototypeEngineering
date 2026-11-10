@@ -1,9 +1,15 @@
 package com.circulation.prototype_eng.api.machine.lifecycle;
 
+import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
+import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.structure.StructureAssembly;
+import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
+import com.circulation.prototype_eng.api.structure.StructureComponents;
 import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -16,13 +22,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-
-import com.circulation.prototype_eng.api.structure.StructureComponents;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
-import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
-import com.circulation.prototype_eng.api.component.ComponentMap;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
 
 /**
  * Server-side machine boundaries migrated from PM. Attach once, after world attachment and before
@@ -60,9 +59,12 @@ public final class MachineLifecycle {
     private volatile boolean broken;
     private volatile boolean faulted;
     private volatile boolean retired;
-    @Nullable private volatile StructureMatch structureMatch;
-    @Nullable private Captured lastCaptured;
-    @Nullable private ScheduledExecution scheduledExecution;
+    @Nullable
+    private volatile StructureMatch structureMatch;
+    @Nullable
+    private Captured lastCaptured;
+    @Nullable
+    private ScheduledExecution scheduledExecution;
     private boolean assemblyStarted;
 
     @SuppressWarnings("unused") // Public controller entry using the shared lifecycle registry.
@@ -83,17 +85,84 @@ public final class MachineLifecycle {
         machine.attachLifecycle(this);
     }
 
-    public MachineInstance machine() { return machine; }
-    public MachineLifecycleHost host() { return host; }
-    public State state() { return state; }
-    public boolean formed() { return formed; }
+    private static void requireQuiescent(Captured captured) {
+        for (var slots : captured.workSlots()) {
+            slots.requireQuiescent();
+        }
+    }
 
-    /** Persistent count of successful false-to-true formations; refresh within a formation keeps it. */
+    private static void publish(MachineLifecycleEvent event, List<MachineLifecycleListener> listeners) {
+        for (var listener : listeners) {
+            invoke(event, listener);
+        }
+    }
+
+    @Nullable
+    private static Throwable publishAll(MachineLifecycleEvent event, List<MachineLifecycleListener> listeners, @Nullable Throwable failure) {
+        for (var listener : listeners) {
+            try {
+                invoke(event, listener);
+            } catch (RuntimeException | Error cleanup) {
+                failure = append(failure, cleanup);
+            }
+        }
+        return failure;
+    }
+
+    private static void invoke(MachineLifecycleEvent event, MachineLifecycleListener listener) {
+        switch (event) {
+            case MachineLifecycleEvent.Loaded loaded -> listener.onLoaded(loaded);
+            case MachineLifecycleEvent.Unloaded unloaded -> listener.onUnloaded(unloaded);
+            case MachineLifecycleEvent.FormedChanged formed -> listener.onFormedChanged(formed);
+            case MachineLifecycleEvent.ControllerBroken broken -> listener.onControllerBroken(broken);
+        }
+    }
+
+    private static Throwable append(@Nullable Throwable primary, Throwable additional) {
+        if (primary == null) {
+            return additional;
+        }
+        if (primary != additional) {
+            primary.addSuppressed(additional);
+        }
+        return primary;
+    }
+
+    private static void throwFailure(@Nullable Throwable failure) {
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+    }
+
+    public MachineInstance machine() {
+        return machine;
+    }
+
+    public MachineLifecycleHost host() {
+        return host;
+    }
+
+    public State state() {
+        return state;
+    }
+
+    public boolean formed() {
+        return formed;
+    }
+
+    /**
+     * Persistent count of successful false-to-true formations; refresh within a formation keeps it.
+     */
     public long formationGeneration() {
         return formationGeneration;
     }
 
-    /** Restore only during unpublished assembly; ports and formed authority are rebuilt afterward. */
+    /**
+     * Restore only during unpublished assembly; ports and formed authority are rebuilt afterward.
+     */
     public void restoreFormationGeneration(long generation) {
         host.requireServerThread();
         if (state != State.CREATED || (int) GATE.getAcquire(this) != ASSEMBLING || generation < 0) {
@@ -101,12 +170,26 @@ public final class MachineLifecycle {
         }
         formationGeneration = generation;
     }
-    /** Revokes new execution immediately; owner cleanup still waits for the scheduler's real join. */
-    public void retire() { retired = true; }
-    public boolean retired() { return retired; }
-    @Nullable public StructureMatch structureMatch() { return structureMatch; }
 
-    /** Readiness for ordinary recipe systems, not a transferable worker permission. */
+    /**
+     * Revokes new execution immediately; owner cleanup still waits for the scheduler's real join.
+     */
+    public void retire() {
+        retired = true;
+    }
+
+    public boolean retired() {
+        return retired;
+    }
+
+    @Nullable
+    public StructureMatch structureMatch() {
+        return structureMatch;
+    }
+
+    /**
+     * Readiness for ordinary recipe systems, not a transferable worker permission.
+     */
     public boolean processingAllowed() {
         return formed && structureReady && schedulingAllowed();
     }
@@ -118,11 +201,17 @@ public final class MachineLifecycle {
             requireLoaded();
             requireQuiescent(capture());
             structureReady = ready;
-        } finally { leave(); }
+        } finally {
+            leave();
+        }
     }
 
-    /** Ordinary components may run before formation, but never after unload, break or a fault. */
-    public boolean schedulingAllowed() { return state == State.LOADED && !broken && !faulted && !retired && (gate == IDLE || gate == RUNNING); }
+    /**
+     * Ordinary components may run before formation, but never after unload, break or a fault.
+     */
+    public boolean schedulingAllowed() {
+        return state == State.LOADED && !broken && !faulted && !retired && (gate == IDLE || gate == RUNNING);
+    }
 
     /**
      * Creates/restores unpublished local components after host attachment. Factories and codecs may
@@ -135,7 +224,9 @@ public final class MachineLifecycle {
         enter(ASSEMBLING);
         try {
             requireHealthy();
-            if (state != State.CREATED || assemblyStarted) { throw new IllegalStateException("Machine assembly can run only once before load"); }
+            if (state != State.CREATED || assemblyStarted) {
+                throw new IllegalStateException("Machine assembly can run only once before load");
+            }
             assemblyStarted = true;
             try {
                 assembly.run();
@@ -145,7 +236,9 @@ public final class MachineLifecycle {
                 state = State.UNLOADED;
                 throw failure;
             }
-        } finally { leave(); }
+        } finally {
+            leave();
+        }
     }
 
     /**
@@ -159,7 +252,9 @@ public final class MachineLifecycle {
         enter(PERSISTING);
         try {
             requireHealthy();
-            if (state == State.CREATED) { throw new IllegalStateException("Unloaded assembly cannot be saved before load succeeds"); }
+            if (state == State.CREATED) {
+                throw new IllegalStateException("Unloaded assembly cannot be saved before load succeeds");
+            }
             try {
                 requireQuiescent(capture());
                 return save.get();
@@ -167,7 +262,9 @@ public final class MachineLifecycle {
                 faulted = true;
                 throw failure;
             }
-        } finally { leave(); }
+        } finally {
+            leave();
+        }
     }
 
     public void load(MachineLifecycleEvent.LoadBoundary boundary) {
@@ -175,7 +272,9 @@ public final class MachineLifecycle {
         enterTransition();
         try {
             requireHealthy();
-            if (state != State.CREATED) { throw new IllegalStateException("Machine can only load once"); }
+            if (state != State.CREATED) {
+                throw new IllegalStateException("Machine can only load once");
+            }
             var captured = capture();
             requireQuiescent(captured);
             state = State.LOADED;
@@ -192,11 +291,19 @@ public final class MachineLifecycle {
         }
     }
 
-    /** Replace discovered public hatch bindings before notifying an actual formed transition. */
-    public void form(MachineHatches hatches) { changeStructure(Objects.requireNonNull(hatches)); }
+    /**
+     * Replace discovered public hatch bindings before notifying an actual formed transition.
+     */
+    public void form(MachineHatches hatches) {
+        changeStructure(Objects.requireNonNull(hatches));
+    }
 
-    /** Clears structure-derived hatch bindings and pauses recipes, retaining all ordinary progress. */
-    public void invalidateStructure() { changeStructure(null); }
+    /**
+     * Clears structure-derived hatch bindings and pauses recipes, retaining all ordinary progress.
+     */
+    public void invalidateStructure() {
+        changeStructure(null);
+    }
 
     private void changeStructure(@Nullable MachineHatches hatches) {
         enterTransition();
@@ -223,7 +330,7 @@ public final class MachineLifecycle {
      */
     public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare) {
         return refreshStructure(applicable, prepare, new RecipeWorkBudget(Long.MAX_VALUE));
-                    }
+    }
 
     /** All preparation is budgeted before the indivisible accepted-state and notification tail. */
     public boolean refreshStructure(BooleanSupplier applicable, Supplier<StructureAssembly> prepare, RecipeWorkBudget work) {
@@ -286,14 +393,16 @@ public final class MachineLifecycle {
             if (hatchPut == null) return false;
             var portsPut = machine.components().preparePut(StructureComponents.TYPE, ports, work);
             if (portsPut == null) return false;
-            prepared.add(hatchPut); prepared.add(portsPut);
+            prepared.add(hatchPut);
+            prepared.add(portsPut);
         }
         // Both component-map writes, accepted state and its listener sequence are indivisible.
         // Callbacks remain cooperative once admitted; a partial notification cannot yield a tick.
         boolean nextFormed = hatches != null;
         long installationCost = 3L + (previous != nextFormed ? captured.listeners().size() : 0);
         var accounting = work instanceof StructureCheckPolicy.Work actual ? actual : null;
-        if (accounting == null ? !work.take(installationCost) : !accounting.reserveAtomic(installationCost)) return false;
+        if (accounting == null ? !work.take(installationCost) : !accounting.reserveAtomic(installationCost))
+            return false;
         if (hatches == null) {
             if (accounting != null) accounting.completeReserved();
             machine.components().remove(MachineHatches.TYPE);
@@ -301,7 +410,10 @@ public final class MachineLifecycle {
             machine.components().remove(StructureComponents.TYPE);
         } else {
             machine.components().installPuts(prepared);
-            if (accounting != null) { accounting.completeReserved(); accounting.completeReserved(); }
+            if (accounting != null) {
+                accounting.completeReserved();
+                accounting.completeReserved();
+            }
         }
         if (accounting != null) accounting.completeReserved();
         formationGeneration = generation;
@@ -335,10 +447,15 @@ public final class MachineLifecycle {
         }
         enterTransition();
         try {
-            if (state == State.UNLOADED) { return false; }
+            if (state == State.UNLOADED) {
+                return false;
+            }
             var attempt = captureForCleanup();
             requireQuiescent(attempt.captured());
-            if (state == State.CREATED && attempt.failure() == null) { state = State.UNLOADED; return true; }
+            if (state == State.CREATED && attempt.failure() == null) {
+                state = State.UNLOADED;
+                return true;
+            }
             throwFailure(unloadCaptured(reason, attempt.captured(), attempt.failure()));
             return true;
         } finally {
@@ -353,8 +470,12 @@ public final class MachineLifecycle {
     public boolean controllerBroken() {
         enterTransition();
         try {
-            if (broken) { return false; }
-            if (state != State.LOADED) { throw new IllegalStateException("Controller break requires a loaded machine"); }
+            if (broken) {
+                return false;
+            }
+            if (state != State.LOADED) {
+                throw new IllegalStateException("Controller break requires a loaded machine");
+            }
             var attempt = captureForCleanup();
             var captured = attempt.captured();
             requireQuiescent(captured);
@@ -362,8 +483,11 @@ public final class MachineLifecycle {
             Throwable failure = publishAll(new MachineLifecycleEvent.ControllerBroken(context()), captured.listeners(), attempt.failure());
             var reason = RecipeText.ControllerBroken.failure();
             for (var slots : captured.workSlots()) {
-                try { slots.cancelAll(reason); }
-                catch (RuntimeException | Error cleanup) { failure = append(failure, cleanup); }
+                try {
+                    slots.cancelAll(reason);
+                } catch (RuntimeException | Error cleanup) {
+                    failure = append(failure, cleanup);
+                }
             }
             throwFailure(unloadCaptured(MachineLifecycleEvent.UnloadReason.INVALIDATED, captured, failure));
             return true;
@@ -372,15 +496,23 @@ public final class MachineLifecycle {
         }
     }
 
-    /** MachineInstance dispatch boundary; worker ownership must come from the real scheduler. */
+    /**
+     * MachineInstance dispatch boundary; worker ownership must come from the real scheduler.
+     */
     public void runScheduled(Runnable execution) {
         Objects.requireNonNull(execution);
         enter(RUNNING);
         try {
             requireHealthy();
-            if (state != State.LOADED || broken || retired) { return; }
-            try { execution.run(); }
-            catch (RuntimeException | Error failure) { faulted = true; throw failure; }
+            if (state != State.LOADED || broken || retired) {
+                return;
+            }
+            try {
+                execution.run();
+            } catch (RuntimeException | Error failure) {
+                faulted = true;
+                throw failure;
+            }
         } finally {
             leave();
         }
@@ -398,7 +530,9 @@ public final class MachineLifecycle {
         boolean retained = false;
         try {
             requireHealthy();
-            if (state != State.LOADED || broken || retired) { return null; }
+            if (state != State.LOADED || broken || retired) {
+                return null;
+            }
             try {
                 var execution = new ScheduledExecution(this, capture().workSlots());
                 scheduledExecution = execution;
@@ -408,188 +542,40 @@ public final class MachineLifecycle {
                 faulted = true;
                 throw failure;
             }
-        } finally { if (!retained) { leave(); } }
+        } finally {
+            if (!retained) {
+                leave();
+            }
+        }
     }
 
-    /** Only the dedicated owner normal-callback scope may replace ordinary recipe ticking. */
+    /**
+     * Only the dedicated owner normal-callback scope may replace ordinary recipe ticking.
+     */
     public boolean deferRecipeWork(MachineWorkSlots slots) {
         var execution = scheduledExecution;
         return execution != null && execution.defer(Objects.requireNonNull(slots));
     }
 
-    /** Captures the exact scanner callback before any acquisition; the scheduler owns its attempt. */
+    /**
+     * Captures the exact scanner callback before any acquisition; the scheduler owns its attempt.
+     */
     public boolean deferRecipeScan(RecipeScanner scanner, ScanLimits limits) {
         var execution = scheduledExecution;
         return execution != null && execution.deferScan(Objects.requireNonNull(scanner), Objects.requireNonNull(limits));
     }
 
     /**
-     * One deferred lifecycle ownership transfer, controlled only by its creating server thread.
-     * This handle does not dispatch or join workers. Callers retain it through source exit and exact
-     * compensation, using cleanup after retirement or faults before trying to release ownership.
+     * A check, not a lock spanning serialization; the caller must already hold exclusive ownership.
      */
-    public static final class ScheduledExecution {
-        private final MachineLifecycle lifecycle;
-        private final Thread owner = Thread.currentThread();
-        private final ObjectArrayList<MachineWorkSlots> observedSlots = new ObjectArrayList<>();
-        private final ReferenceOpenHashSet<MachineWorkSlots> observedSlotIdentities = new ReferenceOpenHashSet<>();
-        private boolean executing;
-        private boolean finished;
-        private boolean componentScope;
-        private final ReferenceOpenHashSet<RecipeScanner> dispatchedScanners = new ReferenceOpenHashSet<>();
-        @Nullable private DeferredScan deferredScan;
-        private final ReferenceOpenHashSet<MachineWorkSlots> completedDeferred = new ReferenceOpenHashSet<>();
-        @Nullable private MachineWorkSlots deferred;
-        @Nullable private Throwable failure;
-
-        private ScheduledExecution(MachineLifecycle lifecycle, List<MachineWorkSlots> capturedSlots) {
-            this.lifecycle = lifecycle;
-            observe(capturedSlots);
-        }
-
-        private void observe(List<MachineWorkSlots> slots) {
-            for (var candidate : slots) {
-                if (observedSlotIdentities.add(candidate)) { observedSlots.add(candidate); }
-            }
-        }
-
-        /** Returns false without calling the body once retirement or a fault revokes forward work. */
-        public boolean run(Runnable execution) {
-            Objects.requireNonNull(execution);
-            requireOwner();
-            if (!lifecycle.schedulingAllowed()) { return false; }
-            invoke(execution);
-            return true;
-        }
-
-        /** Runs one consumed normal callback with the precise work-slot deferral hook enabled. */
-        public boolean runComponent(Runnable execution) {
-            Objects.requireNonNull(execution);
-            requireOwner();
-            if (deferred != null || deferredScan != null) { throw new IllegalStateException("Previous component work is still deferred"); }
-            if (!lifecycle.schedulingAllowed()) { return false; }
-            componentScope = true;
-            try { invoke(execution); }
-            finally { componentScope = false; }
-            return true;
-        }
-
-        private boolean defer(MachineWorkSlots slots) {
-            if (Thread.currentThread() != owner || !executing || !componentScope || finished) { return false; }
-            if (slots.owner() != lifecycle.machine) { throw new IllegalArgumentException("Deferred slots belong to another machine"); }
-            if (deferredScan != null) throw new IllegalStateException("A scanner attempt must settle before work slots");
-            if (completedDeferred.contains(slots)) { return true; }
-            if (deferred != null && deferred != slots) { throw new IllegalStateException("One normal callback deferred multiple work-slot hosts"); }
-            deferred = slots;
-            observe(List.of(slots));
-            return true;
-        }
-
-        private boolean deferScan(RecipeScanner scanner, ScanLimits limits) {
-            if (Thread.currentThread() != owner || !executing || !componentScope || finished) return false;
-            if (scanner.host().owner() != lifecycle.machine) throw new IllegalArgumentException("Deferred scanner belongs to another machine");
-            if (dispatchedScanners.contains(scanner)) return true;
-            if (deferredScan != null)
-                throw new IllegalStateException("One normal callback deferred multiple recipe scanners");
-            if (deferred != null) throw new IllegalStateException("Work slots must settle before a later scan callback");
-            dispatchedScanners.add(scanner);
-            deferredScan = new DeferredScan(scanner, limits);
-            return true;
-        }
-
-        public @Nullable DeferredScan deferredRecipeScan() {
-            requireOwner();
-            return deferredScan;
-        }
-
-        public void finishDeferredRecipeScan(DeferredScan expected) {
-            requireOwner();
-            if (deferredScan != Objects.requireNonNull(expected)) throw new IllegalArgumentException("Different deferred scanner");
-            if (expected.scanner().pendingScan() != null) throw new IllegalStateException("Scanner still owns its attempt");
-            deferredScan = null;
-        }
-
-        public record DeferredScan(RecipeScanner scanner, ScanLimits limits) { }
-
-        @Nullable public MachineWorkSlots deferredRecipeWork() {
-            requireOwner();
-            return deferred;
-        }
-
-        /** Acknowledges exact finished work before any successor normal callback can run. */
-        public void finishDeferredRecipeWork(MachineWorkSlots slots) {
-            requireOwner();
-            if (deferred != Objects.requireNonNull(slots)) { throw new IllegalArgumentException("Different deferred work-slot host"); }
-            slots.requireQuiescent();
-            completedDeferred.add(slots);
-            deferred = null;
-        }
-
-        /** Mandatory confirmation/compensation remains callable after retirement or a runtime fault. */
-        public void cleanup(Runnable cleanup) {
-            Objects.requireNonNull(cleanup);
-            requireOwner();
-            invoke(cleanup);
-        }
-
-        private void invoke(Runnable execution) {
-            executing = true;
-            try { execution.run(); }
-            catch (RuntimeException | Error observed) { record(observed); throw observed; }
-            finally { executing = false; }
-        }
-
-        /** Records an actual worker or business failure without releasing its cleanup obligation. */
-        public void recordFailure(Throwable observed) {
-            requireOwner();
-            record(Objects.requireNonNull(observed));
-        }
-
-        private void record(Throwable observed) {
-            failure = append(failure, observed);
-            lifecycle.faulted = true;
-        }
-
-        /**
-         * Pending work is an ordinary false result and retains this exact handle and RUNNING gate.
-         * Removed or replaced work slots cannot hide any obligations observed by this handle.
-         */
-        public boolean tryFinish() {
-            requireOwner();
-            executing = true;
-            try {
-                observe(lifecycle.capture().workSlots());
-                if (deferred != null || deferredScan != null) { return false; }
-                boolean quiescent = true;
-                for (var slots : observedSlots) { quiescent &= slots.quiescent(); }
-                if (!quiescent) { return false; }
-                finished = true;
-                lifecycle.scheduledExecution = null;
-                lifecycle.leave();
-                return true;
-            } catch (RuntimeException | Error observed) { record(observed); throw observed; }
-            finally { executing = false; }
-        }
-
-        public boolean finished() { return finished; }
-        @Nullable public Throwable failure() { return failure; }
-
-        private void requireOwner() {
-            if (Thread.currentThread() != owner || executing || finished || lifecycle.scheduledExecution != this
-                || (int) GATE.getAcquire(lifecycle) != RUNNING) {
-                throw new IllegalStateException("Scheduled execution requires its idle captured owner");
-            }
-            lifecycle.host.requireServerThread();
-        }
-    }
-
-    /** A check, not a lock spanning serialization; the caller must already hold exclusive ownership. */
     public void requirePersistenceBoundary() {
         requireHealthy();
         int phase = (int) GATE.getAcquire(this);
         if (phase == ASSEMBLING || phase == PERSISTING) {
             host.requireServerThread();
-        } else if (phase != IDLE) { throw new IllegalStateException("Machine boundary is active"); }
+        } else if (phase != IDLE) {
+            throw new IllegalStateException("Machine boundary is active");
+        }
     }
 
     private void enterTransition() {
@@ -603,21 +589,30 @@ public final class MachineLifecycle {
         }
     }
 
-    private void leave() { GATE.setRelease(this, IDLE); }
+    private void leave() {
+        GATE.setRelease(this, IDLE);
+    }
 
     private void requireHealthy() {
-        if (faulted) { throw new IllegalStateException("Machine has an unrecoverable runtime failure"); }
+        if (faulted) {
+            throw new IllegalStateException("Machine has an unrecoverable runtime failure");
+        }
     }
 
     private void requireLoaded() {
         requireHealthy();
-        if (state != State.LOADED || broken) { throw new IllegalStateException("Machine is not loaded"); }
+        if (state != State.LOADED || broken) {
+            throw new IllegalStateException("Machine is not loaded");
+        }
     }
 
-    private MachineLifecycleContext context() { return new MachineLifecycleContext(machine, identity, host, formed); }
+    private MachineLifecycleContext context() {
+        return new MachineLifecycleContext(machine, identity, host, formed);
+    }
 
     private Captured capture() {
-        return Objects.requireNonNull(capture(new RecipeWorkBudget(Long.MAX_VALUE))); }
+        return Objects.requireNonNull(capture(new RecipeWorkBudget(Long.MAX_VALUE)));
+    }
 
     @Nullable
     private Captured capture(RecipeWorkBudget work) {
@@ -666,28 +661,35 @@ public final class MachineLifecycle {
             var seenSlots = new ReferenceOpenHashSet<MachineWorkSlots>();
             if (lastCaptured != null) {
                 for (var listener : lastCaptured.listeners()) {
-                    if (seenListeners.add(listener)) { listeners.add(listener); }
+                    if (seenListeners.add(listener)) {
+                        listeners.add(listener);
+                    }
                 }
                 for (var prior : lastCaptured.workSlots()) {
-                    if (seenSlots.add(prior)) { slots.add(prior); }
+                    if (seenSlots.add(prior)) {
+                        slots.add(prior);
+                    }
                 }
             }
             for (var binding : machine.components().assemblyBindings()) {
-                if (binding.component() instanceof MachineLifecycleListener listener && seenListeners.add(listener)) { listeners.add(listener); }
+                if (binding.component() instanceof MachineLifecycleListener listener && seenListeners.add(listener)) {
+                    listeners.add(listener);
+                }
                 if (binding.component() instanceof MachineWorkSlots candidate && seenSlots.add(candidate)) {
-                    if (candidate.owner() == machine) { slots.add(candidate); }
-                    else { failure.addSuppressed(new IllegalStateException("Foreign work slots excluded from machine cleanup")); }
+                    if (candidate.owner() == machine) {
+                        slots.add(candidate);
+                    } else {
+                        failure.addSuppressed(new IllegalStateException("Foreign work slots excluded from machine cleanup"));
+                    }
                 }
             }
             for (var listener : registry.snapshot()) {
-                if (seenListeners.add(listener)) { listeners.add(listener); }
+                if (seenListeners.add(listener)) {
+                    listeners.add(listener);
+                }
             }
             return new CleanupCapture(new Captured(listeners, slots), failure);
         }
-    }
-
-    private static void requireQuiescent(Captured captured) {
-        for (var slots : captured.workSlots()) { slots.requireQuiescent(); }
     }
 
     @Nullable
@@ -704,40 +706,233 @@ public final class MachineLifecycle {
         return failure;
     }
 
-    private static void publish(MachineLifecycleEvent event, List<MachineLifecycleListener> listeners) {
-        for (var listener : listeners) { invoke(event, listener); }
-    }
+    public enum State {CREATED, LOADED, UNLOADED}
 
-    @Nullable
-    private static Throwable publishAll(MachineLifecycleEvent event, List<MachineLifecycleListener> listeners, @Nullable Throwable failure) {
-        for (var listener : listeners) {
-            try { invoke(event, listener); }
-            catch (RuntimeException | Error cleanup) { failure = append(failure, cleanup); }
+    /**
+     * One deferred lifecycle ownership transfer, controlled only by its creating server thread.
+     * This handle does not dispatch or join workers. Callers retain it through source exit and exact
+     * compensation, using cleanup after retirement or faults before trying to release ownership.
+     */
+    public static final class ScheduledExecution {
+        private final MachineLifecycle lifecycle;
+        private final Thread owner = Thread.currentThread();
+        private final ObjectArrayList<MachineWorkSlots> observedSlots = new ObjectArrayList<>();
+        private final ReferenceOpenHashSet<MachineWorkSlots> observedSlotIdentities = new ReferenceOpenHashSet<>();
+        private final ReferenceOpenHashSet<MachineWorkSlots> completedDeferred = new ReferenceOpenHashSet<>();
+        private final ReferenceOpenHashSet<RecipeScanner> dispatchedScanners = new ReferenceOpenHashSet<>();
+        private boolean executing;
+        private boolean finished;
+        private boolean componentScope;
+        @Nullable
+        private DeferredScan deferredScan;
+        @Nullable
+        private MachineWorkSlots deferred;
+        @Nullable
+        private Throwable failure;
+
+        private ScheduledExecution(MachineLifecycle lifecycle, List<MachineWorkSlots> capturedSlots) {
+            this.lifecycle = lifecycle;
+            observe(capturedSlots);
         }
-        return failure;
-    }
 
-    private static void invoke(MachineLifecycleEvent event, MachineLifecycleListener listener) {
-        switch (event) {
-            case MachineLifecycleEvent.Loaded loaded -> listener.onLoaded(loaded);
-            case MachineLifecycleEvent.Unloaded unloaded -> listener.onUnloaded(unloaded);
-            case MachineLifecycleEvent.FormedChanged formed -> listener.onFormedChanged(formed);
-            case MachineLifecycleEvent.ControllerBroken broken -> listener.onControllerBroken(broken);
+        private void observe(List<MachineWorkSlots> slots) {
+            for (var candidate : slots) {
+                if (observedSlotIdentities.add(candidate)) {
+                    observedSlots.add(candidate);
+                }
+            }
+        }
+
+        /**
+         * Returns false without calling the body once retirement or a fault revokes forward work.
+         */
+        public boolean run(Runnable execution) {
+            Objects.requireNonNull(execution);
+            requireOwner();
+            if (!lifecycle.schedulingAllowed()) {
+                return false;
+            }
+            invoke(execution);
+            return true;
+        }
+
+        /**
+         * Runs one consumed normal callback with the precise work-slot deferral hook enabled.
+         */
+        public boolean runComponent(Runnable execution) {
+            Objects.requireNonNull(execution);
+            requireOwner();
+            if (deferred != null || deferredScan != null) {
+                throw new IllegalStateException("Previous component work is still deferred");
+            }
+            if (!lifecycle.schedulingAllowed()) {
+                return false;
+            }
+            componentScope = true;
+            try {
+                invoke(execution);
+            } finally {
+                componentScope = false;
+            }
+            return true;
+        }
+
+        private boolean defer(MachineWorkSlots slots) {
+            if (Thread.currentThread() != owner || !executing || !componentScope || finished) {
+                return false;
+            }
+            if (slots.owner() != lifecycle.machine) {
+                throw new IllegalArgumentException("Deferred slots belong to another machine");
+            }
+            if (deferredScan != null)
+                throw new IllegalStateException("A scanner attempt must settle before work slots");
+            if (completedDeferred.contains(slots)) {
+                return true;
+            }
+            if (deferred != null && deferred != slots) {
+                throw new IllegalStateException("One normal callback deferred multiple work-slot hosts");
+            }
+            deferred = slots;
+            observe(List.of(slots));
+            return true;
+        }
+
+        private boolean deferScan(RecipeScanner scanner, ScanLimits limits) {
+            if (Thread.currentThread() != owner || !executing || !componentScope || finished) return false;
+            if (scanner.host().owner() != lifecycle.machine)
+                throw new IllegalArgumentException("Deferred scanner belongs to another machine");
+            if (dispatchedScanners.contains(scanner)) return true;
+            if (deferredScan != null)
+                throw new IllegalStateException("One normal callback deferred multiple recipe scanners");
+            if (deferred != null)
+                throw new IllegalStateException("Work slots must settle before a later scan callback");
+            dispatchedScanners.add(scanner);
+            deferredScan = new DeferredScan(scanner, limits);
+            return true;
+        }
+
+        public @Nullable DeferredScan deferredRecipeScan() {
+            requireOwner();
+            return deferredScan;
+        }
+
+        public void finishDeferredRecipeScan(DeferredScan expected) {
+            requireOwner();
+            if (deferredScan != Objects.requireNonNull(expected))
+                throw new IllegalArgumentException("Different deferred scanner");
+            if (expected.scanner().pendingScan() != null)
+                throw new IllegalStateException("Scanner still owns its attempt");
+            deferredScan = null;
+        }
+
+        @Nullable
+        public MachineWorkSlots deferredRecipeWork() {
+            requireOwner();
+            return deferred;
+        }
+
+        /**
+         * Acknowledges exact finished work before any successor normal callback can run.
+         */
+        public void finishDeferredRecipeWork(MachineWorkSlots slots) {
+            requireOwner();
+            if (deferred != Objects.requireNonNull(slots)) {
+                throw new IllegalArgumentException("Different deferred work-slot host");
+            }
+            slots.requireQuiescent();
+            completedDeferred.add(slots);
+            deferred = null;
+        }
+
+        /**
+         * Mandatory confirmation/compensation remains callable after retirement or a runtime fault.
+         */
+        public void cleanup(Runnable cleanup) {
+            Objects.requireNonNull(cleanup);
+            requireOwner();
+            invoke(cleanup);
+        }
+
+        private void invoke(Runnable execution) {
+            executing = true;
+            try {
+                execution.run();
+            } catch (RuntimeException | Error observed) {
+                record(observed);
+                throw observed;
+            } finally {
+                executing = false;
+            }
+        }
+
+        /**
+         * Records an actual worker or business failure without releasing its cleanup obligation.
+         */
+        public void recordFailure(Throwable observed) {
+            requireOwner();
+            record(Objects.requireNonNull(observed));
+        }
+
+        private void record(Throwable observed) {
+            failure = append(failure, observed);
+            lifecycle.faulted = true;
+        }
+
+        /**
+         * Pending work is an ordinary false result and retains this exact handle and RUNNING gate.
+         * Removed or replaced work slots cannot hide any obligations observed by this handle.
+         */
+        public boolean tryFinish() {
+            requireOwner();
+            executing = true;
+            try {
+                observe(lifecycle.capture().workSlots());
+                if (deferred != null || deferredScan != null) {
+                    return false;
+                }
+                boolean quiescent = true;
+                for (var slots : observedSlots) {
+                    quiescent &= slots.quiescent();
+                }
+                if (!quiescent) {
+                    return false;
+                }
+                finished = true;
+                lifecycle.scheduledExecution = null;
+                lifecycle.leave();
+                return true;
+            } catch (RuntimeException | Error observed) {
+                record(observed);
+                throw observed;
+            } finally {
+                executing = false;
+            }
+        }
+
+        public boolean finished() {
+            return finished;
+        }
+
+        @Nullable
+        public Throwable failure() {
+            return failure;
+        }
+
+        private void requireOwner() {
+            if (Thread.currentThread() != owner || executing || finished || lifecycle.scheduledExecution != this
+                || (int) GATE.getAcquire(lifecycle) != RUNNING) {
+                throw new IllegalStateException("Scheduled execution requires its idle captured owner");
+            }
+            lifecycle.host.requireServerThread();
+        }
+
+        public record DeferredScan(RecipeScanner scanner, ScanLimits limits) {
         }
     }
 
-    private static Throwable append(@Nullable Throwable primary, Throwable additional) {
-        if (primary == null) { return additional; }
-        if (primary != additional) { primary.addSuppressed(additional); }
-        return primary;
+    private record Captured(List<MachineLifecycleListener> listeners, List<MachineWorkSlots> workSlots) {
     }
 
-    private static void throwFailure(@Nullable Throwable failure) {
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
+    private record CleanupCapture(Captured captured, @Nullable Throwable failure) {
     }
-
-    private record Captured(List<MachineLifecycleListener> listeners, List<MachineWorkSlots> workSlots) {}
-    private record CleanupCapture(Captured captured, @Nullable Throwable failure) {}
-    public enum State { CREATED, LOADED, UNLOADED }
 }

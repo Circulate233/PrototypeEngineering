@@ -12,5 +12,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(GuiScreen.class)
 public abstract class GuiScreenPreviewMixin {
     @Redirect(method = "setWorldAndResolution", at = @At(value = "INVOKE", target = "Lnet/minecraftforge/fml/common/eventhandler/EventBus;post(Lnet/minecraftforge/fml/common/eventhandler/Event;)Z", remap = false), require = 2, allow = 2)
-    private boolean prototype_eng$postPreviewInit(EventBus bus, Event event) { return PreviewScreenTransitions.postInit(bus, event); }
+    private boolean prototype_eng$postPreviewInit(EventBus bus, Event event) {
+        return PreviewScreenTransitions.postInit(bus, event);
+    }
 }

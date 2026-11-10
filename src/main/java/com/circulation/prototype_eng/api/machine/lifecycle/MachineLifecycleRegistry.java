@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.api.machine.lifecycle;
 
+import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
+
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
 import java.util.Objects;
-
-import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 
 /**
  * Ordered, thread-safe registrations for machine lifecycle listeners.
@@ -37,7 +37,9 @@ public final class MachineLifecycleRegistry {
         return new Subscription(this, entry);
     }
 
-    /** Removes the active registration for the listener by object identity. */
+    /**
+     * Removes the active registration for the listener by object identity.
+     */
     public synchronized boolean unregister(MachineLifecycleListener listener) {
         Objects.requireNonNull(listener, "listener");
         for (var entry : entries) {
@@ -48,7 +50,9 @@ public final class MachineLifecycleRegistry {
         return false;
     }
 
-    /** Returns an immutable registration-order snapshot that remains valid after cancellation. */
+    /**
+     * Returns an immutable registration-order snapshot that remains valid after cancellation.
+     */
     public List<MachineLifecycleListener> snapshot() {
         return snapshot;
     }
@@ -98,7 +102,9 @@ public final class MachineLifecycleRegistry {
         snapshot = List.copyOf(listeners);
     }
 
-    /** A cancellable handle for one exact registration, including after the listener is registered again. */
+    /**
+     * A cancellable handle for one exact registration, including after the listener is registered again.
+     */
     public static final class Subscription implements AutoCloseable {
         private final MachineLifecycleRegistry registry;
         private final Entry entry;
@@ -114,7 +120,9 @@ public final class MachineLifecycleRegistry {
             }
         }
 
-        /** Returns true only for the call that removes this active registration. */
+        /**
+         * Returns true only for the call that removes this active registration.
+         */
         public boolean cancel() {
             return registry.remove(entry);
         }

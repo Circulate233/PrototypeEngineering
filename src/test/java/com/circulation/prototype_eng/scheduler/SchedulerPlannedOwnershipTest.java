@@ -40,12 +40,55 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class SchedulerPlannedOwnershipTest {
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
-    @Test void stoppedSourceMustActuallyExitBeforeTickReturnsAndPendingCycleBlocksBusinessUntilCleanupFinishes() throws Exception {
+    private static void enqueueBoundary(TaskScheduler scheduler, Runnable action) throws Exception {
+        var queued = new FutureTask<Void>(() -> {
+            scheduler.runAtBoundary(action);
+            return null;
+        });
+        Thread.ofPlatform().daemon().start(queued);
+        queued.get(5, TimeUnit.SECONDS);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("scheduler_planned_ownership_test", path);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Test coordination must complete");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
+        boolean done = false;
+        while (!done) {
+            try {
+                assertTrue(latch.await(5, TimeUnit.SECONDS), "Test must release its source action");
+                done = true;
+            } catch (InterruptedException ignored) {
+                interrupted.countDown();
+            }
+        }
+    }
+
+    @Test
+    void stoppedSourceMustActuallyExitBeforeTickReturnsAndPendingCycleBlocksBusinessUntilCleanupFinishes() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
@@ -59,18 +102,26 @@ class SchedulerPlannedOwnershipTest {
         var postReady = new AtomicBoolean();
         var token = new PlannedCancellationToken();
         var fixture = new RecipeFixture(actual -> new ReservationAdapter(actual) {
-            @Override public void apply() {
+            @Override
+            public void apply() {
                 super.apply();
                 applies.incrementAndGet();
                 entered.countDown();
                 awaitIgnoringInterrupt(release, interrupted);
             }
-            @Override public void rollback() { rollbacks.incrementAndGet(); super.rollback(); }
+
+            @Override
+            public void rollback() {
+                rollbacks.incrementAndGet();
+                super.rollback();
+            }
         });
         var cycle = new AtomicReference<RealCycle>();
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler((tasks, deadline) -> {
-                if (captures.incrementAndGet() != 1) { return null; }
+                if (captures.incrementAndGet() != 1) {
+                    return null;
+                }
                 var captured = new RealCycle(tasks, deadline, fixture.slots, token, postReady::get, awaitEntered);
                 cycle.set(captured);
                 return captured;
@@ -118,10 +169,13 @@ class SchedulerPlannedOwnershipTest {
                 release.countDown();
                 stopAndRelease.get(5, TimeUnit.SECONDS);
             }
-        } finally { release.countDown(); }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void completedRecipeDoesNotReleaseBoundaryWhileTheWholeCycleStillOwnsPendingPost() throws Exception {
+    @Test
+    void completedRecipeDoesNotReleaseBoundaryWhileTheWholeCycleStillOwnsPendingPost() throws Exception {
         var fixture = new RecipeFixture();
         var postReady = new AtomicBoolean();
         var boundaries = new AtomicInteger();
@@ -130,7 +184,9 @@ class SchedulerPlannedOwnershipTest {
         var cycle = new AtomicReference<RealCycle>();
         try (var backend = new Backend()) {
             var scheduler = backend.scheduler((tasks, deadline) -> {
-                if (captures.incrementAndGet() != 1) { return null; }
+                if (captures.incrementAndGet() != 1) {
+                    return null;
+                }
                 var captured = new RealCycle(tasks, deadline, fixture.slots, new PlannedCancellationToken(), postReady::get, new CountDownLatch(0));
                 cycle.set(captured);
                 return captured;
@@ -166,7 +222,8 @@ class SchedulerPlannedOwnershipTest {
         }
     }
 
-    @Test void unknownSourceCompletionKeepsCloseRetryableAndOriginalLaneAliveUntilExactProof() throws Exception {
+    @Test
+    void unknownSourceCompletionKeepsCloseRetryableAndOriginalLaneAliveUntilExactProof() throws Exception {
         var proof = new AtomicBoolean();
         var completionCalls = new AtomicInteger();
         var rollbackCalls = new AtomicInteger();
@@ -174,15 +231,28 @@ class SchedulerPlannedOwnershipTest {
         var sourceThread = new AtomicReference<Thread>();
         var failure = new IllegalStateException("source completed but proof withheld");
         var fixture = new RecipeFixture(actual -> new ReservationAdapter(actual) {
-            @Override public void apply() { sourceThread.set(Thread.currentThread()); super.apply(); }
-            @Override public void complete() {
+            @Override
+            public void apply() {
+                sourceThread.set(Thread.currentThread());
+                super.apply();
+            }
+
+            @Override
+            public void complete() {
                 assertSame(sourceThread.get(), Thread.currentThread());
                 completionCalls.incrementAndGet();
                 super.complete();
                 throw failure;
             }
-            @Override public void rollback() { rollbackCalls.incrementAndGet(); super.rollback(); }
-            @Override public Resolution resolution() {
+
+            @Override
+            public void rollback() {
+                rollbackCalls.incrementAndGet();
+                super.rollback();
+            }
+
+            @Override
+            public Resolution resolution() {
                 assertSame(sourceThread.get(), Thread.currentThread());
                 return proof.get() ? super.resolution() : Resolution.UNKNOWN;
             }
@@ -221,7 +291,8 @@ class SchedulerPlannedOwnershipTest {
         }
     }
 
-    @Test void plannedCaptureCannotReenterSchedulerAndSubmissionsWaitForTheNextBusinessTick() {
+    @Test
+    void plannedCaptureCannotReenterSchedulerAndSubmissionsWaitForTheNextBusinessTick() {
         var fixture = new RecipeFixture();
         var captures = new AtomicInteger();
         var queued = new AtomicInteger();
@@ -232,10 +303,13 @@ class SchedulerPlannedOwnershipTest {
                 assertThrows(IllegalStateException.class, scheduler[0]::tick);
                 assertThrows(IllegalStateException.class, scheduler[0]::tryClose);
                 assertThrows(IllegalStateException.class, () -> scheduler[0].runAtBoundary(illegalBodies::incrementAndGet));
-                if (captures.incrementAndGet() != 1) { return null; }
+                if (captures.incrementAndGet() != 1) {
+                    return null;
+                }
                 scheduler[0].submit(queued::incrementAndGet, ExecutionMode.MAIN_THREAD);
                 return new ExecutionAdapter(new RealCycle(tasks, deadline, fixture.slots, new PlannedCancellationToken(), () -> true, new CountDownLatch(0))) {
-                    @Override public boolean finished() {
+                    @Override
+                    public boolean finished() {
                         assertThrows(IllegalStateException.class, () -> scheduler[0].runAtBoundary(illegalBodies::incrementAndGet));
                         return super.finished();
                     }
@@ -254,7 +328,8 @@ class SchedulerPlannedOwnershipTest {
         }
     }
 
-    @Test void failedCancellationCannotAuthorizeAnotherAdvanceUntilTheExactCycleConfirmsItsStop() throws Exception {
+    @Test
+    void failedCancellationCannotAuthorizeAnotherAdvanceUntilTheExactCycleConfirmsItsStop() throws Exception {
         var fixture = new RecipeFixture();
         var cancellation = new PlannedCancellationToken();
         var postReady = new AtomicBoolean();
@@ -270,14 +345,19 @@ class SchedulerPlannedOwnershipTest {
                 var real = new RealCycle(tasks, deadline, fixture.slots, cancellation, postReady::get, new CountDownLatch(0));
                 cycle.set(real);
                 return new ExecutionAdapter(real) {
-                    @Override public boolean advance(PlannedDeadline cleanupDeadline) {
+                    @Override
+                    public boolean advance(PlannedDeadline cleanupDeadline) {
                         if (advances.incrementAndGet() > 1) {
                             assertNotNull(cancellation.reason(), "An unconfirmed cancel must not authorize another advance");
                         }
                         return super.advance(cleanupDeadline);
                     }
-                    @Override public void cancel(Reason reason) {
-                        if (cancels.incrementAndGet() == 1) { throw failure; }
+
+                    @Override
+                    public void cancel(Reason reason) {
+                        if (cancels.incrementAndGet() == 1) {
+                            throw failure;
+                        }
                         super.cancel(reason);
                     }
                 };
@@ -312,7 +392,8 @@ class SchedulerPlannedOwnershipTest {
         }
     }
 
-    @Test void interruptedOwnerWaitsForActualSourceExitAndRetainsItsCleanupBeforeReportingTheFailure() throws Exception {
+    @Test
+    void interruptedOwnerWaitsForActualSourceExitAndRetainsItsCleanupBeforeReportingTheFailure() throws Exception {
         var owner = Thread.currentThread();
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -327,14 +408,23 @@ class SchedulerPlannedOwnershipTest {
         var rollbacks = new AtomicInteger();
         var cancellation = new PlannedCancellationToken();
         var fixture = new RecipeFixture(actual -> new ReservationAdapter(actual) {
-            @Override public void apply() {
+            @Override
+            public void apply() {
                 super.apply();
                 applies.incrementAndGet();
                 entered.countDown();
-                try { awaitIgnoringInterrupt(release, sourceInterrupted); }
-                finally { sourceExited.set(true); }
+                try {
+                    awaitIgnoringInterrupt(release, sourceInterrupted);
+                } finally {
+                    sourceExited.set(true);
+                }
             }
-            @Override public void rollback() { rollbacks.incrementAndGet(); super.rollback(); }
+
+            @Override
+            public void rollback() {
+                rollbacks.incrementAndGet();
+                super.rollback();
+            }
         });
         var cycle = new AtomicReference<RealCycle>();
         try (var backend = new Backend()) {
@@ -342,9 +432,11 @@ class SchedulerPlannedOwnershipTest {
                 var real = new RealCycle(tasks, deadline, fixture.slots, cancellation, postReady::get, awaitEntered);
                 cycle.set(real);
                 return new ExecutionAdapter(real) {
-                    @Override public void awaitExit() {
-                        try { super.awaitExit(); }
-                        finally {
+                    @Override
+                    public void awaitExit() {
+                        try {
+                            super.awaitExit();
+                        } finally {
                             awaitEnded.countDown();
                             assertTrue(sourceExited.get(), "Exit confirmation or its interruption must follow actual source exit");
                         }
@@ -407,21 +499,15 @@ class SchedulerPlannedOwnershipTest {
         }
     }
 
-    private static void enqueueBoundary(TaskScheduler scheduler, Runnable action) throws Exception {
-        var queued = new FutureTask<Void>(() -> { scheduler.runAtBoundary(action); return null; });
-        Thread.ofPlatform().daemon().start(queued);
-        queued.get(5, TimeUnit.SECONDS);
-    }
-
     private static final class RealCycle implements PlannedExecution {
         private final PlannedTaskExecutor tasks;
         private final PlannedDeadline forwardDeadline;
         private final MachineWorkSlots slots;
-        private PlannedRecipeCoordinator coordinator;
         private final PlannedCancellationToken cancellation;
         private final BooleanSupplier postReady;
         private final CountDownLatch awaitEntered;
         private final AtomicReference<Reason> lastCancellation = new AtomicReference<>();
+        private PlannedRecipeCoordinator coordinator;
         private boolean postFinished;
 
         private RealCycle(PlannedTaskExecutor tasks, PlannedDeadline deadline, MachineWorkSlots slots,
@@ -434,36 +520,74 @@ class SchedulerPlannedOwnershipTest {
             this.awaitEntered = awaitEntered;
         }
 
-        @Override public boolean advance(PlannedDeadline cleanupDeadline) {
+        @Override
+        public boolean advance(PlannedDeadline cleanupDeadline) {
             if (coordinator == null) {
                 coordinator = new PlannedRecipeCoordinator(tasks, List.of(slots), forwardDeadline, cancellation, () -> true);
             }
-            if (!coordinator.advance(cleanupDeadline)) { return false; }
-            if (!postReady.getAsBoolean()) { return false; }
+            if (!coordinator.advance(cleanupDeadline)) {
+                return false;
+            }
+            if (!postReady.getAsBoolean()) {
+                return false;
+            }
             postFinished = true;
             return true;
         }
-        @Override public void awaitExit() {
+
+        @Override
+        public void awaitExit() {
             awaitEntered.countDown();
-            if (coordinator != null) { coordinator.awaitExit(); }
+            if (coordinator != null) {
+                coordinator.awaitExit();
+            }
         }
-        @Override public boolean finished() { return coordinator != null && coordinator.finished() && postFinished; }
-        @Override public void cancel(Reason reason) { lastCancellation.set(reason); cancellation.cancel(reason); }
+
+        @Override
+        public boolean finished() {
+            return coordinator != null && coordinator.finished() && postFinished;
+        }
+
+        @Override
+        public void cancel(Reason reason) {
+            lastCancellation.set(reason);
+            cancellation.cancel(reason);
+        }
     }
 
     private static class ExecutionAdapter implements PlannedExecution {
         private final PlannedExecution actual;
-        private ExecutionAdapter(PlannedExecution actual) { this.actual = actual; }
-        @Override public boolean advance(PlannedDeadline cleanupDeadline) { return actual.advance(cleanupDeadline); }
-        @Override public void awaitExit() { actual.awaitExit(); }
-        @Override public boolean finished() { return actual.finished(); }
-        @Override public void cancel(Reason reason) { actual.cancel(reason); }
+
+        private ExecutionAdapter(PlannedExecution actual) {
+            this.actual = actual;
+        }
+
+        @Override
+        public boolean advance(PlannedDeadline cleanupDeadline) {
+            return actual.advance(cleanupDeadline);
+        }
+
+        @Override
+        public void awaitExit() {
+            actual.awaitExit();
+        }
+
+        @Override
+        public boolean finished() {
+            return actual.finished();
+        }
+
+        @Override
+        public void cancel(Reason reason) {
+            actual.cancel(reason);
+        }
     }
 
     private static final class RecipeFixture {
         private final MachineInstance machine = new MachineInstance();
         private final MachineWorkSlots slots = new MachineWorkSlots(machine, List.of());
-        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {});
+        private final EnergyBuffer energy = new EnergyBuffer(100, () -> {
+        });
         private final RecipeProcess process;
 
         private RecipeFixture() {
@@ -476,7 +600,8 @@ class SchedulerPlannedOwnershipTest {
         private RecipeFixture(UnaryOperator<ResourceReservation> adapter) {
             assertEquals(100, energy.receiveEnergy(100, Actionable.MODULATE));
             var system = new RecipeRequirementSystem<String>() {
-                @Override public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<String> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess owner, RecipeRequirement<String> requirement) {
                     var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 10).reservation());
                     return new ReservedEnergy(adapter.apply(token));
                 }
@@ -492,49 +617,82 @@ class SchedulerPlannedOwnershipTest {
     }
 
     private record ReservedEnergy(ResourceReservation token) implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public List<ResourceReservation> reservations() { return List.of(token); }
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public List<ResourceReservation> reservations() {
+            return List.of(token);
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private static class ReservationAdapter implements ResourceReservation {
         private final ResourceReservation actual;
-        private ReservationAdapter(ResourceReservation actual) { this.actual = actual; }
-        @Override public StorageContext context() { return actual.context(); }
-        @Override public boolean canApply() { return actual.canApply(); }
-        @Override public void apply() { actual.apply(); }
-        @Override public void complete() { actual.complete(); }
-        @Override public void rollback() { actual.rollback(); }
-        @Override public Resolution resolution() { return actual.resolution(); }
+
+        private ReservationAdapter(ResourceReservation actual) {
+            this.actual = actual;
+        }
+
+        @Override
+        public StorageContext context() {
+            return actual.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return actual.canApply();
+        }
+
+        @Override
+        public void apply() {
+            actual.apply();
+        }
+
+        @Override
+        public void complete() {
+            actual.complete();
+        }
+
+        @Override
+        public void rollback() {
+            actual.rollback();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return actual.resolution();
+        }
     }
 
     private static final class Backend implements AutoCloseable {
         private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
         private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+
         private TaskScheduler scheduler(TaskScheduler.PlannedFactory factory) {
             return new TaskScheduler(Thread.currentThread(), 2, 1, workers, new ExecutorService[]{lane}, factory, TIMEOUT);
         }
-        @Override public void close() {
+
+        @Override
+        public void close() {
             workers.shutdownNow();
             lane.shutdownNow();
             try {
                 assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
                 assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
-            } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-        }
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("scheduler_planned_ownership_test", path); }
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Test coordination must complete"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-    private static void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
-        boolean done = false;
-        while (!done) {
-            try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Test must release its source action"); done = true; }
-            catch (InterruptedException ignored) { interrupted.countDown(); }
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(failure);
+            }
         }
     }
 }

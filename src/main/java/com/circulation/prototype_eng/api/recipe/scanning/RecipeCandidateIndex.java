@@ -2,14 +2,14 @@ package com.circulation.prototype_eng.api.recipe.scanning;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Pure optional candidate filtering inside an immutable scope. Empty groups denote the complete
@@ -37,7 +37,8 @@ public interface RecipeCandidateIndex {
     default Cursor beginLookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope) {
         return new Cursor() {
             private boolean complete;
-            @Nullable private Collection<MachineRecipe> result;
+            @Nullable
+            private Collection<MachineRecipe> result;
 
             @Override
             public boolean advance(RecipeWorkBudget budget) {
@@ -68,7 +69,9 @@ public interface RecipeCandidateIndex {
 
         @Nullable Collection<MachineRecipe> result();
 
-        /** A live capture is a search observation, never admission authority. */
+        /**
+         * A live capture is a search observation, never admission authority.
+         */
         default boolean current() {
             return true;
         }

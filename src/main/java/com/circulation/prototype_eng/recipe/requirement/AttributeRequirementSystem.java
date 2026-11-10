@@ -19,7 +19,9 @@ import java.util.List;
 public final class AttributeRequirementSystem implements RecipeRequirementSystem<AttributeRequirement> {
     @Override
     public RequirementTransaction start(RecipeProcess process, RecipeRequirement<AttributeRequirement> requirement) {
-        if (!requirement.payload().applyAtStart()) { return RequirementTransaction.SUCCESS; }
+        if (!requirement.payload().applyAtStart()) {
+            return RequirementTransaction.SUCCESS;
+        }
         var state = RequirementAttributeState.getOrCreate(process);
         var payload = requirement.payload();
         return new StartChange(state, state.install(process.requirementPath(), payload.attribute(), payload.modifier()));
@@ -27,35 +29,69 @@ public final class AttributeRequirementSystem implements RecipeRequirementSystem
 
     @Override
     public RequirementTransaction end(RecipeProcess process, RecipeRequirement<AttributeRequirement> requirement) {
-        if (!requirement.payload().removeAtEnd()) { return RequirementTransaction.SUCCESS; }
+        if (!requirement.payload().removeAtEnd()) {
+            return RequirementTransaction.SUCCESS;
+        }
         var state = process.components().get(RequirementAttributeState.TYPE);
         return state == null ? RequirementTransaction.SUCCESS : new EndChange(state, state.ownedAt(process.requirementPath()));
     }
 
-    private record StartChange(RequirementAttributeState state, @Nullable RequirementAttributeState.Installation installation)
+    private record StartChange(RequirementAttributeState state,
+                               @Nullable RequirementAttributeState.Installation installation)
         implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { }
-        @Override public void rollback() { if (installation != null) { state.remove(installation); } }
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+            if (installation != null) {
+                state.remove(installation);
+            }
+        }
     }
 
-    private record EndChange(RequirementAttributeState state, List<RequirementAttributeState.Installation> installations)
+    private record EndChange(RequirementAttributeState state,
+                             List<RequirementAttributeState.Installation> installations)
         implements RequirementTransaction {
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() { }
-        @Override public void rollback() { }
-        @Override public void complete() {
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
+
+        @Override
+        public void complete() {
             Throwable failure = null;
             for (int index = installations.size() - 1; index >= 0; index--) {
                 try {
                     state.remove(installations.get(index));
                 } catch (RuntimeException | Error cleanup) {
-                    if (failure == null) { failure = cleanup; }
-                    else if (failure != cleanup) { failure.addSuppressed(cleanup); }
+                    if (failure == null) {
+                        failure = cleanup;
+                    } else if (failure != cleanup) {
+                        failure.addSuppressed(cleanup);
+                    }
                 }
             }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
         }
     }
 }

@@ -1,41 +1,43 @@
 package com.circulation.prototype_eng.api.client.jei;
 
+import ae2.api.client.AEKeyRendering;
 import ae2.api.integrations.hei.IngredientConverter;
-import ae2.api.stacks.GenericStack;
+import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AmountFormat;
+import ae2.api.stacks.GenericStack;
 import ae2.client.gui.me.common.StackSizeRenderer;
+import ae2.core.localization.GuiText;
+import ae2.util.Platform;
 import com.circulation.prototype_eng.localization.JeiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.gui.IGuiIngredientGroup;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredientRegistry;
-import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.ingredients.IIngredientRenderer;
+import mezz.jei.api.ingredients.IIngredients;
+import mezz.jei.api.ingredients.VanillaTypes;
+import mezz.jei.api.recipe.IIngredientType;
+import mezz.jei.plugins.vanilla.ingredients.fluid.FluidStackRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.util.ITooltipFlag;
+import net.minecraft.item.ItemStack;
+import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.Nullable;
-import java.util.List;
-import java.util.Collection;
+
 import javax.annotation.ParametersAreNonnullByDefault;
-import mcp.MethodsReturnNonnullByDefault;
-import ae2.api.client.AEKeyRendering;
-import ae2.api.stacks.AEKey;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
-import mezz.jei.plugins.vanilla.ingredients.fluid.FluidStackRenderer;
-import net.minecraftforge.fluids.FluidStack;
-import ae2.api.stacks.AEItemKey;
-import ae2.core.localization.GuiText;
-import ae2.util.Platform;
-import mezz.jei.api.ingredients.VanillaTypes;
-import mezz.jei.api.recipe.IIngredientType;
-import net.minecraft.item.ItemStack;
 import java.util.function.Predicate;
+
 /**
  * AE2S converter bridge. Indexes all declared rows, independently of the current visible panel.
  */
@@ -57,77 +59,6 @@ public class JeiRecipeIngredients {
     JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
                          Collection<?> registeredTypes, JeiQueryIdentityIndex identities) {
         this(display, converters, registeredTypes, null, identities, null, _ -> true);
-    }
-
-    /**
-     * Native helper query support after known-set collision screening, not full-domain AEKey equality.
-     */
-    public boolean supports(JeiRecipeDisplay.Resource resource) {
-        return converted.containsKey(resource);
-    }
-
-    public boolean queryConflict(JeiRecipeDisplay.Resource resource) {
-        return queryConflicts.contains(resource);
-    }
-
-    /** Native alternatives must use one ingredient type; equal keys retain their individual rows. */
-    public boolean canCombine(List<JeiRecipeDisplay.Resource> rows) {
-        if (rows.isEmpty()) return false;
-        var bucket = converted.get(rows.getFirst());
-        if (bucket == null) return false;
-        for (var row : rows) {
-            if (converted.get(row) != bucket) return false;
-        }
-        return true;
-    }
-
-    public void index(IIngredients ingredients) {
-        for (var bucket : buckets) {
-            bucket.index(ingredients);
-        }
-    }
-
-    /**
-     * Custom pages can use native groups directly, or initialize their own coordinates through this bridge.
-     */
-    public void initialize(IRecipeLayout layout, int inputSlots, int outputSlots, int columns,
-                           int inputX, int outputX, int y, int stride) {
-        var inputs = new ObjectArrayList<JeiSlot>();
-        var outputs = new ObjectArrayList<JeiSlot>();
-        for (int i = 0; i < inputSlots + outputSlots; i++) {
-            boolean input = i < inputSlots;
-            int relative = input ? i : i - inputSlots;
-            (input ? inputs : outputs).add(new JeiSlot((input ? inputX : outputX) + relative % columns * stride,
-                y + relative / columns * stride, 16, 16, 0, JeiSlot.PLAIN));
-        }
-        initialize(layout, inputs, outputs, JeiRenderOptions.defaults());
-        }
-
-    public void initialize(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
-        for (var bucket : buckets) bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
-    }
-
-    /**
-     * Every slot is explicitly cleared before filling a panel, including slots absent in this recipe.
-     */
-    public void show(IRecipeLayout layout, List<JeiRecipeDisplay.Resource> inputs, List<JeiRecipeDisplay.Resource> outputs,
-                     int inputSlots, int outputSlots) {
-        var inputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
-        var outputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
-        for (var row : inputs) inputGroups.add(ObjectArrayList.of(row));
-        for (var row : outputs) outputGroups.add(ObjectArrayList.of(row));
-        showGroups(layout, inputGroups, outputGroups, inputSlots, outputSlots);
-        }
-
-    /** Candidates cycle inside native groups; index() still contains every original candidate. */
-    public void showGroups(IRecipeLayout layout, List<List<JeiRecipeDisplay.Resource>> inputs,
-                           List<List<JeiRecipeDisplay.Resource>> outputs, int inputSlots, int outputSlots) {
-        if (inputs.size() > inputSlots || outputs.size() > outputSlots) {
-            throw new IllegalArgumentException("JEI panel exceeds initialized slot capacity");
-        }
-        for (var bucket : buckets) {
-            bucket.show(layout, inputs, outputs, inputSlots, outputSlots);
-        }
     }
 
     JeiRecipeIngredients(JeiRecipeDisplay display, List<IngredientConverter<?>> converters,
@@ -160,35 +91,6 @@ public class JeiRecipeIngredients {
             }
         }
         if (fallback != null && registeredTypes.contains(fallback.getIngredientType())) addFallback(display, fallback);
-    }
-
-    @SuppressWarnings("unchecked") // The exact IIngredientType binding also owns the native group's generic type.
-    private <T> void addFallback(JeiRecipeDisplay display, IngredientConverter<T> fallback) {
-        Bucket<T> target = null;
-        for (var bucket : buckets) if (bucket.converter.getIngredientType() == fallback.getIngredientType()) {
-            target = (Bucket<T>) bucket;
-            break;
-        }
-        if (target == null) {
-            target = new Bucket<>(fallback);
-            buckets.add(target);
-        }
-        target.fallback = fallback;
-        for (var row : display.resources()) if (!converted.containsKey(row)) {
-            // Like AE2S CellViewRecipe: preserve the actual key and long amount in its wrapped ingredient.
-            var ingredient = fallback.getIngredientFromStack(row.stack());
-            if (ingredient != null) {
-                target.put(row, ingredient);
-                target.wrapped.add(row);
-                converted.put(row, target);
-            }
-        }
-    }
-
-    private static final class WrappedIngredientConverter implements IngredientConverter<ItemStack> {
-        @Override public IIngredientType<ItemStack> getIngredientType() { return VanillaTypes.ITEM; }
-        @Override public ItemStack getIngredientFromStack(GenericStack stack) { return GenericStack.wrapInItemStack(stack); }
-        @Override public @Nullable GenericStack getStackFromIngredient(ItemStack ingredient) { return GenericStack.unwrapItemStack(ingredient); }
     }
 
     private static List<String> genericTooltip(JeiRecipeDisplay.Resource resource) {
@@ -249,12 +151,17 @@ public class JeiRecipeIngredients {
         while (percent.endsWith("0")) percent = percent.substring(0, percent.length() - 1);
         if (percent.endsWith(".")) percent = percent.substring(0, percent.length() - 1);
         String label = percent + "%" + (chance.attributeDriven() ? "*" : "");
-        GlStateManager.disableDepth(); GlStateManager.disableLighting();
+        GlStateManager.disableDepth();
+        GlStateManager.disableLighting();
         GlStateManager.pushMatrix();
         try {
-            GlStateManager.translate(x + 1, y + 1, 0); GlStateManager.scale(.6, .6, 1);
+            GlStateManager.translate(x + 1, y + 1, 0);
+            GlStateManager.scale(.6, .6, 1);
             minecraft.fontRenderer.drawString(label, 0, 0, 0xffead76c, true);
-        } finally { GlStateManager.popMatrix(); GlStateManager.enableBlend(); }
+        } finally {
+            GlStateManager.popMatrix();
+            GlStateManager.enableBlend();
+        }
     }
 
     /** Same layer order for a key without an exact native query converter. */
@@ -285,14 +192,128 @@ public class JeiRecipeIngredients {
         renderAmount(minecraft, slot.x() + slot.width() - slot.inset() - 16, slot.y() + slot.height() - slot.inset() - 16, row);
     }
 
+    @SuppressWarnings("unchecked") // The exact IIngredientType binding also owns the native group's generic type.
+    private <T> void addFallback(JeiRecipeDisplay display, IngredientConverter<T> fallback) {
+        Bucket<T> target = null;
+        for (var bucket : buckets)
+            if (bucket.converter.getIngredientType() == fallback.getIngredientType()) {
+                target = (Bucket<T>) bucket;
+                break;
+            }
+        if (target == null) {
+            target = new Bucket<>(fallback);
+            buckets.add(target);
+        }
+        target.fallback = fallback;
+        for (var row : display.resources())
+            if (!converted.containsKey(row)) {
+                // Like AE2S CellViewRecipe: preserve the actual key and long amount in its wrapped ingredient.
+                var ingredient = fallback.getIngredientFromStack(row.stack());
+                if (ingredient != null) {
+                    target.put(row, ingredient);
+                    target.wrapped.add(row);
+                    converted.put(row, target);
+                }
+            }
+    }
+
+    /**
+     * A registered native ingredient, or AE2S's wrapped GenericStack fallback, is present in the JEI group.
+     */
+    public boolean supports(JeiRecipeDisplay.Resource resource) {
+        return converted.containsKey(resource);
+    }
+
+    public boolean queryConflict(JeiRecipeDisplay.Resource resource) {
+        return queryConflicts.contains(resource);
+    }
+
+    /** Native alternatives must use one ingredient type; equal keys retain their individual rows. */
+    public boolean canCombine(List<JeiRecipeDisplay.Resource> rows) {
+        if (rows.isEmpty()) return false;
+        var bucket = converted.get(rows.getFirst());
+        if (bucket == null) return false;
+        for (var row : rows) {
+            if (converted.get(row) != bucket) return false;
+        }
+        return true;
+    }
+
+    public void index(IIngredients ingredients) {
+        for (var bucket : buckets) {
+            bucket.index(ingredients);
+        }
+    }
+
+    /**
+     * Custom pages can use native groups directly, or initialize their own coordinates through this bridge.
+     */
+    public void initialize(IRecipeLayout layout, int inputSlots, int outputSlots, int columns,
+                           int inputX, int outputX, int y, int stride) {
+        var inputs = new ObjectArrayList<JeiSlot>();
+        var outputs = new ObjectArrayList<JeiSlot>();
+        for (int i = 0; i < inputSlots + outputSlots; i++) {
+            boolean input = i < inputSlots;
+            int relative = input ? i : i - inputSlots;
+            (input ? inputs : outputs).add(new JeiSlot((input ? inputX : outputX) + relative % columns * stride,
+                y + relative / columns * stride, 16, 16, 0, JeiSlot.PLAIN));
+        }
+        initialize(layout, inputs, outputs, JeiRenderOptions.defaults());
+    }
+
+    public void initialize(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
+        for (var bucket : buckets) bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
+    }
+
+    /**
+     * Every slot is explicitly cleared before filling a panel, including slots absent in this recipe.
+     */
+    public void show(IRecipeLayout layout, List<JeiRecipeDisplay.Resource> inputs, List<JeiRecipeDisplay.Resource> outputs,
+                     int inputSlots, int outputSlots) {
+        var inputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
+        var outputGroups = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
+        for (var row : inputs) inputGroups.add(ObjectArrayList.of(row));
+        for (var row : outputs) outputGroups.add(ObjectArrayList.of(row));
+        showGroups(layout, inputGroups, outputGroups, inputSlots, outputSlots);
+    }
+
+    /** Candidates cycle inside native groups; index() still contains every original candidate. */
+    public void showGroups(IRecipeLayout layout, List<List<JeiRecipeDisplay.Resource>> inputs,
+                           List<List<JeiRecipeDisplay.Resource>> outputs, int inputSlots, int outputSlots) {
+        if (inputs.size() > inputSlots || outputs.size() > outputSlots) {
+            throw new IllegalArgumentException("JEI panel exceeds initialized slot capacity");
+        }
+        for (var bucket : buckets) {
+            bucket.show(layout, inputs, outputs, inputSlots, outputSlots);
+        }
+    }
+
+    private static final class WrappedIngredientConverter implements IngredientConverter<ItemStack> {
+        @Override
+        public IIngredientType<ItemStack> getIngredientType() {
+            return VanillaTypes.ITEM;
+        }
+
+        @Override
+        public ItemStack getIngredientFromStack(GenericStack stack) {
+            return GenericStack.wrapInItemStack(stack);
+        }
+
+        @Override
+        public @Nullable GenericStack getStackFromIngredient(ItemStack ingredient) {
+            return GenericStack.unwrapItemStack(ingredient);
+        }
+    }
+
     private static class Bucket<T> {
         private final IngredientConverter<T> converter;
-        @Nullable private IngredientConverter<T> fallback;
         private final ReferenceOpenHashSet<JeiRecipeDisplay.Resource> wrapped = new ReferenceOpenHashSet<>();
         private final Reference2ObjectOpenHashMap<JeiRecipeDisplay.Resource, T> entries = new Reference2ObjectOpenHashMap<>();
         private final ObjectArrayList<List<T>> inputs = new ObjectArrayList<>();
         private final ObjectArrayList<List<T>> outputs = new ObjectArrayList<>();
         private final ObjectArrayList<List<JeiRecipeDisplay.Resource>> visible = new ObjectArrayList<>();
+        @Nullable
+        private IngredientConverter<T> fallback;
 
         Bucket(IngredientConverter<T> converter) {
             this.converter = converter;
@@ -357,7 +378,8 @@ public class JeiRecipeIngredients {
             });
         }
 
-        @Nullable private JeiRecipeDisplay.Resource displayed(int slot, T ingredient) {
+        @Nullable
+        private JeiRecipeDisplay.Resource displayed(int slot, T ingredient) {
             if (slot < 0 || slot >= visible.size()) return null;
             for (var row : visible.get(slot)) if (entries.get(row) == ingredient) return row;
             var stack = fallback == null ? null : fallback.getStackFromIngredient(ingredient);
@@ -394,7 +416,9 @@ public class JeiRecipeIngredients {
                                 GlStateManager.scale((slot.width() - slot.inset() * 2) / 16.0, (slot.height() - slot.inset() * 2) / 16.0, 1);
                                 original.render(minecraft, 0, 0, ingredient);
                             }
-                        } finally { GlStateManager.popMatrix(); }
+                        } finally {
+                            GlStateManager.popMatrix();
+                        }
                         if (row != null) foreground(minecraft, located, row, options);
                     }
                 }
@@ -433,7 +457,10 @@ public class JeiRecipeIngredients {
                 var shown = new ObjectArrayList<JeiRecipeDisplay.Resource>();
                 for (var row : rows.get(i)) {
                     var ingredient = entries.get(row);
-                    if (ingredient != null) { values.add(ingredient); shown.add(row); }
+                    if (ingredient != null) {
+                        values.add(ingredient);
+                        shown.add(row);
+                    }
                 }
                 visible.set(offset + i, shown);
                 if (!values.isEmpty()) group.set(offset + i, values);

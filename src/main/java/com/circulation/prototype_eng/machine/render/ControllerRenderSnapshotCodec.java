@@ -1,12 +1,5 @@
 package com.circulation.prototype_eng.machine.render;
 
-import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-
-import java.util.List;
-import java.nio.CharBuffer;
-
-import org.jetbrains.annotations.NotNull;
-
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
@@ -15,9 +8,11 @@ import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -26,8 +21,10 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 /** Full signed coordinates use compact zigzag varints, never lossy BlockPos packed longs. */

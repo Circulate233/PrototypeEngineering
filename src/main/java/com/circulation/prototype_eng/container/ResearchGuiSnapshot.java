@@ -1,9 +1,10 @@
 package com.circulation.prototype_eng.container;
 
 import ae2.container.guisync.PacketWritable;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -21,14 +22,15 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import net.minecraft.network.PacketBuffer;
+import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import net.minecraft.network.PacketBuffer;
-import net.minecraft.util.ResourceLocation;
-import org.jetbrains.annotations.Nullable;
-import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
+
 /**
  * Bounded AE2 GuiSync display pages, detached from research owners and recovery payloads.
  */
@@ -38,16 +40,17 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
                                   int offset,
                                   ObjectList<Entry> rows, @Nullable Selection selected,
                                   int detailTotal, int detailOffset,
-                                  ObjectList<Detail> details, Decision forgetPermission, Decision adminPermission) implements PacketWritable {
+                                  ObjectList<Detail> details, Decision forgetPermission,
+                                  Decision adminPermission) implements PacketWritable {
     public static final int MAX_ROWS = 6;
     public static final int MAX_DETAILS = 6;
     public static final int MAX_PACKET_BYTES = 16384;
-    private static final int MAX_ID_LENGTH = 256;
-    private static final int VERSION = 2;
-    private static final Comparator<ResourceLocation> ID_ORDER = Comparator.comparing(ResourceLocation::toString);
     public static final ResearchGuiSnapshot EMPTY = new ResearchGuiSnapshot(false, false, ResearchPlayerView.TeamStatus.UNAVAILABLE,
         Decision.MISSING_ACTOR_TEAM, Decision.MISSING_ACTOR_TEAM, Decision.MISSING_ACTOR_TEAM,
         Decision.MISSING_ACTOR_TEAM, Decision.MISSING_ACTOR_TEAM, Tab.RESEARCH, 0, 0, ObjectList.of(), null, 0, 0, ObjectList.of());
+    private static final int MAX_ID_LENGTH = 256;
+    private static final int VERSION = 2;
+    private static final Comparator<ResourceLocation> ID_ORDER = Comparator.comparing(ResourceLocation::toString);
 
     public ResearchGuiSnapshot {
         Objects.requireNonNull(teamStatus);
@@ -74,22 +77,25 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
             found |= identity.equals(selected);
             if (tab == Tab.QUEUE ? row.entryId() < 1 || row.targetLevel() < 1 || row.claimStatus() != null
                 : row.entryId() != 0 || tab == Tab.REWARDS && (row.targetLevel() < 1 || row.claimStatus() == null)
-                    || tab == Tab.RESEARCH && row.claimStatus() != null) {
+                || tab == Tab.RESEARCH && row.claimStatus() != null) {
                 throw new IllegalArgumentException("Research row identity does not match its tab");
             }
             if (personalPermission != Decision.ALLOWED && (row.personalLevel() != 0 || row.claimStatus() != null)) {
                 throw new IllegalArgumentException("Denied personal research data");
             }
             if (teamViewPermission != Decision.ALLOWED && (row.sharedLevel() != 0 || row.blacklisted()
-                || tab == Tab.RESEARCH && row.targetLevel() != 0)) throw new IllegalArgumentException("Denied team research data");
+                || tab == Tab.RESEARCH && row.targetLevel() != 0))
+                throw new IllegalArgumentException("Denied team research data");
         }
-        if (rows.isEmpty() ? selected != null || detailTotal != 0 : !found) throw new IllegalArgumentException("Research selection is outside its page");
+        if (rows.isEmpty() ? selected != null || detailTotal != 0 : !found)
+            throw new IllegalArgumentException("Research selection is outside its page");
         if (tab == Tab.QUEUE && queuePermission != Decision.ALLOWED && total != 0
             || tab == Tab.REWARDS && personalPermission != Decision.ALLOWED && total != 0) {
             throw new IllegalArgumentException("Denied research tab contains rows");
         }
         for (var detail : details) {
-            if ((tab == Tab.REWARDS) != (detail.kind() == Kind.REWARD_CHOICE)) throw new IllegalArgumentException("Research detail does not match its tab");
+            if ((tab == Tab.REWARDS) != (detail.kind() == Kind.REWARD_CHOICE))
+                throw new IllegalArgumentException("Research detail does not match its tab");
         }
     }
 
@@ -105,72 +111,14 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
     }
 
     @SuppressWarnings("unused") // AE2 GuiSync constructs PacketWritable fields with this exact signature.
-    public ResearchGuiSnapshot(ByteBuf data) { this(read(data)); }
+    public ResearchGuiSnapshot(ByteBuf data) {
+        this(read(data));
+    }
 
     private ResearchGuiSnapshot(ResearchGuiSnapshot decoded) {
         this(decoded.initialized, decoded.savePending, decoded.teamStatus, decoded.personalPermission, decoded.teamViewPermission,
             decoded.queuePermission, decoded.startPermission, decoded.blacklistPermission, decoded.tab, decoded.total, decoded.offset,
             decoded.rows, decoded.selected, decoded.detailTotal, decoded.detailOffset, decoded.details, decoded.forgetPermission, decoded.adminPermission);
-    }
-
-    public enum Tab { RESEARCH, QUEUE, REWARDS }
-    public enum Kind { NUMERIC, MATERIAL, REWARD_CHOICE }
-
-    public record Selection(ResourceLocation researchId, int level, long entryId) {
-        public Selection {
-            requireId(researchId);
-            if (level < 0 || entryId < 0) throw new IllegalArgumentException("Negative research selection");
-        }
-    }
-
-    public record Request(Tab tab, int offset, @Nullable Selection selection, int detailOffset) {
-        public Request {
-            Objects.requireNonNull(tab);
-            if (offset < 0 || detailOffset < 0) throw new IllegalArgumentException("Negative research page request");
-            if (selection != null && (tab == Tab.QUEUE ? selection.entryId() < 1 || selection.level() < 1
-                : selection.entryId() != 0 || tab == Tab.REWARDS && selection.level() < 1)) {
-                throw new IllegalArgumentException("Research selection does not match the requested tab");
-            }
-        }
-    }
-
-    public record Entry(ResourceLocation id, int personalLevel, int sharedLevel, int targetLevel, int tier,
-                        boolean blacklisted, long entryId, @Nullable ManualResearchSession.Status manualStatus,
-                        @Nullable ManualResearchSession.PauseReason pauseReason, @Nullable UUID contributor,
-                        @Nullable RewardClaim.Status claimStatus, @Nullable ResourceLocation selectedGroup) {
-        public Entry {
-            requireId(id);
-            if (personalLevel < 0 || sharedLevel < 0 || targetLevel < 0 || tier < 0 || entryId < 0) {
-                throw new IllegalArgumentException("Negative research row value");
-            }
-            if (selectedGroup != null) requireId(selectedGroup);
-            if (manualStatus == null && (pauseReason != null || contributor != null)
-                || manualStatus != null && (entryId == 0 || tier != 0 || claimStatus != null)) throw new IllegalArgumentException("Invalid manual row state");
-            if (manualStatus != null) {
-                boolean valid = switch (manualStatus) {
-                    case ACTIVE -> contributor != null && pauseReason == null;
-                    case PAUSED, MATERIAL_ABORT_RECEIPT_PENDING -> contributor == null && pauseReason != null;
-                    default -> contributor == null && pauseReason == null;
-                };
-                if (!valid) throw new IllegalArgumentException("Manual research row lost its state metadata");
-            }
-            if (claimStatus == null ? selectedGroup != null
-                : (claimStatus == RewardClaim.Status.UNCLAIMED) == (selectedGroup != null)) throw new IllegalArgumentException("Invalid reward choice state");
-        }
-
-        public Selection selection() { return new Selection(id, targetLevel, entryId); }
-    }
-
-    /** MATERIAL identifies a static input position; REWARD_CHOICE identifies a selectable group. */
-    public record Detail(Kind kind, ResourceLocation id, int inputIndex, long current, long required) {
-        public Detail {
-            Objects.requireNonNull(kind);
-            requireId(id);
-            if (inputIndex < 0 || current < 0 || required < 0 || current > required) throw new IllegalArgumentException("Invalid research detail quantity");
-            if (kind != Kind.MATERIAL && inputIndex != 0 || kind == Kind.REWARD_CHOICE && (current != 0 || required != 0)) {
-                throw new IllegalArgumentException("Invalid research detail identity");
-            }
-        }
     }
 
     public static ResearchGuiSnapshot capture(ResearchPlayerView view, ResearchRegistry registry, Request request) {
@@ -182,29 +130,33 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         var manualByEntry = new Long2ObjectOpenHashMap<ResearchPlayerView.ManualRow>();
         if (view.team().queuePermission() == Decision.ALLOWED) {
             for (var manual : view.team().manualRows()) {
-                if (manualByEntry.putIfAbsent(manual.entryId(), manual) != null) throw new IllegalArgumentException("Duplicate manual display entry");
+                if (manualByEntry.putIfAbsent(manual.entryId(), manual) != null)
+                    throw new IllegalArgumentException("Duplicate manual display entry");
             }
         }
         switch (request.tab()) {
             case RESEARCH -> {
                 var definitions = new ObjectArrayList<>(registry.all());
                 definitions.sort(Comparator.comparing(ResearchDefinition::id, ID_ORDER));
-                for (var definition : definitions) source.add(row(view, definition, view.team().viewPermission() == Decision.ALLOWED
-                    ? view.team().structuralTargets().getInt(definition.id()) : 0, 0, null, null, null));
+                for (var definition : definitions)
+                    source.add(row(view, definition, view.team().viewPermission() == Decision.ALLOWED
+                        ? view.team().structuralTargets().getInt(definition.id()) : 0, 0, null, null, null));
             }
             case QUEUE -> {
                 if (view.team().queuePermission() == Decision.ALLOWED) {
-                    for (var queued : view.team().queueRows()) source.add(row(view, registry.require(queued.researchId()), queued.targetLevel(),
-                        queued.entryId(), manualByEntry.get(queued.entryId()), null, null));
+                    for (var queued : view.team().queueRows())
+                        source.add(row(view, registry.require(queued.researchId()), queued.targetLevel(),
+                            queued.entryId(), manualByEntry.get(queued.entryId()), null, null));
                 }
             }
             case REWARDS -> {
                 if (view.personalPermission() == Decision.ALLOWED) {
                     var claims = new ObjectArrayList<>(view.claims());
                     claims.sort(Comparator.comparing(ResearchPlayerView.ClaimSummary::researchId, ID_ORDER)
-                        .thenComparingInt(ResearchPlayerView.ClaimSummary::level));
-                    for (var claim : claims) source.add(row(view, registry.require(claim.researchId()), claim.level(), 0,
-                        null, claim.status(), claim.selectedGroupId().orElse(null)));
+                                          .thenComparingInt(ResearchPlayerView.ClaimSummary::level));
+                    for (var claim : claims)
+                        source.add(row(view, registry.require(claim.researchId()), claim.level(), 0,
+                            null, claim.status(), claim.selectedGroupId().orElse(null)));
                 }
             }
         }
@@ -245,7 +197,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
     }
 
     private static ObjectList<Detail> details(ResearchPlayerView view, ResearchRegistry registry, Tab tab, Entry selected,
-                                             @Nullable ResearchPlayerView.ManualRow manual) {
+                                              @Nullable ResearchPlayerView.ManualRow manual) {
         var result = new ObjectArrayList<Detail>();
         if (tab == Tab.REWARDS) {
             for (var claim : view.claims()) {
@@ -267,9 +219,11 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         var demands = definition.totalResourceDemandForLevel(selected.targetLevel());
         var types = new ObjectArrayList<>(demands.keySet());
         types.sort(Comparator.comparing(NetworkResourceType::id, ID_ORDER));
-        for (var type : types) result.add(new Detail(Kind.NUMERIC, type.id(), 0,
-            head ? view.team().numericProgress().getLong(type.id()) : 0, demands.getLong(type)));
-        if (selected.tier() == 0) result.addAll(materialDetails(definition.materialRequirementsForLevel(selected.targetLevel()), manual));
+        for (var type : types)
+            result.add(new Detail(Kind.NUMERIC, type.id(), 0,
+                head ? view.team().numericProgress().getLong(type.id()) : 0, demands.getLong(type)));
+        if (selected.tier() == 0)
+            result.addAll(materialDetails(definition.materialRequirementsForLevel(selected.targetLevel()), manual));
         return result;
     }
 
@@ -297,49 +251,30 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         return result;
     }
 
-    @Override public void writeToPacket(ByteBuf data) {
-        var body = Unpooled.buffer(1024, MAX_PACKET_BYTES);
-        try {
-            var packet = new PacketBuffer(body);
-            packet.writeByte(VERSION).writeBoolean(initialized).writeBoolean(savePending).writeByte(teamStatus.ordinal());
-            packet.writeByte(personalPermission.ordinal()).writeByte(teamViewPermission.ordinal()).writeByte(queuePermission.ordinal())
-                .writeByte(startPermission.ordinal()).writeByte(blacklistPermission.ordinal())
-                  .writeByte(forgetPermission.ordinal()).writeByte(adminPermission.ordinal()).writeByte(tab.ordinal());
-            packet.writeInt(total).writeInt(offset).writeByte(rows.size());
-            for (var row : rows) {
-                packet.writeString(row.id().toString()).writeInt(row.personalLevel()).writeInt(row.sharedLevel()).writeInt(row.targetLevel())
-                    .writeInt(row.tier()).writeBoolean(row.blacklisted()).writeLong(row.entryId());
-                writeEnum(packet, row.manualStatus()); writeEnum(packet, row.pauseReason());
-                packet.writeBoolean(row.contributor() != null);
-                if (row.contributor() != null) packet.writeUniqueId(row.contributor());
-                writeEnum(packet, row.claimStatus()); writeId(packet, row.selectedGroup());
-            }
-            packet.writeBoolean(selected != null);
-            if (selected != null) packet.writeString(selected.researchId().toString()).writeInt(selected.level()).writeLong(selected.entryId());
-            packet.writeInt(detailTotal).writeInt(detailOffset).writeByte(details.size());
-            for (var detail : details) {
-                packet.writeByte(detail.kind().ordinal());
-                packet.writeString(detail.id().toString()).writeInt(detail.inputIndex()).writeLong(detail.current()).writeLong(detail.required());
-            }
-            data.writeInt(body.readableBytes()).writeBytes(body, body.readerIndex(), body.readableBytes());
-        } finally { body.release(); }
-    }
-
     private static ResearchGuiSnapshot read(ByteBuf data) {
-        if (data.readableBytes() < Integer.BYTES) throw new IllegalArgumentException("Missing research GUI packet length");
+        if (data.readableBytes() < Integer.BYTES)
+            throw new IllegalArgumentException("Missing research GUI packet length");
         int length = data.readInt();
-        if (length < 1 || length > MAX_PACKET_BYTES || length > data.readableBytes()) throw new IllegalArgumentException("Invalid research GUI packet length");
+        if (length < 1 || length > MAX_PACKET_BYTES || length > data.readableBytes())
+            throw new IllegalArgumentException("Invalid research GUI packet length");
         var packet = new PacketBuffer(data.readSlice(length));
-        try { return readBody(packet); }
-        catch (IndexOutOfBoundsException failure) { throw new IllegalArgumentException("Truncated research GUI packet body", failure); }
+        try {
+            return readBody(packet);
+        } catch (IndexOutOfBoundsException failure) {
+            throw new IllegalArgumentException("Truncated research GUI packet body", failure);
+        }
     }
 
     private static ResearchGuiSnapshot readBody(PacketBuffer packet) {
-        if (packet.readUnsignedByte() != VERSION) throw new IllegalArgumentException("Unsupported research GUI packet version");
+        if (packet.readUnsignedByte() != VERSION)
+            throw new IllegalArgumentException("Unsupported research GUI packet version");
         boolean initialized = readBoolean(packet), savePending = readBoolean(packet);
         var teamStatus = readEnum(packet, ResearchPlayerView.TeamStatus.values());
-        var personal = readEnum(packet, Decision.values()); var team = readEnum(packet, Decision.values());
-        var queue = readEnum(packet, Decision.values()); var start = readEnum(packet, Decision.values()); var blacklist = readEnum(packet, Decision.values());
+        var personal = readEnum(packet, Decision.values());
+        var team = readEnum(packet, Decision.values());
+        var queue = readEnum(packet, Decision.values());
+        var start = readEnum(packet, Decision.values());
+        var blacklist = readEnum(packet, Decision.values());
         var forget = readEnum(packet, Decision.values());
         var admin = readEnum(packet, Decision.values());
         var tab = readEnum(packet, Tab.values());
@@ -362,7 +297,8 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         int detailTotal = packet.readInt(), detailOffset = packet.readInt(), detailCount = packet.readUnsignedByte();
         if (detailCount > MAX_DETAILS) throw new IllegalArgumentException("Too many research GUI details");
         var details = new ObjectArrayList<Detail>(detailCount);
-        for (int i = 0; i < detailCount; i++) details.add(new Detail(readEnum(packet, Kind.values()), readId(packet), packet.readInt(), packet.readLong(), packet.readLong()));
+        for (int i = 0; i < detailCount; i++)
+            details.add(new Detail(readEnum(packet, Kind.values()), readId(packet), packet.readInt(), packet.readLong(), packet.readLong()));
         if (packet.isReadable()) throw new IllegalArgumentException("Trailing research GUI packet data");
         return new ResearchGuiSnapshot(initialized, savePending, teamStatus, personal, team, queue, start, blacklist, tab,
             total, offset, rows, selected, detailTotal, detailOffset, details, forget, admin);
@@ -373,41 +309,158 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         if (value > 1) throw new IllegalArgumentException("Invalid research GUI boolean");
         return value == 1;
     }
+
     private static <E extends Enum<E>> E readEnum(PacketBuffer packet, E[] values) {
         int value = packet.readUnsignedByte();
         if (value >= values.length) throw new IllegalArgumentException("Invalid research GUI enum");
         return values[value];
     }
-    @Nullable private static <E extends Enum<E>> E readNullableEnum(PacketBuffer packet, E[] values) {
+
+    @Nullable
+    private static <E extends Enum<E>> E readNullableEnum(PacketBuffer packet, E[] values) {
         return readBoolean(packet) ? readEnum(packet, values) : null;
     }
+
     private static void writeEnum(PacketBuffer packet, @Nullable Enum<?> value) {
         packet.writeBoolean(value != null);
         if (value != null) packet.writeByte(value.ordinal());
     }
+
     private static void writeId(PacketBuffer packet, @Nullable ResourceLocation id) {
         packet.writeBoolean(id != null);
         if (id != null) packet.writeString(id.toString());
     }
-    private static ResourceLocation readId(PacketBuffer packet) { return requireId(StrictNbt.requireId(packet.readString(MAX_ID_LENGTH))); }
+
+    private static ResourceLocation readId(PacketBuffer packet) {
+        return requireId(StrictNbt.requireId(packet.readString(MAX_ID_LENGTH)));
+    }
+
     private static ResourceLocation requireId(ResourceLocation id) {
         Objects.requireNonNull(id);
-        if (id.toString().length() > MAX_ID_LENGTH) throw new IllegalArgumentException("Research GUI ID exceeds packet bound");
+        if (id.toString().length() > MAX_ID_LENGTH)
+            throw new IllegalArgumentException("Research GUI ID exceeds packet bound");
         return StrictNbt.requireId(id.toString());
     }
+
     private static int pageOffset(int requested, int total, int limit) {
         return total == 0 ? 0 : Math.min(requested / limit, (total - 1) / limit) * limit;
     }
+
     private static void requirePage(int total, int offset, int count, int limit) {
         if (total < 0 || offset < 0 || offset % limit != 0 || offset > Math.max(0, total - 1)
-            || count != Math.min(limit, total - offset)) throw new IllegalArgumentException("Invalid research GUI page bounds");
+            || count != Math.min(limit, total - offset))
+            throw new IllegalArgumentException("Invalid research GUI page bounds");
     }
+
     private static <T> ObjectList<T> page(ObjectList<T> source, int offset, int limit) {
         return new ObjectArrayList<>(source.subList(offset, offset + Math.min(limit, source.size() - offset)));
     }
+
     private static <T> ObjectList<T> frozen(ObjectList<T> source) {
         var copy = new ObjectArrayList<>(Objects.requireNonNull(source));
         for (var row : copy) Objects.requireNonNull(row);
         return ObjectLists.unmodifiable(copy);
+    }
+
+    @Override
+    public void writeToPacket(ByteBuf data) {
+        var body = Unpooled.buffer(1024, MAX_PACKET_BYTES);
+        try {
+            var packet = new PacketBuffer(body);
+            packet.writeByte(VERSION).writeBoolean(initialized).writeBoolean(savePending).writeByte(teamStatus.ordinal());
+            packet.writeByte(personalPermission.ordinal()).writeByte(teamViewPermission.ordinal()).writeByte(queuePermission.ordinal())
+                  .writeByte(startPermission.ordinal()).writeByte(blacklistPermission.ordinal())
+                  .writeByte(forgetPermission.ordinal()).writeByte(adminPermission.ordinal()).writeByte(tab.ordinal());
+            packet.writeInt(total).writeInt(offset).writeByte(rows.size());
+            for (var row : rows) {
+                packet.writeString(row.id().toString()).writeInt(row.personalLevel()).writeInt(row.sharedLevel()).writeInt(row.targetLevel())
+                      .writeInt(row.tier()).writeBoolean(row.blacklisted()).writeLong(row.entryId());
+                writeEnum(packet, row.manualStatus());
+                writeEnum(packet, row.pauseReason());
+                packet.writeBoolean(row.contributor() != null);
+                if (row.contributor() != null) packet.writeUniqueId(row.contributor());
+                writeEnum(packet, row.claimStatus());
+                writeId(packet, row.selectedGroup());
+            }
+            packet.writeBoolean(selected != null);
+            if (selected != null)
+                packet.writeString(selected.researchId().toString()).writeInt(selected.level()).writeLong(selected.entryId());
+            packet.writeInt(detailTotal).writeInt(detailOffset).writeByte(details.size());
+            for (var detail : details) {
+                packet.writeByte(detail.kind().ordinal());
+                packet.writeString(detail.id().toString()).writeInt(detail.inputIndex()).writeLong(detail.current()).writeLong(detail.required());
+            }
+            data.writeInt(body.readableBytes()).writeBytes(body, body.readerIndex(), body.readableBytes());
+        } finally {
+            body.release();
+        }
+    }
+
+    public enum Tab {RESEARCH, QUEUE, REWARDS}
+
+    public enum Kind {NUMERIC, MATERIAL, REWARD_CHOICE}
+
+    public record Selection(ResourceLocation researchId, int level, long entryId) {
+        public Selection {
+            requireId(researchId);
+            if (level < 0 || entryId < 0) throw new IllegalArgumentException("Negative research selection");
+        }
+    }
+
+    public record Request(Tab tab, int offset, @Nullable Selection selection, int detailOffset) {
+        public Request {
+            Objects.requireNonNull(tab);
+            if (offset < 0 || detailOffset < 0) throw new IllegalArgumentException("Negative research page request");
+            if (selection != null && (tab == Tab.QUEUE ? selection.entryId() < 1 || selection.level() < 1
+                : selection.entryId() != 0 || tab == Tab.REWARDS && selection.level() < 1)) {
+                throw new IllegalArgumentException("Research selection does not match the requested tab");
+            }
+        }
+    }
+
+    public record Entry(ResourceLocation id, int personalLevel, int sharedLevel, int targetLevel, int tier,
+                        boolean blacklisted, long entryId, @Nullable ManualResearchSession.Status manualStatus,
+                        @Nullable ManualResearchSession.PauseReason pauseReason, @Nullable UUID contributor,
+                        @Nullable RewardClaim.Status claimStatus, @Nullable ResourceLocation selectedGroup) {
+        public Entry {
+            requireId(id);
+            if (personalLevel < 0 || sharedLevel < 0 || targetLevel < 0 || tier < 0 || entryId < 0) {
+                throw new IllegalArgumentException("Negative research row value");
+            }
+            if (selectedGroup != null) requireId(selectedGroup);
+            if (manualStatus == null && (pauseReason != null || contributor != null)
+                || manualStatus != null && (entryId == 0 || tier != 0 || claimStatus != null))
+                throw new IllegalArgumentException("Invalid manual row state");
+            if (manualStatus != null) {
+                boolean valid = switch (manualStatus) {
+                    case ACTIVE -> contributor != null && pauseReason == null;
+                    case PAUSED, MATERIAL_ABORT_RECEIPT_PENDING -> contributor == null && pauseReason != null;
+                    default -> contributor == null && pauseReason == null;
+                };
+                if (!valid) throw new IllegalArgumentException("Manual research row lost its state metadata");
+            }
+            if (claimStatus == null ? selectedGroup != null
+                : (claimStatus == RewardClaim.Status.UNCLAIMED) == (selectedGroup != null))
+                throw new IllegalArgumentException("Invalid reward choice state");
+        }
+
+        public Selection selection() {
+            return new Selection(id, targetLevel, entryId);
+        }
+    }
+
+    /**
+     * MATERIAL identifies a static input position; REWARD_CHOICE identifies a selectable group.
+     */
+    public record Detail(Kind kind, ResourceLocation id, int inputIndex, long current, long required) {
+        public Detail {
+            Objects.requireNonNull(kind);
+            requireId(id);
+            if (inputIndex < 0 || current < 0 || required < 0 || current > required)
+                throw new IllegalArgumentException("Invalid research detail quantity");
+            if (kind != Kind.MATERIAL && inputIndex != 0 || kind == Kind.REWARD_CHOICE && (current != 0 || required != 0)) {
+                throw new IllegalArgumentException("Invalid research detail identity");
+            }
+        }
     }
 }

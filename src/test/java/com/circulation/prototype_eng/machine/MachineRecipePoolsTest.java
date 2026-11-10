@@ -12,17 +12,18 @@ import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
@@ -45,12 +46,15 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class MachineRecipePoolsTest {
-    private static ResourceLocation id(String name) { return new ResourceLocation("machine_pool_test", name); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("machine_pool_test", name);
+    }
 
-    private static MachineRecipe recipe(String name) { return new MachineRecipe(id(name), 2, List.of()); }
+    private static MachineRecipe recipe(String name) {
+        return new MachineRecipe(id(name), 2, List.of());
+    }
 
     private static MachineType.Builder type(String name) {
         return MachineType.builder(id(name), RecipeText.Cancelled, id("shape"));
@@ -72,7 +76,7 @@ class MachineRecipePoolsTest {
         var codecs = new ObjectArrayList<RecipeProcessNbt>();
         for (var recipe : recipes) codecs.add(RecipeProcessNbt.builder(recipe, "pool-test-1").build());
         return MachineAssembly.builder(type, "pool-test-1").instanceFactory(DynamicMachine::new)
-            .workSlots(new MachineWorkSlotsNbt("pool-test-1", codecs)).build();
+                              .workSlots(new MachineWorkSlotsNbt("pool-test-1", codecs)).build();
     }
 
     private static DynamicMachine formed(MachineAssembly assembly) {
@@ -152,7 +156,7 @@ class MachineRecipePoolsTest {
         var accepted = new MachineRecipe(id("accept"), 2, List.of(), Set.of(id("slot_group")));
         var catalog = new RecipeCatalog(List.of(pool("selected", rejected, accepted)));
         var type = type("slot").component(MachineWorkSlots.TYPE).recipePool(id("selected"))
-            .recipeGroup(id("unrelated_default")).workSlot(new WorkSlotDefinition("work", Set.of(id("slot_group")))).build();
+                               .recipeGroup(id("unrelated_default")).workSlot(new WorkSlotDefinition("work", Set.of(id("slot_group")))).build();
         var machine = formed(assembly(type, rejected, accepted));
         assertSame(accepted, Objects.requireNonNull(scanner(machine, catalog).scan(new ScanLimits(20, 20)).process()).recipe());
     }
@@ -186,7 +190,8 @@ class MachineRecipePoolsTest {
     @Test
     void changedPoolsApplyAfterFrozenYieldedPassFinishesThenEmptySelectionDisablesNextPass() {
         var guard = new RecipeRequirementType<Boolean>(id("guard"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 return new Outcome(process.attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1) == 1
                     ? ProcessResult.SUCCESS : RecipeText.Cancelled.blocked());
             }
@@ -197,7 +202,7 @@ class MachineRecipePoolsTest {
         var type = type("yield").component(MachineWorkSlots.TYPE).attribute(StandardMachineAttributes.PROCESS_PARALLELISM, 8).build();
         // No persistence of this custom requirement is exercised.
         var machine = formed(MachineAssembly.builder(type, "yield-1").instanceFactory(DynamicMachine::new)
-            .workSlots(new MachineWorkSlotsNbt("yield-1", List.of())).build());
+                                            .workSlots(new MachineWorkSlotsNbt("yield-1", List.of())).build());
         machine.selection = List.of(catalog.pools().getFirst());
         var scanner = scanner(machine, catalog);
         var first = scanner.beginScan(new ScanLimits(1, 1));
@@ -329,11 +334,17 @@ class MachineRecipePoolsTest {
     }
 
     private static final class DynamicMachine extends MachineInstance {
-        @Nullable private List<RecipePool> selection;
+        @Nullable
+        private List<RecipePool> selection;
         private int samples;
         private boolean copySelection;
-        private DynamicMachine(MachineType type) { super(type); }
-        @Override public List<RecipePool> getRecipePools(RecipeCatalog catalog) {
+
+        private DynamicMachine(MachineType type) {
+            super(type);
+        }
+
+        @Override
+        public List<RecipePool> getRecipePools(RecipeCatalog catalog) {
             samples++;
             var selected = selection == null ? super.getRecipePools(catalog) : selection;
             return copySelection ? List.copyOf(new ObjectArrayList<>(selected)) : selected;
@@ -341,13 +352,28 @@ class MachineRecipePoolsTest {
     }
 
     private record Host(MachineType type) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type.id(), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("Pool tests do not use a Minecraft world"); }
-        @Override public void requireServerThread() { }
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type.id(), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("Pool tests do not use a Minecraft world");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 
     private record Outcome(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 }

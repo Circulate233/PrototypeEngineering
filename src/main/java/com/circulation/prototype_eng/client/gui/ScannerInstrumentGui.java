@@ -27,10 +27,10 @@ import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.Iterator;
 
 /** Original 384x228 PM selector, using its own textures and AE container transport. */
 public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer> {
@@ -46,16 +46,6 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
     private BlockPos pendingOrigin;
     private StructureTransform pendingRotation;
     private Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay> pendingDisplays;
-
-    private record Input(ScannerState.Field field, GuiTextField widget, int x, int y, int width,
-                         StructureToolText tip) {
-    }
-
-    private record Hit(String id, int x, int y, int width, int height, StructureToolText tip, Runnable action) {
-        boolean contains(int px, int py) {
-            return px >= x && py >= y && px < x + width && py < y + height;
-        }
-    }
 
     public ScannerInstrumentGui(StructureToolContainer container, InventoryPlayer player) {
         super(container, player);
@@ -283,7 +273,8 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
             var box = ScannerState.box(tag);
             var origin = ScannerState.origin(tag);
             if (box == null || origin == null || mc.world == null || tag.getInteger("dimension") != mc.world.provider.getDimension()) {
-                pendingCells = null; pendingDisplays = null;
+                pendingCells = null;
+                pendingDisplays = null;
                 closePreview();
                 return;
             }
@@ -326,8 +317,19 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void onGuiClosed() {
         commitFocused();
-        pendingCells = null; pendingDisplays = null;
+        pendingCells = null;
+        pendingDisplays = null;
         closePreview();
         super.onGuiClosed();
+    }
+
+    private record Input(ScannerState.Field field, GuiTextField widget, int x, int y, int width,
+                         StructureToolText tip) {
+    }
+
+    private record Hit(String id, int x, int y, int width, int height, StructureToolText tip, Runnable action) {
+        boolean contains(int px, int py) {
+            return px >= x && py >= y && px < x + width && py < y + height;
+        }
     }
 }

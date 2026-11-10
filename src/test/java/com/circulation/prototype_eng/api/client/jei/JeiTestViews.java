@@ -1,9 +1,13 @@
 package com.circulation.prototype_eng.api.client.jei;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
+import com.circulation.prototype_eng.integration.jei.RecipeInformationLayout;
 import it.unimi.dsi.fastutil.ints.Int2BooleanOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.IGuiHelper;
 import mezz.jei.api.gui.ICraftingGridHelper;
 import mezz.jei.api.gui.IDrawable;
@@ -17,23 +21,21 @@ import mezz.jei.api.gui.IGuiItemStackGroup;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.gui.ITickTimer;
 import mezz.jei.api.gui.ITooltipCallback;
+import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.IIngredientRenderer;
 import mezz.jei.api.ingredients.IIngredients;
-import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.IIngredientType;
 import mezz.jei.api.recipe.IRecipeCategory;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
+
+import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import javax.annotation.ParametersAreNonnullByDefault;
-import mcp.MethodsReturnNonnullByDefault;
-import org.jetbrains.annotations.Nullable;
-import com.circulation.prototype_eng.api.recipe.RecipePool;
-import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
-import com.circulation.prototype_eng.integration.jei.RecipeInformationLayout;
+
 /**
  * Explicit native API fakes; they do not bootstrap Forge/Minecraft or use reflection.
  */
@@ -46,6 +48,7 @@ class JeiTestViews {
     static AutoLayoutRecipePage page(RecipePool pool, IGuiHelper helper, RecipeJeiDisplays displays) {
         return new AutoLayoutRecipePage(pool, helper, displays, JeiRenderOptions.defaults(), FONT);
     }
+
     static class IdentityHelper<T> implements IIngredientHelper<T> {
         private final Function<T, String> uid;
 

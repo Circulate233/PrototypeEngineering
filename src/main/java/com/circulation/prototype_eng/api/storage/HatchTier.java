@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.storage;
 
-/** PM's ten existing hatch tiers, with the original item/energy defaults retained. */
+/**
+ * PM's ten existing hatch tiers, with the original item/energy defaults retained.
+ */
 public enum HatchTier {
     LV1(1, 1, 1, 64, 16_000, 128_000, 32),
     LV2(2, 2, 1, 128, 32_000, 512_000, 128),
@@ -34,15 +36,36 @@ public enum HatchTier {
     }
 
     public static HatchTier of(int level) {
-        if (level < 1 || level > TIERS.length) { throw new IllegalArgumentException("Hatch tier must be 1-10: " + level); }
+        if (level < 1 || level > TIERS.length) {
+            throw new IllegalArgumentException("Hatch tier must be 1-10: " + level);
+        }
         return TIERS[level - 1];
     }
 
-    public int level() { return level; }
-    public int slotsPerSide(HatchMode mode) { return mode == HatchMode.MIXED ? mixedSlotsPerSide : slots; }
-    public long itemsPerSlot() { return itemsPerSlot; }
-    public long fluidPerSlot() { return fluidPerSlot; }
-    public long energyCapacity() { return energyCapacity; }
-    /** PM's EnergyStorageImpl applies this limit per operation, despite older FE/t labels. */
-    public long energyTransfer() { return energyTransfer; }
+    public int level() {
+        return level;
+    }
+
+    public int slotsPerSide(HatchMode mode) {
+        return mode == HatchMode.MIXED ? mixedSlotsPerSide : slots;
+    }
+
+    public long itemsPerSlot() {
+        return itemsPerSlot;
+    }
+
+    public long fluidPerSlot() {
+        return fluidPerSlot;
+    }
+
+    public long energyCapacity() {
+        return energyCapacity;
+    }
+
+    /**
+     * PM's EnergyStorageImpl applies this limit per operation, despite older FE/t labels.
+     */
+    public long energyTransfer() {
+        return energyTransfer;
+    }
 }

@@ -13,6 +13,7 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
@@ -60,7 +61,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class RecipeScannerTest {
     private static final KeyType TYPE = new KeyType("scanner");
@@ -69,7 +69,67 @@ class RecipeScannerTest {
     private static final Key PRODUCT = new Key(TYPE, "product");
     private static final ResourceLocation GROUP = id("group");
     private static final ScanLimits ONE_PROBE = new ScanLimits(1, 1);
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static RecipeProcess admitWithin(RecipeScanner scanner, int calls) {
+        for (int call = 0; call < calls; call++) {
+            var result = scanner.scan(ONE_PROBE);
+            assertTrue(result.probes() <= 1);
+            if (result.status() == RecipeScanner.Status.ADMITTED) {
+                return Objects.requireNonNull(result.process());
+            }
+            assertEquals(RecipeScanner.Status.YIELDED, result.status());
+            assertNull(result.process());
+        }
+        throw new AssertionError("Search did not admit within its bounded calls");
+    }
+
+    private static void assertProbeReleased(RecipeProcess process, Environment env) {
+        assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
+        assertNull(process.host());
+        assertTrue(ResourceInputLocks.getOrCreate(process).snapshot().isEmpty());
+        assertEquals(env.input.amount(MATERIAL), env.input.availableAmount(MATERIAL));
+        assertEquals(env.input.amount(ALTERNATE), env.input.availableAmount(ALTERNATE));
+        assertEquals(0, env.output.amount(PRODUCT));
+        process.requirePersistenceBoundary();
+    }
+
+    private static RecipeRequirement<Boolean> guard(String name, Function<RecipeProcess, ProcessResult> check) {
+        return new RecipeRequirementType<Boolean>(id(name + "_type"), new RecipeRequirementSystem<>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+                return new Outcome(check.apply(process));
+            }
+        }).requirement(id(name), true);
+    }
+
+    private static RecipeRequirement<ResourceRequirement> io(long start, long tick, long end) {
+        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(stacks(MATERIAL, start),
+            stacks(MATERIAL, tick), List.of(), stacks(PRODUCT, end), false));
+    }
+
+    private static List<GenericStack> stacks(Key key, long amount) {
+        return amount == 0 ? List.of() : List.of(new GenericStack(key, amount));
+    }
+
+    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
+        return new MachineRecipe(id(name), duration, List.of(requirements), Set.of(GROUP));
+    }
+
+    private static RecipeCatalog catalog(MachineRecipe... recipes) {
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "scanner.pool", List.of(recipes))));
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        return new SlottedResourceBuffer(3, capacities, NO_OP);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("scanner_test", name);
+    }
 
     @Test
     void implicitEmptyGroupsScanTheGlobalCatalogAcrossCandidateBudgetYields() {
@@ -153,7 +213,10 @@ class RecipeScannerTest {
         var outside = new MachineRecipe(id("outside"), 6, List.of(), Set.of(id("other_group")));
         boolean[] ready = {false};
         int[] lookups = {0};
-        RecipeCandidateIndex index = (_, _, scope) -> { lookups[0]++; return scope; };
+        RecipeCandidateIndex index = (_, _, scope) -> {
+            lookups[0]++;
+            return scope;
+        };
         var scanner = new RecipeScanner(env.host, catalog(outside, first, second), RecipeProcess::new,
             List.of(), List.of(index), _ -> false, () -> 17);
         var system = new RecipeScanningSystem(new ScanLimits(10, 10), _ -> ready[0]);
@@ -290,22 +353,28 @@ class RecipeScannerTest {
         var firstChecks = new IntArrayList();
         var secondChecks = new IntArrayList();
         RecipeParallelismConstraint first = new RecipeParallelismConstraint() {
-            @Override public int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
+            @Override
+            public int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
                 boundInputs.add(currentLimit);
                 return 7;
             }
-            @Override public ProcessResult test(RecipeProcess process) {
+
+            @Override
+            public ProcessResult test(RecipeProcess process) {
                 int amount = RecipeParallelism.effective(process);
                 firstChecks.add(amount);
                 return amount <= 4 ? ProcessResult.SUCCESS : new ProcessResult.Blocked("first_limit");
             }
         };
         RecipeParallelismConstraint second = new RecipeParallelismConstraint() {
-            @Override public int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
+            @Override
+            public int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
                 boundInputs.add(currentLimit);
                 return 5;
             }
-            @Override public ProcessResult test(RecipeProcess process) {
+
+            @Override
+            public ProcessResult test(RecipeProcess process) {
                 int amount = RecipeParallelism.effective(process);
                 secondChecks.add(amount);
                 return amount <= 3 ? ProcessResult.SUCCESS : new ProcessResult.Blocked("second_limit");
@@ -333,7 +402,8 @@ class RecipeScannerTest {
             int[] bounds = {0};
             int[] factories = {0};
             var constraint = new RecipeParallelismConstraint() {
-                @Override public int upperBound(MachineInstance machine, MachineRecipe definition, int currentLimit) {
+                @Override
+                public int upperBound(MachineInstance machine, MachineRecipe definition, int currentLimit) {
                     bounds[0]++;
                     return invalid;
                 }
@@ -452,12 +522,16 @@ class RecipeScannerTest {
             var env = new Environment(1, 1);
             int[] starts = {0};
             int[] factories = {0};
-            var recipe = recipe("factory", 3, guard("factory_guard", _ -> { starts[0]++; return ProcessResult.SUCCESS; }));
+            var recipe = recipe("factory", 3, guard("factory_guard", _ -> {
+                starts[0]++;
+                return ProcessResult.SUCCESS;
+            }));
             var scanner = new RecipeScanner(env.host, catalog(recipe), (machine, definition, seed, tuning) -> {
                 factories[0]++;
                 return switch (defect) {
                     case OWNER -> new RecipeProcess(new MachineInstance(), definition, seed, tuning);
-                    case RECIPE -> new RecipeProcess(machine, new MachineRecipe(definition.id(), 3, List.of(), Set.of(GROUP)), seed, tuning);
+                    case RECIPE ->
+                        new RecipeProcess(machine, new MachineRecipe(definition.id(), 3, List.of(), Set.of(GROUP)), seed, tuning);
                     case SEED -> new RecipeProcess(machine, definition, seed + 1, tuning);
                     case TUNING -> new RecipeProcess(machine, definition, seed,
                         new ProbabilityTuning(!tuning.exactSmallBinomial(), tuning.exactSmallBinomialThreshold()));
@@ -479,7 +553,10 @@ class RecipeScannerTest {
         env.input.insert(MATERIAL, 10, Actionable.MODULATE);
         var failure = new IllegalStateException("external START failed");
         int[] starts = {0};
-        var recipe = recipe("throwing", 3, io(2, 0, 0), guard("throwing_guard", _ -> { starts[0]++; throw failure; }));
+        var recipe = recipe("throwing", 3, io(2, 0, 0), guard("throwing_guard", _ -> {
+            starts[0]++;
+            throw failure;
+        }));
         var candidates = new ObjectArrayList<RecipeProcess>();
         var scanner = new RecipeScanner(env.host, catalog(recipe), (machine, definition, seed, tuning) -> {
             var process = new RecipeProcess(machine, definition, seed, tuning);
@@ -497,65 +574,16 @@ class RecipeScannerTest {
         assertEquals(1, candidates.size());
     }
 
-    private static RecipeProcess admitWithin(RecipeScanner scanner, int calls) {
-        for (int call = 0; call < calls; call++) {
-            var result = scanner.scan(ONE_PROBE);
-            assertTrue(result.probes() <= 1);
-            if (result.status() == RecipeScanner.Status.ADMITTED) { return Objects.requireNonNull(result.process()); }
-            assertEquals(RecipeScanner.Status.YIELDED, result.status());
-            assertNull(result.process());
-        }
-        throw new AssertionError("Search did not admit within its bounded calls");
-    }
-
-    private static void assertProbeReleased(RecipeProcess process, Environment env) {
-        assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
-        assertNull(process.host());
-        assertTrue(ResourceInputLocks.getOrCreate(process).snapshot().isEmpty());
-        assertEquals(env.input.amount(MATERIAL), env.input.availableAmount(MATERIAL));
-        assertEquals(env.input.amount(ALTERNATE), env.input.availableAmount(ALTERNATE));
-        assertEquals(0, env.output.amount(PRODUCT));
-        process.requirePersistenceBoundary();
-    }
-
-    private static RecipeRequirement<Boolean> guard(String name, Function<RecipeProcess, ProcessResult> check) {
-        return new RecipeRequirementType<Boolean>(id(name + "_type"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
-                return new Outcome(check.apply(process));
-            }
-        }).requirement(id(name), true);
-    }
-
-    private static RecipeRequirement<ResourceRequirement> io(long start, long tick, long end) {
-        return RecipeRequirements.RESOURCES.requirement(id("io"), new ResourceRequirement(stacks(MATERIAL, start),
-            stacks(MATERIAL, tick), List.of(), stacks(PRODUCT, end), false));
-    }
-
-    private static List<GenericStack> stacks(Key key, long amount) {
-        return amount == 0 ? List.of() : List.of(new GenericStack(key, amount));
-    }
-
-    private static MachineRecipe recipe(String name, int duration, RecipeRequirement<?>... requirements) {
-        return new MachineRecipe(id(name), duration, List.of(requirements), Set.of(GROUP));
-    }
-
-    private static RecipeCatalog catalog(MachineRecipe... recipes) {
-        return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "scanner.pool", List.of(recipes))));
-    }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(3, capacities, NO_OP);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("scanner_test", name); }
-
-    private enum FactoryDefect { OWNER, RECIPE, SEED, TUNING, HOST }
+    private enum FactoryDefect {OWNER, RECIPE, SEED, TUNING, HOST}
 
     private record Outcome(ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private record Ports(@NotNull ResourceStorage input, @NotNull ResourceStorage output) implements ResourceHatch {
@@ -563,7 +591,11 @@ class RecipeScannerTest {
             Objects.requireNonNull(input);
             Objects.requireNonNull(output);
         }
-        @Override public boolean isValid() { return input.isValid() && output.isValid(); }
+
+        @Override
+        public boolean isValid() {
+            return input.isValid() && output.isValid();
+        }
     }
 
     private static final class Environment {
@@ -578,7 +610,9 @@ class RecipeScannerTest {
             machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
             machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Ports(input, output)), List.of(), List.of()));
             var layout = new ObjectArrayList<WorkSlotDefinition>();
-            for (int slot = 0; slot < slots; slot++) { layout.add(new WorkSlotDefinition("slot_" + slot, Set.of(GROUP))); }
+            for (int slot = 0; slot < slots; slot++) {
+                layout.add(new WorkSlotDefinition("slot_" + slot, Set.of(GROUP)));
+            }
             host = new MachineWorkSlots(machine, layout, Set.of(), process -> {
                 executions.add(process);
                 process.tick();

@@ -5,6 +5,7 @@ import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
@@ -19,12 +20,12 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
 import java.util.AbstractCollection;
 import java.util.Collection;
 import java.util.Iterator;
-import org.jetbrains.annotations.NotNull;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class RecipeCandidateBudgetTest {
     private static final ResourceLocation FIRST = id("first");
@@ -70,7 +70,8 @@ class RecipeCandidateBudgetTest {
     private static SlottedResourceBuffer buffer(long amount) {
         var limits = new Reference2LongArrayMap<AEKeyType>();
         limits.put(TYPE, Long.MAX_VALUE);
-        var storage = new SlottedResourceBuffer(1, limits, () -> {});
+        var storage = new SlottedResourceBuffer(1, limits, () -> {
+        });
         storage.insert(KEY, amount, Actionable.MODULATE);
         return storage;
     }
@@ -95,11 +96,13 @@ class RecipeCandidateBudgetTest {
         var result = complete(pass, 1, 4000);
         assertEquals(recipes, result);
         assertEquals(1, calls.get());
-        for (int indexInList = 0; indexInList < recipes.size(); indexInList++) assertSame(recipes.get(indexInList), result.get(indexInList));
+        for (int indexInList = 0; indexInList < recipes.size(); indexInList++)
+            assertSame(recipes.get(indexInList), result.get(indexInList));
     }
 
     @Test
-    @SuppressWarnings("ReturnOfInnerClass") // Fixture iterator counts the exact original callback visits.
+    @SuppressWarnings("ReturnOfInnerClass")
+        // Fixture iterator counts the exact original callback visits.
     void aLargeLegacyOpinionIsConsumedOnlyUnderLibraryCreditsAndDuplicatesDoNotChangeIntersection() {
         var recipes = recipes(64);
         var consumed = new AtomicInteger();
@@ -108,14 +111,24 @@ class RecipeCandidateBudgetTest {
             public @NotNull Iterator<MachineRecipe> iterator() {
                 return new Iterator<>() {
                     private int cursor;
-                    @Override public boolean hasNext() { return cursor < 1024; }
-                    @Override public MachineRecipe next() {
+
+                    @Override
+                    public boolean hasNext() {
+                        return cursor < 1024;
+                    }
+
+                    @Override
+                    public MachineRecipe next() {
                         consumed.incrementAndGet();
                         return recipes.get((cursor++ % 32) * 2);
                     }
                 };
             }
-            @Override public int size() { return 1024; }
+
+            @Override
+            public int size() {
+                return 1024;
+            }
         };
         RecipeCandidateIndex first = (_, _, _) -> repeatedOpinion;
         RecipeCandidateIndex second = (_, _, _) -> List.of(recipes.get(2), recipes.get(4), recipes.get(7));
@@ -151,7 +164,8 @@ class RecipeCandidateBudgetTest {
         var catalog = catalog(definitions);
         var footprints = new ObjectArrayList<ResourceRecipeIndex.Footprint>();
         for (var recipe : definitions) {
-            if (recipe != unindexed) footprints.add(new ResourceRecipeIndex.Footprint(recipe, List.of(new GenericStack(KEY, Long.MAX_VALUE))));
+            if (recipe != unindexed)
+                footprints.add(new ResourceRecipeIndex.Footprint(recipe, List.of(new GenericStack(KEY, Long.MAX_VALUE))));
         }
         var index = new ResourceRecipeIndex(catalog, footprints);
         var first = buffer(Long.MAX_VALUE - 5);
@@ -174,7 +188,8 @@ class RecipeCandidateBudgetTest {
         var definitions = recipes(100);
         var catalog = catalog(definitions);
         var footprints = new ObjectArrayList<ResourceRecipeIndex.Footprint>();
-        for (var recipe : definitions) footprints.add(new ResourceRecipeIndex.Footprint(recipe, List.of(new GenericStack(KEY, 1))));
+        for (var recipe : definitions)
+            footprints.add(new ResourceRecipeIndex.Footprint(recipe, List.of(new GenericStack(KEY, 1))));
         var index = new ResourceRecipeIndex(catalog, footprints);
         var storage = buffer(5);
         var machine = new MachineInstance();
@@ -190,7 +205,14 @@ class RecipeCandidateBudgetTest {
     }
 
     private record Input(ResourceStorage input) implements ResourceHatch {
-        @Override public ResourceStorage output() { return null; }
-        @Override public boolean isValid() { return input.context().isValid(); }
+        @Override
+        public ResourceStorage output() {
+            return null;
+        }
+
+        @Override
+        public boolean isValid() {
+            return input.context().isValid();
+        }
     }
 }

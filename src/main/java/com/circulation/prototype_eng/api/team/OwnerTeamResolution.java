@@ -9,7 +9,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Immutable owner and current team snapshot, detached from the provider's live state. */
+/**
+ * Immutable owner and current team snapshot, detached from the provider's live state.
+ */
 public final class OwnerTeamResolution {
     private final UUID ownerId;
     private final OwnerTeamResolutionStatus status;
@@ -31,8 +33,11 @@ public final class OwnerTeamResolution {
         this.message = message;
     }
 
-    /** Copies and validates current membership; server teams may have no team owner. */
-    @SuppressWarnings("OptionalUsedAsFieldOrParameterType") // The public snapshot factory explicitly admits no server-team owner.
+    /**
+     * Copies and validates current membership; server teams may have no team owner.
+     */
+    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+    // The public snapshot factory explicitly admits no server-team owner.
     public static OwnerTeamResolution resolved(UUID ownerId, String teamId, OwnerTeamType teamType,
                                                ObjectSet<UUID> members, Optional<UUID> teamOwnerId) {
         Objects.requireNonNull(ownerId, "ownerId");
@@ -54,7 +59,9 @@ public final class OwnerTeamResolution {
             ObjectSets.unmodifiable(snapshot), teamOwnerId.orElse(null), "");
     }
 
-    /** Creates a normal denial without exposing any accepted-team payload. */
+    /**
+     * Creates a normal denial without exposing any accepted-team payload.
+     */
     public static OwnerTeamResolution rejected(UUID ownerId, OwnerTeamResolutionStatus status, String message) {
         Objects.requireNonNull(ownerId, "ownerId");
         Objects.requireNonNull(status, "status");
@@ -65,16 +72,42 @@ public final class OwnerTeamResolution {
         return new OwnerTeamResolution(ownerId, status, null, null, null, null, message.trim());
     }
 
-    public UUID ownerId() { return ownerId; }
-    public OwnerTeamResolutionStatus status() { return status; }
-    public boolean accepted() { return status == OwnerTeamResolutionStatus.RESOLVED; }
-    @SuppressWarnings("unused") // Public diagnostics for consumers of custom providers.
-    public String message() { return message; }
+    public UUID ownerId() {
+        return ownerId;
+    }
 
-    public String teamId() { requireAccepted(); return teamId; }
-    public OwnerTeamType teamType() { requireAccepted(); return teamType; }
-    public ObjectSet<UUID> members() { requireAccepted(); return members; }
-    public Optional<UUID> teamOwnerId() { requireAccepted(); return Optional.ofNullable(teamOwnerId); }
+    public OwnerTeamResolutionStatus status() {
+        return status;
+    }
+
+    public boolean accepted() {
+        return status == OwnerTeamResolutionStatus.RESOLVED;
+    }
+
+    @SuppressWarnings("unused") // Public diagnostics for consumers of custom providers.
+    public String message() {
+        return message;
+    }
+
+    public String teamId() {
+        requireAccepted();
+        return teamId;
+    }
+
+    public OwnerTeamType teamType() {
+        requireAccepted();
+        return teamType;
+    }
+
+    public ObjectSet<UUID> members() {
+        requireAccepted();
+        return members;
+    }
+
+    public Optional<UUID> teamOwnerId() {
+        requireAccepted();
+        return Optional.ofNullable(teamOwnerId);
+    }
 
     private void requireAccepted() {
         if (!accepted()) {

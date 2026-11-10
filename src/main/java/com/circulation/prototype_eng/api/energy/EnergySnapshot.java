@@ -4,7 +4,9 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 
 import java.util.Objects;
 
-/** Immutable FE availability and per-operation limits, without an AE resource key. */
+/**
+ * Immutable FE availability and per-operation limits, without an AE resource key.
+ */
 public record EnergySnapshot(StorageContext context, long revision, long availableEnergy,
                              long availableCapacity, long maxReceive, long maxExtract) {
     public EnergySnapshot {

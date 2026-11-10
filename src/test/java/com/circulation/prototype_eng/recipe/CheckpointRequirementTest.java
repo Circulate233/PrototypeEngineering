@@ -41,7 +41,83 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CheckpointRequirementTest {
     private static final KeyType TYPE = new KeyType("checkpoint");
     private static final Key MATERIAL = new Key(TYPE, "material");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, int time,
+                                                                       RecipeRequirement<?> child, boolean scaled) {
+        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(time, child, scaled));
+    }
+
+    private static RecipeRequirement<String> external(String namespace,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        return external(namespace, List.of(), acquire);
+    }
+
+    private static RecipeRequirement<String> external(String namespace, List<StorageContext> contexts,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        var location = new ResourceLocation(namespace, "requirement");
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return contexts;
+            }
+
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(location, system).requirement(location, "immutable_payload");
+    }
+
+    private static RequirementTransaction transaction(Runnable commit, Runnable rollback) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+                commit.run();
+            }
+
+            @Override
+            public void rollback() {
+                rollback.run();
+            }
+        };
+    }
+
+    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(),
+            new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
+    }
+
+    private static void assertNoTick(RecipeProcess process) {
+        assertThrows(NullPointerException.class, process::tickContext);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("checkpoint_test", name);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, NO_OP);
+    }
 
     @Test
     void zeroTimeRunsOneChildLifecycleForAZeroDurationRecipeWithScopedTickCallbacks() {
@@ -90,7 +166,9 @@ class CheckpointRequirementTest {
     void checkpointUsesFrozenAdvanceWhenAnEarlierRequirementChangesSpeed() {
         var child = new Child();
         var changing = external("aa_checkpoint", (current, stage) -> {
-            if (stage != RecipeStage.TICK) { return RequirementTransaction.SUCCESS; }
+            if (stage != RecipeStage.TICK) {
+                return RequirementTransaction.SUCCESS;
+            }
             var previous = current.attributes().localSnapshot();
             current.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 100);
             return transaction(NO_OP, () -> current.attributes().restoreLocal(previous));
@@ -212,7 +290,9 @@ class CheckpointRequirementTest {
         var primary = new IllegalStateException("later parent business failed");
         var process = process(0, checkpoint("parent", 0, child.requirement(), true),
             external("zz_checkpoint", (_, stage) -> stage == RecipeStage.START
-                ? transaction(() -> { throw primary; }, NO_OP) : RequirementTransaction.SUCCESS));
+                ? transaction(() -> {
+                throw primary;
+            }, NO_OP) : RequirementTransaction.SUCCESS));
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
         assertEquals(0, child.businessEffects);
         assertEquals(20, child.input.availableAmount(MATERIAL));
@@ -250,7 +330,9 @@ class CheckpointRequirementTest {
         var inner = checkpoint("zero_inner", 0, child.requirement(), true);
         var process = process(2, checkpoint("positive_outer", 1, inner, true),
             external("zz_checkpoint", (current, stage) -> {
-                if (stage != RecipeStage.TICK) { return RequirementTransaction.SUCCESS; }
+                if (stage != RecipeStage.TICK) {
+                    return RequirementTransaction.SUCCESS;
+                }
                 assertEquals(realTick, current.tickContext());
                 return transaction(() -> assertEquals(realTick, current.tickContext()), NO_OP);
             }));
@@ -259,61 +341,6 @@ class CheckpointRequirementTest {
         assertEquals(1, process.state().successfulTicks());
         assertEquals(1, process.state().progress());
         assertNoTick(process);
-    }
-
-    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, int time,
-                                                                       RecipeRequirement<?> child, boolean scaled) {
-        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(time, child, scaled));
-    }
-
-    private static RecipeRequirement<String> external(String namespace,
-                                                       BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
-        return external(namespace, List.of(), acquire);
-    }
-
-    private static RecipeRequirement<String> external(String namespace, List<StorageContext> contexts,
-                                                       BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
-        var location = new ResourceLocation(namespace, "requirement");
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) { return contexts; }
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(location, system).requirement(location, "immutable_payload");
-    }
-
-    private static RequirementTransaction transaction(Runnable commit, Runnable rollback) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { commit.run(); }
-            @Override public void rollback() { rollback.run(); }
-        };
-    }
-
-    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(),
-            new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
-    }
-
-    private static void assertNoTick(RecipeProcess process) {
-        assertThrows(NullPointerException.class, process::tickContext);
-    }
-
-    private static ResourceLocation id(String name) {
-        return new ResourceLocation("checkpoint_test", name);
-    }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, NO_OP);
     }
 
     private static final class Child {
@@ -347,7 +374,9 @@ class CheckpointRequirementTest {
         private RequirementTransaction acquire(RecipeProcess process, RecipeStage stage) {
             events.add("acquire:" + stage);
             var tick = stage == RecipeStage.TICK ? process.tickContext() : null;
-            if (tick != null) { ticks.add(tick); }
+            if (tick != null) {
+                ticks.add(tick);
+            }
             if (stage == RecipeStage.END && acquisitionFailure != null) {
                 throw acquisitionFailure;
             }
@@ -360,10 +389,24 @@ class CheckpointRequirementTest {
             return new RequirementTransaction() {
                 private boolean committed;
                 private Resolution terminal = Resolution.REVERSIBLE;
-                @Override public Resolution resolution() { return terminal; }
-                @Override public ProcessResult result() { return reject && stage == rejectionStage ? rejection : ProcessResult.SUCCESS; }
-                @Override public List<? extends ResourceReservation> reservations() { return List.of(token); }
-                @Override public void commit() {
+
+                @Override
+                public Resolution resolution() {
+                    return terminal;
+                }
+
+                @Override
+                public ProcessResult result() {
+                    return reject && stage == rejectionStage ? rejection : ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public List<? extends ResourceReservation> reservations() {
+                    return List.of(token);
+                }
+
+                @Override
+                public void commit() {
                     checkContext();
                     events.add("commit:" + stage);
                     committed = true;
@@ -372,49 +415,88 @@ class CheckpointRequirementTest {
                         throw commitFailure;
                     }
                 }
-                @Override public void complete() {
+
+                @Override
+                public void complete() {
                     checkContext();
                     verifyCompletion.run();
                     events.add("complete:" + stage);
                     terminal = Resolution.COMPLETED;
                 }
-                @Override public void rollback() {
+
+                @Override
+                public void rollback() {
                     checkContext();
                     token.context().requireLock();
                     events.add("rollback:" + stage);
                     acquisitionEffects--;
-                    if (committed) { businessEffects--; }
+                    if (committed) {
+                        businessEffects--;
+                    }
                     terminal = Resolution.ROLLED_BACK;
                     var failure = rollbackFailures.get(stage);
-                    if (failure != null) { throw failure; }
+                    if (failure != null) {
+                        throw failure;
+                    }
                 }
+
                 private void checkContext() {
-                    if (tick != null) { assertEquals(tick, process.tickContext()); }
+                    if (tick != null) {
+                        assertEquals(tick, process.tickContext());
+                    }
                 }
             };
         }
     }
 
     private record TracedToken(ResourceReservation delegate, RecipeStage stage, List<String> events,
-                               Runnable verifyCompletion, @Nullable RuntimeException rollbackFailure) implements ResourceReservation {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
-        @Override public void exposeApplied() { delegate.exposeApplied(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
-        @Override public void apply() {
+                               Runnable verifyCompletion,
+                               @Nullable RuntimeException rollbackFailure) implements ResourceReservation {
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return delegate.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            delegate.exposeApplied();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
+
+        @Override
+        public void apply() {
             events.add("token:apply:" + stage);
             delegate.apply();
         }
-        @Override public void complete() {
+
+        @Override
+        public void complete() {
             verifyCompletion.run();
             events.add("token:complete:" + stage);
             delegate.complete();
         }
-        @Override public void rollback() {
+
+        @Override
+        public void rollback() {
             events.add("token:rollback:" + stage);
             delegate.rollback();
-            if (rollbackFailure != null) { throw rollbackFailure; }
+            if (rollbackFailure != null) {
+                throw rollbackFailure;
+            }
         }
     }
 }

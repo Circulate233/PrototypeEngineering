@@ -4,10 +4,14 @@ import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
+import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -16,10 +20,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
-import com.circulation.prototype_eng.api.storage.ResourceBatch;
 
 /**
  * Retains machine dispatches, exact lifecycle handles and source ownership through one captured owner tick.
@@ -33,11 +33,13 @@ final class MachineRecipeExecution implements PlannedExecution {
     private final Runnable refresh;
     private final BooleanSupplier tickCurrent;
     private final PlannedCancellationToken cancellation = new PlannedCancellationToken();
-    @Nullable private PlannedRecipeCoordinator coordinator;
+    @Nullable
+    private PlannedRecipeCoordinator coordinator;
     private boolean acquired;
     private boolean executing;
     private boolean finished;
-    @Nullable private Throwable unreported;
+    @Nullable
+    private Throwable unreported;
 
     MachineRecipeExecution(PlannedTaskExecutor tasks, List<Candidate> candidates, PlannedDeadline forwardDeadline,
                            Runnable refresh, BooleanSupplier tickCurrent) {
@@ -45,28 +47,51 @@ final class MachineRecipeExecution implements PlannedExecution {
         this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
         this.refresh = Objects.requireNonNull(refresh);
         this.tickCurrent = Objects.requireNonNull(tickCurrent);
-        for (var candidate : candidates) { entries.add(new Entry(candidate)); }
+        for (var candidate : candidates) {
+            entries.add(new Entry(candidate));
+        }
     }
 
-    @Override public boolean advance(PlannedDeadline cleanupDeadline) {
+    private static void rethrow(@Nullable Throwable failure) {
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+    }
+
+    @Override
+    public boolean advance(PlannedDeadline cleanupDeadline) {
         requireOwner();
         Objects.requireNonNull(cleanupDeadline);
-        if (finished) { return true; }
+        if (finished) {
+            return true;
+        }
         executing = true;
         try {
             if (!acquired) {
                 acquired = true;
-                if (forwardAllowed()) { acquireMachines(); }
+                if (forwardAllowed()) {
+                    acquireMachines();
+                }
             }
             while (!finished) {
                 if (coordinator != null) {
-                    if (!settleCoordinator(cleanupDeadline)) { break; }
+                    if (!settleCoordinator(cleanupDeadline)) {
+                        break;
+                    }
                     continue;
                 }
                 if (!settleScans(cleanupDeadline)) break;
-                if (!forwardAllowed()) { retireCursors(); break; }
+                if (!forwardAllowed()) {
+                    retireCursors();
+                    break;
+                }
                 try {
-                    for (var entry : entries) { advanceCursor(entry); }
+                    for (var entry : entries) {
+                        advanceCursor(entry);
+                    }
                     boolean scans = false;
                     for (var entry : entries) {
                         if (entry.handle != null && !entry.handle.finished() && entry.handle.deferredRecipeScan() != null) {
@@ -75,23 +100,34 @@ final class MachineRecipeExecution implements PlannedExecution {
                         }
                     }
                     if (scans) continue;
-                    if (!forwardAllowed()) { continue; }
+                    if (!forwardAllowed()) {
+                        continue;
+                    }
                     var hosts = new ObjectArrayList<MachineWorkSlots>();
                     for (var entry : entries) {
                         var handle = entry.handle;
                         if (handle != null && !handle.finished()) {
                             var deferred = handle.deferredRecipeWork();
-                            if (deferred != null) { hosts.add(deferred); }
+                            if (deferred != null) {
+                                hosts.add(deferred);
+                            }
                         }
                     }
-                    if (hosts.isEmpty()) { releaseMachines(); break; }
+                    if (hosts.isEmpty()) {
+                        releaseMachines();
+                        break;
+                    }
                     // The constructor installs all host leases atomically and invokes no callback.
                     coordinator = new PlannedRecipeCoordinator(tasks, hosts, forwardDeadline, cancellation, this::forwardAllowed);
-                } catch (RuntimeException | Error failure) { record(failure); }
+                } catch (RuntimeException | Error failure) {
+                    record(failure);
+                }
             }
         } catch (RuntimeException | Error failure) {
             record(failure);
-        } finally { executing = false; }
+        } finally {
+            executing = false;
+        }
         var observed = unreported;
         unreported = null;
         rethrow(observed);
@@ -100,7 +136,9 @@ final class MachineRecipeExecution implements PlannedExecution {
 
     private void acquireMachines() {
         for (var entry : entries) {
-            if (!forwardAllowed()) { return; }
+            if (!forwardAllowed()) {
+                return;
+            }
             // Store the handle before graph capture so an exceptional capture cannot leak RUNNING.
             entry.handle = entry.candidate.lifecycle.beginScheduled();
             var handle = entry.handle;
@@ -113,15 +151,21 @@ final class MachineRecipeExecution implements PlannedExecution {
     private void advanceCursor(Entry entry) {
         var handle = entry.handle;
         var dispatch = entry.dispatch;
-        if (handle == null || dispatch == null || entry.cursorDone || handle.deferredRecipeWork() != null || handle.deferredRecipeScan() != null) { return; }
+        if (handle == null || dispatch == null || entry.cursorDone || handle.deferredRecipeWork() != null || handle.deferredRecipeScan() != null) {
+            return;
+        }
         if (!entry.begun) {
-            if (!forwardAllowed()) { return; }
+            if (!forwardAllowed()) {
+                return;
+            }
             refresh.run();
             if (!forwardAllowed()) {
                 return;
             }
             entry.begun = true;
-            if (!handle.run(dispatch::begin)) { return; }
+            if (!handle.run(dispatch::begin)) {
+                return;
+            }
         }
         while (forwardAllowed()) {
             refresh.run();
@@ -129,10 +173,16 @@ final class MachineRecipeExecution implements PlannedExecution {
                 return;
             }
             entry.advanced = false;
-            if (!handle.runComponent(() -> entry.advanced = dispatch.advance())) { return; }
-            if (handle.deferredRecipeWork() != null || handle.deferredRecipeScan() != null) { return; }
+            if (!handle.runComponent(() -> entry.advanced = dispatch.advance())) {
+                return;
+            }
+            if (handle.deferredRecipeWork() != null || handle.deferredRecipeScan() != null) {
+                return;
+            }
             if (!entry.advanced) {
-                if (!forwardAllowed()) { return; }
+                if (!forwardAllowed()) {
+                    return;
+                }
                 refresh.run();
                 if (!forwardAllowed()) {
                     return;
@@ -146,7 +196,9 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
     }
 
-    /** No successor normal/work-slot callback runs while any exact scan handle still owns work. */
+    /**
+     * No successor normal/work-slot callback runs while any exact scan handle still owns work.
+     */
     private boolean settleScans(PlannedDeadline cleanupDeadline) {
         boolean settled = true;
         for (var entry : entries) {
@@ -306,40 +358,59 @@ final class MachineRecipeExecution implements PlannedExecution {
         // A source barrier can finish within the original forward budget. UNKNOWN business/source
         // states have no active barrier and return pending rather than renewing or busy retrying.
         while (!current.finished()) {
-            try { current.advance(cleanupDeadline); }
-            catch (RuntimeException | Error failure) { record(failure); }
-            if (current.finished()) { break; }
+            try {
+                current.advance(cleanupDeadline);
+            } catch (RuntimeException | Error failure) {
+                record(failure);
+            }
+            if (current.finished()) {
+                break;
+            }
             if (!current.hasActiveSources()) {
                 if (current.workYielded() && forwardAllowed()) {
                     continue;
                 }
-                return false; }
+                return false;
+            }
             current.awaitExit();
         }
         if (current.failure() != null) {
             for (var entry : entries) {
                 var handle = entry.handle;
-                if (handle != null && !handle.finished()) { handle.recordFailure(current.failure()); }
+                if (handle != null && !handle.finished()) {
+                    handle.recordFailure(current.failure());
+                }
             }
         }
-        if (current.stopReason() != null) { cancellation.cancel(current.stopReason()); }
+        if (current.stopReason() != null) {
+            cancellation.cancel(current.stopReason());
+        }
         for (var entry : entries) {
             var handle = entry.handle;
-            if (handle == null || handle.finished()) { continue; }
+            if (handle == null || handle.finished()) {
+                continue;
+            }
             var deferred = handle.deferredRecipeWork();
-            if (deferred != null) { handle.finishDeferredRecipeWork(deferred); }
+            if (deferred != null) {
+                handle.finishDeferredRecipeWork(deferred);
+            }
         }
         coordinator = null;
         return true;
     }
 
     private boolean forwardAllowed() {
-        if (cancellation.cancelled()) { return false; }
+        if (cancellation.cancelled()) {
+            return false;
+        }
         Reason reason = null;
-        if (Thread.currentThread().isInterrupted()) { reason = Reason.INTERRUPTED; }
-        else if (forwardDeadline.expired(System.nanoTime())) { reason = Reason.WORKER_TIMEOUT; }
-        else if (!tickCurrent.getAsBoolean()) { reason = Reason.EPOCH_CHANGED; }
-        else {
+        if (Thread.currentThread().isInterrupted()) {
+            reason = Reason.INTERRUPTED;
+        } else if (forwardDeadline.expired(System.nanoTime())) {
+            reason = Reason.WORKER_TIMEOUT;
+        } else if (!tickCurrent.getAsBoolean()) {
+            reason = Reason.EPOCH_CHANGED;
+        } else {
             for (var entry : entries) {
                 if (!entry.candidate.current.getAsBoolean() || !entry.candidate.lifecycle.schedulingAllowed()) {
                     reason = Reason.OWNER_CHANGED;
@@ -347,20 +418,27 @@ final class MachineRecipeExecution implements PlannedExecution {
                 }
             }
         }
-        if (reason != null) { cancellation.cancel(reason); return false; }
+        if (reason != null) {
+            cancellation.cancel(reason);
+            return false;
+        }
         return true;
     }
 
     private void retireCursors() {
         for (var entry : entries) {
             var handle = entry.handle;
-            if (handle == null || handle.finished()) { continue; }
+            if (handle == null || handle.finished()) {
+                continue;
+            }
             if (entry.dispatch != null && !entry.cursorDone) {
                 entry.cursorDone = true;
                 handle.cleanup(entry.dispatch::abort);
             }
             var deferred = handle.deferredRecipeWork();
-            if (deferred != null) { handle.finishDeferredRecipeWork(deferred); }
+            if (deferred != null) {
+                handle.finishDeferredRecipeWork(deferred);
+            }
         }
         releaseMachines();
     }
@@ -369,63 +447,89 @@ final class MachineRecipeExecution implements PlannedExecution {
         boolean released = true;
         for (var entry : entries) {
             var handle = entry.handle;
-            if (handle != null && !handle.finished()) { released &= handle.tryFinish(); }
+            if (handle != null && !handle.finished()) {
+                released &= handle.tryFinish();
+            }
         }
         finished = released;
     }
 
     private void record(Throwable failure) {
-        if (unreported == null) { unreported = failure; }
-        else if (unreported != failure) { unreported.addSuppressed(failure); }
+        if (unreported == null) {
+            unreported = failure;
+        } else if (unreported != failure) {
+            unreported.addSuppressed(failure);
+        }
         cancellation.cancel(Reason.WORKER_FAILURE);
         if (failure instanceof VirtualMachineError fatal) throw fatal;
     }
 
-    @Override public void awaitExit() {
+    @Override
+    public void awaitExit() {
         requireOwner();
-        if (coordinator != null) { coordinator.awaitExit(); }
+        if (coordinator != null) {
+            coordinator.awaitExit();
+        }
         for (var entry : entries) {
             if (entry.scan != null && entry.scan.barrier != null) entry.scan.barrier.awaitQuiescence();
         }
     }
 
-    @Override public boolean finished() { requireOwner(); return finished; }
+    @Override
+    public boolean finished() {
+        requireOwner();
+        return finished;
+    }
 
-    @Override public void cancel(Reason reason) { requireOwner(); cancellation.cancel(Objects.requireNonNull(reason)); }
+    @Override
+    public void cancel(Reason reason) {
+        requireOwner();
+        cancellation.cancel(Objects.requireNonNull(reason));
+    }
 
     private void requireOwner() {
-        if (Thread.currentThread() != owner || executing) { throw new IllegalStateException("Network machine execution requires its idle owner"); }
+        if (Thread.currentThread() != owner || executing) {
+            throw new IllegalStateException("Network machine execution requires its idle owner");
+        }
     }
 
-    private static void rethrow(@Nullable Throwable failure) {
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
+    record Candidate(MachineInstance machine, MachineLifecycle lifecycle, BooleanSupplier current) {
     }
-
-    record Candidate(MachineInstance machine, MachineLifecycle lifecycle, BooleanSupplier current) {}
 
     private static final class Entry {
         private final Candidate candidate;
-        @Nullable private MachineLifecycle.ScheduledExecution handle;
-        @Nullable private ComponentMap.TickDispatch<MachineInstance> dispatch;
+        @Nullable
+        private MachineLifecycle.ScheduledExecution handle;
+        @Nullable
+        private ComponentMap.TickDispatch<MachineInstance> dispatch;
         private boolean begun;
         private boolean advanced;
         private boolean cursorDone;
-        @Nullable private ScanWork scan;
-        private Entry(Candidate candidate) { this.candidate = candidate; }
+        @Nullable
+        private ScanWork scan;
+
+        private Entry(Candidate candidate) {
+            this.candidate = candidate;
+        }
     }
 
     private static final class ScanWork {
         private final MachineLifecycle.ScheduledExecution.DeferredScan request;
-        @Nullable private RecipeScanner.ScanAttempt attempt;
-        private RecipeWorkBudget work = new RecipeWorkBudget(SCAN_WORK_PER_ADVANCE);
-        @Nullable private PlannedTaskExecutor.Batch<Boolean> barrier;
-        @Nullable private RecipePureComputation computation;
         private final ObjectArrayList<ResourceBatch.Source> sources = new ObjectArrayList<>();
         private final ObjectArrayList<RecipeWorkBudget> slices = new ObjectArrayList<>();
+        @Nullable
+        private RecipeScanner.ScanAttempt attempt;
+        private RecipeWorkBudget work = new RecipeWorkBudget(SCAN_WORK_PER_ADVANCE);
+        @Nullable
+        private PlannedTaskExecutor.Batch<Boolean> barrier;
+        @Nullable
+        private RecipePureComputation computation;
         private boolean resolving;
         private int receiptCursor = -1;
         private boolean sourceUnknown;
-        private ScanWork(MachineLifecycle.ScheduledExecution.DeferredScan request) { this.request = request; }
+
+        private ScanWork(MachineLifecycle.ScheduledExecution.DeferredScan request) {
+            this.request = request;
+        }
     }
 }

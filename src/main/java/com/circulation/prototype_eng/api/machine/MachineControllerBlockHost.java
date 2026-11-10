@@ -4,7 +4,9 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.IOrientableBlock;
 import net.minecraft.block.state.IBlockState;
 
-/** Type and full orientation binding required by a controller tile's physical block. */
+/**
+ * Type and full orientation binding required by a controller tile's physical block.
+ */
 public interface MachineControllerBlockHost extends IOrientableBlock {
     MachineType type();
 

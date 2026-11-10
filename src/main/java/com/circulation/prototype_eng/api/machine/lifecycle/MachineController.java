@@ -3,13 +3,13 @@ package com.circulation.prototype_eng.api.machine.lifecycle;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import net.minecraft.nbt.NBTTagCompound;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.Set;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 
 /**
  * One controller generation's owned assembly and scheduler registration. The tile owns this object
@@ -23,12 +23,15 @@ public final class MachineController implements PlannedMachineTask {
     private final MachineLifecycleHost host;
     private final MachineLifecycleRegistry listeners;
     private final TaskScheduler scheduler;
-    @Nullable private volatile MachineInstance machine;
-    @Nullable private volatile Stop requestedStop;
+    @Nullable
+    private volatile MachineInstance machine;
+    @Nullable
+    private volatile Stop requestedStop;
     private volatile Phase phase = Phase.NEW;
     private boolean loadRequested;
     private boolean unassembledDestructionPublished;
-    @Nullable private NBTTagCompound pendingSave;
+    @Nullable
+    private NBTTagCompound pendingSave;
 
     @SuppressWarnings("unused") // Public API uses the global lifecycle registry by default.
     public MachineController(MachineAssembly assembly, MachineLifecycleHost host, TaskScheduler scheduler) {
@@ -43,7 +46,23 @@ public final class MachineController implements PlannedMachineTask {
         host.requireServerThread();
     }
 
-    /** Null requests fresh creation. A queued restored load retains its original data for saving. */
+    private static Stop stronger(@Nullable Stop current, Stop requested) {
+        return current == null || requested.ordinal() > current.ordinal() ? requested : current;
+    }
+
+    private static Throwable append(@Nullable Throwable primary, Throwable additional) {
+        if (primary == null) {
+            return additional;
+        }
+        if (primary != additional) {
+            primary.addSuppressed(additional);
+        }
+        return primary;
+    }
+
+    /**
+     * Null requests fresh creation. A queued restored load retains its original data for saving.
+     */
     public void load(@Nullable NBTTagCompound saved) {
         host.requireServerThread();
         if (loadRequested || phase != Phase.NEW || requestedStop != null) {
@@ -57,7 +76,9 @@ public final class MachineController implements PlannedMachineTask {
         });
         // An IDLE caller already completed the action. A MAIN caller has only enqueued it.
         loadRequested = true;
-        if (phase == Phase.NEW) { pendingSave = copy; }
+        if (phase == Phase.NEW) {
+            pendingSave = copy;
+        }
     }
 
     /**
@@ -69,12 +90,19 @@ public final class MachineController implements PlannedMachineTask {
     public NBTTagCompound save() {
         host.requireServerThread();
         var current = machine;
-        if (current == null) { return pendingSave == null ? null : pendingSave.copy(); }
+        if (current == null) {
+            return pendingSave == null ? null : pendingSave.copy();
+        }
         return assembly.encode(current);
     }
 
-    /** A runtime view, not permission to bypass this controller's scheduler/lifecycle ownership. */
-    @Nullable public MachineInstance machine() { return machine; }
+    /**
+     * A runtime view, not permission to bypass this controller's scheduler/lifecycle ownership.
+     */
+    @Nullable
+    public MachineInstance machine() {
+        return machine;
+    }
 
     public void unload(MachineLifecycleEvent.UnloadReason reason) {
         Objects.requireNonNull(reason);
@@ -84,7 +112,9 @@ public final class MachineController implements PlannedMachineTask {
         requestStop(reason == MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD ? Stop.CHUNK_UNLOAD : Stop.INVALIDATED);
     }
 
-    public void controllerBroken() { requestStop(Stop.BROKEN); }
+    public void controllerBroken() {
+        requestStop(Stop.BROKEN);
+    }
 
     private void requestStop(Stop reason) {
         if (phase == Phase.STOPPED && reason == Stop.BROKEN && machine == null && pendingSave != null && !unassembledDestructionPublished) {
@@ -224,28 +254,31 @@ public final class MachineController implements PlannedMachineTask {
         return machine;
     }
 
-    private static Stop stronger(@Nullable Stop current, Stop requested) {
-        return current == null || requested.ordinal() > current.ordinal() ? requested : current;
-    }
-
-    private static Throwable append(@Nullable Throwable primary, Throwable additional) {
-        if (primary == null) { return additional; }
-        if (primary != additional) { primary.addSuppressed(additional); }
-        return primary;
-    }
-
-    @Override public boolean active() {
+    @Override
+    public boolean active() {
         var current = machine;
         return phase == Phase.LOADED && requestedStop == null && current != null && current.active();
     }
 
-    @Override public ExecutionMode executionMode() { return Objects.requireNonNull(machine, "Controller has no loaded machine").executionMode(); }
-    @Override public Set<?> affinityKeys() { return Objects.requireNonNull(machine, "Controller has no loaded machine").affinityKeys(); }
-    @Override public void onSchedule() {
-        var current = machine;
-        if (phase == Phase.LOADED && requestedStop == null && current != null) { current.onSchedule(); }
+    @Override
+    public ExecutionMode executionMode() {
+        return Objects.requireNonNull(machine, "Controller has no loaded machine").executionMode();
     }
 
-    private enum Phase { NEW, LOADING, LOADED, STOPPING, STOPPED, FAILED }
-    private enum Stop { CHUNK_UNLOAD, INVALIDATED, BROKEN }
+    @Override
+    public Set<?> affinityKeys() {
+        return Objects.requireNonNull(machine, "Controller has no loaded machine").affinityKeys();
+    }
+
+    @Override
+    public void onSchedule() {
+        var current = machine;
+        if (phase == Phase.LOADED && requestedStop == null && current != null) {
+            current.onSchedule();
+        }
+    }
+
+    private enum Phase {NEW, LOADING, LOADED, STOPPING, STOPPED, FAILED}
+
+    private enum Stop {CHUNK_UNLOAD, INVALIDATED, BROKEN}
 }

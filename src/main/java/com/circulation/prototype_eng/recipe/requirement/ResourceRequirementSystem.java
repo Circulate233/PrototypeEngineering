@@ -4,45 +4,275 @@ import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
+import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
-import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import com.circulation.prototype_eng.api.storage.StorageSnapshot;
 import com.circulation.prototype_eng.localization.RecipeText;
+import com.circulation.prototype_eng.recipe.PreparedRequirement;
+import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
-import com.circulation.prototype_eng.recipe.PreparedRequirement;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import java.util.Iterator;
-import org.jetbrains.annotations.Nullable;
-import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
-import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
-import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
-import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
-import com.circulation.prototype_eng.api.storage.StorageSnapshot;
+
 /**
  * PM's ordered multi-container resource IO, reserving actual quantities instead of simulating twice.
  */
 public final class ResourceRequirementSystem implements RecipeRequirementSystem<ResourceRequirement> {
+    private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
+                                                  RecipeStage stage, List<GenericStack> inputs, List<GenericStack> outputs) {
+        var payload = requirement.payload();
+        var pool = stage == RecipeStage.END ? payload.randomOutputs() : null;
+        boolean randomOutputs = pool != null && pool.hasOutputs();
+        boolean resolveInputs = stage == RecipeStage.START && (!payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty());
+        if (inputs.isEmpty() && outputs.isEmpty() && !randomOutputs && !resolveInputs) {
+            return RequirementTransaction.SUCCESS;
+        }
+        var reservations = new ObjectArrayList<ResourceReservation>();
+        ResourceInputResolver.Selection selection = null;
+        try {
+            var hatches = process.hatches().resources();
+            String id = requirement.id().toString();
+            int parallelism = RecipeParallelism.effective(process);
+            double chance = payload.chance().effective(process);
+            String salt = "resource:" + process.requirementPath() + ":" + stage
+                + (stage == RecipeStage.TICK ? ":" + process.state().successfulTicks() : "");
+            long times = chance == 100 ? parallelism
+                : ChanceMath.sampleTimes(process.random(salt), parallelism, chance, process.probabilityTuning());
+            long checkTimes = Math.max(parallelism, ChanceMath.maxTimes(parallelism, chance));
+            if (resolveInputs) {
+                selection = ResourceInputResolver.resolve(process, requirement, hatches, checkTimes, scaled(inputs, checkTimes));
+                if (selection.result() != ProcessResult.SUCCESS) {
+                    return new ReservedRequirement(selection.result(), reservations);
+                }
+                inputs = selection.inputs();
+            }
+            var consumed = payload.inputAllocation() == InputAllocation.SPLITTABLE
+                ? scaled(inputs, times) : new AEKey2LongMap.LinkdOpenHashMap();
+            var produced = scaled(outputs, times);
+            AEKey2LongMap random = null;
+            if (randomOutputs) {
+                random = new AEKey2LongMap.LinkdOpenHashMap();
+                randomOutputs(process, Objects.requireNonNull(pool), salt, times, random);
+                merge(produced, random);
+            }
+            boolean needsOutput = !outputs.isEmpty() || randomOutputs;
+            if (times != checkTimes) {
+                var checkedOutputs = scaled(outputs, checkTimes);
+                if (random != null) {
+                    merge(checkedOutputs, random);
+                }
+                ProcessResult checked = preflight(hatches, inputs, checkTimes, payload.inputAllocation(), stage, checkedOutputs,
+                    !inputs.isEmpty(), needsOutput, payload.voidExcessOutputs(), id);
+                if (checked != ProcessResult.SUCCESS) {
+                    return new ReservedRequirement(checked, reservations);
+                }
+            }
+            ProcessResult result = payload.inputAllocation() == InputAllocation.SPLITTABLE
+                ? reserve(hatches, consumed, true, !inputs.isEmpty(), false, id, reservations)
+                : reserveAllocated(hatches, inputs, times, payload.inputAllocation(), stage, id, reservations);
+            if (result == ProcessResult.SUCCESS) {
+                result = reserve(hatches, produced, false, needsOutput, payload.voidExcessOutputs(), id, reservations);
+            }
+            var reserved = new ReservedRequirement(result, reservations);
+            if (result == ProcessResult.SUCCESS && selection != null) {
+                selection.install();
+                return new ResolvedResources(reserved, selection);
+            }
+            return reserved;
+        } catch (RuntimeException | Error failure) {
+            if (selection != null) {
+                try {
+                    selection.rollback();
+                } catch (RuntimeException | Error cleanup) {
+                    if (cleanup != failure) {
+                        failure.addSuppressed(cleanup);
+                    }
+                }
+            }
+            ReservedRequirement.rollbackAfterFailure(reservations, failure);
+            throw failure;
+        }
+    }
+
+    /**
+     * PM's conservative fixed-quantity check, with real temporary holds covering shared slots/keys.
+     * Release these before actual reservations: checks do not consume resources and can be shared by
+     * later requirements. Exact execution still reserves afresh, so an intervening change cannot overdraw.
+     */
+    private static ProcessResult preflight(List<ResourceHatch> hatches, List<GenericStack> inputs,
+                                           long times, InputAllocation allocation, RecipeStage stage,
+                                           AEKey2LongMap outputs, boolean needsInput,
+                                           boolean needsOutput, boolean voidExcess, String id) {
+        var checks = new ObjectArrayList<ResourceReservation>();
+        ProcessResult result;
+        try {
+            result = allocation == InputAllocation.SPLITTABLE
+                ? reserve(hatches, scaled(inputs, times), true, needsInput, false, id, checks)
+                : reserveAllocated(hatches, inputs, times, allocation, stage, id, checks);
+            if (result == ProcessResult.SUCCESS) {
+                result = reserve(hatches, outputs, false, needsOutput, voidExcess, id, checks);
+            }
+        } catch (RuntimeException | Error failure) {
+            ReservedRequirement.rollbackAfterFailure(checks, failure);
+            throw failure;
+        }
+        ResourceTransactions.rollback(checks);
+        return result;
+    }
+
+    private static ProcessResult reserveAllocated(List<ResourceHatch> hatches, List<GenericStack> inputs,
+                                                  long times, InputAllocation allocation, RecipeStage stage,
+                                                  String id, List<ResourceReservation> reservations) {
+        var cursor = new ReservationCursor(hatches, new AEKey2LongMap.LinkdOpenHashMap(), true,
+            !inputs.isEmpty(), false, id);
+        cursor.allocate(inputs, times, allocation, stage);
+        if (!cursor.advance(new RecipeWorkBudget(Long.MAX_VALUE), reservations))
+            throw new IllegalStateException("Unbounded input allocation did not finish");
+        return cursor.result;
+    }
+
+    private static AEKey2LongMap scaled(List<GenericStack> stacks, long times) {
+        var amounts = new AEKey2LongMap.LinkdOpenHashMap();
+        if (times == 0) {
+            return amounts;
+        }
+        for (var stack : stacks) {
+            addChecked(amounts, stack.what(), stack.amount());
+        }
+        for (var entry : amounts.object2LongEntrySet()) {
+            entry.setValue(ChanceMath.scaleCount(entry.getLongValue(), times));
+        }
+        return amounts;
+    }
+
+    private static void merge(AEKey2LongMap into, AEKey2LongMap from) {
+        for (var entry : from.object2LongEntrySet()) {
+            addChecked(into, entry.getKey(), entry.getLongValue());
+        }
+    }
+
+    private static void randomOutputs(RecipeProcess process, RandomOutputPool pool, String salt, long times,
+                                      AEKey2LongMap output) {
+        if (times == 0) {
+            return;
+        }
+        if (pool.pickCount() >= pool.candidates().size()) {
+            // Every positive-weight entry is certain; avoid one sampling/allocation pass per parallel.
+            var stacks = new ObjectArrayList<GenericStack>();
+            for (var candidate : pool.candidates()) {
+                stacks.add(candidate.value());
+            }
+            merge(output, scaled(stacks, times));
+            return;
+        }
+        // Preserve PM's exact per-execution weighted choice. Planned preparation must budget this work.
+        for (long execution = 0; execution < times; execution++) {
+            var selected = WeightedSampling.sampleWithoutReplacement(process.random(salt + ":random:" + execution),
+                pool.candidates(), pool.pickCount());
+            for (var stack : selected) {
+                addChecked(output, stack.what(), stack.amount());
+            }
+        }
+    }
+
+    /**
+     * Requirement quantities are nonnegative; overflow must fail before changing the accumulated map.
+     */
+    private static void addChecked(AEKey2LongMap amounts, AEKey key, long amount) {
+        if (amount > Long.MAX_VALUE - amounts.getLong(key)) {
+            throw new ArithmeticException("long overflow");
+        }
+        amounts.addTo(key, amount);
+    }
+
+    private static ProcessResult reserve(List<ResourceHatch> hatches, AEKey2LongMap quantities,
+                                         boolean input, boolean needsStorage, boolean voidExcess, String id,
+                                         List<ResourceReservation> reservations) {
+        if (!needsStorage) {
+            return ProcessResult.SUCCESS;
+        }
+        var storages = new ObjectArrayList<ResourceStorage>();
+        var visited = new ReferenceOpenHashSet<StorageContext>();
+        for (var hatch : hatches) {
+            if (!hatch.isValid()) {
+                continue;
+            }
+            var storage = input ? hatch.input() : hatch.output();
+            if (storage != null && storage.isValid() && visited.add(storage.context())) {
+                storages.add(storage);
+            }
+        }
+        if (storages.isEmpty()) {
+            return (input ? RecipeText.NoResourceInput : RecipeText.NoResourceOutput).blocked(id);
+        }
+        for (var entry : quantities.object2LongEntrySet()) {
+            AEKey key = entry.getKey();
+            long remaining = entry.getLongValue();
+            for (var storage : storages) {
+                var context = storage.context();
+                context.lock();
+                try {
+                    if (!storage.isValid()) {
+                        return RecipeText.StorageChanged.blocked();
+                    }
+                    var snapshot = storage.snapshot();
+                    long available = input ? snapshot.available().getLong(key)
+                        : storage.insert(key, remaining, Actionable.SIMULATE);
+                    if (available < 0 || !input && available > remaining) {
+                        throw new IllegalStateException("Storage violated the quantity or simulated transfer contract");
+                    }
+                    long portion = Math.min(remaining, available);
+                    if (portion == 0) {
+                        continue;
+                    }
+                    var reserved = input ? storage.reserveExtract(snapshot, key, portion)
+                        : storage.reserveInsert(snapshot, key, portion);
+                    if (reserved.status() != ReservationResult.Status.ACCEPTED) {
+                        return RecipeText.StorageChanged.blocked();
+                    }
+                    reservations.add(Objects.requireNonNull(reserved.reservation()));
+                    remaining -= portion;
+                } finally {
+                    context.unlock();
+                }
+                if (remaining == 0) {
+                    break;
+                }
+            }
+            if (remaining > 0 && (input || !voidExcess)) {
+                return (input ? RecipeText.ResourcesMissing : RecipeText.ResourceOutputFull)
+                    .blocked(id, Long.toString(remaining));
+            }
+        }
+        return ProcessResult.SUCCESS;
+    }
 
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // The owner binding intentionally retains its captured callback scope.
@@ -154,6 +384,21 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         };
     }
 
+    @Override
+    public RequirementTransaction start(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
+        return acquire(process, requirement, RecipeStage.START, requirement.payload().inputs(), ObjectLists.emptyList());
+    }
+
+    @Override
+    public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
+        return acquire(process, requirement, RecipeStage.TICK, requirement.payload().inputsPerTick(), requirement.payload().outputsPerTick());
+    }
+
+    @Override
+    public RequirementTransaction end(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
+        return acquire(process, requirement, RecipeStage.END, ObjectLists.emptyList(), requirement.payload().outputs());
+    }
+
     /**
      * Original owner selection/preflight/reservation phases, with every inner visit resumable.
      */
@@ -172,7 +417,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private AEKey2LongMap consumed;
         private AEKey2LongMap checkedInputs;
         private ObjectArrayList<ResourceReservation> checks = new ObjectArrayList<>();
-        @Nullable private RecipeStageExecutor.Acquisition.FlatCandidate checksCleanup;
+        @Nullable
+        private RecipeStageExecutor.Acquisition.FlatCandidate checksCleanup;
         @Nullable
         private Iterator<Object2LongMap.Entry<AEKey>> entries;
         @Nullable
@@ -182,6 +428,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         @Nullable
         private ReservationCursor reservation;
         private ProcessResult result = ProcessResult.SUCCESS;
+
         private int phase;
         private int source;
         private int stack;
@@ -215,7 +462,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                     cancel();
                     super.rollback();
                 }
-                @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+
+                @Override
+                public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
                     if (!cancelWithinBudget(budget)) return false;
                     return super.rollbackWithinBudget(budget);
                 }
@@ -226,10 +475,23 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             if (checksCleanup != null || !process.incrementalAcquisition()) return;
             var retained = checks;
             checksCleanup = process.capturePreparedCleanup(new RequirementTransaction() {
-                @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                @Override public List<ResourceReservation> reservations() { return retained; }
-                @Override public void commit() { }
-                @Override public void rollback() { }
+                @Override
+                public ProcessResult result() {
+                    return ProcessResult.SUCCESS;
+                }
+
+                @Override
+                public List<ResourceReservation> reservations() {
+                    return retained;
+                }
+
+                @Override
+                public void commit() {
+                }
+
+                @Override
+                public void rollback() {
+                }
             });
         }
 
@@ -253,8 +515,9 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
 
         private void cancel() {
-            if (!cancelWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) throw new IllegalStateException("Preflight checks still own source cleanup obligations");
-            }
+            if (!cancelWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE)))
+                throw new IllegalStateException("Preflight checks still own source cleanup obligations");
+        }
 
         private boolean cancelWithinBudget(RecipeWorkBudget budget) {
             if (checksCleanup != null && !checksCleanup.cleaned()) return false;
@@ -455,23 +718,33 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private int hatch;
         private int source;
         private boolean complete;
-        @Nullable private ReservationCaptureToken capture;
+        @Nullable
+        private ReservationCaptureToken capture;
         private ProcessResult result = ProcessResult.SUCCESS;
 
-        @Nullable private List<GenericStack> projections;
+        @Nullable
+        private List<GenericStack> projections;
         private long times;
-        @Nullable private InputAllocation allocation;
+        @Nullable
+        private InputAllocation allocation;
         private RecipeStage allocationStage;
         private int projection;
         private int capturedSource;
         private int verifiedSource;
-        @Nullable private ObjectArrayList<StorageSnapshot> snapshots;
-        @Nullable private ObjectArrayList<InputAllocation.Source> sourceFacts;
-        @Nullable private ObjectArrayList<InputAllocation.Source> initialFacts;
-        @Nullable private ResourceStorage.QuantityCapture quantityCapture;
-        @Nullable private Iterator<Object2LongMap.Entry<AEKey>> quantityEntries;
-        @Nullable private ImmutableResourceAmounts.Builder fullAmounts;
-        @Nullable private InputAllocationPlan plan;
+        @Nullable
+        private ObjectArrayList<StorageSnapshot> snapshots;
+        @Nullable
+        private ObjectArrayList<InputAllocation.Source> sourceFacts;
+        @Nullable
+        private ObjectArrayList<InputAllocation.Source> initialFacts;
+        @Nullable
+        private ResourceStorage.QuantityCapture quantityCapture;
+        @Nullable
+        private Iterator<Object2LongMap.Entry<AEKey>> quantityEntries;
+        @Nullable
+        private ImmutableResourceAmounts.Builder fullAmounts;
+        @Nullable
+        private InputAllocationPlan plan;
 
         private ReservationCursor(List<ResourceHatch> hatches, AEKey2LongMap quantities, boolean input,
                                   boolean needsStorage, boolean voidExcess, String id) {
@@ -600,7 +873,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                         while (quantityEntries.hasNext()) {
                             if (!budget.take()) return false;
                             var entry = quantityEntries.next();
-                            if (entry.getLongValue() < 0) throw new IllegalStateException("Negative source snapshot balance");
+                            if (entry.getLongValue() < 0)
+                                throw new IllegalStateException("Negative source snapshot balance");
                             Objects.requireNonNull(fullAmounts).addTo(entry.getKey(), entry.getLongValue());
                         }
                     }
@@ -657,7 +931,10 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 while (source < storages.size()) {
                     if (capture == null && !budget.take()) return false;
                     long expected = plan.amount(source);
-                    if (expected == 0) { source++; continue; }
+                    if (expected == 0) {
+                        source++;
+                        continue;
+                    }
                     var storage = storages.get(source);
                     var context = storage.context();
                     context.lock();
@@ -697,53 +974,93 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
     }
 
-    /** One inventory identity spans native partial capture, token transfer and exact source undo. */
+    /**
+     * One inventory identity spans native partial capture, token transfer and exact source undo.
+     */
     private static final class ReservationCaptureToken implements ResourceReservation {
         private final StorageContext context;
         private final ResourceStorage.ReservationCapture capture;
-        @Nullable private ReservationResult result;
-        @Nullable private ResourceReservation token;
+        @Nullable
+        private ReservationResult result;
+        @Nullable
+        private ResourceReservation token;
         private long amount;
         private boolean cancelled;
+
         private ReservationCaptureToken(StorageContext context, ResourceStorage.ReservationCapture capture) {
-            this.context = context; this.capture = Objects.requireNonNull(capture);
+            this.context = context;
+            this.capture = Objects.requireNonNull(capture);
         }
+
         private boolean advance(RecipeWorkBudget budget) {
             if (result != null) return true;
             if (!capture.advance(budget)) return false;
             amount = capture.amount();
             result = Objects.requireNonNull(capture.result());
             token = result.reservation();
-            if (token != null && token.context() != context) throw new IllegalStateException("Captured reservation changed its physical context");
+            if (token != null && token.context() != context)
+                throw new IllegalStateException("Captured reservation changed its physical context");
             return true;
         }
-        @Override public StorageContext context() { return context; }
-        @Override public boolean canApply() { return Boolean.TRUE.equals(canApplyWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))); }
-        @Override public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
+
+        @Override
+        public StorageContext context() {
+            return context;
+        }
+
+        @Override
+        public boolean canApply() {
+            return Boolean.TRUE.equals(canApplyWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE)));
+        }
+
+        @Override
+        public @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
             if (cancelled || result == null) return false;
             return token == null ? budget.take() ? Boolean.TRUE : null : token.canApplyWithinBudget(budget);
         }
-        @Override public void apply() {
+
+        @Override
+        public void apply() {
             if (cancelled || result == null) throw new IllegalStateException("Incomplete capture cannot apply");
             if (token != null) token.apply(); // Preserve the native legacy all-domain lock contract.
         }
-        @Override public boolean applyWithinBudget(RecipeWorkBudget budget) {
+
+        @Override
+        public boolean applyWithinBudget(RecipeWorkBudget budget) {
             if (cancelled || result == null) throw new IllegalStateException("Incomplete capture cannot apply");
             return token == null ? budget.take() : token.applyWithinBudget(budget);
         }
-        @Override public boolean supportsSequentialUse() { return token == null || token.supportsSequentialUse(); }
-        @Override public void exposeApplied() { if (token != null) token.exposeApplied(); }
-        @Override public boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) { return token == null ? budget.take() : token.exposeAppliedWithinBudget(budget); }
-        @Override public void complete() {
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return token == null || token.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            if (token != null) token.exposeApplied();
+        }
+
+        @Override
+        public boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) {
+            return token == null ? budget.take() : token.exposeAppliedWithinBudget(budget);
+        }
+
+        @Override
+        public void complete() {
             if (result == null) throw new IllegalStateException("Incomplete capture cannot complete");
             if (token != null) token.complete();
         }
-        @Override public boolean completeWithinBudget(RecipeWorkBudget budget) {
+
+        @Override
+        public boolean completeWithinBudget(RecipeWorkBudget budget) {
             if (token != null) return token.completeWithinBudget(budget);
             if (result == null) throw new IllegalStateException("Incomplete capture cannot complete");
             return budget.take();
         }
-        @Override public void rollback() {
+
+        @Override
+        public void rollback() {
             if (cancelled) return;
             if (token != null) {
                 token.rollback();
@@ -752,14 +1069,22 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             }
             cancelled = true;
         }
-        @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+
+        @Override
+        public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
             if (cancelled) return true;
             boolean complete = token == null ? capture.cancel(budget) : token.rollbackWithinBudget(budget);
             if (complete) cancelled = true;
             return complete;
         }
-        @Override public Resolution resolution() { return cancelled ? Resolution.ROLLED_BACK : token == null ? capture.resolution() : token.resolution(); }
-        @Override public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
+
+        @Override
+        public Resolution resolution() {
+            return cancelled ? Resolution.ROLLED_BACK : token == null ? capture.resolution() : token.resolution();
+        }
+
+        @Override
+        public @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
             if (cancelled) return Resolution.ROLLED_BACK;
             return token == null ? capture.resolutionWithinBudget(budget) : token.resolutionWithinBudget(budget);
         }
@@ -831,239 +1156,29 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             return true;
         }
     }
-    @Override
-    public RequirementTransaction start(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
-        return acquire(process, requirement, RecipeStage.START, requirement.payload().inputs(), ObjectLists.emptyList());
-    }
-
-    @Override
-    public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
-        return acquire(process, requirement, RecipeStage.TICK, requirement.payload().inputsPerTick(), requirement.payload().outputsPerTick());
-    }
-
-    @Override
-    public RequirementTransaction end(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
-        return acquire(process, requirement, RecipeStage.END, ObjectLists.emptyList(), requirement.payload().outputs());
-    }
-    private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
-                                                  RecipeStage stage, List<GenericStack> inputs, List<GenericStack> outputs) {
-        var payload = requirement.payload();
-        var pool = stage == RecipeStage.END ? payload.randomOutputs() : null;
-        boolean randomOutputs = pool != null && pool.hasOutputs();
-        boolean resolveInputs = stage == RecipeStage.START && (!payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty());
-        if (inputs.isEmpty() && outputs.isEmpty() && !randomOutputs && !resolveInputs) {
-            return RequirementTransaction.SUCCESS;
-        }
-        var reservations = new ObjectArrayList<ResourceReservation>();
-        ResourceInputResolver.Selection selection = null;
-        try {
-            var hatches = process.hatches().resources();
-            String id = requirement.id().toString();
-            int parallelism = RecipeParallelism.effective(process);
-            double chance = payload.chance().effective(process);
-            String salt = "resource:" + process.requirementPath() + ":" + stage
-                + (stage == RecipeStage.TICK ? ":" + process.state().successfulTicks() : "");
-            long times = chance == 100 ? parallelism
-                : ChanceMath.sampleTimes(process.random(salt), parallelism, chance, process.probabilityTuning());
-            long checkTimes = Math.max(parallelism, ChanceMath.maxTimes(parallelism, chance));
-            if (resolveInputs) {
-                selection = ResourceInputResolver.resolve(process, requirement, hatches, checkTimes, scaled(inputs, checkTimes));
-                if (selection.result() != ProcessResult.SUCCESS) {
-                    return new ReservedRequirement(selection.result(), reservations);
-                }
-                inputs = selection.inputs();
-            }
-            var consumed = payload.inputAllocation() == InputAllocation.SPLITTABLE
-                ? scaled(inputs, times) : new AEKey2LongMap.LinkdOpenHashMap();
-            var produced = scaled(outputs, times);
-            AEKey2LongMap random = null;
-            if (randomOutputs) {
-                random = new AEKey2LongMap.LinkdOpenHashMap();
-                randomOutputs(process, Objects.requireNonNull(pool), salt, times, random);
-                merge(produced, random);
-            }
-            boolean needsOutput = !outputs.isEmpty() || randomOutputs;
-            if (times != checkTimes) {
-                var checkedOutputs = scaled(outputs, checkTimes);
-                if (random != null) {
-                    merge(checkedOutputs, random);
-                }
-                ProcessResult checked = preflight(hatches, inputs, checkTimes, payload.inputAllocation(), stage, checkedOutputs,
-                    !inputs.isEmpty(), needsOutput, payload.voidExcessOutputs(), id);
-                if (checked != ProcessResult.SUCCESS) {
-                    return new ReservedRequirement(checked, reservations);
-                }
-            }
-            ProcessResult result = payload.inputAllocation() == InputAllocation.SPLITTABLE
-                ? reserve(hatches, consumed, true, !inputs.isEmpty(), false, id, reservations)
-                : reserveAllocated(hatches, inputs, times, payload.inputAllocation(), stage, id, reservations);
-            if (result == ProcessResult.SUCCESS) {
-                result = reserve(hatches, produced, false, needsOutput, payload.voidExcessOutputs(), id, reservations);
-            }
-            var reserved = new ReservedRequirement(result, reservations);
-            if (result == ProcessResult.SUCCESS && selection != null) {
-                selection.install();
-                return new ResolvedResources(reserved, selection);
-            }
-            return reserved;
-        } catch (RuntimeException | Error failure) {
-            if (selection != null) {
-                try {
-                    selection.rollback();
-                } catch (RuntimeException | Error cleanup) {
-                    if (cleanup != failure) {
-                        failure.addSuppressed(cleanup);
-                    }
-                }
-            }
-            ReservedRequirement.rollbackAfterFailure(reservations, failure);
-            throw failure;
-        }
-    }
-
-    /** Chosen identities are provisional until the enclosing stage succeeds, just like its tokens. */
-    private record ResolvedResources(ReservedRequirement reserved, ResourceInputResolver.Selection selection)
-        implements RequirementTransaction {
-        @Override public ProcessResult result() { return reserved.result(); }
-        @Override public List<ResourceReservation> reservations() { return reserved.reservations(); }
-        @Override public void commit() { }
-        @Override public void rollback() { selection.rollback(); }
-    }
 
     /**
-     * PM's conservative fixed-quantity check, with real temporary holds covering shared slots/keys.
-     * Release these before actual reservations: checks do not consume resources and can be shared by
-     * later requirements. Exact execution still reserves afresh, so an intervening change cannot overdraw.
+     * Chosen identities are provisional until the enclosing stage succeeds, just like its tokens.
      */
-    private static ProcessResult preflight(List<ResourceHatch> hatches, List<GenericStack> inputs,
-                                           long times, InputAllocation allocation, RecipeStage stage,
-                                           AEKey2LongMap outputs, boolean needsInput,
-                                           boolean needsOutput, boolean voidExcess, String id) {
-        var checks = new ObjectArrayList<ResourceReservation>();
-        ProcessResult result;
-        try {
-            result = allocation == InputAllocation.SPLITTABLE
-                ? reserve(hatches, scaled(inputs, times), true, needsInput, false, id, checks)
-                : reserveAllocated(hatches, inputs, times, allocation, stage, id, checks);
-            if (result == ProcessResult.SUCCESS) {
-                result = reserve(hatches, outputs, false, needsOutput, voidExcess, id, checks);
-            }
-        } catch (RuntimeException | Error failure) {
-            ReservedRequirement.rollbackAfterFailure(checks, failure);
-            throw failure;
+    private record ResolvedResources(ReservedRequirement reserved, ResourceInputResolver.Selection selection)
+        implements RequirementTransaction {
+        @Override
+        public ProcessResult result() {
+            return reserved.result();
         }
-        ResourceTransactions.rollback(checks);
-        return result;
-    }
 
-    private static ProcessResult reserveAllocated(List<ResourceHatch> hatches, List<GenericStack> inputs,
-                                                  long times, InputAllocation allocation, RecipeStage stage,
-                                                  String id, List<ResourceReservation> reservations) {
-        var cursor = new ReservationCursor(hatches, new AEKey2LongMap.LinkdOpenHashMap(), true,
-            !inputs.isEmpty(), false, id);
-        cursor.allocate(inputs, times, allocation, stage);
-        if (!cursor.advance(new RecipeWorkBudget(Long.MAX_VALUE), reservations))
-            throw new IllegalStateException("Unbounded input allocation did not finish");
-        return cursor.result;
-    }
+        @Override
+        public List<ResourceReservation> reservations() {
+            return reserved.reservations();
+        }
 
-    private static AEKey2LongMap scaled(List<GenericStack> stacks, long times) {
-        var amounts = new AEKey2LongMap.LinkdOpenHashMap();
-        if (times == 0) { return amounts; }
-        for (var stack : stacks) {
-            addChecked(amounts, stack.what(), stack.amount());
+        @Override
+        public void commit() {
         }
-        for (var entry : amounts.object2LongEntrySet()) {
-            entry.setValue(ChanceMath.scaleCount(entry.getLongValue(), times));
-        }
-        return amounts;
-    }
 
-    private static void merge(AEKey2LongMap into, AEKey2LongMap from) {
-        for (var entry : from.object2LongEntrySet()) {
-            addChecked(into, entry.getKey(), entry.getLongValue());
+        @Override
+        public void rollback() {
+            selection.rollback();
         }
-    }
-
-    private static void randomOutputs(RecipeProcess process, RandomOutputPool pool, String salt, long times,
-                                      AEKey2LongMap output) {
-        if (times == 0) { return; }
-        if (pool.pickCount() >= pool.candidates().size()) {
-            // Every positive-weight entry is certain; avoid one sampling/allocation pass per parallel.
-            var stacks = new ObjectArrayList<GenericStack>();
-            for (var candidate : pool.candidates()) { stacks.add(candidate.value()); }
-            merge(output, scaled(stacks, times));
-            return;
-        }
-        // Preserve PM's exact per-execution weighted choice. Planned preparation must budget this work.
-        for (long execution = 0; execution < times; execution++) {
-            var selected = WeightedSampling.sampleWithoutReplacement(process.random(salt + ":random:" + execution),
-                pool.candidates(), pool.pickCount());
-            for (var stack : selected) {
-                addChecked(output, stack.what(), stack.amount());
-            }
-        }
-    }
-
-    /** Requirement quantities are nonnegative; overflow must fail before changing the accumulated map. */
-    private static void addChecked(AEKey2LongMap amounts, AEKey key, long amount) {
-        if (amount > Long.MAX_VALUE - amounts.getLong(key)) {
-            throw new ArithmeticException("long overflow");
-        }
-        amounts.addTo(key, amount);
-    }
-
-    private static ProcessResult reserve(List<ResourceHatch> hatches, AEKey2LongMap quantities,
-                                          boolean input, boolean needsStorage, boolean voidExcess, String id,
-                                          List<ResourceReservation> reservations) {
-        if (!needsStorage) {
-            return ProcessResult.SUCCESS;
-        }
-        var storages = new ObjectArrayList<ResourceStorage>();
-        var visited = new ReferenceOpenHashSet<StorageContext>();
-        for (var hatch : hatches) {
-            if (!hatch.isValid()) { continue; }
-            var storage = input ? hatch.input() : hatch.output();
-            if (storage != null && storage.isValid() && visited.add(storage.context())) {
-                storages.add(storage);
-            }
-        }
-        if (storages.isEmpty()) {
-            return (input ? RecipeText.NoResourceInput : RecipeText.NoResourceOutput).blocked(id);
-        }
-        for (var entry : quantities.object2LongEntrySet()) {
-            AEKey key = entry.getKey();
-            long remaining = entry.getLongValue();
-            for (var storage : storages) {
-                var context = storage.context();
-                context.lock();
-                try {
-                    if (!storage.isValid()) { return RecipeText.StorageChanged.blocked(); }
-                    var snapshot = storage.snapshot();
-                    long available = input ? snapshot.available().getLong(key)
-                        : storage.insert(key, remaining, Actionable.SIMULATE);
-                    if (available < 0 || !input && available > remaining) {
-                        throw new IllegalStateException("Storage violated the quantity or simulated transfer contract");
-                    }
-                    long portion = Math.min(remaining, available);
-                    if (portion == 0) { continue; }
-                    var reserved = input ? storage.reserveExtract(snapshot, key, portion)
-                        : storage.reserveInsert(snapshot, key, portion);
-                    if (reserved.status() != ReservationResult.Status.ACCEPTED) {
-                        return RecipeText.StorageChanged.blocked();
-                    }
-                    reservations.add(Objects.requireNonNull(reserved.reservation()));
-                    remaining -= portion;
-                } finally {
-                    context.unlock();
-                }
-                if (remaining == 0) { break; }
-            }
-            if (remaining > 0 && (input || !voidExcess)) {
-                return (input ? RecipeText.ResourcesMissing : RecipeText.ResourceOutputFull)
-                    .blocked(id, Long.toString(remaining));
-            }
-        }
-        return ProcessResult.SUCCESS;
     }
 }

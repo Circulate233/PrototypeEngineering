@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.team;
 
-/** Normal outcomes of resolving the current team; corrupt data and caller errors are thrown. */
+/**
+ * Normal outcomes of resolving the current team; corrupt data and caller errors are thrown.
+ */
 public enum OwnerTeamResolutionStatus {
     RESOLVED,
     UNIVERSE_UNAVAILABLE,

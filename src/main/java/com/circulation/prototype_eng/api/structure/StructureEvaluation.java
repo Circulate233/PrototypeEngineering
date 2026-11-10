@@ -1,16 +1,19 @@
 package com.circulation.prototype_eng.api.structure;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
-/** A detached match and its actual read proof; neither contains permission to publish a machine. */
+/**
+ * A detached match and its actual read proof; neither contains permission to publish a machine.
+ */
 public final class StructureEvaluation {
     private final StructurePlan plan;
     private final StructureSnapshot snapshot;
     private final StructureReadPlan used;
-    @Nullable private final StructureMatch match;
+    @Nullable
+    private final StructureMatch match;
     private final StructurePredicateResult status;
 
     StructureEvaluation(StructurePlan plan, StructureSnapshot snapshot, StructureReadPlan used, StructureMatchResult result) {
@@ -21,14 +24,22 @@ public final class StructureEvaluation {
         status = result.status();
     }
 
-    @Nullable public StructureMatch match() { return match; }
+    @Nullable
+    public StructureMatch match() {
+        return match;
+    }
 
     public StructurePredicateResult status() {
         return status;
     }
-    public List<StructureSnapshot.Failure> failures() { return snapshot.failures(); }
 
-    /** Only reads that actually affected this attempt are rechecked; unvisited branches are irrelevant. */
+    public List<StructureSnapshot.Failure> failures() {
+        return snapshot.failures();
+    }
+
+    /**
+     * Only reads that actually affected this attempt are rechecked; unvisited branches are irrelevant.
+     */
     public boolean isCurrent(StructureReadSource source) {
         return snapshot.equivalent(StructureSnapshot.capture(used, source), used);
     }
@@ -40,7 +51,9 @@ public final class StructureEvaluation {
         return captured == null ? null : snapshot.equivalent(captured, used, work);
     }
 
-    public StructurePlan plan() { return plan; }
+    public StructurePlan plan() {
+        return plan;
+    }
 
     /**
      * Reuses the worker result when its proof still holds. Changed facts need a fresh capture/match:

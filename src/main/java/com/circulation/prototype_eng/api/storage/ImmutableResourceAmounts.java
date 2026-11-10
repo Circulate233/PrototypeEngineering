@@ -28,7 +28,9 @@ public final class ImmutableResourceAmounts extends Object2LongMaps.Unmodifiable
         immutableEntries = ObjectSets.unmodifiable(new EntryView(owned));
     }
 
-    public static ImmutableResourceAmounts empty() { return EMPTY; }
+    public static ImmutableResourceAmounts empty() {
+        return EMPTY;
+    }
 
     /** Copies arbitrary external views; only this final owning type can safely be reused. */
     public static ImmutableResourceAmounts copyOf(AEKey2LongMap source) {
@@ -39,24 +41,40 @@ public final class ImmutableResourceAmounts extends Object2LongMaps.Unmodifiable
         return builder.build();
     }
 
-    public static Builder builder() { return new Builder(); }
+    public static Builder builder() {
+        return new Builder();
+    }
 
-    @Override public long addTo(AEKey key, long increment) { throw new UnsupportedOperationException("Immutable resource quantities"); }
+    @Override
+    public long addTo(AEKey key, long increment) {
+        throw new UnsupportedOperationException("Immutable resource quantities");
+    }
 
-    @Override public ObjectSet<Object2LongMap.Entry<AEKey>> object2LongEntrySet() { return immutableEntries; }
+    @Override
+    public ObjectSet<Object2LongMap.Entry<AEKey>> object2LongEntrySet() {
+        return immutableEntries;
+    }
 
     @Override
     @Deprecated
-    @SuppressWarnings({"unchecked", "rawtypes", "deprecation"}) // Override the legacy boxed view too, so it cannot leak mutable entries.
-    public @NotNull ObjectSet<Map.Entry<AEKey, Long>> entrySet() { return (ObjectSet) immutableEntries; }
+    @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
+    // Override the legacy boxed view too, so it cannot leak mutable entries.
+    public @NotNull ObjectSet<Map.Entry<AEKey, Long>> entrySet() {
+        return (ObjectSet) immutableEntries;
+    }
 
-    @Override public void forEachEntry(ObjLongConsumer<? super AEKey> action) { owned.forEachEntry(action); }
+    @Override
+    public void forEachEntry(ObjLongConsumer<? super AEKey> action) {
+        owned.forEachEntry(action);
+    }
 
     /** Incremental owner-side copying; build transfers ownership in O(1) and closes this builder. */
     public static final class Builder {
-        @Nullable private AEKey2LongMap values = new AEKey2LongMap.LinkdOpenHashMap();
+        @Nullable
+        private AEKey2LongMap values = new AEKey2LongMap.LinkdOpenHashMap();
 
-        private Builder() { }
+        private Builder() {
+        }
 
         public void addTo(AEKey key, long amount) {
             var target = Objects.requireNonNull(values, "Resource snapshot builder is closed");
@@ -78,19 +96,33 @@ public final class ImmutableResourceAmounts extends Object2LongMaps.Unmodifiable
     private static final class EntryView extends AbstractObjectSet<Object2LongMap.Entry<AEKey>> {
         private final AEKey2LongMap values;
 
-        private EntryView(AEKey2LongMap values) { this.values = values; }
-
-        @Override public int size() { return values.size(); }
-
-        @Override public boolean contains(Object value) { return values.object2LongEntrySet().contains(value); }
+        private EntryView(AEKey2LongMap values) {
+            this.values = values;
+        }
 
         @Override
-        @SuppressWarnings("ReturnOfInnerClass") // The iterator exposes detached immutable entries, never the backing iterator.
+        public int size() {
+            return values.size();
+        }
+
+        @Override
+        public boolean contains(Object value) {
+            return values.object2LongEntrySet().contains(value);
+        }
+
+        @Override
+        @SuppressWarnings("ReturnOfInnerClass")
+        // The iterator exposes detached immutable entries, never the backing iterator.
         public @NotNull ObjectIterator<Object2LongMap.Entry<AEKey>> iterator() {
             var iterator = values.object2LongEntrySet().iterator();
             return new ObjectIterator<>() {
-                @Override public boolean hasNext() { return iterator.hasNext(); }
-                @Override public Object2LongMap.Entry<AEKey> next() {
+                @Override
+                public boolean hasNext() {
+                    return iterator.hasNext();
+                }
+
+                @Override
+                public Object2LongMap.Entry<AEKey> next() {
                     var entry = iterator.next();
                     // BasicEntry rejects both primitive and boxed setValue. Never expose the
                     // backing map entry, including through arrays, streams or fastIterator.

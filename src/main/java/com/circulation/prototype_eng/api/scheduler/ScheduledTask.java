@@ -11,7 +11,12 @@ import java.util.Set;
  */
 public interface ScheduledTask {
     void onSchedule();
+
     ExecutionMode executionMode();
+
     boolean active();
-    default Set<?> affinityKeys() { return Set.of(); }
+
+    default Set<?> affinityKeys() {
+        return Set.of();
+    }
 }

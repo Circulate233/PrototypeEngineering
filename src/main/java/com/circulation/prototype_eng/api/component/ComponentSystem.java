@@ -12,10 +12,20 @@ import java.util.Set;
 public interface ComponentSystem<E, C> {
     ResourceLocation id();
 
-    default Set<ResourceLocation> runAfter() { return ObjectSets.emptySet(); }
-    default Set<ResourceLocation> runBefore() { return ObjectSets.emptySet(); }
+    default Set<ResourceLocation> runAfter() {
+        return ObjectSets.emptySet();
+    }
 
-    default void onPreTick(E owner, C component) {}
-    default void onTick(E owner, C component) {}
-    default void onPostTick(E owner, C component) {}
+    default Set<ResourceLocation> runBefore() {
+        return ObjectSets.emptySet();
+    }
+
+    default void onPreTick(E owner, C component) {
+    }
+
+    default void onTick(E owner, C component) {
+    }
+
+    default void onPostTick(E owner, C component) {
+    }
 }

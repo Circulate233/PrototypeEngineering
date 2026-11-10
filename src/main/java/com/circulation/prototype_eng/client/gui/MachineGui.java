@@ -1,28 +1,30 @@
 package com.circulation.prototype_eng.client.gui;
 
+import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
+import ae2.client.gui.widgets.ITooltip;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.container.MachineContainer;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
 import com.circulation.prototype_eng.localization.MachineGuiText;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.entity.player.InventoryPlayer;
-import net.minecraft.util.ResourceLocation;
-import org.lwjgl.input.Mouse;
-import java.io.IOException;
-import java.util.Objects;
-import net.minecraft.client.gui.GuiButton;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.gui.Gui;
+import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.init.SoundEvents;
-import org.jetbrains.annotations.NotNull;
-import ae2.client.Point;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import java.util.List;
-import java.awt.Rectangle;
-import ae2.client.gui.widgets.ITooltip;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.ITextComponent;
+import org.jetbrains.annotations.NotNull;
+import org.lwjgl.input.Mouse;
+
+import java.awt.Rectangle;
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
 /** PM DefaultMachineUI, retaining its original two pages, coordinates and scroll handle. */
 public final class MachineGui extends AEBaseGui<MachineContainer> {
     private static final ResourceLocation MAIN = GuiAtlas.texture("gui_controller_a");
@@ -43,12 +45,15 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         widgets.add("extensionPage", new PageTab(1, 0, 0), new Point(0, 22));
     }
 
-    @Override public void initGui() {
+    @Override
+    public void initGui() {
         super.initGui();
         updateView();
     }
 
-    private int maxScroll() { return Math.max(0, container.snapshot.totalSlots() - MachineGuiSnapshot.MAX_ROWS); }
+    private int maxScroll() {
+        return Math.max(0, container.snapshot.totalSlots() - MachineGuiSnapshot.MAX_ROWS);
+    }
 
     private void updateView() {
         scrollIndex = Math.clamp(scrollIndex, 0, maxScroll());
@@ -58,9 +63,14 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         }
     }
 
-    @Override public void updateScreen() { super.updateScreen(); updateView(); }
+    @Override
+    public void updateScreen() {
+        super.updateScreen();
+        updateView();
+    }
 
-    @Override public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
+    @Override
+    public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         GuiAtlas.draw(page == 0 ? MAIN : EXTENSION, x, y, 0, 0, 384, 256, 384, 256);
         drawRect(x + 140, y + 9, x + 376, y + (page == 0 ? 165 : 248), 0x4c424242);
         if (page != 0) return;
@@ -72,7 +82,8 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         }
     }
 
-    @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
+    @Override
+    public void drawFG(int x, int y, int mouseX, int mouseY) {
         GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 144, 13, 228, 10, 0xffffff, true);
         if (page == 1) {
             GuiLabel.draw(fontRenderer, MachineGuiText.ExtensionPage.getLocal(), 144, 33, 228, 10, 0xe0e0e0, false);
@@ -109,7 +120,8 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         return MachineGuiText.status(container.snapshot.overallStatus());
     }
 
-    @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+    @Override
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
         if (isPointInRegion(144, 13, 228, 10, mouseX, mouseY)) {
             drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
@@ -127,9 +139,12 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         }
     }
 
-    private int handleY() { return LIST_Y + (int) Math.round(223.0 * scrollIndex / Math.max(1, maxScroll())); }
+    private int handleY() {
+        return LIST_Y + (int) Math.round(223.0 * scrollIndex / Math.max(1, maxScroll()));
+    }
 
-    @Override protected void actionPerformed(@NotNull GuiButton button) throws IOException {
+    @Override
+    protected void actionPerformed(@NotNull GuiButton button) throws IOException {
         if (button instanceof PageTab) {
             page = button.id;
             dragging = false;
@@ -137,7 +152,8 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         } else super.actionPerformed(button);
     }
 
-    @Override protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
+    @Override
+    protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         if (page == 0 && button == 0 && maxScroll() > 0 && isPointInRegion(LIST_X + 47, handleY(), 38, 15, mouseX, mouseY)) {
             dragging = true;
             dragOffset = mouseY - guiTop - handleY();
@@ -147,7 +163,8 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         super.mouseClicked(mouseX, mouseY, button);
     }
 
-    @Override protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
+    @Override
+    protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
         if (dragging && button == 0) {
             scrollIndex = (int) Math.round(Math.clamp(mouseY - guiTop - LIST_Y - dragOffset, 0, 223) / 223.0 * maxScroll());
             updateView();
@@ -156,12 +173,14 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         super.mouseClickMove(mouseX, mouseY, button, elapsed);
     }
 
-    @Override protected void mouseReleased(int mouseX, int mouseY, int button) {
+    @Override
+    protected void mouseReleased(int mouseX, int mouseY, int button) {
         if (button == 0) dragging = false;
         super.mouseReleased(mouseX, mouseY, button);
     }
 
-    @Override public void handleMouseInput() throws IOException {
+    @Override
+    public void handleMouseInput() throws IOException {
         super.handleMouseInput();
         int wheel = Mouse.getEventDWheel();
         int mouseX = Mouse.getEventX() * width / mc.displayWidth;
@@ -173,13 +192,27 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
     }
 
     private final class PageTab extends GuiButton implements ITooltip {
-        private PageTab(int id, int x, int y) { super(id, x, y, 21, 22, ""); }
+        private PageTab(int id, int x, int y) {
+            super(id, x, y, 21, 22, "");
+        }
 
-        @Override public @NotNull List<ITextComponent> getTooltipMessage() { return List.of((id == 0 ? MachineGuiText.MainPage : MachineGuiText.ExtensionPage).text()); }
-        @Override public Rectangle getTooltipArea() { return new Rectangle(x, y, width, height); }
-        @Override public boolean isTooltipAreaVisible() { return visible; }
+        @Override
+        public @NotNull List<ITextComponent> getTooltipMessage() {
+            return List.of((id == 0 ? MachineGuiText.MainPage : MachineGuiText.ExtensionPage).text());
+        }
 
-        @Override public void drawButton(@NotNull Minecraft minecraft, int mouseX, int mouseY, float partialTicks) {
+        @Override
+        public Rectangle getTooltipArea() {
+            return new Rectangle(x, y, width, height);
+        }
+
+        @Override
+        public boolean isTooltipAreaVisible() {
+            return visible;
+        }
+
+        @Override
+        public void drawButton(@NotNull Minecraft minecraft, int mouseX, int mouseY, float partialTicks) {
             hovered = mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;
             GuiAtlas.state(x, y, 185 + (page == id ? 48 : hovered ? 24 : 0), id == 0 ? 182 : 207, 21, 22);
         }

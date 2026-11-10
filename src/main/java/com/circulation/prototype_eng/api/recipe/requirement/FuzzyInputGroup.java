@@ -7,7 +7,9 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import java.util.List;
 import java.util.Objects;
 
-/** Ordered alternatives for one input; the first satisfiable key is locked by the requirement owner. */
+/**
+ * Ordered alternatives for one input; the first satisfiable key is locked by the requirement owner.
+ */
 public record FuzzyInputGroup(List<AEKey> candidates, long amount) {
     public FuzzyInputGroup {
         if (amount <= 0) {

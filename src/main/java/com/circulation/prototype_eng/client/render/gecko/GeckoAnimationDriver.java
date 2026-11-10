@@ -37,6 +37,13 @@ public class GeckoAnimationDriver implements IAnimatable {
         }
     };
 
+    public GeckoAnimationDriver(IResourceManager resources, ResourceLocation location, List<String> names) {
+        initialize();
+        model.file = new AnimationFileLoader().loadAllAnimations(parser, location, resources);
+        selected = pickAnimationNames(model.file, names);
+        registerControllers(data);
+    }
+
     /** Register the precise type fetcher before submitting workers; no global mutable model or parser. */
     public static synchronized void initialize() {
         if (initialized) return;
@@ -44,13 +51,6 @@ public class GeckoAnimationDriver implements IAnimatable {
             animatable instanceof GeckoAnimationDriver driver ? driver.model : null;
         AnimationController.addModelFetcher(fetcher);
         initialized = true;
-    }
-
-    public GeckoAnimationDriver(IResourceManager resources, ResourceLocation location, List<String> names) {
-        initialize();
-        model.file = new AnimationFileLoader().loadAllAnimations(parser, location, resources);
-        selected = pickAnimationNames(model.file, names);
-        registerControllers(data);
     }
 
     public static List<String> pickAnimationNames(AnimationFile file, List<String> preferred) {

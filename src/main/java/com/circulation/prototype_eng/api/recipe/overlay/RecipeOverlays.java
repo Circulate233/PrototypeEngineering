@@ -5,17 +5,17 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import java.util.function.Supplier;
 
 /**
@@ -41,85 +41,14 @@ public final class RecipeOverlays {
         return existing == null ? process.components().create(TYPE, process) : existing;
     }
 
-    public <C> RecipeRequirement<C> resolve(RecipeRequirement<C> base) {
-        return resolve(base, base.path(null));
-    }
-
-    public <C> RecipeRequirement<C> resolve(RecipeRequirement<C> base, RequirementPath path) {
-        validatePath(base, path);
-        var binding = binding(base, path);
-        return binding == null ? base : binding.effective;
-    }
-
-    /** A stable local layer save, retaining immutable type/data and the canonical target definition. */
-    public record LayerSnapshot<C, D>(RequirementPath path, RecipeRequirement<C> target, String layerId,
-                                      long order, RecipeOverlayType<C, D> type, D data) {
-        public LayerSnapshot {
-            Objects.requireNonNull(path);
-            Objects.requireNonNull(target);
-            Objects.requireNonNull(layerId);
-            Objects.requireNonNull(type);
-            Objects.requireNonNull(data);
-        }
-    }
-
-    /** Lifetime removal claims are not stage undo; only acquired Change handles prevent a snapshot. */
-    public List<LayerSnapshot<?, ?>> snapshot() {
-        requireStable();
-        var result = new ObjectArrayList<LayerSnapshot<?, ?>>();
-        for (var entry : bindings.entrySet()) {
-            appendSnapshots(result, entry.getKey(), entry.getValue());
-        }
-        result.sort(Comparator.comparing((LayerSnapshot<?, ?> layer) -> layer.path().toString())
-            .thenComparingLong(LayerSnapshot::order));
-        return ObjectLists.unmodifiable(result);
-    }
-
-    /** All identities, layers and computations are checked before replacing this component's map. */
-    public void restore(List<LayerSnapshot<?, ?>> snapshot) {
-        requireStable();
-        beginEdit();
-        try {
-            var replacement = new Object2ObjectOpenHashMap<RequirementPath, Binding<?>>();
-            var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>();
-            for (var layer : snapshot) {
-                restoreLayer(replacement, orders, Objects.requireNonNull(layer));
-            }
-            for (var binding : replacement.values()) { binding.recompute(); }
-            bindings = replacement;
-        } finally {
-            editing = false;
-        }
-    }
-
-    public boolean hasLayer(RecipeRequirement<?> target, RequirementPath path, String layerId) {
-        validatePath(target, path);
-        validateLayerId(layerId);
-        var binding = binding(target, path);
-        return binding != null && binding.layers.containsKey(layerId);
-    }
-
-    /** Acquires cleanup ownership of an already installed layer, without reinstalling or invoking it. */
-    public RemovalClaim claim(RecipeRequirement<?> target, RequirementPath path, String layerId) {
-        validatePath(target, path);
-        validateLayerId(layerId);
-        if (editing) { throw new IllegalStateException("Cannot claim a layer during an overlay edit"); }
-        var binding = binding(target, path);
-        var layer = binding == null ? null : binding.layers.get(layerId);
-        if (layer == null) { throw new IllegalStateException("Missing owned overlay layer: " + layerId); }
-        return new RemovalClaim(this, target.definition(), path, layerId, layer);
-    }
-
-    private void requireStable() {
-        if (editing || acquiredChanges != 0) { throw new IllegalStateException("Overlay stage changes are still pending"); }
-    }
-
     private static <C> void appendSnapshots(List<LayerSnapshot<?, ?>> output, RequirementPath path, Binding<C> binding) {
-        for (var layer : binding.layers.values()) { appendSnapshot(output, path, binding.base, layer); }
+        for (var layer : binding.layers.values()) {
+            appendSnapshot(output, path, binding.base, layer);
+        }
     }
 
     private static <C, D> void appendSnapshot(List<LayerSnapshot<?, ?>> output, RequirementPath path,
-                                             RecipeRequirement<C> target, Layer<C, D> layer) {
+                                              RecipeRequirement<C> target, Layer<C, D> layer) {
         output.add(new LayerSnapshot<>(path, target, layer.id(), layer.order(), layer.type(), layer.data()));
     }
 
@@ -128,9 +57,15 @@ public final class RecipeOverlays {
                                             LayerSnapshot<C, D> saved) {
         validatePath(saved.target(), saved.path());
         validateLayerId(saved.layerId());
-        if (saved.target() != saved.target().definition()) { throw new IllegalArgumentException("Overlay restore target must be canonical"); }
-        if (saved.target().type() != saved.type().requirementType()) { throw new IllegalArgumentException("Overlay restore type mismatch"); }
-        if (saved.order() < 0) { throw new IllegalArgumentException("Negative overlay layer order"); }
+        if (saved.target() != saved.target().definition()) {
+            throw new IllegalArgumentException("Overlay restore target must be canonical");
+        }
+        if (saved.target().type() != saved.type().requirementType()) {
+            throw new IllegalArgumentException("Overlay restore type mismatch");
+        }
+        if (saved.order() < 0) {
+            throw new IllegalArgumentException("Negative overlay layer order");
+        }
         if (!orders.computeIfAbsent(saved.path(), _ -> new LongOpenHashSet()).add(saved.order())) {
             throw new IllegalArgumentException("Duplicate overlay layer order");
         }
@@ -145,11 +80,113 @@ public final class RecipeOverlays {
         binding.nextOrder = Math.max(binding.nextOrder, Math.incrementExact(saved.order()));
     }
 
+    @Nullable
+    @SuppressWarnings("unchecked") // Typed writes/restoration validate exact canonical identity at this map boundary.
+    private static <C> Binding<C> binding(Object2ObjectOpenHashMap<RequirementPath, Binding<?>> source,
+                                          RecipeRequirement<C> base, RequirementPath path) {
+        var existing = source.get(path);
+        if (existing != null && existing.base != base.definition()) {
+            throw new IllegalArgumentException("Different immutable requirement definitions share overlay path " + path);
+        }
+        return (Binding<C>) existing;
+    }
+
+    private static void validatePath(RecipeRequirement<?> target, RequirementPath path) {
+        Objects.requireNonNull(target);
+        Objects.requireNonNull(path);
+        if (!target.id().equals(path.requirementId()) || !target.type().id().equals(path.typeId())) {
+            throw new IllegalArgumentException("Overlay path does not identify its target requirement");
+        }
+    }
+
+    private static void validateLayerId(String layerId) {
+        if (Objects.requireNonNull(layerId).isBlank()) {
+            throw new IllegalArgumentException("Blank overlay layer id");
+        }
+    }
+
+    public <C> RecipeRequirement<C> resolve(RecipeRequirement<C> base) {
+        return resolve(base, base.path(null));
+    }
+
+    public <C> RecipeRequirement<C> resolve(RecipeRequirement<C> base, RequirementPath path) {
+        validatePath(base, path);
+        var binding = binding(base, path);
+        return binding == null ? base : binding.effective;
+    }
+
+    /**
+     * Lifetime removal claims are not stage undo; only acquired Change handles prevent a snapshot.
+     */
+    public List<LayerSnapshot<?, ?>> snapshot() {
+        requireStable();
+        var result = new ObjectArrayList<LayerSnapshot<?, ?>>();
+        for (var entry : bindings.entrySet()) {
+            appendSnapshots(result, entry.getKey(), entry.getValue());
+        }
+        result.sort(Comparator.comparing((LayerSnapshot<?, ?> layer) -> layer.path().toString())
+                              .thenComparingLong(LayerSnapshot::order));
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /**
+     * All identities, layers and computations are checked before replacing this component's map.
+     */
+    public void restore(List<LayerSnapshot<?, ?>> snapshot) {
+        requireStable();
+        beginEdit();
+        try {
+            var replacement = new Object2ObjectOpenHashMap<RequirementPath, Binding<?>>();
+            var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>();
+            for (var layer : snapshot) {
+                restoreLayer(replacement, orders, Objects.requireNonNull(layer));
+            }
+            for (var binding : replacement.values()) {
+                binding.recompute();
+            }
+            bindings = replacement;
+        } finally {
+            editing = false;
+        }
+    }
+
+    public boolean hasLayer(RecipeRequirement<?> target, RequirementPath path, String layerId) {
+        validatePath(target, path);
+        validateLayerId(layerId);
+        var binding = binding(target, path);
+        return binding != null && binding.layers.containsKey(layerId);
+    }
+
+    /**
+     * Acquires cleanup ownership of an already installed layer, without reinstalling or invoking it.
+     */
+    public RemovalClaim claim(RecipeRequirement<?> target, RequirementPath path, String layerId) {
+        validatePath(target, path);
+        validateLayerId(layerId);
+        if (editing) {
+            throw new IllegalStateException("Cannot claim a layer during an overlay edit");
+        }
+        var binding = binding(target, path);
+        var layer = binding == null ? null : binding.layers.get(layerId);
+        if (layer == null) {
+            throw new IllegalStateException("Missing owned overlay layer: " + layerId);
+        }
+        return new RemovalClaim(this, target.definition(), path, layerId, layer);
+    }
+
+    private void requireStable() {
+        if (editing || acquiredChanges != 0) {
+            throw new IllegalStateException("Overlay stage changes are still pending");
+        }
+    }
+
     public <C, D> Change put(RecipeRequirement<C> target, String layerId, RecipeOverlayType<C, D> type, D data) {
         return put(target, target.path(null), layerId, type, data);
     }
 
-    /** A successful put is immediately visible to later acquisitions; already acquired transactions stay frozen. */
+    /**
+     * A successful put is immediately visible to later acquisitions; already acquired transactions stay frozen.
+     */
     public <C, D> Change put(RecipeRequirement<C> target, RequirementPath path, String layerId,
                              RecipeOverlayType<C, D> type, D data) {
         validatePath(target, path);
@@ -173,7 +210,9 @@ public final class RecipeOverlays {
             var change = change(binding, previous, replacement);
             binding.install(next, effective);
             binding.nextOrder = nextOrder;
-            if (existing == null) { bindings.put(path, binding); }
+            if (existing == null) {
+                bindings.put(path, binding);
+            }
             return change;
         } finally {
             editing = false;
@@ -184,7 +223,9 @@ public final class RecipeOverlays {
         return remove(target, target.path(null), layerId);
     }
 
-    /** Removes one layer. Absence returns an already completed no-op handle. */
+    /**
+     * Removes one layer. Absence returns an already completed no-op handle.
+     */
     public Change remove(RecipeRequirement<?> target, RequirementPath path, String layerId) {
         validatePath(target, path);
         validateLayerId(layerId);
@@ -198,7 +239,9 @@ public final class RecipeOverlays {
 
     private <C> Change remove(@Nullable Binding<C> binding, String layerId) {
         var previous = binding == null ? null : binding.layers.get(layerId);
-        if (previous == null) { return new Change(null, null); }
+        if (previous == null) {
+            return new Change(null, null);
+        }
         var next = new Object2ObjectOpenHashMap<>(binding.layers);
         next.remove(layerId);
         var effective = binding.compute(next);
@@ -207,11 +250,15 @@ public final class RecipeOverlays {
         return change;
     }
 
-    /** Clears permanent overlays only at a lifecycle boundary with no acquired undo handles. */
+    /**
+     * Clears permanent overlays only at a lifecycle boundary with no acquired undo handles.
+     */
     public void clear() {
         beginEdit();
         try {
-            if (acquiredChanges != 0) { throw new IllegalStateException("Cannot clear overlays with acquired changes"); }
+            if (acquiredChanges != 0) {
+                throw new IllegalStateException("Cannot clear overlays with acquired changes");
+            }
             bindings.clear();
         } finally {
             editing = false;
@@ -228,8 +275,11 @@ public final class RecipeOverlays {
                     throw new IllegalStateException("Overlay layer changed before rollback: " + id);
                 }
                 var next = new Object2ObjectOpenHashMap<>(binding.layers);
-                if (previous == null) { next.remove(id); }
-                else { next.put(id, previous); }
+                if (previous == null) {
+                    next.remove(id);
+                } else {
+                    next.put(id, previous);
+                }
                 binding.install(next, binding.compute(next));
             } finally {
                 editing = false;
@@ -241,9 +291,13 @@ public final class RecipeOverlays {
                                             @Nullable Layer<C, ?> replacement) {
         beginEdit();
         try {
-            if (binding.layers.get(id) != expected) throw new IllegalStateException("Overlay layer changed before cleanup: " + id);
+            if (binding.layers.get(id) != expected)
+                throw new IllegalStateException("Overlay layer changed before cleanup: " + id);
             return new LayerEdit<>(this, binding, id, expected, replacement);
-        } catch (RuntimeException | Error failure) { editing = false; throw failure; }
+        } catch (RuntimeException | Error failure) {
+            editing = false;
+            throw failure;
+        }
     }
 
     private <C> LayerEdit<C> beginRemoval(RecipeRequirement<C> target, RequirementPath path, String id, Object expected) {
@@ -253,7 +307,9 @@ public final class RecipeOverlays {
     }
 
     private void beginEdit() {
-        if (editing) { throw new IllegalStateException("Overlay appliers must not mutate overlays recursively"); }
+        if (editing) {
+            throw new IllegalStateException("Overlay appliers must not mutate overlays recursively");
+        }
         editing = true;
     }
 
@@ -262,27 +318,33 @@ public final class RecipeOverlays {
         return binding(bindings, base, path);
     }
 
-    @Nullable
-    @SuppressWarnings("unchecked") // Typed writes/restoration validate exact canonical identity at this map boundary.
-    private static <C> Binding<C> binding(Object2ObjectOpenHashMap<RequirementPath, Binding<?>> source,
-                                          RecipeRequirement<C> base, RequirementPath path) {
-        var existing = source.get(path);
-        if (existing != null && existing.base != base.definition()) {
-            throw new IllegalArgumentException("Different immutable requirement definitions share overlay path " + path);
-        }
-        return (Binding<C>) existing;
-    }
-
-    private static void validatePath(RecipeRequirement<?> target, RequirementPath path) {
-        Objects.requireNonNull(target);
-        Objects.requireNonNull(path);
-        if (!target.id().equals(path.requirementId()) || !target.type().id().equals(path.typeId())) {
-            throw new IllegalArgumentException("Overlay path does not identify its target requirement");
+    private <C> void removeClaim(RecipeRequirement<C> target, RequirementPath path, String layerId, Layer<?, ?> expected) {
+        beginEdit();
+        try {
+            var binding = binding(target, path);
+            if (binding == null || binding.layers.get(layerId) != expected) {
+                throw new IllegalStateException("Owned overlay layer changed before cleanup: " + layerId);
+            }
+            var next = new Object2ObjectOpenHashMap<>(binding.layers);
+            next.remove(layerId);
+            binding.install(next, binding.compute(next));
+        } finally {
+            editing = false;
         }
     }
 
-    private static void validateLayerId(String layerId) {
-        if (Objects.requireNonNull(layerId).isBlank()) { throw new IllegalArgumentException("Blank overlay layer id"); }
+    /**
+     * A stable local layer save, retaining immutable type/data and the canonical target definition.
+     */
+    public record LayerSnapshot<C, D>(RequirementPath path, RecipeRequirement<C> target, String layerId,
+                                      long order, RecipeOverlayType<C, D> type, D data) {
+        public LayerSnapshot {
+            Objects.requireNonNull(path);
+            Objects.requireNonNull(target);
+            Objects.requireNonNull(layerId);
+            Objects.requireNonNull(type);
+            Objects.requireNonNull(data);
+        }
     }
 
     private static final class Binding<C> {
@@ -298,7 +360,9 @@ public final class RecipeOverlays {
         }
 
         private Computed<C> compute(Object2ObjectOpenHashMap<String, Layer<C, ?>> proposed) {
-            if (proposed.isEmpty()) { return new Computed<>(base, List.of()); }
+            if (proposed.isEmpty()) {
+                return new Computed<>(base, List.of());
+            }
             var ordered = new ObjectArrayList<>(proposed.values());
             ordered.sort(Comparator.comparingLong(Layer::order));
             C payload = base.payload();
@@ -325,12 +389,16 @@ public final class RecipeOverlays {
         }
 
         private void recompute() {
-            install(layers, compute(layers)); }
+            install(layers, compute(layers));
+        }
     }
 
-    private record Computed<C>(RecipeRequirement<C> effective, List<Layer<C, ?>> ordered) { }
+    private record Computed<C>(RecipeRequirement<C> effective, List<Layer<C, ?>> ordered) {
+    }
 
-    /** Filters the already ordered private proof, then publishes exactly one complete new binding. */
+    /**
+     * Filters the already ordered private proof, then publishes exactly one complete new binding.
+     */
     private static final class LayerEdit<C> {
         private final RecipeOverlays owner;
         private final Binding<C> binding;
@@ -345,35 +413,54 @@ public final class RecipeOverlays {
         private boolean inserted;
         private boolean done;
         private @Nullable ComputeCapture<C> computation;
+
         private LayerEdit(RecipeOverlays owner, Binding<C> binding, String id, @Nullable Object expected, @Nullable Layer<C, ?> replacement) {
-            this.owner = owner; this.binding = binding; this.id = id; this.expected = expected; this.replacement = replacement;
-            original = binding.layers; source = binding.ordered;
+            this.owner = owner;
+            this.binding = binding;
+            this.id = id;
+            this.expected = expected;
+            this.replacement = replacement;
+            original = binding.layers;
+            source = binding.ordered;
         }
+
         private boolean advance(RecipeWorkBudget budget) {
             if (done) return true;
             while (index < source.size() || replacement != null && !inserted) {
                 if (!budget.take()) return false;
                 var old = index < source.size() ? source.get(index) : null;
                 if (replacement != null && !inserted && (old == null || replacement.order() <= old.order())) {
-                    next.put(id, replacement); ordered.add(replacement); inserted = true;
+                    next.put(id, replacement);
+                    ordered.add(replacement);
+                    inserted = true;
                 } else {
                     index++;
-                    if (!Objects.requireNonNull(old).id().equals(id)) { next.put(old.id(), old); ordered.add(old); }
+                    if (!Objects.requireNonNull(old).id().equals(id)) {
+                        next.put(old.id(), old);
+                        ordered.add(old);
+                    }
                 }
             }
-            if (computation == null) computation = new ComputeCapture<>(binding.base, ObjectLists.unmodifiable(ordered));
+            if (computation == null)
+                computation = new ComputeCapture<>(binding.base, ObjectLists.unmodifiable(ordered));
             if (!computation.advance(budget)) return false;
             if (!budget.take()) return false;
-            if (binding.layers != original || original.get(id) != expected) throw new IllegalStateException("Overlay binding changed before cleanup publication");
+            if (binding.layers != original || original.get(id) != expected)
+                throw new IllegalStateException("Overlay binding changed before cleanup publication");
             binding.install(next, computation.result());
             done = true;
             owner.editing = false;
             return true;
         }
-        private void abort() { owner.editing = false; }
+
+        private void abort() {
+            owner.editing = false;
+        }
     }
 
-    /** The same layer appliers and canonical direct-child checks as synchronous Binding.compute. */
+    /**
+     * The same layer appliers and canonical direct-child checks as synchronous Binding.compute.
+     */
     private static final class ComputeCapture<C> {
         private final RecipeRequirement<C> base;
         private final List<Layer<C, ?>> ordered;
@@ -384,10 +471,19 @@ public final class RecipeOverlays {
         private int child;
         private int phase;
         private boolean done;
-        private ComputeCapture(RecipeRequirement<C> base, List<Layer<C, ?>> ordered) { this.base = base; this.ordered = ordered; payload = base.payload(); }
+
+        private ComputeCapture(RecipeRequirement<C> base, List<Layer<C, ?>> ordered) {
+            this.base = base;
+            this.ordered = ordered;
+            payload = base.payload();
+        }
+
         private boolean advance(RecipeWorkBudget budget) {
             if (done) return true;
-            if (ordered.isEmpty()) { done = true; return true; }
+            if (ordered.isEmpty()) {
+                done = true;
+                return true;
+            }
             if (children == null) {
                 if (!budget.take()) return false;
                 children = Objects.requireNonNull(base.type().system().children(payload));
@@ -401,13 +497,15 @@ public final class RecipeOverlays {
                 if (phase == 1) {
                     if (!budget.take()) return false;
                     effectiveChildren = Objects.requireNonNull(base.type().system().children(payload));
-                    if (children.size() != effectiveChildren.size()) throw new IllegalArgumentException("Overlay changed structural child count");
+                    if (children.size() != effectiveChildren.size())
+                        throw new IllegalArgumentException("Overlay changed structural child count");
                     child = 0;
                     phase = 2;
                 }
                 while (child < children.size()) {
                     if (!budget.take()) return false;
-                    if (children.get(child).definition() != Objects.requireNonNull(effectiveChildren).get(child).definition()) throw new IllegalArgumentException("Overlay changed structural child identity or order");
+                    if (children.get(child).definition() != Objects.requireNonNull(effectiveChildren).get(child).definition())
+                        throw new IllegalArgumentException("Overlay changed structural child identity or order");
                     child++;
                 }
                 layer++;
@@ -417,6 +515,7 @@ public final class RecipeOverlays {
             done = true;
             return true;
         }
+
         private Computed<C> result() {
             if (!done) throw new IllegalStateException("Overlay computation is incomplete");
             return new Computed<>(ordered.isEmpty() ? base : base.withPayload(payload), ordered);
@@ -424,25 +523,14 @@ public final class RecipeOverlays {
     }
 
     private record Layer<C, D>(String id, long order, RecipeOverlayType<C, D> type, D data) {
-        private C apply(C base) { return Objects.requireNonNull(type.applier().apply(base, data), "effective requirement payload"); }
-    }
-
-    private <C> void removeClaim(RecipeRequirement<C> target, RequirementPath path, String layerId, Layer<?, ?> expected) {
-        beginEdit();
-        try {
-            var binding = binding(target, path);
-            if (binding == null || binding.layers.get(layerId) != expected) {
-                throw new IllegalStateException("Owned overlay layer changed before cleanup: " + layerId);
-            }
-            var next = new Object2ObjectOpenHashMap<>(binding.layers);
-            next.remove(layerId);
-            binding.install(next, binding.compute(next));
-        } finally {
-            editing = false;
+        private C apply(C base) {
+            return Objects.requireNonNull(type.applier().apply(base, data), "effective requirement payload");
         }
     }
 
-    /** Structural lifetime cleanup handle; no stage undo closure and no pending Change count. */
+    /**
+     * Structural lifetime cleanup handle; no stage undo closure and no pending Change count.
+     */
     public static final class RemovalClaim {
         private final RecipeOverlays owner;
         private final RecipeRequirement<?> target;
@@ -460,11 +548,21 @@ public final class RecipeOverlays {
             this.expected = expected;
         }
 
-        public RecipeRequirement<?> target() { return target; }
-        public RequirementPath path() { return path; }
-        public String layerId() { return layerId; }
+        public RecipeRequirement<?> target() {
+            return target;
+        }
 
-        /** Checks version identity, so an old handle cannot claim or remove a replacement layer. */
+        public RequirementPath path() {
+            return path;
+        }
+
+        public String layerId() {
+            return layerId;
+        }
+
+        /**
+         * Checks version identity, so an old handle cannot claim or remove a replacement layer.
+         */
         public void validate() {
             var binding = owner.binding(target, path);
             if (removed || binding == null || binding.layers.get(layerId) != expected) {
@@ -472,12 +570,17 @@ public final class RecipeOverlays {
             }
         }
 
-        @SuppressWarnings("StatementWithEmptyBody") // The original cursor performs the synchronous drain in the loop condition.
+        @SuppressWarnings("StatementWithEmptyBody")
+        // The original cursor performs the synchronous drain in the loop condition.
         public void remove() {
             if (removed) {
                 return;
             }
-            if (pending != null) { while (!removeWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) { } return; }
+            if (pending != null) {
+                while (!removeWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) {
+                }
+                return;
+            }
             owner.removeClaim(target, path, layerId, expected);
             removed = true;
         }
@@ -493,14 +596,22 @@ public final class RecipeOverlays {
                 pending = null;
                 removed = true;
                 return true;
-            } catch (RuntimeException | Error failure) { pending.abort(); pending = null; throw failure; }
+            } catch (RuntimeException | Error failure) {
+                pending.abort();
+                pending = null;
+                throw failure;
+            }
         }
     }
 
-    /** A local layer edit. Completion relinquishes undo rights; rollback never restores other layers. */
+    /**
+     * A local layer edit. Completion relinquishes undo rights; rollback never restores other layers.
+     */
     public static final class Change {
-        @Nullable private RecipeOverlays owner;
-        @Nullable private Runnable undo;
+        @Nullable
+        private RecipeOverlays owner;
+        @Nullable
+        private Runnable undo;
         private @Nullable Supplier<LayerEdit<?>> undoEdit;
         private @Nullable LayerEdit<?> pending;
         private boolean undone;
@@ -508,23 +619,33 @@ public final class RecipeOverlays {
         private Change(@Nullable RecipeOverlays owner, @Nullable Runnable undo) {
             this(owner, undo, null);
         }
+
         private Change(@Nullable RecipeOverlays owner, @Nullable Runnable undo, @Nullable Supplier<LayerEdit<?>> undoEdit) {
             this.owner = owner;
             this.undo = undo;
             this.undoEdit = undoEdit;
         }
 
-        @SuppressWarnings("StatementWithEmptyBody") // The original cursor performs the synchronous drain in the loop condition.
+        @SuppressWarnings("StatementWithEmptyBody")
+        // The original cursor performs the synchronous drain in the loop condition.
         public void rollback() {
-            if (pending != null || undone) { while (!rollbackWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) { } return; }
-            if (undo == null) { return; }
+            if (pending != null || undone) {
+                while (!rollbackWithinBudget(new RecipeWorkBudget(Long.MAX_VALUE))) {
+                }
+                return;
+            }
+            if (undo == null) {
+                return;
+            }
             undo.run();
             complete();
         }
 
         public void complete() {
             if (pending != null) throw new IllegalStateException("Cannot relinquish a pending overlay rollback");
-            if (owner != null) { owner.acquiredChanges--; }
+            if (owner != null) {
+                owner.acquiredChanges--;
+            }
             owner = null;
             undo = null;
             undoEdit = null;
@@ -541,7 +662,11 @@ public final class RecipeOverlays {
                     if (!pending.advance(budget)) return false;
                     pending = null;
                     undone = true;
-                } catch (RuntimeException | Error failure) { pending.abort(); pending = null; throw failure; }
+                } catch (RuntimeException | Error failure) {
+                    pending.abort();
+                    pending = null;
+                    throw failure;
+                }
             }
             return completeWithinBudget(budget);
         }

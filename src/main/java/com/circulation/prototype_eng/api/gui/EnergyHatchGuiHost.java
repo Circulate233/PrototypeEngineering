@@ -4,7 +4,9 @@ import com.circulation.prototype_eng.api.energy.EnergyHatch;
 import com.circulation.prototype_eng.api.energy.EnergyHatchSettings;
 import org.jetbrains.annotations.Nullable;
 
-/** Optional default FE screen access; external hosts can supply their own storage and settings. */
+/**
+ * Optional default FE screen access; external hosts can supply their own storage and settings.
+ */
 public interface EnergyHatchGuiHost extends HatchGuiHost, EnergyHatchSettings {
     /** Primary storage for existing hosts: input when present, otherwise output. */
     EnergyHatch storage();

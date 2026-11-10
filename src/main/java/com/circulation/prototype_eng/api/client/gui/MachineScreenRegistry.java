@@ -13,16 +13,19 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
-/** Client-only Java screen bindings; custom screens directly extend AEBaseGui. */
+/**
+ * Client-only Java screen bindings; custom screens directly extend AEBaseGui.
+ */
 @SideOnly(Side.CLIENT)
 public final class MachineScreenRegistry {
     private static final Object2ObjectOpenHashMap<ResourceLocation, BiFunction<AEBaseContainer, InventoryPlayer, AEBaseGui<?>>> FACTORIES = new Object2ObjectOpenHashMap<>();
 
-    private MachineScreenRegistry() { }
+    private MachineScreenRegistry() {
+    }
 
     @SuppressWarnings("unused") // Called only from a downstream mod's client initialization.
     public static <C extends AEBaseContainer> void register(ResourceLocation type, Class<C> containerClass,
-            BiFunction<C, InventoryPlayer, ? extends AEBaseGui<C>> factory) {
+                                                            BiFunction<C, InventoryPlayer, ? extends AEBaseGui<C>> factory) {
         Objects.requireNonNull(containerClass);
         Objects.requireNonNull(factory);
         if (FACTORIES.putIfAbsent(Objects.requireNonNull(type), (container, player) -> factory.apply(containerClass.cast(container), player)) != null) {
@@ -32,8 +35,12 @@ public final class MachineScreenRegistry {
 
     public static AEBaseGui<?> create(ResourceLocation type, AEBaseContainer container, InventoryPlayer player) {
         var factory = FACTORIES.get(type);
-        if (factory != null) { return Objects.requireNonNull(factory.apply(container, player), "Machine screen factory returned null"); }
-        if (container instanceof MachineContainer machine) { return new MachineGui(machine, player); }
+        if (factory != null) {
+            return Objects.requireNonNull(factory.apply(container, player), "Machine screen factory returned null");
+        }
+        if (container instanceof MachineContainer machine) {
+            return new MachineGui(machine, player);
+        }
         throw new IllegalStateException("Custom machine container has no client screen binding: " + type);
     }
 }

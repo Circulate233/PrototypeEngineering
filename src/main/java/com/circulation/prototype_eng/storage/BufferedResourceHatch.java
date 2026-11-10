@@ -3,31 +3,33 @@ package com.circulation.prototype_eng.storage;
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.KeyCounter;
 import ae2.api.storage.MEStorage;
+import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
+import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
+import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import com.circulation.prototype_eng.api.storage.StorageFence;
 import com.circulation.prototype_eng.localization.GuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.text.ITextComponent;
 import org.jetbrains.annotations.Nullable;
-import java.util.Map;
+
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
-import ae2.api.stacks.AEKey2LongMap;
-import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
-import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
-import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
-import com.circulation.prototype_eng.api.storage.StorageFence;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+
 /**
  * Owns buffers independently of their block entity or GUI.
  */
@@ -44,124 +46,6 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     public BufferedResourceHatch(HatchMode mode, int slotsPerSide,
                                  Map<AEKeyType, Long> capacities, Runnable onChanged) {
         this(ResourceHatchConfiguration.symmetric(mode, slotsPerSide, capacities), onChanged);
-    }
-
-    /** Captures old ownership, prepares outside its access scope, then retires both sides together.
-     * The publication factory prepares adapters before retirement; its returned action only assigns fields.
-     */
-    public HatchReplacement replace(ResourceHatchConfiguration target, @Nullable String location,
-                                    Runnable onChanged, BooleanSupplier current,
-                                    Function<BufferedResourceHatch, Runnable> preparePublication) {
-        if (target.mode().hasInput() == (input == null) || target.mode().hasOutput() == (output == null))
-            throw new IllegalArgumentException("Reconfiguration cannot change physical hatch direction");
-        var fence = StorageFence.tryAcquire(contexts);
-        if (fence == null) return HatchReplacement.of(HatchReconfigurationStatus.PENDING_BUSY);
-        try {
-            var captured = fence.access(() -> {
-                if ((input != null && !input.idleForReplacement()) || (output != null && !output.idleForReplacement()))
-                    return null;
-                return new Capture(input == null ? List.of() : input.committedContents(),
-                    output == null ? List.of() : output.committedContents(),
-                    contexts.stream().map(c -> new HatchReplacement.Version(c, c.revision())).toList());
-            });
-            if (captured == null) return HatchReplacement.of(HatchReconfigurationStatus.PENDING_BUSY);
-            // The old fence stays held, but its access scope must not touch any new context.
-            var nextInput = pack(captured.input, target.input());
-            var nextOutput = pack(captured.output, target.output());
-            if (nextInput == null || nextOutput == null)
-                return new HatchReplacement(HatchReconfigurationStatus.BLOCKED_CAPACITY, captured.versions);
-            var changes = new HatchStorageChanges(onChanged);
-            var candidate = new BufferedResourceHatch(target, changes);
-            candidate.restoreContents(nextInput, nextOutput);
-            candidate.bindSourceIdentities(location);
-            var publish = preparePublication.apply(candidate);
-            return fence.access(() -> {
-                if (!current.getAsBoolean() || !captured.versions.stream().allMatch(HatchReplacement.Version::current))
-                    return HatchReplacement.of(HatchReconfigurationStatus.STALE_TARGET);
-                contexts.forEach(StorageContext::requireRetirement);
-                contexts.forEach(StorageContext::invalidate);
-                publish.run();
-                changes.enable();
-                return HatchReplacement.of(HatchReconfigurationStatus.APPLIED);
-            });
-        } finally {
-            fence.release();
-        }
-    }
-
-    public void bindSourceIdentities(@Nullable String location) {
-        if (location == null) return;
-        if (input != null) input.context().bindSourceIdentity(location + "/input");
-        if (output != null) output.context().bindSourceIdentity(location + "/output");
-    }
-
-    @Override
-    @Nullable
-    public SlottedResourceStorage input() {
-        return input;
-    }
-
-    @Override
-    @Nullable
-    public SlottedResourceStorage output() {
-        return output;
-    }
-
-    /**
-     * External automation inserts only into input and extracts only from output.
-     */
-    public MEStorage automation() {
-        return automation;
-    }
-
-    @Override
-    public boolean isValid() {
-        return (input == null || input.isValid()) && (output == null || output.isValid());
-    }
-
-    /**
-     * Retained machine/automation storage references also stop accepting operations.
-     */
-    public void invalidate() {
-        locked(() -> {
-            if (input != null) { input.context().invalidate(); }
-            if (output != null) { output.context().invalidate(); }
-        });
-    }
-
-    public void save(NBTTagCompound tag) {
-        locked(() -> {
-            saveSide(tag, "Input", input);
-            saveSide(tag, "Output", output);
-        });
-    }
-
-    public void load(NBTTagCompound tag) {
-        var inputContents = readSide(tag, "Input", input);
-        var outputContents = readSide(tag, "Output", output);
-        restoreContents(inputContents, outputContents);
-    }
-
-    /** Commits decoded contents only after both independent sides pass validation. */
-    void restoreContents(List<GenericStack> inputContents, List<GenericStack> outputContents) {
-        locked(() -> {
-            var nextInput = input == null ? null : input.prepareRestore(inputContents);
-            var nextOutput = output == null ? null : output.prepareRestore(outputContents);
-            if (input != null) { input.restorePrepared(Objects.requireNonNull(nextInput)); }
-            if (output != null) { output.restorePrepared(Objects.requireNonNull(nextOutput)); }
-        });
-    }
-
-    private void locked(Runnable action) {
-        // These independent contexts are constructed in this order and never replaced.
-        StorageContext.lockAll(contexts);
-        try { action.run(); }
-        finally {
-            if (output != null) { output.context().unlockDeferred(); }
-            if (input != null) { input.context().unlockDeferred(); }
-            if (input != null) { input.context().publishChanges(); }
-            if (output != null) { output.context().publishChanges(); }
-        }
     }
 
     public BufferedResourceHatch(ResourceHatchConfiguration configuration, Runnable onChanged) {
@@ -308,6 +192,143 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             result.set(slot, stack);
         }
         return result;
+    }
+
+    /** Captures old ownership, prepares outside its access scope, then retires both sides together.
+     * The publication factory prepares adapters before retirement; its returned action only assigns fields.
+     */
+    public HatchReplacement replace(ResourceHatchConfiguration target, @Nullable String location,
+                                    Runnable onChanged, BooleanSupplier current,
+                                    Function<BufferedResourceHatch, Runnable> preparePublication) {
+        if (target.mode().hasInput() == (input == null) || target.mode().hasOutput() == (output == null))
+            throw new IllegalArgumentException("Reconfiguration cannot change physical hatch direction");
+        var fence = StorageFence.tryAcquire(contexts);
+        if (fence == null) return HatchReplacement.of(HatchReconfigurationStatus.PENDING_BUSY);
+        try {
+            var captured = fence.access(() -> {
+                if ((input != null && !input.idleForReplacement()) || (output != null && !output.idleForReplacement()))
+                    return null;
+                return new Capture(input == null ? List.of() : input.committedContents(),
+                    output == null ? List.of() : output.committedContents(),
+                    contexts.stream().map(c -> new HatchReplacement.Version(c, c.revision())).toList());
+            });
+            if (captured == null) return HatchReplacement.of(HatchReconfigurationStatus.PENDING_BUSY);
+            // The old fence stays held, but its access scope must not touch any new context.
+            var nextInput = pack(captured.input, target.input());
+            var nextOutput = pack(captured.output, target.output());
+            if (nextInput == null || nextOutput == null)
+                return new HatchReplacement(HatchReconfigurationStatus.BLOCKED_CAPACITY, captured.versions);
+            var changes = new HatchStorageChanges(onChanged);
+            var candidate = new BufferedResourceHatch(target, changes);
+            candidate.restoreContents(nextInput, nextOutput);
+            candidate.bindSourceIdentities(location);
+            var publish = preparePublication.apply(candidate);
+            return fence.access(() -> {
+                if (!current.getAsBoolean() || !captured.versions.stream().allMatch(HatchReplacement.Version::current))
+                    return HatchReplacement.of(HatchReconfigurationStatus.STALE_TARGET);
+                contexts.forEach(StorageContext::requireRetirement);
+                contexts.forEach(StorageContext::invalidate);
+                publish.run();
+                changes.enable();
+                return HatchReplacement.of(HatchReconfigurationStatus.APPLIED);
+            });
+        } finally {
+            fence.release();
+        }
+    }
+
+    public void bindSourceIdentities(@Nullable String location) {
+        if (location == null) return;
+        if (input != null) input.context().bindSourceIdentity(location + "/input");
+        if (output != null) output.context().bindSourceIdentity(location + "/output");
+    }
+
+    @Override
+    @Nullable
+    public SlottedResourceStorage input() {
+        return input;
+    }
+
+    @Override
+    @Nullable
+    public SlottedResourceStorage output() {
+        return output;
+    }
+
+    /**
+     * External automation inserts only into input and extracts only from output.
+     */
+    public MEStorage automation() {
+        return automation;
+    }
+
+    @Override
+    public boolean isValid() {
+        return (input == null || input.isValid()) && (output == null || output.isValid());
+    }
+
+    /**
+     * Retained machine/automation storage references also stop accepting operations.
+     */
+    public void invalidate() {
+        locked(() -> {
+            if (input != null) {
+                input.context().invalidate();
+            }
+            if (output != null) {
+                output.context().invalidate();
+            }
+        });
+    }
+
+    public void save(NBTTagCompound tag) {
+        locked(() -> {
+            saveSide(tag, "Input", input);
+            saveSide(tag, "Output", output);
+        });
+    }
+
+    public void load(NBTTagCompound tag) {
+        var inputContents = readSide(tag, "Input", input);
+        var outputContents = readSide(tag, "Output", output);
+        restoreContents(inputContents, outputContents);
+    }
+
+    /**
+     * Commits decoded contents only after both independent sides pass validation.
+     */
+    void restoreContents(List<GenericStack> inputContents, List<GenericStack> outputContents) {
+        locked(() -> {
+            var nextInput = input == null ? null : input.prepareRestore(inputContents);
+            var nextOutput = output == null ? null : output.prepareRestore(outputContents);
+            if (input != null) {
+                input.restorePrepared(Objects.requireNonNull(nextInput));
+            }
+            if (output != null) {
+                output.restorePrepared(Objects.requireNonNull(nextOutput));
+            }
+        });
+    }
+
+    private void locked(Runnable action) {
+        // These independent contexts are constructed in this order and never replaced.
+        StorageContext.lockAll(contexts);
+        try {
+            action.run();
+        } finally {
+            if (output != null) {
+                output.context().unlockDeferred();
+            }
+            if (input != null) {
+                input.context().unlockDeferred();
+            }
+            if (input != null) {
+                input.context().publishChanges();
+            }
+            if (output != null) {
+                output.context().publishChanges();
+            }
+        }
     }
 
     private record Capture(List<GenericStack> input, List<GenericStack> output,

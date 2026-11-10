@@ -15,13 +15,36 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Direct FTBLib 1.12.2 adapter bound to one actual server session. */
+/**
+ * Direct FTBLib 1.12.2 adapter bound to one actual server session.
+ */
 @SuppressWarnings("unused") // Server hosts construct this adapter explicitly and pass it to NetworkPlanner.capture.
 public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
     private final MinecraftServer server;
 
     public FtbOwnerTeamResolver(MinecraftServer server) {
         this.server = Objects.requireNonNull(server, "server");
+    }
+
+    private static UUID requirePlayerId(@Nullable ForgePlayer player, String teamId, String role) {
+        if (player == null || player.getId() == null) {
+            throw new IllegalStateException("FTBLib team " + teamId + " contains an invalid " + role + " UUID");
+        }
+        return player.getId();
+    }
+
+    private static @Nullable OwnerTeamType mapType(TeamType type) {
+        if (type == TeamType.PLAYER) {
+            return OwnerTeamType.PLAYER;
+        }
+        if (type == TeamType.SERVER) {
+            return OwnerTeamType.SERVER;
+        }
+        return null;
+    }
+
+    private static OwnerTeamResolution rejected(UUID ownerId, OwnerTeamResolutionStatus status, String message) {
+        return OwnerTeamResolution.rejected(ownerId, status, message);
     }
 
     @Override
@@ -70,22 +93,5 @@ public final class FtbOwnerTeamResolver implements OwnerTeamResolver {
         var teamOwnerId = teamOwner == null ? Optional.<UUID>empty()
             : Optional.of(requirePlayerId(teamOwner, teamId, "owner"));
         return OwnerTeamResolution.resolved(ownerId, teamId, type, members, teamOwnerId);
-    }
-
-    private static UUID requirePlayerId(@Nullable ForgePlayer player, String teamId, String role) {
-        if (player == null || player.getId() == null) {
-            throw new IllegalStateException("FTBLib team " + teamId + " contains an invalid " + role + " UUID");
-        }
-        return player.getId();
-    }
-
-    private static @Nullable OwnerTeamType mapType(TeamType type) {
-        if (type == TeamType.PLAYER) { return OwnerTeamType.PLAYER; }
-        if (type == TeamType.SERVER) { return OwnerTeamType.SERVER; }
-        return null;
-    }
-
-    private static OwnerTeamResolution rejected(UUID ownerId, OwnerTeamResolutionStatus status, String message) {
-        return OwnerTeamResolution.rejected(ownerId, status, message);
     }
 }

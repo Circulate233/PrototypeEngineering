@@ -5,7 +5,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Current server-captured actor, target and roles. Packet fields must never supply the role flags. */
+/**
+ * Current server-captured actor, target and roles. Packet fields must never supply the role flags.
+ */
 public record ResearchPermissionContext(UUID actorId, @Nullable String actorTeamId,
                                         @Nullable UUID targetPlayerId, @Nullable String targetTeamId,
                                         boolean teamLeader, boolean teamModerator, boolean serverOperator) {
@@ -21,5 +23,7 @@ public record ResearchPermissionContext(UUID actorId, @Nullable String actorTeam
         }
     }
 
-    public UUID personalTarget() { return targetPlayerId == null ? actorId : targetPlayerId; }
+    public UUID personalTarget() {
+        return targetPlayerId == null ? actorId : targetPlayerId;
+    }
 }

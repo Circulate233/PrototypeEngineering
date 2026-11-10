@@ -18,6 +18,12 @@ public final class MachineRenderBindings {
     private long revision;
     private View view = new View(0, Map.of(), Map.of(), Map.of());
 
+    private static <K, V> Map<K, V> values(Map<K, Entry<V>> entries) {
+        var result = new Object2ObjectLinkedOpenHashMap<K, V>();
+        entries.forEach((key, value) -> result.put(key, value.value));
+        return Object2ObjectMaps.unmodifiable(result);
+    }
+
     public Registration bindMachine(ResourceLocation id, GeckoModelBinding binding) {
         return bind(machines, id, binding);
     }
@@ -95,12 +101,6 @@ public final class MachineRenderBindings {
         }
         if (failure instanceof RuntimeException runtime) throw runtime;
         if (failure instanceof Error error) throw error;
-    }
-
-    private static <K, V> Map<K, V> values(Map<K, Entry<V>> entries) {
-        var result = new Object2ObjectLinkedOpenHashMap<K, V>();
-        entries.forEach((key, value) -> result.put(key, value.value));
-        return Object2ObjectMaps.unmodifiable(result);
     }
 
     private void requireOwner() {

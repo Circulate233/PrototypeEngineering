@@ -28,7 +28,9 @@ public interface StructureComponentProvider {
         }
     }
 
-    /** Provider-local port identity; the canonical ComponentType also supplies typed queries. */
+    /**
+     * Provider-local port identity; the canonical ComponentType also supplies typed queries.
+     */
     record Entry<C>(ComponentType<MachineInstance, C> type, String portId, C component) {
         public Entry {
             Objects.requireNonNull(type);

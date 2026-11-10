@@ -12,12 +12,20 @@ import java.util.function.LongSupplier;
 
 /** One search continues across different recipes, lazily creating process slots until the shared allowance is spent. */
 public class CrossRecipeController extends RecipeController {
-    public CrossRecipeController() { }
-    public CrossRecipeController(MachineType type) { super(type); }
-    @Override public MachineWorkSlots createRecipeHost(List<WorkSlotDefinition> definitions, Set<ResourceLocation> groups) {
+    public CrossRecipeController() {
+    }
+
+    public CrossRecipeController(MachineType type) {
+        super(type);
+    }
+
+    @Override
+    public MachineWorkSlots createRecipeHost(List<WorkSlotDefinition> definitions, Set<ResourceLocation> groups) {
         return MachineWorkSlots.crossRecipe(this, definitions, groups);
     }
-    @Override public RecipeScanner createRecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
+
+    @Override
+    public RecipeScanner createRecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds) {
         if (host.owner() != this) throw new IllegalArgumentException("Foreign scanner host");
         return RecipeScanner.crossRecipe(host, catalog, seeds);
     }

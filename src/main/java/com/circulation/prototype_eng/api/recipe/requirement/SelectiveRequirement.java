@@ -10,7 +10,9 @@ import net.minecraft.util.ResourceLocation;
 import java.util.List;
 import java.util.Objects;
 
-/** Ordered optional alternatives. The first successful START is retained for this process's lifetime. */
+/**
+ * Ordered optional alternatives. The first successful START is retained for this process's lifetime.
+ */
 public record SelectiveRequirement(List<RecipeRequirement<?>> candidates, List<SelectiveModifierDescriptor> modifiers) {
     public SelectiveRequirement {
         var candidateCopy = new ObjectArrayList<RecipeRequirement<?>>();

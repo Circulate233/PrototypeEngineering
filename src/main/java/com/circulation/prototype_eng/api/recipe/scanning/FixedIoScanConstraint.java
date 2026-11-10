@@ -1,26 +1,27 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
+import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
-import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.storage.StorageContext;
-import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
-import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
+import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.RecipeText;
+import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 import java.util.function.BooleanSupplier;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * PM's fixed TICK/END admission checks using the same batch acquisition as actual execution.
@@ -30,9 +31,97 @@ import org.jetbrains.annotations.Nullable;
  * its present capacity. Normal mixed hatches have independent input/output buffers and are checked.
  */
 public final class FixedIoScanConstraint implements RecipeParallelismConstraint {
+    private static boolean sharedResourceContext(MachineHatches hatches) {
+        var sources = new ReferenceOpenHashSet<StorageContext>();
+        for (var hatch : hatches.resources()) {
+            if (!hatch.isValid()) {
+                continue;
+            }
+            var input = hatch.input();
+            if (input != null && input.isValid()) {
+                sources.add(input.context());
+            }
+        }
+        for (var hatch : hatches.resources()) {
+            if (!hatch.isValid()) {
+                continue;
+            }
+            var output = hatch.output();
+            // All AEKey types can compete for the same physical slots.
+            if (output != null && output.isValid() && sources.contains(output.context())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean sharedEnergyContext(MachineHatches hatches) {
+        var sources = new ReferenceOpenHashSet<StorageContext>();
+        for (var input : hatches.energyInputs()) {
+            if (input.isValid()) {
+                sources.add(input.context());
+            }
+        }
+        for (var output : hatches.energyOutputs()) {
+            if (output.isValid() && sources.contains(output.context())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public Check beginCheck(RecipeProcess process) {
         return new FixedCheck(process);
+    }
+
+    @Override
+    public ProcessResult test(RecipeProcess process) {
+        process.requirePersistenceBoundary();
+        for (var binding : process.components().snapshotBindings()) {
+            if (!binding.type().systems().isEmpty()) {
+                return ProcessResult.SUCCESS;
+            }
+        }
+        var resources = Io.EMPTY;
+        var energy = Io.EMPTY;
+        var overlays = process.components().get(RecipeOverlays.TYPE);
+        for (var requirement : process.orderedRequirements()) {
+            var effective = overlays == null ? requirement : overlays.resolve(requirement);
+            if (requirement.type() == RecipeRequirements.RESOURCES && effective.payload() instanceof ResourceRequirement payload) {
+                if (!payload.chance().equals(ResourceChance.ALWAYS) || payload.randomOutputs() != null
+                    || !payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty()) {
+                    return ProcessResult.SUCCESS;
+                }
+                resources = resources.merge(new Io(!payload.inputs().isEmpty(), !payload.inputsPerTick().isEmpty(),
+                    !payload.outputsPerTick().isEmpty(), !payload.outputs().isEmpty()));
+            } else if (requirement.type() == RecipeRequirements.ENERGY && effective.payload() instanceof EnergyRequirement payload) {
+                energy = energy.merge(new Io(payload.input() > 0, payload.inputPerTick() > 0,
+                    payload.outputPerTick() > 0, payload.output() > 0));
+            } else {
+                // Earlier requirements may change later IO, attributes or process-local state.
+                return ProcessResult.SUCCESS;
+            }
+        }
+        boolean ticks = process.recipe().durationTicks() > 0;
+        boolean checkTick = ticks && (resources.needsTick() || energy.needsTick());
+        boolean checkEnd = resources.endOutput || energy.endOutput;
+        if (!checkTick && !checkEnd) {
+            return ProcessResult.SUCCESS;
+        }
+        var hatches = MachineHatches.get(process.owner());
+        boolean sharedResources = resources.mayFreeOutput(ticks) && sharedResourceContext(hatches);
+        boolean sharedEnergy = energy.mayFreeOutput(ticks) && sharedEnergyContext(hatches);
+        if (checkTick && !resources.freesTickOutput(sharedResources) && !energy.freesTickOutput(sharedEnergy)) {
+            var result = RecipeStageExecutor.probeStage(process, RecipeStage.TICK);
+            if (result != ProcessResult.SUCCESS) {
+                return result;
+            }
+        }
+        if (checkEnd && !resources.freesEndOutput(sharedResources, ticks) && !energy.freesEndOutput(sharedEnergy, ticks)) {
+            return RecipeStageExecutor.probeStage(process, RecipeStage.END);
+        }
+        return ProcessResult.SUCCESS;
     }
 
     private static final class FixedCheck implements Check {
@@ -55,7 +144,8 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
         private int phase;
         private boolean cancelled;
         private ProcessResult result = ProcessResult.SUCCESS;
-        @Nullable private RecipeStageExecutor.Probe probe;
+        @Nullable
+        private RecipeStageExecutor.Probe probe;
 
         private FixedCheck(RecipeProcess process) {
             process.requirePersistenceBoundary();
@@ -208,92 +298,48 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
             return true;
         }
 
-        @Override public ProcessResult result() {
+        @Override
+        public ProcessResult result() {
             if (phase != 8) throw new IllegalStateException("Fixed IO constraint is incomplete");
             return result;
         }
-        @Override public void cancel() { cancelled = true; }
-        @Override public @Nullable RecipePureComputation computation() { return probe == null ? null : probe.computation(); }
-        @Override public void finishComputation(RecipePureComputation expected) {
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+        }
+
+        @Override
+        public @Nullable RecipePureComputation computation() {
+            return probe == null ? null : probe.computation();
+        }
+
+        @Override
+        public void finishComputation(RecipePureComputation expected) {
             if (probe == null) throw new IllegalStateException("No fixed IO probe");
             probe.finishComputation(expected);
         }
-        @Override public List<ResourceBatch.Source> sources() { return probe == null ? List.of() : probe.sources(); }
-        @Override public boolean resolvingSources() { return probe != null && probe.resolvingSources(); }
-        @Override public void finishSourceResolution(ResourceBatch.Source expected, boolean resolved) {
+
+        @Override
+        public List<ResourceBatch.Source> sources() {
+            return probe == null ? List.of() : probe.sources();
+        }
+
+        @Override
+        public boolean resolvingSources() {
+            return probe != null && probe.resolvingSources();
+        }
+
+        @Override
+        public void finishSourceResolution(ResourceBatch.Source expected, boolean resolved) {
             if (probe == null) throw new IllegalStateException("No fixed IO source action");
             probe.finishSourceResolution(expected, resolved);
         }
-        @Override public boolean hasObligations() { return probe != null; }
-    }
-    @Override
-    public ProcessResult test(RecipeProcess process) {
-        process.requirePersistenceBoundary();
-        for (var binding : process.components().snapshotBindings()) {
-            if (!binding.type().systems().isEmpty()) { return ProcessResult.SUCCESS; }
-        }
-        var resources = Io.EMPTY;
-        var energy = Io.EMPTY;
-        var overlays = process.components().get(RecipeOverlays.TYPE);
-        for (var requirement : process.orderedRequirements()) {
-            var effective = overlays == null ? requirement : overlays.resolve(requirement);
-            if (requirement.type() == RecipeRequirements.RESOURCES && effective.payload() instanceof ResourceRequirement payload) {
-                if (!payload.chance().equals(ResourceChance.ALWAYS) || payload.randomOutputs() != null
-                    || !payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty()) {
-                    return ProcessResult.SUCCESS;
-                }
-                resources = resources.merge(new Io(!payload.inputs().isEmpty(), !payload.inputsPerTick().isEmpty(),
-                    !payload.outputsPerTick().isEmpty(), !payload.outputs().isEmpty()));
-            } else if (requirement.type() == RecipeRequirements.ENERGY && effective.payload() instanceof EnergyRequirement payload) {
-                energy = energy.merge(new Io(payload.input() > 0, payload.inputPerTick() > 0,
-                    payload.outputPerTick() > 0, payload.output() > 0));
-            } else {
-                // Earlier requirements may change later IO, attributes or process-local state.
-                return ProcessResult.SUCCESS;
-            }
-        }
-        boolean ticks = process.recipe().durationTicks() > 0;
-        boolean checkTick = ticks && (resources.needsTick() || energy.needsTick());
-        boolean checkEnd = resources.endOutput || energy.endOutput;
-        if (!checkTick && !checkEnd) { return ProcessResult.SUCCESS; }
-        var hatches = MachineHatches.get(process.owner());
-        boolean sharedResources = resources.mayFreeOutput(ticks) && sharedResourceContext(hatches);
-        boolean sharedEnergy = energy.mayFreeOutput(ticks) && sharedEnergyContext(hatches);
-        if (checkTick && !resources.freesTickOutput(sharedResources) && !energy.freesTickOutput(sharedEnergy)) {
-            var result = RecipeStageExecutor.probeStage(process, RecipeStage.TICK);
-            if (result != ProcessResult.SUCCESS) { return result; }
-        }
-        if (checkEnd && !resources.freesEndOutput(sharedResources, ticks) && !energy.freesEndOutput(sharedEnergy, ticks)) {
-            return RecipeStageExecutor.probeStage(process, RecipeStage.END);
-        }
-        return ProcessResult.SUCCESS;
-    }
 
-    private static boolean sharedResourceContext(MachineHatches hatches) {
-        var sources = new ReferenceOpenHashSet<StorageContext>();
-        for (var hatch : hatches.resources()) {
-            if (!hatch.isValid()) { continue; }
-            var input = hatch.input();
-            if (input != null && input.isValid()) { sources.add(input.context()); }
+        @Override
+        public boolean hasObligations() {
+            return probe != null;
         }
-        for (var hatch : hatches.resources()) {
-            if (!hatch.isValid()) { continue; }
-            var output = hatch.output();
-            // All AEKey types can compete for the same physical slots.
-            if (output != null && output.isValid() && sources.contains(output.context())) { return true; }
-        }
-        return false;
-    }
-
-    private static boolean sharedEnergyContext(MachineHatches hatches) {
-        var sources = new ReferenceOpenHashSet<StorageContext>();
-        for (var input : hatches.energyInputs()) {
-            if (input.isValid()) { sources.add(input.context()); }
-        }
-        for (var output : hatches.energyOutputs()) {
-            if (output.isValid() && sources.contains(output.context())) { return true; }
-        }
-        return false;
     }
 
     private record Io(boolean startInput, boolean tickInput, boolean tickOutput, boolean endOutput) {
@@ -304,9 +350,20 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
                 tickOutput || other.tickOutput, endOutput || other.endOutput);
         }
 
-        private boolean needsTick() { return tickInput || tickOutput; }
-        private boolean mayFreeOutput(boolean ticks) { return (startInput || ticks && tickInput) && (tickOutput || endOutput); }
-        private boolean freesTickOutput(boolean shared) { return shared && startInput && tickOutput; }
-        private boolean freesEndOutput(boolean shared, boolean ticks) { return shared && endOutput && (startInput || ticks && tickInput); }
+        private boolean needsTick() {
+            return tickInput || tickOutput;
+        }
+
+        private boolean mayFreeOutput(boolean ticks) {
+            return (startInput || ticks && tickInput) && (tickOutput || endOutput);
+        }
+
+        private boolean freesTickOutput(boolean shared) {
+            return shared && startInput && tickOutput;
+        }
+
+        private boolean freesEndOutput(boolean shared, boolean ticks) {
+            return shared && endOutput && (startInput || ticks && tickInput);
+        }
     }
 }

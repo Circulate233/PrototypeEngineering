@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
@@ -20,11 +21,47 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class NetworkRecipeExtensionsTest {
-    @Test void callbacksSeeEveryCanonicalRecipeOnceInIdPriorityAndRegistrationOrder() {
+    private static NetworkResourceRegistry resources() {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        return resources;
+    }
+
+    private static ResearchRegistry research(NetworkResourceRegistry resources) {
+        var research = new ResearchRegistry();
+        research.register(ResearchDefinition.builder(id("research")).maxLevel(2)
+                                            .deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(ResearchLevelStage.builder(1, 2)
+                                                                                                                              .researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+        research.freeze(resources);
+        return research;
+    }
+
+    private static RecipeCatalog catalog(MachineRecipe... recipes) {
+        return new RecipeCatalog(List.of(pool("pool", recipes)));
+    }
+
+    private static RecipePool pool(String path, MachineRecipe... recipes) {
+        return new DefaultRecipePool(id(path), "test.title", List.of(recipes));
+    }
+
+    private static MachineRecipe recipe(String path) {
+        return new MachineRecipe(id(path), 1, List.of());
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("recipe_extensions_test", path);
+    }
+
+    @Test
+    void callbacksSeeEveryCanonicalRecipeOnceInIdPriorityAndRegistrationOrder() {
         var first = recipe("a");
         var last = recipe("z");
         var middle = new MachineRecipe(id("m"), 1, List.of(), List.of(id("group")));
@@ -67,7 +104,8 @@ class NetworkRecipeExtensionsTest {
         assertThrows(IllegalStateException.class, () -> extensions.publish(catalog, research(resources), resources));
     }
 
-    @Test void originalCallbackFailurePublishesNothingAndClosesCompletedAndFailingContextsWithoutReplay() {
+    @Test
+    void originalCallbackFailurePublishesNothingAndClosesCompletedAndFailingContextsWithoutReplay() {
         var first = recipe("a");
         var last = recipe("z");
         var catalog = catalog(first, last);
@@ -79,7 +117,9 @@ class NetworkRecipeExtensionsTest {
             calls.incrementAndGet();
             retained.add(builder);
             builder.resource(NetworkResources.COMPUTE, 5);
-            if (recipe == last) { throw failure; }
+            if (recipe == last) {
+                throw failure;
+            }
         });
         var resources = resources();
         var research = research(resources);
@@ -97,7 +137,8 @@ class NetworkRecipeExtensionsTest {
         assertEquals(2, calls.get());
     }
 
-    @Test void lateResearchValidationFailureDiscardsEarlierEntriesAndSealsAllCallbackContexts() {
+    @Test
+    void lateResearchValidationFailureDiscardsEarlierEntriesAndSealsAllCallbackContexts() {
         for (var invalidId : List.of(id("research"), id("unknown_research"))) {
             var first = recipe("a");
             var last = recipe("z");
@@ -111,11 +152,14 @@ class NetworkRecipeExtensionsTest {
             assertThrows(IllegalArgumentException.class, () -> extensions.publish(catalog(first, last), research(resources), resources));
             assertFalse(extensions.published());
             assertThrows(IllegalStateException.class, () -> extensions.require(first));
-            for (var builder : retained) { assertThrows(IllegalStateException.class, builder::build); }
+            for (var builder : retained) {
+                assertThrows(IllegalStateException.class, builder::build);
+            }
         }
     }
 
-    @Test void authoritativeValidationRejectsUnregisteredAndChangedCapOrLogicalMetadata() {
+    @Test
+    void authoritativeValidationRejectsUnregisteredAndChangedCapOrLogicalMetadata() {
         for (var type : List.of(new NetworkResourceType(id("unknown_resource"), false, 0),
             new NetworkResourceType(NetworkResources.COMPUTE.id(), false, 10),
             new NetworkResourceType(NetworkResources.THREAD.id(), false, 1))) {
@@ -132,7 +176,8 @@ class NetworkRecipeExtensionsTest {
         }
     }
 
-    @Test void dependencyFailureStartsNoCallbacksAndCannotBeRetried() {
+    @Test
+    void dependencyFailureStartsNoCallbacksAndCannotBeRetried() {
         var resources = resources();
         var extensions = new NetworkRecipeExtensions();
         var calls = new AtomicInteger();
@@ -144,7 +189,8 @@ class NetworkRecipeExtensionsTest {
         assertFalse(extensions.published());
     }
 
-    @Test void catalogIdentityRejectsCounterfeitsAndEmptyCatalogNeedsNoCallbacks() {
+    @Test
+    void catalogIdentityRejectsCounterfeitsAndEmptyCatalogNeedsNoCallbacks() {
         var canonical = recipe("one");
         var resources = resources();
         var extensions = new NetworkRecipeExtensions();
@@ -157,24 +203,4 @@ class NetworkRecipeExtensionsTest {
         assertTrue(empty.published());
         assertThrows(IllegalArgumentException.class, () -> empty.require(canonical));
     }
-
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
-    }
-
-    private static ResearchRegistry research(NetworkResourceRegistry resources) {
-        var research = new ResearchRegistry();
-        research.register(ResearchDefinition.builder(id("research")).maxLevel(2)
-            .deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(ResearchLevelStage.builder(1, 2)
-                .researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-        research.freeze(resources);
-        return research;
-    }
-
-    private static RecipeCatalog catalog(MachineRecipe... recipes) { return new RecipeCatalog(List.of(pool("pool", recipes))); }
-    private static RecipePool pool(String path, MachineRecipe... recipes) { return new DefaultRecipePool(id(path), "test.title", List.of(recipes)); }
-    private static MachineRecipe recipe(String path) { return new MachineRecipe(id(path), 1, List.of()); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("recipe_extensions_test", path); }
 }

@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
@@ -13,7 +13,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Immutable eligibility input, not a reservation or permission to mutate resources. */
+/**
+ * Immutable eligibility input, not a reservation or permission to mutate resources.
+ */
 @SuppressWarnings("unused")
 public record ResearchStartContext(ResourceLocation researchId, int targetLevel, @Nullable UUID playerId,
                                    @Nullable String teamId, Object2IntMap<ResourceLocation> teamSharedResearchLevels,
@@ -25,7 +27,9 @@ public record ResearchStartContext(ResourceLocation researchId, int targetLevel,
         }
         var levels = new Object2IntOpenHashMap<ResourceLocation>();
         for (var entry : Objects.requireNonNull(teamSharedResearchLevels).object2IntEntrySet()) {
-            if (entry.getIntValue() < 0) { throw new IllegalArgumentException("Negative shared research level"); }
+            if (entry.getIntValue() < 0) {
+                throw new IllegalArgumentException("Negative shared research level");
+            }
             levels.put(Objects.requireNonNull(entry.getKey()), entry.getIntValue());
         }
         teamSharedResearchLevels = ResearchSnapshots.levels(levels);
@@ -41,5 +45,7 @@ public record ResearchStartContext(ResourceLocation researchId, int targetLevel,
         availableResources = NetworkResourceModifier.copyResources(amounts);
     }
 
-    public boolean teamHasNetworkCenter() { return networkCenterLevel > 0; }
+    public boolean teamHasNetworkCenter() {
+        return networkCenterLevel > 0;
+    }
 }

@@ -75,8 +75,10 @@ public class DefaultRecipeDisplays {
             }
         } else if (requirement.type() == RecipeRequirements.ATTRIBUTES) {
             var attribute = (AttributeRequirement) requirement.payload();
-            if (attribute.applyAtStart()) display.information(of(JeiText.AttributeAdded, attribute.attribute(), attribute.modifier().id()));
-            if (attribute.removeAtEnd()) display.information(of(JeiText.AttributeRemoved, attribute.attribute(), attribute.modifier().id()));
+            if (attribute.applyAtStart())
+                display.information(of(JeiText.AttributeAdded, attribute.attribute(), attribute.modifier().id()));
+            if (attribute.removeAtEnd())
+                display.information(of(JeiText.AttributeRemoved, attribute.attribute(), attribute.modifier().id()));
         } else {
             display.information(of(JeiText.CustomRequirement, requirement.type().id(), requirement.id()));
         }
@@ -95,14 +97,16 @@ public class DefaultRecipeDisplays {
                 targets = new ObjectArrayList<>();
                 int count = source == null ? 1 : source.alternativeSlots();
                 for (int pick = 0; pick < count; pick++) {
-                    if (nextSlot == slots.size()) slots.add(new JeiRecipeDisplay.CandidateGroup(name + "/" + role + "/" + nextSlot));
+                    if (nextSlot == slots.size())
+                        slots.add(new JeiRecipeDisplay.CandidateGroup(name + "/" + role + "/" + nextSlot));
                     targets.add(slots.get(nextSlot++));
                 }
                 if (source != null) assigned.put(source, targets);
             }
             for (var target : targets) {
                 var output = display.candidates(target);
-                if (row.chance() != null) output = output.chance(row.chance().percent(), row.chance().attributeDriven());
+                if (row.chance() != null)
+                    output = output.chance(row.chance().percent(), row.chance().attributeDriven());
                 output.resource(row.stack(), role, row.details().toArray(JeiRecipeDisplay.Text[]::new));
             }
         }
@@ -110,7 +114,7 @@ public class DefaultRecipeDisplays {
 
     private static void resources(RecipeRequirement<?> requirement, ResourceRequirement resource, JeiRecipeDisplay.Builder display) {
         var declared = display.chance(resource.chance().percent(), resource.chance().attribute() != null)
-            .scoped(of(JeiText.Chance, resource.chance().percent()));
+                              .scoped(of(JeiText.Chance, resource.chance().percent()));
         if (resource.chance().attribute() != null) {
             declared = declared.scoped(of(JeiText.ChanceAttribute, resource.chance().attribute()));
         }
@@ -142,7 +146,7 @@ public class DefaultRecipeDisplays {
         for (var group : resource.dynamicInputs()) {
             var groupId = requirement.id() + "/dynamic/" + groupIndex++;
             var dynamic = declared.candidates(new JeiRecipeDisplay.CandidateGroup(groupId))
-                .scoped(of(JeiText.Dynamic, groupId, group.matcher().id()));
+                                  .scoped(of(JeiText.Dynamic, groupId, group.matcher().id()));
             dynamic.information(of(JeiText.Consume, group.amount()));
             // Only explicitly supplied examples are indexed; pattern and callbacks are not inferred outputs.
             for (var key : group.displayedCandidates()) {

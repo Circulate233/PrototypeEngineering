@@ -52,7 +52,77 @@ class SelectiveRequirementTest {
     private static final Key MATERIAL = new Key(TYPE, "material");
     private static final ResourceLocation SCORE = id("score");
     private static final ResourceLocation OTHER = id("other");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static SelectiveModifierDescriptor boost(String name, double amount) {
+        return new SelectiveModifierDescriptor(id(name), context -> context.putProcessAttributeModifier(SCORE, add("bonus", amount)));
+    }
+
+    private static NumericAttributeModifier add(String name, double amount) {
+        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates,
+                                                                    List<SelectiveModifierDescriptor> modifiers) {
+        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates, modifiers));
+    }
+
+    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates) {
+        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates));
+    }
+
+    private static RecipeRequirement<String> external(String namespace,
+                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
+        var location = new ResourceLocation(namespace, "requirement");
+        return binding(location, acquire);
+    }
+
+    private static RecipeRequirement<String> binding(ResourceLocation location,
+                                                     BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire,
+                                                     StorageContext... contexts) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return List.of(contexts);
+            }
+
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquire.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(location, system).requirement(location, "immutable_payload");
+    }
+
+    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(),
+            new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
+    }
+
+    private static SelectiveState state(RecipeProcess process) {
+        return Objects.requireNonNull(process.components().get(SelectiveState.TYPE));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("selective_test", name);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, NO_OP);
+    }
 
     @Test
     void rejectedBlockedAndFailedCandidatesRollbackBeforeTheFirstSuccessAndRemainUnselected() {
@@ -146,11 +216,15 @@ class SelectiveRequirementTest {
         var selection = selector("retry", List.of(candidate.requirement()), List.of(boost("bonus", 4)));
         var earlier = external("aa_selective", (current, stage) -> stage == RecipeStage.START
             ? new SimpleTransaction(ProcessResult.SUCCESS,
-                () -> current.attributes().setBase(OTHER, current.attributes().value(OTHER) + 5),
-                () -> current.attributes().setBase(OTHER, current.attributes().value(OTHER) - 5))
+            () -> current.attributes().setBase(OTHER, current.attributes().value(OTHER) + 5),
+            () -> current.attributes().setBase(OTHER, current.attributes().value(OTHER) - 5))
             : RequirementTransaction.SUCCESS);
         var later = external("zz_selective", (_, stage) -> stage == RecipeStage.START
-            ? new SimpleTransaction(ProcessResult.SUCCESS, () -> { if (fail[0]) { throw primary; } }, NO_OP)
+            ? new SimpleTransaction(ProcessResult.SUCCESS, () -> {
+            if (fail[0]) {
+                throw primary;
+            }
+        }, NO_OP)
             : RequirementTransaction.SUCCESS);
         var process = process(2, earlier, selection, later);
         process.attributes().setBase(OTHER, 10);
@@ -290,7 +364,11 @@ class SelectiveRequirementTest {
         boolean[] fail = {true};
         var selection = selector("failed_end", List.of(candidate.requirement()), List.of(boost("bonus", 4)));
         var process = process(1, selection, external("zz_selective", (_, stage) -> stage == RecipeStage.END
-            ? new SimpleTransaction(ProcessResult.SUCCESS, () -> { if (fail[0]) { throw primary; } }, NO_OP)
+            ? new SimpleTransaction(ProcessResult.SUCCESS, () -> {
+            if (fail[0]) {
+                throw primary;
+            }
+        }, NO_OP)
             : RequirementTransaction.SUCCESS));
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
         assertEquals(5, process.attributes().value(SCORE));
@@ -346,7 +424,11 @@ class SelectiveRequirementTest {
         var primary = new IllegalStateException("parent START failed");
         boolean[] fail = {true};
         var process = process(0, checkpoint, external("zz_selective", (_, stage) -> stage == RecipeStage.START
-            ? new SimpleTransaction(ProcessResult.SUCCESS, () -> { if (fail[0]) { throw primary; } }, NO_OP)
+            ? new SimpleTransaction(ProcessResult.SUCCESS, () -> {
+            if (fail[0]) {
+                throw primary;
+            }
+        }, NO_OP)
             : RequirementTransaction.SUCCESS));
         var path = selection.path(checkpoint.path(null));
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
@@ -411,76 +493,28 @@ class SelectiveRequirementTest {
         assertEquals(3, process.attributes().value(SCORE));
     }
 
-    private static SelectiveModifierDescriptor boost(String name, double amount) {
-        return new SelectiveModifierDescriptor(id(name), context -> context.putProcessAttributeModifier(SCORE, add("bonus", amount)));
-    }
+    private record SimpleTransaction(ProcessResult result, Runnable onCommit,
+                                     Runnable onRollback) implements RequirementTransaction {
+        @Override
+        public void commit() {
+            onCommit.run();
+        }
 
-    private static NumericAttributeModifier add(String name, double amount) {
-        return new NumericAttributeModifier(name, amount, AttributeModifier.Operation.ADDITION);
-    }
-
-    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates,
-                                                                   List<SelectiveModifierDescriptor> modifiers) {
-        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates, modifiers));
-    }
-
-    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates) {
-        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates));
-    }
-
-    private static RecipeRequirement<String> external(String namespace,
-                                                       BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire) {
-        var location = new ResourceLocation(namespace, "requirement");
-        return binding(location, acquire);
-    }
-
-    private static RecipeRequirement<String> binding(ResourceLocation location,
-                                                      BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquire,
-                                                      StorageContext... contexts) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return List.of(contexts);
-            }
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquire.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(location, system).requirement(location, "immutable_payload");
-    }
-
-    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(),
-            new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
-    }
-
-    private static SelectiveState state(RecipeProcess process) {
-        return Objects.requireNonNull(process.components().get(SelectiveState.TYPE));
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("selective_test", name); }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, NO_OP);
-    }
-
-    private record SimpleTransaction(ProcessResult result, Runnable onCommit, Runnable onRollback) implements RequirementTransaction {
-        @Override public void commit() { onCommit.run(); }
-        @Override public void rollback() { onRollback.run(); }
+        @Override
+        public void rollback() {
+            onRollback.run();
+        }
     }
 
     private static final class Environment {
         private final SlottedResourceBuffer input = buffer();
         private final SlottedResourceBuffer output = buffer();
         private final List<String> events = new ObjectArrayList<>();
-        private Environment() { input.insert(MATERIAL, 20, Actionable.MODULATE); }
+
+        private Environment() {
+            input.insert(MATERIAL, 20, Actionable.MODULATE);
+        }
+
         private Candidate candidate(String name, long start, long tick, long end) {
             return new Candidate(this, name, start, tick, end);
         }
@@ -511,15 +545,18 @@ class SelectiveRequirementTest {
             endAmount = end;
         }
 
-        private RecipeRequirement<String> requirement() { return binding(id(name), this::acquire, env.input.context(), env.output.context()); }
+        private RecipeRequirement<String> requirement() {
+            return binding(id(name), this::acquire, env.input.context(), env.output.context());
+        }
 
         private RequirementTransaction acquire(RecipeProcess process, RecipeStage stage) {
             env.events.add(name + ":acquire:" + stage);
             var path = process.requirementPath();
             paths.add(path);
             var tick = stage == RecipeStage.TICK ? process.tickContext() : null;
-            if (stage == RecipeStage.START) { startAcquisitions++; }
-            else {
+            if (stage == RecipeStage.START) {
+                startAcquisitions++;
+            } else {
                 var decision = Objects.requireNonNull(state(process).selection(Objects.requireNonNull(path.parent())));
                 committedAtAcquisition.add(decision.committed());
             }
@@ -540,34 +577,60 @@ class SelectiveRequirementTest {
             acquisitionEffects++;
             return new RequirementTransaction() {
                 private boolean committed;
-                @Override public ProcessResult result() {
+
+                @Override
+                public ProcessResult result() {
                     checkScope();
-                    if (stage == RecipeStage.START && resultFault != null) { throw resultFault; }
+                    if (stage == RecipeStage.START && resultFault != null) {
+                        throw resultFault;
+                    }
                     return result;
                 }
-                @Override public List<? extends ResourceReservation> reservations() { checkScope(); return tokens; }
-                @Override public void commit() {
+
+                @Override
+                public List<? extends ResourceReservation> reservations() {
+                    checkScope();
+                    return tokens;
+                }
+
+                @Override
+                public void commit() {
                     checkScope();
                     env.events.add(name + ":commit:" + stage);
                     businessEffects++;
                     committed = true;
                 }
-                @Override public void complete() {
+
+                @Override
+                public void complete() {
                     checkScope();
                     env.events.add(name + ":complete:" + stage);
-                    if (stage == RecipeStage.END && completeFault != null) { throw completeFault; }
+                    if (stage == RecipeStage.END && completeFault != null) {
+                        throw completeFault;
+                    }
                 }
-                @Override public void rollback() {
+
+                @Override
+                public void rollback() {
                     checkScope();
-                    for (var token : tokens) { token.context().requireLock(); }
+                    for (var token : tokens) {
+                        token.context().requireLock();
+                    }
                     env.events.add(name + ":rollback:" + stage);
                     acquisitionEffects--;
-                    if (committed) { businessEffects--; }
-                    if (stage == RecipeStage.START && rollbackFault != null) { throw rollbackFault; }
+                    if (committed) {
+                        businessEffects--;
+                    }
+                    if (stage == RecipeStage.START && rollbackFault != null) {
+                        throw rollbackFault;
+                    }
                 }
+
                 private void checkScope() {
                     assertEquals(path, process.requirementPath());
-                    if (tick != null) { assertEquals(tick, process.tickContext()); }
+                    if (tick != null) {
+                        assertEquals(tick, process.tickContext());
+                    }
                 }
             };
         }
@@ -575,17 +638,50 @@ class SelectiveRequirementTest {
 
     private record TracedToken(ResourceReservation delegate, String name, List<String> events,
                                @Nullable RuntimeException rollbackFault) implements ResourceReservation {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
-        @Override public void exposeApplied() { delegate.exposeApplied(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
-        @Override public void apply() { events.add(name + ":token:apply"); delegate.apply(); }
-        @Override public void complete() { events.add(name + ":token:complete"); delegate.complete(); }
-        @Override public void rollback() {
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return delegate.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            delegate.exposeApplied();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
+
+        @Override
+        public void apply() {
+            events.add(name + ":token:apply");
+            delegate.apply();
+        }
+
+        @Override
+        public void complete() {
+            events.add(name + ":token:complete");
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
             events.add(name + ":token:rollback");
             delegate.rollback();
-            if (rollbackFault != null) { throw rollbackFault; }
+            if (rollbackFault != null) {
+                throw rollbackFault;
+            }
         }
     }
 }

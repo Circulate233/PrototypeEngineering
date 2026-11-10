@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.storage;
 
 import ae2.helpers.externalstorage.GenericStackFluidStorage;
+import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
+import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
@@ -9,15 +11,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 
-import com.circulation.prototype_eng.api.storage.FluidHatchSettings;
-import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
-
-/** Keeps the input fluid from masking a different, drainable output fluid. */
+/**
+ * Keeps the input fluid from masking a different, drainable output fluid.
+ */
 public final class HatchFluidHandler implements IFluidHandler {
     private final GenericStackFluidStorage input;
     private final GenericStackFluidStorage output;
-    @Nullable private final SlottedResourceStorage inputStorage;
-    @Nullable private final SlottedResourceStorage outputStorage;
+    @Nullable
+    private final SlottedResourceStorage inputStorage;
+    @Nullable
+    private final SlottedResourceStorage outputStorage;
     @Nullable
     private final FluidHatchSettings settings;
 
@@ -31,6 +34,18 @@ public final class HatchFluidHandler implements IFluidHandler {
         outputStorage = hatch.output();
         input = new GenericStackFluidStorage(new HatchInventoryPort(hatch, true, false));
         output = new GenericStackFluidStorage(new HatchInventoryPort(hatch, false, true));
+    }
+
+    private static IFluidTankProperties[] tankProperties(GenericStackFluidStorage adapter, @Nullable SlottedResourceStorage storage) {
+        if (storage == null) {
+            return new IFluidTankProperties[0];
+        }
+        storage.context().lock();
+        try {
+            return adapter.getTankProperties();
+        } finally {
+            storage.context().unlock();
+        }
     }
 
     @Override
@@ -86,18 +101,6 @@ public final class HatchFluidHandler implements IFluidHandler {
             return output.drain(amount, doDrain);
         } finally {
             outputStorage.context().unlock();
-        }
-    }
-
-    private static IFluidTankProperties[] tankProperties(GenericStackFluidStorage adapter, @Nullable SlottedResourceStorage storage) {
-        if (storage == null) {
-            return new IFluidTankProperties[0];
-        }
-        storage.context().lock();
-        try {
-            return adapter.getTankProperties();
-        } finally {
-            storage.context().unlock();
         }
     }
 }

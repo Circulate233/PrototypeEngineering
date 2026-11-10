@@ -1,19 +1,21 @@
 package com.circulation.prototype_eng.client.gui;
 
+import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.EnergyHatchContainer;
 import com.circulation.prototype_eng.localization.GuiText;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiTextField;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.input.Keyboard;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
-import ae2.client.Point;
-import net.minecraft.client.renderer.GlStateManager;
+
 /** PM tier art with independent IO meters, borderless rate fields and no upgrade slots. */
 public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
     private final ResourceLocation background;
@@ -36,7 +38,12 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
             () -> container.autoOutput, container.mode().hasOutput()), new Point(4, 31));
     }
 
-    @Override public void initGui() {
+    private static long rate(GuiTextField field) {
+        return HatchExpression.parse(field.getText());
+    }
+
+    @Override
+    public void initGui() {
         super.initGui();
         inputRate = createRateField(0, 52, container.inputRate);
         outputRate = createRateField(1, 68, container.outputRate);
@@ -46,23 +53,6 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         var field = new HatchRateField(id, fontRenderer, guiLeft + 40, guiTop + top, fieldWidth);
         field.setText(Long.toString(value));
         return field;
-    }
-
-    private static long rate(GuiTextField field) { return HatchExpression.parse(field.getText()); }
-
-    @Override protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
-        if (button == 0 && (inputRate.isFocused() || outputRate.isFocused())) {
-            inputRate.dragTo(mouseX);
-            outputRate.dragTo(mouseX);
-            return;
-        }
-        super.mouseClickMove(mouseX, mouseY, button, elapsed);
-    }
-
-    @Override protected void actionPerformed(GuiButton button) throws IOException {
-        if (button.id == 100) container.toggleInput();
-        else if (button.id == 101) container.toggleOutput();
-        else super.actionPerformed(button);
     }
 
     private void commitFocused() {
@@ -76,7 +66,8 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         }
     }
 
-    @Override protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
+    @Override
+    protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         boolean inputFocused = inputRate.isFocused(), outputFocused = outputRate.isFocused();
         inputRate.mouseClicked(mouseX, mouseY, button);
         outputRate.mouseClicked(mouseX, mouseY, button);
@@ -85,14 +76,35 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         super.mouseClicked(mouseX, mouseY, button);
     }
 
-    @Override protected void keyTyped(char typedChar, int keyCode) throws IOException {
+    @Override
+    protected void keyTyped(char typedChar, int keyCode) throws IOException {
         if (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER) {
             commitFocused();
             return;
         }
-        if (keyCode == Keyboard.KEY_ESCAPE && (inputRate.isFocused() || outputRate.isFocused())) { commitFocused(); return; }
+        if (keyCode == Keyboard.KEY_ESCAPE && (inputRate.isFocused() || outputRate.isFocused())) {
+            commitFocused();
+            return;
+        }
         if (inputRate.textboxKeyTyped(typedChar, keyCode) || outputRate.textboxKeyTyped(typedChar, keyCode)) return;
         super.keyTyped(typedChar, keyCode);
+    }
+
+    @Override
+    protected void mouseClickMove(int mouseX, int mouseY, int button, long elapsed) {
+        if (button == 0 && (inputRate.isFocused() || outputRate.isFocused())) {
+            inputRate.dragTo(mouseX);
+            outputRate.dragTo(mouseX);
+            return;
+        }
+        super.mouseClickMove(mouseX, mouseY, button, elapsed);
+    }
+
+    @Override
+    protected void actionPerformed(GuiButton button) throws IOException {
+        if (button.id == 100) container.toggleInput();
+        else if (button.id == 101) container.toggleOutput();
+        else super.actionPerformed(button);
     }
 
     @Override
@@ -102,15 +114,48 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         outputRate.updateCursorCounter();
     }
 
-    @Override public void onGuiClosed() { commitFocused(); super.onGuiClosed(); }
+    @Override
+    public void onGuiClosed() {
+        commitFocused();
+        super.onGuiClosed();
+    }
 
-    @Override public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
+    @Override
+    public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
         GuiAtlas.draw(background, x, y, 0, 0, xSize, ySize, 256, 256);
         drawEnergyBar(x, y, mixed ? 146 : 169, container.energy, container.capacity);
         if (mixed) drawEnergyBar(x, y, 169, container.outputEnergy, container.outputCapacity);
     }
 
-    @Override public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+    private void drawEnergyBar(int x, int y, int left, long energy, long capacity) {
+        int filled = capacity <= 0 ? 0 : (int) (66 * Math.clamp((double) energy / capacity, 0, 1));
+        if (filled > 0) GuiAtlas.draw(background, x + left, y + 76 - filled, 0, 256 - filled, 16, filled, 256, 256);
+    }
+
+    private void drawEnergyAmount(int top, long energy, long capacity) {
+        capacity = Math.max(0, capacity);
+        GuiLabel.draw(fontRenderer, GuiNumbers.compact(Math.clamp(energy, 0, capacity)) + " / " + GuiNumbers.compact(capacity) + " FE",
+            44, top, fieldWidth - 8, 10, 0x404040, false);
+    }
+
+    @Override
+    public void drawFG(int x, int y, int mouseX, int mouseY) {
+        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, fieldWidth + 9, 10, 0x404040, false);
+        drawEnergyAmount(25, container.energy, container.capacity);
+        if (mixed) drawEnergyAmount(38, container.outputEnergy, container.outputCapacity);
+        // Fields store screen coordinates; draw them before AE draws button/slot tooltips.
+        GlStateManager.pushMatrix();
+        try {
+            GlStateManager.translate(-x, -y, 0);
+            inputRate.drawTextBox();
+            outputRate.drawTextBox();
+        } finally {
+            GlStateManager.popMatrix();
+        }
+    }
+
+    @Override
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         if (!inputRate.isFocused()) inputRate.setText(Long.toString(container.inputRate));
         if (!outputRate.isFocused()) outputRate.setText(Long.toString(container.outputRate));
         super.drawScreen(mouseX, mouseY, partialTicks);
@@ -126,29 +171,6 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
             drawHoveringText(List.of(GuiText.OutputRate.getLocal(), outputRate.getText()), mouseX, mouseY);
     }
 
-    private void drawEnergyBar(int x, int y, int left, long energy, long capacity) {
-        int filled = capacity <= 0 ? 0 : (int) (66 * Math.clamp((double) energy / capacity, 0, 1));
-        if (filled > 0) GuiAtlas.draw(background, x + left, y + 76 - filled, 0, 256 - filled, 16, filled, 256, 256);
-    }
-
-    private void drawEnergyAmount(int top, long energy, long capacity) {
-        capacity = Math.max(0, capacity);
-        GuiLabel.draw(fontRenderer, GuiNumbers.compact(Math.clamp(energy, 0, capacity)) + " / " + GuiNumbers.compact(capacity) + " FE",
-            44, top, fieldWidth - 8, 10, 0x404040, false);
-    }
-
-    @Override public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, fieldWidth + 9, 10, 0x404040, false);
-        drawEnergyAmount(25, container.energy, container.capacity);
-        if (mixed) drawEnergyAmount(38, container.outputEnergy, container.outputCapacity);
-        // Fields store screen coordinates; draw them before AE draws button/slot tooltips.
-        GlStateManager.pushMatrix();
-        try {
-            GlStateManager.translate(-x, -y, 0);
-            inputRate.drawTextBox();
-            outputRate.drawTextBox();
-        } finally { GlStateManager.popMatrix(); }
-    }
     private boolean hovered(int left, int top, int width, int height, int mouseX, int mouseY) {
         int x = mouseX - guiLeft, y = mouseY - guiTop;
         return x >= left && x < left + width && y >= top && y < top + height;

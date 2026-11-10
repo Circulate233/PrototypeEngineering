@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.client.preview;
 
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
-import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -13,26 +13,12 @@ import java.util.function.Consumer;
  * Only the current filtered C samples can prepare or emit CPU quads; pending work never bypasses filtering.
  */
 final class PreviewSampleBlockModels {
-    interface Preparation {
-        boolean step(Consumer<int[]> sink);
-    }
-
     private final Thread owner = Thread.currentThread();
     private final BiFunction<StructurePreviewModel, StructurePreviewModel.Cell, Preparation> preparations;
     private final Reference2ObjectOpenHashMap<StructurePreviewModel.Cell, CellMesh> cells = new Reference2ObjectOpenHashMap<>();
     private StructurePreviewModel model;
     private Object epoch = new Object();
     private int workCursor;
-
-    private static final class CellMesh {
-        Preparation preparation;
-        final ObjectArrayList<int[]> quads = new ObjectArrayList<>();
-        int cursor;
-
-        CellMesh(Preparation preparation) {
-            this.preparation = preparation;
-        }
-    }
 
     PreviewSampleBlockModels(BiFunction<StructurePreviewModel, StructurePreviewModel.Cell, Preparation> preparations) {
         this.preparations = preparations;
@@ -121,5 +107,19 @@ final class PreviewSampleBlockModels {
             }
         }
         return pending;
+    }
+
+    interface Preparation {
+        boolean step(Consumer<int[]> sink);
+    }
+
+    private static final class CellMesh {
+        final ObjectArrayList<int[]> quads = new ObjectArrayList<>();
+        Preparation preparation;
+        int cursor;
+
+        CellMesh(Preparation preparation) {
+            this.preparation = preparation;
+        }
     }
 }

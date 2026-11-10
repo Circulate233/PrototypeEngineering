@@ -24,21 +24,82 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchStructuralEligibilityTest {
     private static final UUID FIRST = new UUID(0, 1);
     private static final UUID SECOND = new UUID(0, 2);
 
-    @Test void structuralProjectionSkipsConditionsAndStillAuthorizesTheActualRequesterThroughCanStart() {
+    private static void checkBlacklistCascade(ResearchEligibility eligibility, List<UUID> members,
+                                              Map<UUID, PlayerResearchState> players, Object2IntOpenHashMap<ResourceLocation> team,
+                                              ResearchDefinition gate, ResearchDefinition owned, ResearchDefinition leaf) {
+        var blacklist = new ObjectOpenHashSet<>(Set.of(gate.id()));
+        var blocked = eligibility.calculateStructural("team", members, players, team, blacklist);
+        blacklist.clear();
+        for (var research : List.of(gate, owned, leaf)) {
+            assertEquals(0, blocked.completedLevel(research.id()));
+        }
+        assertEquals(Set.of(gate.id()), blocked.blacklistedResearchIds());
+        assertFalse(eligibility.structurallyEligible(blocked, gate.id(), 1));
+        assertTrue(blocked.startableResearchTargets().isEmpty());
+    }
+
+    private static ResearchDefinition.Builder definition(String path, int maxLevel, ResearchDownloadDeliveryPolicy policy) {
+        return ResearchDefinition.builder(id(path)).maxLevel(maxLevel).deliveryPolicy(policy);
+    }
+
+    private static ResearchLevelStage.Builder stage(int first, int last) {
+        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
+    }
+
+    private static ResearchRegistry registry(ResearchDefinition... definitions) {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        var registry = new ResearchRegistry();
+        for (var definition : definitions) {
+            registry.register(definition);
+        }
+        registry.freeze(resources);
+        return registry;
+    }
+
+    private static Object2IntOpenHashMap<ResourceLocation> levels() {
+        return new Object2IntOpenHashMap<>();
+    }
+
+    private static Object2IntOpenHashMap<ResourceLocation> levels(ResourceLocation id, int level) {
+        var result = levels();
+        result.put(id, level);
+        return result;
+    }
+
+    private static Object2LongOpenHashMap<NetworkResourceType> resources(long compute) {
+        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        if (compute > 0) {
+            result.put(NetworkResources.COMPUTE, compute);
+        }
+        return result;
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("structural_eligibility_test", path);
+    }
+
+    @Test
+    void structuralProjectionSkipsConditionsAndStillAuthorizesTheActualRequesterThroughCanStart() {
         var calls = new AtomicInteger();
         var seen = new AtomicReference<ResearchStartContext>();
         var target = definition("target", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build())
-            .startCondition(context -> {
-                calls.incrementAndGet();
-                seen.set(context);
-                return context.networkCenterLevel() >= 2 && context.availableResources().getLong(NetworkResources.COMPUTE) >= 7;
-            }).build();
+                                                                                              .startCondition(context -> {
+                                                                                                  calls.incrementAndGet();
+                                                                                                  seen.set(context);
+                                                                                                  return context.networkCenterLevel() >= 2 && context.availableResources().getLong(NetworkResources.COMPUTE) >= 7;
+                                                                                              }).build();
         var eligibility = new ResearchEligibility(registry(target));
         var player = new PlayerResearchState(FIRST);
         var players = Map.of(FIRST, player);
@@ -60,11 +121,15 @@ class ResearchStructuralEligibilityTest {
         assertEquals(structural.blacklistedResearchIds(), preview.blacklistedResearchIds());
     }
 
-    @Test void structuralProjectionRemainsUsableWhenTheAnonymousPreviewConditionThrows() {
+    @Test
+    void structuralProjectionRemainsUsableWhenTheAnonymousPreviewConditionThrows() {
         var failure = new IllegalStateException("preview condition failed");
         var calls = new AtomicInteger();
         var target = definition("throwing", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
-            .startCondition(_ -> { calls.incrementAndGet(); throw failure; }).build();
+                                                                                        .startCondition(_ -> {
+                                                                                            calls.incrementAndGet();
+                                                                                            throw failure;
+                                                                                        }).build();
         var eligibility = new ResearchEligibility(registry(target));
         var structural = eligibility.calculateStructural("team", List.of(), Map.of(), levels(), Set.of());
         assertTrue(eligibility.structurallyEligible(structural, target.id(), 1));
@@ -74,7 +139,8 @@ class ResearchStructuralEligibilityTest {
         assertEquals(1, calls.get());
     }
 
-    @Test void prerequisitesAndBlacklistCascadeAcrossBothSourcesUsingOnlyCapturedMembers() {
+    @Test
+    void prerequisitesAndBlacklistCascadeAcrossBothSourcesUsingOnlyCapturedMembers() {
         var gate = definition("gate", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
         var owned = definition("owned", 5, ResearchDownloadDeliveryPolicy.ITEM_ONLY)
             .stage(stage(1, 2).prerequisite(gate.id(), 1).build()).stage(stage(3, 5).prerequisite(gate.id(), 2).build()).build();
@@ -106,7 +172,8 @@ class ResearchStructuralEligibilityTest {
         assertEquals(1, first.completedLevel(leaf.id()));
     }
 
-    @Test void structuralProjectionKeepsSourcePolicyAndIdentityValidation() {
+    @Test
+    void structuralProjectionKeepsSourcePolicyAndIdentityValidation() {
         var personal = definition("personal", 2, ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage(1, 2).build()).build();
         var owned = definition("owned", 2, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 2).build()).build();
         var eligibility = new ResearchEligibility(registry(personal, owned));
@@ -119,43 +186,4 @@ class ResearchStructuralEligibilityTest {
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(FIRST), Map.of(FIRST, new PlayerResearchState(SECOND)), levels(), Set.of()));
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculateStructural("team", List.of(), Map.of(), levels(), Set.of(id("unknown"))));
     }
-
-    private static void checkBlacklistCascade(ResearchEligibility eligibility, List<UUID> members,
-                                              Map<UUID, PlayerResearchState> players, Object2IntOpenHashMap<ResourceLocation> team,
-                                              ResearchDefinition gate, ResearchDefinition owned, ResearchDefinition leaf) {
-        var blacklist = new ObjectOpenHashSet<>(Set.of(gate.id()));
-        var blocked = eligibility.calculateStructural("team", members, players, team, blacklist);
-        blacklist.clear();
-        for (var research : List.of(gate, owned, leaf)) { assertEquals(0, blocked.completedLevel(research.id())); }
-        assertEquals(Set.of(gate.id()), blocked.blacklistedResearchIds());
-        assertFalse(eligibility.structurallyEligible(blocked, gate.id(), 1));
-        assertTrue(blocked.startableResearchTargets().isEmpty());
-    }
-
-    private static ResearchDefinition.Builder definition(String path, int maxLevel, ResearchDownloadDeliveryPolicy policy) {
-        return ResearchDefinition.builder(id(path)).maxLevel(maxLevel).deliveryPolicy(policy);
-    }
-    private static ResearchLevelStage.Builder stage(int first, int last) {
-        return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
-    }
-    private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        var registry = new ResearchRegistry();
-        for (var definition : definitions) { registry.register(definition); }
-        registry.freeze(resources);
-        return registry;
-    }
-    private static Object2IntOpenHashMap<ResourceLocation> levels() { return new Object2IntOpenHashMap<>(); }
-    private static Object2IntOpenHashMap<ResourceLocation> levels(ResourceLocation id, int level) {
-        var result = levels();
-        result.put(id, level);
-        return result;
-    }
-    private static Object2LongOpenHashMap<NetworkResourceType> resources(long compute) {
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
-        if (compute > 0) { result.put(NetworkResources.COMPUTE, compute); }
-        return result;
-    }
-    private static ResourceLocation id(String path) { return new ResourceLocation("structural_eligibility_test", path); }
 }

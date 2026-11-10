@@ -20,6 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ComponentTickDispatchTest {
+    private static ComponentType<Object, String> install(ComponentMap<Object> map, String name, List<String> events) {
+        var type = new ComponentType<>(id(name), _ -> name, List.of(new Recorder(name, events)));
+        map.put(type, name);
+        return type;
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("component_dispatch_test", name);
+    }
+
     @Test
     void suspensionKeepsLaterNormalCallbacksAfterDeferredWorkAndRetainsTheCapturedGraph() {
         var map = new ComponentMap<>();
@@ -59,7 +69,11 @@ class ComponentTickDispatchTest {
             var events = new ObjectArrayList<String>();
             var failure = new AssertionError("callback failed");
             var system = new Recorder("first", events);
-            system.action = current -> { if (current.equals(phase)) { throw failure; } };
+            system.action = current -> {
+                if (current.equals(phase)) {
+                    throw failure;
+                }
+            };
             map.put(new ComponentType<>(id("first"), _ -> "first", List.of(system)), "first");
             install(map, "second", events);
             var dispatch = map.captureDispatch(new Object());
@@ -138,26 +152,40 @@ class ComponentTickDispatchTest {
         assertEquals(List.of("pre:only", "tick:only", "post:only"), events);
     }
 
-    private static ComponentType<Object, String> install(ComponentMap<Object> map, String name, List<String> events) {
-        var type = new ComponentType<>(id(name), _ -> name, List.of(new Recorder(name, events)));
-        map.put(type, name);
-        return type;
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("component_dispatch_test", name); }
-
     private static final class Recorder implements ComponentSystem<Object, String> {
         private final ResourceLocation id;
         private final List<String> events;
-        private Consumer<String> action = _ -> {};
+        private Consumer<String> action = _ -> {
+        };
 
-        private Recorder(String name, List<String> events) { id = ComponentTickDispatchTest.id(name); this.events = events; }
+        private Recorder(String name, List<String> events) {
+            id = ComponentTickDispatchTest.id(name);
+            this.events = events;
+        }
 
-        @Override public ResourceLocation id() { return id; }
-        @Override public void onPreTick(Object owner, String component) { record("pre", component); }
-        @Override public void onTick(Object owner, String component) { record("tick", component); }
-        @Override public void onPostTick(Object owner, String component) { record("post", component); }
+        @Override
+        public ResourceLocation id() {
+            return id;
+        }
 
-        private void record(String phase, String component) { events.add(phase + ":" + component); action.accept(phase); }
+        @Override
+        public void onPreTick(Object owner, String component) {
+            record("pre", component);
+        }
+
+        @Override
+        public void onTick(Object owner, String component) {
+            record("tick", component);
+        }
+
+        @Override
+        public void onPostTick(Object owner, String component) {
+            record("post", component);
+        }
+
+        private void record(String phase, String component) {
+            events.add(phase + ":" + component);
+            action.accept(phase);
+        }
     }
 }

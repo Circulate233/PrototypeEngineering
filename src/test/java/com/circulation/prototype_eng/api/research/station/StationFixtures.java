@@ -47,9 +47,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class StationFixtures implements AutoCloseable {
+    static final UUID OWNER = new UUID(0, 1);
+    static final TestResources.KeyType TYPE = new TestResources.KeyType("station_material");
     final Thread owner = Thread.currentThread();
     final Object world = new Object();
     final NetworkResourceRegistry resources = new NetworkResourceRegistry();
@@ -65,9 +67,12 @@ final class StationFixtures implements AutoCloseable {
     int positions;
     long tick;
 
-    StationFixtures(long threads, int dataCenterTier) { this(threads, 100, dataCenterTier, defaultDefinition()); }
+    StationFixtures(long threads, int dataCenterTier) {
+        this(threads, 100, dataCenterTier, defaultDefinition());
+    }
 
-    @SuppressWarnings("unused") // Shared station consumer tests provide full material requirements and numeric supply here.
+    @SuppressWarnings("unused")
+        // Shared station consumer tests provide full material requirements and numeric supply here.
     StationFixtures(long threads, long compute, int dataCenterTier, ResearchDefinition definition) {
         this.threads = threads;
         this.compute = compute;
@@ -81,7 +86,18 @@ final class StationFixtures implements AutoCloseable {
         dataCenter(dataCenterTier);
     }
 
-    Entry station(int level, int dimension) { return role(NetworkDeviceRole.RESEARCH_STATION, level, dimension, OWNER, world); }
+    static ResourceLocation id(String name) {
+        return new ResourceLocation("research_stations_test", name);
+    }
+
+    static ResearchDefinition defaultDefinition() {
+        return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10, 3).build()).build()).build();
+    }
+
+    Entry station(int level, int dimension) {
+        return role(NetworkDeviceRole.RESEARCH_STATION, level, dimension, OWNER, world);
+    }
 
     Entry role(NetworkDeviceRole role, int level, int dimension, UUID player, Object worldIdentity) {
         var vector = new Object2LongOpenHashMap<NetworkResourceType>();
@@ -109,37 +125,79 @@ final class StationFixtures implements AutoCloseable {
     }
 
     Entry attach(MachineInstance machine, MachineAssembly assembly, ComponentType<MachineInstance, MachineNetworkDevice> role) {
-        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 100L), () -> { });
-        var energy = new EnergyBuffer(100, () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 100L), () -> {
+        });
+        var energy = new EnergyBuffer(100, () -> {
+        });
         energy.receiveEnergy(10, Actionable.MODULATE);
         Objects.requireNonNull(machine.lifecycle()).form(new MachineHatches(List.of(hatch), List.of(energy), List.of(energy)));
         var entry = new Entry(machine, assembly, role, hatch, energy);
         entries.add(entry);
         return entry;
     }
-    MachineIdentityRegistry.Registration identity(Entry entry) { return Objects.requireNonNull(Objects.requireNonNull(entry.machine.components().get(ownership)).registration()); }
-    MachineNetworkDevice roleOf(MachineInstance machine) { return entries.stream().filter(entry -> entry.machine == machine).findFirst().map(entry -> Objects.requireNonNull(machine.components().get(entry.role))).orElseThrow(); }
-    Host host(ResourceLocation type, int dimension, UUID player, Object worldIdentity) { return new Host(worldIdentity, type, dimension, new BlockPos(positions++, 0, 0), player); }
-    void refresh() { assertTrue(network.refresh()); }
-    void advanceTick() { network.endTick(); network.beginTick(++tick); }
-    void nextTick() { advanceTick(); refresh(); }
-    void replaceHatches(Entry entry, MachineHatches hatches) { entry.machine.components().replaceValue(MachineHatches.TYPE, hatches); }
-    void requireOwner() { if (Thread.currentThread() != owner) { throw new IllegalStateException("Not owner"); } }
-    @Override public void close() { entries.forEach(entry -> Objects.requireNonNull(entry.machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD)); network.close(); identities.close(); }
 
-    static final UUID OWNER = new UUID(0, 1);
-    static final TestResources.KeyType TYPE = new TestResources.KeyType("station_material");
-    record Entry(MachineInstance machine, MachineAssembly assembly, ComponentType<MachineInstance, MachineNetworkDevice> role,
-                         BufferedResourceHatch warehouse, EnergyBuffer energy) { }
-    private record Host(Object worldIdentity, ResourceLocation type, int dimension, BlockPos position, UUID placementPlayer) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type, dimension, position); }
-        @Override public World world() { throw new AssertionError("No game world in station tests"); }
-        @Override public void requireServerThread() { }
+    MachineIdentityRegistry.Registration identity(Entry entry) {
+        return Objects.requireNonNull(Objects.requireNonNull(entry.machine.components().get(ownership)).registration());
     }
-    static ResourceLocation id(String name) { return new ResourceLocation("research_stations_test", name); }
 
-    static ResearchDefinition defaultDefinition() {
-        return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-            .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10, 3).build()).build()).build();
+    MachineNetworkDevice roleOf(MachineInstance machine) {
+        return entries.stream().filter(entry -> entry.machine == machine).findFirst().map(entry -> Objects.requireNonNull(machine.components().get(entry.role))).orElseThrow();
+    }
+
+    Host host(ResourceLocation type, int dimension, UUID player, Object worldIdentity) {
+        return new Host(worldIdentity, type, dimension, new BlockPos(positions++, 0, 0), player);
+    }
+
+    void refresh() {
+        assertTrue(network.refresh());
+    }
+
+    void advanceTick() {
+        network.endTick();
+        network.beginTick(++tick);
+    }
+
+    void nextTick() {
+        advanceTick();
+        refresh();
+    }
+
+    void replaceHatches(Entry entry, MachineHatches hatches) {
+        entry.machine.components().replaceValue(MachineHatches.TYPE, hatches);
+    }
+
+    void requireOwner() {
+        if (Thread.currentThread() != owner) {
+            throw new IllegalStateException("Not owner");
+        }
+    }
+
+    @Override
+    public void close() {
+        entries.forEach(entry -> Objects.requireNonNull(entry.machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD));
+        network.close();
+        identities.close();
+    }
+
+    record Entry(MachineInstance machine, MachineAssembly assembly,
+                 ComponentType<MachineInstance, MachineNetworkDevice> role,
+                 BufferedResourceHatch warehouse, EnergyBuffer energy) {
+    }
+
+    private record Host(Object worldIdentity, ResourceLocation type, int dimension, BlockPos position,
+                        UUID placementPlayer) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type, dimension, position);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No game world in station tests");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

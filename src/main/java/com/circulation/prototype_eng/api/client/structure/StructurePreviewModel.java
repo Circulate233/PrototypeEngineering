@@ -71,6 +71,11 @@ public final class StructurePreviewModel {
         return occurrences;
     }
 
+    public @Nullable LocalizationEnum title() {
+        var entry = generation.entries().get(structureId);
+        return entry == null || entry.translationKey() == null ? null : new StructureTitle(entry.translationKey());
+    }
+
     /**
      * Single-owner data construction only; geometry traversal belongs in client.preview.
      */
@@ -126,11 +131,6 @@ public final class StructurePreviewModel {
                 throw new IllegalStateException("Preview model Builder requires its owner thread");
             if (frozen) throw new IllegalStateException("Preview model Builder is frozen");
         }
-    }
-
-    public @Nullable LocalizationEnum title() {
-        var entry = generation.entries().get(structureId);
-        return entry == null || entry.translationKey() == null ? null : new StructureTitle(entry.translationKey());
     }
 
     /**

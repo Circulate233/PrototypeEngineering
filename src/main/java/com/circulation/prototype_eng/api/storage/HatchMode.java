@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.storage;
 
-/** Physical direction of a resource hatch, independent of resource type. */
+/**
+ * Physical direction of a resource hatch, independent of resource type.
+ */
 public enum HatchMode {
     INPUT(true, false), OUTPUT(false, true), MIXED(true, true);
 

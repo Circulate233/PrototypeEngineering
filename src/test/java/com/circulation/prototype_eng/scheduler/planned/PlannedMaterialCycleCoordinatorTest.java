@@ -44,10 +44,74 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlannedMaterialCycleCoordinatorTest {
-    @Test void realDetachedCycleCompletesStartTickEndOnCapturedHatchesWithOwnerGrantsAndOnePost() {
+    private static RecipeRequirement<String> requirement(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id("energy"), system).requirement(id("energy"), "value");
+    }
+
+    private static PlannedDeadline deadline() {
+        return PlannedDeadline.after(Duration.ofSeconds(5));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("planned_material_cycle_test", name);
+    }
+
+    private static EnergyBuffer energy() {
+        var energy = new EnergyBuffer(100, () -> {
+        });
+        assertEquals(100, energy.receiveEnergy(100, Actionable.MODULATE));
+        return energy;
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
+        boolean exited = false;
+        while (!exited) {
+            try {
+                assertTrue(latch.await(5, TimeUnit.SECONDS));
+                exited = true;
+            } catch (InterruptedException ignored) {
+                interrupted.countDown();
+            }
+        }
+    }
+
+    @Test
+    void realDetachedCycleCompletesStartTickEndOnCapturedHatchesWithOwnerGrantsAndOnePost() {
         var fixture = new Fixture();
         fixture.machine.attributes().setBase(StandardMachineAttributes.PROCESS_SPEED, 0);
         var grant = new Effect();
@@ -56,7 +120,9 @@ class PlannedMaterialCycleCoordinatorTest {
             var coordinator = fixture.coordinator(backend, stage -> {
                 assertEquals(1, fixture.acquired.getInt(stage.phase()));
                 assertThrows(NullPointerException.class, fixture.process::tickContext);
-                if (stage.phase() != RecipeStage.END) { return List.of(); }
+                if (stage.phase() != RecipeStage.END) {
+                    return List.of();
+                }
                 grant.onCommit = () -> {
                     assertSame(fixture.owner, Thread.currentThread());
                     assertEquals(1, fixture.committed.getInt(RecipeStage.END));
@@ -85,7 +151,8 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void blockedEndRollsBackItsMaterialsNormallyAndNextCycleOnlyRetriesEnd() {
+    @Test
+    void blockedEndRollsBackItsMaterialsNormallyAndNextCycleOnlyRetriesEnd() {
         var fixture = new Fixture();
         var hookCalls = new Object2IntOpenHashMap<RecipeStage>();
         try (var backend = new Backend()) {
@@ -116,14 +183,17 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void busyBindingKeepsTheOriginalEndGrantUntilOneCombinedRollbackWithoutReacquisition() {
+    @Test
+    void busyBindingKeepsTheOriginalEndGrantUntilOneCombinedRollbackWithoutReacquisition() {
         var fixture = new Fixture();
         var grant = new Effect();
         var captures = new AtomicInteger();
         var busy = new AtomicReference<StorageFence>();
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, stage -> {
-                if (stage.phase() != RecipeStage.END) { return List.of(); }
+                if (stage.phase() != RecipeStage.END) {
+                    return List.of();
+                }
                 captures.incrementAndGet();
                 busy.set(Objects.requireNonNull(StorageFence.tryAcquire(List.of(fixture.energy.context()))));
                 return List.of(grant);
@@ -142,17 +212,24 @@ class PlannedMaterialCycleCoordinatorTest {
                 assertEquals(1, fixture.rolledBack.getInt(RecipeStage.END));
                 assertEquals(95, fixture.energy.savedEnergy());
                 assertEquals(1, fixture.post.get());
-            } finally { if (busy.get() != null) { busy.get().release(); } }
+            } finally {
+                if (busy.get() != null) {
+                    busy.get().release();
+                }
+            }
         }
     }
 
-    @Test void cancellationAfterEndAcquisitionRollsBackTheExactReturnedGrantWithoutPhysicalApply() {
+    @Test
+    void cancellationAfterEndAcquisitionRollsBackTheExactReturnedGrantWithoutPhysicalApply() {
         var fixture = new Fixture();
         var grant = new Effect();
         var captures = new AtomicInteger();
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, stage -> {
-                if (stage.phase() != RecipeStage.END) { return List.of(); }
+                if (stage.phase() != RecipeStage.END) {
+                    return List.of();
+                }
                 captures.incrementAndGet();
                 fixture.token.cancel(Reason.EXPLICIT_CANCEL);
                 return List.of(grant);
@@ -167,15 +244,22 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void completionCommitFailureCompensatesGrantAndEndRequirementsInReverseOrder() {
+    @Test
+    void completionCommitFailureCompensatesGrantAndEndRequirementsInReverseOrder() {
         var fixture = new Fixture();
         var order = new ObjectArrayList<String>();
         var grant = new Effect();
         var completion = new Effect();
         grant.onRollback = () -> order.add("grant");
-        completion.onCommit = () -> { throw new IllegalStateException("completion rejected"); };
+        completion.onCommit = () -> {
+            throw new IllegalStateException("completion rejected");
+        };
         completion.onRollback = () -> order.add("completion");
-        fixture.onRequirementRollback = phase -> { if (phase == RecipeStage.END) { order.add("material"); } };
+        fixture.onRequirementRollback = phase -> {
+            if (phase == RecipeStage.END) {
+                order.add("material");
+            }
+        };
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, stage -> stage.phase() == RecipeStage.END ? List.of(grant, completion) : List.of());
             assertEquals("completion rejected", assertThrows(IllegalStateException.class, () -> coordinator.advance(deadline())).getMessage());
@@ -188,18 +272,30 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void unknownGrantCompletionPinsEndAndPostUntilExactProofWithoutCommitOrCompleteReplay() {
+    @Test
+    void unknownGrantCompletionPinsEndAndPostUntilExactProofWithoutCommitOrCompleteReplay() {
         var fixture = new Fixture();
         var proof = new AtomicBoolean();
         Effect grant = new Effect() {
-            @Override public void complete() { super.complete(); throw new IllegalStateException("grant complete unknown"); }
-            @Override public Resolution resolution() { return proof.get() ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void complete() {
+                super.complete();
+                throw new IllegalStateException("grant complete unknown");
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof.get() ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         var captures = new AtomicInteger();
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, stage -> {
-                if (stage.phase() != RecipeStage.END) { return List.of(); }
-                captures.incrementAndGet(); return List.of(grant);
+                if (stage.phase() != RecipeStage.END) {
+                    return List.of();
+                }
+                captures.incrementAndGet();
+                return List.of(grant);
             });
             assertEquals("grant complete unknown", assertThrows(IllegalStateException.class, () -> coordinator.advance(deadline())).getMessage());
             assertFalse(coordinator.finished());
@@ -217,14 +313,25 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void unknownGrantRollbackRetainsExactBatchUntilProofAndNeverRepeatsItsMutation() {
+    @Test
+    void unknownGrantRollbackRetainsExactBatchUntilProofAndNeverRepeatsItsMutation() {
         var fixture = new Fixture();
         var proof = new AtomicBoolean();
         Effect grant = new Effect() {
-            @Override public void rollback() { super.rollback(); throw new IllegalStateException("grant rollback unknown"); }
-            @Override public Resolution resolution() { return proof.get() ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                super.rollback();
+                throw new IllegalStateException("grant rollback unknown");
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof.get() ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
-        grant.onCommit = () -> { throw new IllegalArgumentException("grant rejected"); };
+        grant.onCommit = () -> {
+            throw new IllegalArgumentException("grant rejected");
+        };
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, stage -> stage.phase() == RecipeStage.END ? List.of(grant) : List.of());
             assertEquals("grant rejected", assertThrows(IllegalArgumentException.class, () -> coordinator.advance(deadline())).getMessage());
@@ -241,17 +348,29 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void failedBindingRetainsAdditionalAcquisitionAndCleansItBeforeLocalStageFallback() {
+    @Test
+    void failedBindingRetainsAdditionalAcquisitionAndCleansItBeforeLocalStageFallback() {
         var fixture = new Fixture();
         var proof = new AtomicBoolean();
         var contextReads = new AtomicInteger();
         Effect grant = new Effect() {
-            @Override public void rollback() { super.rollback(); throw new IllegalStateException("local grant unknown"); }
-            @Override public Resolution resolution() { return proof.get() ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void rollback() {
+                super.rollback();
+                throw new IllegalStateException("local grant unknown");
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof.get() ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         fixture.endAdapter = actual -> new ReservationAdapter(actual) {
-            @Override public StorageContext context() {
-                if (contextReads.incrementAndGet() == 1) { throw new IllegalArgumentException("binding context failed"); }
+            @Override
+            public StorageContext context() {
+                if (contextReads.incrementAndGet() == 1) {
+                    throw new IllegalArgumentException("binding context failed");
+                }
                 return super.context();
             }
         };
@@ -271,7 +390,8 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void detachedCaptureRejectsOrdinaryOrAttachedProcessesWithoutStartingCallbacks() {
+    @Test
+    void detachedCaptureRejectsOrdinaryOrAttachedProcessesWithoutStartingCallbacks() {
         var fixture = new Fixture();
         try (var backend = new Backend()) {
             var ordinary = new RecipeProcess(fixture.machine, new MachineRecipe(id("ordinary"), 1, List.of()), 1);
@@ -286,7 +406,8 @@ class PlannedMaterialCycleCoordinatorTest {
         }
     }
 
-    @Test void cancelledSourceRequiresActualExitBeforeDetachedPostAndAdditionalRollback() throws Exception {
+    @Test
+    void cancelledSourceRequiresActualExitBeforeDetachedPostAndAdditionalRollback() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
@@ -294,14 +415,21 @@ class PlannedMaterialCycleCoordinatorTest {
         var fixture = new Fixture();
         var grant = new Effect();
         fixture.startAdapter = actual -> new ReservationAdapter(actual) {
-            @Override public void apply() {
-                super.apply(); entered.countDown(); awaitIgnoringInterrupt(release, interrupted); sourceExited.set(true);
+            @Override
+            public void apply() {
+                super.apply();
+                entered.countDown();
+                awaitIgnoringInterrupt(release, interrupted);
+                sourceExited.set(true);
             }
         };
         try (var backend = new Backend()) {
             var coordinator = fixture.coordinator(backend, _ -> List.of(grant));
             var cancel = new FutureTask<Void>(() -> {
-                await(entered); fixture.token.cancel(Reason.EXPLICIT_CANCEL); await(interrupted); return null;
+                await(entered);
+                fixture.token.cancel(Reason.EXPLICIT_CANCEL);
+                await(interrupted);
+                return null;
             });
             Thread.ofPlatform().daemon().start(cancel);
             try {
@@ -310,7 +438,8 @@ class PlannedMaterialCycleCoordinatorTest {
                 assertFalse(sourceExited.get());
                 assertEquals(0, fixture.post.get());
                 assertEquals(0, grant.rollbacks);
-                release.countDown(); coordinator.awaitExit();
+                release.countDown();
+                coordinator.awaitExit();
                 assertTrue(sourceExited.get());
                 assertTrue(coordinator.advance(deadline()));
                 assertEquals(1, grant.rollbacks);
@@ -318,8 +447,13 @@ class PlannedMaterialCycleCoordinatorTest {
                 assertEquals(1, fixture.post.get());
                 assertEquals(100, fixture.energy.savedEnergy());
                 assertEquals(List.of(RecipeStage.START), fixture.phases);
-            } finally { release.countDown(); cancel.get(5, TimeUnit.SECONDS); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+                cancel.get(5, TimeUnit.SECONDS);
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
     private static final class Fixture {
@@ -335,44 +469,87 @@ class PlannedMaterialCycleCoordinatorTest {
         private final AtomicInteger post = new AtomicInteger();
         private final AtomicInteger sourceApplies = new AtomicInteger();
         private final AtomicReference<Thread> sourceThread = new AtomicReference<>();
+        private final RecipeProcess process;
         private UnaryOperator<ResourceReservation> startAdapter = UnaryOperator.identity();
         private UnaryOperator<ResourceReservation> endAdapter = UnaryOperator.identity();
-        private Consumer<RecipeStage> onRequirementRollback = _ -> { };
-        private final RecipeProcess process;
+        private Consumer<RecipeStage> onRequirementRollback = _ -> {
+        };
 
         private Fixture() {
             var requirement = requirement((current, phase) -> {
                 assertSame(owner, Thread.currentThread());
-                phases.add(phase); acquired.addTo(phase, 1);
+                phases.add(phase);
+                acquired.addTo(phase, 1);
                 if (phase == RecipeStage.TICK) {
                     assertEquals(new RecipeProcess.Tick(0, Math.max(0, current.attributes().value(StandardMachineAttributes.PROCESS_SPEED, 1)), 0, 1), current.tickContext());
                 }
                 var original = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), switch (phase) {
-                    case START -> 2; case TICK -> 3; case END -> 5;
+                    case START -> 2;
+                    case TICK -> 3;
+                    case END -> 5;
                 }).reservation());
                 ResourceReservation observed = new ReservationAdapter(original) {
-                    @Override public void apply() { sourceThread.set(Thread.currentThread()); sourceApplies.incrementAndGet(); super.apply(); }
+                    @Override
+                    public void apply() {
+                        sourceThread.set(Thread.currentThread());
+                        sourceApplies.incrementAndGet();
+                        super.apply();
+                    }
                 };
-                if (phase == RecipeStage.START) { observed = startAdapter.apply(observed); }
-                if (phase == RecipeStage.END) { observed = endAdapter.apply(observed); }
+                if (phase == RecipeStage.START) {
+                    observed = startAdapter.apply(observed);
+                }
+                if (phase == RecipeStage.END) {
+                    observed = endAdapter.apply(observed);
+                }
                 var held = observed;
                 return new RequirementTransaction() {
-                    @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                    @Override public List<ResourceReservation> reservations() { return List.of(held); }
-                    @Override public void commit() {
+                    @Override
+                    public ProcessResult result() {
+                        return ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public List<ResourceReservation> reservations() {
+                        return List.of(held);
+                    }
+
+                    @Override
+                    public void commit() {
                         assertSame(owner, Thread.currentThread());
-                        if (phase == RecipeStage.TICK) { assertEquals(1, current.tickContext().indexAfter()); }
+                        if (phase == RecipeStage.TICK) {
+                            assertEquals(1, current.tickContext().indexAfter());
+                        }
                         committed.addTo(phase, 1);
                     }
-                    @Override public void rollback() { assertSame(owner, Thread.currentThread()); rolledBack.addTo(phase, 1); onRequirementRollback.accept(phase); }
+
+                    @Override
+                    public void rollback() {
+                        assertSame(owner, Thread.currentThread());
+                        rolledBack.addTo(phase, 1);
+                        onRequirementRollback.accept(phase);
+                    }
                 };
             });
             process = RecipeProcess.materialCycle(machine, id("material"), List.of(requirement),
                 new MachineHatches(List.of(), List.of(energy), List.of()), 7);
             process.components().create(new ComponentType<>(id("callbacks"), _ -> new Object(), List.of(new ComponentSystem<RecipeProcess, Object>() {
-                @Override public ResourceLocation id() { return PlannedMaterialCycleCoordinatorTest.id("callbacks"); }
-                @Override public void onPreTick(RecipeProcess current, Object component) { assertSame(owner, Thread.currentThread()); pre.incrementAndGet(); }
-                @Override public void onPostTick(RecipeProcess current, Object component) { assertSame(owner, Thread.currentThread()); post.incrementAndGet(); }
+                @Override
+                public ResourceLocation id() {
+                    return PlannedMaterialCycleCoordinatorTest.id("callbacks");
+                }
+
+                @Override
+                public void onPreTick(RecipeProcess current, Object component) {
+                    assertSame(owner, Thread.currentThread());
+                    pre.incrementAndGet();
+                }
+
+                @Override
+                public void onPostTick(RecipeProcess current, Object component) {
+                    assertSame(owner, Thread.currentThread());
+                    post.incrementAndGet();
+                }
             })), process);
         }
 
@@ -387,60 +564,92 @@ class PlannedMaterialCycleCoordinatorTest {
         private int completes;
         private int rollbacks;
         private Resolution resolution = Resolution.REVERSIBLE;
-        private Runnable onCommit = () -> { };
-        private Runnable onRollback = () -> { };
-        @Override public void commit() { commits++; value++; onCommit.run(); }
-        @Override public void complete() { completes++; resolution = Resolution.COMPLETED; }
-        @Override public void rollback() { rollbacks++; value = 0; onRollback.run(); resolution = Resolution.ROLLED_BACK; }
-        @Override public Resolution resolution() { return resolution; }
-    }
-
-    private static RecipeRequirement<String> requirement(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.START); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.TICK); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.END); }
+        private Runnable onCommit = () -> {
         };
-        return new RecipeRequirementType<>(id("energy"), system).requirement(id("energy"), "value");
+        private Runnable onRollback = () -> {
+        };
+
+        @Override
+        public void commit() {
+            commits++;
+            value++;
+            onCommit.run();
+        }
+
+        @Override
+        public void complete() {
+            completes++;
+            resolution = Resolution.COMPLETED;
+        }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            value = 0;
+            onRollback.run();
+            resolution = Resolution.ROLLED_BACK;
+        }
+
+        @Override
+        public Resolution resolution() {
+            return resolution;
+        }
     }
 
     private static class ReservationAdapter implements ResourceReservation {
         private final ResourceReservation original;
-        private ReservationAdapter(ResourceReservation original) { this.original = original; }
-        @Override public StorageContext context() { return original.context(); }
-        @Override public boolean canApply() { return original.canApply(); }
-        @Override public void apply() { original.apply(); }
-        @Override public void complete() { original.complete(); }
-        @Override public void rollback() { original.rollback(); }
-        @Override public Resolution resolution() { return original.resolution(); }
+
+        private ReservationAdapter(ResourceReservation original) {
+            this.original = original;
+        }
+
+        @Override
+        public StorageContext context() {
+            return original.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return original.canApply();
+        }
+
+        @Override
+        public void apply() {
+            original.apply();
+        }
+
+        @Override
+        public void complete() {
+            original.complete();
+        }
+
+        @Override
+        public void rollback() {
+            original.rollback();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return original.resolution();
+        }
     }
 
     private static final class Backend implements AutoCloseable {
         private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
         private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
         private final PlannedTaskExecutor tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
-        @Override public void close() {
-            workers.shutdownNow(); lane.shutdownNow();
-            try { assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS)); assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS)); }
-            catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-        }
-    }
 
-    private static PlannedDeadline deadline() { return PlannedDeadline.after(Duration.ofSeconds(5)); }
-    private static ResourceLocation id(String name) { return new ResourceLocation("planned_material_cycle_test", name); }
-    private static EnergyBuffer energy() {
-        var energy = new EnergyBuffer(100, () -> { });
-        assertEquals(100, energy.receiveEnergy(100, Actionable.MODULATE)); return energy;
-    }
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS)); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-    private static void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
-        boolean exited = false;
-        while (!exited) {
-            try { assertTrue(latch.await(5, TimeUnit.SECONDS)); exited = true; }
-            catch (InterruptedException ignored) { interrupted.countDown(); }
+        @Override
+        public void close() {
+            workers.shutdownNow();
+            lane.shutdownNow();
+            try {
+                assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+                assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(failure);
+            }
         }
     }
 }

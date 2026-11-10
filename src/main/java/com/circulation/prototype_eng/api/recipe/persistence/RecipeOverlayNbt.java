@@ -66,7 +66,9 @@ final class RecipeOverlayNbt implements NbtCodec<List<RecipeOverlays.LayerSnapsh
 
     private Binding<?, ?> require(ResourceLocation id) {
         var binding = bindings.get(id);
-        if (binding == null) { throw new IllegalArgumentException("Unknown overlay codec: " + id); }
+        if (binding == null) {
+            throw new IllegalArgumentException("Unknown overlay codec: " + id);
+        }
         return binding;
     }
 
@@ -76,15 +78,21 @@ final class RecipeOverlayNbt implements NbtCodec<List<RecipeOverlays.LayerSnapsh
             Objects.requireNonNull(codec);
         }
 
-        @SuppressWarnings("unchecked") // Descriptor identity establishes both payload and patch types.
+        @SuppressWarnings("unchecked")
+            // Descriptor identity establishes both payload and patch types.
         NBTTagCompound encode(RecipeOverlays.LayerSnapshot<?, ?> layer) {
-            if (layer.type() != type) { throw new IllegalArgumentException("Different overlay descriptors share " + type.id()); }
+            if (layer.type() != type) {
+                throw new IllegalArgumentException("Different overlay descriptors share " + type.id());
+            }
             return Objects.requireNonNull(codec.encode((D) layer.data()));
         }
 
-        @SuppressWarnings("unchecked") // Checked immutable requirement-type identity before the payload cast.
+        @SuppressWarnings("unchecked")
+            // Checked immutable requirement-type identity before the payload cast.
         RecipeOverlays.LayerSnapshot<C, D> decode(NBTTagCompound entry, RecipeRequirement<?> target) {
-            if (target.type() != type.requirementType()) { throw new IllegalArgumentException("Overlay requirement type mismatch"); }
+            if (target.type() != type.requirementType()) {
+                throw new IllegalArgumentException("Overlay requirement type mismatch");
+            }
             return new RecipeOverlays.LayerSnapshot<>(RequirementPathNbt.read(entry), (RecipeRequirement<C>) target,
                 StrictNbt.requireString(entry, "Layer"), StrictNbt.requireLong(entry, "Order"), type,
                 Objects.requireNonNull(codec.decode(StrictNbt.requireCompound(entry, "Data").copy())));

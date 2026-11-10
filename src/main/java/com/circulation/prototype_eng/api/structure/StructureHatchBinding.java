@@ -5,7 +5,9 @@ import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import org.jetbrains.annotations.Nullable;
 
-/** Server-only discovery at a matched position, including provider identity and absent capabilities. */
+/**
+ * Server-only discovery at a matched position, including provider identity and absent capabilities.
+ */
 public record StructureHatchBinding(@Nullable Object provider, @Nullable ResourceHatch resource,
                                     @Nullable EnergyInput energyInput, @Nullable EnergyOutput energyOutput) {
     public static final StructureHatchBinding EMPTY = new StructureHatchBinding(null, null, null, null);

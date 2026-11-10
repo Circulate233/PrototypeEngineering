@@ -51,6 +51,21 @@ public final class PreviewMachineAnchors {
         rotation = StructureTransform.between(root.orientation(), model.settings().orientation());
     }
 
+    private static BlockPos sliceOrigin(BlockPos origin, BlockPos step, int slice) {
+        return new BlockPos(Math.toIntExact(origin.getX() + (long) step.getX() * slice),
+            Math.toIntExact(origin.getY() + (long) step.getY() * slice),
+            Math.toIntExact(origin.getZ() + (long) step.getZ() * slice));
+    }
+
+    private static Vec3d modelOffset(BlockOrientation orientation, GeckoModelBinding binding) {
+        var east = orientation.rotate(EnumFacing.EAST);
+        var up = orientation.rotate(EnumFacing.UP);
+        var south = orientation.rotate(EnumFacing.SOUTH);
+        return new Vec3d(binding.offsetX() * east.getXOffset() + binding.offsetY() * up.getXOffset() + binding.offsetZ() * south.getXOffset(),
+            binding.offsetX() * east.getYOffset() + binding.offsetY() * up.getYOffset() + binding.offsetZ() * south.getYOffset() + binding.yOffset(),
+            binding.offsetX() * east.getZOffset() + binding.offsetY() * up.getZOffset() + binding.offsetZ() * south.getZOffset());
+    }
+
     /** Each declaration, path edge and emitted slice spends one visit, including absent/zero-slice bindings. */
     public int advance(int visits) {
         if (visits < 0) throw new IllegalArgumentException("Negative model anchor visits");
@@ -111,20 +126,5 @@ public final class PreviewMachineAnchors {
         if (anchors.size() == MAX_ANCHORS) throw new IllegalArgumentException("Preview model anchor limit exceeded");
         var orientation = model.settings().orientation();
         anchors.add(new StructureRenderAnchors.Anchor(part, origin, orientation, modelOffset(orientation, binding), binding, binding.effectiveLayers(null)));
-    }
-
-    private static BlockPos sliceOrigin(BlockPos origin, BlockPos step, int slice) {
-        return new BlockPos(Math.toIntExact(origin.getX() + (long) step.getX() * slice),
-            Math.toIntExact(origin.getY() + (long) step.getY() * slice),
-            Math.toIntExact(origin.getZ() + (long) step.getZ() * slice));
-    }
-
-    private static Vec3d modelOffset(BlockOrientation orientation, GeckoModelBinding binding) {
-        var east = orientation.rotate(EnumFacing.EAST);
-        var up = orientation.rotate(EnumFacing.UP);
-        var south = orientation.rotate(EnumFacing.SOUTH);
-        return new Vec3d(binding.offsetX() * east.getXOffset() + binding.offsetY() * up.getXOffset() + binding.offsetZ() * south.getXOffset(),
-            binding.offsetX() * east.getYOffset() + binding.offsetY() * up.getYOffset() + binding.offsetZ() * south.getYOffset() + binding.yOffset(),
-            binding.offsetX() * east.getZOffset() + binding.offsetY() * up.getZOffset() + binding.offsetZ() * south.getZOffset());
     }
 }

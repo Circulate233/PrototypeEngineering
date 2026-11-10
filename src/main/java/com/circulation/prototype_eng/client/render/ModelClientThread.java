@@ -3,10 +3,10 @@ package com.circulation.prototype_eng.client.render;
 import net.minecraft.client.Minecraft;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 /** The only bridge used by CPU writers for map/finish; GL operations execute on the captured client owner. */
 public final class ModelClientThread {

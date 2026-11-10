@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.scheduler;
 
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedExecution;
-import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import org.junit.jupiter.api.Test;
 
@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -23,6 +23,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructureWorkerBatchTest {
+    private static TaskScheduler.StructureWork work(String name, ConcurrentLinkedQueue<String> log) {
+        return new TaskScheduler.StructureWork(PlannedDeadline.after(Duration.ofSeconds(5)), () -> {
+            log.add(name + "-read");
+            return true;
+        }, result -> {
+            assertInstanceOf(PlannedTaskExecutor.Success.class, result);
+            log.add(name + "-owner");
+            return null;
+        });
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for structure workers");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
     @Test
     void runningShortDeadlineInterruptsIndependentlyWhileTheOwnerStillWaitsForItsExit() throws Exception {
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1);
@@ -38,8 +58,12 @@ class StructureWorkerBatchTest {
                 await(entered);
                 boolean waiting = true;
                 while (waiting) {
-                    try { releaseShort.await(); waiting = false; }
-                    catch (InterruptedException ignored) { shortInterrupted.countDown(); }
+                    try {
+                        releaseShort.await();
+                        waiting = false;
+                    } catch (InterruptedException ignored) {
+                        shortInterrupted.countDown();
+                    }
                 }
                 shortExited.countDown();
                 return true;
@@ -68,13 +92,17 @@ class StructureWorkerBatchTest {
                     await(longFinished);
                     assertEquals(1, shortExited.getCount());
                     assertEquals(0, completed.get());
-                } finally { releaseShort.countDown(); }
+                } finally {
+                    releaseShort.countDown();
+                }
             });
             try {
                 scheduler.tick();
                 observed.get(5, TimeUnit.SECONDS);
                 assertEquals(2, completed.get());
-            } finally { releaseShort.countDown(); }
+            } finally {
+                releaseShort.countDown();
+            }
         }
     }
 
@@ -85,10 +113,24 @@ class StructureWorkerBatchTest {
         var exits = new AtomicInteger();
         var reads = new AtomicInteger();
         var pending = new PlannedExecution() {
-            @Override public boolean advance(PlannedDeadline deadline) { return confirmed.get(); }
-            @Override public void cancel(Reason reason) { }
-            @Override public void awaitExit() { exits.incrementAndGet(); }
-            @Override public boolean finished() { return confirmed.get(); }
+            @Override
+            public boolean advance(PlannedDeadline deadline) {
+                return confirmed.get();
+            }
+
+            @Override
+            public void cancel(Reason reason) {
+            }
+
+            @Override
+            public void awaitExit() {
+                exits.incrementAndGet();
+            }
+
+            @Override
+            public boolean finished() {
+                return confirmed.get();
+            }
         };
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1,
             (_, _) -> offered.compareAndSet(false, true) ? pending : null, Duration.ofSeconds(1))) {
@@ -97,7 +139,10 @@ class StructureWorkerBatchTest {
                 assertTrue(confirmed.get());
                 assertTrue(exits.get() > 0);
                 return new TaskScheduler.StructureWork(PlannedDeadline.after(Duration.ofSeconds(5)),
-                    () -> { reads.incrementAndGet(); return true; }, _ -> null);
+                    () -> {
+                        reads.incrementAndGet();
+                        return true;
+                    }, _ -> null);
             });
             scheduler.tick();
             assertEquals(0, reads.get());
@@ -118,8 +163,12 @@ class StructureWorkerBatchTest {
             scheduler.enqueueStructureCheck(() -> new TaskScheduler.StructureWork(PlannedDeadline.after(Duration.ofSeconds(1)), () -> {
                 boolean waiting = true;
                 while (waiting) {
-                    try { release.await(); waiting = false; }
-                    catch (InterruptedException ignored) { interrupted.countDown(); }
+                    try {
+                        release.await();
+                        waiting = false;
+                    } catch (InterruptedException ignored) {
+                        interrupted.countDown();
+                    }
                 }
                 exited.countDown();
                 return true;
@@ -131,14 +180,19 @@ class StructureWorkerBatchTest {
             }));
             var observed = observer.submit(() -> {
                 await(interrupted);
-                try { assertEquals(0, completed.get()); }
-                finally { release.countDown(); }
+                try {
+                    assertEquals(0, completed.get());
+                } finally {
+                    release.countDown();
+                }
             });
             try {
                 scheduler.tick();
                 observed.get(5, TimeUnit.SECONDS);
                 assertEquals(1, completed.get());
-            } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
         }
     }
 
@@ -164,19 +218,25 @@ class StructureWorkerBatchTest {
             var callbacks = new AtomicInteger();
             scheduler.enqueueStructureCheck(() -> new TaskScheduler.StructureWork(
                 new PlannedDeadline(System.nanoTime() - TimeUnit.SECONDS.toNanos(2), TimeUnit.SECONDS.toNanos(1)),
-                () -> { staleCalls.incrementAndGet(); return true; }, result -> {
-                    var stopped = assertInstanceOf(PlannedTaskExecutor.Stopped.class, result);
-                    assertEquals(Reason.WORKER_TIMEOUT, stopped.reason());
-                    assertFalse(stopped.started());
-                    callbacks.incrementAndGet();
-                    return null;
-                }));
+                () -> {
+                    staleCalls.incrementAndGet();
+                    return true;
+                }, result -> {
+                var stopped = assertInstanceOf(PlannedTaskExecutor.Stopped.class, result);
+                assertEquals(Reason.WORKER_TIMEOUT, stopped.reason());
+                assertFalse(stopped.started());
+                callbacks.incrementAndGet();
+                return null;
+            }));
             scheduler.enqueueStructureCheck(() -> new TaskScheduler.StructureWork(PlannedDeadline.after(Duration.ofSeconds(5)),
-                () -> { liveCalls.incrementAndGet(); return true; }, result -> {
-                    assertEquals(Boolean.TRUE, assertInstanceOf(PlannedTaskExecutor.Success.class, result).value());
-                    callbacks.incrementAndGet();
-                    return null;
-                }));
+                () -> {
+                    liveCalls.incrementAndGet();
+                    return true;
+                }, result -> {
+                assertEquals(Boolean.TRUE, assertInstanceOf(PlannedTaskExecutor.Success.class, result).value());
+                callbacks.incrementAndGet();
+                return null;
+            }));
             scheduler.tick();
             assertEquals(0, staleCalls.get());
             assertEquals(1, liveCalls.get());
@@ -210,8 +270,12 @@ class StructureWorkerBatchTest {
             }));
             scheduler.enqueueStructureCheck(() -> new TaskScheduler.StructureWork(PlannedDeadline.after(Duration.ofSeconds(5)), () -> {
                 entered.countDown();
-                try { await(release); return true; }
-                finally { exited.countDown(); }
+                try {
+                    await(release);
+                    return true;
+                } finally {
+                    exited.countDown();
+                }
             }, _ -> {
                 assertEquals(0, exited.getCount());
                 closed.incrementAndGet();
@@ -224,33 +288,19 @@ class StructureWorkerBatchTest {
             }));
             var observed = observer.submit(() -> {
                 await(entered);
-                try { assertEquals(0, completed.get()); }
-                finally { release.countDown(); }
+                try {
+                    assertEquals(0, completed.get());
+                } finally {
+                    release.countDown();
+                }
             });
             try {
                 assertSame(failure, assertThrows(IllegalStateException.class, scheduler::tick));
                 observed.get(5, TimeUnit.SECONDS);
                 assertEquals(2, completed.get());
-            } finally { release.countDown(); }
-        }
-    }
-
-    private static TaskScheduler.StructureWork work(String name, ConcurrentLinkedQueue<String> log) {
-        return new TaskScheduler.StructureWork(PlannedDeadline.after(Duration.ofSeconds(5)), () -> {
-            log.add(name + "-read");
-            return true;
-        }, result -> {
-            assertInstanceOf(PlannedTaskExecutor.Success.class, result);
-            log.add(name + "-owner");
-            return null;
-        });
-    }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for structure workers"); }
-        catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(failure);
+            } finally {
+                release.countDown();
+            }
         }
     }
 }

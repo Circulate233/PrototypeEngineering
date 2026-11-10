@@ -33,18 +33,6 @@ final class SchedulerMetrics {
         this.policyLabel = Objects.requireNonNull(policyLabel);
     }
 
-    record Sample(long totalWallNanos, long mainWallNanos, long concurrentStageWallNanos,
-                  long joinWallNanos, long plannedWallNanos, long cleanupWallNanos,
-                  long structureWorkerWallNanos, long mainTasks, long concurrentTasks,
-                  long customMainTasks, long customConcurrentTasks, long affinityGroups) {
-        Sample {
-            if (totalWallNanos < 0 || mainWallNanos < 0 || concurrentStageWallNanos < 0 || joinWallNanos < 0
-                || plannedWallNanos < 0 || cleanupWallNanos < 0 || structureWorkerWallNanos < 0
-                || mainTasks < 0 || concurrentTasks < 0 || customMainTasks < 0 || customConcurrentTasks < 0 || affinityGroups < 0)
-                throw new IllegalArgumentException("Negative scheduler metric sample");
-        }
-    }
-
     /** One sample for each entered actual tick, including the tick that reports a failure. */
     void record(Sample sample) {
         Objects.requireNonNull(sample);
@@ -105,5 +93,17 @@ final class SchedulerMetrics {
         long avg = quotient + remainder / sampleCount;
         int p95 = (int) ((long) sampleCount * 95 / 100);
         return new SchedulerReport.Stat(avg, sorted[p95], sorted[sampleCount - 1]);
+    }
+
+    record Sample(long totalWallNanos, long mainWallNanos, long concurrentStageWallNanos,
+                  long joinWallNanos, long plannedWallNanos, long cleanupWallNanos,
+                  long structureWorkerWallNanos, long mainTasks, long concurrentTasks,
+                  long customMainTasks, long customConcurrentTasks, long affinityGroups) {
+        Sample {
+            if (totalWallNanos < 0 || mainWallNanos < 0 || concurrentStageWallNanos < 0 || joinWallNanos < 0
+                || plannedWallNanos < 0 || cleanupWallNanos < 0 || structureWorkerWallNanos < 0
+                || mainTasks < 0 || concurrentTasks < 0 || customMainTasks < 0 || customConcurrentTasks < 0 || affinityGroups < 0)
+                throw new IllegalArgumentException("Negative scheduler metric sample");
+        }
     }
 }

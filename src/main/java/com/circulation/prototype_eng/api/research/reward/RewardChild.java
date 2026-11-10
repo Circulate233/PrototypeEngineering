@@ -1,10 +1,13 @@
 package com.circulation.prototype_eng.api.research.reward;
 
 import ae2.api.stacks.AEKey;
-import java.util.Objects;
 import net.minecraft.util.ResourceLocation;
 
-/** Ordered executable children of a single selectable group. IDs must remain stable in saves. */
+import java.util.Objects;
+
+/**
+ * Ordered executable children of a single selectable group. IDs must remain stable in saves.
+ */
 public sealed interface RewardChild {
     ResourceLocation id();
 
@@ -15,7 +18,9 @@ public sealed interface RewardChild {
         }
     }
 
-    /** AEKey is the complete business resource identity, including its components. */
+    /**
+     * AEKey is the complete business resource identity, including its components.
+     */
     record Item(ResourceLocation id, AEKey resource, long amount) implements RewardChild {
         public Item {
             Objects.requireNonNull(id, "id");

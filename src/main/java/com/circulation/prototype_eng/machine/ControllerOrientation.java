@@ -6,9 +6,12 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.Mirror;
 import net.minecraft.util.Rotation;
 
-/** Vanilla transforms apply to both axes, including the top of an UP/DOWN-facing controller. */
+/**
+ * Vanilla transforms apply to both axes, including the top of an UP/DOWN-facing controller.
+ */
 public final class ControllerOrientation {
-    private ControllerOrientation() { }
+    private ControllerOrientation() {
+    }
 
     public static BlockOrientation rotate(BlockOrientation orientation, Rotation rotation) {
         return BlockOrientation.get(rotation.rotate(orientation.getSide(RelativeSide.FRONT)),

@@ -3,18 +3,20 @@ package com.circulation.prototype_eng.api.research;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
-import java.util.Objects;
-import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
 
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
+import java.util.Objects;
+import java.util.UUID;
 
-/** Owner-side access to the exact physical database selected by an existing network publication. */
+/**
+ * Owner-side access to the exact physical database selected by an existing network publication.
+ */
 public final class ResearchDataCenters {
     private final MachineIdentityRegistry identities;
     private final Runnable ownerCheck;
@@ -24,8 +26,48 @@ public final class ResearchDataCenters {
         this.ownerCheck = Objects.requireNonNull(ownerCheck);
     }
 
-    /** A stale/foreign target grants no storage access; ambiguous component declarations fail explicitly. */
-    @Nullable public Capture capture(String teamId, UUID expectedDataCenterId) {
+    @Nullable
+    private static Bindings bindings(MachineInstance machine) {
+        ComponentType<MachineInstance, ?> roleType = null;
+        ComponentType<MachineInstance, ?> storageType = null;
+        MachineNetworkDevice role = null;
+        DataCenterStorage storage = null;
+        for (var binding : machine.components().assemblyBindings()) {
+            if (binding.component() instanceof MachineNetworkDevice candidate) {
+                if (role != null)
+                    throw new IllegalStateException("Data-center machine has multiple network component bindings");
+                role = candidate;
+                roleType = binding.type();
+            }
+            if (binding.component() instanceof DataCenterStorage candidate) {
+                if (storage != null)
+                    throw new IllegalStateException("Data-center machine has multiple storage component bindings");
+                storage = candidate;
+                storageType = binding.type();
+            }
+        }
+        return role == null || storage == null ? null
+            : new Bindings(Objects.requireNonNull(roleType), role, Objects.requireNonNull(storageType), storage);
+    }
+
+    @Nullable
+    private static StorageBinding storageBinding(MachineInstance machine) {
+        StorageBinding result = null;
+        for (var binding : machine.components().assemblyBindings()) {
+            if (binding.component() instanceof DataCenterStorage candidate) {
+                if (result != null)
+                    throw new IllegalStateException("Data-center machine has multiple storage component bindings");
+                result = new StorageBinding(binding.type(), candidate);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * A stale/foreign target grants no storage access; ambiguous component declarations fail explicitly.
+     */
+    @Nullable
+    public Capture capture(String teamId, UUID expectedDataCenterId) {
         ownerCheck.run();
         if (Objects.requireNonNull(teamId).isBlank() || !teamId.equals(teamId.trim())) {
             throw new IllegalArgumentException("Data-center capture requires a canonical team ID");
@@ -51,16 +93,6 @@ public final class ResearchDataCenters {
         return null;
     }
 
-
-    /** Saved physical target. It identifies a recovery obligation and never grants team permission. */
-    public record Target(UUID dataCenterId, UUID ownerId, MachineIdentity location) {
-        public Target {
-            Objects.requireNonNull(dataCenterId);
-            Objects.requireNonNull(ownerId);
-            Objects.requireNonNull(location);
-        }
-    }
-
     /**
      * Recover only the original physical storage. No current team, selected database, network role,
      * or old content authorization is borrowed here. New imports must use capture(team, id).
@@ -82,22 +114,23 @@ public final class ResearchDataCenters {
         return null;
     }
 
-    @Nullable
-    private static StorageBinding storageBinding(MachineInstance machine) {
-        StorageBinding result = null;
-        for (var binding : machine.components().assemblyBindings()) {
-            if (binding.component() instanceof DataCenterStorage candidate) {
-                if (result != null) throw new IllegalStateException("Data-center machine has multiple storage component bindings");
-                result = new StorageBinding(binding.type(), candidate);
-            }
+    /**
+     * Saved physical target. It identifies a recovery obligation and never grants team permission.
+     */
+    public record Target(UUID dataCenterId, UUID ownerId, MachineIdentity location) {
+        public Target {
+            Objects.requireNonNull(dataCenterId);
+            Objects.requireNonNull(ownerId);
+            Objects.requireNonNull(location);
         }
-        return result;
     }
 
     private record StorageBinding(ComponentType<MachineInstance, ?> type, DataCenterStorage storage) {
     }
 
-    /** Independent original binding proof that survives an import's own content publication. */
+    /**
+     * Independent original binding proof that survives an import's own content publication.
+     */
     public static final class PhysicalCapture {
         private final ResearchDataCenters selector;
         private final long revision;
@@ -141,31 +174,13 @@ public final class ResearchDataCenters {
         }
     }
 
-    @Nullable private static Bindings bindings(MachineInstance machine) {
-        ComponentType<MachineInstance, ?> roleType = null;
-        ComponentType<MachineInstance, ?> storageType = null;
-        MachineNetworkDevice role = null;
-        DataCenterStorage storage = null;
-        for (var binding : machine.components().assemblyBindings()) {
-            if (binding.component() instanceof MachineNetworkDevice candidate) {
-                if (role != null) throw new IllegalStateException("Data-center machine has multiple network component bindings");
-                role = candidate;
-                roleType = binding.type();
-            }
-            if (binding.component() instanceof DataCenterStorage candidate) {
-                if (storage != null) throw new IllegalStateException("Data-center machine has multiple storage component bindings");
-                storage = candidate;
-                storageType = binding.type();
-            }
-        }
-        return role == null || storage == null ? null
-            : new Bindings(Objects.requireNonNull(roleType), role, Objects.requireNonNull(storageType), storage);
+    private record Bindings(ComponentType<MachineInstance, ?> roleType, MachineNetworkDevice role,
+                            ComponentType<MachineInstance, ?> storageType, DataCenterStorage storage) {
     }
 
-    private record Bindings(ComponentType<MachineInstance, ?> roleType, MachineNetworkDevice role,
-                            ComponentType<MachineInstance, ?> storageType, DataCenterStorage storage) { }
-
-    /** The original storage instance and contents remain usable only while this exact authority is current. */
+    /**
+     * The original storage instance and contents remain usable only while this exact authority is current.
+     */
     public static final class Capture {
         private final ResearchDataCenters selector;
         private final long revision;
@@ -188,20 +203,32 @@ public final class ResearchDataCenters {
             physical = new PhysicalCapture(selector, revision, identity, machine, new StorageBinding(bindings.storageType(), bindings.storage()));
         }
 
-        public DataCenterResearchSnapshot snapshot() { return backend.snapshot(); }
-        public DataCenterStorage storage() { return bindings.storage(); }
+        public DataCenterResearchSnapshot snapshot() {
+            return backend.snapshot();
+        }
+
+        public DataCenterStorage storage() {
+            return bindings.storage();
+        }
 
         public Target target() {
             return physical.target();
         }
 
-        /** Keep this proof for persistence after the import has invalidated its old contents. */
+        /**
+         * Keep this proof for persistence after the import has invalidated its old contents.
+         */
         public boolean physicalCurrent() {
             return physical.current();
         }
-        public UUID ownerId() { return identity.identity().ownerId(); }
 
-        /** Revalidate before publishing a write; a successful content update invalidates this capture. */
+        public UUID ownerId() {
+            return identity.identity().ownerId();
+        }
+
+        /**
+         * Revalidate before publishing a write; a successful content update invalidates this capture.
+         */
         public boolean current() {
             selector.ownerCheck.run();
             if (!physicallyCurrent() || !contentsCurrent() || !permit.authorized()) return false;

@@ -22,15 +22,6 @@ public final class MachineModelPasses {
     private MachineModelPasses() {
     }
 
-    public record Entry(BuiltModelBuffers.Lease lease, Vec3d center, BooleanSupplier current, int combinedLight) {
-        public Entry(BuiltModelBuffers.Lease lease, Vec3d center, BooleanSupplier current) {
-            this(lease, center, current, 0xF000F0);
-        }
-    }
-
-    private record Bucket(BlockPos origin, Object texture, int light) {
-    }
-
     /** Callers retain and finally close input leases; a deferred native Bloom phase takes its own forks. */
     public static void draw(ModelBuildCache cache, List<Entry> entries, Vec3d camera, boolean worldBloom) {
         draw(cache, entries, camera, camera, worldBloom);
@@ -148,5 +139,14 @@ public final class MachineModelPasses {
             failure = BuiltModelBuffers.append(failure, cleanup);
         }
         BuiltModelBuffers.rethrow(failure);
+    }
+
+    public record Entry(BuiltModelBuffers.Lease lease, Vec3d center, BooleanSupplier current, int combinedLight) {
+        public Entry(BuiltModelBuffers.Lease lease, Vec3d center, BooleanSupplier current) {
+            this(lease, center, current, 0xF000F0);
+        }
+    }
+
+    private record Bucket(BlockPos origin, Object texture, int light) {
     }
 }

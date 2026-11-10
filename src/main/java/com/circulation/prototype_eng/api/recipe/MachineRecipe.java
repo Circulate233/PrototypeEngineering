@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.recipe;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -18,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 
 /**
  * Recipe definition migrated from PM: extensible requirements grouped by execution responsibility.
@@ -41,7 +41,7 @@ public final class MachineRecipe {
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
                          Collection<ResourceLocation> recipeGroups) {
         this(id, durationTicks, requirements, recipeGroups, Integer.MAX_VALUE);
-        }
+    }
 
     /** Logical running processes of this canonical recipe on one machine, independent of parallel quantities. */
     public MachineRecipe(ResourceLocation id, int durationTicks, Collection<? extends RecipeRequirement<?>> requirements,
@@ -93,18 +93,24 @@ public final class MachineRecipe {
         return id;
     }
 
-    /** Declared work ticks, advanced by the process speed attribute. */
+    /**
+     * Declared work ticks, advanced by the process speed attribute.
+     */
     public int durationTicks() {
         return durationTicks;
     }
 
-    /** Downstream mods use group membership to select recipe definitions. */
+    /**
+     * Downstream mods use group membership to select recipe definitions.
+     */
     @SuppressWarnings("unused")
     public Set<ResourceLocation> recipeGroups() {
         return recipeGroups;
     }
 
-    /** Downstream mods inspect requirements by type through this immutable view. */
+    /**
+     * Downstream mods inspect requirements by type through this immutable view.
+     */
     @SuppressWarnings("unused")
     public Map<RecipeRequirementType<?>, List<RecipeRequirement<?>>> requirements() {
         return requirements;
@@ -114,6 +120,11 @@ public final class MachineRecipe {
         return orderedRequirements;
     }
 
-    public int maxConcurrentThreads() { return maxConcurrentThreads; }
-    public RecipeParallelismSelection parallelismSelection() { return parallelismSelection; }
+    public int maxConcurrentThreads() {
+        return maxConcurrentThreads;
+    }
+
+    public RecipeParallelismSelection parallelismSelection() {
+        return parallelismSelection;
+    }
 }

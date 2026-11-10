@@ -4,7 +4,9 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-/** PM resource chance percentage, optionally multiplied by a process attribute. */
+/**
+ * PM resource chance percentage, optionally multiplied by a process attribute.
+ */
 public record ResourceChance(double percent, @Nullable ResourceLocation attribute) {
     public static final ResourceChance ALWAYS = new ResourceChance(100, null);
 

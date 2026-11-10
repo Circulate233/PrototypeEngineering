@@ -102,6 +102,24 @@ public final class ResearchContainer extends AEBaseContainer {
         return Objects.requireNonNull(kind) == Kind.CLAIM || expectedTeam != null && expectedTeam.equals(displayedTeam);
     }
 
+    /** Bounded decimal intent parsing; invalid input never reaches Integer.parseInt. */
+    public static int levelInput(@Nullable String text) {
+        if (text == null || !text.matches("[0-9]{1,10}") || text.length() == 10 && text.compareTo("2147483647") > 0)
+            return -1;
+        return Integer.parseInt(text);
+    }
+
+    public static boolean playerTarget(@Nullable String text) {
+        return text != null && text.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+            && !text.equals("00000000-0000-0000-0000-000000000000");
+    }
+
+    public static boolean teamTarget(@Nullable String text) {
+        if (text == null || text.isBlank() || text.length() > 256 || !text.equals(text.trim())) return false;
+        for (int i = 0; i < text.length(); i++) if (Character.isISOControl(text.charAt(i))) return false;
+        return true;
+    }
+
     public void requestView(Tab tab, int offset, @Nullable Selection selected, int detailOffset) {
         sendClientAction(VIEW, new View(tab.ordinal(), offset, selected == null ? "" : selected.researchId().toString(),
             selected == null ? 0 : selected.level(), selected == null ? 0 : selected.entryId(), detailOffset));
@@ -118,23 +136,6 @@ public final class ResearchContainer extends AEBaseContainer {
         action.personalBefore = entry.personalLevel();
         action.target = target;
         sendClientAction(ACT, action);
-    }
-
-    /** Bounded decimal intent parsing; invalid input never reaches Integer.parseInt. */
-    public static int levelInput(@Nullable String text) {
-        if (text == null || !text.matches("[0-9]{1,10}") || text.length() == 10 && text.compareTo("2147483647") > 0) return -1;
-        return Integer.parseInt(text);
-    }
-
-    public static boolean playerTarget(@Nullable String text) {
-        return text != null && text.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-            && !text.equals("00000000-0000-0000-0000-000000000000");
-    }
-
-    public static boolean teamTarget(@Nullable String text) {
-        if (text == null || text.isBlank() || text.length() > 256 || !text.equals(text.trim())) return false;
-        for (int i = 0; i < text.length(); i++) if (Character.isISOControl(text.charAt(i))) return false;
-        return true;
     }
 
     public void requestDatabaseView(int offset, @Nullable DataCenterGuiSnapshot.Selection selected) {
@@ -409,26 +410,29 @@ public final class ResearchContainer extends AEBaseContainer {
         var actor = (EntityPlayerMP) getPlayer();
         var entry = action.entry;
         try {
-        switch (action.kind) {
-            case FORGET -> ServerResearch.requestForget(actor, entry.id(), action.operationLevel, action.team, action.personalBefore,
-                this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
-            case ADMIN_PLAYER -> ServerResearch.requestAdminPlayerLevel(actor, UUID.fromString(Objects.requireNonNull(action.target)), entry.id(),
-                action.operationLevel, action.team, this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
-            case ADMIN_TEAM -> ServerResearch.requestAdminTeamLevel(actor, Objects.requireNonNull(action.target), entry.id(), action.operationLevel,
-                action.team, this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
-            case START ->
-                ServerResearch.requestStart(actor, entry.id(), entry.targetLevel(), action.team, this::current,
-                    result -> finished(ResearchGuiText.start(result.status())), this::actionFinished);
-            case TAKEOVER ->
-                ServerResearch.requestTakeover(actor, entry.id(), entry.targetLevel(), action.team, entry.entryId(), this::current,
-                    result -> finished(ResearchGuiText.manual(result)), this::actionFinished);
-            case BLACKLIST ->
-                ServerResearch.requestBlacklist(actor, entry.id(), action.blacklisted, action.team, this::current,
-                    result -> finished(ResearchGuiText.permission(result)), this::actionFinished);
-            case CLAIM ->
-                ServerResearch.requestReward(actor, entry.id(), entry.targetLevel(), Objects.requireNonNull(action.group), this::current,
-                    result -> finished(ResearchGuiText.reward(result.status())), this::actionFinished);
-        }
+            switch (action.kind) {
+                case FORGET ->
+                    ServerResearch.requestForget(actor, entry.id(), action.operationLevel, action.team, action.personalBefore,
+                        this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
+                case ADMIN_PLAYER ->
+                    ServerResearch.requestAdminPlayerLevel(actor, UUID.fromString(Objects.requireNonNull(action.target)), entry.id(),
+                        action.operationLevel, action.team, this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
+                case ADMIN_TEAM ->
+                    ServerResearch.requestAdminTeamLevel(actor, Objects.requireNonNull(action.target), entry.id(), action.operationLevel,
+                        action.team, this::current, result -> finished(ResearchGuiText.levelAction(result)), this::actionFinished);
+                case START ->
+                    ServerResearch.requestStart(actor, entry.id(), entry.targetLevel(), action.team, this::current,
+                        result -> finished(ResearchGuiText.start(result.status())), this::actionFinished);
+                case TAKEOVER ->
+                    ServerResearch.requestTakeover(actor, entry.id(), entry.targetLevel(), action.team, entry.entryId(), this::current,
+                        result -> finished(ResearchGuiText.manual(result)), this::actionFinished);
+                case BLACKLIST ->
+                    ServerResearch.requestBlacklist(actor, entry.id(), action.blacklisted, action.team, this::current,
+                        result -> finished(ResearchGuiText.permission(result)), this::actionFinished);
+                case CLAIM ->
+                    ServerResearch.requestReward(actor, entry.id(), entry.targetLevel(), Objects.requireNonNull(action.group), this::current,
+                        result -> finished(ResearchGuiText.reward(result.status())), this::actionFinished);
+            }
         } catch (RuntimeException | Error failure) {
             actionFinished();
             throw failure;

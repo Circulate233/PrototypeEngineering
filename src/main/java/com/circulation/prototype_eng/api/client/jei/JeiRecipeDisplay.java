@@ -6,10 +6,10 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Immutable declared display data. No machine, process, matcher or chance callback is evaluated.
@@ -57,11 +57,16 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
             if (alternativeSlots <= 0) throw new IllegalArgumentException("Non-positive candidate slot count");
         }
 
-        public CandidateGroup(String name) { this(name, 1); }
+        public CandidateGroup(String name) {
+            this(name, 1);
+        }
     }
 
     public record Energy(long amount, Role role, boolean perTick) {
-        public Energy(long amount, Role role) { this(amount, role, false); }
+        public Energy(long amount, Role role) {
+            this(amount, role, false);
+        }
+
         public Energy {
             Objects.requireNonNull(role);
             if (amount <= 0) throw new IllegalArgumentException("Non-positive display energy");
@@ -110,8 +115,10 @@ public record JeiRecipeDisplay(List<Resource> resources, List<Text> information)
         private final ObjectArrayList<Resource> resources;
         private final ObjectArrayList<Text> information;
         private final List<Text> scope;
-        @Nullable private final Chance chance;
-        @Nullable private final CandidateGroup candidates;
+        @Nullable
+        private final Chance chance;
+        @Nullable
+        private final CandidateGroup candidates;
 
         public Builder() {
             this(new ObjectArrayList<>(), new ObjectArrayList<>(), ObjectLists.emptyList(), null, null);

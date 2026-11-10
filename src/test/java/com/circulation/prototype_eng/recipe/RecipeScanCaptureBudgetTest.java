@@ -32,10 +32,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipeScanCaptureBudgetTest {
-    private static ResourceLocation id(String path) { return new ResourceLocation("scan_capture_budget_test", path); }
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("scan_capture_budget_test", path);
+    }
 
     private static RecipeProcess complete(RecipeProcessFactory.Creation creation) {
-        for (int call = 0; call < 10000; call++) if (creation.advance(new RecipeWorkBudget(1))) return creation.result();
+        for (int call = 0; call < 10000; call++)
+            if (creation.advance(new RecipeWorkBudget(1))) return creation.result();
         throw new AssertionError("Factory did not complete under small slices");
     }
 
@@ -44,7 +47,8 @@ class RecipeScanCaptureBudgetTest {
         var events = new ObjectArrayList<String>();
         var providerCalls = new AtomicInteger();
         var system = new RecipeRequirementSystem<Boolean>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> requirement) {
                 events.add(requirement.id().getPath());
                 return RequirementTransaction.SUCCESS;
             }
@@ -80,8 +84,10 @@ class RecipeScanCaptureBudgetTest {
     @Test
     void theStandardFactoryRejectsCounterfeitCanonicalTypesBeforePublishingAProcess() {
         var machine = new MachineInstance();
-        var canonicalType = new RecipeRequirementType<Boolean>(id("type"), new RecipeRequirementSystem<>() {});
-        var counterfeitType = new RecipeRequirementType<Boolean>(id("type"), new RecipeRequirementSystem<>() {});
+        var canonicalType = new RecipeRequirementType<Boolean>(id("type"), new RecipeRequirementSystem<>() {
+        });
+        var counterfeitType = new RecipeRequirementType<Boolean>(id("type"), new RecipeRequirementSystem<>() {
+        });
         var declared = canonicalType.requirement(id("declared"), true);
         var provider = new ComponentType<MachineInstance, MachineRecipeRequirements>(id("provider"), _ -> _ -> List.of(), List.of());
         machine.components().put(provider, _ -> List.of(counterfeitType.requirement(id("extra"), true)));
@@ -99,13 +105,32 @@ class RecipeScanCaptureBudgetTest {
         var tailId = id("tail");
         var events = new ObjectArrayList<String>();
         var tailSystem = new ComponentSystem<Object, Integer>() {
-            @Override public ResourceLocation id() { return tailId; }
-            @Override public void onTick(Object owner, Integer component) { events.add("tail"); }
+            @Override
+            public ResourceLocation id() {
+                return tailId;
+            }
+
+            @Override
+            public void onTick(Object owner, Integer component) {
+                events.add("tail");
+            }
         };
         var beforeSystem = new ComponentSystem<Object, Integer>() {
-            @Override public ResourceLocation id() { return beforeId; }
-            @Override public Set<ResourceLocation> runBefore() { calls.incrementAndGet(); return Set.of(tailId); }
-            @Override public void onTick(Object owner, Integer component) { events.add("before"); }
+            @Override
+            public ResourceLocation id() {
+                return beforeId;
+            }
+
+            @Override
+            public Set<ResourceLocation> runBefore() {
+                calls.incrementAndGet();
+                return Set.of(tailId);
+            }
+
+            @Override
+            public void onTick(Object owner, Integer component) {
+                events.add("before");
+            }
         };
         var tail = new ComponentType<>(id("tail_component"), _ -> 0, List.of(tailSystem));
         var owners = new ObjectArrayList<ComponentType<Object, Integer>>();
@@ -118,7 +143,8 @@ class RecipeScanCaptureBudgetTest {
         }
         var capture = map.beginSnapshotBindings();
         assertFalse(capture.advance(new RecipeWorkBudget(0)));
-        for (int call = 0; call < 10000 && !capture.advance(new RecipeWorkBudget(1)); call++) assertTrue(capture.current());
+        for (int call = 0; call < 10000 && !capture.advance(new RecipeWorkBudget(1)); call++)
+            assertTrue(capture.current());
         assertEquals(81, capture.result().size());
         assertEquals(80, calls.get());
         var reused = map.beginSnapshotBindings();
@@ -130,14 +156,16 @@ class RecipeScanCaptureBudgetTest {
         map.addDependency(owners.getFirst(), tail);
         var cyclic = map.beginSnapshotBindings();
         assertThrows(IllegalStateException.class, () -> {
-            for (int call = 0; call < 10000; call++) if (cyclic.advance(new RecipeWorkBudget(1))) throw new AssertionError("Cycle was accepted");
+            for (int call = 0; call < 10000; call++)
+                if (cyclic.advance(new RecipeWorkBudget(1))) throw new AssertionError("Cycle was accepted");
         });
     }
 
     @Test
     void smallAdmissionSlicesKeepCapacityAndGroupChecksAuthoritativeAndCancelWithoutAttaching() {
         var definitions = new ObjectArrayList<WorkSlotDefinition>();
-        for (int index = 0; index < 100; index++) definitions.add(new WorkSlotDefinition("slot_" + index, Set.of(id("allowed"))));
+        for (int index = 0; index < 100; index++)
+            definitions.add(new WorkSlotDefinition("slot_" + index, Set.of(id("allowed"))));
         var machine = new MachineInstance();
         var host = new MachineWorkSlots(machine, definitions);
         var recipe = new MachineRecipe(id("recipe"), 1, List.of(), Set.of(id("allowed")));
@@ -151,11 +179,14 @@ class RecipeScanCaptureBudgetTest {
         assertTrue(host.quiescent());
         assertTrue(host.activeProcesses().isEmpty());
         var retry = host.beginAdmission("slot_99", process);
-        for (int call = 0; call < 1000 && !retry.advance(new RecipeWorkBudget(1), () -> true); call++) assertTrue(host.activeProcesses().isEmpty());
+        for (int call = 0; call < 1000 && !retry.advance(new RecipeWorkBudget(1), () -> true); call++)
+            assertTrue(host.activeProcesses().isEmpty());
         assertTrue(retry.admitted());
         assertSame(process, host.requireSlot("slot_99").process());
         var full = host.beginAdmission("slot_0", new RecipeProcess(machine, recipe, 23));
-        for (int call = 0; call < 1000 && !full.advance(new RecipeWorkBudget(1), () -> true); call++) { assertEquals(1, host.activeProcesses().size()); }
+        for (int call = 0; call < 1000 && !full.advance(new RecipeWorkBudget(1), () -> true); call++) {
+            assertEquals(1, host.activeProcesses().size());
+        }
         assertFalse(full.admitted());
         assertEquals(1, host.activeProcesses().size());
     }

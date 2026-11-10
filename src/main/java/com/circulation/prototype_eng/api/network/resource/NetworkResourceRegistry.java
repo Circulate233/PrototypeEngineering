@@ -16,7 +16,8 @@ import java.util.Objects;
 public final class NetworkResourceRegistry {
     public static final NetworkResourceRegistry INSTANCE = new NetworkResourceRegistry();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, NetworkResourceType> registrations = new Object2ObjectLinkedOpenHashMap<>();
-    @Nullable private volatile Frozen frozen;
+    @Nullable
+    private volatile Frozen frozen;
 
     public NetworkResourceRegistry() {
         register(NetworkResources.THREAD);
@@ -24,9 +25,13 @@ public final class NetworkResourceRegistry {
         register(NetworkResources.QUBIT);
     }
 
-    /** Returns the immutable declaration itself; equal metadata never requires a second identity object. */
+    /**
+     * Returns the immutable declaration itself; equal metadata never requires a second identity object.
+     */
     public NetworkResourceType register(NetworkResourceType type) {
-        if (frozen != null) { throw new IllegalStateException("Computing resource registration has ended"); }
+        if (frozen != null) {
+            throw new IllegalStateException("Computing resource registration has ended");
+        }
         Objects.requireNonNull(type);
         if (registrations.putIfAbsent(type.id(), type) != null) {
             throw new IllegalArgumentException("Duplicate computing resource: " + type.id());
@@ -35,22 +40,32 @@ public final class NetworkResourceRegistry {
     }
 
     public void freeze() {
-        if (frozen != null) { throw new IllegalStateException("Computing resource registry already frozen"); }
+        if (frozen != null) {
+            throw new IllegalStateException("Computing resource registry already frozen");
+        }
         var types = new Object2ObjectLinkedOpenHashMap<>(registrations);
         frozen = new Frozen(types, ObjectLists.unmodifiable(new ObjectArrayList<>(types.values())));
         registrations.clear();
     }
 
-    public boolean isFrozen() { return frozen != null; }
+    public boolean isFrozen() {
+        return frozen != null;
+    }
 
-    /** Resolve ids while loading definitions or stored numeric vectors; unknown ids are errors. */
+    /**
+     * Resolve ids while loading definitions or stored numeric vectors; unknown ids are errors.
+     */
     public NetworkResourceType require(ResourceLocation id) {
         var type = requireFrozen().byId.get(Objects.requireNonNull(id));
-        if (type == null) { throw new IllegalArgumentException("Unknown computing resource: " + id); }
+        if (type == null) {
+            throw new IllegalArgumentException("Unknown computing resource: " + id);
+        }
         return type;
     }
 
-    /** All metadata fields must match; an equal record from a loader is accepted and canonicalized. */
+    /**
+     * All metadata fields must match; an equal record from a loader is accepted and canonicalized.
+     */
     public NetworkResourceType canonical(NetworkResourceType type) {
         Objects.requireNonNull(type);
         var registered = require(type.id());
@@ -60,15 +75,22 @@ public final class NetworkResourceRegistry {
         return registered;
     }
 
-    /** Immutable declarations in registration order, including logical concurrency resources. */
-    public ObjectList<NetworkResourceType> types() { return requireFrozen().ordered; }
+    /**
+     * Immutable declarations in registration order, including logical concurrency resources.
+     */
+    public ObjectList<NetworkResourceType> types() {
+        return requireFrozen().ordered;
+    }
 
     private Frozen requireFrozen() {
         var current = frozen;
-        if (current == null) { throw new IllegalStateException("Computing resource registry is not ready"); }
+        if (current == null) {
+            throw new IllegalStateException("Computing resource registry is not ready");
+        }
         return current;
     }
 
     private record Frozen(Object2ObjectLinkedOpenHashMap<ResourceLocation, NetworkResourceType> byId,
-                          ObjectList<NetworkResourceType> ordered) { }
+                          ObjectList<NetworkResourceType> ordered) {
+    }
 }

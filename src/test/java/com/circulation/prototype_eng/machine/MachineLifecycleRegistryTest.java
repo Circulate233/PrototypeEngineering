@@ -53,9 +53,12 @@ class MachineLifecycleRegistryTest {
     @Test
     void cancellationAndRegistrationDuringPublicationOnlyChangeTheNextSnapshot() {
         var registry = new MachineLifecycleRegistry();
-        var first = new MachineLifecycleListener() {};
-        var removed = new MachineLifecycleListener() {};
-        var added = new MachineLifecycleListener() {};
+        var first = new MachineLifecycleListener() {
+        };
+        var removed = new MachineLifecycleListener() {
+        };
+        var added = new MachineLifecycleListener() {
+        };
         registry.register(first);
         var removedSubscription = registry.register(removed);
         var captured = registry.snapshot();
@@ -83,7 +86,8 @@ class MachineLifecycleRegistryTest {
             try {
                 for (int round = 0; round < 64; round++) {
                     var registry = new MachineLifecycleRegistry();
-                    var listener = new MachineLifecycleListener() {};
+                    var listener = new MachineLifecycleListener() {
+                    };
                     var ready = new CountDownLatch(participants);
                     var start = new CountDownLatch(1);
                     var attempts = new ObjectArrayList<Future<MachineLifecycleRegistry.Subscription>>();
@@ -125,7 +129,8 @@ class MachineLifecycleRegistryTest {
             try {
                 for (int round = 0; round < 64; round++) {
                     var registry = new MachineLifecycleRegistry();
-                    var listener = new MachineLifecycleListener() {};
+                    var listener = new MachineLifecycleListener() {
+                    };
                     var original = registry.register(listener);
                     var ready = new CountDownLatch(2);
                     var start = new CountDownLatch(1);

@@ -8,8 +8,10 @@ import ae2.api.stacks.GenericStack;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
 import java.util.function.IntFunction;
+
 /**
  * Bounded AE display slots backed by the container's atomic, versioned resource window.
  */

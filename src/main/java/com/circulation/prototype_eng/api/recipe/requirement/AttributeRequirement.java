@@ -5,7 +5,9 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
 
-/** PM's configurable START application and END removal of a process-local modifier. */
+/**
+ * PM's configurable START application and END removal of a process-local modifier.
+ */
 public record AttributeRequirement(ResourceLocation attribute, AttributeModifier modifier,
                                    boolean applyAtStart, boolean removeAtEnd) {
     public AttributeRequirement {

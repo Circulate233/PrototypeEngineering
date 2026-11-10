@@ -16,7 +16,9 @@ import net.minecraft.util.ResourceLocation;
 import java.util.List;
 import java.util.Objects;
 
-/** Machine-wide PN defaults and per-recipe extensions, executed by the ordinary requirement pipeline. */
+/**
+ * Machine-wide PN defaults and per-recipe extensions, executed by the ordinary requirement pipeline.
+ */
 @SuppressWarnings("unused") // Machine declarations install this recreated component through the public Java API.
 public final class NetworkRecipeWork implements MachineRecipeRequirements {
     private static final RecipeRequirementType<Binding> TYPE = new RecipeRequirementType<>(
@@ -26,27 +28,6 @@ public final class NetworkRecipeWork implements MachineRecipeRequirements {
     private final NetworkWorkRequirements defaults;
     private final NetworkRecipeExtensions extensions;
 
-    public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
-            ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults) {
-        return component(id, device, defaults, NetworkRecipeExtensions.INSTANCE, ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
-    }
-
-    public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
-            ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults,
-            NetworkRecipeExtensions extensions, ResearchRegistry research, NetworkResourceRegistry resources) {
-        Objects.requireNonNull(id);
-        Objects.requireNonNull(device);
-        Objects.requireNonNull(defaults);
-        Objects.requireNonNull(extensions);
-        Objects.requireNonNull(research);
-        Objects.requireNonNull(resources);
-        return new ComponentType<>(id, _ -> {
-            defaults.validate(research, resources);
-            if (!extensions.published()) { throw new IllegalStateException("Network recipe requirements have not been published"); }
-            return new NetworkRecipeWork(id, device, defaults, extensions);
-        }, List.of(), List.of(device));
-    }
-
     private NetworkRecipeWork(ResourceLocation id, ComponentType<MachineInstance, MachineNetworkDevice> device,
                               NetworkWorkRequirements defaults, NetworkRecipeExtensions extensions) {
         this.id = id;
@@ -55,12 +36,38 @@ public final class NetworkRecipeWork implements MachineRecipeRequirements {
         this.extensions = extensions;
     }
 
-    @Override public List<RecipeRequirement<?>> requirementsFor(MachineRecipe recipe) {
+    public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
+                                                                              ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults) {
+        return component(id, device, defaults, NetworkRecipeExtensions.INSTANCE, ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
+    }
+
+    public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
+                                                                              ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults,
+                                                                              NetworkRecipeExtensions extensions, ResearchRegistry research, NetworkResourceRegistry resources) {
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(device);
+        Objects.requireNonNull(defaults);
+        Objects.requireNonNull(extensions);
+        Objects.requireNonNull(research);
+        Objects.requireNonNull(resources);
+        return new ComponentType<>(id, _ -> {
+            defaults.validate(research, resources);
+            if (!extensions.published()) {
+                throw new IllegalStateException("Network recipe requirements have not been published");
+            }
+            return new NetworkRecipeWork(id, device, defaults, extensions);
+        }, List.of(), List.of(device));
+    }
+
+    @Override
+    public List<RecipeRequirement<?>> requirementsFor(MachineRecipe recipe) {
         var combined = NetworkWorkRequirements.combined(defaults, extensions.require(recipe));
         return List.of(TYPE.requirement(id, new Binding(id, device, combined)));
     }
 
-    /** Immutable declaration only; work permits, sequences and receipts are acquired from the live owner. */
+    /**
+     * Immutable declaration only; work permits, sequences and receipts are acquired from the live owner.
+     */
     public record Binding(ResourceLocation sourceId, ComponentType<MachineInstance, MachineNetworkDevice> device,
                           NetworkWorkRequirements requirements) {
         public Binding {

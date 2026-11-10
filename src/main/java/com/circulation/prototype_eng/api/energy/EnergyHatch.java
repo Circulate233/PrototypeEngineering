@@ -6,5 +6,7 @@ package com.circulation.prototype_eng.api.energy;
  */
 public interface EnergyHatch extends EnergyInput, EnergyOutput {
     @Override
-    default Object storageIdentity() { return EnergyInput.super.storageIdentity(); }
+    default Object storageIdentity() {
+        return EnergyInput.super.storageIdentity();
+    }
 }

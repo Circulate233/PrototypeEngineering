@@ -1,16 +1,16 @@
 package com.circulation.prototype_eng.client;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
-import net.minecraftforge.client.model.pipeline.LightUtil;
 import net.minecraft.util.EnumFacing;
+import net.minecraftforge.client.model.pipeline.LightUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,7 +31,8 @@ final class ControllerRotatedModel implements IBakedModel {
                 float[] values = new float[4];
                 for (int element = 0; element < format.getElementCount(); element++) {
                     var usage = format.getElement(element).getUsage();
-                    if (usage != VertexFormatElement.EnumUsage.POSITION && usage != VertexFormatElement.EnumUsage.NORMAL) continue;
+                    if (usage != VertexFormatElement.EnumUsage.POSITION && usage != VertexFormatElement.EnumUsage.NORMAL)
+                        continue;
                     for (int vertex = 0; vertex < 4; vertex++) {
                         LightUtil.unpack(data, values, format, vertex, element);
                         turn(values, facing, twist, usage == VertexFormatElement.EnumUsage.POSITION ? .5f : 0);
@@ -69,10 +70,33 @@ final class ControllerRotatedModel implements IBakedModel {
         return EnumFacing.getFacingFromVector(vector[0], vector[1], vector[2]);
     }
 
-    @Override public @NotNull List<BakedQuad> getQuads(@Nullable IBlockState state, @Nullable EnumFacing side, long rand) { return quads.get(side == null ? 6 : side.ordinal()); }
-    @Override public boolean isAmbientOcclusion() { return base.isAmbientOcclusion(); }
-    @Override public boolean isGui3d() { return base.isGui3d(); }
-    @Override public boolean isBuiltInRenderer() { return base.isBuiltInRenderer(); }
-    @Override public @NotNull TextureAtlasSprite getParticleTexture() { return base.getParticleTexture(); }
-    @Override public @NotNull ItemOverrideList getOverrides() { return base.getOverrides(); }
+    @Override
+    public @NotNull List<BakedQuad> getQuads(@Nullable IBlockState state, @Nullable EnumFacing side, long rand) {
+        return quads.get(side == null ? 6 : side.ordinal());
+    }
+
+    @Override
+    public boolean isAmbientOcclusion() {
+        return base.isAmbientOcclusion();
+    }
+
+    @Override
+    public boolean isGui3d() {
+        return base.isGui3d();
+    }
+
+    @Override
+    public boolean isBuiltInRenderer() {
+        return base.isBuiltInRenderer();
+    }
+
+    @Override
+    public @NotNull TextureAtlasSprite getParticleTexture() {
+        return base.getParticleTexture();
+    }
+
+    @Override
+    public @NotNull ItemOverrideList getOverrides() {
+        return base.getOverrides();
+    }
 }

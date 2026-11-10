@@ -13,6 +13,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegis
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -34,8 +35,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -45,11 +46,55 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 class AutomaticRecipeProcessingTest {
     private static final ResourceLocation GROUP = id("group");
     private static final ScanLimits LIMITS = new ScanLimits(1, 1);
+
+    private static RecipeRegistry registry(MachineRecipe... recipes) {
+        var registry = new RecipeRegistry();
+        registry.register(new DefaultRecipePool(id("pool"), "pool", List.of(recipes)));
+        return registry;
+    }
+
+    private static MachineType.Builder declaration() {
+        return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"))
+                          .recipePool(id("pool")).recipeGroup(GROUP).executionMode(ExecutionMode.MAIN_THREAD);
+    }
+
+    private static MachineAssembly assembly(ComponentType<MachineInstance, RecipeScanner> scanner, MachineRecipe... recipes) {
+        return MachineAssembly.builder(declaration().component(MachineWorkSlots.TYPE).component(scanner).build(), "v1")
+                              .workSlots(codec(recipes)).recreated(scanner).build();
+    }
+
+    private static MachineWorkSlotsNbt codec(MachineRecipe... recipes) {
+        return new MachineWorkSlotsNbt("v1", Arrays.stream(recipes)
+                                                   .map(recipe -> RecipeProcessNbt.builder(recipe, "v1").build()).toList());
+    }
+
+    private static MachineController controller(MachineAssembly assembly, TaskScheduler scheduler) {
+        return new MachineController(assembly, new Host(), scheduler, new MachineLifecycleRegistry());
+    }
+
+    private static MachineInstance runtime(MachineController controller) {
+        return Objects.requireNonNull(controller.machine());
+    }
+
+    private static MachineWorkSlots slots(MachineController controller) {
+        return Objects.requireNonNull(runtime(controller).components().get(MachineWorkSlots.TYPE));
+    }
+
+    private static void form(MachineController controller) {
+        Objects.requireNonNull(runtime(controller).lifecycle()).form(new MachineHatches(List.of(), List.of(), List.of()));
+    }
+
+    private static TaskScheduler scheduler() {
+        return new TaskScheduler(Thread.currentThread(), 1, 1);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("automatic_recipe_test", path);
+    }
 
     @Test
     void declaredScannerAdmitsBeforeProcessingAndRestoredWorkDoesNotReplayStart() {
@@ -131,7 +176,10 @@ class AutomaticRecipeProcessingTest {
         boolean[] ready = {false};
         int[] factories = {0};
         int[] lookups = {0};
-        RecipeCandidateIndex index = (_, _, scope) -> { lookups[0]++; return scope; };
+        RecipeCandidateIndex index = (_, _, scope) -> {
+            lookups[0]++;
+            return scope;
+        };
         var scanner = RecipeScanning.component(id("custom_scanner"), host -> {
             factories[0]++;
             return new RecipeScanner(host, registry.catalog(), (owner, candidate, seed, tuning) -> {
@@ -174,7 +222,7 @@ class AutomaticRecipeProcessingTest {
         var scanner = RecipeScanning.component(id("scanner"), registry::catalog, LIMITS);
         var missing = MachineAssembly.builder(declaration().component(scanner).build(), "v1").recreated(scanner).build();
         var reversed = MachineAssembly.builder(declaration().component(scanner).component(MachineWorkSlots.TYPE).build(), "v1")
-            .workSlots(codec(recipe)).recreated(scanner).build();
+                                      .workSlots(codec(recipe)).recreated(scanner).build();
         var foreign = RecipeScanning.component(id("foreign_scanner"), _ -> new RecipeScanner(
             new MachineWorkSlots(new MachineInstance(), List.of()), registry.catalog(), () -> 59), LIMITS, _ -> true);
         for (var invalid : List.of(missing, reversed, assembly(foreign, recipe))) {
@@ -253,37 +301,6 @@ class AutomaticRecipeProcessingTest {
         }
     }
 
-    private static RecipeRegistry registry(MachineRecipe... recipes) {
-        var registry = new RecipeRegistry();
-        registry.register(new DefaultRecipePool(id("pool"), "pool", List.of(recipes)));
-        return registry;
-    }
-
-    private static MachineType.Builder declaration() {
-        return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"))
-            .recipePool(id("pool")).recipeGroup(GROUP).executionMode(ExecutionMode.MAIN_THREAD);
-    }
-
-    private static MachineAssembly assembly(ComponentType<MachineInstance, RecipeScanner> scanner, MachineRecipe... recipes) {
-        return MachineAssembly.builder(declaration().component(MachineWorkSlots.TYPE).component(scanner).build(), "v1")
-            .workSlots(codec(recipes)).recreated(scanner).build();
-    }
-
-    private static MachineWorkSlotsNbt codec(MachineRecipe... recipes) {
-        return new MachineWorkSlotsNbt("v1", Arrays.stream(recipes)
-            .map(recipe -> RecipeProcessNbt.builder(recipe, "v1").build()).toList());
-    }
-
-    private static MachineController controller(MachineAssembly assembly, TaskScheduler scheduler) {
-        return new MachineController(assembly, new Host(), scheduler, new MachineLifecycleRegistry());
-    }
-
-    private static MachineInstance runtime(MachineController controller) { return Objects.requireNonNull(controller.machine()); }
-    private static MachineWorkSlots slots(MachineController controller) { return Objects.requireNonNull(runtime(controller).components().get(MachineWorkSlots.TYPE)); }
-    private static void form(MachineController controller) { Objects.requireNonNull(runtime(controller).lifecycle()).form(new MachineHatches(List.of(), List.of(), List.of())); }
-    private static TaskScheduler scheduler() { return new TaskScheduler(Thread.currentThread(), 1, 1); }
-    private static ResourceLocation id(String path) { return new ResourceLocation("automatic_recipe_test", path); }
-
     private static final class Tracking implements RecipeRequirementSystem<String> {
         private int acquisitions;
         private int starts;
@@ -296,19 +313,45 @@ class AutomaticRecipeProcessingTest {
             return new MachineRecipe(id(name), 4, List.of(type.requirement(id(name + "_requirement"), name)), Set.of(GROUP));
         }
 
-        @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+        @Override
+        public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
             acquisitions++;
             return transaction(0, accept ? ProcessResult.SUCCESS : RecipeText.StorageChanged.blocked());
         }
-        @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return transaction(1, ProcessResult.SUCCESS); }
-        @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return transaction(2, ProcessResult.SUCCESS); }
+
+        @Override
+        public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+            return transaction(1, ProcessResult.SUCCESS);
+        }
+
+        @Override
+        public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+            return transaction(2, ProcessResult.SUCCESS);
+        }
 
         private RequirementTransaction transaction(int stage, ProcessResult result) {
             return new RequirementTransaction() {
                 private boolean committed;
-                @Override public ProcessResult result() { return result; }
-                @Override public void commit() { committed = true; add(1); }
-                @Override public void rollback() { if (committed) { add(-1); committed = false; } }
+
+                @Override
+                public ProcessResult result() {
+                    return result;
+                }
+
+                @Override
+                public void commit() {
+                    committed = true;
+                    add(1);
+                }
+
+                @Override
+                public void rollback() {
+                    if (committed) {
+                        add(-1);
+                        committed = false;
+                    }
+                }
+
                 private void add(int delta) {
                     switch (stage) {
                         case 0 -> starts += delta;
@@ -323,10 +366,22 @@ class AutomaticRecipeProcessingTest {
 
     private static final class Host implements MachineLifecycleHost {
         private final Thread owner = Thread.currentThread();
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("Pure controller tests cannot access a Minecraft World"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Controller requires the fixture owner thread"); }
+
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("Pure controller tests cannot access a Minecraft World");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Controller requires the fixture owner thread");
+            }
         }
     }
 }

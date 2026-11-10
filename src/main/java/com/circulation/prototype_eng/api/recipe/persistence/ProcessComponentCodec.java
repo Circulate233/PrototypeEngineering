@@ -13,9 +13,13 @@ import net.minecraft.nbt.NBTTagCompound;
  */
 public interface ProcessComponentCodec<C> {
     NBTTagCompound encode(RecipeProcess process, C component);
+
     void restore(RecipeProcess process, C component, NBTTagCompound data);
 
-    /** Cross-component checks after all components have been restored, before the process is published. */
+    /**
+     * Cross-component checks after all components have been restored, before the process is published.
+     */
     @SuppressWarnings("unused") // Optional external extension hook; default codecs need no extra checks.
-    default void validate(RecipeProcess process, C component) { }
+    default void validate(RecipeProcess process, C component) {
+    }
 }

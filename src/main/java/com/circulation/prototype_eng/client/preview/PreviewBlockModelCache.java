@@ -32,6 +32,195 @@ final class PreviewBlockModelCache implements AutoCloseable {
         this.capacity = capacity;
     }
 
+    static List<ChunkMesh> translucentOrder(List<ChunkMesh> selected, BlockPos anchor, double x, double y, double z) {
+        var result = new ObjectArrayList<ChunkMesh>();
+        for (var mesh : selected) if (mesh.layers[3] != null) result.add(mesh);
+        result.sort((left, right) -> Double.compare(right.distanceSquared(anchor, x, y, z), left.distanceSquared(anchor, x, y, z)));
+        return result;
+    }
+
+    /**
+     * Preserve a VM error's identity while still attempting the other owned cleanup obligations.
+     */
+    static Throwable merge(Throwable original, Throwable next) {
+        if (original == null) return next;
+        if (original == next) return original;
+        if (next instanceof VirtualMachineError && !(original instanceof VirtualMachineError)) {
+            next.addSuppressed(original);
+            return next;
+        }
+        original.addSuppressed(next);
+        return original;
+    }
+
+    static void rethrow(Throwable failure) {
+        if (failure instanceof RuntimeException runtime) throw runtime;
+        if (failure instanceof Error error) throw error;
+    }
+
+    private void requireOwner() {
+        if (Thread.currentThread() != owner)
+            throw new IllegalStateException("Block-model cache requires its client owner thread");
+    }
+
+    private boolean valid(Build build) {
+        return !closed && !invalidating && !build.released && build.epoch == epoch && current.test(build.model);
+    }
+
+    boolean valid(Ready ready) {
+        requireOwner();
+        return valid(ready.build) && ready.build.complete;
+    }
+
+    Object epochToken() {
+        requireOwner();
+        return epoch;
+    }
+
+    boolean currentEpoch(Object captured) {
+        requireOwner();
+        return !closed && !invalidating && epoch == captured;
+    }
+
+    /**
+     * Each grouped cell, opened chunk, baked cell and uploaded layer consumes one step, even when empty.
+     */
+    Ready advance(StructurePreviewModel model, int visits) {
+        requireOwner();
+        if (visits < 0) throw new IllegalArgumentException("Negative block-model build budget");
+        if (closed || invalidating || !current.test(model)) return null;
+        var build = entries.getAndMoveToLast(model);
+        if (build == null) {
+            build = new Build(model, epoch);
+            entries.putAndMoveToLast(model, build);
+            if (entries.size() > capacity) entries.removeFirst().close();
+        }
+        var captured = build;
+        try {
+            for (int used = 0; used < visits && valid(captured) && !captured.complete; used++) step(captured);
+            return valid(captured) && captured.complete ? captured.ready : null;
+        } catch (RuntimeException | Error failure) {
+            entries.remove(model, captured);
+            Throwable combined = failure;
+            try {
+                captured.close();
+            } catch (RuntimeException | Error cleanup) {
+                combined = merge(combined, cleanup);
+            }
+            rethrow(combined);
+            throw failure;
+        }
+    }
+
+    private void step(Build build) {
+        if (build.groupCursor < build.model.cells().size()) {
+            var cell = build.model.cells().get(build.groupCursor++);
+            var key = ChunkKey.of(cell.position());
+            var group = build.groups.get(key);
+            if (group == null) {
+                group = new Group(key);
+                build.groups.put(key, group);
+            }
+            group.cells.add(cell);
+            return;
+        }
+        if (build.pendingGroups == null) build.pendingGroups = build.groups.values().iterator();
+        if (build.group == null) {
+            if (!build.pendingGroups.hasNext()) {
+                build.complete = true;
+                build.groups.clear();
+                build.pendingGroups = null;
+                return;
+            }
+            build.group = build.pendingGroups.next();
+            build.mesh = new ChunkMesh(build.group.key);
+            var created = bakers.get();
+            if (!valid(build)) {
+                created.close();
+                return;
+            }
+            build.baker = created;
+            build.cellCursor = 0;
+            build.uploadCursor = 0;
+            return;
+        }
+        if (build.cellCursor < build.group.cells.size()) {
+            var cell = build.group.cells.get(build.cellCursor);
+            if (build.baker.appendStep(cell) && valid(build)) build.cellCursor++;
+            return;
+        }
+        if (build.uploadCursor < LAYERS) {
+            int layer = build.uploadCursor++;
+            var uploaded = build.baker.upload(layer);
+            if (!valid(build)) {
+                if (uploaded != null) uploaded.close();
+                return;
+            }
+            build.mesh.layers[layer] = uploaded;
+            if (build.uploadCursor < LAYERS) return;
+        }
+        var oldBaker = build.baker;
+        build.baker = null;
+        oldBaker.close();
+        if (!valid(build)) return;
+        build.meshes.add(build.mesh);
+        build.mesh = null;
+        build.group = null;
+    }
+
+    /**
+     * Empty and distant chunks consume visits too. Selection advances one rolling cursor per frame.
+     */
+    List<ChunkMesh> select(Ready ready, int visits, BlockPos anchor, double x, double y, double z, double maxDistance) {
+        requireOwner();
+        if (visits < 0) throw new IllegalArgumentException("Negative chunk render budget");
+        if (!valid(ready)) return List.of();
+        var build = ready.build;
+        var result = new ObjectArrayList<ChunkMesh>();
+        int count = Math.min(visits, build.meshes.size());
+        for (int i = 0; i < count; i++) {
+            var mesh = build.meshes.get(build.renderCursor);
+            build.renderCursor = build.renderCursor + 1 == build.meshes.size() ? 0 : build.renderCursor + 1;
+            if (mesh.nonempty() && mesh.visible(anchor, x, y, z, maxDistance)) result.add(mesh);
+        }
+        return result;
+    }
+
+    /**
+     * Revokes upload rights before draining old builders/GL handles; reentrant callbacks cannot republish.
+     */
+    void invalidate() {
+        requireOwner();
+        boolean previous = invalidating;
+        invalidating = true;
+        Throwable failure = null;
+        try {
+            epoch = new Object();
+        } catch (RuntimeException | Error caught) {
+            closed = true;
+            failure = caught;
+        }
+        // Drain without copying/allocation; callbacks cannot start new builds while this owner is invalidating.
+        while (!entries.isEmpty()) {
+            var entry = entries.removeFirst();
+            try {
+                entry.close();
+            } catch (RuntimeException | Error caught) {
+                failure = merge(failure, caught);
+            }
+        }
+        invalidating = previous;
+        rethrow(failure);
+    }
+
+    @Override
+    public void close() {
+        requireOwner();
+        if (closed) return;
+        closed = true;
+        invalidate();
+    }
+
     /**
      * Tests use the same concrete continuation with a recording baker, never initialize MC/GL.
      */
@@ -180,194 +369,5 @@ final class PreviewBlockModelCache implements AutoCloseable {
             pendingGroups = null;
             rethrow(failure);
         }
-    }
-
-    private void requireOwner() {
-        if (Thread.currentThread() != owner)
-            throw new IllegalStateException("Block-model cache requires its client owner thread");
-    }
-
-    private boolean valid(Build build) {
-        return !closed && !invalidating && !build.released && build.epoch == epoch && current.test(build.model);
-    }
-
-    boolean valid(Ready ready) {
-        requireOwner();
-        return valid(ready.build) && ready.build.complete;
-    }
-
-    Object epochToken() {
-        requireOwner();
-        return epoch;
-    }
-
-    boolean currentEpoch(Object captured) {
-        requireOwner();
-        return !closed && !invalidating && epoch == captured;
-    }
-
-    /**
-     * Each grouped cell, opened chunk, baked cell and uploaded layer consumes one step, even when empty.
-     */
-    Ready advance(StructurePreviewModel model, int visits) {
-        requireOwner();
-        if (visits < 0) throw new IllegalArgumentException("Negative block-model build budget");
-        if (closed || invalidating || !current.test(model)) return null;
-        var build = entries.getAndMoveToLast(model);
-        if (build == null) {
-            build = new Build(model, epoch);
-            entries.putAndMoveToLast(model, build);
-            if (entries.size() > capacity) entries.removeFirst().close();
-        }
-        var captured = build;
-        try {
-            for (int used = 0; used < visits && valid(captured) && !captured.complete; used++) step(captured);
-            return valid(captured) && captured.complete ? captured.ready : null;
-        } catch (RuntimeException | Error failure) {
-            entries.remove(model, captured);
-            Throwable combined = failure;
-            try {
-                captured.close();
-            } catch (RuntimeException | Error cleanup) {
-                combined = merge(combined, cleanup);
-            }
-            rethrow(combined);
-            throw failure;
-        }
-    }
-
-    private void step(Build build) {
-        if (build.groupCursor < build.model.cells().size()) {
-            var cell = build.model.cells().get(build.groupCursor++);
-            var key = ChunkKey.of(cell.position());
-            var group = build.groups.get(key);
-            if (group == null) {
-                group = new Group(key);
-                build.groups.put(key, group);
-            }
-            group.cells.add(cell);
-            return;
-        }
-        if (build.pendingGroups == null) build.pendingGroups = build.groups.values().iterator();
-        if (build.group == null) {
-            if (!build.pendingGroups.hasNext()) {
-                build.complete = true;
-                build.groups.clear();
-                build.pendingGroups = null;
-                return;
-            }
-            build.group = build.pendingGroups.next();
-            build.mesh = new ChunkMesh(build.group.key);
-            var created = bakers.get();
-            if (!valid(build)) {
-                created.close();
-                return;
-            }
-            build.baker = created;
-            build.cellCursor = 0;
-            build.uploadCursor = 0;
-            return;
-        }
-        if (build.cellCursor < build.group.cells.size()) {
-            var cell = build.group.cells.get(build.cellCursor);
-            if (build.baker.appendStep(cell) && valid(build)) build.cellCursor++;
-            return;
-        }
-        if (build.uploadCursor < LAYERS) {
-            int layer = build.uploadCursor++;
-            var uploaded = build.baker.upload(layer);
-            if (!valid(build)) {
-                if (uploaded != null) uploaded.close();
-                return;
-            }
-            build.mesh.layers[layer] = uploaded;
-            if (build.uploadCursor < LAYERS) return;
-        }
-        var oldBaker = build.baker;
-        build.baker = null;
-        oldBaker.close();
-        if (!valid(build)) return;
-        build.meshes.add(build.mesh);
-        build.mesh = null;
-        build.group = null;
-    }
-
-    /**
-     * Empty and distant chunks consume visits too. Selection advances one rolling cursor per frame.
-     */
-    List<ChunkMesh> select(Ready ready, int visits, BlockPos anchor, double x, double y, double z, double maxDistance) {
-        requireOwner();
-        if (visits < 0) throw new IllegalArgumentException("Negative chunk render budget");
-        if (!valid(ready)) return List.of();
-        var build = ready.build;
-        var result = new ObjectArrayList<ChunkMesh>();
-        int count = Math.min(visits, build.meshes.size());
-        for (int i = 0; i < count; i++) {
-            var mesh = build.meshes.get(build.renderCursor);
-            build.renderCursor = build.renderCursor + 1 == build.meshes.size() ? 0 : build.renderCursor + 1;
-            if (mesh.nonempty() && mesh.visible(anchor, x, y, z, maxDistance)) result.add(mesh);
-        }
-        return result;
-    }
-
-    static List<ChunkMesh> translucentOrder(List<ChunkMesh> selected, BlockPos anchor, double x, double y, double z) {
-        var result = new ObjectArrayList<ChunkMesh>();
-        for (var mesh : selected) if (mesh.layers[3] != null) result.add(mesh);
-        result.sort((left, right) -> Double.compare(right.distanceSquared(anchor, x, y, z), left.distanceSquared(anchor, x, y, z)));
-        return result;
-    }
-
-    /**
-     * Revokes upload rights before draining old builders/GL handles; reentrant callbacks cannot republish.
-     */
-    void invalidate() {
-        requireOwner();
-        boolean previous = invalidating;
-        invalidating = true;
-        Throwable failure = null;
-        try {
-            epoch = new Object();
-        } catch (RuntimeException | Error caught) {
-            closed = true;
-            failure = caught;
-        }
-        // Drain without copying/allocation; callbacks cannot start new builds while this owner is invalidating.
-        while (!entries.isEmpty()) {
-            var entry = entries.removeFirst();
-            try {
-                entry.close();
-            } catch (RuntimeException | Error caught) {
-                failure = merge(failure, caught);
-            }
-        }
-        invalidating = previous;
-        rethrow(failure);
-    }
-
-    @Override
-    public void close() {
-        requireOwner();
-        if (closed) return;
-        closed = true;
-        invalidate();
-    }
-
-    /**
-     * Preserve a VM error's identity while still attempting the other owned cleanup obligations.
-     */
-    static Throwable merge(Throwable original, Throwable next) {
-        if (original == null) return next;
-        if (original == next) return original;
-        if (next instanceof VirtualMachineError && !(original instanceof VirtualMachineError)) {
-            next.addSuppressed(original);
-            return next;
-        }
-        original.addSuppressed(next);
-        return original;
-    }
-
-    static void rethrow(Throwable failure) {
-        if (failure instanceof RuntimeException runtime) throw runtime;
-        if (failure instanceof Error error) throw error;
     }
 }

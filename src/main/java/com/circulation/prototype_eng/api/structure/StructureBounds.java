@@ -4,7 +4,9 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.Objects;
 
-/** Inclusive area requested by a pattern or validator, including gaps in sparse patterns. */
+/**
+ * Inclusive area requested by a pattern or validator, including gaps in sparse patterns.
+ */
 public record StructureBounds(BlockPos min, BlockPos max) {
     public StructureBounds {
         min = Objects.requireNonNull(min).toImmutable();
@@ -14,5 +16,7 @@ public record StructureBounds(BlockPos min, BlockPos max) {
         }
     }
 
-    public static StructureBounds at(BlockPos position) { return new StructureBounds(position, position); }
+    public static StructureBounds at(BlockPos position) {
+        return new StructureBounds(position, position);
+    }
 }

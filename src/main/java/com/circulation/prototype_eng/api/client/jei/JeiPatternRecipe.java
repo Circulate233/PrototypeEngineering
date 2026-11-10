@@ -17,7 +17,8 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
         var result = new ObjectArrayList<List<GenericStack>>();
         for (var group : groups) {
             if (group.isEmpty()) throw new IllegalArgumentException("Empty pattern candidate group");
-            for (var stack : group) if (stack == null || stack.amount() <= 0) throw new IllegalArgumentException("Invalid pattern amount");
+            for (var stack : group)
+                if (stack == null || stack.amount() <= 0) throw new IllegalArgumentException("Invalid pattern amount");
             result.add(List.copyOf(group));
         }
         return List.copyOf(result);

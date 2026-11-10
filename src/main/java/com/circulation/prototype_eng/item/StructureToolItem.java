@@ -83,7 +83,8 @@ public final class StructureToolItem extends AEBaseItem {
                 player.sendMessage(StructureToolText.CornerSet.text(pos.getX(), pos.getY(), pos.getZ()));
                 var box = ScannerState.box(data);
                 if (box != null) {
-                    var min = box.min(); var max = box.max();
+                    var min = box.min();
+                    var max = box.max();
                     var volume = BigInteger.valueOf(box.sizeX()).multiply(BigInteger.valueOf(box.sizeY())).multiply(BigInteger.valueOf(box.sizeZ()));
                     player.sendMessage(StructureToolText.Selection.text(min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ(),
                         box.sizeX(), box.sizeY(), box.sizeZ(), volume));

@@ -11,6 +11,7 @@ public final class ResearchItemDownloadEvaluation {
     private final Status status;
     @Nullable
     private final ItemStack output;
+
     private ResearchItemDownloadEvaluation(Status status, @Nullable ItemStack output) {
         this.status = status;
         this.output = output;

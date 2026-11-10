@@ -28,6 +28,40 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlannedTaskExecutorFailureTest {
+    private static ThreadPoolExecutor inlineLane() {
+        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()) {
+            @Override
+            public void execute(@NotNull Runnable action) {
+                action.run();
+            }
+        };
+    }
+
+    private static PlannedDeadline deadline() {
+        return new PlannedDeadline(0, TimeUnit.SECONDS.toNanos(5));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch interrupted) {
+        boolean done = false;
+        while (!done) {
+            try {
+                assertTrue(release.await(5, TimeUnit.SECONDS));
+                done = true;
+            } catch (InterruptedException ignored) {
+                interrupted.countDown();
+            }
+        }
+    }
+
     @Test
     void prepareCoordinatorReceivesItsBatchBeforeAnInlineWorkerExecutes() {
         var retained = new ObjectArrayList<Batch<String>>();
@@ -63,24 +97,36 @@ class PlannedTaskExecutorFailureTest {
             int[] actions = {0, 0};
             var workers = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
                 Thread.ofPlatform().daemon().factory()) {
-                @Override public void execute(@NotNull Runnable action) {
+                @Override
+                public void execute(@NotNull Runnable action) {
                     super.execute(action);
                     await(firstFinished ? exited : entered);
                 }
-                @Override protected void afterExecute(Runnable action, Throwable failure) { exited.countDown(); }
+
+                @Override
+                protected void afterExecute(Runnable action, Throwable failure) {
+                    exited.countDown();
+                }
             };
             try (var lane = Executors.newSingleThreadExecutor()) {
                 var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> {
-                    if (Thread.currentThread() == owner && ++ownerReads[0] == 2) { throw primary; }
+                    if (Thread.currentThread() == owner && ++ownerReads[0] == 2) {
+                        throw primary;
+                    }
                     return 0;
                 });
                 var jobs = List.of(new Job<>(null, () -> {
                     assertEquals(1, retained.size(), "Prepare batch delivery must precede dispatch");
                     actions[0]++;
                     entered.countDown();
-                    if (!firstFinished) { awaitIgnoringInterrupt(release, interrupted); }
+                    if (!firstFinished) {
+                        awaitIgnoringInterrupt(release, interrupted);
+                    }
                     return "prepared";
-                }), new Job<>(null, () -> { actions[1]++; return "forbidden"; }));
+                }), new Job<>(null, () -> {
+                    actions[1]++;
+                    return "forbidden";
+                }));
                 try {
                     assertSame(primary, assertThrows(IllegalStateException.class,
                         () -> executor.runPrepare(jobs, deadline(), retained::add)));
@@ -99,7 +145,9 @@ class PlannedTaskExecutorFailureTest {
                     assertEquals(snapshots, batch.results(), "A late prepare return must not replace the frozen stop outcome");
                     assertArrayEquals(new int[]{1, 0}, actions);
                     assertFalse(workers.isShutdown(), "The prepare runner borrows its executor");
-                } finally { release.countDown(); }
+                } finally {
+                    release.countDown();
+                }
             } finally {
                 release.countDown();
                 workers.shutdownNow();
@@ -136,7 +184,10 @@ class PlannedTaskExecutorFailureTest {
         int[] actions = {0};
         try (var workers = Executors.newSingleThreadExecutor(); var lane = inlineLane()) {
             var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> 0);
-            var job = new SourceJob<>("source", new Job<>(null, () -> { actions[0]++; return "forbidden"; }));
+            var job = new SourceJob<>("source", new Job<>(null, () -> {
+                actions[0]++;
+                return "forbidden";
+            }));
             assertSame(primary, assertThrows(IllegalStateException.class,
                 () -> executor.runOnSourceLanes(List.of(job, job), deadline(), batch -> {
                     retained.add(batch);
@@ -164,23 +215,35 @@ class PlannedTaskExecutorFailureTest {
         var lane = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
             Thread.ofPlatform().daemon().factory()) {
             private int submissions;
-            @Override public void execute(@NotNull Runnable action) {
+
+            @Override
+            public void execute(@NotNull Runnable action) {
                 super.execute(action);
-                if (++submissions == 1) { await(entered); }
+                if (++submissions == 1) {
+                    await(entered);
+                }
             }
         };
         try (var workers = Executors.newSingleThreadExecutor()) {
             var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> {
-                if (Thread.currentThread() == owner && ++ownerReads[0] == 3) { throw primary; }
+                if (Thread.currentThread() == owner && ++ownerReads[0] == 3) {
+                    throw primary;
+                }
                 return 0;
             });
             var jobs = List.of(new SourceJob<>("source", new Job<>(null, () -> {
-                actions[0]++;
-                entered.countDown();
-                awaitIgnoringInterrupt(release, interrupted);
-                return "late";
-            })), new SourceJob<>("source", new Job<>(null, () -> { actions[1]++; return "queued"; })),
-                new SourceJob<>("source", new Job<>(null, () -> { actions[2]++; return "new"; })));
+                    actions[0]++;
+                    entered.countDown();
+                    awaitIgnoringInterrupt(release, interrupted);
+                    return "late";
+                })), new SourceJob<>("source", new Job<>(null, () -> {
+                    actions[1]++;
+                    return "queued";
+                })),
+                new SourceJob<>("source", new Job<>(null, () -> {
+                    actions[2]++;
+                    return "new";
+                })));
             try {
                 assertSame(primary, assertThrows(IllegalStateException.class,
                     () -> executor.runOnSourceLanes(jobs, deadline(), retained::add)));
@@ -191,10 +254,13 @@ class PlannedTaskExecutorFailureTest {
                 assertFalse(batch.quiescent());
                 release.countDown();
                 batch.awaitQuiescence();
-                lane.submit(() -> {}).get(5, TimeUnit.SECONDS);
+                lane.submit(() -> {
+                }).get(5, TimeUnit.SECONDS);
                 assertArrayEquals(new int[]{1, 0, 0}, actions);
                 assertEquals(new Stopped<>(Reason.WORKER_FAILURE, true), batch.results().getFirst());
-            } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
         } finally {
             release.countDown();
             lane.shutdownNow();
@@ -212,12 +278,16 @@ class PlannedTaskExecutorFailureTest {
                 int[] actions = {0};
                 try (var workers = Executors.newSingleThreadExecutor(); var lane = inlineLane()) {
                     var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> {
-                        if (++clockReads[0] == failedRead) { throw clockFault; }
+                        if (++clockReads[0] == failedRead) {
+                            throw clockFault;
+                        }
                         return 0;
                     });
                     var batch = executor.runOnSourceLanes(List.of(new SourceJob<>("source", new Job<>(null, () -> {
                         actions[0]++;
-                        if (businessFails) { throw businessFault; }
+                        if (businessFails) {
+                            throw businessFault;
+                        }
                         return "applied";
                     }))), deadline());
                     Throwable expected = failedRead == 3 && businessFails ? businessFault : clockFault;
@@ -225,30 +295,11 @@ class PlannedTaskExecutorFailureTest {
                     batch.awaitQuiescence();
                     assertTrue(batch.quiescent());
                     assertEquals(failedRead == 2 ? 0 : 1, actions[0]);
-                    if (expected == businessFault) { assertArrayEquals(new Throwable[]{clockFault}, businessFault.getSuppressed()); }
+                    if (expected == businessFault) {
+                        assertArrayEquals(new Throwable[]{clockFault}, businessFault.getSuppressed());
+                    }
                 }
             }
-        }
-    }
-
-    private static ThreadPoolExecutor inlineLane() {
-        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()) {
-            @Override public void execute(@NotNull Runnable action) { action.run(); }
-        };
-    }
-
-    private static PlannedDeadline deadline() { return new PlannedDeadline(0, TimeUnit.SECONDS.toNanos(5)); }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS)); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-
-    private static void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch interrupted) {
-        boolean done = false;
-        while (!done) {
-            try { assertTrue(release.await(5, TimeUnit.SECONDS)); done = true; }
-            catch (InterruptedException ignored) { interrupted.countDown(); }
         }
     }
 }

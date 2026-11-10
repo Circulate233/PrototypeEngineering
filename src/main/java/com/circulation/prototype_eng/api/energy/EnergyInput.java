@@ -9,7 +9,9 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
  */
 public interface EnergyInput {
     StorageContext context();
+
     EnergySnapshot energySnapshot();
+
     long storedEnergy();
 
     /**
@@ -18,7 +20,9 @@ public interface EnergyInput {
      */
     long extractEnergy(long amount, Actionable mode);
 
-    /** Reserves one exact extraction within the current per-operation limit. */
+    /**
+     * Reserves one exact extraction within the current per-operation limit.
+     */
     ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount);
 
     /**

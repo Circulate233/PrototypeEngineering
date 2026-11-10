@@ -2,12 +2,19 @@ package com.circulation.prototype_eng.machine;
 
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.HatchCapabilities;
+import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
+import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
+import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
 import com.circulation.prototype_eng.api.structure.StructureHatchBinding;
+import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructureQuery;
+import com.circulation.prototype_eng.api.structure.StructureReadWindow;
 import com.circulation.prototype_eng.structure.StructureRefresh;
 import com.circulation.prototype_eng.structure.WorldStructureSource;
 import net.minecraft.tileentity.TileEntity;
@@ -19,15 +26,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.UUID;
 
-import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
-import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
-import com.circulation.prototype_eng.api.structure.StructureCatalog;
-import com.circulation.prototype_eng.api.structure.StructureOperation;
-import com.circulation.prototype_eng.api.structure.StructureReadWindow;
-
-/** Binds an already attached server-side controller without registering a block or a scheduler. */
+/**
+ * Binds an already attached server-side controller without registering a block or a scheduler.
+ */
 @SuppressWarnings("unused") // Public adapter for downstream controller tile entities.
 public class ControllerLifecycleHost implements ReloadableStructureHost {
     private final TileEntity controller;
@@ -37,8 +38,10 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     private final ResourceLocation controllerBlockId;
     private final WorldStructureSource structureSource;
     private final boolean nativeWorkerBlocks;
-    @Nullable private final UUID placementPlayer;
-    @Nullable private StructureConfiguration configuration;
+    @Nullable
+    private final UUID placementPlayer;
+    @Nullable
+    private StructureConfiguration configuration;
 
     public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller) {
         this(machineType, controller, null);
@@ -49,7 +52,9 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
             Objects.requireNonNull(controller.getWorld(), "Machine controller has no world").getBlockState(controller.getPos()).getBlock().getRegistryName());
     }
 
-    /** Terminal hosts may supply no block provenance after vanilla has replaced the old block. */
+    /**
+     * Terminal hosts may supply no block provenance after vanilla has replaced the old block.
+     */
     public ControllerLifecycleHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID placementPlayer,
                                    @Nullable ResourceLocation controllerBlockId) {
         this(machineType, controller, placementPlayer, controllerBlockId, false);
@@ -69,7 +74,7 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
 
     /** Concrete entities explicitly select this native binding; public legacy hosts keep virtual reads. */
     public static ControllerLifecycleHost nativeHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID player,
-                                                      @Nullable ResourceLocation blockId) {
+                                                     @Nullable ResourceLocation blockId) {
         return new ControllerLifecycleHost(machineType, controller, player, blockId, true);
     }
 
@@ -86,7 +91,10 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
         return nativeWorkerBlocks ? structureSource.beginNativeAreaRead(bounds) : beginAreaRead(bounds);
     }
 
-    @Override public MachineIdentity identity() { return identity; }
+    @Override
+    public MachineIdentity identity() {
+        return identity;
+    }
 
     @Override
     @Nullable
@@ -94,11 +102,22 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
         return controllerBlockId;
     }
 
-    @Override public World world() { return world; }
-    @Override @Nullable public UUID placementPlayer() { return placementPlayer; }
+    @Override
+    public World world() {
+        return world;
+    }
 
-    /** The bound server thread remains available for cleanup after controller invalidation/removal. */
-    @Override public void requireServerThread() {
+    @Override
+    @Nullable
+    public UUID placementPlayer() {
+        return placementPlayer;
+    }
+
+    /**
+     * The bound server thread remains available for cleanup after controller invalidation/removal.
+     */
+    @Override
+    public void requireServerThread() {
         if (world.isRemote || !server().isCallingFromMinecraftThread()) {
             throw new IllegalStateException("Machine lifecycle requires its owning server thread");
         }
@@ -125,7 +144,8 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
         configuration = next;
     }
 
-    @Override public boolean structureLifecycleCurrent(MachineLifecycle lifecycle) {
+    @Override
+    public boolean structureLifecycleCurrent(MachineLifecycle lifecycle) {
         requireServerThread();
         if (!(controller instanceof MachineControllerHost current)) return false;
         var machine = current.machine();
@@ -154,9 +174,14 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
         return configuration;
     }
 
-    @Override public boolean isAreaLoaded(StructureBounds bounds) { return structureSource.isAreaLoaded(bounds); }
+    @Override
+    public boolean isAreaLoaded(StructureBounds bounds) {
+        return structureSource.isAreaLoaded(bounds);
+    }
 
-    @Override @Nullable public <T> T read(StructureQuery<T> query, BlockPos position) {
+    @Override
+    @Nullable
+    public <T> T read(StructureQuery<T> query, BlockPos position) {
         return structureSource.read(query, position);
     }
 

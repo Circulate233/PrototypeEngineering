@@ -9,17 +9,6 @@ import java.util.function.BiFunction;
 
 /** Measures the complete explanation with the same font and wrapping used for drawing. */
 public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
-    public record Font(int lineHeight, BiFunction<JeiRecipeDisplay.Text, Integer, List<String>> wrap) {
-        public Font {
-            if (lineHeight <= 0) throw new IllegalArgumentException("Non-positive font height");
-            Objects.requireNonNull(wrap);
-        }
-    }
-
-    public record Paragraph(JeiRecipeDisplay.Text source, List<String> lines, int x, int y, int height) {
-        public boolean contains(int mouseY) { return mouseY >= y && mouseY < y + height; }
-    }
-
     public static RecipeInformationLayout measure(List<JeiRecipeDisplay.Text> information, int width, Font font) {
         var paragraphs = new ObjectArrayList<Paragraph>();
         int y = 0;
@@ -31,5 +20,18 @@ public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
             y += height + 3;
         }
         return new RecipeInformationLayout(List.copyOf(paragraphs), Math.max(0, y - 3));
+    }
+
+    public record Font(int lineHeight, BiFunction<JeiRecipeDisplay.Text, Integer, List<String>> wrap) {
+        public Font {
+            if (lineHeight <= 0) throw new IllegalArgumentException("Non-positive font height");
+            Objects.requireNonNull(wrap);
+        }
+    }
+
+    public record Paragraph(JeiRecipeDisplay.Text source, List<String> lines, int x, int y, int height) {
+        public boolean contains(int mouseY) {
+            return mouseY >= y && mouseY < y + height;
+        }
     }
 }

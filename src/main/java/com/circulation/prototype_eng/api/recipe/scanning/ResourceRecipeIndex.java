@@ -7,8 +7,12 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -22,18 +26,14 @@ import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ReferenceSet;
 import it.unimi.dsi.fastutil.objects.ReferenceSets;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import com.circulation.prototype_eng.api.storage.ResourceHatch;
-import com.circulation.prototype_eng.api.storage.ResourceStorage;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import java.util.Iterator;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Frozen AEKey-to-recipe postings for explicitly guaranteed START input lower bounds. This migrates
@@ -51,38 +51,6 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     private final Object2ObjectMap<AEKey, List<Posting>> postings;
     private final List<MachineRecipe> canonical;
 
-    /**
-     * Extracts existing fixed START inputs only after the owner's explicit stability assertion.
-     * The predicate asserts the complete Footprint contract for the extracted inputs, including
-     * factory/preparation/overlay effects. Supported definitions are flat canonical built-in resource
-     * and energy requirements, with unconditional resource chance and no fuzzy/dynamic groups.
-     * Selectors, checkpoints, attribute requirements, custom types and unsupported resource payloads
-     * stay unfiltered even when the predicate returns true. TICK/END IO is not indexed.
-     */
-    public static ResourceRecipeIndex forFixedInputs(RecipeCatalog catalog, Predicate<MachineRecipe> stableInputs) {
-        Objects.requireNonNull(catalog, "catalog");
-        Objects.requireNonNull(stableInputs, "stableInputs");
-        var footprints = new ObjectArrayList<Footprint>();
-        for (var recipe : catalog.recipes()) {
-            if (stableInputs.test(recipe)) { footprints.add(new Footprint(recipe, fixedInputs(recipe))); }
-        }
-        return new ResourceRecipeIndex(catalog, footprints);
-    }
-
-    private static List<GenericStack> fixedInputs(MachineRecipe recipe) {
-        var inputs = new ObjectArrayList<GenericStack>();
-        for (var requirement : recipe.orderedRequirements()) {
-            if (requirement.type() == RecipeRequirements.ENERGY) { continue; }
-            if (requirement.type() != RecipeRequirements.RESOURCES || !(requirement.payload() instanceof ResourceRequirement resource)
-                || !resource.fuzzyInputs().isEmpty() || !resource.dynamicInputs().isEmpty()
-                || resource.chance().percent() != 100 || resource.chance().attribute() != null) {
-                return ObjectLists.emptyList();
-            }
-            inputs.addAll(resource.inputs());
-        }
-        return inputs;
-    }
-
     public ResourceRecipeIndex(RecipeCatalog catalog, Collection<Footprint> footprints) {
         canonical = Objects.requireNonNull(catalog, "catalog").recipes();
         var ordinals = new Reference2IntOpenHashMap<MachineRecipe>();
@@ -99,7 +67,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             if (!order.containsKey(recipe) || !declared.add(recipe)) {
                 throw new IllegalArgumentException("Foreign or repeated recipe footprint: " + recipe.id());
             }
-            if (footprint.inputs().isEmpty()) { continue; }
+            if (footprint.inputs().isEmpty()) {
+                continue;
+            }
             filtered.add(recipe);
             int keys = footprint.inputs().size();
             for (var input : footprint.inputs()) {
@@ -112,14 +82,52 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         postings = Object2ObjectMaps.unmodifiable(frozen);
     }
 
-    /** Always supplies an opinion; absent/empty input hatches still retain every undeclared recipe. */
+    /**
+     * Extracts existing fixed START inputs only after the owner's explicit stability assertion.
+     * The predicate asserts the complete Footprint contract for the extracted inputs, including
+     * factory/preparation/overlay effects. Supported definitions are flat canonical built-in resource
+     * and energy requirements, with unconditional resource chance and no fuzzy/dynamic groups.
+     * Selectors, checkpoints, attribute requirements, custom types and unsupported resource payloads
+     * stay unfiltered even when the predicate returns true. TICK/END IO is not indexed.
+     */
+    public static ResourceRecipeIndex forFixedInputs(RecipeCatalog catalog, Predicate<MachineRecipe> stableInputs) {
+        Objects.requireNonNull(catalog, "catalog");
+        Objects.requireNonNull(stableInputs, "stableInputs");
+        var footprints = new ObjectArrayList<Footprint>();
+        for (var recipe : catalog.recipes()) {
+            if (stableInputs.test(recipe)) {
+                footprints.add(new Footprint(recipe, fixedInputs(recipe)));
+            }
+        }
+        return new ResourceRecipeIndex(catalog, footprints);
+    }
+
+    private static List<GenericStack> fixedInputs(MachineRecipe recipe) {
+        var inputs = new ObjectArrayList<GenericStack>();
+        for (var requirement : recipe.orderedRequirements()) {
+            if (requirement.type() == RecipeRequirements.ENERGY) {
+                continue;
+            }
+            if (requirement.type() != RecipeRequirements.RESOURCES || !(requirement.payload() instanceof ResourceRequirement resource)
+                || !resource.fuzzyInputs().isEmpty() || !resource.dynamicInputs().isEmpty()
+                || resource.chance().percent() != 100 || resource.chance().attribute() != null) {
+                return ObjectLists.emptyList();
+            }
+            inputs.addAll(resource.inputs());
+        }
+        return inputs;
+    }
+
+    /**
+     * Always supplies an opinion; absent/empty input hatches still retain every undeclared recipe.
+     */
     @Override
     public List<MachineRecipe> lookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope) {
         var cursor = beginLookup(machine, groups, scope);
         var budget = new RecipeWorkBudget(Long.MAX_VALUE);
         while (!cursor.advance(budget)) {
-                    if (!cursor.current()) cursor = beginLookup(machine, groups, scope);
-                    }
+            if (!cursor.current()) cursor = beginLookup(machine, groups, scope);
+        }
         return cursor.result();
     }
 
@@ -129,7 +137,67 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         return new QuantityLookup(machine, groups, scope);
     }
 
-    /** A private opinion until every view, posting and final current proof has been visited. */
+    private record CapturedView(ResourceHatch hatch, ResourceStorage storage, StorageContext context, Object identity,
+                                ResourceStorage.QuantityCapture capture) {
+        private boolean current() {
+            if (!hatch.isValid()) return false;
+            var current = hatch.input();
+            return current != null && current.isValid() && current.context() == context
+                && hatch.inputStorageIdentity() == identity && storage.isValid() && storage.context() == context && capture.current();
+        }
+    }
+
+    /** Skipped null/invalid inputs also belong to the exact captured lookup opinion. */
+    private record Binding(ResourceHatch hatch, boolean valid, boolean present, @Nullable Object identity,
+                           @Nullable StorageContext context, boolean storageValid) {
+        private boolean current() {
+            if (hatch.isValid() != valid) return false;
+            if (!valid) return true;
+            var storage = hatch.input();
+            return present ? storage != null && storage.isValid() == storageValid && storage.context() == context
+                && hatch.inputStorageIdentity() == identity : storage == null;
+        }
+    }
+
+    /**
+     * An explicit eligibility assertion, not an inferred copy of definition inputs. Before ANY
+     * successful START, the machine's public input snapshots must jointly contain at least these
+     * quantities, across every candidate seed, parallelism, probability policy, local modifier,
+     * factory, preparation and overlay that can be used with this index. Earlier START callbacks
+     * must not manufacture a declared input that was unavailable at lookup. Omit a recipe whose
+     * fixed inputs may disappear, shrink, become optional or be replaced by other keys.
+     *
+     * <p>Each AEKey keeps full AE2 identity; repeated equal keys are summed with saturation at long
+     * capacity, distinct types stay distinct. Saturation is a conservative lower bound, not proof of
+     * full quantity feasibility across multiple requirements. Empty inputs opt out of filtering.
+     * Extra undeclared requirements need not be proved.
+     */
+    public record Footprint(MachineRecipe recipe, List<GenericStack> inputs) {
+        public Footprint {
+            Objects.requireNonNull(recipe, "recipe");
+            var amounts = new AEKey2LongMap.LinkdOpenHashMap();
+            for (var input : Objects.requireNonNull(inputs, "inputs")) {
+                Objects.requireNonNull(input, "input");
+                var key = Objects.requireNonNull(input.what(), "input key");
+                long amount = input.amount();
+                long previous = amounts.getLong(key);
+                if (amount <= 0) {
+                    throw new IllegalArgumentException("Nonpositive mandatory input amount");
+                }
+                amounts.addTo(key, Math.min(amount, Long.MAX_VALUE - previous));
+            }
+            var normalized = new ObjectArrayList<GenericStack>(amounts.size());
+            amounts.object2LongEntrySet().forEach(entry -> normalized.add(new GenericStack(entry.getKey(), entry.getLongValue())));
+            inputs = ObjectLists.unmodifiable(normalized);
+        }
+    }
+
+    private record Posting(MachineRecipe recipe, long amount, int keys) {
+    }
+
+    /**
+     * A private opinion until every view, posting and final current proof has been visited.
+     */
     public final class QuantityLookup implements RecipeCandidateIndex.Cursor {
         private final MachineInstance machine;
         private final Set<ResourceLocation> groups;
@@ -179,7 +247,8 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                         if (scopedRecipe == null) {
                             if (!budget.take()) return false;
                             scopedRecipe = Objects.requireNonNull(scope.get(scopeCursor++), "scoped recipe");
-                            if (!order.containsKey(scopedRecipe)) throw new IllegalArgumentException("Scope contains a foreign canonical recipe: " + scopedRecipe.id());
+                            if (!order.containsKey(scopedRecipe))
+                                throw new IllegalArgumentException("Scope contains a foreign canonical recipe: " + scopedRecipe.id());
                             recipeGroups = scopedRecipe.recipeGroups().iterator();
                             groupAccepted = groups.isEmpty();
                         }
@@ -255,7 +324,8 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                             if (!budget.take()) return false;
                             var posting = keyPostings.get(postingCursor++);
                             if (scoped.contains(posting.recipe()) && availableEntry.getLongValue() >= posting.amount()
-                                && matches.addTo(posting.recipe(), 1) + 1 == posting.keys()) accepted.add(posting.recipe());
+                                && matches.addTo(posting.recipe(), 1) + 1 == posting.keys())
+                                accepted.add(posting.recipe());
                         }
                         availableEntry = null;
                     }
@@ -318,21 +388,34 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                 public boolean advance(RecipeWorkBudget budget) {
                     Objects.requireNonNull(budget);
                     if (complete) return true;
-                    if (stale) { complete = true; return true; }
+                    if (stale) {
+                        complete = true;
+                        return true;
+                    }
                     if (!ownerChecked) {
                         if (!budget.take()) return false;
                         ownerChecked = true;
                         if (hatches != null && MachineHatches.get(machine).resources() != hatches) {
-                            stale = true; complete = true; return true;
+                            stale = true;
+                            complete = true;
+                            return true;
                         }
                     }
                     while (bindingCursor < bindingCount) {
                         if (!budget.take()) return false;
-                        if (!bindings.get(bindingCursor++).current()) { stale = true; complete = true; return true; }
+                        if (!bindings.get(bindingCursor++).current()) {
+                            stale = true;
+                            complete = true;
+                            return true;
+                        }
                     }
                     while (cursor < captureCount) {
                         if (!budget.take()) return false;
-                        if (!captures.get(cursor++).current()) { stale = true; complete = true; return true; }
+                        if (!captures.get(cursor++).current()) {
+                            stale = true;
+                            complete = true;
+                            return true;
+                        }
                     }
                     complete = true;
                     return true;
@@ -352,61 +435,4 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             return ObjectLists.unmodifiable(result);
         }
     }
-
-    private record CapturedView(ResourceHatch hatch, ResourceStorage storage, StorageContext context, Object identity,
-                                ResourceStorage.QuantityCapture capture) {
-        private boolean current() {
-            if (!hatch.isValid()) return false;
-            var current = hatch.input();
-            return current != null && current.isValid() && current.context() == context
-                && hatch.inputStorageIdentity() == identity && storage.isValid() && storage.context() == context && capture.current();
-        }
-    }
-
-    /** Skipped null/invalid inputs also belong to the exact captured lookup opinion. */
-    private record Binding(ResourceHatch hatch, boolean valid, boolean present, @Nullable Object identity,
-                           @Nullable StorageContext context, boolean storageValid) {
-        private boolean current() {
-            if (hatch.isValid() != valid) return false;
-            if (!valid) return true;
-            var storage = hatch.input();
-            return present ? storage != null && storage.isValid() == storageValid && storage.context() == context
-                && hatch.inputStorageIdentity() == identity : storage == null;
-        }
-    }
-
-    /**
-     * An explicit eligibility assertion, not an inferred copy of definition inputs. Before ANY
-     * successful START, the machine's public input snapshots must jointly contain at least these
-     * quantities, across every candidate seed, parallelism, probability policy, local modifier,
-     * factory, preparation and overlay that can be used with this index. Earlier START callbacks
-     * must not manufacture a declared input that was unavailable at lookup. Omit a recipe whose
-     * fixed inputs may disappear, shrink, become optional or be replaced by other keys.
-     *
-     * <p>Each AEKey keeps full AE2 identity; repeated equal keys are summed with saturation at long
-     * capacity, distinct types stay distinct. Saturation is a conservative lower bound, not proof of
-     * full quantity feasibility across multiple requirements. Empty inputs opt out of filtering.
-     * Extra undeclared requirements need not be proved.
-     */
-    public record Footprint(MachineRecipe recipe, List<GenericStack> inputs) {
-        public Footprint {
-            Objects.requireNonNull(recipe, "recipe");
-            var amounts = new AEKey2LongMap.LinkdOpenHashMap();
-            for (var input : Objects.requireNonNull(inputs, "inputs")) {
-                Objects.requireNonNull(input, "input");
-                var key = Objects.requireNonNull(input.what(), "input key");
-                long amount = input.amount();
-                long previous = amounts.getLong(key);
-                if (amount <= 0) {
-                    throw new IllegalArgumentException("Nonpositive mandatory input amount");
-                }
-                amounts.addTo(key, Math.min(amount, Long.MAX_VALUE - previous));
-            }
-            var normalized = new ObjectArrayList<GenericStack>(amounts.size());
-            amounts.object2LongEntrySet().forEach(entry -> normalized.add(new GenericStack(entry.getKey(), entry.getLongValue())));
-            inputs = ObjectLists.unmodifiable(normalized);
-        }
-    }
-
-    private record Posting(MachineRecipe recipe, long amount, int keys) { }
 }

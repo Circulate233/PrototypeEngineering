@@ -44,7 +44,9 @@ class OrientationToolOrientationsTest {
                 var front = current.getSide(RelativeSide.FRONT);
                 var top = current.getSide(RelativeSide.TOP);
                 int twist = 0;
-                while (PM_TOPS[front.ordinal()][twist] != top) { twist++; }
+                while (PM_TOPS[front.ordinal()][twist] != top) {
+                    twist++;
+                }
                 var nextFront = twist == 3 ? EnumFacing.VALUES[(front.ordinal() + 1) % 6] : front;
                 var nextTop = PM_TOPS[nextFront.ordinal()][(twist + 1) % 4];
                 current = OrientationToolOrientations.apply(current, EnumFacing.DOWN, true);
@@ -59,7 +61,9 @@ class OrientationToolOrientationsTest {
     void otherFacesResetToThePmCanonicalTopIncludingVerticalFacing() {
         for (var current : BlockOrientation.values()) {
             for (var clicked : EnumFacing.VALUES) {
-                if (clicked == current.getSide(RelativeSide.FRONT)) { continue; }
+                if (clicked == current.getSide(RelativeSide.FRONT)) {
+                    continue;
+                }
                 assertEquals(BlockOrientation.get(clicked, PM_TOPS[clicked.ordinal()][0]),
                     OrientationToolOrientations.apply(current, clicked, false));
             }

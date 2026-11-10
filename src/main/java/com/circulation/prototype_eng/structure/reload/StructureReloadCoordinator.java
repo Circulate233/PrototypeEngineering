@@ -1,22 +1,25 @@
 package com.circulation.prototype_eng.structure.reload;
 
-import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
-import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
 import com.circulation.prototype_eng.machine.ControllerStructureUpdates;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import org.jetbrains.annotations.Nullable;
 
-/** One real scheduler owner; registration identities never collapse external hosts by PN UUID. */
+/**
+ * One real scheduler owner; registration identities never collapse external hosts by PN UUID.
+ */
 public final class StructureReloadCoordinator {
     private final Thread owner = Thread.currentThread();
     private final TaskScheduler scheduler;
@@ -32,25 +35,40 @@ public final class StructureReloadCoordinator {
 
     public StructureReloadCoordinator(TaskScheduler scheduler, MachineTypeRegistry registry, Supplier<StructureCatalog> readCandidate,
                                       Consumer<Publication> publishClients) {
-        this.scheduler = Objects.requireNonNull(scheduler); this.registry = Objects.requireNonNull(registry);
-        this.readCandidate = Objects.requireNonNull(readCandidate); this.publishClients = Objects.requireNonNull(publishClients);
+        this.scheduler = Objects.requireNonNull(scheduler);
+        this.registry = Objects.requireNonNull(registry);
+        this.readCandidate = Objects.requireNonNull(readCandidate);
+        this.publishClients = Objects.requireNonNull(publishClients);
         publication = presentation(registry.structureCatalog(), 0);
+    }
+
+    private static Throwable append(@Nullable Throwable first, Throwable additional) {
+        if (first == null) return additional;
+        if (first != additional) first.addSuppressed(additional);
+        return first;
     }
 
     @SuppressWarnings("resource") // The updates scheduler is borrowed; this table owns its registration handles.
     public Registration register(ControllerStructureUpdates updates) {
         requireOwner();
-        if (closed || applying || updates.scheduler() != scheduler || !updates.loaded()) throw new IllegalStateException("Structure registration requires this live idle owner");
-        if (registrations.containsKey(updates)) throw new IllegalArgumentException("Structure updates already registered");
-        if (registered(updates.lifecycle())) throw new IllegalArgumentException("This exact lifecycle already owns structure updates");
+        if (closed || applying || updates.scheduler() != scheduler || !updates.loaded())
+            throw new IllegalStateException("Structure registration requires this live idle owner");
+        if (registrations.containsKey(updates))
+            throw new IllegalArgumentException("Structure updates already registered");
+        if (registered(updates.lifecycle()))
+            throw new IllegalArgumentException("This exact lifecycle already owns structure updates");
         // Reject unsupported hosts before they could silently miss later replacement.
         updates.requireReloadable();
-        var registration = new Registration(this, updates); registrations.put(updates, registration); return registration;
+        var registration = new Registration(this, updates);
+        registrations.put(updates, registration);
+        return registration;
     }
 
     @SuppressWarnings("resource") // Removal retires the exact handle; close delegates back to this operation.
     public void unregister(ControllerStructureUpdates updates) {
-        requireOwner(); var registration = registrations.remove(updates); if (registration != null) registration.active = false;
+        requireOwner();
+        var registration = registrations.remove(updates);
+        if (registration != null) registration.active = false;
     }
 
     public void unloaded(MachineLifecycle lifecycle) {
@@ -61,31 +79,40 @@ public final class StructureReloadCoordinator {
         for (var updates : removed) unregister(updates);
     }
 
-    /** Actual Loaded callback records the identity only; it must not enter a still-held load gate. */
+    /**
+     * Actual Loaded callback records the identity only; it must not enter a still-held load gate.
+     */
     public void loaded(MachineInstance machine, ReloadableStructureHost host) {
         requireOwner();
         if (closed) return;
         var lifecycle = Objects.requireNonNull(machine.lifecycle());
-        if (lifecycle.host() != host) throw new IllegalArgumentException("Loaded structure host differs from its lifecycle");
+        if (lifecycle.host() != host)
+            throw new IllegalArgumentException("Loaded structure host differs from its lifecycle");
         var existing = loadedHosts.get(lifecycle);
         if (existing != null && existing.machine == machine && existing.host == host) return;
         loadedHosts.put(lifecycle, new Loaded(machine, host));
     }
 
-    /** Constructor enrollment does not install definitions or change bindings, including before bad JSON. */
+    /**
+     * Constructor enrollment does not install definitions or change bindings, including before bad JSON.
+     */
     @SuppressWarnings("resource") // Automatic registration handles belong to this coordinator until unload/close.
     public void enrollLoaded() {
         requireOwner();
-        if (closed || applying) throw new IllegalStateException("Loaded enrollment requires a live idle structure owner");
+        if (closed || applying)
+            throw new IllegalStateException("Loaded enrollment requires a live idle structure owner");
         for (var entry : new ObjectArrayList<>(loadedHosts.reference2ObjectEntrySet())) {
-            var lifecycle = entry.getKey(); var loaded = entry.getValue();
+            var lifecycle = entry.getKey();
+            var loaded = entry.getValue();
             if (loadedHosts.get(lifecycle) != loaded) continue;
             if (lifecycle.state() != MachineLifecycle.State.LOADED || lifecycle.retired() || !loaded.host.structureLifecycleCurrent(lifecycle)) {
-                unloaded(lifecycle); continue;
+                unloaded(lifecycle);
+                continue;
             }
             if (!registered(lifecycle)) {
                 var updates = new ControllerStructureUpdates(loaded.machine, loaded.host, scheduler,
-                    () -> loaded.host.structureLifecycleCurrent(lifecycle), () -> {});
+                    () -> loaded.host.structureLifecycleCurrent(lifecycle), () -> {
+                });
                 // Native server construction attaches through the session. Detached logical owners
                 // use this same enrollment implementation without a Minecraft server fixture.
                 if (!registrations.containsKey(updates)) register(updates);
@@ -95,7 +122,9 @@ public final class StructureReloadCoordinator {
         }
     }
 
-    /** Only service-created updates are driven here; existing TE/addon owners keep their own cadence. */
+    /**
+     * Only service-created updates are driven here; existing TE/addon owners keep their own cadence.
+     */
     public void tickLoaded(long now) {
         requireOwner();
         scheduler.runAtBoundary(() -> {
@@ -107,7 +136,11 @@ public final class StructureReloadCoordinator {
                 var catalog = registry.structureCatalog();
                 if (!automatic.catalogCurrent(catalog)) {
                     var reload = automatic.prepareReload(catalog);
-                    if (reload != null) { automatic.revokeReload(reload); automatic.pauseReload(reload); automatic.installReload(reload); }
+                    if (reload != null) {
+                        automatic.revokeReload(reload);
+                        automatic.pauseReload(reload);
+                        automatic.installReload(reload);
+                    }
                 }
                 automatic.enqueueTick(now);
             }
@@ -116,17 +149,21 @@ public final class StructureReloadCoordinator {
 
     public boolean registered(MachineLifecycle lifecycle) {
         requireOwner();
-        for (var updates : registrations.keySet()) if (updates.lifecycle() == lifecycle && updates.loaded()) return true;
+        for (var updates : registrations.keySet())
+            if (updates.lifecycle() == lifecycle && updates.loaded()) return true;
         return false;
     }
 
     public @Nullable ControllerStructureUpdates updates(MachineLifecycle lifecycle) {
         requireOwner();
-        for (var updates : registrations.keySet()) if (updates.lifecycle() == lifecycle && updates.loaded()) return updates;
+        for (var updates : registrations.keySet())
+            if (updates.lifecycle() == lifecycle && updates.loaded()) return updates;
         return null;
     }
 
-    /** Request may originate off-thread; no parsing, host access or execution occurs there. */
+    /**
+     * Request may originate off-thread; no parsing, host access or execution occurs there.
+     */
     public void reload(Consumer<Result> completed) {
         Objects.requireNonNull(completed);
         scheduler.runAtBoundary(() -> apply(completed));
@@ -134,7 +171,10 @@ public final class StructureReloadCoordinator {
 
     private void apply(Consumer<Result> completed) {
         requireOwner();
-        if (closed) { completed.accept(new Result(false, publication.view().sequence(), new IllegalStateException("Server structure session closed"))); return; }
+        if (closed) {
+            completed.accept(new Result(false, publication.view().sequence(), new IllegalStateException("Server structure session closed")));
+            return;
+        }
         if (applying) throw new IllegalStateException("Reentrant structure reload");
         enrollLoaded();
         applying = true;
@@ -146,77 +186,140 @@ public final class StructureReloadCoordinator {
                 replacement = registry.prepareReplacement(Objects.requireNonNull(readCandidate.get()));
                 next = presentation(replacement.catalog(), Math.incrementExact(publication.view().sequence()));
                 for (var registration : new ObjectArrayList<>(registrations.values())) {
-                    if (!registration.active || !registration.updates.loaded()) { unregister(registration.updates); continue; }
+                    if (!registration.active || !registration.updates.loaded()) {
+                        unregister(registration.updates);
+                        continue;
+                    }
                     var reload = registration.updates.prepareReload(replacement.catalog());
                     if (reload != null) batch.add(new Prepared(registration, reload));
                 }
-                if (!registry.replacementCurrent(replacement)) throw new IllegalStateException("Runtime changed during reload preflight");
-                for (var prepared : batch) if (!current(prepared) || !prepared.registration.updates.reloadCurrent(prepared.reload))
-                    throw new IllegalStateException("Host changed during reload preflight");
+                if (!registry.replacementCurrent(replacement))
+                    throw new IllegalStateException("Runtime changed during reload preflight");
+                for (var prepared : batch)
+                    if (!current(prepared) || !prepared.registration.updates.reloadCurrent(prepared.reload))
+                        throw new IllegalStateException("Host changed during reload preflight");
             } catch (RuntimeException failure) {
-                completed.accept(new Result(false, publication.view().sequence(), failure)); return;
+                completed.accept(new Result(false, publication.view().sequence(), failure));
+                return;
             }
             // Configuration setters assign only. Old request identities are revoked before any new snapshot can publish.
-            for (var prepared : batch) if (current(prepared)) prepared.registration.updates.revokeReload(prepared.reload);
+            for (var prepared : batch)
+                if (current(prepared)) prepared.registration.updates.revokeReload(prepared.reload);
             Throwable failure = null;
             for (var prepared : batch) {
-                try { prepared.registration.updates.pauseReload(prepared.reload); }
-                catch (RuntimeException | Error caught) { failure = append(failure, caught); }
+                try {
+                    prepared.registration.updates.pauseReload(prepared.reload);
+                } catch (RuntimeException | Error caught) {
+                    failure = append(failure, caught);
+                }
             }
             if (failure != null) {
                 completed.accept(new Result(false, publication.view().sequence(), failure));
                 if (failure instanceof RuntimeException runtime) throw runtime;
                 if (failure instanceof Error error) throw error;
             }
-            try { registry.publishReplacement(replacement); }
-            catch (RuntimeException | Error caught) { completed.accept(new Result(false, publication.view().sequence(), caught)); throw caught; }
-            publication = next;
-            for (var prepared : batch) if (current(prepared)) {
-                try { prepared.registration.updates.installReload(prepared.reload); }
-                catch (RuntimeException | Error caught) { failure = append(failure, caught); }
+            try {
+                registry.publishReplacement(replacement);
+            } catch (RuntimeException | Error caught) {
+                completed.accept(new Result(false, publication.view().sequence(), caught));
+                throw caught;
             }
+            publication = next;
+            for (var prepared : batch)
+                if (current(prepared)) {
+                    try {
+                        prepared.registration.updates.installReload(prepared.reload);
+                    } catch (RuntimeException | Error caught) {
+                        failure = append(failure, caught);
+                    }
+                }
             // The committed directory must be broadcast even if an individual refresh callback failed.
-            try { publishClients.accept(next); } catch (RuntimeException | Error caught) { failure = append(failure, caught); }
+            try {
+                publishClients.accept(next);
+            } catch (RuntimeException | Error caught) {
+                failure = append(failure, caught);
+            }
             completed.accept(new Result(true, next.view().sequence(), failure));
             if (failure instanceof RuntimeException runtime) throw runtime;
             if (failure instanceof Error error) throw error;
-        } finally { applying = false; }
+        } finally {
+            applying = false;
+        }
     }
 
     private boolean current(Prepared prepared) {
         var registration = prepared.registration;
         return registration.active && registrations.get(registration.updates) == registration && registration.updates.loaded();
     }
+
     private Publication presentation(StructureCatalog catalog, long sequence) {
         var view = StructureCatalogView.capture(catalog, session, sequence);
         return new Publication(view, StructureCatalogCodec.encode(view));
     }
-    public Publication publication() { requireOwner(); return publication; }
+
+    public Publication publication() {
+        requireOwner();
+        return publication;
+    }
+
     public void close() {
         requireOwner();
         if (applying) throw new IllegalStateException("Cannot close a structure owner during publication callbacks");
-        closed = true; for (var registration : registrations.values()) registration.active = false; registrations.clear(); loadedHosts.clear();
+        closed = true;
+        for (var registration : registrations.values()) registration.active = false;
+        registrations.clear();
+        loadedHosts.clear();
     }
-    private void requireOwner() { if (Thread.currentThread() != owner) throw new IllegalStateException("Structure reload requires its owning server thread"); }
-    private static Throwable append(@Nullable Throwable first, Throwable additional) { if (first == null) return additional; if (first != additional) first.addSuppressed(additional); return first; }
 
-    private record Prepared(Registration registration, ControllerStructureUpdates.Reload reload) {}
+    private void requireOwner() {
+        if (Thread.currentThread() != owner)
+            throw new IllegalStateException("Structure reload requires its owning server thread");
+    }
+
+    private record Prepared(Registration registration, ControllerStructureUpdates.Reload reload) {
+    }
+
     private static final class Loaded {
         private final MachineInstance machine;
         private final ReloadableStructureHost host;
-        @Nullable private ControllerStructureUpdates automatic;
-        private Loaded(MachineInstance machine, ReloadableStructureHost host) { this.machine = machine; this.host = host; }
+        @Nullable
+        private ControllerStructureUpdates automatic;
+
+        private Loaded(MachineInstance machine, ReloadableStructureHost host) {
+            this.machine = machine;
+            this.host = host;
+        }
     }
-    public record Result(boolean published, long sequence, @Nullable Throwable failure) {}
+
+    public record Result(boolean published, long sequence, @Nullable Throwable failure) {
+    }
+
     public record Publication(StructureCatalogView view, byte[] bytes) {
-        public Publication { Objects.requireNonNull(view); bytes = bytes.clone(); }
-        @Override public byte[] bytes() { return bytes.clone(); }
+        public Publication {
+            Objects.requireNonNull(view);
+            bytes = bytes.clone();
+        }
+
+        @Override
+        public byte[] bytes() {
+            return bytes.clone();
+        }
     }
+
     public static final class Registration implements AutoCloseable {
         private final StructureReloadCoordinator owner;
         private final ControllerStructureUpdates updates;
         private boolean active = true;
-        private Registration(StructureReloadCoordinator owner, ControllerStructureUpdates updates) { this.owner = owner; this.updates = updates; }
-        @Override public void close() { owner.requireOwner(); if (active && owner.registrations.get(updates) == this) owner.unregister(updates); }
+
+        private Registration(StructureReloadCoordinator owner, ControllerStructureUpdates updates) {
+            this.owner = owner;
+            this.updates = updates;
+        }
+
+        @Override
+        public void close() {
+            owner.requireOwner();
+            if (active && owner.registrations.get(updates) == this) owner.unregister(updates);
+        }
     }
 }

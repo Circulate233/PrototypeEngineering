@@ -1,17 +1,13 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import java.nio.file.FileAlreadyExistsException;
-
-import com.google.gson.Gson;
-
-import java.util.Objects;
-import java.util.Iterator;
-
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.nbt.NBTTagCompound;
@@ -23,60 +19,21 @@ import net.minecraft.world.World;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.util.Objects;
 
 /** Exports the selected world region using the library's existing structure JSON schema. */
 public final class StructureToolExport {
     public static final int MAX_VOLUME = 64 * 64 * 64;
 
     private StructureToolExport() {
-    }
-
-    public record Cell(BlockPos position, ResourceLocation block, int meta, Map<String, String> nbt) {
-    }
-
-    /** Incremental selection traversal: large exports do not monopolize a server tick. */
-    public static final class Capture {
-        private final World world;
-        private final BlockPos origin;
-        private final StructureTransform rotation;
-        private final boolean includeNbt, includeOrigin;
-        private final Iterator<BlockPos.MutableBlockPos> cursor;
-        private final ObjectArrayList<Cell> cells = new ObjectArrayList<>();
-
-        public Capture(World world, ScannerState.Box box, BlockPos origin, StructureTransform rotation, boolean includeNbt, boolean includeOrigin) {
-            this.world = world;
-            this.origin = origin;
-            this.rotation = rotation;
-            this.includeNbt = includeNbt;
-            this.includeOrigin = includeOrigin;
-            cursor = BlockPos.getAllInBoxMutable(box.min(), box.max()).iterator();
-        }
-
-        public boolean advance(int budget) {
-            for (int i = 0; i < budget && cursor.hasNext(); i++) {
-                var pos = cursor.next().toImmutable();
-                if (!world.isBlockLoaded(pos))
-                    throw new IllegalArgumentException("Selection contains an unloaded block");
-                if ((!includeOrigin && pos.equals(origin)) || world.isAirBlock(pos)) continue;
-                cells.add(cell(world, pos, origin, rotation, includeNbt));
-            }
-            return !cursor.hasNext();
-        }
-
-        public List<Cell> cells() {
-            cells.sort(Comparator.comparingInt((Cell cell) -> cell.position().getY()).thenComparingInt(cell -> cell.position().getZ())
-                                 .thenComparingInt(cell -> cell.position().getX()));
-            return List.copyOf(cells);
-        }
     }
 
     public static Cell cell(World world, BlockPos pos, BlockPos origin, StructureTransform rotation, boolean includeNbt) {
@@ -163,6 +120,45 @@ public final class StructureToolExport {
             } catch (FileAlreadyExistsException occupied) {
                 // A concurrent export cannot replace an existing structure file.
             }
+        }
+    }
+
+    public record Cell(BlockPos position, ResourceLocation block, int meta, Map<String, String> nbt) {
+    }
+
+    /** Incremental selection traversal: large exports do not monopolize a server tick. */
+    public static final class Capture {
+        private final World world;
+        private final BlockPos origin;
+        private final StructureTransform rotation;
+        private final boolean includeNbt, includeOrigin;
+        private final Iterator<BlockPos.MutableBlockPos> cursor;
+        private final ObjectArrayList<Cell> cells = new ObjectArrayList<>();
+
+        public Capture(World world, ScannerState.Box box, BlockPos origin, StructureTransform rotation, boolean includeNbt, boolean includeOrigin) {
+            this.world = world;
+            this.origin = origin;
+            this.rotation = rotation;
+            this.includeNbt = includeNbt;
+            this.includeOrigin = includeOrigin;
+            cursor = BlockPos.getAllInBoxMutable(box.min(), box.max()).iterator();
+        }
+
+        public boolean advance(int budget) {
+            for (int i = 0; i < budget && cursor.hasNext(); i++) {
+                var pos = cursor.next().toImmutable();
+                if (!world.isBlockLoaded(pos))
+                    throw new IllegalArgumentException("Selection contains an unloaded block");
+                if ((!includeOrigin && pos.equals(origin)) || world.isAirBlock(pos)) continue;
+                cells.add(cell(world, pos, origin, rotation, includeNbt));
+            }
+            return !cursor.hasNext();
+        }
+
+        public List<Cell> cells() {
+            cells.sort(Comparator.comparingInt((Cell cell) -> cell.position().getY()).thenComparingInt(cell -> cell.position().getZ())
+                                 .thenComparingInt(cell -> cell.position().getX()));
+            return List.copyOf(cells);
         }
     }
 }

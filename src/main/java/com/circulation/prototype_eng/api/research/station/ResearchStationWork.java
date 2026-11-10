@@ -15,8 +15,8 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
-import org.jetbrains.annotations.Nullable;
 import net.minecraft.nbt.NBTTagCompound;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
@@ -38,14 +38,18 @@ public final class ResearchStationWork {
     private final Map<UUID, PlayerResearchState> players;
     private final TeamResearchCompletion completion;
     private final Random random = new Random();
-    @Nullable private Segment segment;
-    @Nullable private SavedSegment stored;
+    @Nullable
+    private Segment segment;
+    @Nullable
+    private SavedSegment stored;
     @Nullable
     private RecipeProcess suspendedProcess;
     @Nullable
     private ResearchStations.Site destroyedSite;
-    @Nullable private Cleanup cleanup;
-    @Nullable private Cycle cycle;
+    @Nullable
+    private Cleanup cleanup;
+    @Nullable
+    private Cycle cycle;
     private Result result = new Result(Status.WAITING, null, ProcessResult.SUCCESS);
     private long lastGrantedTime = -1;
     private boolean executing;
@@ -60,23 +64,49 @@ public final class ResearchStationWork {
         completion = new TeamResearchCompletion(queue.registry());
     }
 
-    /** Renew these exact physical sources between ticks; never replace a partially paid segment. */
-    @Nullable public ResearchStations.Capture sources() { requireOwner(); return segment == null ? null : segment.sources; }
+    /**
+     * Renew these exact physical sources between ticks; never replace a partially paid segment.
+     */
+    @Nullable
+    public ResearchStations.Capture sources() {
+        requireOwner();
+        return segment == null ? null : segment.sources;
+    }
 
-    @Nullable public RecipeProcess.State materialState() { requireOwner(); return cleanup != null ? cleanup.process.state() : segment == null ? null : segment.process.state(); }
+    @Nullable
+    public RecipeProcess.State materialState() {
+        requireOwner();
+        return cleanup != null ? cleanup.process.state() : segment == null ? null : segment.process.state();
+    }
 
-    public Result result() { requireOwner(); return result; }
-    public boolean pending() { requireOwner(); return cycle != null; }
+    public Result result() {
+        requireOwner();
+        return result;
+    }
 
-    /** Only a cold raw checkpoint, with no owned process or unresolved source work. */
+    public boolean pending() {
+        requireOwner();
+        return cycle != null;
+    }
+
+    /**
+     * Only a cold raw checkpoint, with no owned process or unresolved source work.
+     */
     public boolean cold() {
         requireOwner();
         return stored != null && segment == null && suspendedProcess == null && cleanup == null && cycle == null && !queue.busy();
     }
 
-    @Nullable public TeamResearchQueue.Key key() { requireOwner(); return cleanup != null ? cleanup.saved.key() : segment != null ? segment.key : stored == null ? null : stored.key(); }
+    @Nullable
+    public TeamResearchQueue.Key key() {
+        requireOwner();
+        return cleanup != null ? cleanup.saved.key() : segment != null ? segment.key : stored == null ? null : stored.key();
+    }
 
-    public List<ResearchStations.Site> sites() { requireOwner(); return cleanup != null ? cleanup.saved.sites() : segment != null ? segment.sources.sites() : stored == null ? List.of() : stored.sites(); }
+    public List<ResearchStations.Site> sites() {
+        requireOwner();
+        return cleanup != null ? cleanup.saved.sites() : segment != null ? segment.sources.sites() : stored == null ? List.of() : stored.sites();
+    }
 
     /**
      * Snapshot only confirmed material boundaries; no source action, receipt or authority is serialized.
@@ -133,17 +163,26 @@ public final class ResearchStationWork {
         }
     }
 
-    /** Reconstruct on the original real sites without planning numeric work or running any material phase. */
+    /**
+     * Reconstruct on the original real sites without planning numeric work or running any material phase.
+     */
     public boolean resume(ResearchStations.Capture sources) {
         requireOwner();
         Objects.requireNonNull(sources);
-        if (cycle != null || cleanup != null || queue.busy()) { return false; }
+        if (cycle != null || cleanup != null || queue.busy()) {
+            return false;
+        }
         executing = true;
-        try { return resumeStored(sources); }
-        finally { executing = false; }
+        try {
+            return resumeStored(sources);
+        } finally {
+            executing = false;
+        }
     }
 
-    /** Exact permanent destruction, distinct from temporary source unavailability. */
+    /**
+     * Exact permanent destruction, distinct from temporary source unavailability.
+     */
     public boolean destroy(ResearchStations.Site site, PlannedDeadline deadline) {
         requireOwner();
         Objects.requireNonNull(site);
@@ -190,11 +229,15 @@ public final class ResearchStationWork {
         return destroyedSite;
     }
 
-    /** Scheduler cancellation stops only the current tick; the partial material session remains owned. */
+    /**
+     * Scheduler cancellation stops only the current tick; the partial material session remains owned.
+     */
     public void requestStop(PlannedCancellationToken.Reason reason) {
         requireOwner();
         Objects.requireNonNull(reason);
-        if (cycle != null) { Objects.requireNonNull(cycle.coordinator).cancel(reason); }
+        if (cycle != null) {
+            Objects.requireNonNull(cycle.coordinator).cancel(reason);
+        }
     }
 
     /**
@@ -310,22 +353,34 @@ public final class ResearchStationWork {
         }
     }
 
-    /** Old-tick cleanup retains the original participants and never obtains a new material plan. */
+    /**
+     * Old-tick cleanup retains the original participants and never obtains a new material plan.
+     */
     public Result resolve(PlannedDeadline cleanupDeadline) {
         requireOwner();
         Objects.requireNonNull(cleanupDeadline);
         executing = true;
-        try { return cycle == null ? result : drive(cleanupDeadline); }
-        finally { executing = false; }
+        try {
+            return cycle == null ? result : drive(cleanupDeadline);
+        } finally {
+            executing = false;
+        }
     }
 
-    /** Physical exit alone does not release the process, receipts or storage fence. */
+    /**
+     * Physical exit alone does not release the process, receipts or storage fence.
+     */
     @SuppressWarnings("unused") // Scheduler hosts join the retained source actions before retirement.
     public void awaitExit() {
         requireOwner();
         executing = true;
-        try { if (cycle != null) { Objects.requireNonNull(cycle.coordinator).awaitExit(); } }
-        finally { executing = false; }
+        try {
+            if (cycle != null) {
+                Objects.requireNonNull(cycle.coordinator).awaitExit();
+            }
+        } finally {
+            executing = false;
+        }
     }
 
     /**
@@ -375,10 +430,15 @@ public final class ResearchStationWork {
             var coordinator = Objects.requireNonNull(attempt.coordinator);
             do {
                 coordinator.advance(deadline);
-            } while (coordinator.workYielded() && !deadline.expired(System.nanoTime()) && attempt.current()); }
-        catch (RuntimeException | Error failure) {
-            try { finish(attempt); }
-            catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }
+            } while (coordinator.workYielded() && !deadline.expired(System.nanoTime()) && attempt.current());
+        } catch (RuntimeException | Error failure) {
+            try {
+                finish(attempt);
+            } catch (RuntimeException | Error cleanup) {
+                if (failure != cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+            }
             throw failure;
         }
         finish(attempt);
@@ -386,7 +446,10 @@ public final class ResearchStationWork {
     }
 
     private void finish(Cycle attempt) {
-        if (!Objects.requireNonNull(attempt.coordinator).finished()) { set(Status.PENDING, null); return; }
+        if (!Objects.requireNonNull(attempt.coordinator).finished()) {
+            set(Status.PENDING, null);
+            return;
+        }
         cycle = null;
         var grant = attempt.grant;
         if (grant != null && grant.resolution() == ReversibleTransaction.Resolution.COMPLETED) {
@@ -428,12 +491,17 @@ public final class ResearchStationWork {
         return true;
     }
 
-    @Nullable private SavedSegment saveSegment() {
+    @Nullable
+    private SavedSegment saveSegment() {
         if (segment == null) {
-            if (stored != null) { requireHead(stored.key()); }
+            if (stored != null) {
+                requireHead(stored.key());
+            }
             return stored;
         }
-        if (segment.process.state().lifecycle().isTerminal()) { throw new IllegalStateException("Terminal station materials cannot be saved as unfinished work"); }
+        if (segment.process.state().lifecycle().isTerminal()) {
+            throw new IllegalStateException("Terminal station materials cannot be saved as unfinished work");
+        }
         requireHead(segment.key);
         var materials = queue.registry().materials(segment.key.researchId(), segment.key.targetLevel());
         return new SavedSegment(segment.key, segment.sources.sites(), materials.encode(segment.process));
@@ -475,59 +543,90 @@ public final class ResearchStationWork {
 
     private void requireHead(TeamResearchQueue.Key expected) {
         var head = queue.activeHead().orElse(null);
-        if (head == null || !head.key().equals(expected)) { throw new IllegalStateException("Saved station session requires its exact queue head"); }
+        if (head == null || !head.key().equals(expected)) {
+            throw new IllegalStateException("Saved station session requires its exact queue head");
+        }
     }
 
     private void requireOwner() {
-        if (Thread.currentThread() != owner || executing) { throw new IllegalStateException("Station research requires its idle owner thread"); }
+        if (Thread.currentThread() != owner || executing) {
+            throw new IllegalStateException("Station research requires its idle owner thread");
+        }
     }
 
-    public enum Status { WAITING, PENDING, ADVANCED, COMPLETED, FAILED, CANCELLED }
+    public enum Status {WAITING, PENDING, ADVANCED, COMPLETED, FAILED, CANCELLED}
 
     public record Result(Status status, @Nullable TeamResearchQueue.GrantResult grant, ProcessResult materials) {
-        public Result { Objects.requireNonNull(status); Objects.requireNonNull(materials); }
+        public Result {
+            Objects.requireNonNull(status);
+            Objects.requireNonNull(materials);
+        }
     }
 
-    /** Current team membership proof is distinct from the network's physical capture. */
+    /**
+     * Current team membership proof is distinct from the network's physical capture.
+     */
     public record Context(long time, ObjectSet<UUID> members, BooleanSupplier current) {
         public Context(long time, Collection<UUID> members, BooleanSupplier current) {
             this(time, new ObjectLinkedOpenHashSet<>(members), current);
         }
+
         public Context {
-            if (time < 0) { throw new IllegalArgumentException("Negative research time"); }
+            if (time < 0) {
+                throw new IllegalArgumentException("Negative research time");
+            }
             members = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(members));
-            for (var member : members) { Objects.requireNonNull(member); }
+            for (var member : members) {
+                Objects.requireNonNull(member);
+            }
             Objects.requireNonNull(current);
         }
     }
 
     public record Saved(long lastGrantedTime, @Nullable SavedSegment segment) {
-        public Saved { if (lastGrantedTime < -1) { throw new IllegalArgumentException("Invalid last station grant time"); } }
+        public Saved {
+            if (lastGrantedTime < -1) {
+                throw new IllegalArgumentException("Invalid last station grant time");
+            }
+        }
     }
 
-    public record SavedSegment(TeamResearchQueue.Key key, List<ResearchStations.Site> sites, NBTTagCompound processTag) {
+    public record SavedSegment(TeamResearchQueue.Key key, List<ResearchStations.Site> sites,
+                               NBTTagCompound processTag) {
         public SavedSegment {
             Objects.requireNonNull(key);
             sites = ResearchStations.validatedSites(sites);
             processTag = Objects.requireNonNull(processTag).copy();
         }
-        @Override public NBTTagCompound processTag() { return processTag.copy(); }
+
+        @Override
+        public NBTTagCompound processTag() {
+            return processTag.copy();
+        }
     }
 
-    private record Segment(TeamResearchQueue.Key key, ResearchStations.Capture sources, RecipeProcess process) { }
-    private record Cleanup(SavedSegment saved, ResearchStations.CleanupSources sources, RecipeProcess process) { }
+    private record Segment(TeamResearchQueue.Key key, ResearchStations.Capture sources, RecipeProcess process) {
+    }
+
+    private record Cleanup(SavedSegment saved, ResearchStations.CleanupSources sources, RecipeProcess process) {
+    }
 
     private final class Cycle {
         private final Segment segment;
         private final ResearchStations.Capture sources;
         private final Context context;
         private final TeamResearchQueue.SegmentPlan plan;
-        @Nullable private PlannedRecipeCoordinator coordinator;
-        @Nullable private TeamResearchQueue.GrantMutation grant;
+        @Nullable
+        private PlannedRecipeCoordinator coordinator;
+        @Nullable
+        private TeamResearchQueue.GrantMutation grant;
         private boolean grantCommitted;
 
         private Cycle(Segment segment, ResearchStations.Capture sources, Context context, TeamResearchQueue.SegmentPlan plan) {
-            this.segment = segment; this.sources = sources; this.context = context; this.plan = plan;
+            this.segment = segment;
+            this.sources = sources;
+            this.context = context;
+            this.plan = plan;
         }
 
         private boolean current() {
@@ -535,27 +634,64 @@ public final class ResearchStationWork {
                 && queue.epoch() == (grantCommitted ? plan.queueEpoch() + 1 : plan.queueEpoch());
         }
 
-        @Nullable private List<? extends ReversibleTransaction> participants(RecipeProcess.Stage stage) {
-            if (stage.phase() != RecipeStage.END) { return List.of(); }
-            if (!current() || queue.busy()) { return null; }
+        @Nullable
+        private List<? extends ReversibleTransaction> participants(RecipeProcess.Stage stage) {
+            if (stage.phase() != RecipeStage.END) {
+                return List.of();
+            }
+            if (!current() || queue.busy()) {
+                return null;
+            }
             var prepared = plan.completesResearch() ? completion.prepare(plan.key().researchId(), plan.key().targetLevel(),
                 context.members(), players, team, context.time()) : null;
-            if (plan.completesResearch() && prepared == null) { return null; }
-            try { grant = queue.prepareGrantSegment(plan); }
-            catch (RuntimeException | Error failure) {
+            if (plan.completesResearch() && prepared == null) {
+                return null;
+            }
+            try {
+                grant = queue.prepareGrantSegment(plan);
+            } catch (RuntimeException | Error failure) {
                 if (prepared != null) {
-                    try { prepared.rollback(); }
-                    catch (RuntimeException | Error cleanup) { if (failure != cleanup) { failure.addSuppressed(cleanup); } }
+                    try {
+                        prepared.rollback();
+                    } catch (RuntimeException | Error cleanup) {
+                        if (failure != cleanup) {
+                            failure.addSuppressed(cleanup);
+                        }
+                    }
                 }
                 throw failure;
             }
             var tracked = new ReversibleTransaction() {
-                @Override public boolean prepareCommit() { return current(); }
-                @Override public void commit() { Objects.requireNonNull(grant).commit(); grantCommitted = true; }
-                @Override public boolean validateCommit() { return current(); }
-                @Override public void complete() { Objects.requireNonNull(grant).complete(); }
-                @Override public void rollback() { Objects.requireNonNull(grant).rollback(); }
-                @Override public Resolution resolution() { return Objects.requireNonNull(grant).resolution(); }
+                @Override
+                public boolean prepareCommit() {
+                    return current();
+                }
+
+                @Override
+                public void commit() {
+                    Objects.requireNonNull(grant).commit();
+                    grantCommitted = true;
+                }
+
+                @Override
+                public boolean validateCommit() {
+                    return current();
+                }
+
+                @Override
+                public void complete() {
+                    Objects.requireNonNull(grant).complete();
+                }
+
+                @Override
+                public void rollback() {
+                    Objects.requireNonNull(grant).rollback();
+                }
+
+                @Override
+                public Resolution resolution() {
+                    return Objects.requireNonNull(grant).resolution();
+                }
             };
             return prepared == null ? List.of(tracked) : List.of(tracked, prepared);
         }

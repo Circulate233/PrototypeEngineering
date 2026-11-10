@@ -1,12 +1,13 @@
 package com.circulation.prototype_eng.component;
 
-import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.ComponentMap;
+import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineSystem;
 import com.circulation.prototype_eng.api.machine.event.MachineEvent;
 import com.circulation.prototype_eng.api.machine.event.MachineTickEvent;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -14,17 +15,24 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.Objects;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ComponentDispatchTest {
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("migration_test", name);
+    }
+
+    private static List<String> values(TopologicalComponentMap<String, String> graph) {
+        return graph.orderedComponents().stream().map(TopologicalComponentMap.Node::component).toList();
+    }
+
     @Test
     void preparedInsertionsChargePendingEdgesAndRejectAStaleGroupBeforeAnyWrite() {
         var map = new ComponentMap<MachineInstance>();
@@ -32,20 +40,25 @@ class ComponentDispatchTest {
         var second = new ComponentType<MachineInstance, String>(id("prepared_second"), _ -> "unused", List.of());
         var dependency = new ComponentType<MachineInstance, String>(id("prepared_dependency"), _ -> "unused", List.of());
         var removed = new ComponentType<MachineInstance, String>(id("removed_dependency"), _ -> "unused", List.of());
-        map.addDependency(second, dependency); map.addDependency(second, removed); map.removeDependency(second, removed);
+        map.addDependency(second, dependency);
+        map.addDependency(second, removed);
+        map.removeDependency(second, removed);
         var firstPut = Objects.requireNonNull(map.preparePut(first, "first", new RecipeWorkBudget(1)));
         assertNull(map.preparePut(second, "second", new RecipeWorkBudget(1)));
-        assertNull(map.get(first)); assertNull(map.get(second));
+        assertNull(map.get(first));
+        assertNull(map.get(second));
         var secondPut = Objects.requireNonNull(map.preparePut(second, "second", new RecipeWorkBudget(2)));
         map.put(dependency, "dependency");
         var previous = map.orderedBindings();
         assertThrows(IllegalStateException.class, () -> map.installPuts(List.of(firstPut, secondPut)));
-        assertNull(map.get(first)); assertNull(map.get(second));
+        assertNull(map.get(first));
+        assertNull(map.get(second));
         assertEquals(List.of("dependency"), previous.stream().map(ComponentMap.SavedBinding::component).toList());
         var currentFirst = Objects.requireNonNull(map.preparePut(first, "first", new RecipeWorkBudget(1)));
         var currentSecond = Objects.requireNonNull(map.preparePut(second, "second", new RecipeWorkBudget(2)));
         map.installPuts(List.of(currentFirst, currentSecond));
-        assertNotNull(map.get(first)); assertNotNull(map.get(second));
+        assertNotNull(map.get(first));
+        assertNotNull(map.get(second));
         assertEquals(List.of("dependency", "first", "second"), map.orderedBindings().stream().map(ComponentMap.SavedBinding::component).toList());
         assertEquals(Set.of(dependency), map.orderedBindings().getLast().dependencies());
         var canonical = new ComponentType<MachineInstance, String>(id("prepared_id"), _ -> "unused", List.of());
@@ -53,18 +66,26 @@ class ComponentDispatchTest {
         var canonicalPut = Objects.requireNonNull(map.preparePut(canonical, "canonical", new RecipeWorkBudget(1)));
         var counterfeitPut = Objects.requireNonNull(map.preparePut(counterfeit, "counterfeit", new RecipeWorkBudget(1)));
         assertThrows(IllegalArgumentException.class, () -> map.installPuts(List.of(canonicalPut, counterfeitPut)));
-        assertNull(map.get(canonical)); assertNull(map.get(counterfeit));
+        assertNull(map.get(canonical));
+        assertNull(map.get(counterfeit));
         map.put(canonical, "legitimate successor");
         assertEquals("legitimate successor", map.get(canonical));
     }
+
     @Test
     void declarationValidationFindsTheLiveSystemCycleWithoutCreatingComponents() {
         var log = new ObjectArrayList<String>();
         var first = new RecordingSystem("first", log) {
-            @Override public Set<ResourceLocation> runAfter() { return Set.of(ComponentDispatchTest.id("second")); }
+            @Override
+            public Set<ResourceLocation> runAfter() {
+                return Set.of(ComponentDispatchTest.id("second"));
+            }
         };
         var second = new RecordingSystem("second", log) {
-            @Override public Set<ResourceLocation> runAfter() { return Set.of(ComponentDispatchTest.id("first")); }
+            @Override
+            public Set<ResourceLocation> runAfter() {
+                return Set.of(ComponentDispatchTest.id("first"));
+            }
         };
         var a = new ComponentType<>(id("a"), _ -> {
             throw new AssertionError("Declaration validation must not create components");
@@ -88,14 +109,6 @@ class ComponentDispatchTest {
         ComponentMap.validateTypes(List.of(dependent, dependency));
         var counterfeit = new ComponentType<MachineInstance, String>(dependency.id(), _ -> "wrong", List.of());
         assertThrows(IllegalArgumentException.class, () -> ComponentMap.validateTypes(List.of(dependent, counterfeit)));
-    }
-
-    private static ResourceLocation id(String name) {
-        return new ResourceLocation("migration_test", name);
-    }
-
-    private static List<String> values(TopologicalComponentMap<String, String> graph) {
-        return graph.orderedComponents().stream().map(TopologicalComponentMap.Node::component).toList();
     }
 
     @Test

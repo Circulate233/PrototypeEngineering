@@ -22,12 +22,28 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("resource") // Fixture-local registries and subscriptions share the test lifetime.
 class MachineOwnershipTest {
-    @Test void copiedSaveKeepsOriginalOwnerAndBothCopiesLoseUniquenessUntilOneUnloads() {
-        var registry = new MachineIdentityRegistry(() -> { });
+    private static Definition definition(MachineIdentityRegistry registry) {
+        var ownership = new ComponentType<MachineInstance, MachineOwnership>(id("ownership"),
+            owner -> new MachineOwnership(owner, _ -> registry), List.of());
+        var type = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure")).component(ownership).build();
+        return new Definition(ownership, MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).build());
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("prototype_eng_test", path);
+    }
+
+    @Test
+    void copiedSaveKeepsOriginalOwnerAndBothCopiesLoseUniquenessUntilOneUnloads() {
+        var registry = new MachineIdentityRegistry(() -> {
+        });
         var definition = definition(registry);
         var world = new Object();
         var actor = UUID.randomUUID();
@@ -46,8 +62,10 @@ class MachineOwnershipTest {
         assertEquals(saved, definition.assembly.encode(restored));
     }
 
-    @Test void replacedLocationDoesNotLetOldUnloadEraseNewMachineRegistration() {
-        var registry = new MachineIdentityRegistry(() -> { });
+    @Test
+    void replacedLocationDoesNotLetOldUnloadEraseNewMachineRegistration() {
+        var registry = new MachineIdentityRegistry(() -> {
+        });
         var definition = definition(registry);
         var host = new Host(new Object(), BlockPos.ORIGIN, UUID.randomUUID());
         var first = definition.assembly.create(host, new MachineLifecycleRegistry());
@@ -60,15 +78,18 @@ class MachineOwnershipTest {
         assertEquals(List.of(nextOwned.registration()), registry.uniqueRegistrations());
     }
 
-    @Test void partialLoadFailureCleansOnlyItsOwnRegistrationAndRestoresOtherCopyUniqueness() {
-        var registry = new MachineIdentityRegistry(() -> { });
+    @Test
+    void partialLoadFailureCleansOnlyItsOwnRegistrationAndRestoresOtherCopyUniqueness() {
+        var registry = new MachineIdentityRegistry(() -> {
+        });
         var definition = definition(registry);
         var world = new Object();
         var first = definition.assembly.create(new Host(world, BlockPos.ORIGIN, UUID.randomUUID()), new MachineLifecycleRegistry());
         var original = Objects.requireNonNull(first.components().get(definition.component));
         var listeners = new MachineLifecycleRegistry();
         listeners.register(new MachineLifecycleListener() {
-            @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+            @Override
+            public void onLoaded(MachineLifecycleEvent.Loaded event) {
                 assertFalse(Objects.requireNonNull(original.registration()).unique());
                 throw new IllegalStateException("later listener failed");
             }
@@ -80,8 +101,10 @@ class MachineOwnershipTest {
         assertEquals(List.of(original.registration()), registry.uniqueRegistrations());
     }
 
-    @Test void missingRealPlacerAndMalformedRestoredIdentityNeverRegister() {
-        var registry = new MachineIdentityRegistry(() -> { });
+    @Test
+    void missingRealPlacerAndMalformedRestoredIdentityNeverRegister() {
+        var registry = new MachineIdentityRegistry(() -> {
+        });
         var definition = definition(registry);
         var world = new Object();
         assertThrows(IllegalStateException.class, () -> definition.assembly.create(
@@ -92,7 +115,9 @@ class MachineOwnershipTest {
         var entries = saved.getTagList("Components", 10);
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
-            if (entry.getString("Type").equals(definition.component.id().toString())) { entry.getCompoundTag("Data").removeTag("ownerMost"); }
+            if (entry.getString("Type").equals(definition.component.id().toString())) {
+                entry.getCompoundTag("Data").removeTag("ownerMost");
+            }
         }
         var registration = Objects.requireNonNull(Objects.requireNonNull(first.components().get(definition.component)).registration());
         assertThrows(IllegalArgumentException.class, () -> definition.assembly.restore(
@@ -100,19 +125,23 @@ class MachineOwnershipTest {
         assertEquals(List.of(registration), registry.uniqueRegistrations());
     }
 
-    private static Definition definition(MachineIdentityRegistry registry) {
-        var ownership = new ComponentType<MachineInstance, MachineOwnership>(id("ownership"),
-            owner -> new MachineOwnership(owner, _ -> registry), List.of());
-        var type = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure")).component(ownership).build();
-        return new Definition(ownership, MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).build());
+    private record Definition(ComponentType<MachineInstance, MachineOwnership> component, MachineAssembly assembly) {
     }
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("prototype_eng_test", path); }
-    private record Definition(ComponentType<MachineInstance, MachineOwnership> component, MachineAssembly assembly) { }
+    private record Host(Object worldIdentity, BlockPos position,
+                        @Nullable UUID placementPlayer) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, position);
+        }
 
-    private record Host(Object worldIdentity, BlockPos position, @Nullable UUID placementPlayer) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, position); }
-        @Override public World world() { throw new AssertionError("Ownership tests do not load a Minecraft world"); }
-        @Override public void requireServerThread() { }
+        @Override
+        public World world() {
+            throw new AssertionError("Ownership tests do not load a Minecraft world");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

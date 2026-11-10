@@ -1,10 +1,6 @@
 package com.circulation.prototype_eng.research.reward;
 
 import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.util.Objects;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
@@ -12,17 +8,28 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.storage.SaveHandler;
 import net.minecraftforge.common.util.FakePlayer;
 
-/** Actual protected stacks remain owned by exactly one player across vanilla respawn and saving. */
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.util.Objects;
+
+/**
+ * Actual protected stacks remain owned by exactly one player across vanilla respawn and saving.
+ */
 public final class RewardPlayerInventory {
     public static final String PROTECTED_CURSOR_TAG = "PrototypeEngineeringRewardCursor";
 
-    private RewardPlayerInventory() { }
+    private RewardPlayerInventory() {
+    }
 
-    /** Runs after Entity has read ForgeData but before player loading callbacks can save old data. */
+    /**
+     * Runs after Entity has read ForgeData but before player loading callbacks can save old data.
+     */
     public static void reconcileDeliveryJournal(EntityPlayer player, NBTTagCompound compound) {
         if (player.world.isRemote || !(player instanceof EntityPlayerMP actual) || player instanceof FakePlayer) return;
         var server = Objects.requireNonNull(actual.getServerWorld().getMinecraftServer(), "Reward player loading server");
-        if (!server.isCallingFromMinecraftThread()) throw new IllegalStateException("Reward player loading requires the server thread");
+        if (!server.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Reward player loading requires the server thread");
         // Entity has read the file UUID here; EntityPlayer only resets it from the profile later.
         var id = EntityPlayer.getUUID(player.getGameProfile());
         if (!compound.hasUniqueId("UUID") || !id.equals(compound.getUniqueId("UUID"))) {
@@ -47,28 +54,37 @@ public final class RewardPlayerInventory {
             }
             var reconciled = RewardDeliveryJournal.reconcile(loaded, saved, host);
             if (!reconciled.snapshot().equals(loaded.snapshot())) reconciled.writeTo(player.getEntityData());
-        } catch (IOException failure) { throw new UncheckedIOException(failure); }
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        }
     }
 
-    /** Vanilla writes all 41 inventory slots but omits the carried cursor, including after death. */
+    /**
+     * Vanilla writes all 41 inventory slots but omits the carried cursor, including after death.
+     */
     public static void writeProtectedCursor(EntityPlayer player, NBTTagCompound compound) {
         if (player.world.isRemote) return;
         var cursor = player.inventory.getItemStack();
         if (RewardItemProtection.isProtected(cursor)) {
             compound.setTag(PROTECTED_CURSOR_TAG, cursor.writeToNBT(new NBTTagCompound()));
-        } else { compound.removeTag(PROTECTED_CURSOR_TAG); }
+        } else {
+            compound.removeTag(PROTECTED_CURSOR_TAG);
+        }
     }
 
     public static void readProtectedCursor(EntityPlayer player, NBTTagCompound compound) {
         if (player.world.isRemote) return;
         if (!compound.hasKey(PROTECTED_CURSOR_TAG)) {
             // A full player reload supersedes any previous protected cursor on this same object.
-            if (RewardItemProtection.isProtected(player.inventory.getItemStack())) player.inventory.setItemStack(ItemStack.EMPTY);
+            if (RewardItemProtection.isProtected(player.inventory.getItemStack()))
+                player.inventory.setItemStack(ItemStack.EMPTY);
             return;
         }
-        if (!compound.hasKey(PROTECTED_CURSOR_TAG, 10)) throw new IllegalArgumentException("Invalid saved reward cursor");
+        if (!compound.hasKey(PROTECTED_CURSOR_TAG, 10))
+            throw new IllegalArgumentException("Invalid saved reward cursor");
         var cursor = new ItemStack(compound.getCompoundTag(PROTECTED_CURSOR_TAG));
-        if (!RewardItemProtection.isProtected(cursor)) throw new IllegalArgumentException("Saved reward cursor lost its protection");
+        if (!RewardItemProtection.isProtected(cursor))
+            throw new IllegalArgumentException("Saved reward cursor lost its protection");
         requireAvailable(player.inventory.getItemStack(), cursor);
         player.inventory.setItemStack(cursor);
     }
@@ -80,7 +96,8 @@ public final class RewardPlayerInventory {
      */
     public static void transferProtected(EntityPlayer oldPlayer, EntityPlayer newPlayer) {
         if (oldPlayer == newPlayer || oldPlayer.world.isRemote || newPlayer.world.isRemote) return;
-        if (!oldPlayer.getUniqueID().equals(newPlayer.getUniqueID())) throw new IllegalArgumentException("Reward inventory actor changed");
+        if (!oldPlayer.getUniqueID().equals(newPlayer.getUniqueID()))
+            throw new IllegalArgumentException("Reward inventory actor changed");
         var source = oldPlayer.inventory;
         var destination = newPlayer.inventory;
         if (source == destination) return;

@@ -14,8 +14,8 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
-import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.MachineComputerComponents;
+import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
@@ -23,14 +23,14 @@ import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
+import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
-import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
-import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
-import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
-import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
@@ -54,13 +54,14 @@ import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
+import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
-import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import com.circulation.prototype_eng.research.ResearchEligibility;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
@@ -79,11 +80,71 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkRecipeWorkTest {
-    @Test void parallelProcessesSpendSummedNumericDemandButShareOnlyOneMachineLease() {
+    private static MachineRecipe recipe(String name, int duration, EnergyRequirement energy, Hooks hooks) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return new Effect(hooks, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return new Effect(hooks, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return new Effect(hooks, RecipeStage.END);
+            }
+        };
+        var effect = new RecipeRequirementType<>(new ResourceLocation("zz_network_work_test", "late_effect"), system).requirement(id(name + "_effect"), "business effect");
+        return new MachineRecipe(id(name), duration, List.of(RecipeRequirements.ENERGY.requirement(id(name + "_energy"), energy), effect));
+    }
+
+    private static MachineType.Builder type(String name) {
+        return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure"));
+    }
+
+    private static RecipeCatalog catalog(List<MachineRecipe> recipes) {
+        return new RecipeCatalog(List.of(new DefaultRecipePool(id("recipes"), "network_work_test.recipes", recipes)));
+    }
+
+    private static Object2LongOpenHashMap<NetworkResourceType> demand() {
+        var demand = new Object2LongOpenHashMap<NetworkResourceType>();
+        demand.put(NetworkResources.COMPUTE, 10);
+        return demand;
+    }
+
+    private static NetworkResourceRegistry resources() {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        return resources;
+    }
+
+    private static ResearchRegistry research(NetworkResourceRegistry resources) {
+        var registry = new ResearchRegistry();
+        for (var name : List.of("gate", "filler_one", "filler_two")) {
+            int max = name.equals("gate") ? 3 : 1;
+            registry.register(ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                                .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+        }
+        registry.freeze(resources);
+        return registry;
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("network_work_test", name);
+    }
+
+    @Test
+    void parallelProcessesSpendSummedNumericDemandButShareOnlyOneMachineLease() {
         try (var fixture = new Fixture(1, 100, false)) {
             var first = fixture.worker();
             var other = fixture.worker();
@@ -104,7 +165,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void scannerZeroDurationStartAndIndependentTickProbesSpendNoLeaseNumericBudgetOrOperationSequence() {
+    @Test
+    void scannerZeroDurationStartAndIndependentTickProbesSpendNoLeaseNumericBudgetOrOperationSequence() {
         try (var fixture = new Fixture(1, 100, false)) {
             var candidate = fixture.worker();
             var actual = fixture.worker();
@@ -132,7 +194,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void defaultAndRecipeResearchTakeTheirMaximumAndUseOnlyTheSelectedPhysicalDatabase() {
+    @Test
+    void defaultAndRecipeResearchTakeTheirMaximumAndUseOnlyTheSelectedPhysicalDatabase() {
         try (var fixture = new Fixture(1, 100, true)) {
             var machine = fixture.worker();
             var losing = fixture.dataCenter();
@@ -160,7 +223,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void numericShortageBlocksProgressWithoutFaultAndTheNextTickCanResumeTheSameProcess() {
+    @Test
+    void numericShortageBlocksProgressWithoutFaultAndTheNextTickCanResumeTheSameProcess() {
         try (var fixture = new Fixture(1, 20, false)) {
             var machine = fixture.worker();
             fixture.refresh();
@@ -179,7 +243,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void lateContentChangeOrRevocationRollsBackThisStageAndPreservesThePreviouslyCompletedTick() {
+    @Test
+    void lateContentChangeOrRevocationRollsBackThisStageAndPreservesThePreviouslyCompletedTick() {
         for (boolean contentChange : List.of(false, true)) {
             try (var fixture = new Fixture(1, 100, false)) {
                 var machine = fixture.worker();
@@ -203,7 +268,8 @@ class NetworkRecipeWorkTest {
                 assertEquals(100, attemptedBook.availableResources().getLong(NetworkResources.COMPUTE));
                 assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.TICK));
                 assertTrue(process.persistenceReady(), "Expected authority loss remains resumable");
-                fixture.hooks.onTickCommit = () -> { };
+                fixture.hooks.onTickCommit = () -> {
+                };
                 fixture.refresh();
                 assertSame(ProcessResult.SUCCESS, process.tick());
                 assertEquals(2, process.state().successfulTicks());
@@ -213,7 +279,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void anExceptionalLateCommitPreservesItsCauseAndCompensatesItsIssuingBookAfterTheOldTickCloses() {
+    @Test
+    void anExceptionalLateCommitPreservesItsCauseAndCompensatesItsIssuingBookAfterTheOldTickCloses() {
         try (var fixture = new Fixture(1, 100, false)) {
             var machine = fixture.worker();
             fixture.refresh();
@@ -222,7 +289,10 @@ class NetworkRecipeWorkTest {
             fixture.nextTick();
             var original = fixture.permit(machine);
             var failure = new IllegalStateException("external requirement failed after network preparation");
-            fixture.hooks.onTickCommit = () -> { fixture.advanceTickWithoutCapture(); throw failure; };
+            fixture.hooks.onTickCommit = () -> {
+                fixture.advanceTickWithoutCapture();
+                throw failure;
+            };
             assertSame(failure, assertThrows(IllegalStateException.class, process::tick));
             assertEquals(100, original.availableResources().getLong(NetworkResources.COMPUTE));
             fixture.refresh();
@@ -234,7 +304,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void durationOneAndZeroDurationChargeExactlyOneWorkUnitAcrossTheirRealLifecycleStages() {
+    @Test
+    void durationOneAndZeroDurationChargeExactlyOneWorkUnitAcrossTheirRealLifecycleStages() {
         try (var fixture = new Fixture(1, 100, false)) {
             var machine = fixture.worker();
             fixture.refresh();
@@ -260,7 +331,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void restoredNetworkProviderRootsResumeWithoutReplayingStartOrDeductingHistoricalWork() {
+    @Test
+    void restoredNetworkProviderRootsResumeWithoutReplayingStartOrDeductingHistoricalWork() {
         try (var fixture = new Fixture(1, 100, false)) {
             var machine = fixture.worker();
             fixture.refresh();
@@ -281,7 +353,8 @@ class NetworkRecipeWorkTest {
         }
     }
 
-    @Test void unrepresentableParallelDemandBlocksNormallyAndCanResumeAtAnAffordableParallelism() {
+    @Test
+    void unrepresentableParallelDemandBlocksNormallyAndCanResumeAtAnAffordableParallelism() {
         long capacity = 1_000_000_000_000L;
         try (var fixture = new Fixture(1, capacity, false, capacity - 4)) {
             var machine = fixture.worker();
@@ -313,7 +386,8 @@ class NetworkRecipeWorkTest {
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
         private final Object2LongOpenHashMap<NetworkResourceType> supply = new Object2LongOpenHashMap<>();
         private final ComponentType<MachineInstance, MachineDataCenterStorage> storage = MachineDataCenterStorage.component(id("storage"),
-            ownership, 1, 3, research, _ -> { });
+            ownership, 1, 3, research, _ -> {
+            });
         private final ComponentType<MachineInstance, MachineNetworkDevice> workerRole = MachineNetworkDevice.component(id("worker_role"), ownership,
             (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 1,
                 Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
@@ -337,11 +411,15 @@ class NetworkRecipeWorkTest {
             var extensions = new NetworkRecipeExtensions();
             extensions.register((_, builder) -> {
                 builder.resource(NetworkResources.COMPUTE, recipeCompute);
-                if (researchGate) { builder.research(id("gate"), 2); }
+                if (researchGate) {
+                    builder.research(id("gate"), 2);
+                }
             });
             extensions.publish(catalog(List.of(normal, fast, zero)), research, resources);
             var defaults = NetworkWorkRequirements.builder().resource(NetworkResources.COMPUTE, 4);
-            if (researchGate) { defaults.research(id("gate"), 3); }
+            if (researchGate) {
+                defaults.research(id("gate"), 3);
+            }
             var work = NetworkRecipeWork.component(id("network_work"), workerRole, defaults.build(), extensions, research, resources);
             var workerType = type("worker").component(ownership).component(workerRole).component(work).recipePool(id("recipes")).build();
             workerAssembly = MachineAssembly.builder(workerType, "worker-v1").component(ownership, MachineOwnership.CODEC).recreated(workerRole, work).build();
@@ -350,7 +428,7 @@ class NetworkRecipeWorkTest {
                     Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var dataType = type("data_center").component(ownership).component(storage).component(dataRole).build();
             dataAssembly = MachineAssembly.builder(dataType, "data-v1").component(ownership, MachineOwnership.CODEC)
-                .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole).build();
+                                          .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole).build();
             network.beginTick(tick);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership,
                 (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
@@ -371,44 +449,82 @@ class NetworkRecipeWorkTest {
                     Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             var computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
-                .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
-            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> { });
+                                          .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> {
+            });
             assertEquals(1, Objects.requireNonNull(warehouse.input()).insert(card, 1, Actionable.MODULATE));
             Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(), List.of()));
             machines.add(computer);
             primaryDataCenter = dataCenter();
         }
 
-        private Worker worker() { return attach(workerAssembly.create(host(workerAssembly.type().id()), new MachineLifecycleRegistry())); }
-        private MachineInstance dataCenter() { return attach(dataAssembly.create(host(dataAssembly.type().id()), new MachineLifecycleRegistry())).owner; }
+        private Worker worker() {
+            return attach(workerAssembly.create(host(workerAssembly.type().id()), new MachineLifecycleRegistry()));
+        }
+
+        private MachineInstance dataCenter() {
+            return attach(dataAssembly.create(host(dataAssembly.type().id()), new MachineLifecycleRegistry())).owner;
+        }
+
         private Worker attach(MachineInstance owner) {
-            var input = new EnergyBuffer(100, () -> { });
-            var output = new EnergyBuffer(100, () -> { });
+            var input = new EnergyBuffer(100, () -> {
+            });
+            var output = new EnergyBuffer(100, () -> {
+            });
             input.receiveEnergy(100, Actionable.MODULATE);
             Objects.requireNonNull(owner.lifecycle()).form(new MachineHatches(List.of(), List.of(input), List.of(output)));
             machines.add(owner);
             return new Worker(owner, input, output);
         }
+
         private RecipeProcess process(Worker worker, MachineRecipe recipe, int parallelism) {
             var process = factory.create(worker.owner, recipe, 17, ProbabilityTuning.defaultTuning());
             process.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallelism);
             return process;
         }
-        private NetworkRuntime.WorkPermit permit(Worker worker) { return Objects.requireNonNull(Objects.requireNonNull(worker.owner.components().get(workerRole)).workPermit()); }
-        private MachineDataCenterStorage storage(MachineInstance owner) { return Objects.requireNonNull(owner.components().get(storage)); }
+
+        private NetworkRuntime.WorkPermit permit(Worker worker) {
+            return Objects.requireNonNull(Objects.requireNonNull(worker.owner.components().get(workerRole)).workPermit());
+        }
+
+        private MachineDataCenterStorage storage(MachineInstance owner) {
+            return Objects.requireNonNull(owner.components().get(storage));
+        }
+
         private TeamResearchView cloud() {
             return new ResearchEligibility(research).calculateStructural("team", List.of(player.playerUuid()),
                 Map.of(player.playerUuid(), player), Object2IntMaps.emptyMap(), Set.of());
         }
-        private Host host(ResourceLocation type) { return new Host(world, type, new BlockPos(positions++, 0, 0), player.playerUuid()); }
-        private void refresh() { assertTrue(network.refresh()); }
-        private void advanceTickWithoutCapture() { network.endTick(); network.beginTick(++tick); }
-        private void nextTick() { advanceTickWithoutCapture(); refresh(); }
-        private void requireOwner() {
-            if (Thread.currentThread() != ownerThread) { throw new IllegalStateException("Not the test server owner"); }
+
+        private Host host(ResourceLocation type) {
+            return new Host(world, type, new BlockPos(positions++, 0, 0), player.playerUuid());
         }
-        @Override public void close() {
-            for (var machine : machines) { Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
+
+        private void refresh() {
+            assertTrue(network.refresh());
+        }
+
+        private void advanceTickWithoutCapture() {
+            network.endTick();
+            network.beginTick(++tick);
+        }
+
+        private void nextTick() {
+            advanceTickWithoutCapture();
+            refresh();
+        }
+
+        private void requireOwner() {
+            if (Thread.currentThread() != ownerThread) {
+                throw new IllegalStateException("Not the test server owner");
+            }
+        }
+
+        @Override
+        public void close() {
+            for (var machine : machines) {
+                Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            }
             network.close();
             identities.close();
         }
@@ -416,7 +532,8 @@ class NetworkRecipeWorkTest {
 
     private static final class Hooks {
         private final Object2IntOpenHashMap<RecipeStage> committed = new Object2IntOpenHashMap<>();
-        private Runnable onTickCommit = () -> { };
+        private Runnable onTickCommit = () -> {
+        };
     }
 
     private static final class Effect implements RequirementTransaction {
@@ -425,51 +542,62 @@ class NetworkRecipeWorkTest {
         private boolean committed;
         private Resolution resolution = Resolution.REVERSIBLE;
 
-        private Effect(Hooks hooks, RecipeStage phase) { this.hooks = hooks; this.phase = phase; }
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public void commit() {
+        private Effect(Hooks hooks, RecipeStage phase) {
+            this.hooks = hooks;
+            this.phase = phase;
+        }
+
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
             committed = true;
             hooks.committed.addTo(phase, 1);
-            if (phase == RecipeStage.TICK) { hooks.onTickCommit.run(); }
+            if (phase == RecipeStage.TICK) {
+                hooks.onTickCommit.run();
+            }
         }
-        @Override public void complete() { resolution = Resolution.COMPLETED; }
-        @Override public void rollback() {
-            if (committed) { hooks.committed.addTo(phase, -1); committed = false; }
+
+        @Override
+        public void complete() {
+            resolution = Resolution.COMPLETED;
+        }
+
+        @Override
+        public void rollback() {
+            if (committed) {
+                hooks.committed.addTo(phase, -1);
+                committed = false;
+            }
             resolution = Resolution.ROLLED_BACK;
         }
-        @Override public Resolution resolution() { return resolution; }
-    }
 
-    private static MachineRecipe recipe(String name, int duration, EnergyRequirement energy, Hooks hooks) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) { return new Effect(hooks, RecipeStage.START); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return new Effect(hooks, RecipeStage.TICK); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return new Effect(hooks, RecipeStage.END); }
-        };
-        var effect = new RecipeRequirementType<>(new ResourceLocation("zz_network_work_test", "late_effect"), system).requirement(id(name + "_effect"), "business effect");
-        return new MachineRecipe(id(name), duration, List.of(RecipeRequirements.ENERGY.requirement(id(name + "_energy"), energy), effect));
-    }
-
-    private record Worker(MachineInstance owner, EnergyBuffer input, EnergyBuffer output) { }
-    private record Host(Object worldIdentity, ResourceLocation type, BlockPos position, UUID placementPlayer) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type, 0, position); }
-        @Override public World world() { throw new AssertionError("Network recipe tests do not load a Minecraft world"); }
-        @Override public void requireServerThread() { }
-    }
-    private static MachineType.Builder type(String name) { return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure")); }
-    private static RecipeCatalog catalog(List<MachineRecipe> recipes) { return new RecipeCatalog(List.of(new DefaultRecipePool(id("recipes"), "network_work_test.recipes", recipes))); }
-    private static Object2LongOpenHashMap<NetworkResourceType> demand() {
-        var demand = new Object2LongOpenHashMap<NetworkResourceType>(); demand.put(NetworkResources.COMPUTE, 10); return demand;
-    }
-    private static NetworkResourceRegistry resources() { var resources = new NetworkResourceRegistry(); resources.freeze(); return resources; }
-    private static ResearchRegistry research(NetworkResourceRegistry resources) {
-        var registry = new ResearchRegistry();
-        for (var name : List.of("gate", "filler_one", "filler_two")) {
-            int max = name.equals("gate") ? 3 : 1;
-            registry.register(ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
+        @Override
+        public Resolution resolution() {
+            return resolution;
         }
-        registry.freeze(resources); return registry;
     }
-    private static ResourceLocation id(String name) { return new ResourceLocation("network_work_test", name); }
+
+    private record Worker(MachineInstance owner, EnergyBuffer input, EnergyBuffer output) {
+    }
+
+    private record Host(Object worldIdentity, ResourceLocation type, BlockPos position,
+                        UUID placementPlayer) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type, 0, position);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("Network recipe tests do not load a Minecraft world");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
+    }
 }

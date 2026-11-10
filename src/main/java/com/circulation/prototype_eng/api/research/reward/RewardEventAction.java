@@ -8,5 +8,5 @@ package com.circulation.prototype_eng.api.research.reward;
 public interface RewardEventAction {
     Result deliver(RewardEventKey key, ResearchRewardContext context);
 
-    enum Result { APPLIED, ALREADY_APPLIED, RETRY_LATER }
+    enum Result {APPLIED, ALREADY_APPLIED, RETRY_LATER}
 }

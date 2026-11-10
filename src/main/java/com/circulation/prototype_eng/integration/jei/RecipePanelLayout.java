@@ -1,15 +1,17 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
-import java.util.List;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeIngredients;
 import com.circulation.prototype_eng.api.client.jei.JeiRenderOptions;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
-import com.circulation.prototype_eng.api.client.jei.JeiPatternRecipe;
+
+import java.util.List;
+
 /**
  * Stable panel splitting; no resource or explanation is discarded when a pool exceeds JEI's viewport.
  */
@@ -26,7 +28,7 @@ public class RecipePanelLayout {
 
     public RecipePanelLayout(JeiRecipeDisplay display) {
         this(display, new JeiRenderOptions(true, JeiRenderOptions.CandidateMode.EXPANDED, 0), null);
-        }
+    }
 
     public RecipePanelLayout(JeiRecipeDisplay display, JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
         var inputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>();
@@ -42,11 +44,12 @@ public class RecipePanelLayout {
     }
 
     private static List<List<JeiRecipeDisplay.Resource>> groups(List<JeiRecipeDisplay.Resource> rows,
-                                                               JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
+                                                                JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
         var grouped = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>>();
         if (options.candidates() == JeiRenderOptions.CandidateMode.ALTERNATIVES && ingredients != null) {
             for (var row : rows) {
-                if (row.candidates() != null) grouped.computeIfAbsent(row.candidates(), _ -> new ObjectArrayList<>()).add(row);
+                if (row.candidates() != null)
+                    grouped.computeIfAbsent(row.candidates(), _ -> new ObjectArrayList<>()).add(row);
             }
         }
         var result = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
@@ -85,6 +88,12 @@ public class RecipePanelLayout {
         return (int) Math.min(count, RESOURCE_CAPACITY);
     }
 
+    private static List<JeiRecipeDisplay.Resource> flattened(List<List<JeiRecipeDisplay.Resource>> groups) {
+        var result = new ObjectArrayList<JeiRecipeDisplay.Resource>();
+        for (var group : groups) result.addAll(group);
+        return ObjectLists.unmodifiable(result);
+    }
+
     public int pageCount() {
         return pageCount;
     }
@@ -101,8 +110,13 @@ public class RecipePanelLayout {
         return Math.min(RESOURCE_CAPACITY, outputGroups.size());
     }
 
-    public List<List<JeiRecipeDisplay.Resource>> inputGroups(int page) { return panel(inputGroups, page); }
-    public List<List<JeiRecipeDisplay.Resource>> outputGroups(int page) { return panel(outputGroups, page); }
+    public List<List<JeiRecipeDisplay.Resource>> inputGroups(int page) {
+        return panel(inputGroups, page);
+    }
+
+    public List<List<JeiRecipeDisplay.Resource>> outputGroups(int page) {
+        return panel(outputGroups, page);
+    }
 
     public List<JeiRecipeDisplay.Resource> inputs(int page) {
         return flattened(inputGroups(page));
@@ -115,12 +129,6 @@ public class RecipePanelLayout {
     public List<JeiRecipeDisplay.Text> information(int page) {
         if (page < 0 || page >= pageCount) throw new IllegalArgumentException("Recipe panel out of range");
         return information;
-    }
-
-    private static List<JeiRecipeDisplay.Resource> flattened(List<List<JeiRecipeDisplay.Resource>> groups) {
-        var result = new ObjectArrayList<JeiRecipeDisplay.Resource>();
-        for (var group : groups) result.addAll(group);
-        return ObjectLists.unmodifiable(result);
     }
 
     private <T> List<T> panel(List<T> values, int page) {

@@ -7,10 +7,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** Detached owner-side database view; an action must capture its own current authority. */
+/**
+ * Detached owner-side database view; an action must capture its own current authority.
+ */
 public record DataCenterPlayerView(String teamId, Decision viewPermission, Decision downloadPermission,
-                                  boolean savePending, @Nullable DataCenterResearchSnapshot dataCenter,
-                                  @Nullable TeamResearchView cloud) {
+                                   boolean savePending, @Nullable DataCenterResearchSnapshot dataCenter,
+                                   @Nullable TeamResearchView cloud) {
     public DataCenterPlayerView {
         Objects.requireNonNull(teamId);
         Objects.requireNonNull(viewPermission);

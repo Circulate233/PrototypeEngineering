@@ -32,17 +32,8 @@ public final class StructureProjectionState {
         this.previews = Objects.requireNonNull(previews);
     }
 
-    /**
-     * These statuses compare display choices only and never grant formation/execution authority.
-     */
-    public enum Status {DISPLAY_MATCH, MISSING, DIFFERENT, UNLOADED, UNKNOWN}
-
-    @FunctionalInterface
-    public interface Observer {
-        Status observe(StructurePreviewModel.Cell cell, BlockPos position);
-    }
-
-    public record Sample(StructurePreviewModel.Cell cell, BlockPos position, Status status) {
+    private static BlockPos add(BlockPos left, BlockPos right) {
+        return new BlockPos(Math.addExact(left.getX(), right.getX()), Math.addExact(left.getY(), right.getY()), Math.addExact(left.getZ(), right.getZ()));
     }
 
     public void tick(@Nullable Object currentWorld, Observer observer) {
@@ -163,10 +154,6 @@ public final class StructureProjectionState {
         clearModel();
     }
 
-    private static BlockPos add(BlockPos left, BlockPos right) {
-        return new BlockPos(Math.addExact(left.getX(), right.getX()), Math.addExact(left.getY(), right.getY()), Math.addExact(left.getZ(), right.getZ()));
-    }
-
     private void clearModel() {
         request = null;
         model = null;
@@ -177,5 +164,18 @@ public final class StructureProjectionState {
         statuses = new Status[0];
         scanCursor = 0;
         renderCursor = 0;
+    }
+
+    /**
+     * These statuses compare display choices only and never grant formation/execution authority.
+     */
+    public enum Status {DISPLAY_MATCH, MISSING, DIFFERENT, UNLOADED, UNKNOWN}
+
+    @FunctionalInterface
+    public interface Observer {
+        Status observe(StructurePreviewModel.Cell cell, BlockPos position);
+    }
+
+    public record Sample(StructurePreviewModel.Cell cell, BlockPos position, Status status) {
     }
 }

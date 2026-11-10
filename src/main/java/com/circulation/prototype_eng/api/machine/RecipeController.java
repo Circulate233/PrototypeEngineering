@@ -10,16 +10,23 @@ import java.util.function.LongSupplier;
 
 /** Common runtime controller responsibilities; physical attachment and the original scheduler remain shared. */
 public abstract class RecipeController extends MachineInstance {
-    protected RecipeController() { }
-    protected RecipeController(MachineType type) { super(type); }
+    protected RecipeController() {
+    }
 
-    @Override protected ExecutionMode defaultExecutionMode() {
+    protected RecipeController(MachineType type) {
+        super(type);
+    }
+
+    @Override
+    protected ExecutionMode defaultExecutionMode() {
         return ExecutionMode.PLANNED_PARALLEL;
     }
 
-    @Override public abstract RecipeScanner createRecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds);
+    @Override
+    public abstract RecipeScanner createRecipeScanner(MachineWorkSlots host, RecipeCatalog catalog, LongSupplier seeds);
 
-    @Override public boolean supportsStableFixedInputLowerBounds() {
+    @Override
+    public boolean supportsStableFixedInputLowerBounds() {
         var scanners = recipeScanners();
         if (scanners.isEmpty()) return false;
         for (var scanner : scanners) if (!scanner.supportsStableFixedInputLowerBounds()) return false;

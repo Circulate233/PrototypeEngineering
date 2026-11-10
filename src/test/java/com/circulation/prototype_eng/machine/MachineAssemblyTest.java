@@ -41,10 +41,94 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("resource") // Fixture-local registries own subscriptions throughout each scenario.
 class MachineAssemblyTest {
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("machine_assembly_test", path);
+    }
+
+    private static MachineType.Builder declaration() {
+        return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"));
+    }
+
+    private static ComponentType<MachineInstance, State> stateType(String name, Function<MachineInstance, State> factory) {
+        return new ComponentType<>(id(name), factory, List.of());
+    }
+
+    private static ComponentType<MachineInstance, ImmutableState> immutableType(String name, List<String> log, Runnable factoryAction) {
+        var system = new MachineSystem<ImmutableState>() {
+            @Override
+            public ResourceLocation id() {
+                return MachineAssemblyTest.id(name + "_tick");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, ImmutableState component) {
+                log.add("tick:" + component.name());
+            }
+        };
+        return new ComponentType<>(id(name), _ -> {
+            factoryAction.run();
+            return new ImmutableState(17, name, log);
+        }, List.of(system));
+    }
+
+    private static NBTTagCompound valueTag(int value) {
+        var tag = new NBTTagCompound();
+        tag.setInteger("Value", value);
+        return tag;
+    }
+
+    private static NBTTagCompound entry(NBTTagCompound saved, ComponentType<MachineInstance, ?> component) {
+        var entries = saved.getTagList("Components", 10);
+        for (int i = 0; i < entries.tagCount(); i++) {
+            var entry = entries.getCompoundTagAt(i);
+            if (entry.getString("Type").equals(component.id().toString())) {
+                return entry;
+            }
+        }
+        throw new AssertionError("Missing saved component " + component.id());
+    }
+
+    @SafeVarargs
+    private static NBTTagList dependencyList(ComponentType<MachineInstance, ?>... dependencies) {
+        var tags = new NBTTagList();
+        for (var dependency : dependencies) {
+            tags.appendTag(new NBTTagString(dependency.id().toString()));
+        }
+        return tags;
+    }
+
+    private static MachineLifecycleRegistry recordingRegistry(List<String> events) {
+        var registry = new MachineLifecycleRegistry();
+        registry.register(new MachineLifecycleListener() {
+            @Override
+            public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                events.add("loaded");
+            }
+
+            @Override
+            public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                events.add("unloaded:" + event.reason());
+            }
+        });
+        return registry;
+    }
+
+    private static void assertStopped(MachineInstance machine, MachineAssembly assembly) {
+        assertThrows(IllegalStateException.class, machine::onSchedule);
+        assertThrows(IllegalStateException.class, () -> assembly.encode(machine));
+    }
+
     @Test
     void factoriesSeeAttachedHostAndDependencyRestorationFinishesBeforeLoadedPublication() {
         var host = new Host();
@@ -62,13 +146,15 @@ class MachineAssemblyTest {
         }, List.of(), List.of(first));
         var type = declaration().component(second).component(first).attribute(id("speed"), 6).build();
         var assembly = MachineAssembly.builder(type, "v1")
-            .component(first, new StateCodec() {
-                @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
-                    log.add("restore:first");
-                    return super.restore(owner, fresh, tag);
-                }
-            }).component(second, new StateCodec() {
-                @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
+                                      .component(first, new StateCodec() {
+                                          @Override
+                                          public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
+                                              log.add("restore:first");
+                                              return super.restore(owner, fresh, tag);
+                                          }
+                                      }).component(second, new StateCodec() {
+                @Override
+                public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
                     assertEquals(41, Objects.requireNonNull(owner.components().get(first)).value);
                     assertEquals(9, owner.attributes().value(id("speed")));
                     log.add("restore:second");
@@ -83,7 +169,8 @@ class MachineAssemblyTest {
         log.clear();
         var registry = new MachineLifecycleRegistry();
         registry.register(new MachineLifecycleListener() {
-            @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+            @Override
+            public void onLoaded(MachineLifecycleEvent.Loaded event) {
                 assertSame(MachineLifecycleEvent.LoadBoundary.RESTORED, event.boundary());
                 assertFalse(event.context().formed());
                 assertEquals(41, Objects.requireNonNull(event.context().machine().components().get(first)).value);
@@ -110,15 +197,16 @@ class MachineAssemblyTest {
         });
         var type = declaration().component(factory).attribute(factoryBase, 1).attribute(missing, 2).attribute(modifierOnly, 100).build();
         var assembly = MachineAssembly.builder(type, "v1").component(factory, new StateCodec() {
-            @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
-                assertEquals(19, owner.attributes().value(factoryBase));
-                assertEquals(2, owner.attributes().value(missing));
-                assertEquals(3, owner.attributes().value(modifierOnly));
-                assertNull(Objects.requireNonNull(owner.attributes().localSnapshot().get(modifierOnly)).baseOverride());
-                return super.restore(owner, fresh, tag);
-            }
-        })
-            .attributes(new AttributeModifierNbt()).build();
+                                          @Override
+                                          public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
+                                              assertEquals(19, owner.attributes().value(factoryBase));
+                                              assertEquals(2, owner.attributes().value(missing));
+                                              assertEquals(3, owner.attributes().value(modifierOnly));
+                                              assertNull(Objects.requireNonNull(owner.attributes().localSnapshot().get(modifierOnly)).baseOverride());
+                                              return super.restore(owner, fresh, tag);
+                                          }
+                                      })
+                                      .attributes(new AttributeModifierNbt()).build();
         var original = assembly.create(new Host(), new MachineLifecycleRegistry());
         assertEquals(15, original.attributes().value(factoryBase));
         original.attributes().setBase(factoryBase, 19);
@@ -136,8 +224,13 @@ class MachineAssemblyTest {
     void twoRestoresAndSavedOutputDoNotShareMutableTagsOrComponentState() {
         var component = stateType("tag_owner", _ -> new State());
         var codec = new StateCodec() {
-            @Override public NBTTagCompound encode(MachineInstance owner, State state) { return state.tag; }
-            @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
+            @Override
+            public NBTTagCompound encode(MachineInstance owner, State state) {
+                return state.tag;
+            }
+
+            @Override
+            public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
                 fresh.tag = tag;
                 return fresh;
             }
@@ -165,20 +258,29 @@ class MachineAssemblyTest {
     void immutableReplacementsPreserveActualAssemblyOrderDynamicEdgesDeletedDeclarationsAndPendingDependents() {
         var log = new ObjectArrayList<String>();
         int[] removedFactories = {0};
-        var first = immutableType("first", log, () -> {});
-        var dependent = immutableType("dependent", log, () -> {});
+        var first = immutableType("first", log, () -> {
+        });
+        var dependent = immutableType("dependent", log, () -> {
+        });
         var removed = immutableType("removed", log, () -> removedFactories[0]++);
-        var dynamic = immutableType("dynamic", log, () -> {});
-        var pending = immutableType("pending", log, () -> {});
+        var dynamic = immutableType("dynamic", log, () -> {
+        });
+        var pending = immutableType("pending", log, () -> {
+        });
         var codec = new MachineComponentCodec<ImmutableState>() {
-            @Override public NBTTagCompound encode(MachineInstance owner, ImmutableState state) { return valueTag(state.value()); }
-            @Override public ImmutableState restore(MachineInstance owner, ImmutableState fresh, NBTTagCompound tag) {
+            @Override
+            public NBTTagCompound encode(MachineInstance owner, ImmutableState state) {
+                return valueTag(state.value());
+            }
+
+            @Override
+            public ImmutableState restore(MachineInstance owner, ImmutableState fresh, NBTTagCompound tag) {
                 log.add("restore:" + fresh.name());
                 return new ImmutableState(tag.getInteger("Value"), fresh.name(), fresh.log());
             }
         };
         var assembly = MachineAssembly.builder(declaration().component(first).component(dependent).component(removed).build(), "v1")
-            .component(first, codec).component(dependent, codec).component(removed, codec).component(dynamic, codec).component(pending, codec).build();
+                                      .component(first, codec).component(dependent, codec).component(removed, codec).component(dynamic, codec).component(pending, codec).build();
         var original = assembly.create(new Host(), new MachineLifecycleRegistry());
         original.components().remove(removed);
         original.components().remove(first);
@@ -207,10 +309,16 @@ class MachineAssemblyTest {
     @Test
     void invalidMetadataUnknownDuplicateAndCyclicSavedComponentsAreRejectedBeforeAnyFactoryRuns() {
         int[] factories = {0};
-        var first = stateType("first", _ -> { factories[0]++; return new State(); });
-        var second = stateType("second", _ -> { factories[0]++; return new State(); });
+        var first = stateType("first", _ -> {
+            factories[0]++;
+            return new State();
+        });
+        var second = stateType("second", _ -> {
+            factories[0]++;
+            return new State();
+        });
         var assembly = MachineAssembly.builder(declaration().component(first).component(second).build(), "v1")
-            .component(first, new StateCodec()).component(second, new StateCodec()).build();
+                                      .component(first, new StateCodec()).component(second, new StateCodec()).build();
         var saved = assembly.encode(assembly.create(new Host(), new MachineLifecycleRegistry()));
         List<Consumer<NBTTagCompound>> corruptions = List.of(
             tag -> tag.setString("Revision", "old"),
@@ -245,7 +353,7 @@ class MachineAssemblyTest {
             return new State();
         });
         var assembly = MachineAssembly.builder(declaration().component(illegal).build(), "v1")
-            .component(illegal, new StateCodec()).component(extra, new StateCodec()).build();
+                                      .component(illegal, new StateCodec()).component(extra, new StateCodec()).build();
         var events = new ObjectArrayList<String>();
         assertThrows(IllegalStateException.class, () -> assembly.create(new Host(), recordingRegistry(events)));
         assertTrue(events.isEmpty());
@@ -280,19 +388,32 @@ class MachineAssemblyTest {
             int selected = mode;
             boolean[] corrupt = {false};
             var captured = new MachineInstance[1];
-            var component = stateType("mutation_target", owner -> { captured[0] = owner; return new State(); });
+            var component = stateType("mutation_target", owner -> {
+                captured[0] = owner;
+                return new State();
+            });
             Consumer<MachineInstance> mutation = owner -> {
-                if ((selected & 1) == 0) { owner.components().addDependency(component, component); }
-                else { owner.attributes().setBase(id("unexpected"), 2); }
+                if ((selected & 1) == 0) {
+                    owner.components().addDependency(component, component);
+                } else {
+                    owner.attributes().setBase(id("unexpected"), 2);
+                }
             };
             var codec = new StateCodec() {
-                @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
-                    if (corrupt[0] && selected < 2) { mutation.accept(owner); }
+                @Override
+                public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
+                    if (corrupt[0] && selected < 2) {
+                        mutation.accept(owner);
+                    }
                     return super.restore(owner, fresh, tag);
                 }
             };
             var assembly = MachineAssembly.builder(declaration().component(component).build(), "v1").component(component, codec)
-                .validator(owner -> { if (corrupt[0] && selected >= 2) { mutation.accept(owner); } }).build();
+                                          .validator(owner -> {
+                                              if (corrupt[0] && selected >= 2) {
+                                                  mutation.accept(owner);
+                                              }
+                                          }).build();
             var saved = assembly.encode(assembly.create(new Host(), new MachineLifecycleRegistry()));
             corrupt[0] = true;
             var events = new ObjectArrayList<String>();
@@ -305,15 +426,23 @@ class MachineAssemblyTest {
     @Test
     void restoredReplacementIsValidatedBeforePublicationAndInvalidPayloadFaultsTheNewOwner() {
         var captured = new MachineInstance[1];
-        var component = stateType("validated", owner -> { captured[0] = owner; return new State(); });
+        var component = stateType("validated", owner -> {
+            captured[0] = owner;
+            return new State();
+        });
         var codec = new StateCodec() {
-            @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
+            @Override
+            public State restore(MachineInstance owner, State fresh, NBTTagCompound tag) {
                 var replacement = new State();
                 replacement.value = tag.getInteger("Value");
                 return replacement;
             }
-            @Override public void validate(MachineInstance owner, State state) {
-                if (state.value < 0) { throw new IllegalArgumentException("Negative saved value"); }
+
+            @Override
+            public void validate(MachineInstance owner, State state) {
+                if (state.value < 0) {
+                    throw new IllegalArgumentException("Negative saved value");
+                }
             }
         };
         var assembly = MachineAssembly.builder(declaration().component(component).build(), "v1").component(component, codec).build();
@@ -331,10 +460,14 @@ class MachineAssemblyTest {
             boolean[] corrupt = {false};
             var component = stateType("encode_target", _ -> new State());
             var codec = new StateCodec() {
-                @Override public NBTTagCompound encode(MachineInstance owner, State state) {
+                @Override
+                public NBTTagCompound encode(MachineInstance owner, State state) {
                     if (corrupt[0]) {
-                        if (changeGraph) { owner.components().remove(component); }
-                        else { owner.attributes().setBase(id("unexpected"), 3); }
+                        if (changeGraph) {
+                            owner.components().remove(component);
+                        } else {
+                            owner.attributes().setBase(id("unexpected"), 3);
+                        }
                     }
                     return super.encode(owner, state);
                 }
@@ -360,14 +493,28 @@ class MachineAssemblyTest {
         var component = stateType("listener", owner -> {
             captured[0] = owner;
             var state = new State();
-            state.loaded = _ -> { events.add("component:loaded"); throw primary; };
-            state.unloaded = event -> { events.add("component:" + event.reason()); throw cleanup; };
+            state.loaded = _ -> {
+                events.add("component:loaded");
+                throw primary;
+            };
+            state.unloaded = event -> {
+                events.add("component:" + event.reason());
+                throw cleanup;
+            };
             return state;
         });
         var registry = new MachineLifecycleRegistry();
         registry.register(new MachineLifecycleListener() {
-            @Override public void onLoaded(MachineLifecycleEvent.Loaded event) { events.add("unexpected:loaded"); }
-            @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("global:" + event.reason()); throw globalCleanup; }
+            @Override
+            public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                events.add("unexpected:loaded");
+            }
+
+            @Override
+            public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                events.add("global:" + event.reason());
+                throw globalCleanup;
+            }
         });
         var assembly = MachineAssembly.builder(declaration().component(component).build(), "v1").component(component, new StateCodec()).build();
         assertSame(primary, assertThrows(AssertionError.class, () -> assembly.create(new Host(), registry)));
@@ -384,8 +531,10 @@ class MachineAssemblyTest {
         var slotsCodec = new MachineWorkSlotsNbt("slots-v1", List.of(RecipeProcessNbt.builder(recipe, "recipe-v1").build()));
         var type = declaration().component(MachineWorkSlots.TYPE).workSlot(new WorkSlotDefinition("main", Set.of(group))).build();
         var assembly = MachineAssembly.builder(type, "v1").workSlots(slotsCodec).build();
-        var input = new EnergyBuffer(100, () -> {});
-        var output = new EnergyBuffer(100, () -> {});
+        var input = new EnergyBuffer(100, () -> {
+        });
+        var output = new EnergyBuffer(100, () -> {
+        });
         input.receiveEnergy(20, Actionable.MODULATE);
         var hatches = new MachineHatches(List.of(), List.of(input), List.of(output));
         var original = assembly.create(new Host(), new MachineLifecycleRegistry());
@@ -402,7 +551,8 @@ class MachineAssemblyTest {
         int[] loads = {0};
         var registry = new MachineLifecycleRegistry();
         registry.register(new MachineLifecycleListener() {
-            @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+            @Override
+            public void onLoaded(MachineLifecycleEvent.Loaded event) {
                 var restoredSlots = Objects.requireNonNull(event.context().machine().components().get(MachineWorkSlots.TYPE));
                 assertEquals(committed, Objects.requireNonNull(restoredSlots.requireSlot("main").process()).state());
                 assertFalse(event.context().formed());
@@ -434,66 +584,14 @@ class MachineAssemblyTest {
         assertEquals(5, output.storedEnergy());
     }
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("machine_assembly_test", path); }
-
-    private static MachineType.Builder declaration() {
-        return MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"));
-    }
-
-    private static ComponentType<MachineInstance, State> stateType(String name, Function<MachineInstance, State> factory) {
-        return new ComponentType<>(id(name), factory, List.of());
-    }
-
-    private static ComponentType<MachineInstance, ImmutableState> immutableType(String name, List<String> log, Runnable factoryAction) {
-        var system = new MachineSystem<ImmutableState>() {
-            @Override public ResourceLocation id() { return MachineAssemblyTest.id(name + "_tick"); }
-            @Override public void onTick(MachineInstance owner, ImmutableState component) { log.add("tick:" + component.name()); }
-        };
-        return new ComponentType<>(id(name), _ -> {
-            factoryAction.run();
-            return new ImmutableState(17, name, log);
-        }, List.of(system));
-    }
-
-    private static NBTTagCompound valueTag(int value) {
-        var tag = new NBTTagCompound();
-        tag.setInteger("Value", value);
-        return tag;
-    }
-
-    private static NBTTagCompound entry(NBTTagCompound saved, ComponentType<MachineInstance, ?> component) {
-        var entries = saved.getTagList("Components", 10);
-        for (int i = 0; i < entries.tagCount(); i++) {
-            var entry = entries.getCompoundTagAt(i);
-            if (entry.getString("Type").equals(component.id().toString())) { return entry; }
-        }
-        throw new AssertionError("Missing saved component " + component.id());
-    }
-
-    @SafeVarargs
-    private static NBTTagList dependencyList(ComponentType<MachineInstance, ?>... dependencies) {
-        var tags = new NBTTagList();
-        for (var dependency : dependencies) { tags.appendTag(new NBTTagString(dependency.id().toString())); }
-        return tags;
-    }
-
-    private static MachineLifecycleRegistry recordingRegistry(List<String> events) {
-        var registry = new MachineLifecycleRegistry();
-        registry.register(new MachineLifecycleListener() {
-            @Override public void onLoaded(MachineLifecycleEvent.Loaded event) { events.add("loaded"); }
-            @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { events.add("unloaded:" + event.reason()); }
-        });
-        return registry;
-    }
-
-    private static void assertStopped(MachineInstance machine, MachineAssembly assembly) {
-        assertThrows(IllegalStateException.class, machine::onSchedule);
-        assertThrows(IllegalStateException.class, () -> assembly.encode(machine));
-    }
-
     private static class StateCodec implements MachineComponentCodec<State> {
-        @Override public NBTTagCompound encode(MachineInstance owner, State component) { return valueTag(component.value); }
-        @Override public State restore(MachineInstance owner, State fresh, NBTTagCompound saved) {
+        @Override
+        public NBTTagCompound encode(MachineInstance owner, State component) {
+            return valueTag(component.value);
+        }
+
+        @Override
+        public State restore(MachineInstance owner, State fresh, NBTTagCompound saved) {
             fresh.value = saved.getInteger("Value");
             return fresh;
         }
@@ -502,22 +600,47 @@ class MachineAssemblyTest {
     private static final class State implements MachineLifecycleListener {
         private int value;
         private NBTTagCompound tag = new NBTTagCompound();
-        private Consumer<MachineLifecycleEvent.Loaded> loaded = _ -> {};
-        private Consumer<MachineLifecycleEvent.Unloaded> unloaded = _ -> {};
-        @Override public void onLoaded(MachineLifecycleEvent.Loaded event) { loaded.accept(event); }
-        @Override public void onUnloaded(MachineLifecycleEvent.Unloaded event) { unloaded.accept(event); }
+        private Consumer<MachineLifecycleEvent.Loaded> loaded = _ -> {
+        };
+        private Consumer<MachineLifecycleEvent.Unloaded> unloaded = _ -> {
+        };
+
+        @Override
+        public void onLoaded(MachineLifecycleEvent.Loaded event) {
+            loaded.accept(event);
+        }
+
+        @Override
+        public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+            unloaded.accept(event);
+        }
     }
 
     private record ImmutableState(int value, String name, List<String> log) implements MachineLifecycleListener {
-        @Override public void onLoaded(MachineLifecycleEvent.Loaded event) { log.add("load:" + name); }
+        @Override
+        public void onLoaded(MachineLifecycleEvent.Loaded event) {
+            log.add("load:" + name);
+        }
     }
 
     private static final class Host implements MachineLifecycleHost {
         private final Thread ownerThread = Thread.currentThread();
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("Pure assembly tests must not access a Minecraft World"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != ownerThread) { throw new IllegalStateException("Foreign test thread"); }
+
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("Pure assembly tests must not access a Minecraft World");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != ownerThread) {
+                throw new IllegalStateException("Foreign test thread");
+            }
         }
     }
 }

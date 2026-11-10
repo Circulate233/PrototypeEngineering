@@ -10,8 +10,8 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -20,54 +20,67 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
-/** Recreated supply reader. Physical contents and restoration stay with the existing public warehouse contracts. */
+/**
+ * Recreated supply reader. Physical contents and restoration stay with the existing public warehouse contracts.
+ */
 public final class MachineComputerComponents implements MachineLifecycleListener {
     private final MachineInstance owner;
     private final NetworkComputerComponentRegistry registry;
-    @Nullable private final Function<MachineInstance, Sources> source;
-    @Nullable private ComponentType<MachineInstance, ?> boundType;
+    @Nullable
+    private final Function<MachineInstance, Sources> source;
+    @Nullable
+    private ComponentType<MachineInstance, ?> boundType;
     private boolean loadAttempted;
+
+    private MachineComputerComponents(MachineInstance owner, NetworkComputerComponentRegistry registry,
+                                      @Nullable Function<MachineInstance, Sources> source) {
+        this.owner = owner;
+        this.registry = registry;
+        this.source = source;
+    }
 
     public static ComponentType<MachineInstance, MachineComputerComponents> component(ResourceLocation id, NetworkComputerComponentRegistry registry) {
         Objects.requireNonNull(registry);
         return new ComponentType<>(id, owner -> new MachineComputerComponents(owner, registry, null), List.of());
     }
 
-    /** Special hosts supply stable views of their physical slots, sharing the underlying StorageContext across aliases. */
+    /**
+     * Special hosts supply stable views of their physical slots, sharing the underlying StorageContext across aliases.
+     */
     @SuppressWarnings("unused") // Public external warehouse source.
     public static ComponentType<MachineInstance, MachineComputerComponents> component(ResourceLocation id, NetworkComputerComponentRegistry registry,
-            Function<MachineInstance, Sources> source) {
+                                                                                      Function<MachineInstance, Sources> source) {
         Objects.requireNonNull(registry);
         Objects.requireNonNull(source);
         return new ComponentType<>(id, owner -> new MachineComputerComponents(owner, registry, source), List.of());
     }
 
-    private MachineComputerComponents(MachineInstance owner, NetworkComputerComponentRegistry registry,
-            @Nullable Function<MachineInstance, Sources> source) {
-        this.owner = owner;
-        this.registry = registry;
-        this.source = source;
-    }
-
-    @Override public void onLoaded(MachineLifecycleEvent.Loaded event) {
+    @Override
+    public void onLoaded(MachineLifecycleEvent.Loaded event) {
         requireThread();
-        if (event.context().machine() != owner || loadAttempted) { throw new IllegalStateException("Computer supply reader cannot load for another or repeated host"); }
+        if (event.context().machine() != owner || loadAttempted) {
+            throw new IllegalStateException("Computer supply reader cannot load for another or repeated host");
+        }
         loadAttempted = true;
         for (var binding : owner.components().assemblyBindings()) {
             if (binding.component() == this) {
-                if (boundType != null) { throw new IllegalStateException("Computer supply reader has multiple bindings"); }
+                if (boundType != null) {
+                    throw new IllegalStateException("Computer supply reader has multiple bindings");
+                }
                 boundType = binding.type();
             }
         }
         Objects.requireNonNull(boundType, "Computer supply reader is not installed");
     }
 
-    /** Pair with MachineNetworkDevice.capturedComponent; numeric supply and logical lease capacity both come from items. */
+    /**
+     * Pair with MachineNetworkDevice.capturedComponent; numeric supply and logical lease capacity both come from items.
+     */
     public NetworkRuntime.Capture networkCapture(MachineIdentityRegistry.Registration identity, int level, boolean formed,
-            Object2LongMap<NetworkResourceType> declared, NetworkResourceModifier modifier) {
+                                                 Object2LongMap<NetworkResourceType> declared, NetworkResourceModifier modifier) {
         requireThread();
         if (!live() || identity.runtimeIdentity() != owner || Objects.requireNonNull(owner.lifecycle()).formed() != formed) {
             throw new IllegalStateException("Computer capture requires its exact live owner and formation");
@@ -81,7 +94,9 @@ public final class MachineComputerComponents implements MachineLifecycleListener
         var combined = new Object2LongOpenHashMap<>(NetworkResourceModifier.copyResources(declared));
         for (var entry : installed.resourcesPerTick().object2LongEntrySet()) {
             long amount = entry.getLongValue();
-            if (amount > Long.MAX_VALUE - combined.getLong(entry.getKey())) { throw new ArithmeticException("Computer declared and item supply overflow"); }
+            if (amount > Long.MAX_VALUE - combined.getLong(entry.getKey())) {
+                throw new ArithmeticException("Computer declared and item supply overflow");
+            }
             combined.addTo(entry.getKey(), amount);
         }
         var snapshot = new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.COMPUTER, level, formed,
@@ -96,23 +111,31 @@ public final class MachineComputerComponents implements MachineLifecycleListener
     private List<? extends SlottedResourceStorage> sources(MachineHatches hatches) {
         var result = new ObjectArrayList<SlottedResourceStorage>();
         for (var hatch : hatches.resources()) {
-            if (hatch.input() instanceof SlottedResourceStorage input) { result.add(input); }
-            if (hatch.output() instanceof SlottedResourceStorage output) { result.add(output); }
+            if (hatch.input() instanceof SlottedResourceStorage input) {
+                result.add(input);
+            }
+            if (hatch.output() instanceof SlottedResourceStorage output) {
+                result.add(output);
+            }
         }
         return List.copyOf(result);
-    }
-
-    /** Exact external source bindings with a read-only proof that acquires no additional storage/domain locks. */
-    public record Sources(List<? extends SlottedResourceStorage> storages, BooleanSupplier current) {
-        public Sources {
-            storages = List.copyOf(storages);
-            Objects.requireNonNull(current);
-        }
     }
 
     private boolean live() {
         return boundType != null && owner.components().get(boundType) == this && Objects.requireNonNull(owner.lifecycle()).schedulingAllowed();
     }
 
-    private void requireThread() { Objects.requireNonNull(owner.lifecycle()).host().requireServerThread(); }
+    private void requireThread() {
+        Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
+    }
+
+    /**
+     * Exact external source bindings with a read-only proof that acquires no additional storage/domain locks.
+     */
+    public record Sources(List<? extends SlottedResourceStorage> storages, BooleanSupplier current) {
+        public Sources {
+            storages = List.copyOf(storages);
+            Objects.requireNonNull(current);
+        }
+    }
 }

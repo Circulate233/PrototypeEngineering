@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.research.manual;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -21,9 +22,10 @@ import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.ApiStatus;
+
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
+
 /**
  * Tier-zero unit advancement retains each static input's identity even when several use one key.
  */
@@ -34,7 +36,9 @@ public final class ManualMaterials {
 
     private ManualMaterials(ObjectList<Material> materials) {
         this.materials = ObjectLists.unmodifiable(new ObjectArrayList<>(materials));
-        for (var material : materials) { byId.put(material.id(), material); }
+        for (var material : materials) {
+            byId.put(material.id(), material);
+        }
     }
 
     /**
@@ -52,7 +56,8 @@ public final class ManualMaterials {
             if (requirement.type() != RecipeRequirements.RESOURCES
                 || !(requirement.payload() instanceof ResourceRequirement(
                 var inputs, var inputsPerTick, var outputsPerTick,
-                var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs, var inputAllocation
+                var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs,
+                var inputAllocation
             ))
                 || !inputsPerTick.isEmpty() || !outputsPerTick.isEmpty() || !outputs.isEmpty()
                 || voidExcess || !chance.equals(ResourceChance.ALWAYS) || randomOutputs != null
@@ -79,12 +84,16 @@ public final class ManualMaterials {
         boolean completesResearch = true;
         for (var material : materials) {
             long completed = expectedWork.getLong(material.id());
-            if (completed == material.amount()) { continue; }
+            if (completed == material.amount()) {
+                continue;
+            }
             increments.addTo(material.id(), 1);
             expectedWork.addTo(material.id(), 1);
             // At most one per row of an int-sized list; this sum cannot overflow long.
             quantities.addTo(material.key(), 1);
-            if (completed + 1 != material.amount()) { completesResearch = false; }
+            if (completed + 1 != material.amount()) {
+                completesResearch = false;
+            }
         }
         // The resulting progress must still have a representable operation sequence after recovery.
         if (sequence > Long.MAX_VALUE - increments.size()) {
@@ -93,12 +102,16 @@ public final class ManualMaterials {
         return new Plan(increments, expectedWork, quantities, sequence, completesResearch);
     }
 
-    public void validateWork(Object2LongMap<ManualMaterialKey> work) { validateWorkAndSequence(work); }
+    public void validateWork(Object2LongMap<ManualMaterialKey> work) {
+        validateWorkAndSequence(work);
+    }
 
     public boolean complete(Object2LongMap<ManualMaterialKey> work) {
         validateWork(work);
         for (var material : materials) {
-            if (work.getOrDefault(material.id(), 0L) != material.amount()) { return false; }
+            if (work.getOrDefault(material.id(), 0L) != material.amount()) {
+                return false;
+            }
         }
         return true;
     }
@@ -108,7 +121,9 @@ public final class ManualMaterials {
         long sequence = 0;
         for (var entry : work.object2LongEntrySet()) {
             var material = byId.get(entry.getKey());
-            if (material == null) { throw new IllegalArgumentException("Unknown manual material work item " + entry.getKey()); }
+            if (material == null) {
+                throw new IllegalArgumentException("Unknown manual material work item " + entry.getKey());
+            }
             long completed = entry.getLongValue();
             if (completed < 0 || completed > material.amount()) {
                 throw new IllegalArgumentException("Manual material work outside 0.." + material.amount() + ": " + entry.getKey());
@@ -127,9 +142,12 @@ public final class ManualMaterials {
         }
     }
 
-    private record Material(ManualMaterialKey id, AEKey key, long amount) { }
+    private record Material(ManualMaterialKey id, AEKey key, long amount) {
+    }
 
-    /** BasicEntry snapshots prevent setValue through either primitive or boxed entry views. */
+    /**
+     * BasicEntry snapshots prevent setValue through either primitive or boxed entry views.
+     */
     private static class FrozenLongMap<K> extends AbstractObject2LongMap<K> {
         private final Object2LongMap<K> values;
         private final ObjectSet<Object2LongMap.Entry<K>> entries;
@@ -139,19 +157,41 @@ public final class ManualMaterials {
             copy.defaultReturnValue(0);
             values = copy;
             var snapshot = new ObjectLinkedOpenHashSet<Object2LongMap.Entry<K>>();
-            for (var entry : copy.object2LongEntrySet()) { snapshot.add(new BasicEntry<>(entry.getKey(), entry.getLongValue())); }
+            for (var entry : copy.object2LongEntrySet()) {
+                snapshot.add(new BasicEntry<>(entry.getKey(), entry.getLongValue()));
+            }
             entries = ObjectSets.unmodifiable(snapshot);
         }
 
-        @Override public ObjectSet<Object2LongMap.Entry<K>> object2LongEntrySet() { return entries; }
-        @Override public long getLong(Object key) { return values.getLong(key); }
-        @Override public boolean containsKey(Object key) { return values.containsKey(key); }
-        @Override public int size() { return values.size(); }
+        @Override
+        public ObjectSet<Object2LongMap.Entry<K>> object2LongEntrySet() {
+            return entries;
+        }
+
+        @Override
+        public long getLong(Object key) {
+            return values.getLong(key);
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return values.containsKey(key);
+        }
+
+        @Override
+        public int size() {
+            return values.size();
+        }
     }
 
     private static final class FrozenQuantities extends FrozenLongMap<AEKey> implements AEKey2LongMap {
-        private FrozenQuantities(AEKey2LongMap source) { super(source, new AEKey2LongMap.LinkdOpenHashMap()); }
+        private FrozenQuantities(AEKey2LongMap source) {
+            super(source, new AEKey2LongMap.LinkdOpenHashMap());
+        }
 
-        @Override public long addTo(AEKey key, long increment) { throw new UnsupportedOperationException("This map is immutable"); }
+        @Override
+        public long addTo(AEKey key, long increment) {
+            throw new UnsupportedOperationException("This map is immutable");
+        }
     }
 }

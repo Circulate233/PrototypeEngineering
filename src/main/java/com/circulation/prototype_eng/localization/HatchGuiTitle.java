@@ -14,5 +14,8 @@ public record HatchGuiTitle(String translationKey) implements LocalizationEnum {
             + mode.name().toLowerCase(Locale.ROOT) + "_hatch_" + tier.level() + ".name");
     }
 
-    @Override public String getTranslationKey() { return translationKey; }
+    @Override
+    public String getTranslationKey() {
+        return translationKey;
+    }
 }

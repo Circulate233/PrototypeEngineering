@@ -1,17 +1,20 @@
 package com.circulation.prototype_eng.api.client.jei;
 
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.integration.jei.JeiRecipeInputs;
+import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
+import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.recipe.IRecipeWrapper;
+import net.minecraft.client.Minecraft;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
-import java.util.Objects;
-import javax.annotation.ParametersAreNonnullByDefault;
-import mcp.MethodsReturnNonnullByDefault;
-import com.circulation.prototype_eng.integration.jei.JeiRecipeInputs;
-import net.minecraft.client.Minecraft;
-import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
 import org.jetbrains.annotations.Nullable;
+
+import javax.annotation.ParametersAreNonnullByDefault;
+import java.util.Objects;
+
 /**
  * Native wrapper extension; immutable source data is shared by default and independent custom pages.
  */
@@ -20,16 +23,26 @@ import org.jetbrains.annotations.Nullable;
 @MethodsReturnNonnullByDefault
 public class RecipePoolJeiRecipe implements IRecipeWrapper {
     private final RecipePoolJeiPage page;
+    private final RecipePool pool;
+    private DisplayToken token;
     private final MachineRecipe recipe;
     private final JeiRecipeDisplay display;
     private final JeiRecipeIngredients ingredients;
 
     public RecipePoolJeiRecipe(RecipePoolJeiPage page, MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
+        this(page, page.pool(), recipe, display, ingredients);
+    }
+
+    /** The prepared pool is explicit because its category still owns the old data. */
+    public RecipePoolJeiRecipe(RecipePoolJeiPage page, RecipePool pool, MachineRecipe recipe,
+                               JeiRecipeDisplay display, JeiRecipeIngredients ingredients) {
         this.page = Objects.requireNonNull(page);
+        this.pool = Objects.requireNonNull(pool);
         this.recipe = Objects.requireNonNull(recipe);
         this.display = Objects.requireNonNull(display);
         this.ingredients = Objects.requireNonNull(ingredients);
-        if (page.pool().recipes().stream().noneMatch(member -> member == recipe)) {
+        if (!page.getUid().equals(RecipePoolJeiPage.uid(pool.id()))) throw new IllegalArgumentException("JEI preparation changed category UID");
+        if (pool.recipes().stream().noneMatch(member -> member == recipe)) {
             throw new IllegalArgumentException("JEI wrapper recipe is outside its canonical pool");
         }
     }
@@ -40,6 +53,27 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
 
     public MachineRecipe recipe() {
         return recipe;
+    }
+
+    public RecipePool pool() { return pool; }
+
+    public final boolean isCurrent() { return token == null || token.current(); }
+
+    public final void bindDisplayToken(DisplayToken token) {
+        if (this.token != null) throw new IllegalStateException("JEI wrapper already belongs to a generation");
+        this.token = Objects.requireNonNull(token);
+    }
+
+    public static final class DisplayToken {
+        private boolean current;
+        private boolean revoked;
+
+        public boolean current() { return current && !revoked; }
+        public void activate() {
+            if (revoked) throw new IllegalStateException("JEI generation has been revoked");
+            current = true;
+        }
+        public void revoke() { revoked = true; current = false; }
     }
 
     public JeiRecipeDisplay display() {
@@ -64,6 +98,7 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
     /** Call super when overriding drawInfo so the native Forge scroll bridge sees the drawn bounds. */
     @Override
     public void drawInfo(Minecraft minecraft, int recipeWidth, int recipeHeight, int mouseX, int mouseY) {
+        if (!isCurrent()) return;
         JeiRecipeInputs.drawn(minecraft, this, recipeWidth, recipeHeight, mouseX, mouseY);
     }
 

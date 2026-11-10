@@ -20,8 +20,8 @@ import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
@@ -58,6 +58,13 @@ class NetworkParticipantsTest {
     private static final ResourceLocation TYPE = new ResourceLocation("test", "machine");
     private static final ResourceLocation WORK = new ResourceLocation("test", "work");
     private static final ResourceLocation SOURCE = new ResourceLocation("test", "source");
+
+    private static Object2LongMap<NetworkResourceType> amounts(long compute, long qubit) {
+        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        if (compute > 0) result.put(NetworkResources.COMPUTE, compute);
+        if (qubit > 0) result.put(NetworkResources.QUBIT, qubit);
+        return result;
+    }
 
     @Test
     void defaultRefreshContributesRealSupplyAndWorkUsesDeclaredSourcesAndSharedLease() {
@@ -271,7 +278,8 @@ class NetworkParticipantsTest {
     }
 
     @Test
-    @SuppressWarnings("resource") // Registration is expected to fail before returning a handle.
+    @SuppressWarnings("resource")
+        // Registration is expected to fail before returning a handle.
     void closeAttemptsEveryCleanupAndRetainsUnresolvedWorkForAnExplicitRetry() {
         try (var fixture = new Fixture()) {
             fixture.start(0);
@@ -433,14 +441,8 @@ class NetworkParticipantsTest {
         }
     }
 
-    private static Object2LongMap<NetworkResourceType> amounts(long compute, long qubit) {
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
-        if (compute > 0) result.put(NetworkResources.COMPUTE, compute);
-        if (qubit > 0) result.put(NetworkResources.QUBIT, qubit);
-        return result;
-    }
-
     private static final class Participant implements NetworkParticipant {
+        private final ObjectOpenHashSet<UUID> applied = new ObjectOpenHashSet<>();
         private State state = State.ACTIVE;
         private long version;
         private long versionStep = 1;
@@ -453,17 +455,32 @@ class NetworkParticipantsTest {
         private RuntimeException cancelFailure;
         private RuntimeException proofFailure;
         private boolean reject;
-        private Runnable duringCommit = () -> {};
+        private Runnable duringCommit = () -> {
+        };
         private int effects;
         private int commits;
         private int cancels;
-        private final ObjectOpenHashSet<UUID> applied = new ObjectOpenHashSet<>();
         private Command lastCommand;
 
-        @Override public UUID participantId() { return EXTERNAL; }
-        @Override public UUID ownerId() { return EXTERNAL_OWNER; }
-        @Override public Kind kind() { return Kind.EXTERNAL_MACHINE; }
-        @Override public State state() { return state; }
+        @Override
+        public UUID participantId() {
+            return EXTERNAL;
+        }
+
+        @Override
+        public UUID ownerId() {
+            return EXTERNAL_OWNER;
+        }
+
+        @Override
+        public Kind kind() {
+            return Kind.EXTERNAL_MACHINE;
+        }
+
+        @Override
+        public State state() {
+            return state;
+        }
 
         @Override
         public Capture capture(long tick, long epoch) {
@@ -574,9 +591,18 @@ class NetworkParticipantsTest {
             return Objects.requireNonNull(result.work());
         }
 
-        private NetworkRuntime.WorkPermit centerPermit() { return Objects.requireNonNull(center.workPermit()); }
-        private NetworkRuntime.WorkPermit otherPermit() { return Objects.requireNonNull(other.workPermit()); }
-        private long available() { return centerPermit().availableResources().getLong(NetworkResources.COMPUTE); }
+        private NetworkRuntime.WorkPermit centerPermit() {
+            return Objects.requireNonNull(center.workPermit());
+        }
+
+        private NetworkRuntime.WorkPermit otherPermit() {
+            return Objects.requireNonNull(other.workPermit());
+        }
+
+        private long available() {
+            return centerPermit().availableResources().getLong(NetworkResources.COMPUTE);
+        }
+
         private void requireOwner() {
             if (Thread.currentThread() != ownerThread) throw new IllegalStateException("owner thread required");
         }

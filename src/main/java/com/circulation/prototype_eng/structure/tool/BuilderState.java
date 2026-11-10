@@ -1,24 +1,16 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import java.util.TreeMap;
-
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 
+import java.util.TreeMap;
+
 /** Original builder binding, task states and per-material choice persistence. */
 public final class BuilderState {
     private BuilderState() {
-    }
-
-    public enum State {
-        IDLE, BUILDING, PAUSED_BUILDING, DISASSEMBLING, PAUSED_DISASSEMBLING;
-
-        public boolean paused() {
-            return this == PAUSED_BUILDING || this == PAUSED_DISASSEMBLING;
-        }
     }
 
     public static NBTTagCompound data(ItemStack stack) {
@@ -90,5 +82,13 @@ public final class BuilderState {
     public static void choose(NBTTagCompound tag, String material, String option) {
         if (!tag.hasKey("MaterialSelections", 10)) tag.setTag("MaterialSelections", new NBTTagCompound());
         tag.getCompoundTag("MaterialSelections").setString(material, option);
+    }
+
+    public enum State {
+        IDLE, BUILDING, PAUSED_BUILDING, DISASSEMBLING, PAUSED_DISASSEMBLING;
+
+        public boolean paused() {
+            return this == PAUSED_BUILDING || this == PAUSED_DISASSEMBLING;
+        }
     }
 }

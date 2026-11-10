@@ -43,13 +43,16 @@ class BuiltinRequirementsTest {
     private static final Key LIQUID = new Key(SECOND, "liquid");
     private static final Key PRODUCT = new Key(FIRST, "product");
 
-    private static ResourceLocation id(String name) { return new ResourceLocation("external_addon", name); }
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("external_addon", name);
+    }
 
     private static BufferedResourceHatch hatch(HatchMode mode, int slots, long capacity) {
         var capacities = new Reference2LongArrayMap<AEKeyType>();
         capacities.put(FIRST, capacity);
         capacities.put(SECOND, capacity);
-        return new BufferedResourceHatch(mode, slots, capacities, () -> { });
+        return new BufferedResourceHatch(mode, slots, capacities, () -> {
+        });
     }
 
     private static RecipeProcess process(MachineHatches hatches, List<RecipeRequirement<?>> requirements) {
@@ -71,8 +74,10 @@ class BuiltinRequirementsTest {
         materials.insert(MATERIAL, 8, Actionable.MODULATE);
         materials.insert(LIQUID, 10, Actionable.MODULATE);
         products.insert(PRODUCT, 2, Actionable.MODULATE);
-        var power = new EnergyBuffer(100, () -> { });
-        var generated = new EnergyBuffer(100, () -> { });
+        var power = new EnergyBuffer(100, () -> {
+        });
+        var generated = new EnergyBuffer(100, () -> {
+        });
         power.receiveEnergy(20, Actionable.MODULATE);
         var hatches = new MachineHatches(List.of(new Alias(input), new Alias(input), new Alias(output)),
             List.of(new EnergyAlias(power), new EnergyAlias(power)), List.of(generated));
@@ -130,8 +135,10 @@ class BuiltinRequirementsTest {
 
     @Test
     void oneEnergySourceContributesOnlyItsOperationLimitEvenThroughMultipleAliases() {
-        var first = new EnergyBuffer(100, 100, 6, () -> { });
-        var second = new EnergyBuffer(100, () -> { });
+        var first = new EnergyBuffer(100, 100, 6, () -> {
+        });
+        var second = new EnergyBuffer(100, () -> {
+        });
         first.receiveEnergy(10, Actionable.MODULATE);
         var hatches = new MachineHatches(List.of(),
             List.of(new EnergyAlias(first), new EnergyAlias(first), second), List.of());
@@ -150,7 +157,8 @@ class BuiltinRequirementsTest {
         var output = hatch(HatchMode.OUTPUT, 1, 2);
         var products = Objects.requireNonNull(output.output());
         products.insert(PRODUCT, 1, Actionable.MODULATE);
-        var power = new EnergyBuffer(2, () -> { });
+        var power = new EnergyBuffer(2, () -> {
+        });
         power.receiveEnergy(1, Actionable.MODULATE);
         var hatches = new MachineHatches(List.of(new Alias(output)), List.of(), List.of(power));
         var resourceOutputs = List.of(new GenericStack(PRODUCT, 5));
@@ -166,19 +174,51 @@ class BuiltinRequirementsTest {
     }
 
     private record Alias(ResourceHatch backing) implements ResourceHatch {
-        @Override public ResourceStorage input() { return backing.input(); }
-        @Override public ResourceStorage output() { return backing.output(); }
-        @Override public boolean isValid() { return backing.isValid(); }
+        @Override
+        public ResourceStorage input() {
+            return backing.input();
+        }
+
+        @Override
+        public ResourceStorage output() {
+            return backing.output();
+        }
+
+        @Override
+        public boolean isValid() {
+            return backing.isValid();
+        }
     }
 
     private record EnergyAlias(EnergyInput backing) implements EnergyInput {
-        @Override public StorageContext context() { return backing.context(); }
-        @Override public EnergySnapshot energySnapshot() { return backing.energySnapshot(); }
-        @Override public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
+        @Override
+        public StorageContext context() {
+            return backing.context();
+        }
+
+        @Override
+        public EnergySnapshot energySnapshot() {
+            return backing.energySnapshot();
+        }
+
+        @Override
+        public ReservationResult reserveExtractEnergy(EnergySnapshot snapshot, long amount) {
             return backing.reserveExtractEnergy(snapshot, amount);
         }
-        @Override public long storedEnergy() { return backing.storedEnergy(); }
-        @Override public long extractEnergy(long amount, Actionable mode) { return backing.extractEnergy(amount, mode); }
-        @Override public boolean isValid() { return backing.isValid(); }
+
+        @Override
+        public long storedEnergy() {
+            return backing.storedEnergy();
+        }
+
+        @Override
+        public long extractEnergy(long amount, Actionable mode) {
+            return backing.extractEnergy(amount, mode);
+        }
+
+        @Override
+        public boolean isValid() {
+            return backing.isValid();
+        }
     }
 }

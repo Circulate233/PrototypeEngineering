@@ -49,7 +49,36 @@ class OverlayModifierTest {
     private static final KeyType KEY_TYPE = new KeyType("overlay_modifier");
     private static final Key MATERIAL = new Key(KEY_TYPE, "material");
     private static final ResourceLocation SCORE = id("score");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static int effective(RecipeProcess process, Probe probe) {
+        return RecipeOverlays.getOrCreate(process).resolve(probe.target).payload();
+    }
+
+    private static RecipeRequirement<Integer> noOpCandidate() {
+        return new RecipeRequirementType<Integer>(id("noop"), new RecipeRequirementSystem<>() {
+        }).requirement(id("candidate"), 0);
+    }
+
+    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates,
+                                                                    List<SelectiveModifierDescriptor> modifiers) {
+        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates, modifiers));
+    }
+
+    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("overlay_modifier_test", name);
+    }
+
+    private static SlottedResourceBuffer buffer() {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(KEY_TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, NO_OP);
+    }
 
     @Test
     void pipelineRunsRepeatedDescriptorsInOrderWithSeparateLayersAndExpiresEveryContext() {
@@ -148,15 +177,21 @@ class OverlayModifierTest {
         var descriptors = List.of(new RecipeOverlayModifierDescriptor(id("host_modifier"),
             context -> context.put(probe.target, "amount", probe.addition, 3)));
         var host = new RecipeRequirementType<Integer>(new ResourceLocation("aa_overlay", "host"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                 return RecipeOverlayPipeline.acquire(process, descriptors);
             }
         }).requirement(id("host"), 0);
         var later = new RecipeRequirementType<Integer>(new ResourceLocation("zzzz_overlay", "block"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
-                if (!blocked[0]) { return RequirementTransaction.SUCCESS; }
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+                if (!blocked[0]) {
+                    return RequirementTransaction.SUCCESS;
+                }
                 return new BusinessDecision(new ProcessResult.Blocked("later"),
-                    () -> { throw new AssertionError("Blocked requirement cannot commit"); });
+                    () -> {
+                        throw new AssertionError("Blocked requirement cannot commit");
+                    });
             }
         }).requirement(id("block"), 0);
         var process = process(1, host, probe.target, later);
@@ -182,7 +217,9 @@ class OverlayModifierTest {
         var cleanup = new IllegalStateException("foreign applier violated cleanup contract");
         boolean[] fail = {false};
         var unstable = new RecipeOverlayType<Integer, Integer>(id("unstable"), bad.type, (base, amount) -> {
-            if (fail[0]) { throw cleanup; }
+            if (fail[0]) {
+                throw cleanup;
+            }
             return base + amount;
         });
         RecipeOverlays.getOrCreate(process).put(bad.target, "foreign", unstable, 10).complete();
@@ -244,8 +281,13 @@ class OverlayModifierTest {
         var primary = new IllegalStateException("later END failed");
         boolean[] fail = {true};
         var later = new RecipeRequirementType<Integer>(new ResourceLocation("zzzz_overlay", "fault"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
-                return new BusinessDecision(ProcessResult.SUCCESS, () -> { if (fail[0]) { throw primary; } });
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+                return new BusinessDecision(ProcessResult.SUCCESS, () -> {
+                    if (fail[0]) {
+                        throw primary;
+                    }
+                });
             }
         }).requirement(id("later"), 0);
         var selection = selector("choice", List.of(noOpCandidate()), List.of(
@@ -319,7 +361,9 @@ class OverlayModifierTest {
     void childCompletionFaultStillCleansSelectionAttributesAndOverlayWithoutReplayingEnd() {
         var probe = new Probe("zz_overlay", 2, true);
         var primary = new IllegalStateException("child END completion failed");
-        probe.endCompletion = () -> { throw primary; };
+        probe.endCompletion = () -> {
+            throw primary;
+        };
         var selection = selector("choice", List.of(probe.target), List.of(
             new SelectiveModifierDescriptor(id("child_io"), context -> {
                 context.putProcessAttributeModifier(SCORE, new NumericAttributeModifier("bonus", 4, AttributeModifier.Operation.ADDITION));
@@ -348,36 +392,18 @@ class OverlayModifierTest {
         assertTrue(Objects.requireNonNull(state.selection(selection.path(null))).completed());
     }
 
-    private static int effective(RecipeProcess process, Probe probe) {
-        return RecipeOverlays.getOrCreate(process).resolve(probe.target).payload();
+    private record Observation(RequirementPath path, RecipeStage stage, int amount) {
     }
-
-    private static RecipeRequirement<Integer> noOpCandidate() {
-        return new RecipeRequirementType<Integer>(id("noop"), new RecipeRequirementSystem<>() { }).requirement(id("candidate"), 0);
-    }
-
-    private static RecipeRequirement<SelectiveRequirement> selector(String name, List<RecipeRequirement<?>> candidates,
-                                                                   List<SelectiveModifierDescriptor> modifiers) {
-        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(candidates, modifiers));
-    }
-
-    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 17);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("overlay_modifier_test", name); }
-
-    private static SlottedResourceBuffer buffer() {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(KEY_TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, NO_OP);
-    }
-
-    private record Observation(RequirementPath path, RecipeStage stage, int amount) { }
 
     private record BusinessDecision(ProcessResult result, Runnable action) implements RequirementTransaction {
-        @Override public void commit() { action.run(); }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+            action.run();
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private static final class Probe {
@@ -393,13 +419,18 @@ class OverlayModifierTest {
         private Probe(String namespace, int base, boolean transfer) {
             input.insert(MATERIAL, 20, Actionable.MODULATE);
             type = new RecipeRequirementType<>(new ResourceLocation(namespace, "probe"), new RecipeRequirementSystem<>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     return acquire(process, requirement, RecipeStage.START, transfer);
                 }
-                @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+
+                @Override
+                public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     return acquire(process, requirement, RecipeStage.TICK, transfer);
                 }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Integer> requirement) {
                     return acquire(process, requirement, RecipeStage.END, transfer);
                 }
             });
@@ -420,17 +451,50 @@ class OverlayModifierTest {
             }
             ProcessResult result = stage == RecipeStage.END && blockEnd ? new ProcessResult.Blocked("output") : ProcessResult.SUCCESS;
             return new RequirementTransaction() {
-                @Override public ProcessResult result() { checkScope(); return result; }
-                @Override public List<ResourceReservation> reservations() { checkScope(); return tokens; }
-                @Override public void commit() { checkScope(); }
-                @Override public void complete() { checkScope(); if (stage == RecipeStage.END) { endCompletion.run(); } }
-                @Override public void rollback() { checkScope(); }
-                private void checkScope() { assertEquals(path, process.requirementPath()); }
+                @Override
+                public ProcessResult result() {
+                    checkScope();
+                    return result;
+                }
+
+                @Override
+                public List<ResourceReservation> reservations() {
+                    checkScope();
+                    return tokens;
+                }
+
+                @Override
+                public void commit() {
+                    checkScope();
+                }
+
+                @Override
+                public void complete() {
+                    checkScope();
+                    if (stage == RecipeStage.END) {
+                        endCompletion.run();
+                    }
+                }
+
+                @Override
+                public void rollback() {
+                    checkScope();
+                }
+
+                private void checkScope() {
+                    assertEquals(path, process.requirementPath());
+                }
             };
         }
 
-        private List<Integer> amounts() { return observations.stream().map(Observation::amount).toList(); }
-        private List<RecipeStage> stages() { return observations.stream().map(Observation::stage).toList(); }
+        private List<Integer> amounts() {
+            return observations.stream().map(Observation::amount).toList();
+        }
+
+        private List<RecipeStage> stages() {
+            return observations.stream().map(Observation::stage).toList();
+        }
+
         private List<Integer> amounts(RequirementPath path) {
             return observations.stream().filter(observation -> observation.path().equals(path)).map(Observation::amount).toList();
         }

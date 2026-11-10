@@ -4,6 +4,7 @@ import ae2.core.localization.LocalizationEnum;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
+
 /**
  * Machine GUI labels use the same AE2S localization contract as hatch labels.
  */
@@ -11,7 +12,6 @@ public enum MachineGuiText implements LocalizationEnum {
     Idle, Running, Error, ErrorWithMessage, Status, MainPage, Placeholder, ExtensionPage, ExtensionDescription;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".machine." + name();
-    @Override public String getTranslationKey() { return translationKey; }
 
     public static MachineGuiText status(WorkSlotStatus status) {
         return switch (status) {
@@ -34,5 +34,10 @@ public enum MachineGuiText implements LocalizationEnum {
         }
         return entry.status() == WorkSlotStatus.BLOCKED || entry.status() == WorkSlotStatus.FAILED
             ? ErrorWithMessage.getLocal(reason) : reason;
+    }
+
+    @Override
+    public String getTranslationKey() {
+        return translationKey;
     }
 }

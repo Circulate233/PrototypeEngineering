@@ -1,9 +1,5 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import net.minecraftforge.items.wrapper.PlayerInvWrapper;
-import net.minecraft.block.material.Material;
-import net.minecraft.util.EnumFacing;
-import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
@@ -15,23 +11,31 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockFalling;
+import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.common.util.BlockSnapshot;
+import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.world.BlockEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
+import net.minecraftforge.items.wrapper.PlayerInvWrapper;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
@@ -39,55 +43,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import net.minecraftforge.common.util.BlockSnapshot;
-import net.minecraftforge.event.ForgeEventFactory;
-import net.minecraft.util.EnumHand;
-import net.minecraftforge.event.world.WorldEvent;
-
 /** Server-owned PM builder tasks: one per player, eight attempts per tick, inventory-safe payments. */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class StructureBuildTasks {
     private static final Map<UUID, Task> TASKS = new Object2ObjectOpenHashMap<>();
 
     private StructureBuildTasks() {
-    }
-
-    private record Target(BlockPos position, @Nullable IBlockState state) {
-    }
-
-    private static final class Task {
-        final World world;
-        final int slot;
-        final ItemStack tool;
-        final MachineControllerHost controller;
-        final BlockOrientation orientation;
-        final boolean dismantle;
-        final List<Target> targets;
-        final boolean[] complete;
-        int cursor, done;
-
-        Task(EntityPlayer player, int slot, ItemStack tool, MachineControllerHost controller, boolean dismantle, List<Target> targets) {
-            world = player.world;
-            this.slot = slot;
-            this.tool = tool;
-            this.controller = controller;
-            orientation = controller.orientation();
-            this.dismantle = dismantle;
-            this.targets = targets;
-            complete = new boolean[targets.size()];
-        }
-
-        boolean valid(EntityPlayer player) {
-            var tag = BuilderState.data(tool);
-            var pos = controller.blockEntity().getPos();
-            return player.isEntityAlive() && player.world == world && player.inventory.getStackInSlot(slot) == tool
-                && !tool.isEmpty() && world.isBlockLoaded(pos) && world.getTileEntity(pos) == controller
-                && controller.orientation().equals(orientation) && tag.getBoolean("Bound")
-                && tag.getInteger("BoundDim") == world.provider.getDimension() && BuilderState.position(tag).equals(pos)
-                && tag.getString("BoundMachineId").equals(controller.type().id().toString())
-                && tag.getString("BoundStructureId").equals(controller.type().structureId().toString())
-                && BuilderState.state(tag) != BuilderState.State.IDLE;
-        }
     }
 
     public static void toggle(EntityPlayer player, int slot, ItemStack tool) {
@@ -228,21 +189,6 @@ public final class StructureBuildTasks {
         return true;
     }
 
-    private interface Payment {
-        Payment FREE = new Payment() {
-            public boolean commit() {
-                return true;
-            }
-
-            public void refund(EntityPlayer player) {
-            }
-        };
-
-        boolean commit();
-
-        void refund(EntityPlayer player);
-    }
-
     private static boolean itemMatches(ItemStack a, ItemStack b) {
         return !a.isEmpty() && a.getItem() == b.getItem() && a.getMetadata() == b.getMetadata();
     }
@@ -295,9 +241,6 @@ public final class StructureBuildTasks {
         return null;
     }
 
-    private record FluidEdit(IItemHandlerModifiable handler, int slot, ItemStack before, ItemStack after) {
-    }
-
     private static @Nullable Payment fluidPayment(EntityPlayer player, Fluid fluid) {
         var edits = new ObjectArrayList<FluidEdit>();
         var direct = new PlayerInvWrapper(player.inventory);
@@ -342,5 +285,61 @@ public final class StructureBuildTasks {
 
     private static void give(EntityPlayer player, ItemStack stack) {
         if (!stack.isEmpty() && !player.inventory.addItemStackToInventory(stack)) player.dropItem(stack, false);
+    }
+
+    private interface Payment {
+        Payment FREE = new Payment() {
+            public boolean commit() {
+                return true;
+            }
+
+            public void refund(EntityPlayer player) {
+            }
+        };
+
+        boolean commit();
+
+        void refund(EntityPlayer player);
+    }
+
+    private record Target(BlockPos position, @Nullable IBlockState state) {
+    }
+
+    private static final class Task {
+        final World world;
+        final int slot;
+        final ItemStack tool;
+        final MachineControllerHost controller;
+        final BlockOrientation orientation;
+        final boolean dismantle;
+        final List<Target> targets;
+        final boolean[] complete;
+        int cursor, done;
+
+        Task(EntityPlayer player, int slot, ItemStack tool, MachineControllerHost controller, boolean dismantle, List<Target> targets) {
+            world = player.world;
+            this.slot = slot;
+            this.tool = tool;
+            this.controller = controller;
+            orientation = controller.orientation();
+            this.dismantle = dismantle;
+            this.targets = targets;
+            complete = new boolean[targets.size()];
+        }
+
+        boolean valid(EntityPlayer player) {
+            var tag = BuilderState.data(tool);
+            var pos = controller.blockEntity().getPos();
+            return player.isEntityAlive() && player.world == world && player.inventory.getStackInSlot(slot) == tool
+                && !tool.isEmpty() && world.isBlockLoaded(pos) && world.getTileEntity(pos) == controller
+                && controller.orientation().equals(orientation) && tag.getBoolean("Bound")
+                && tag.getInteger("BoundDim") == world.provider.getDimension() && BuilderState.position(tag).equals(pos)
+                && tag.getString("BoundMachineId").equals(controller.type().id().toString())
+                && tag.getString("BoundStructureId").equals(controller.type().structureId().toString())
+                && BuilderState.state(tag) != BuilderState.State.IDLE;
+        }
+    }
+
+    private record FluidEdit(IItemHandlerModifiable handler, int slot, ItemStack before, ItemStack after) {
     }
 }

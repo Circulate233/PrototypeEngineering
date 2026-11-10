@@ -1,8 +1,5 @@
 package com.circulation.prototype_eng.machine.render;
 
-import java.util.Arrays;
-import java.util.Objects;
-
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -14,7 +11,24 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegis
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
-import com.circulation.prototype_eng.api.structure.*;
+import com.circulation.prototype_eng.api.structure.MachineStructure;
+import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
+import com.circulation.prototype_eng.api.structure.StructureAssembly;
+import com.circulation.prototype_eng.api.structure.StructureBounds;
+import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureCatalogView;
+import com.circulation.prototype_eng.api.structure.StructureConfiguration;
+import com.circulation.prototype_eng.api.structure.StructureHatchBinding;
+import com.circulation.prototype_eng.api.structure.StructureMatch;
+import com.circulation.prototype_eng.api.structure.StructurePattern;
+import com.circulation.prototype_eng.api.structure.StructurePlan;
+import com.circulation.prototype_eng.api.structure.StructurePredicate;
+import com.circulation.prototype_eng.api.structure.StructurePredicates;
+import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import com.circulation.prototype_eng.api.structure.StructureQuery;
+import com.circulation.prototype_eng.api.structure.StructureReadPlan;
+import com.circulation.prototype_eng.api.structure.StructureSnapshot;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.structure.SliceStructure;
@@ -24,21 +38,27 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineRenderSnapshotTest {
     static final ResourceLocation MACHINE = id("machine");
     static final UUID SESSION = new UUID(17, 19);
+    static final StructurePredicate YES = StructurePredicates.all(List.of());
 
     static ResourceLocation id(String path) {
         return new ResourceLocation("render_test", path);
     }
-
-    static final StructurePredicate YES = StructurePredicates.all(List.of());
 
     static MachineStructure nested() {
         var tail = new TemplateStructure(id("tail"), BlockOrientation.NORTH_UP, new BlockPos(1, 2, 3), true,
@@ -191,10 +211,10 @@ class MachineRenderSnapshotTest {
     }
 
     static final class Host implements ReloadableStructureHost {
-        StructureConfiguration configuration;
-        MachineInstance machine;
         private final Thread owner = Thread.currentThread();
         private final Object world = new Object();
+        StructureConfiguration configuration;
+        MachineInstance machine;
 
         @Override
         public MachineIdentity identity() {

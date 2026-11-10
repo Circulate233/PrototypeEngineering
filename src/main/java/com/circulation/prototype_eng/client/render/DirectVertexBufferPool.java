@@ -1,10 +1,10 @@
 package com.circulation.prototype_eng.client.render;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayDeque;
-
-import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
 
 /** Packed CPU buffers retain their native byte order across borrow/seal/recycle. */
 public class DirectVertexBufferPool implements AutoCloseable {

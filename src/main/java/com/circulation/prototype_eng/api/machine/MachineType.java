@@ -36,7 +36,8 @@ public final class MachineType {
     private final Object2DoubleMap<ResourceLocation> defaultAttributeBases;
     private final ExecutionMode executionMode;
     private final boolean explicitExecutionMode;
-    @Nullable private final ResourceLocation controllerModel;
+    @Nullable
+    private final ResourceLocation controllerModel;
 
     private MachineType(Builder builder) {
         id = builder.id;
@@ -57,35 +58,67 @@ public final class MachineType {
         return new Builder(id, displayName, structureId);
     }
 
-    public ResourceLocation id() { return id; }
-    /** Server containers use text(); clients use getLocal() on the same localization contract. */
+    public ResourceLocation id() {
+        return id;
+    }
+
+    /**
+     * Server containers use text(); clients use getLocal() on the same localization contract.
+     */
     @SuppressWarnings("unused") // Public display binding for downstream controllers and GUI factories.
-    public LocalizationEnum displayName() { return displayName; }
-    public ResourceLocation structureId() { return structureId; }
-    public List<ComponentType<MachineInstance, ?>> componentTypes() { return componentTypes; }
+    public LocalizationEnum displayName() {
+        return displayName;
+    }
+
+    public ResourceLocation structureId() {
+        return structureId;
+    }
+
+    public List<ComponentType<MachineInstance, ?>> componentTypes() {
+        return componentTypes;
+    }
 
     /**
      * Groups for the implicit main slot; empty groups add no filter within the selected pool scope.
      */
-    public Set<ResourceLocation> recipeGroups() { return recipeGroups; }
+    public Set<ResourceLocation> recipeGroups() {
+        return recipeGroups;
+    }
 
-    /** Static pool references resolved together after all recipe registration; order does not reorder recipes. */
+    /**
+     * Static pool references resolved together after all recipe registration; order does not reorder recipes.
+     */
     public List<ResourceLocation> recipePoolIds() {
         return recipePoolIds;
     }
-    public List<WorkSlotDefinition> workSlots() { return workSlots; }
+
+    public List<WorkSlotDefinition> workSlots() {
+        return workSlots;
+    }
+
     @SuppressWarnings("unused") // Assembly applies these public defaults after restoring persisted attributes.
-    public Object2DoubleMap<ResourceLocation> defaultAttributeBases() { return defaultAttributeBases; }
-    public ExecutionMode executionMode() { return executionMode; }
+    public Object2DoubleMap<ResourceLocation> defaultAttributeBases() {
+        return defaultAttributeBases;
+    }
+
+    public ExecutionMode executionMode() {
+        return executionMode;
+    }
 
     /** Explicit declaration overrides the actual runtime controller's default scheduling choice. */
     public boolean hasExplicitExecutionMode() {
         return explicitExecutionMode;
     }
-    @SuppressWarnings("unused") // Client model registration binds separately without loading client classes here.
-    @Nullable public ResourceLocation controllerModel() { return controllerModel; }
 
-    /** No component factory runs here, and no work-slot or recipe-scanning component is implicit. */
+    @SuppressWarnings("unused") // Client model registration binds separately without loading client classes here.
+    @Nullable
+    public ResourceLocation controllerModel() {
+        return controllerModel;
+    }
+
+    /**
+     * No component factory runs here, and no work-slot or recipe-scanning component is implicit.
+     */
     public static final class Builder {
         private final ResourceLocation id;
         private final LocalizationEnum displayName;
@@ -97,7 +130,8 @@ public final class MachineType {
         private final Object2DoubleLinkedOpenHashMap<ResourceLocation> attributes = new Object2DoubleLinkedOpenHashMap<>();
         private ExecutionMode executionMode = ExecutionMode.CONCURRENT;
         private boolean explicitExecutionMode;
-        @Nullable private ResourceLocation controllerModel;
+        @Nullable
+        private ResourceLocation controllerModel;
 
         private Builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
             this.id = Objects.requireNonNull(id, "machine ID");
@@ -113,7 +147,9 @@ public final class MachineType {
             return this;
         }
 
-        /** Declares this machine as a static user of the pool, including addon pools registered later. */
+        /**
+         * Declares this machine as a static user of the pool, including addon pools registered later.
+         */
         public Builder recipePool(ResourceLocation poolId) {
             if (!recipePools.add(Objects.requireNonNull(poolId, "recipe pool"))) {
                 throw new IllegalArgumentException("Duplicate machine recipe pool: " + poolId);
@@ -138,17 +174,30 @@ public final class MachineType {
 
         public Builder attribute(ResourceLocation attribute, double base) {
             Objects.requireNonNull(attribute, "attribute ID");
-            if (!Double.isFinite(base)) { throw new IllegalArgumentException("Default attribute base must be finite"); }
-            if (attributes.containsKey(attribute)) { throw new IllegalArgumentException("Duplicate default attribute: " + attribute); }
+            if (!Double.isFinite(base)) {
+                throw new IllegalArgumentException("Default attribute base must be finite");
+            }
+            if (attributes.containsKey(attribute)) {
+                throw new IllegalArgumentException("Duplicate default attribute: " + attribute);
+            }
             attributes.put(attribute, base);
             return this;
         }
 
-        public Builder executionMode(ExecutionMode mode) { executionMode = Objects.requireNonNull(mode);
+        public Builder executionMode(ExecutionMode mode) {
+            executionMode = Objects.requireNonNull(mode);
             explicitExecutionMode = true;
-            return this; }
+            return this;
+        }
+
         @SuppressWarnings("unused") // Downstream declarations may supply a custom controller model.
-        public Builder controllerModel(@Nullable ResourceLocation model) { controllerModel = model; return this; }
-        public MachineType build() { return new MachineType(this); }
+        public Builder controllerModel(@Nullable ResourceLocation model) {
+            controllerModel = model;
+            return this;
+        }
+
+        public MachineType build() {
+            return new MachineType(this);
+        }
     }
 }

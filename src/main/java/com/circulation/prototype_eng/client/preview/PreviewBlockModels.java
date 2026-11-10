@@ -18,11 +18,13 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL15;
+
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import java.nio.ByteOrder;
+
 /**
  * Concrete PM BLOCK_MODEL path. Every Minecraft model callback and GL operation stays on the client owner.
  */
@@ -48,6 +50,15 @@ public final class PreviewBlockModels implements AutoCloseable {
             var cursor = new PreviewBlockQuadCursor(model, cell, () -> cache.currentEpoch(token) && current(model), sceneAccess);
             return sink -> cursor.step((_, data) -> sink.accept(data));
         });
+    }
+
+    static boolean staticGeometry(StructureProjectionOptions options) {
+        return !options.hideDisplayedMatches() && options.layer() == null;
+    }
+
+    private static double distance(BlockPos position, double x, double y, double z) {
+        double dx = position.getX() + 0.5 - x, dy = position.getY() + 0.5 - y, dz = position.getZ() + 0.5 - z;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     private void requireOwner() {
@@ -219,13 +230,9 @@ public final class PreviewBlockModels implements AutoCloseable {
         }
     }
 
-    static boolean staticGeometry(StructureProjectionOptions options) {
-        return !options.hideDisplayedMatches() && options.layer() == null;
-    }
-
     private void drawChunks(PreviewBlockModelCache.Ready ready, StructurePreviews.Projection intent, double x, double y, double z) {
         drawChunks(ready, intent, x, y, z, () -> previews.projection() == intent);
-                }
+    }
 
     private void drawChunks(PreviewBlockModelCache.Ready ready, StructurePreviews.Projection intent, double x, double y, double z, BooleanSupplier guard) {
         var options = intent.options();
@@ -276,7 +283,7 @@ public final class PreviewBlockModels implements AutoCloseable {
     private List<StructureProjectionState.Sample> drawSamples(StructurePreviewModel model, List<StructureProjectionState.Sample> samples,
                                                               StructurePreviews.Projection intent, Object token, double x, double y, double z) {
         return drawSamples(model, samples, intent, token, x, y, z, () -> previews.projection() == intent);
-                }
+    }
 
     private List<StructureProjectionState.Sample> drawSamples(StructurePreviewModel model, List<StructureProjectionState.Sample> samples,
                                                               StructurePreviews.Projection intent, Object token, double x, double y, double z, BooleanSupplier guard) {
@@ -288,7 +295,8 @@ public final class PreviewBlockModels implements AutoCloseable {
         Throwable failure = null;
         List<StructureProjectionState.Sample> pending = List.of();
         try {
-            if (sceneAccess == null) GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
+            if (sceneAccess == null)
+                GlStateManager.translate(intent.anchor().getX() - x, intent.anchor().getY() - y, intent.anchor().getZ() - z);
             buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
             building = true;
             // C selected/paid cell visits already. Preparation and emission pay a separate, bounded quad work budget.
@@ -328,9 +336,149 @@ public final class PreviewBlockModels implements AutoCloseable {
         return pending;
     }
 
-    private static double distance(BlockPos position, double x, double y, double z) {
-        double dx = position.getX() + 0.5 - x, dy = position.getY() + 0.5 - y, dz = position.getZ() + 0.5 - z;
-        return dx * dx + dy * dy + dz * dz;
+    @Override
+    public void close() {
+        requireOwner();
+        if (closed) return;
+        closed = true;
+        Throwable failure = null;
+        try {
+            cache.close();
+        } catch (RuntimeException | Error caught) {
+            failure = caught;
+        }
+        try {
+            sampleModels.invalidate();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        try {
+            buffers.close();
+        } catch (RuntimeException | Error caught) {
+            failure = PreviewBlockModelCache.merge(failure, caught);
+        }
+        PreviewBlockModelCache.rethrow(failure);
+    }
+
+    private static final class Vbo implements PreviewBlockModelCache.LayerMesh {
+        private VertexBuffer buffer;
+
+        private Vbo(VertexBuffer buffer) {
+            this.buffer = buffer;
+        }
+
+        @Override
+        public void draw() {
+            var owned = Objects.requireNonNull(buffer);
+            owned.bindBuffer();
+            try {
+                GL11.glVertexPointer(3, GL11.GL_FLOAT, PreviewBlockVertices.STRIDE, 0L);
+                GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, PreviewBlockVertices.STRIDE, 12L);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
+                GL11.glTexCoordPointer(2, GL11.GL_FLOAT, PreviewBlockVertices.STRIDE, 16L);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.lightmapTexUnit);
+                GL11.glTexCoordPointer(2, GL11.GL_SHORT, PreviewBlockVertices.STRIDE, 24L);
+                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
+                owned.drawArrays(GL11.GL_QUADS);
+            } finally {
+                owned.unbindBuffer();
+            }
+        }
+
+        @Override
+        public void close() {
+            var owned = buffer;
+            buffer = null;
+            if (owned != null) owned.deleteGlBuffers();
+        }
+    }
+
+    /**
+     * Changed server state restores through GlStateManager, including atlas bindings and both texture units.
+     */
+    public record State(boolean lighting, boolean cull, boolean blend, boolean depth, boolean depthMask, boolean alpha,
+                        int alphaFunc, float alphaRef, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha,
+                        boolean polygonOffset, float factor, float units, int activeTexture, int matrixMode,
+                        int atlasBinding, boolean atlasEnabled, int lightBinding, boolean lightEnabled,
+                        float r, float g, float b, float a) {
+        public static State capture(FloatBuffer colors) {
+            colors.clear();
+            GL11.glGetFloat(GL11.GL_CURRENT_COLOR, colors);
+            int active = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+            int atlas = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+            boolean atlasEnabled = GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
+            GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);
+            int light = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+            boolean lightEnabled = GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
+            GlStateManager.setActiveTexture(active);
+            return new State(GL11.glIsEnabled(GL11.GL_LIGHTING), GL11.glIsEnabled(GL11.GL_CULL_FACE), GL11.glIsEnabled(GL11.GL_BLEND),
+                GL11.glIsEnabled(GL11.GL_DEPTH_TEST), GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK), GL11.glIsEnabled(GL11.GL_ALPHA_TEST),
+                GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC), GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF),
+                GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
+                GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA), GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA),
+                GL11.glIsEnabled(GL11.GL_POLYGON_OFFSET_FILL), GL11.glGetFloat(GL11.GL_POLYGON_OFFSET_FACTOR), GL11.glGetFloat(GL11.GL_POLYGON_OFFSET_UNITS),
+                active, GL11.glGetInteger(GL11.GL_MATRIX_MODE), atlas, atlasEnabled, light, lightEnabled, colors.get(0), colors.get(1), colors.get(2), colors.get(3));
+        }
+
+        public void restore() {
+            if (lighting) GlStateManager.enableLighting();
+            else GlStateManager.disableLighting();
+            if (cull) GlStateManager.enableCull();
+            else GlStateManager.disableCull();
+            if (blend) GlStateManager.enableBlend();
+            else GlStateManager.disableBlend();
+            if (depth) GlStateManager.enableDepth();
+            else GlStateManager.disableDepth();
+            GlStateManager.depthMask(depthMask);
+            if (alpha) GlStateManager.enableAlpha();
+            else GlStateManager.disableAlpha();
+            GlStateManager.alphaFunc(alphaFunc, alphaRef);
+            GlStateManager.tryBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
+            if (polygonOffset) GlStateManager.enablePolygonOffset();
+            else GlStateManager.disablePolygonOffset();
+            GlStateManager.doPolygonOffset(factor, units);
+            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
+            GlStateManager.bindTexture(atlasBinding);
+            if (atlasEnabled) GlStateManager.enableTexture2D();
+            else GlStateManager.disableTexture2D();
+            GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);
+            GlStateManager.bindTexture(lightBinding);
+            if (lightEnabled) GlStateManager.enableTexture2D();
+            else GlStateManager.disableTexture2D();
+            GlStateManager.setActiveTexture(activeTexture);
+            GlStateManager.matrixMode(matrixMode);
+            // A VBO color array invalidates the native current color even when MC's cache still says white.
+            GlStateManager.resetColor();
+            GlStateManager.color(r, g, b, a);
+        }
+    }
+
+    private final class CpuMesh implements PreviewBlockModelCache.LayerMesh {
+        private int[] vertices;
+
+        private CpuMesh(int[] vertices) {
+            this.vertices = vertices;
+        }
+
+        @Override
+        public void draw() {
+            var buffer = buffers.borrow();
+            try {
+                OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
+                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
+                buffer.addVertexData(Objects.requireNonNull(vertices));
+                buffer.finishDrawing();
+                uploader.draw(buffer);
+            } finally {
+                buffers.recycle(buffer);
+            }
+        }
+
+        @Override
+        public void close() {
+            vertices = null;
+        }
     }
 
     private final class Baker implements PreviewBlockModelCache.ChunkBaker {
@@ -338,6 +486,8 @@ public final class PreviewBlockModels implements AutoCloseable {
         private final Object token;
         private final BufferBuilder[] layerBuffers = new BufferBuilder[4];
         private boolean released;
+        private StructurePreviewModel.Cell activeCell;
+        private PreviewBlockQuadCursor cursor;
 
         private Baker(StructurePreviewModel model) {
             this.model = model;
@@ -347,9 +497,6 @@ public final class PreviewBlockModels implements AutoCloseable {
         private boolean valid() {
             return !released && cache.currentEpoch(token) && current(model);
         }
-
-        private StructurePreviewModel.Cell activeCell;
-        private PreviewBlockQuadCursor cursor;
 
         @Override
         public boolean appendStep(StructurePreviewModel.Cell cell) {
@@ -454,140 +601,6 @@ public final class PreviewBlockModels implements AutoCloseable {
                 }
             }
             PreviewBlockModelCache.rethrow(failure);
-        }
-    }
-
-    private static final class Vbo implements PreviewBlockModelCache.LayerMesh {
-        private VertexBuffer buffer;
-
-        private Vbo(VertexBuffer buffer) {
-            this.buffer = buffer;
-        }
-
-        @Override
-        public void draw() {
-            var owned = Objects.requireNonNull(buffer);
-            owned.bindBuffer();
-            try {
-                GL11.glVertexPointer(3, GL11.GL_FLOAT, PreviewBlockVertices.STRIDE, 0L);
-                GL11.glColorPointer(4, GL11.GL_UNSIGNED_BYTE, PreviewBlockVertices.STRIDE, 12L);
-                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
-                GL11.glTexCoordPointer(2, GL11.GL_FLOAT, PreviewBlockVertices.STRIDE, 16L);
-                OpenGlHelper.setClientActiveTexture(OpenGlHelper.lightmapTexUnit);
-                GL11.glTexCoordPointer(2, GL11.GL_SHORT, PreviewBlockVertices.STRIDE, 24L);
-                OpenGlHelper.setClientActiveTexture(OpenGlHelper.defaultTexUnit);
-                owned.drawArrays(GL11.GL_QUADS);
-            } finally {
-                owned.unbindBuffer();
-            }
-        }
-
-        @Override
-        public void close() {
-            var owned = buffer;
-            buffer = null;
-            if (owned != null) owned.deleteGlBuffers();
-        }
-    }
-
-    @Override
-    public void close() {
-        requireOwner();
-        if (closed) return;
-        closed = true;
-        Throwable failure = null;
-        try {
-            cache.close();
-        } catch (RuntimeException | Error caught) {
-            failure = caught;
-        }
-        try {
-            sampleModels.invalidate();
-        } catch (RuntimeException | Error caught) {
-            failure = PreviewBlockModelCache.merge(failure, caught);
-        }
-        try {
-            buffers.close();
-        } catch (RuntimeException | Error caught) {
-            failure = PreviewBlockModelCache.merge(failure, caught);
-        }
-        PreviewBlockModelCache.rethrow(failure);
-    }
-
-    private final class CpuMesh implements PreviewBlockModelCache.LayerMesh {
-        private int[] vertices;
-        private CpuMesh(int[] vertices) { this.vertices = vertices; }
-        @Override public void draw() {
-            var buffer = buffers.borrow();
-            try {
-                OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
-                buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
-                buffer.addVertexData(Objects.requireNonNull(vertices));
-                buffer.finishDrawing();
-                uploader.draw(buffer);
-            } finally { buffers.recycle(buffer); }
-        }
-        @Override public void close() { vertices = null; }
-    }
-
-    /**
-     * Changed server state restores through GlStateManager, including atlas bindings and both texture units.
-     */
-    public record State(boolean lighting, boolean cull, boolean blend, boolean depth, boolean depthMask, boolean alpha,
-                         int alphaFunc, float alphaRef, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha,
-                         boolean polygonOffset, float factor, float units, int activeTexture, int matrixMode,
-                         int atlasBinding, boolean atlasEnabled, int lightBinding, boolean lightEnabled,
-                         float r, float g, float b, float a) {
-        public static State capture(FloatBuffer colors) {
-            colors.clear();
-            GL11.glGetFloat(GL11.GL_CURRENT_COLOR, colors);
-            int active = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
-            int atlas = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-            boolean atlasEnabled = GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
-            GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);
-            int light = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-            boolean lightEnabled = GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
-            GlStateManager.setActiveTexture(active);
-            return new State(GL11.glIsEnabled(GL11.GL_LIGHTING), GL11.glIsEnabled(GL11.GL_CULL_FACE), GL11.glIsEnabled(GL11.GL_BLEND),
-                GL11.glIsEnabled(GL11.GL_DEPTH_TEST), GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK), GL11.glIsEnabled(GL11.GL_ALPHA_TEST),
-                GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC), GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF),
-                GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), GL11.glGetInteger(GL14.GL_BLEND_DST_RGB),
-                GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA), GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA),
-                GL11.glIsEnabled(GL11.GL_POLYGON_OFFSET_FILL), GL11.glGetFloat(GL11.GL_POLYGON_OFFSET_FACTOR), GL11.glGetFloat(GL11.GL_POLYGON_OFFSET_UNITS),
-                active, GL11.glGetInteger(GL11.GL_MATRIX_MODE), atlas, atlasEnabled, light, lightEnabled, colors.get(0), colors.get(1), colors.get(2), colors.get(3));
-        }
-
-        public void restore() {
-            if (lighting) GlStateManager.enableLighting();
-            else GlStateManager.disableLighting();
-            if (cull) GlStateManager.enableCull();
-            else GlStateManager.disableCull();
-            if (blend) GlStateManager.enableBlend();
-            else GlStateManager.disableBlend();
-            if (depth) GlStateManager.enableDepth();
-            else GlStateManager.disableDepth();
-            GlStateManager.depthMask(depthMask);
-            if (alpha) GlStateManager.enableAlpha();
-            else GlStateManager.disableAlpha();
-            GlStateManager.alphaFunc(alphaFunc, alphaRef);
-            GlStateManager.tryBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
-            if (polygonOffset) GlStateManager.enablePolygonOffset();
-            else GlStateManager.disablePolygonOffset();
-            GlStateManager.doPolygonOffset(factor, units);
-            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
-            GlStateManager.bindTexture(atlasBinding);
-            if (atlasEnabled) GlStateManager.enableTexture2D();
-            else GlStateManager.disableTexture2D();
-            GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);
-            GlStateManager.bindTexture(lightBinding);
-            if (lightEnabled) GlStateManager.enableTexture2D();
-            else GlStateManager.disableTexture2D();
-            GlStateManager.setActiveTexture(activeTexture);
-            GlStateManager.matrixMode(matrixMode);
-            // A VBO color array invalidates the native current color even when MC's cache still says white.
-            GlStateManager.resetColor();
-            GlStateManager.color(r, g, b, a);
         }
     }
 }

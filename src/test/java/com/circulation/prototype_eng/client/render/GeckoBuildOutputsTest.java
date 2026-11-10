@@ -1,10 +1,5 @@
 package com.circulation.prototype_eng.client.render;
 
-import java.nio.ByteOrder;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.Set;
-import java.util.Objects;
-
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import com.circulation.prototype_eng.client.render.gecko.GeckoGeoModelInstances;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
@@ -15,48 +10,40 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static com.circulation.prototype_eng.client.render.BModelFixtures.*;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.ANIMATION;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.CpuUploader;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.GEO;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.TEXTURE;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.request;
+import static com.circulation.prototype_eng.client.render.BModelFixtures.resources;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 @SuppressWarnings("TryFinallyCanBeTryWithResources") // These assertions exercise task/cache retirement before each reader and native resource exits.
 class GeckoBuildOutputsTest {
-    @TempDir
-    Path root;
     static final String ANIMATIONS = "{\"animations\":{\"move\":{\"loop\":true,\"animation_length\":2,\"bones\":{\"root\":{\"position\":[0,0,0]}}}}}";
     static final String TWO_PASSES = """
         {"format_version":"1.12.0","minecraft:geometry":[{"description":{"identifier":"geometry.test","texture_width":64,"texture_height":64},
         "bones":[{"name":"root","pivot":[0,0,0],"cubes":[{"origin":[0,0,0],"size":[16,16,16],"uv":[0,0]}]},
         {"name":"bloom_child","parent":"root","pivot":[0,0,0],"cubes":[{"origin":[0,16,0],"size":[16,16,16],"uv":[0,0]}]}]}]}
         """;
-
-    static final class CapturingUploader extends CpuUploader {
-        final Map<MachineRenderPass, ByteBuffer> mapped = new Object2ObjectOpenHashMap<>();
-        ByteBuffer latest;
-
-        CapturingUploader(ModelClientThread client) {
-            super(client);
-        }
-
-        @Override
-        protected ByteBuffer mapBuffer(int id, int capacity) {
-            latest = super.mapBuffer(id, capacity);
-            return latest;
-        }
-
-        @Override
-        public Ticket tryMap(GeckoRenderRequest request, MachineRenderPass pass, int capacity) {
-            var ticket = super.tryMap(request, pass, capacity);
-            if (ticket != null) mapped.put(pass, latest);
-            return ticket;
-        }
-    }
+    @TempDir
+    Path root;
 
     private static int[] ints(ByteBuffer bytes, int count) {
         int[] values = new int[count];
@@ -246,6 +233,28 @@ class GeckoBuildOutputsTest {
             gpu.close();
             builders.close();
             direct.close();
+        }
+    }
+
+    static final class CapturingUploader extends CpuUploader {
+        final Map<MachineRenderPass, ByteBuffer> mapped = new Object2ObjectOpenHashMap<>();
+        ByteBuffer latest;
+
+        CapturingUploader(ModelClientThread client) {
+            super(client);
+        }
+
+        @Override
+        protected ByteBuffer mapBuffer(int id, int capacity) {
+            latest = super.mapBuffer(id, capacity);
+            return latest;
+        }
+
+        @Override
+        public Ticket tryMap(GeckoRenderRequest request, MachineRenderPass pass, int capacity) {
+            var ticket = super.tryMap(request, pass, capacity);
+            if (ticket != null) mapped.put(pass, latest);
+            return ticket;
         }
     }
 }

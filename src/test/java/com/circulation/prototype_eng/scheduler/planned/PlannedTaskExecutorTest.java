@@ -25,16 +25,48 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class PlannedTaskExecutorTest {
-    @Test void prepareActionsReallyOverlapAndResultsRetainInputOrder() {
+    private static PlannedDeadline deadline() {
+        return PlannedDeadline.after(Duration.ofSeconds(5L));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5L, TimeUnit.SECONDS), "Test coordination did not complete");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Unexpected test action interruption", failure);
+        }
+    }
+
+    private static void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch interrupted) {
+        boolean done = false;
+        while (!done) {
+            try {
+                assertTrue(release.await(5L, TimeUnit.SECONDS), "Test must release its uncooperative action");
+                done = true;
+            } catch (InterruptedException failure) {
+                interrupted.countDown();
+            }
+        }
+    }
+
+    @Test
+    void prepareActionsReallyOverlapAndResultsRetainInputOrder() {
         var bothEntered = new CountDownLatch(2);
         var secondReturned = new CountDownLatch(1);
         var threads = new ConcurrentLinkedQueue<Thread>();
         Thread owner = Thread.currentThread();
         try (var workers = Executors.newFixedThreadPool(2); var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane});
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
             try {
                 var batch = executor.runPrepare(List.of(new Job<>(null, () -> {
                     threads.add(Thread.currentThread());
@@ -65,7 +97,8 @@ class PlannedTaskExecutorTest {
         }
     }
 
-    @Test void timeoutRetainsSuccessAndPinsAnUncooperativeLateActionAcrossClockWraparound() throws Exception {
+    @Test
+    void timeoutRetainsSuccessAndPinsAnUncooperativeLateActionAcrossClockWraparound() throws Exception {
         var firstExited = new CountDownLatch(1);
         var lateEntered = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
@@ -75,9 +108,12 @@ class PlannedTaskExecutorTest {
         long budget = TimeUnit.MILLISECONDS.toNanos(200L);
         var clock = new Clock(start);
         try (var workers = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()) {
-            @Override protected void afterExecute(Runnable task, Throwable failure) { firstExited.countDown(); }
+            @Override
+            protected void afterExecute(Runnable task, Throwable failure) {
+                firstExited.countDown();
+            }
         }; var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane}, () -> clock.now);
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> clock.now);
             var running = new FutureTask<>(() -> executor.runPrepare(List.of(
                 new Job<>(null, () -> "accepted"), new Job<>(null, () -> {
                     await(firstExited);
@@ -86,7 +122,9 @@ class PlannedTaskExecutorTest {
                     try {
                         awaitIgnoringInterrupt(release, interrupted);
                         return "late success";
-                    } finally { lateExited.countDown(); }
+                    } finally {
+                        lateExited.countDown();
+                    }
                 })), new PlannedDeadline(start, budget)));
             Thread.ofPlatform().daemon().start(running);
             try {
@@ -102,18 +140,23 @@ class PlannedTaskExecutorTest {
                 assertTrue(batch.quiescent());
                 assertEquals(0L, lateExited.getCount());
                 assertEquals(new Stopped<>(Reason.WORKER_TIMEOUT, true), batch.results().get(1));
-            } finally { release.countDown(); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void cancellationMakesQueuedAndNotYetSubmittedActionsPermanentlyInert() throws Exception {
+    @Test
+    void cancellationMakesQueuedAndNotYetSubmittedActionsPermanentlyInert() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var forbiddenCalls = new int[1];
         var token = new PlannedCancellationToken();
         try (var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane});
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
             var running = new FutureTask<>(() -> executor.runPrepare(List.of(new Job<>(token, () -> {
                 entered.countDown();
                 awaitIgnoringInterrupt(release, interrupted);
@@ -136,13 +179,19 @@ class PlannedTaskExecutorTest {
                 assertFalse(batch.quiescent());
                 release.countDown();
                 batch.awaitQuiescence();
-                workers.submit(() -> {}).get(5L, TimeUnit.SECONDS);
+                workers.submit(() -> {
+                }).get(5L, TimeUnit.SECONDS);
                 assertEquals(0, forbiddenCalls[0], "Stopped wrappers must stay inert even after reaching the worker");
-            } finally { release.countDown(); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void sourceQueryAndCompensationUseTheOriginalLaneAfterTheLateActionActuallyExits() throws Exception {
+    @Test
+    void sourceQueryAndCompensationUseTheOriginalLaneAfterTheLateActionActuallyExits() throws Exception {
         var entered = new CountDownLatch(1);
         var interrupted = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -199,23 +248,32 @@ class PlannedTaskExecutorTest {
                 assertEquals(List.of("normal", "old entered", "old exited", "query", "compensate"), List.copyOf(log));
                 assertEquals(1, Set.copyOf(threads).size());
                 assertEquals(new Stopped<>(Reason.WORKER_TIMEOUT, true), stopped.results().getFirst());
-            } finally { release.countDown(); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void executorRejectionIsAnOrderedFailureAndDoesNotAbandonOtherAcceptedActions() throws Exception {
+    @Test
+    void executorRejectionIsAnOrderedFailureAndDoesNotAbandonOtherAcceptedActions() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var thirdFinished = new CountDownLatch(1);
         var rejection = new RejectedExecutionException("second planned submission");
         try (var workers = new ThreadPoolExecutor(2, 2, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()) {
             private int submissions;
-            @Override public void execute(@NotNull Runnable action) {
-                if (++submissions == 2) { throw rejection; }
+
+            @Override
+            public void execute(@NotNull Runnable action) {
+                if (++submissions == 2) {
+                    throw rejection;
+                }
                 super.execute(action);
             }
         }; var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane});
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
             var running = new FutureTask<>(() -> executor.runPrepare(List.of(new Job<>(null, () -> {
                 entered.countDown();
                 await(release);
@@ -235,11 +293,16 @@ class PlannedTaskExecutorTest {
                 assertEquals(List.of(new Success<>("first"), new Failure<>(rejection), new Success<>("third")), batch.results());
                 assertNull(batch.stopReason());
                 assertTrue(batch.quiescent());
-            } finally { release.countDown(); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void interruptedOwnerKeepsItsFlagAndInterruptedQuiescenceWaitStillPinsTheAction() throws Exception {
+    @Test
+    void interruptedOwnerKeepsItsFlagAndInterruptedQuiescenceWaitStillPinsTheAction() throws Exception {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var workerInterrupted = new CountDownLatch(1);
@@ -247,14 +310,16 @@ class PlannedTaskExecutorTest {
         var waiterReturned = new CountDownLatch(1);
         var ownerFlag = new CountDownLatch(1);
         try (var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane});
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
             var running = new FutureTask<>(() -> {
                 var batch = executor.runPrepare(List.of(new Job<>(null, () -> {
                     entered.countDown();
                     awaitIgnoringInterrupt(release, workerInterrupted);
                     return "late";
                 })), deadline());
-                if (Thread.currentThread().isInterrupted()) { ownerFlag.countDown(); }
+                if (Thread.currentThread().isInterrupted()) {
+                    ownerFlag.countDown();
+                }
                 return batch;
             });
             Thread owner = Thread.ofPlatform().daemon().start(running);
@@ -274,7 +339,9 @@ class PlannedTaskExecutorTest {
                         var failure = assertThrows(IllegalStateException.class, batch::awaitQuiescence);
                         assertInstanceOf(InterruptedException.class, failure.getCause());
                         return Thread.currentThread().isInterrupted();
-                    } finally { waiterReturned.countDown(); }
+                    } finally {
+                        waiterReturned.countDown();
+                    }
                 });
                 Thread.ofPlatform().daemon().start(waiting);
                 await(waiterEntered);
@@ -283,19 +350,25 @@ class PlannedTaskExecutorTest {
                 assertTrue(waiting.get(5L, TimeUnit.SECONDS));
                 assertTrue(batch.quiescent());
                 assertEquals(new Stopped<>(Reason.INTERRUPTED, true), batch.results().getFirst());
-            } finally { release.countDown(); }
-        } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+            }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void deadlineIsRecheckedAtActionEntryAndResultPublicationWithoutRelyingOnOwnerWakeup() {
+    @Test
+    void deadlineIsRecheckedAtActionEntryAndResultPublicationWithoutRelyingOnOwnerWakeup() {
         var clock = new Clock(-100);
         try (var workers = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>()) {
-            @Override public void execute(@NotNull Runnable action) {
+            @Override
+            public void execute(@NotNull Runnable action) {
                 clock.now = -90;
                 action.run();
             }
         }; var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane}, () -> clock.now);
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> clock.now);
             var queued = executor.runPrepare(List.of(new Job<String>(null,
                 () -> fail("A queued action entered after its deadline"))), new PlannedDeadline(-100, 10));
             assertEquals(List.of(new Stopped<>(Reason.WORKER_TIMEOUT, false)), queued.results());
@@ -306,7 +379,7 @@ class PlannedTaskExecutorTest {
         long budget = TimeUnit.SECONDS.toNanos(5);
         clock.now = start;
         try (var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
-            var executor = new PlannedTaskExecutor(workers, new ExecutorService[] {lane}, () -> clock.now);
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> clock.now);
             var late = executor.runPrepare(List.of(new Job<>(null, () -> {
                 clock.now = start + budget;
                 return "past deadline";
@@ -318,26 +391,9 @@ class PlannedTaskExecutorTest {
 
     private static final class Clock {
         private volatile long now;
-        private Clock(long now) { this.now = now; }
-    }
 
-    private static PlannedDeadline deadline() { return PlannedDeadline.after(Duration.ofSeconds(5L)); }
-
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5L, TimeUnit.SECONDS), "Test coordination did not complete"); }
-        catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("Unexpected test action interruption", failure);
-        }
-    }
-
-    private static void awaitIgnoringInterrupt(CountDownLatch release, CountDownLatch interrupted) {
-        boolean done = false;
-        while (!done) {
-            try {
-                assertTrue(release.await(5L, TimeUnit.SECONDS), "Test must release its uncooperative action");
-                done = true;
-            } catch (InterruptedException failure) { interrupted.countDown(); }
+        private Clock(long now) {
+            this.now = now;
         }
     }
 }

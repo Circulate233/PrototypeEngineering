@@ -22,7 +22,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-/** Immutable parameter view with typed reads and source paths; JSON copies never expose backing data. */
+/**
+ * Immutable parameter view with typed reads and source paths; JSON copies never expose backing data.
+ */
 public final class StructureJsonParameters {
     private final String source;
     private final String path;
@@ -34,7 +36,9 @@ public final class StructureJsonParameters {
         this.value = value;
     }
 
-    /** The caller retains ownership of the supplied reader. */
+    /**
+     * The caller retains ownership of the supplied reader.
+     */
     @SuppressWarnings("deprecation") // setLenient is retained for the bundled Gson 2.2.4 API.
     public static StructureJsonParameters read(String source, Reader input) {
         Objects.requireNonNull(source);
@@ -56,33 +60,34 @@ public final class StructureJsonParameters {
         if (depth > 256) throw new StructureJsonException(source, path, "JSON nesting is too deep");
         try {
             return switch (reader.peek()) {
-            case BEGIN_OBJECT -> {
-                reader.beginObject();
-                var result = new JsonObject();
-                while (reader.hasNext()) {
-                    String name = reader.nextName();
-                    String child = childPath(path, name);
-                    if (result.has(name)) throw new StructureJsonException(source, child, "Duplicate JSON member");
-                    result.add(name, readValue(reader, source, child, depth + 1));
+                case BEGIN_OBJECT -> {
+                    reader.beginObject();
+                    var result = new JsonObject();
+                    while (reader.hasNext()) {
+                        String name = reader.nextName();
+                        String child = childPath(path, name);
+                        if (result.has(name)) throw new StructureJsonException(source, child, "Duplicate JSON member");
+                        result.add(name, readValue(reader, source, child, depth + 1));
+                    }
+                    reader.endObject();
+                    yield result;
                 }
-                reader.endObject();
-                yield result;
-            }
-            case BEGIN_ARRAY -> {
-                reader.beginArray();
-                var result = new JsonArray();
-                while (reader.hasNext()) result.add(readValue(reader, source, path + "[" + result.size() + "]", depth + 1));
-                reader.endArray();
-                yield result;
-            }
-            case STRING -> new JsonPrimitive(reader.nextString());
-            case NUMBER -> new JsonPrimitive(new BigDecimal(reader.nextString()));
-            case BOOLEAN -> new JsonPrimitive(reader.nextBoolean());
-            case NULL -> {
-                reader.nextNull();
-                yield JsonNull.INSTANCE;
-            }
-            default -> throw new StructureJsonException(source, path, "Expected JSON value");
+                case BEGIN_ARRAY -> {
+                    reader.beginArray();
+                    var result = new JsonArray();
+                    while (reader.hasNext())
+                        result.add(readValue(reader, source, path + "[" + result.size() + "]", depth + 1));
+                    reader.endArray();
+                    yield result;
+                }
+                case STRING -> new JsonPrimitive(reader.nextString());
+                case NUMBER -> new JsonPrimitive(new BigDecimal(reader.nextString()));
+                case BOOLEAN -> new JsonPrimitive(reader.nextBoolean());
+                case NULL -> {
+                    reader.nextNull();
+                    yield JsonNull.INSTANCE;
+                }
+                default -> throw new StructureJsonException(source, path, "Expected JSON value");
             };
         } catch (IOException | NumberFormatException failure) {
             throw new StructureJsonException(source, path, "Cannot read strict JSON: " + failure.getMessage(), failure);
@@ -92,6 +97,22 @@ public final class StructureJsonParameters {
     private static String childPath(String parent, String field) {
         return field.matches("[A-Za-z_][A-Za-z0-9_]*") ? parent + "." + field
             : parent + "['" + field.replace("\\", "\\\\").replace("'", "\\'") + "']";
+    }
+
+    private static JsonElement copyValue(JsonElement value) {
+        if (value.isJsonNull()) return JsonNull.INSTANCE;
+        if (value.isJsonArray()) {
+            var copy = new JsonArray();
+            for (var entry : value.getAsJsonArray()) copy.add(copyValue(entry));
+            return copy;
+        }
+        if (value.isJsonObject()) {
+            var copy = new JsonObject();
+            value.getAsJsonObject().entrySet().forEach(entry -> copy.add(entry.getKey(), copyValue(entry.getValue())));
+            return copy;
+        }
+        // Parsed primitives contain immutable String/Boolean/BigDecimal values; only arrays/objects mutate.
+        return value;
     }
 
     private JsonObject object() {
@@ -114,7 +135,8 @@ public final class StructureJsonParameters {
     public StructureJsonParameters at(String field) {
         var child = object().get(field);
         String childPath = childPath(path, field);
-        if (child == null || child.isJsonNull()) throw new StructureJsonException(source, childPath, "Required field is missing or null");
+        if (child == null || child.isJsonNull())
+            throw new StructureJsonException(source, childPath, "Required field is missing or null");
         return new StructureJsonParameters(source, childPath, child);
     }
 
@@ -172,7 +194,8 @@ public final class StructureJsonParameters {
     public boolean bool(String field, boolean fallback) {
         if (!has(field)) return fallback;
         var child = at(field);
-        if (!(child.value instanceof JsonPrimitive primitive) || !primitive.isBoolean()) throw child.error("Expected a boolean");
+        if (!(child.value instanceof JsonPrimitive primitive) || !primitive.isBoolean())
+            throw child.error("Expected a boolean");
         return primitive.getAsBoolean();
     }
 
@@ -193,7 +216,9 @@ public final class StructureJsonParameters {
         return new BlockPos(position.at("x").integer(), position.at("y").integer(), position.at("z").integer());
     }
 
-    /** PM shallow NBT constraints: callers provide strings matching bare String tags or typed SNBT. */
+    /**
+     * PM shallow NBT constraints: callers provide strings matching bare String tags or typed SNBT.
+     */
     public Map<String, String> stringMap(String field) {
         if (!has(field)) return Map.of();
         var map = at(field);
@@ -205,36 +230,40 @@ public final class StructureJsonParameters {
         return Object2ObjectMaps.unmodifiable(result);
     }
 
-    /** Arbitrary addon parameters remain available as detached copies, never mutable backing JSON. */
+    /**
+     * Arbitrary addon parameters remain available as detached copies, never mutable backing JSON.
+     */
     public JsonElement copy(String field) {
         return copyValue(at(field).value);
     }
 
-    private static JsonElement copyValue(JsonElement value) {
-        if (value.isJsonNull()) return JsonNull.INSTANCE;
-        if (value.isJsonArray()) {
-            var copy = new JsonArray();
-            for (var entry : value.getAsJsonArray()) copy.add(copyValue(entry));
-            return copy;
-        }
-        if (value.isJsonObject()) {
-            var copy = new JsonObject();
-            value.getAsJsonObject().entrySet().forEach(entry -> copy.add(entry.getKey(), copyValue(entry.getValue())));
-            return copy;
-        }
-        // Parsed primitives contain immutable String/Boolean/BigDecimal values; only arrays/objects mutate.
-        return value;
+    public String source() {
+        return source;
     }
 
-    /** Gson 2.2.4 accepts uppercase literals and some invalid string escapes even with lenient=false. */
+    public String path() {
+        return path;
+    }
+
+    public StructureJsonException error(String message) {
+        return new StructureJsonException(source, path, message);
+    }
+
+    public StructureJsonException error(String message, Throwable cause) {
+        return new StructureJsonException(source, path, message, cause);
+    }
+
+    /**
+     * Gson 2.2.4 accepts uppercase literals and some invalid string escapes even with lenient=false.
+     */
     private static final class LiteralCheckedReader extends Reader {
         private final Reader input;
+        private final StringBuilder token = new StringBuilder();
         private boolean string;
         private boolean escape;
         private int unicode;
         private int line = 1;
         private int column;
-        private final StringBuilder token = new StringBuilder();
 
         private LiteralCheckedReader(Reader input) {
             this.input = input;
@@ -264,7 +293,10 @@ public final class StructureJsonParameters {
                     string = true;
                 } else if ("{}[],: \t\r\n".indexOf(c) >= 0) finishToken();
                 else token.append(c);
-                if (c == '\n') { line++; column = 0; }
+                if (c == '\n') {
+                    line++;
+                    column = 0;
+                }
             }
             return count;
         }
@@ -286,21 +318,5 @@ public final class StructureJsonParameters {
         public void close() throws IOException {
             input.close();
         }
-    }
-
-    public String source() {
-        return source;
-    }
-
-    public String path() {
-        return path;
-    }
-
-    public StructureJsonException error(String message) {
-        return new StructureJsonException(source, path, message);
-    }
-
-    public StructureJsonException error(String message, Throwable cause) {
-        return new StructureJsonException(source, path, message, cause);
     }
 }

@@ -10,7 +10,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Built-in patch data only; overlay type registration remains the host's responsibility. */
+/**
+ * Built-in patch data only; overlay type registration remains the host's responsibility.
+ */
 public final class BuiltinOverlayCodecs {
     public static final NbtCodec<EnergyRequirementPatch> ENERGY_RATES = new NbtCodec<>() {
         @Override

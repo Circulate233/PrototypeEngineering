@@ -12,8 +12,12 @@ import net.minecraft.nbt.NBTTagCompound;
  */
 public interface MachineComponentCodec<C> {
     NBTTagCompound encode(MachineInstance owner, C component);
+
     C restore(MachineInstance owner, C component, NBTTagCompound saved);
 
-    /** Pure checks after complete restoration, before lifecycle load publishes the machine. */
-    default void validate(MachineInstance owner, C component) { }
+    /**
+     * Pure checks after complete restoration, before lifecycle load publishes the machine.
+     */
+    default void validate(MachineInstance owner, C component) {
+    }
 }

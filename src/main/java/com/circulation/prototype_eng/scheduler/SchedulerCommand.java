@@ -31,6 +31,38 @@ public final class SchedulerCommand extends CommandBase {
         this.reload = Objects.requireNonNull(reload);
     }
 
+    private static void settings(ICommandSender sender, SchedulerText state, SchedulerConfig.Settings settings) {
+        sender.sendMessage(SchedulerText.Settings.text(state.text(), settings.workerStrategy().policyLabel(), settings.workerThreads(), settings.laneCount(),
+            settings.plannedTimeout().toString(), settings.metricsEnabled(), settings.metricsLogIntervalTicks(), settings.metricsWindowTicks(),
+            settings.workerStrategy().name()));
+        if (settings.workerStrategy() == SchedulerConfig.WorkerStrategy.VIRTUAL_PER_TASK)
+            sender.sendMessage(SchedulerText.UnboundedWorkers.text(settings.workerThreads()));
+    }
+
+    private static void report(ICommandSender sender, SchedulerReport report) {
+        sender.sendMessage(SchedulerText.Report.text(report.policyLabel(), report.sampleCount(), report.windowTicks(), report.completedTicks()));
+        wall(sender, SchedulerText.Total, report.totalWallNanos());
+        wall(sender, SchedulerText.Main, report.mainWallNanos());
+        wall(sender, SchedulerText.ConcurrentStage, report.concurrentStageWallNanos());
+        wall(sender, SchedulerText.JoinWait, report.joinWallNanos());
+        wall(sender, SchedulerText.Planned, report.plannedWallNanos());
+        wall(sender, SchedulerText.Cleanup, report.cleanupWallNanos());
+        wall(sender, SchedulerText.StructureWorker, report.structureWorkerWallNanos());
+        counts(sender, SchedulerText.MainTasks, report.mainTasks());
+        counts(sender, SchedulerText.ConcurrentTasks, report.concurrentTasks());
+        counts(sender, SchedulerText.CustomMainTasks, report.customMainTasks());
+        counts(sender, SchedulerText.CustomConcurrentTasks, report.customConcurrentTasks());
+        counts(sender, SchedulerText.AffinityGroups, report.affinityGroups());
+    }
+
+    private static void wall(ICommandSender sender, SchedulerText label, SchedulerReport.Stat values) {
+        sender.sendMessage(SchedulerText.Wall.text(label.text(), values.wallMicros()));
+    }
+
+    private static void counts(ICommandSender sender, SchedulerText label, SchedulerReport.Stat values) {
+        sender.sendMessage(SchedulerText.Counts.text(label.text(), values.counts()));
+    }
+
     @Override
     public @NotNull String getName() {
         return "pe_scheduler";
@@ -109,41 +141,9 @@ public final class SchedulerCommand extends CommandBase {
         }
     }
 
-    private static void settings(ICommandSender sender, SchedulerText state, SchedulerConfig.Settings settings) {
-        sender.sendMessage(SchedulerText.Settings.text(state.text(), settings.workerStrategy().policyLabel(), settings.workerThreads(), settings.laneCount(),
-            settings.plannedTimeout().toString(), settings.metricsEnabled(), settings.metricsLogIntervalTicks(), settings.metricsWindowTicks(),
-            settings.workerStrategy().name()));
-        if (settings.workerStrategy() == SchedulerConfig.WorkerStrategy.VIRTUAL_PER_TASK)
-            sender.sendMessage(SchedulerText.UnboundedWorkers.text(settings.workerThreads()));
-    }
-
-    private static void report(ICommandSender sender, SchedulerReport report) {
-        sender.sendMessage(SchedulerText.Report.text(report.policyLabel(), report.sampleCount(), report.windowTicks(), report.completedTicks()));
-        wall(sender, SchedulerText.Total, report.totalWallNanos());
-        wall(sender, SchedulerText.Main, report.mainWallNanos());
-        wall(sender, SchedulerText.ConcurrentStage, report.concurrentStageWallNanos());
-        wall(sender, SchedulerText.JoinWait, report.joinWallNanos());
-        wall(sender, SchedulerText.Planned, report.plannedWallNanos());
-        wall(sender, SchedulerText.Cleanup, report.cleanupWallNanos());
-        wall(sender, SchedulerText.StructureWorker, report.structureWorkerWallNanos());
-        counts(sender, SchedulerText.MainTasks, report.mainTasks());
-        counts(sender, SchedulerText.ConcurrentTasks, report.concurrentTasks());
-        counts(sender, SchedulerText.CustomMainTasks, report.customMainTasks());
-        counts(sender, SchedulerText.CustomConcurrentTasks, report.customConcurrentTasks());
-        counts(sender, SchedulerText.AffinityGroups, report.affinityGroups());
-    }
-
-    private static void wall(ICommandSender sender, SchedulerText label, SchedulerReport.Stat values) {
-        sender.sendMessage(SchedulerText.Wall.text(label.text(), values.wallMicros()));
-    }
-
-    private static void counts(ICommandSender sender, SchedulerText label, SchedulerReport.Stat values) {
-        sender.sendMessage(SchedulerText.Counts.text(label.text(), values.counts()));
-    }
-
     @Override
     public @NotNull List<String> getTabCompletions(@NotNull MinecraftServer server, @NotNull ICommandSender sender,
-                                                  String @NotNull [] arguments, @Nullable BlockPos targetPos) {
+                                                   String @NotNull [] arguments, @Nullable BlockPos targetPos) {
         if (arguments.length == 1)
             return getListOfStringsMatchingLastWord(arguments, "status", "report", "reload", "metrics", "strategy");
         if (arguments.length == 2 && arguments[0].equalsIgnoreCase("metrics"))

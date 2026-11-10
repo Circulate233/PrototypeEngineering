@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
 import net.minecraft.util.math.BlockPos;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -12,7 +13,7 @@ import java.util.Objects;
 public interface StructurePreviewProvider {
     Geometry previewGeometry();
 
-    enum Kind { OPAQUE, TEMPLATE, SLICE }
+    enum Kind {OPAQUE, TEMPLATE, SLICE}
 
     record Geometry(Kind kind, BlockPos offset, int minCount, int maxCount, BlockPos sliceOffset,
                     List<BlockPos> cells, List<MachineStructure> children) {

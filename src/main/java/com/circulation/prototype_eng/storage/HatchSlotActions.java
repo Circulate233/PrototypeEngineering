@@ -1,11 +1,10 @@
 package com.circulation.prototype_eng.storage;
 
 import ae2.api.config.Actionable;
+import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import org.jetbrains.annotations.Nullable;
-
-import ae2.api.stacks.AEKeyType;
 
 /**
  * Cursor transactions against real quantities, never against an ItemStack used only for display.
@@ -14,7 +13,9 @@ public final class HatchSlotActions {
     private HatchSlotActions() {
     }
 
-    /** Caller authorizes the owner/player action; only unreserved contents of this exact type are discarded. */
+    /**
+     * Caller authorizes the owner/player action; only unreserved contents of this exact type are discarded.
+     */
     public static boolean clearAvailable(SlottedResourceStorage inventory, AEKeyType type) {
         if (!inventory.context().tryOrdinaryLock()) {
             return false;

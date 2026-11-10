@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.research.ServerResearch;
 import net.minecraft.server.MinecraftServer;
@@ -11,8 +13,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
-import com.circulation.prototype_eng.api.machine.MachineInstance;
-import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 
 /**
  * One scheduler per actual server session, including integrated-server restarts in the same JVM.
@@ -21,23 +21,33 @@ import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
  */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class ServerTaskSchedulers {
-    @Nullable private static volatile Session session;
+    @Nullable
+    private static volatile Session session;
 
-    private ServerTaskSchedulers() { }
+    private ServerTaskSchedulers() {
+    }
 
     public static synchronized void start(MinecraftServer server) {
         Objects.requireNonNull(server);
-        if (!server.isCallingFromMinecraftThread()) { throw new IllegalStateException("Scheduler startup requires the server thread"); }
-        if (session != null) { throw new IllegalStateException("A server scheduler is already running"); }
+        if (!server.isCallingFromMinecraftThread()) {
+            throw new IllegalStateException("Scheduler startup requires the server thread");
+        }
+        if (session != null) {
+            throw new IllegalStateException("A server scheduler is already running");
+        }
         var settings = SchedulerConfig.settings();
         session = new Session(server, settings);
     }
 
-    /** Exact server identity prevents an old world's callbacks from accessing a new session. */
+    /**
+     * Exact server identity prevents an old world's callbacks from accessing a new session.
+     */
     @SuppressWarnings("unused") // Public registration/submission entry for controller hosts and other addons.
     public static TaskScheduler forServer(MinecraftServer server) {
         var current = session;
-        if (current == null || current.server != server) { throw new IllegalStateException("No scheduler for this server session"); }
+        if (current == null || current.server != server) {
+            throw new IllegalStateException("No scheduler for this server session");
+        }
         return current.scheduler;
     }
 
@@ -52,11 +62,17 @@ public final class ServerTaskSchedulers {
         return requested;
     }
 
-    /** Called after server worlds have unloaded, so their controllers can unregister first. */
+    /**
+     * Called after server worlds have unloaded, so their controllers can unregister first.
+     */
     public static synchronized void stop() {
         var current = session;
-        if (current == null) { return; }
-        if (!current.server.isCallingFromMinecraftThread()) { throw new IllegalStateException("Scheduler shutdown requires the server thread"); }
+        if (current == null) {
+            return;
+        }
+        if (!current.server.isCallingFromMinecraftThread()) {
+            throw new IllegalStateException("Scheduler shutdown requires the server thread");
+        }
         current.scheduler.close();
         session = null;
     }
@@ -64,7 +80,9 @@ public final class ServerTaskSchedulers {
     @SubscribeEvent
     @SuppressWarnings("resource") // FML serverStopped owns closure of this session-wide scheduler.
     public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) { return; }
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
         var current = session;
         if (current != null) {
             var network = ServerNetworkRuntime.forServer(current.server);
@@ -76,8 +94,10 @@ public final class ServerTaskSchedulers {
             current.dataCentersSynced = false;
             try {
                 current.scheduler.tick(current::prepareNetwork);
+            } finally {
+                current.tickOpen = false;
+                network.endTick();
             }
-            finally { current.tickOpen = false; network.endTick(); }
         }
     }
 
@@ -108,7 +128,9 @@ public final class ServerTaskSchedulers {
             return false;
         }
 
-        private List<TaskScheduler.PlannedCandidate> candidates() { return scheduler.plannedCandidates(); }
+        private List<TaskScheduler.PlannedCandidate> candidates() {
+            return scheduler.plannedCandidates();
+        }
 
         @SuppressWarnings("resource") // Only the server lifecycle closes the borrowed network runtime.
         private void prepareNetwork() {

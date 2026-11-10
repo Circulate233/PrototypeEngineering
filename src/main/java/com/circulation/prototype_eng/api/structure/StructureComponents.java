@@ -4,29 +4,31 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
-import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.Collections;
-import java.util.Iterator;
 
-/** Complete immutable port bindings for one accepted structure refresh, independent of tick components. */
+/**
+ * Complete immutable port bindings for one accepted structure refresh, independent of tick components.
+ */
 public final class StructureComponents implements AffinityKeyProvider {
     public static final StructureComponents EMPTY = new StructureComponents(List.of());
     public static final ComponentType<MachineInstance, StructureComponents> TYPE =
@@ -41,7 +43,7 @@ public final class StructureComponents implements AffinityKeyProvider {
     }
 
     private StructureComponents(List<Binding<?>> bindings,
-        Reference2ObjectMap<ComponentType<MachineInstance, ?>, ObjectList<Binding<?>>> byType) {
+                                Reference2ObjectMap<ComponentType<MachineInstance, ?>, ObjectList<Binding<?>>> byType) {
         this.bindings = Collections.unmodifiableList(bindings);
         this.byType = Reference2ObjectMaps.unmodifiable(byType);
     }
@@ -55,26 +57,35 @@ public final class StructureComponents implements AffinityKeyProvider {
             private final ObjectLinkedOpenHashSet<Port> identities = new ObjectLinkedOpenHashSet<>();
             private final ReferenceOpenHashSet<Object> components = new ReferenceOpenHashSet<>();
             private final Object2ObjectOpenHashMap<ResourceLocation, ComponentType<MachineInstance, ?>> types = new Object2ObjectOpenHashMap<>();
-            @Nullable private Iterator<Reference2ObjectMap.Entry<ComponentType<MachineInstance, ?>, ObjectList<Binding<?>>>> freezing;
-            @Override public boolean advance(RecipeWorkBudget work) {
+            @Nullable
+            private Iterator<Reference2ObjectMap.Entry<ComponentType<MachineInstance, ?>, ObjectList<Binding<?>>>> freezing;
+
+            @Override
+            public boolean advance(RecipeWorkBudget work) {
                 if (complete()) return true;
                 while (iterator.hasNext()) {
                     if (!work.take()) return false;
-                    var binding = Objects.requireNonNull(iterator.next()); var entry = binding.entry();
-                    if (!components.add(entry.component())) throw new IllegalArgumentException("A structure port instance was registered twice");
+                    var binding = Objects.requireNonNull(iterator.next());
+                    var entry = binding.entry();
+                    if (!components.add(entry.component()))
+                        throw new IllegalArgumentException("A structure port instance was registered twice");
                     var previous = types.putIfAbsent(entry.type().id(), entry.type());
-                    if (previous != null && previous != entry.type()) throw new IllegalArgumentException("Different structure component types share " + entry.type().id());
+                    if (previous != null && previous != entry.type())
+                        throw new IllegalArgumentException("Different structure component types share " + entry.type().id());
                     if (!identities.add(new Port(binding.context().providerPos(), entry.type(), entry.portId())))
                         throw new IllegalArgumentException("Duplicate structure port at " + binding.context().providerPos() + ": " + entry.portId());
-                    copy.add(binding); indexed.computeIfAbsent(entry.type(), _ -> new ObjectArrayList<>()).add(binding);
+                    copy.add(binding);
+                    indexed.computeIfAbsent(entry.type(), _ -> new ObjectArrayList<>()).add(binding);
                 }
                 if (freezing == null) freezing = indexed.reference2ObjectEntrySet().iterator();
                 while (freezing.hasNext()) {
                     if (!work.take()) return false;
-                    var entry = freezing.next(); entry.setValue(ObjectLists.unmodifiable(entry.getValue()));
+                    var entry = freezing.next();
+                    entry.setValue(ObjectLists.unmodifiable(entry.getValue()));
                 }
                 if (!work.take()) return false;
-                finish(new StructureComponents(copy, indexed)); return true;
+                finish(new StructureComponents(copy, indexed));
+                return true;
             }
         };
     }
@@ -83,7 +94,9 @@ public final class StructureComponents implements AffinityKeyProvider {
         return bindings;
     }
 
-    /** Query by canonical descriptor, preserving stable position and provider entry order. */
+    /**
+     * Query by canonical descriptor, preserving stable position and provider entry order.
+     */
     @SuppressWarnings("unchecked") // Each Entry<C> ties its value to its canonical descriptor identity.
     public <C> List<Binding<C>> get(ComponentType<MachineInstance, C> type) {
         Objects.requireNonNull(type);

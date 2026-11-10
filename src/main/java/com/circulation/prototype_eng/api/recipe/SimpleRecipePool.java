@@ -36,6 +36,7 @@ public final class SimpleRecipePool implements RecipePool {
     private final List<MachineRecipe> recipes;
     private final List<MachineType> machines;
     private final Predicate<MachineInstance> stableInputs;
+    private final @Nullable String existingJeiPageId;
     private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput = new Object2ObjectOpenHashMap<>();
 
     /** Uses the actual owner's scanner/input policy; unknown factories/providers retain every candidate. */
@@ -50,11 +51,11 @@ public final class SimpleRecipePool implements RecipePool {
      * callback must not manufacture a missing input. The index does not authorize acquisition.
      */
     public SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries, Predicate<MachineInstance> stableInputs) {
-        this(id, translationKey, entries, List.of(), stableInputs);
+        this(id, translationKey, entries, List.of(), stableInputs, null);
     }
 
     private SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries, List<MachineType> machines,
-                             Predicate<MachineInstance> stableInputs) {
+                             Predicate<MachineInstance> stableInputs, @Nullable String existingJeiPageId) {
         this.id = Objects.requireNonNull(id);
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
@@ -76,6 +77,7 @@ public final class SimpleRecipePool implements RecipePool {
         });
         recipes = ObjectLists.unmodifiable(rows);
         this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
+        this.existingJeiPageId = existingJeiPageId;
     }
 
     @Override
@@ -99,10 +101,27 @@ public final class SimpleRecipePool implements RecipePool {
     }
 
     @Override
+    public boolean hasExistingJeiPage() {
+        return existingJeiPageId != null;
+    }
+
+    @Override
+    public @Nullable String existingJeiPageId() {
+        return existingJeiPageId;
+    }
+
+    /** Immutable addon binding; existing lookup policy and native quantities remain unchanged. */
+    public SimpleRecipePool withExistingJeiPage(@Nullable String categoryUid) {
+        var entries = new ObjectArrayList<Entry>(recipes.size());
+        for (var recipe : recipes) entries.add(Entry.of(recipe));
+        return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, categoryUid);
+    }
+
+    @Override
     public SimpleRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
         var entries = new ObjectArrayList<Entry>();
         for (var recipe : recipes) entries.add(Entry.of(recipe));
-        return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs);
+        return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, existingJeiPageId);
     }
 
     @Override
@@ -327,7 +346,10 @@ public final class SimpleRecipePool implements RecipePool {
                 public boolean advance(RecipeWorkBudget budget) {
                     Objects.requireNonNull(budget);
                     if (complete) return true;
-                    if (stale) { complete = true; return true; }
+                    if (stale) {
+                        complete = true;
+                        return true;
+                    }
                     if (!ownerChecked) {
                         if (!budget.take()) return false;
                         ownerChecked = true;
@@ -342,7 +364,11 @@ public final class SimpleRecipePool implements RecipePool {
                         boolean valid = cursor < bindingCount ? bindings.get(cursor).current()
                             : captures.get(cursor - bindingCount).current();
                         cursor++;
-                        if (!valid) { stale = true; complete = true; return true; }
+                        if (!valid) {
+                            stale = true;
+                            complete = true;
+                            return true;
+                        }
                     }
                     complete = true;
                     return true;

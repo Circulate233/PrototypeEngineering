@@ -1,9 +1,10 @@
 package com.circulation.prototype_eng.api.recipe.probability;
 
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+
 import java.util.Objects;
 import java.util.Random;
 import java.util.random.RandomGenerator;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 
 /**
  * PM's gameplay sampler: optional exact Bernoulli trials for small n, Poisson approximation below
@@ -26,13 +27,17 @@ public final class BinomialSampler {
     private BinomialSampler() {
     }
 
-    /** Convenience entry point for downstream callers using the current default policy. */
+    /**
+     * Convenience entry point for downstream callers using the current default policy.
+     */
     @SuppressWarnings("unused")
     public static int sample(RandomGenerator random, int n, double probability) {
         return sample(random, n, probability, ProbabilityTuning.defaultTuning());
     }
 
-    /** Nonfinite probability is rejected; finite nonpositive n/p yield zero and p>=1 yields n. */
+    /**
+     * Nonfinite probability is rejected; finite nonpositive n/p yield zero and p>=1 yields n.
+     */
     public static int sample(RandomGenerator random, int n, double probability, ProbabilityTuning tuning) {
         Objects.requireNonNull(random, "random");
         Objects.requireNonNull(tuning, "tuning");
@@ -65,6 +70,25 @@ public final class BinomialSampler {
         double gaussian = GAUSSIAN_TABLE[random.nextInt() & GAUSSIAN_TABLE_MASK];
         int sampled = (int) Math.floor(mean + deviation * gaussian + 0.5);
         return Math.clamp(sampled, 0, n);
+    }
+
+    /**
+     * Stop once the clamped result is known, preventing counter overflow even with extreme draws.
+     */
+    private static int poisson(RandomGenerator random, double mean, int maximum) {
+        double limit = Math.exp(-mean);
+        double product = 1;
+        int successes = 0;
+        while (true) {
+            product *= random.nextDouble();
+            if (product <= limit) {
+                return successes;
+            }
+            if (successes == maximum) {
+                return maximum;
+            }
+            successes++;
+        }
     }
 
     /**
@@ -151,23 +175,6 @@ public final class BinomialSampler {
                 throw new IllegalStateException("Binomial draw is incomplete");
             }
             return result;
-        }
-    }
-
-    /** Stop once the clamped result is known, preventing counter overflow even with extreme draws. */
-    private static int poisson(RandomGenerator random, double mean, int maximum) {
-        double limit = Math.exp(-mean);
-        double product = 1;
-        int successes = 0;
-        while (true) {
-            product *= random.nextDouble();
-            if (product <= limit) {
-                return successes;
-            }
-            if (successes == maximum) {
-                return maximum;
-            }
-            successes++;
         }
     }
 }

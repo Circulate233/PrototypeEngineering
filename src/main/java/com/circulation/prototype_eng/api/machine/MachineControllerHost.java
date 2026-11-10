@@ -8,7 +8,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.UnaryOperator;
 
-/** Physical controller interaction and GUI access, independent of the default controller tile. */
+/**
+ * Physical controller interaction and GUI access, independent of the default controller tile.
+ */
 public interface MachineControllerHost {
     AEBaseTile blockEntity();
 
@@ -17,7 +19,9 @@ public interface MachineControllerHost {
     @Nullable
     MachineInstance machine();
 
-    /** Exact currently attached or pending-save ownership; null means the host cannot prove it. */
+    /**
+     * Exact currently attached or pending-save ownership; null means the host cannot prove it.
+     */
     @Nullable
     default PersistentMachineIdentity savedIdentity() {
         return null;
@@ -27,10 +31,14 @@ public interface MachineControllerHost {
 
     boolean formed();
 
-    /** Runs after workers join; callers must recheck their open container inside the callback. */
+    /**
+     * Runs after workers join; callers must recheck their open container inside the callback.
+     */
     void readGuiAtBoundary(Runnable read);
 
-    /** Relative transforms use the orientation current at the host's ownership boundary. */
+    /**
+     * Relative transforms use the orientation current at the host's ownership boundary.
+     */
     void transformOrientation(UnaryOperator<BlockOrientation> transformation);
 
     void placedBy(EntityLivingBase placer);

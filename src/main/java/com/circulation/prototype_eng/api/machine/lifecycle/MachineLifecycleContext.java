@@ -6,7 +6,9 @@ import net.minecraft.world.World;
 
 import java.util.Objects;
 
-/** Frozen identity and formed value at a synchronous event; world access must not escape to workers. */
+/**
+ * Frozen identity and formed value at a synchronous event; world access must not escape to workers.
+ */
 public record MachineLifecycleContext(MachineInstance machine, MachineIdentity identity,
                                       MachineLifecycleHost host, boolean formed) {
     public MachineLifecycleContext {
@@ -15,6 +17,11 @@ public record MachineLifecycleContext(MachineInstance machine, MachineIdentity i
         Objects.requireNonNull(host);
     }
 
-    public World world() { return host.world(); }
-    public MinecraftServer server() { return host.server(); }
+    public World world() {
+        return host.world();
+    }
+
+    public MinecraftServer server() {
+        return host.server();
+    }
 }

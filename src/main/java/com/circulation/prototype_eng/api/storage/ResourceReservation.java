@@ -16,13 +16,21 @@ import org.jetbrains.annotations.Nullable;
  */
 public interface ResourceReservation {
     StorageContext context();
+
     boolean canApply();
+
     void apply();
+
     void complete();
+
     void rollback();
 
-    /** Whether applied effects can be reused by later steps in the same isolated sequence. */
-    default boolean supportsSequentialUse() { return false; }
+    /**
+     * Whether applied effects can be reused by later steps in the same isolated sequence.
+     */
+    default boolean supportsSequentialUse() {
+        return false;
+    }
 
     /**
      * Release this applied token's quantity/refund holds to the same retained StorageFence without
@@ -35,7 +43,9 @@ public interface ResourceReservation {
      * check supportsSequentialUse before accepting the token into a sequence. External storage
      * implementations opt in only when they can honor this stronger compensation contract.
      */
-    default void exposeApplied() { throw new UnsupportedOperationException("Reservation does not support sequential use"); }
+    default void exposeApplied() {
+        throw new UnsupportedOperationException("Reservation does not support sequential use");
+    }
 
     /**
      * Optional exact recovery proof, read under the context lock. UNKNOWN forbids retrying a failed
@@ -44,38 +54,58 @@ public interface ResourceReservation {
      * COMPLETED/ROLLED_BACK certify that it must not be replayed. Implementations unable to provide
      * this proof may still participate, but a throwing terminal callback retains its batch fence.
      */
-    default Resolution resolution() { return Resolution.UNKNOWN; }
+    default Resolution resolution() {
+        return Resolution.UNKNOWN;
+    }
 
-    /** Null is ordinary work yield; false is a completed rejection. */
+    /**
+     * Null is ordinary work yield; false is a completed rejection.
+     */
     default @Nullable Boolean canApplyWithinBudget(RecipeWorkBudget budget) {
         return budget.take() ? canApply() : null;
     }
 
-    /** False is a resumable work yield, never completion or an unknown terminal effect. */
+    /**
+     * False is a resumable work yield, never completion or an unknown terminal effect.
+     */
     default boolean applyWithinBudget(RecipeWorkBudget budget) {
-        if (!budget.take()) { return false; }
-        apply(); return true;
+        if (!budget.take()) {
+            return false;
+        }
+        apply();
+        return true;
     }
 
     default boolean exposeAppliedWithinBudget(RecipeWorkBudget budget) {
-        if (!budget.take()) { return false; }
-        exposeApplied(); return true;
+        if (!budget.take()) {
+            return false;
+        }
+        exposeApplied();
+        return true;
     }
 
     default boolean completeWithinBudget(RecipeWorkBudget budget) {
-        if (!budget.take()) { return false; }
-        complete(); return true;
+        if (!budget.take()) {
+            return false;
+        }
+        complete();
+        return true;
     }
 
     default boolean rollbackWithinBudget(RecipeWorkBudget budget) {
-        if (!budget.take()) { return false; }
-        rollback(); return true;
+        if (!budget.take()) {
+            return false;
+        }
+        rollback();
+        return true;
     }
 
-    /** Null yields. REVERSIBLE certifies an exact partial journal, not a full APPLIED token. */
+    /**
+     * Null yields. REVERSIBLE certifies an exact partial journal, not a full APPLIED token.
+     */
     default @Nullable Resolution resolutionWithinBudget(RecipeWorkBudget budget) {
         return budget.take() ? resolution() : null;
     }
 
-    enum Resolution { UNKNOWN, RESERVED, APPLIED, COMPLETED, ROLLED_BACK, REVERSIBLE}
+    enum Resolution {UNKNOWN, RESERVED, APPLIED, COMPLETED, ROLLED_BACK, REVERSIBLE}
 }

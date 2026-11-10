@@ -34,9 +34,38 @@ class NbtPersistenceTest {
     private static final KeyType TYPE = new KeyType("nbt_persistence");
     private static final AEKeyType RETAINING_TYPE = new AEKeyType(new ResourceLocation("persistence_test", "retaining"),
         RetainingKey.class, new TextComponentString("retaining")) {
-        @Override public AEKey readFromPacket(PacketBuffer input) { throw new UnsupportedOperationException(); }
-        @Override public AEKey loadKeyFromTag(NBTTagCompound tag) { return new RetainingKey(tag); }
+        @Override
+        public AEKey readFromPacket(PacketBuffer input) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AEKey loadKeyFromTag(NBTTagCompound tag) {
+            return new RetainingKey(tag);
+        }
     };
+
+    private static AttributeModifierCodec squareCodec() {
+        return new AttributeModifierCodec() {
+            @Override
+            public boolean supports(AttributeModifier modifier) {
+                return modifier instanceof SquareModifier;
+            }
+
+            @Override
+            public NBTTagCompound encode(AttributeModifier value) {
+                var tag = new NBTTagCompound();
+                tag.setString("Id", value.id());
+                return tag;
+            }
+
+            @Override
+            public AttributeModifier decode(NBTTagCompound tag) {
+                StrictNbt.requireKeys(tag, "Id");
+                return new SquareModifier(StrictNbt.requireString(tag, "Id"));
+            }
+        };
+    }
 
     @Test
     void rejectsMissingFieldsNumericCoercionInvalidBooleansAndNonfiniteNumbers() {
@@ -85,8 +114,15 @@ class NbtPersistenceTest {
 
         var foreign = new AEKeyType(new ResourceLocation("persistence_test", "foreign"), Key.class,
             new TextComponentString("foreign")) {
-            @Override public AEKey readFromPacket(PacketBuffer input) { throw new UnsupportedOperationException(); }
-            @Override public AEKey loadKeyFromTag(NBTTagCompound tag) { return new Key(TYPE, "material"); }
+            @Override
+            public AEKey readFromPacket(PacketBuffer input) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public AEKey loadKeyFromTag(NBTTagCompound tag) {
+                return new Key(TYPE, "material");
+            }
         };
         var foreignTag = new NBTTagCompound();
         foreignTag.setString("Type", foreign.getId().toString());
@@ -95,8 +131,15 @@ class NbtPersistenceTest {
 
         var absent = new AEKeyType(new ResourceLocation("persistence_test", "absent"), Key.class,
             new TextComponentString("absent")) {
-            @Override public AEKey readFromPacket(PacketBuffer input) { throw new UnsupportedOperationException(); }
-            @Override public AEKey loadKeyFromTag(NBTTagCompound tag) { return null; }
+            @Override
+            public AEKey readFromPacket(PacketBuffer input) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public AEKey loadKeyFromTag(NBTTagCompound tag) {
+                return null;
+            }
         };
         foreignTag.setString("Type", absent.getId().toString());
         assertThrows(IllegalArgumentException.class, () -> new ResourceKeyNbt(_ -> absent).decode(foreignTag));
@@ -262,12 +305,19 @@ class NbtPersistenceTest {
     void copiesExternalCodecOutputAndInputBeforeCallingTheImplementation() {
         var shared = new NBTTagCompound();
         var external = new AttributeModifierCodec() {
-            @Override public boolean supports(AttributeModifier modifier) { return modifier instanceof SquareModifier; }
-            @Override public NBTTagCompound encode(AttributeModifier value) {
+            @Override
+            public boolean supports(AttributeModifier modifier) {
+                return modifier instanceof SquareModifier;
+            }
+
+            @Override
+            public NBTTagCompound encode(AttributeModifier value) {
                 shared.setString("Id", value.id());
                 return shared;
             }
-            @Override public AttributeModifier decode(NBTTagCompound tag) {
+
+            @Override
+            public AttributeModifier decode(NBTTagCompound tag) {
                 var id = StrictNbt.requireString(tag, "Id");
                 tag.setString("Id", "decoder mutation");
                 return new SquareModifier(id);
@@ -305,40 +355,71 @@ class NbtPersistenceTest {
         assertThrows(IllegalArgumentException.class, () -> energy.decode(invalid));
     }
 
-    private static AttributeModifierCodec squareCodec() {
-        return new AttributeModifierCodec() {
-            @Override public boolean supports(AttributeModifier modifier) { return modifier instanceof SquareModifier; }
-            @Override public NBTTagCompound encode(AttributeModifier value) {
-                var tag = new NBTTagCompound();
-                tag.setString("Id", value.id());
-                return tag;
-            }
-            @Override public AttributeModifier decode(NBTTagCompound tag) {
-                StrictNbt.requireKeys(tag, "Id");
-                return new SquareModifier(StrictNbt.requireString(tag, "Id"));
-            }
-        };
-    }
-
     private record SquareModifier(String id) implements AttributeModifier {
-        @Override public Operation operation() { return Operation.ADDITION; }
-        @Override public double apply(double base, double current) { return current * current; }
+        @Override
+        public Operation operation() {
+            return Operation.ADDITION;
+        }
+
+        @Override
+        public double apply(double base, double current) {
+            return current * current;
+        }
     }
 
-    /** Deliberately returns and retains its tag to expose codec aliasing. */
+    /**
+     * Deliberately returns and retains its tag to expose codec aliasing.
+     */
     private static final class RetainingKey extends AEKey {
         private final NBTTagCompound data;
 
-        private RetainingKey(NBTTagCompound data) { this.data = data; }
+        private RetainingKey(NBTTagCompound data) {
+            this.data = data;
+        }
 
-        @Override public AEKeyType getType() { return RETAINING_TYPE; }
-        @Override public AEKey dropSecondary() { return this; }
-        @Override public Object getPrimaryKey() { return this; }
-        @Override public ResourceLocation getId() { return RETAINING_TYPE.getId(); }
-        @Override public Object getReadOnlyStack() { return this; }
-        @Override protected ITextComponent computeDisplayName() { return new TextComponentString("retaining"); }
-        @Override public NBTBase get(String componentId) { return data.getTag(componentId); }
-        @Override public void writeToPacket(PacketBuffer output) { throw new UnsupportedOperationException(); }
-        @Override public NBTTagCompound toTag() { return data; }
+        @Override
+        public AEKeyType getType() {
+            return RETAINING_TYPE;
+        }
+
+        @Override
+        public AEKey dropSecondary() {
+            return this;
+        }
+
+        @Override
+        public Object getPrimaryKey() {
+            return this;
+        }
+
+        @Override
+        public ResourceLocation getId() {
+            return RETAINING_TYPE.getId();
+        }
+
+        @Override
+        public Object getReadOnlyStack() {
+            return this;
+        }
+
+        @Override
+        protected ITextComponent computeDisplayName() {
+            return new TextComponentString("retaining");
+        }
+
+        @Override
+        public NBTBase get(String componentId) {
+            return data.getTag(componentId);
+        }
+
+        @Override
+        public void writeToPacket(PacketBuffer output) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public NBTTagCompound toTag() {
+            return data;
+        }
     }
 }

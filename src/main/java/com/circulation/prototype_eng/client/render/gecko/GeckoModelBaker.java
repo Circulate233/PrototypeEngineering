@@ -1,8 +1,10 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.client.renderer.BufferBuilder;
+import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib3.geo.render.built.GeoBone;
 import software.bernie.geckolib3.geo.render.built.GeoCube;
 import software.bernie.geckolib3.geo.render.built.GeoModel;
@@ -11,53 +13,12 @@ import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
 import java.util.Set;
 import java.util.function.Function;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import org.jetbrains.annotations.Nullable;
 
 /** CPU-only hierarchy baker. Read-only SoA and cube-sized packed writes serve all three output paths. */
 public class GeckoModelBaker {
     private static final int WHITE = GeckoBakerMath.packColor(1, 1, 1, 1);
-
-    public enum BakeMode {ALL, PERMANENT_STATIC_ONLY, TEMP_STATIC_ONLY, ANIMATED_ONLY}
-
-    @FunctionalInterface
-    public interface PackedVertexDataWriter {
-        /** Consume synchronously without retaining the borrowed array; a batch contains whole quads. */
-        void write(int[] data, int offset, int length);
-    }
-
     private final GeckoCubeQuadVertexCache cubes = new GeckoCubeQuadVertexCache();
     private final Object2ObjectLinkedOpenHashMap<Estimate, int[]> estimates = new Object2ObjectLinkedOpenHashMap<>();
-
-    public int[] estimateRoutedFilteredVertexCounts(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
-        var key = new Estimate(model, Set.copyOf(active), mode, Set.copyOf(potential));
-        var hit = estimates.getAndMoveToLast(key);
-        if (hit != null) return hit.clone();
-        int[] out = new int[4];
-        for (var bone : model.topLevelBones) estimate(bone, active, potential, mode, false, false, 0, out);
-        if (estimates.size() == 64) estimates.removeFirst();
-        estimates.put(key, out);
-        return out.clone();
-    }
-
-    private record Estimate(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
-    }
-
-    private void estimate(GeoBone bone, Set<String> active, Set<String> potential, BakeMode mode,
-                          boolean parentDynamic, boolean parentPotential, int inheritedPass, int[] out) {
-        boolean dynamic = parentDynamic || active.contains(bone.name);
-        boolean possible = parentPotential || potential.contains(bone.name);
-        if (skipSubtree(mode, dynamic, possible)) return;
-        int pass = route(bone.name, inheritedPass);
-        if (emit(mode, dynamic, possible) && !bone.isHidden) {
-            for (var cube : bone.childCubes) {
-                int count = cubes.get(cube).vertexCount();
-                out[pass] = Math.addExact(out[pass], count);
-            }
-        }
-        if (!bone.childBonesAreHiddenToo()) for (var child : bone.childBones)
-            estimate(child, active, potential, mode, dynamic, possible, pass, out);
-    }
 
     private static boolean skipSubtree(BakeMode mode, boolean dynamic, boolean potential) {
         return mode == BakeMode.PERMANENT_STATIC_ONLY && potential || mode == BakeMode.TEMP_STATIC_ONLY && dynamic;
@@ -87,6 +48,33 @@ public class GeckoModelBaker {
             case 3 -> MachineRenderPass.BLOOM_TRANSPARENT;
             default -> throw new IllegalArgumentException("Invalid routed pass");
         };
+    }
+
+    public int[] estimateRoutedFilteredVertexCounts(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
+        var key = new Estimate(model, Set.copyOf(active), mode, Set.copyOf(potential));
+        var hit = estimates.getAndMoveToLast(key);
+        if (hit != null) return hit.clone();
+        int[] out = new int[4];
+        for (var bone : model.topLevelBones) estimate(bone, active, potential, mode, false, false, 0, out);
+        if (estimates.size() == 64) estimates.removeFirst();
+        estimates.put(key, out);
+        return out.clone();
+    }
+
+    private void estimate(GeoBone bone, Set<String> active, Set<String> potential, BakeMode mode,
+                          boolean parentDynamic, boolean parentPotential, int inheritedPass, int[] out) {
+        boolean dynamic = parentDynamic || active.contains(bone.name);
+        boolean possible = parentPotential || potential.contains(bone.name);
+        if (skipSubtree(mode, dynamic, possible)) return;
+        int pass = route(bone.name, inheritedPass);
+        if (emit(mode, dynamic, possible) && !bone.isHidden) {
+            for (var cube : bone.childCubes) {
+                int count = cubes.get(cube).vertexCount();
+                out[pass] = Math.addExact(out[pass], count);
+            }
+        }
+        if (!bone.childBonesAreHiddenToo()) for (var child : bone.childBones)
+            estimate(child, active, potential, mode, dynamic, possible, pass, out);
     }
 
     public void bakeRoutedFiltered(GeoModel model, GeckoBakerMath.MatrixStack stack,
@@ -166,7 +154,18 @@ public class GeckoModelBaker {
                     vertex++;
                 }
             }
-                writer.write(packed, 0, packed.length);
+        writer.write(packed, 0, packed.length);
+    }
+
+    public enum BakeMode {ALL, PERMANENT_STATIC_ONLY, TEMP_STATIC_ONLY, ANIMATED_ONLY}
+
+    @FunctionalInterface
+    public interface PackedVertexDataWriter {
+        /** Consume synchronously without retaining the borrowed array; a batch contains whole quads. */
+        void write(int[] data, int offset, int length);
+    }
+
+    private record Estimate(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
     }
 
     protected static final class Scratch {

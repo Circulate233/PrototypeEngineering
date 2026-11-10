@@ -5,12 +5,15 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DatabaseGuiActionCodecTest {
     private final Gson codec = new GsonBuilder().create();
 
-    @Test void databaseViewUsesDefaultGsonForItsActualInboundAndOutboundShape() {
+    @Test
+    void databaseViewUsesDefaultGsonForItsActualInboundAndOutboundShape() {
         String json = "{\"offset\":12,\"research\":\"test:research\",\"level\":3}";
         var decoded = codec.fromJson(json, ResearchContainer.DatabaseView.class);
         assertEquals(12, decoded.offset);
@@ -20,7 +23,8 @@ class DatabaseGuiActionCodecTest {
         assertEquals(codec.fromJson(json, JsonObject.class), codec.fromJson(encoded, JsonObject.class));
     }
 
-    @Test void downloadWireRetainsTheLastDisplayedTeamAndPhysicalDatabase() {
+    @Test
+    void downloadWireRetainsTheLastDisplayedTeamAndPhysicalDatabase() {
         String database = "00000000-0000-0000-0000-000000000041";
         String json = """
             {"team":"team","database":"00000000-0000-0000-0000-000000000041","research":"test:research","level":3}
@@ -34,8 +38,9 @@ class DatabaseGuiActionCodecTest {
         assertEquals(codec.fromJson(json, JsonObject.class), codec.fromJson(encoded, JsonObject.class));
     }
 
-    @Test void oldDrawnTeamRejectsSameResearchAndLevelInTheNewTeam() {
-        for (var kind : new ResearchContainer.Kind[] { ResearchContainer.Kind.START, ResearchContainer.Kind.BLACKLIST, ResearchContainer.Kind.TAKEOVER }) {
+    @Test
+    void oldDrawnTeamRejectsSameResearchAndLevelInTheNewTeam() {
+        for (var kind : new ResearchContainer.Kind[]{ResearchContainer.Kind.START, ResearchContainer.Kind.BLACKLIST, ResearchContainer.Kind.TAKEOVER}) {
             var sent = new ResearchContainer.Action(kind, "test:research", 3, 41, "", true, "team_a");
             var received = codec.fromJson(codec.toJson(sent), ResearchContainer.Action.class);
             assertEquals("test:research", received.research);
@@ -49,7 +54,8 @@ class DatabaseGuiActionCodecTest {
         assertFalse(ResearchContainer.matchesDisplayedTeam(missingTeam.kind, missingTeam.expectedTeam, "team_b"));
     }
 
-    @Test void permanentRewardClaimRemainsAvailableAfterChangingTeams() {
+    @Test
+    void permanentRewardClaimRemainsAvailableAfterChangingTeams() {
         var sent = new ResearchContainer.Action(ResearchContainer.Kind.CLAIM, "test:research", 3, 0, "test:group", false, "team_a");
         var received = codec.fromJson(codec.toJson(sent), ResearchContainer.Action.class);
         assertTrue(ResearchContainer.matchesDisplayedTeam(received.kind, received.expectedTeam, "team_b"));

@@ -10,8 +10,6 @@ public record JeiRenderOptions(boolean chanceOverlay, CandidateMode candidates, 
         Objects.requireNonNull(candidates);
     }
 
-    public enum CandidateMode { ALTERNATIVES, EXPANDED }
-
     public static JeiRenderOptions defaults() {
         return defaults;
     }
@@ -19,4 +17,6 @@ public record JeiRenderOptions(boolean chanceOverlay, CandidateMode candidates, 
     public static void defaults(JeiRenderOptions options) {
         defaults = Objects.requireNonNull(options);
     }
+
+    public enum CandidateMode {ALTERNATIVES, EXPANDED}
 }

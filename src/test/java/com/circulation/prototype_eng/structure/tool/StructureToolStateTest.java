@@ -1,8 +1,9 @@
 package com.circulation.prototype_eng.structure.tool;
 
-import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
+import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.item.OrientationToolOrientations;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -11,10 +12,16 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StructureToolStateTest {
     @Test

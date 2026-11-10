@@ -4,7 +4,9 @@ import net.minecraftforge.fml.common.eventhandler.Event;
 
 import java.util.Objects;
 
-/** Java item providers register after computing metadata freezes and before dependent definitions load. */
+/**
+ * Java item providers register after computing metadata freezes and before dependent definitions load.
+ */
 public final class NetworkComputerComponentRegistrationEvent extends Event {
     private final NetworkComputerComponentRegistry registry;
 
@@ -13,5 +15,7 @@ public final class NetworkComputerComponentRegistrationEvent extends Event {
     }
 
     @SuppressWarnings("unused") // Java addon registration entry.
-    public NetworkComputerComponentRegistry registry() { return registry; }
+    public NetworkComputerComponentRegistry registry() {
+        return registry;
+    }
 }

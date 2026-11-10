@@ -46,6 +46,17 @@ public final class StructurePreviews implements AutoCloseable {
         return proxy.previews();
     }
 
+    private static Throwable mergeCloseFailure(Throwable original, Throwable next) {
+        if (original == null) return next;
+        if (original == next) return original;
+        if (next instanceof VirtualMachineError && !(original instanceof VirtualMachineError)) {
+            next.addSuppressed(original);
+            return next;
+        }
+        original.addSuppressed(next);
+        return original;
+    }
+
     public @Nullable Request request(ResourceLocation id, StructurePreviewSettings settings) {
         requireOpen();
         return requests.get(id, settings, (view, _) -> new Request(this, view, id, settings));
@@ -57,8 +68,15 @@ public final class StructurePreviews implements AutoCloseable {
     }
 
     /** Current authoritative names for client command completion; incomplete packets remain private. */
-    public @Nullable StructureCatalogView catalogView() { requireOpen(); return catalog.view(); }
-    public AutoCloseable onInvalidated(Runnable callback) { requireOpen(); return catalog.onInvalidated(callback); }
+    public @Nullable StructureCatalogView catalogView() {
+        requireOpen();
+        return catalog.view();
+    }
+
+    public AutoCloseable onInvalidated(Runnable callback) {
+        requireOpen();
+        return catalog.onInvalidated(callback);
+    }
 
     /**
      * Starts presentation intent only; it never places blocks or alters the server.
@@ -111,15 +129,6 @@ public final class StructurePreviews implements AutoCloseable {
         };
     }
 
-    @SuppressWarnings("ClassCanBeRecord") // Each subscription keeps its identity when the Runnable is shared.
-    private static final class CloseListener {
-        private final Runnable callback;
-
-        private CloseListener(Runnable callback) {
-            this.callback = callback;
-        }
-    }
-
     @Override
     public void close() {
         catalog.view();
@@ -152,15 +161,15 @@ public final class StructurePreviews implements AutoCloseable {
         if (failure instanceof Error error) throw error;
     }
 
-    private static Throwable mergeCloseFailure(Throwable original, Throwable next) {
-        if (original == null) return next;
-        if (original == next) return original;
-        if (next instanceof VirtualMachineError && !(original instanceof VirtualMachineError)) {
-            next.addSuppressed(original);
-            return next;
+    public enum State {BUILDING, READY, STALE, FAILED}
+
+    @SuppressWarnings("ClassCanBeRecord") // Each subscription keeps its identity when the Runnable is shared.
+    private static final class CloseListener {
+        private final Runnable callback;
+
+        private CloseListener(Runnable callback) {
+            this.callback = callback;
         }
-        original.addSuppressed(next);
-        return original;
     }
 
     public record Projection(ResourceLocation id, StructurePreviewSettings settings, BlockPos anchor,
@@ -172,8 +181,6 @@ public final class StructurePreviews implements AutoCloseable {
             anchor = Objects.requireNonNull(anchor).toImmutable();
         }
     }
-
-    public enum State {BUILDING, READY, STALE, FAILED}
 
     public static final class Request {
         private final StructurePreviews owner;

@@ -13,8 +13,8 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -51,8 +51,15 @@ public final class NetworkParticipants {
         return ServerNetworkRuntime.participants(server);
     }
 
+    private static boolean sameOwner(OwnerTeamResolution expected, OwnerTeamResolution current) {
+        return expected.ownerId().equals(current.ownerId()) && expected.status() == current.status()
+            && (!expected.accepted() || expected.teamId().equals(current.teamId()) && expected.teamType() == current.teamType()
+            && expected.members().equals(current.members()) && expected.teamOwnerId().equals(current.teamOwnerId()));
+    }
+
     /** The returned handle alone can detach this exact registration, including after replacement. */
-    @SuppressWarnings("ReturnOfInnerClass") // Exact handles deliberately retain their owning session and cleanup authority.
+    @SuppressWarnings("ReturnOfInnerClass")
+    // Exact handles deliberately retain their owning session and cleanup authority.
     public Registration register(NetworkParticipant participant) {
         runtime.requireMutation();
         begin();
@@ -65,7 +72,8 @@ public final class NetworkParticipants {
             if (Objects.requireNonNull(participant.state()) == NetworkParticipant.State.UNREGISTERED) {
                 throw new IllegalArgumentException("Cannot register an unregistered participant");
             }
-            if (registrations.containsKey(id)) throw new IllegalArgumentException("Duplicate participant identity: " + id);
+            if (registrations.containsKey(id))
+                throw new IllegalArgumentException("Duplicate participant identity: " + id);
             var registration = new Registration(participant, id, owner, kind);
             registration.requireIdentity();
             runtime.revoke();
@@ -98,7 +106,8 @@ public final class NetworkParticipants {
 
     private void begin() {
         ownerCheck.run();
-        if (operating || runtime.capturing()) throw new IllegalStateException("Participant callback reentry is forbidden");
+        if (operating || runtime.capturing())
+            throw new IllegalStateException("Participant callback reentry is forbidden");
         operating = true;
     }
 
@@ -200,7 +209,8 @@ public final class NetworkParticipants {
                 if (capture != null) {
                     if (!capture.current().getAsBoolean()) return false;
                     var expected = captures.owners.get(registration.owner);
-                    if (expected != null && !sameOwner(expected, Objects.requireNonNull(teams.resolve(registration.owner)))) return false;
+                    if (expected != null && !sameOwner(expected, Objects.requireNonNull(teams.resolve(registration.owner))))
+                        return false;
                     // A proof/resolver may discover an invalidation; sample identity and state once more.
                     registration.requireIdentity();
                     if (registration.participant.state() != observed.state) return false;
@@ -212,25 +222,41 @@ public final class NetworkParticipants {
         }
     }
 
-    private static boolean sameOwner(OwnerTeamResolution expected, OwnerTeamResolution current) {
-        return expected.ownerId().equals(current.ownerId()) && expected.status() == current.status()
-            && (!expected.accepted() || expected.teamId().equals(current.teamId()) && expected.teamType() == current.teamType()
-            && expected.members().equals(current.members()) && expected.teamOwnerId().equals(current.teamOwnerId()));
+    public enum PlanStatus {
+        ACCEPTED, INACTIVE, DUPLICATE_PLAN, NO_SNAPSHOT, STALE_SNAPSHOT, OWNER_TEAM_REJECTED,
+        WORK_UNSUPPORTED, SOURCE_UNSUPPORTED, LEASE_DENIED, RESOURCE_DENIED
     }
 
+    public enum WorkState {PLANNED, COMMITTED, CANCELLING, CANCELLED}
+
+    public enum WorkResult {COMMITTED, ALREADY_COMMITTED, CANCELLED, ALREADY_CANCELLED, CLEANUP_PENDING}
+
     static final class CaptureSet {
+        final ObjectArrayList<NetworkContribution> contributions = new ObjectArrayList<>();
         private final Reference2ObjectLinkedOpenHashMap<Registration, Observed> observed = new Reference2ObjectLinkedOpenHashMap<>();
         private final Object2ObjectOpenHashMap<UUID, OwnerTeamResolution> owners = new Object2ObjectOpenHashMap<>();
-        final ObjectArrayList<NetworkContribution> contributions = new ObjectArrayList<>();
 
         void bindOwners(NetworkPlanner.Inputs inputs) {
             for (var registration : observed.keySet()) {
-                if (observed.get(registration).capture != null) owners.put(registration.owner, inputs.owner(registration.owner));
+                if (observed.get(registration).capture != null)
+                    owners.put(registration.owner, inputs.owner(registration.owner));
             }
         }
     }
 
     private record Observed(NetworkParticipant.State state, @Nullable NetworkParticipant.Capture capture) {
+    }
+
+    public record PlanResult(PlanStatus status, @Nullable Work work) {
+        public PlanResult {
+            Objects.requireNonNull(status);
+            if ((status == PlanStatus.ACCEPTED) == (work == null))
+                throw new IllegalArgumentException("Inconsistent participant plan result");
+        }
+
+        private static PlanResult denied(PlanStatus status) {
+            return new PlanResult(status, null);
+        }
     }
 
     public final class Registration implements AutoCloseable {
@@ -278,7 +304,8 @@ public final class NetworkParticipants {
                 if (stopping || !active) return PlanResult.denied(PlanStatus.INACTIVE);
                 if (workById.containsKey(planId)) return PlanResult.denied(PlanStatus.DUPLICATE_PLAN);
                 for (var work : pending) {
-                    if (work.registration == this && work.command.planId().equals(planId)) return PlanResult.denied(PlanStatus.DUPLICATE_PLAN);
+                    if (work.registration == this && work.command.planId().equals(planId))
+                        return PlanResult.denied(PlanStatus.DUPLICATE_PLAN);
                 }
                 var publication = runtime.publication();
                 if (publication == null) return PlanResult.denied(PlanStatus.NO_SNAPSHOT);
@@ -292,11 +319,14 @@ public final class NetworkParticipants {
                     return PlanResult.denied(PlanStatus.OWNER_TEAM_REJECTED);
                 }
                 NetworkParticipant.WorkType selectedWork = null;
-                for (var candidate : snapshot.workTypes()) if (candidate.id().equals(workType)) selectedWork = candidate;
+                for (var candidate : snapshot.workTypes())
+                    if (candidate.id().equals(workType)) selectedWork = candidate;
                 if (selectedWork == null) return PlanResult.denied(PlanStatus.WORK_UNSUPPORTED);
                 NetworkParticipant.MaterialSource selectedSource = null;
-                for (var candidate : snapshot.materialSources()) if (candidate.id().equals(materialSource)) selectedSource = candidate;
-                if (materialSource != null && selectedSource == null) return PlanResult.denied(PlanStatus.SOURCE_UNSUPPORTED);
+                for (var candidate : snapshot.materialSources())
+                    if (candidate.id().equals(materialSource)) selectedSource = candidate;
+                if (materialSource != null && selectedSource == null)
+                    return PlanResult.denied(PlanStatus.SOURCE_UNSUPPORTED);
                 var budget = runtime.participantBudget(resolved.teamId());
                 var lease = budget.requestLease(id);
                 if (lease == NetworkTeamBudget.LeaseStatus.EXPIRED || lease == NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY) {
@@ -345,24 +375,6 @@ public final class NetworkParticipants {
             }
         }
     }
-
-    public enum PlanStatus {ACCEPTED, INACTIVE, DUPLICATE_PLAN, NO_SNAPSHOT, STALE_SNAPSHOT, OWNER_TEAM_REJECTED,
-        WORK_UNSUPPORTED, SOURCE_UNSUPPORTED, LEASE_DENIED, RESOURCE_DENIED}
-
-    public record PlanResult(PlanStatus status, @Nullable Work work) {
-        public PlanResult {
-            Objects.requireNonNull(status);
-            if ((status == PlanStatus.ACCEPTED) == (work == null)) throw new IllegalArgumentException("Inconsistent participant plan result");
-        }
-
-        private static PlanResult denied(PlanStatus status) {
-            return new PlanResult(status, null);
-        }
-    }
-
-    public enum WorkState {PLANNED, COMMITTED, CANCELLING, CANCELLED}
-
-    public enum WorkResult {COMMITTED, ALREADY_COMMITTED, CANCELLED, ALREADY_CANCELLED, CLEANUP_PENDING}
 
     /**
      * The exact original callback, publication and issuing budget. Callers can retain this handle after

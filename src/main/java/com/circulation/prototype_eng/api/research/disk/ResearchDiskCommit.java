@@ -36,18 +36,19 @@ public record ResearchDiskCommit(UUID operationId, UUID actor, String teamId, in
         for (var entry : entries.object2IntEntrySet()) {
             Objects.requireNonNull(entry.getKey());
             if (entry.getIntValue() < 1) throw new IllegalArgumentException("Disk import levels must be positive");
-            if (entry.getIntValue() > expected.getInt(entry.getKey())) expected.put(entry.getKey(), entry.getIntValue());
+            if (entry.getIntValue() > expected.getInt(entry.getKey()))
+                expected.put(entry.getKey(), entry.getIntValue());
         }
         if (!expected.equals(after.storedResearch())) {
             throw new IllegalArgumentException("Disk import after contents differ from its complete batch");
         }
     }
 
-    public boolean matchesBefore(DataCenterResearchSnapshot snapshot) {
-        return before.equals(withoutRevision(Objects.requireNonNull(snapshot)));
-    }
-
     private static DataCenterResearchSnapshot withoutRevision(DataCenterResearchSnapshot snapshot) {
         return new DataCenterResearchSnapshot(snapshot.dataCenterId(), snapshot.level(), snapshot.capacity(), 0, snapshot.storedResearch());
+    }
+
+    public boolean matchesBefore(DataCenterResearchSnapshot snapshot) {
+        return before.equals(withoutRevision(Objects.requireNonNull(snapshot)));
     }
 }

@@ -4,6 +4,7 @@ import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentSystem;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
@@ -38,17 +39,154 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiFunction;
-
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.function.LongSupplier;
 
-class PlannedRecipeCoordinatorTest {
-    private static final Runnable NO_OP = () -> {};
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
-    @Test void realEnergyStagesCompleteAcrossHostsWhileZeroSpeedStillPaysExactlyOneTick() {
+class PlannedRecipeCoordinatorTest {
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static PlannedRecipeCoordinator coordinator(Backend backend, List<MachineWorkSlots> hosts) {
+        return new PlannedRecipeCoordinator(backend.tasks, hosts, deadline(), new PlannedCancellationToken(), () -> true);
+    }
+
+    private static PlannedDeadline deadline() {
+        return PlannedDeadline.after(Duration.ofSeconds(5));
+    }
+
+    private static MachineWorkSlots host() {
+        return new MachineWorkSlots(new MachineInstance(), List.of());
+    }
+
+    private static EnergyBuffer energy(Runnable notification) {
+        var buffer = new EnergyBuffer(100, notification);
+        assertEquals(100, buffer.receiveEnergy(100, Actionable.MODULATE));
+        return buffer;
+    }
+
+    private static ResourceReservation reserve(EnergyBuffer energy, long amount) {
+        return Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), amount).reservation());
+    }
+
+    private static RecipeProcess process(MachineWorkSlots host, String name, int duration, RecipeRequirement<?>... requirements) {
+        var process = new RecipeProcess(host.owner(), new MachineRecipe(id(name), duration, List.of(requirements)), 1);
+        assertTrue(host.start(process));
+        return process;
+    }
+
+    private static RequirementTransaction transaction(ProcessResult result, List<ResourceReservation> reservations,
+                                                      Runnable commit, Runnable rollback) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return result;
+            }
+
+            @Override
+            public List<ResourceReservation> reservations() {
+                return reservations;
+            }
+
+            @Override
+            public void commit() {
+                commit.run();
+            }
+
+            @Override
+            public void rollback() {
+                rollback.run();
+            }
+        };
+    }
+
+    private static RecipeRequirement<String> requirement(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        return requirement("observer", action);
+    }
+
+    private static RecipeRequirement<String> requirement(String name, BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return action.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id(name), system).requirement(id(name), "value");
+    }
+
+    private static void callbacks(RecipeProcess process, String name, List<String> log, Runnable pre, Runnable post) {
+        process.components().create(new ComponentType<>(id("component"), _ -> "value", List.of(new ComponentSystem<RecipeProcess, String>() {
+            @Override
+            public ResourceLocation id() {
+                return PlannedRecipeCoordinatorTest.id("system");
+            }
+
+            @Override
+            public void onPreTick(RecipeProcess owner, String component) {
+                log.add("pre:" + name);
+                pre.run();
+            }
+
+            @Override
+            public void onTick(RecipeProcess owner, String component) {
+                log.add("tick:" + name);
+            }
+
+            @Override
+            public void onPostTick(RecipeProcess owner, String component) {
+                log.add("post:" + name);
+                post.run();
+            }
+        })), process);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("planned_recipe_coordinator_test", name);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Test coordination must complete");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
+    private static void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
+        boolean done = false;
+        while (!done) {
+            try {
+                assertTrue(latch.await(5, TimeUnit.SECONDS), "Test must release source action");
+                done = true;
+            } catch (InterruptedException failure) {
+                interrupted.countDown();
+            }
+        }
+    }
+
+    @Test
+    void realEnergyStagesCompleteAcrossHostsWhileZeroSpeedStillPaysExactlyOneTick() {
         var energy = energy(NO_OP);
         var hosts = List.of(host(), host(), host());
         var events = new ObjectArrayList<String>();
@@ -74,7 +212,9 @@ class PlannedRecipeCoordinatorTest {
         try (var backend = new Backend()) {
             var coordinator = coordinator(backend, hosts);
             assertTrue(events.isEmpty(), "Capture must not run pre callbacks");
-            for (var current : hosts) { assertThrows(IllegalStateException.class, current::snapshot); }
+            for (var current : hosts) {
+                assertThrows(IllegalStateException.class, current::snapshot);
+            }
             assertTrue(coordinator.advance(deadline()));
             assertEquals(List.of("p0:START", "p1:START", "p2:START", "p0:TICK", "p1:TICK", "p2:TICK", "p0:END", "p1:END"), phases);
             assertEquals(87, energy.savedEnergy());
@@ -87,11 +227,14 @@ class PlannedRecipeCoordinatorTest {
             assertEquals(RecipeProcess.Lifecycle.RUNNING, processes.getLast().state().lifecycle());
             assertTrue(coordinator.advance(deadline()));
             assertEquals(87, energy.savedEnergy(), "A finished coordinator must not replay a tick");
-            for (var current : hosts) { current.snapshot(); }
+            for (var current : hosts) {
+                current.snapshot();
+            }
         }
     }
 
-    @Test void rejectedAcquisitionReleasesItsHoldBeforeAnotherHostAcquires() {
+    @Test
+    void rejectedAcquisitionReleasesItsHoldBeforeAnotherHostAcquires() {
         var energy = energy(NO_OP);
         var blockedHost = host();
         var successfulHost = host();
@@ -103,7 +246,9 @@ class PlannedRecipeCoordinatorTest {
                 () -> fail("Rejected business committed"), () -> events.add("blocked rolled back"));
         }));
         var successful = process(successfulHost, "successful", 0, requirement((_, phase) -> {
-            if (phase != RecipeStage.START) { return RequirementTransaction.SUCCESS; }
+            if (phase != RecipeStage.START) {
+                return RequirementTransaction.SUCCESS;
+            }
             events.add("successful acquired");
             assertEquals(100, energy.energySnapshot().availableEnergy());
             return transaction(ProcessResult.SUCCESS, List.of(reserve(energy, 80)), NO_OP, NO_OP);
@@ -122,7 +267,8 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    @Test void laterBusinessCommitFailureCompensatesEveryAcquiredHostInReverseOrder() {
+    @Test
+    void laterBusinessCommitFailureCompensatesEveryAcquiredHostInReverseOrder() {
         var energy = energy(NO_OP);
         var hosts = List.of(host(), host(), host());
         var log = new ObjectArrayList<String>();
@@ -137,8 +283,13 @@ class PlannedRecipeCoordinatorTest {
                 return transaction(ProcessResult.SUCCESS, List.of(reserve(energy, 10)), () -> {
                     log.add("commit:" + current);
                     effects[current]++;
-                    if (current == 1) { throw failure; }
-                }, () -> { log.add("rollback:" + current); effects[current] = 0; });
+                    if (current == 1) {
+                        throw failure;
+                    }
+                }, () -> {
+                    log.add("rollback:" + current);
+                    effects[current] = 0;
+                });
             })));
         }
         try (var backend = new Backend()) {
@@ -158,7 +309,8 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    @Test void partialAcquisitionFailureRollsBackEarlierRequirementsAndSkipsUntouchedHosts() {
+    @Test
+    void partialAcquisitionFailureRollsBackEarlierRequirementsAndSkipsUntouchedHosts() {
         var energy = energy(NO_OP);
         var firstHost = host();
         var untouchedHost = host();
@@ -167,7 +319,9 @@ class PlannedRecipeCoordinatorTest {
         var first = process(firstHost, "first", 1,
             requirement("held", (_, _) -> transaction(ProcessResult.SUCCESS, List.of(reserve(energy, 30)),
                 () -> fail("Partial acquisition committed"), () -> log.add("rollback held"))),
-            requirement("throws", (_, _) -> { throw failure; }));
+            requirement("throws", (_, _) -> {
+                throw failure;
+            }));
         process(untouchedHost, "untouched", 1, requirement((_, _) -> {
             fail("Later host must never acquire after a partial acquisition fault");
             return RequirementTransaction.SUCCESS;
@@ -185,14 +339,19 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    @Test void laterPreFailureFinishesEarlierCallbacksAndNeverEntersUntouchedHost() {
+    @Test
+    void laterPreFailureFinishesEarlierCallbacksAndNeverEntersUntouchedHost() {
         var hosts = List.of(host(), host(), host());
         var log = new ObjectArrayList<String>();
         var failure = new IllegalStateException("later pre failed");
         for (int index = 0; index < hosts.size(); index++) {
             int current = index;
             var process = process(hosts.get(index), "p" + index, 1);
-            callbacks(process, "p" + index, log, () -> { if (current == 1) { throw failure; } }, NO_OP);
+            callbacks(process, "p" + index, log, () -> {
+                if (current == 1) {
+                    throw failure;
+                }
+            }, NO_OP);
         }
         try (var backend = new Backend()) {
             var coordinator = coordinator(backend, hosts);
@@ -201,11 +360,14 @@ class PlannedRecipeCoordinatorTest {
             assertEquals(List.of("pre:p0", "tick:p0", "pre:p1", "post:p0"), log);
             assertTrue(coordinator.advance(deadline()));
             assertEquals(4, log.size());
-            for (var current : hosts) { assertNull(current.pendingTickBatch()); }
+            for (var current : hosts) {
+                assertNull(current.pendingTickBatch());
+            }
         }
     }
 
-    @Test void unknownSourceRetainsEveryHostUntilOriginalLaneCanConfirmAndComplete() {
+    @Test
+    void unknownSourceRetainsEveryHostUntilOriginalLaneCanConfirmAndComplete() {
         var energy = energy(NO_OP);
         var hosts = List.of(host(), host());
         var recoverable = new AtomicBoolean();
@@ -217,19 +379,38 @@ class PlannedRecipeCoordinatorTest {
         process(hosts.getFirst(), "first", 1, requirement((_, _) -> {
             var token = reserve(energy, 10);
             return transaction(ProcessResult.SUCCESS, List.of(new DelegatingReservation(token) {
-                @Override public void apply() { sourceThread[0] = Thread.currentThread(); super.apply(); }
-                @Override public void complete() {
+                @Override
+                public void apply() {
+                    sourceThread[0] = Thread.currentThread();
+                    super.apply();
+                }
+
+                @Override
+                public void complete() {
                     assertSame(sourceThread[0], Thread.currentThread());
                     completes.incrementAndGet();
-                    if (!recoverable.get()) { throw failure; }
+                    if (!recoverable.get()) {
+                        throw failure;
+                    }
                     super.complete();
                 }
-                @Override public void rollback() { rollsBack.incrementAndGet(); super.rollback(); }
-                @Override public Resolution resolution() { return recoverable.get() ? super.resolution() : Resolution.UNKNOWN; }
+
+                @Override
+                public void rollback() {
+                    rollsBack.incrementAndGet();
+                    super.rollback();
+                }
+
+                @Override
+                public Resolution resolution() {
+                    return recoverable.get() ? super.resolution() : Resolution.UNKNOWN;
+                }
             }), NO_OP, NO_OP);
         }));
         process(hosts.getLast(), "second", 1);
-        for (var current : hosts) { callbacks(current.activeProcesses().getFirst(), "p", log, NO_OP, NO_OP); }
+        for (var current : hosts) {
+            callbacks(current.activeProcesses().getFirst(), "p", log, NO_OP, NO_OP);
+        }
         try (var backend = new Backend()) {
             var coordinator = coordinator(backend, hosts);
             assertSame(failure, assertThrows(IllegalStateException.class, () -> coordinator.advance(deadline())));
@@ -238,7 +419,9 @@ class PlannedRecipeCoordinatorTest {
             assertEquals(1, completes.get(), "UNKNOWN cannot authorize another completion attempt");
             assertEquals(0, rollsBack.get(), "COMPLETE cannot turn into compensation");
             assertEquals(0, log.stream().filter(event -> event.startsWith("post:")).count());
-            for (var current : hosts) { assertThrows(IllegalStateException.class, current::snapshot); }
+            for (var current : hosts) {
+                assertThrows(IllegalStateException.class, current::snapshot);
+            }
             recoverable.set(true);
             assertTrue(coordinator.advance(deadline()));
             assertEquals(2, completes.get());
@@ -249,7 +432,8 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    @Test void unknownBusinessCompletionWaitsForExactProofWithoutReplayingTheMutation() {
+    @Test
+    void unknownBusinessCompletionWaitsForExactProofWithoutReplayingTheMutation() {
         var current = host();
         var proof = new AtomicBoolean();
         var completions = new AtomicInteger();
@@ -259,24 +443,60 @@ class PlannedRecipeCoordinatorTest {
         var retriedCompletion = new AtomicBoolean();
         var failure = new IllegalStateException("business completion after mutation");
         var process = process(current, "work", 1, requirement("terminal", (_, _) -> new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { commits.incrementAndGet(); }
-            @Override public void complete() { completions.incrementAndGet(); throw failure; }
-            @Override public void rollback() { rollback.incrementAndGet(); }
-            @Override public ReversibleTransaction.Resolution resolution() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+                commits.incrementAndGet();
+            }
+
+            @Override
+            public void complete() {
+                completions.incrementAndGet();
+                throw failure;
+            }
+
+            @Override
+            public void rollback() {
+                rollback.incrementAndGet();
+            }
+
+            @Override
+            public ReversibleTransaction.Resolution resolution() {
                 return proof.get() ? ReversibleTransaction.Resolution.COMPLETED : ReversibleTransaction.Resolution.UNKNOWN;
             }
         }), requirement("retry", (_, _) -> new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { }
-            @Override public void complete() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+            }
+
+            @Override
+            public void complete() {
                 retryAttempts.incrementAndGet();
-                if (!proof.get()) { throw failure; }
+                if (!proof.get()) {
+                    throw failure;
+                }
                 retriedCompletion.set(true);
             }
-            @Override public void rollback() { rollback.incrementAndGet(); }
-            @Override public ReversibleTransaction.Resolution resolution() {
-                if (retriedCompletion.get()) { return ReversibleTransaction.Resolution.COMPLETED; }
+
+            @Override
+            public void rollback() {
+                rollback.incrementAndGet();
+            }
+
+            @Override
+            public ReversibleTransaction.Resolution resolution() {
+                if (retriedCompletion.get()) {
+                    return ReversibleTransaction.Resolution.COMPLETED;
+                }
                 return proof.get() ? ReversibleTransaction.Resolution.REVERSIBLE : ReversibleTransaction.Resolution.UNKNOWN;
             }
         }));
@@ -305,7 +525,8 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    @Test void cancelledInflightSourceRemainsPinnedUntilActualExitThenCompensatesOnCleanup() throws Exception {
+    @Test
+    void cancelledInflightSourceRemainsPinnedUntilActualExitThenCompensatesOnCleanup() throws Exception {
         var current = host();
         var energy = energy(NO_OP);
         var entered = new CountDownLatch(1);
@@ -320,13 +541,19 @@ class PlannedRecipeCoordinatorTest {
         var process = process(current, "inflight", 1, requirement((_, _) -> {
             var token = reserve(energy, 20);
             return transaction(ProcessResult.SUCCESS, List.of(new DelegatingReservation(token) {
-                @Override public void apply() {
+                @Override
+                public void apply() {
                     applies.incrementAndGet();
                     super.apply();
                     entered.countDown();
                     awaitIgnoringInterrupt(release, interrupted);
                 }
-                @Override public void rollback() { rollback.incrementAndGet(); super.rollback(); }
+
+                @Override
+                public void rollback() {
+                    rollback.incrementAndGet();
+                    super.rollback();
+                }
             }), businessCommits::incrementAndGet, NO_OP);
         }));
         callbacks(process, "work", log, NO_OP, NO_OP);
@@ -361,23 +588,45 @@ class PlannedRecipeCoordinatorTest {
                 canceller.join(TimeUnit.SECONDS.toMillis(5));
                 assertFalse(canceller.isAlive());
             }
-        } finally { release.countDown(); }
+        } finally {
+            release.countDown();
+        }
     }
 
-    @Test void releaseNotificationFailureDoesNotReplayCompletedSourcesOrAdvanceLaterStages() {
+    @Test
+    void releaseNotificationFailureDoesNotReplayCompletedSourcesOrAdvanceLaterStages() {
         var armed = new AtomicBoolean();
         var notifications = new AtomicInteger();
         var completions = new AtomicInteger();
         var rollbacks = new AtomicInteger();
         var failure = new IllegalStateException("released storage notification");
-        var energy = energy(() -> { if (armed.get()) { notifications.incrementAndGet(); throw failure; } });
+        var energy = energy(() -> {
+            if (armed.get()) {
+                notifications.incrementAndGet();
+                throw failure;
+            }
+        });
         var current = host();
         var process = process(current, "notification", 1, requirement((_, _) -> {
             var token = reserve(energy, 10);
             return transaction(ProcessResult.SUCCESS, List.of(new DelegatingReservation(token) {
-                @Override public void apply() { super.apply(); armed.set(true); }
-                @Override public void complete() { completions.incrementAndGet(); super.complete(); }
-                @Override public void rollback() { rollbacks.incrementAndGet(); super.rollback(); }
+                @Override
+                public void apply() {
+                    super.apply();
+                    armed.set(true);
+                }
+
+                @Override
+                public void complete() {
+                    completions.incrementAndGet();
+                    super.complete();
+                }
+
+                @Override
+                public void rollback() {
+                    rollbacks.incrementAndGet();
+                    super.rollback();
+                }
             }), NO_OP, NO_OP);
         }));
         try (var backend = new Backend()) {
@@ -393,10 +642,13 @@ class PlannedRecipeCoordinatorTest {
             assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
             assertEquals(0, process.state().successfulTicks());
             assertNull(current.pendingTickBatch());
-        } finally { armed.set(false); }
+        } finally {
+            armed.set(false);
+        }
     }
 
-    @Test void callbacksCannotEnterForeignHostsOrReenterTheCoordinatorWhileLeasesRemainCaptured() {
+    @Test
+    void callbacksCannotEnterForeignHostsOrReenterTheCoordinatorWhileLeasesRemainCaptured() {
         var firstHost = host();
         var secondHost = host();
         var second = process(secondHost, "second", 0);
@@ -425,7 +677,8 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    @Test void captureRejectsLaterCustomExecutorWithoutLeavingAnyEarlierLeaseOrPreCallback() {
+    @Test
+    void captureRejectsLaterCustomExecutorWithoutLeavingAnyEarlierLeaseOrPreCallback() {
         var first = host();
         var log = new ObjectArrayList<String>();
         callbacks(process(first, "first", 1), "first", log, NO_OP, NO_OP);
@@ -441,95 +694,6 @@ class PlannedRecipeCoordinatorTest {
         }
     }
 
-    private static PlannedRecipeCoordinator coordinator(Backend backend, List<MachineWorkSlots> hosts) {
-        return new PlannedRecipeCoordinator(backend.tasks, hosts, deadline(), new PlannedCancellationToken(), () -> true);
-    }
-
-    private static PlannedDeadline deadline() { return PlannedDeadline.after(Duration.ofSeconds(5)); }
-    private static MachineWorkSlots host() { return new MachineWorkSlots(new MachineInstance(), List.of()); }
-    private static EnergyBuffer energy(Runnable notification) {
-        var buffer = new EnergyBuffer(100, notification);
-        assertEquals(100, buffer.receiveEnergy(100, Actionable.MODULATE));
-        return buffer;
-    }
-    private static ResourceReservation reserve(EnergyBuffer energy, long amount) {
-        return Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), amount).reservation());
-    }
-    private static RecipeProcess process(MachineWorkSlots host, String name, int duration, RecipeRequirement<?>... requirements) {
-        var process = new RecipeProcess(host.owner(), new MachineRecipe(id(name), duration, List.of(requirements)), 1);
-        assertTrue(host.start(process));
-        return process;
-    }
-    private static RequirementTransaction transaction(ProcessResult result, List<ResourceReservation> reservations,
-                                                       Runnable commit, Runnable rollback) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return result; }
-            @Override public List<ResourceReservation> reservations() { return reservations; }
-            @Override public void commit() { commit.run(); }
-            @Override public void rollback() { rollback.run(); }
-        };
-    }
-    private static RecipeRequirement<String> requirement(BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        return requirement("observer", action);
-    }
-    private static RecipeRequirement<String> requirement(String name, BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> action) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.START); }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.TICK); }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) { return action.apply(process, RecipeStage.END); }
-        };
-        return new RecipeRequirementType<>(id(name), system).requirement(id(name), "value");
-    }
-    private static void callbacks(RecipeProcess process, String name, List<String> log, Runnable pre, Runnable post) {
-        process.components().create(new ComponentType<>(id("component"), _ -> "value", List.of(new ComponentSystem<RecipeProcess, String>() {
-            @Override public ResourceLocation id() { return PlannedRecipeCoordinatorTest.id("system"); }
-            @Override public void onPreTick(RecipeProcess owner, String component) { log.add("pre:" + name); pre.run(); }
-            @Override public void onTick(RecipeProcess owner, String component) { log.add("tick:" + name); }
-            @Override public void onPostTick(RecipeProcess owner, String component) { log.add("post:" + name); post.run(); }
-        })), process);
-    }
-    private static ResourceLocation id(String name) { return new ResourceLocation("planned_recipe_coordinator_test", name); }
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Test coordination must complete"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-    private static void awaitIgnoringInterrupt(CountDownLatch latch, CountDownLatch interrupted) {
-        boolean done = false;
-        while (!done) {
-            try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Test must release source action"); done = true; }
-            catch (InterruptedException failure) { interrupted.countDown(); }
-        }
-    }
-    private static class DelegatingReservation implements ResourceReservation {
-        private final ResourceReservation delegate;
-        private DelegatingReservation(ResourceReservation delegate) { this.delegate = delegate; }
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public void apply() { delegate.apply(); }
-        @Override public void complete() { delegate.complete(); }
-        @Override public void rollback() { delegate.rollback(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
-    }
-    private static final class Backend implements AutoCloseable {
-        private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
-        private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
-        private final PlannedTaskExecutor tasks;
-
-        private Backend() { this(System::nanoTime); }
-
-        private Backend(LongSupplier nanoTime) {
-            tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, nanoTime);
-        }
-        @Override public void close() {
-            workers.shutdownNow();
-            lane.shutdownNow();
-            try {
-                assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
-                assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
-            } catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-        }
-    }
-
     @Test
     void oneUnitPreparedOwnerSlicesMeterTheActualTickAttributeChainAndKeepTheOriginalEnergySource() {
         var host = host();
@@ -542,9 +706,21 @@ class PlannedRecipeCoordinatorTest {
         for (int index = 0; index < 256; index++) {
             String modifierId = "budget_speed_" + index;
             process.attributes().addModifier(StandardMachineAttributes.PROCESS_SPEED, new AttributeModifier() {
-                @Override public String id() { return modifierId; }
-                @Override public Operation operation() { return Operation.ADDITION; }
-                @Override public double apply(double base, double current) { calls.incrementAndGet(); return current; }
+                @Override
+                public String id() {
+                    return modifierId;
+                }
+
+                @Override
+                public Operation operation() {
+                    return Operation.ADDITION;
+                }
+
+                @Override
+                public double apply(double base, double current) {
+                    calls.incrementAndGet();
+                    return current;
+                }
             });
         }
         // This exercises allowance accounting with real lanes, independently of wall-clock load.
@@ -572,7 +748,6 @@ class PlannedRecipeCoordinatorTest {
         process.requirePersistenceBoundary();
     }
 
-
     @Test
     void aLaterCleanupFatalEscapesTheOwnerImmediatelyEvenAfterAnOrdinaryBusinessFailure() {
         var ordinary = new IllegalStateException("ordinary business failure");
@@ -582,12 +757,32 @@ class PlannedRecipeCoordinatorTest {
         var host = host();
         var cleanup = requirement("a_fatal_cleanup", (_, _) -> new RequirementTransaction() {
             private Resolution state = Resolution.REVERSIBLE;
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public void commit() { commits.incrementAndGet(); }
-            @Override public void rollback() { rollbacks.incrementAndGet(); state = Resolution.ROLLED_BACK; throw fatal; }
-            @Override public Resolution resolution() { return state; }
+
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public void commit() {
+                commits.incrementAndGet();
+            }
+
+            @Override
+            public void rollback() {
+                rollbacks.incrementAndGet();
+                state = Resolution.ROLLED_BACK;
+                throw fatal;
+            }
+
+            @Override
+            public Resolution resolution() {
+                return state;
+            }
         });
-        var rejection = requirement("z_ordinary", (_, _) -> { throw ordinary; });
+        var rejection = requirement("z_ordinary", (_, _) -> {
+            throw ordinary;
+        });
         process(host, "fatal_after_ordinary", 1, cleanup, rejection);
         try (var backend = new Backend()) {
             var coordinator = coordinator(backend, List.of(host));
@@ -602,5 +797,70 @@ class PlannedRecipeCoordinatorTest {
             assertEquals(1, rollbacks.get(), "Exact terminal recovery does not replay the fatal callback");
         }
         assertNull(host.pendingTickBatch());
+    }
+
+    private static class DelegatingReservation implements ResourceReservation {
+        private final ResourceReservation delegate;
+
+        private DelegatingReservation(ResourceReservation delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public void apply() {
+            delegate.apply();
+        }
+
+        @Override
+        public void complete() {
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
+            delegate.rollback();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
+    }
+
+    private static final class Backend implements AutoCloseable {
+        private final ExecutorService workers = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+        private final ExecutorService lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
+        private final PlannedTaskExecutor tasks;
+
+        private Backend() {
+            this(System::nanoTime);
+        }
+
+        private Backend(LongSupplier nanoTime) {
+            tasks = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, nanoTime);
+        }
+
+        @Override
+        public void close() {
+            workers.shutdownNow();
+            lane.shutdownNow();
+            try {
+                assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+                assertTrue(lane.awaitTermination(5, TimeUnit.SECONDS));
+            } catch (InterruptedException failure) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(failure);
+            }
+        }
     }
 }

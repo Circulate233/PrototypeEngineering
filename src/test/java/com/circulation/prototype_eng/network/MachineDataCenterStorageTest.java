@@ -29,18 +29,23 @@ import com.circulation.prototype_eng.api.research.ResearchLevelStage;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
+import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.localization.GuiText;
+import com.circulation.prototype_eng.research.DataCenterStorageNbt;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -49,18 +54,42 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskData;
-import com.circulation.prototype_eng.api.research.disk.ResearchDiskImport;
-import com.circulation.prototype_eng.research.DataCenterStorageNbt;
 import java.util.function.BooleanSupplier;
-import net.minecraft.nbt.NBTTagCompound;
-import org.jetbrains.annotations.Nullable;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineDataCenterStorageTest {
-    @Test void selectionCarriesOnlyTheActualWinnerAndContentChangesInvalidateOldPermitsBeforeRefresh() {
+    private static NetworkResourceRegistry resources() {
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        return resources;
+    }
+
+    private static ResearchRegistry research(NetworkResourceRegistry resources) {
+        var registry = new ResearchRegistry();
+        registry.register(definition("loop", 3));
+        registry.register(definition("other", 1));
+        registry.freeze(resources);
+        return registry;
+    }
+
+    private static ResearchDefinition definition(String name, int max) {
+        return ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
+                                 .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build();
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("machine_data_test", name);
+    }
+
+    @Test
+    void selectionCarriesOnlyTheActualWinnerAndContentChangesInvalidateOldPermitsBeforeRefresh() {
         try (var fixture = new Fixture()) {
             var first = fixture.dataCenter();
             var second = fixture.dataCenter();
@@ -81,7 +110,7 @@ class MachineDataCenterStorageTest {
             assertNull(fixture.role(first).workPermit(), "An unchanged physical structure cannot grant from stale database contents");
             assertTrue(fixture.network.refresh());
             assertEquals(3, Objects.requireNonNull(Objects.requireNonNull(fixture.network.plan()).teams().get("team").dataCenterResearch())
-                .storedResearch().getInt(id("loop")));
+                                   .storedResearch().getInt(id("loop")));
             assertEquals(DataCenterStorage.Result.UPDATED, fixture.storage(second).downloadResearch(id("loop"), 1, fixture.cloud()));
             assertNull(fixture.role(first).workPermit(), "The losing database's changed selection count also invalidates publication");
             assertTrue(fixture.network.refresh());
@@ -90,7 +119,8 @@ class MachineDataCenterStorageTest {
         }
     }
 
-    @Test void copiedMachineSavesRestoreRealContentsButNeedUniqueIdentityAndAFreshPublication() {
+    @Test
+    void copiedMachineSavesRestoreRealContentsButNeedUniqueIdentityAndAFreshPublication() {
         try (var fixture = new Fixture()) {
             var original = fixture.dataCenter();
             fixture.player.completeAtLeast(id("loop"), 2);
@@ -112,7 +142,7 @@ class MachineDataCenterStorageTest {
             assertTrue(fixture.network.refresh());
             assertNotNull(fixture.role(restored).workPermit());
             assertEquals(2, Objects.requireNonNull(Objects.requireNonNull(fixture.network.plan()).teams().get("team").dataCenterResearch())
-                .storedResearch().getInt(id("loop")));
+                                   .storedResearch().getInt(id("loop")));
             assertTrue(fixture.dirty > 0);
         }
     }
@@ -174,7 +204,8 @@ class MachineDataCenterStorageTest {
         }
     }
 
-    @Test void convenienceSnapshotSourcesRecheckActualResourceConfigurationBeforeIssuingNewWork() {
+    @Test
+    void convenienceSnapshotSourcesRecheckActualResourceConfigurationBeforeIssuingNewWork() {
         try (var fixture = new Fixture()) {
             assertTrue(fixture.network.refresh());
             var component = Objects.requireNonNull(fixture.center.components().get(fixture.centerRole));
@@ -190,11 +221,6 @@ class MachineDataCenterStorageTest {
 
     private static final class Fixture implements AutoCloseable {
         private final Thread ownerThread = Thread.currentThread();
-        private int positions;
-        private int dirty;
-        private int diskSaveCalls;
-        @Nullable private NBTTagCompound diskSaved;
-        @Nullable private RuntimeException diskFailure;
         private final Object world = new Object();
         private final List<MachineInstance> machines = new ObjectArrayList<>();
         private final NetworkResourceRegistry resources = resources();
@@ -215,35 +241,58 @@ class MachineDataCenterStorageTest {
             ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
                 Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         private final MachineType dataType = MachineType.builder(id("data_machine"), GuiText.ResourceStorage, id("structure"))
-            .component(ownership).component(storage).component(dataRole).build();
+                                                        .component(ownership).component(storage).component(dataRole).build();
         private final MachineAssembly dataAssembly = MachineAssembly.builder(dataType, "data-v1").component(ownership, MachineOwnership.CODEC)
-            .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole).build();
+                                                                    .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole).build();
         private final MachineInstance center;
+        private int dirty;
+        private int diskSaveCalls;
+        @Nullable
+        private NBTTagCompound diskSaved;
+        @Nullable
+        private RuntimeException diskFailure;
+        private int positions;
 
         private Fixture() {
             supply.put(NetworkResources.THREAD, 5);
             supply.put(NetworkResources.COMPUTE, 20);
             network.beginTick(0);
             var type = MachineType.builder(id("center_machine"), GuiText.ResourceStorage, id("structure"))
-                .component(ownership).component(centerRole).build();
+                                  .component(ownership).component(centerRole).build();
             var assembly = MachineAssembly.builder(type, "center-v1").component(ownership, MachineOwnership.CODEC).recreated(centerRole).build();
             center = attach(assembly.create(host(type.id()), new MachineLifecycleRegistry()));
         }
 
-        private MachineInstance dataCenter() { return attach(dataAssembly.create(host(dataType.id()), new MachineLifecycleRegistry())); }
+        private MachineInstance dataCenter() {
+            return attach(dataAssembly.create(host(dataType.id()), new MachineLifecycleRegistry()));
+        }
+
         private MachineInstance attach(MachineInstance machine) {
             Objects.requireNonNull(machine.lifecycle()).form(new MachineHatches(List.of(), List.of(), List.of()));
             machines.add(machine);
             return machine;
         }
-        private Host host(ResourceLocation type) { return new Host(world, type, new BlockPos(positions++, 0, 0), player.playerUuid()); }
-        private MachineDataCenterStorage storage(MachineInstance machine) { return Objects.requireNonNull(machine.components().get(storage)); }
-        private MachineNetworkDevice role(MachineInstance machine) { return Objects.requireNonNull(machine.components().get(dataRole)); }
+
+        private Host host(ResourceLocation type) {
+            return new Host(world, type, new BlockPos(positions++, 0, 0), player.playerUuid());
+        }
+
+        private MachineDataCenterStorage storage(MachineInstance machine) {
+            return Objects.requireNonNull(machine.components().get(storage));
+        }
+
+        private MachineNetworkDevice role(MachineInstance machine) {
+            return Objects.requireNonNull(machine.components().get(dataRole));
+        }
+
         private TeamResearchView cloud() {
             return new ResearchEligibility(research).calculateStructural("team", List.of(player.playerUuid()),
                 Map.of(player.playerUuid(), player), Object2IntMaps.emptyMap(), Set.of());
         }
-        private void unload(MachineInstance machine) { Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
+
+        private void unload(MachineInstance machine) {
+            Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+        }
 
         private void persistDisk(MachineInstance machine, ResourceLocation storageType, ResourceLocation ownershipType,
                                  NBTTagCompound expected, BooleanSupplier current) {
@@ -256,29 +305,35 @@ class MachineDataCenterStorageTest {
             diskSaveCalls++;
             if (diskFailure != null) throw diskFailure;
         }
+
         private void requireOwner() {
-            if (Thread.currentThread() != ownerThread) { throw new IllegalStateException("Not the test server owner"); }
+            if (Thread.currentThread() != ownerThread) {
+                throw new IllegalStateException("Not the test server owner");
+            }
         }
-        @Override public void close() { machines.forEach(this::unload); network.close(); identities.close(); }
+
+        @Override
+        public void close() {
+            machines.forEach(this::unload);
+            network.close();
+            identities.close();
+        }
     }
 
-    private record Host(Object worldIdentity, ResourceLocation type, BlockPos position, UUID placementPlayer) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type, 0, position); }
-        @Override public World world() { throw new AssertionError("Storage tests do not load a Minecraft world"); }
-        @Override public void requireServerThread() { }
-    }
+    private record Host(Object worldIdentity, ResourceLocation type, BlockPos position,
+                        UUID placementPlayer) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type, 0, position);
+        }
 
-    private static NetworkResourceRegistry resources() { var resources = new NetworkResourceRegistry(); resources.freeze(); return resources; }
-    private static ResearchRegistry research(NetworkResourceRegistry resources) {
-        var registry = new ResearchRegistry();
-        registry.register(definition("loop", 3));
-        registry.register(definition("other", 1));
-        registry.freeze(resources);
-        return registry;
+        @Override
+        public World world() {
+            throw new AssertionError("Storage tests do not load a Minecraft world");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
-    private static ResearchDefinition definition(String name, int max) {
-        return ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-            .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build();
-    }
-    private static ResourceLocation id(String name) { return new ResourceLocation("machine_data_test", name); }
 }

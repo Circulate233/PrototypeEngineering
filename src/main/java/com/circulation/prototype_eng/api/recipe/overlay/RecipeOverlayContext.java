@@ -27,26 +27,50 @@ public final class RecipeOverlayContext {
         this.changes = changes;
     }
 
-    public RecipeProcess process() { return process; }
-    public MachineInstance machine() { return process.owner(); }
-    public ResourceLocation modifierId() { return modifierId; }
-    public int modifierOrdinal() { return ordinal; }
+    private static String frame(String value) {
+        return value.length() + ":" + value;
+    }
 
-    /** Writes a root requirement layer; repeated writes to this application's same layer replace it. */
+    public RecipeProcess process() {
+        return process;
+    }
+
+    public MachineInstance machine() {
+        return process.owner();
+    }
+
+    public ResourceLocation modifierId() {
+        return modifierId;
+    }
+
+    public int modifierOrdinal() {
+        return ordinal;
+    }
+
+    /**
+     * Writes a root requirement layer; repeated writes to this application's same layer replace it.
+     */
     public <C, D> void put(RecipeRequirement<C> target, String layerId, RecipeOverlayType<C, D> type, D data) {
         put(target, target.path(null), layerId, type, data);
     }
 
-    /** Writes an exact nested target path and retains only this write's local undo information. */
+    /**
+     * Writes an exact nested target path and retains only this write's local undo information.
+     */
     public <C, D> void put(RecipeRequirement<C> target, RequirementPath path, String layerId, RecipeOverlayType<C, D> type, D data) {
-        if (!active) { throw new IllegalStateException("Recipe overlay modifier context is no longer active"); }
+        if (!active) {
+            throw new IllegalStateException("Recipe overlay modifier context is no longer active");
+        }
         Objects.requireNonNull(layerId);
-        if (layerId.isBlank()) { throw new IllegalArgumentException("Blank overlay layer id"); }
+        if (layerId.isBlank()) {
+            throw new IllegalArgumentException("Blank overlay layer id");
+        }
         String uniqueId = "recipe_overlay/" + frame(modifierId.toString()) + frame(Integer.toString(ordinal)) + frame(layerId);
         var change = RecipeOverlays.getOrCreate(process).put(target, path, uniqueId, type, data);
         changes.add(Objects.requireNonNull(change));
     }
 
-    private static String frame(String value) { return value.length() + ":" + value; }
-    void close() { active = false; }
+    void close() {
+        active = false;
+    }
 }

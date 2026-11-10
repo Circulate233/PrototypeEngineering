@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.scheduler;
 
-import java.util.Objects;
 import java.util.Locale;
+import java.util.Objects;
 
 /** Immutable on-demand owner report. Wall-time windows can overlap; none is worker CPU time. */
 public record SchedulerReport(String policyLabel, long completedTicks, int windowTicks, int sampleCount,
@@ -45,16 +45,16 @@ public record SchedulerReport(String policyLabel, long completedTicks, int windo
                 throw new IllegalArgumentException("Invalid scheduler statistics");
         }
 
+        private static String micros(long nanos) {
+            return nanos / 1000 + "." + String.format(Locale.ROOT, "%03d", nanos % 1000);
+        }
+
         public String wallMicros() {
             return micros(avg) + "/" + micros(p95) + "/" + micros(max);
         }
 
         public String counts() {
             return avg + "/" + p95 + "/" + max;
-        }
-
-        private static String micros(long nanos) {
-            return nanos / 1000 + "." + String.format(Locale.ROOT, "%03d", nanos % 1000);
         }
     }
 }

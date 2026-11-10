@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.client.render;
 
-import net.minecraft.client.renderer.BufferBuilder;
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
+import net.minecraft.client.renderer.BufferBuilder;
 
 import java.util.ArrayDeque;
 
@@ -15,23 +15,6 @@ public class ModelBufferPool implements AutoCloseable {
     private int count;
     private int operations;
     private boolean closed;
-
-    private record Entry(BufferBuilder buffer, int capacity, long returnedAt) {
-    }
-
-    public record Limits(int normalMaxBytes, int hardMaxBytes, int oversizeEntries, long oversizeMaxBytes,
-                         long oversizeTtlNanos, long totalMaxBytes, int maxEntries) {
-        public Limits {
-            if (normalMaxBytes < 0 || hardMaxBytes < 0 || oversizeEntries < 0 || oversizeMaxBytes < 0 ||
-                oversizeTtlNanos < 0 || totalMaxBytes < 0 || maxEntries < 0)
-                throw new IllegalArgumentException("Negative builder pool limit");
-        }
-
-        public static Limits defaults() {
-            return new Limits(64 * 1024 * 1024, 256 * 1024 * 1024, 4,
-                512L * 1024 * 1024, 300_000_000_000L, 768L * 1024 * 1024, 0);
-        }
-    }
 
     public ModelBufferPool() {
         this(Limits.defaults());
@@ -131,5 +114,22 @@ public class ModelBufferPool implements AutoCloseable {
     public synchronized void close() {
         closed = true;
         clear();
+    }
+
+    private record Entry(BufferBuilder buffer, int capacity, long returnedAt) {
+    }
+
+    public record Limits(int normalMaxBytes, int hardMaxBytes, int oversizeEntries, long oversizeMaxBytes,
+                         long oversizeTtlNanos, long totalMaxBytes, int maxEntries) {
+        public Limits {
+            if (normalMaxBytes < 0 || hardMaxBytes < 0 || oversizeEntries < 0 || oversizeMaxBytes < 0 ||
+                oversizeTtlNanos < 0 || totalMaxBytes < 0 || maxEntries < 0)
+                throw new IllegalArgumentException("Negative builder pool limit");
+        }
+
+        public static Limits defaults() {
+            return new Limits(64 * 1024 * 1024, 256 * 1024 * 1024, 4,
+                512L * 1024 * 1024, 300_000_000_000L, 768L * 1024 * 1024, 0);
+        }
     }
 }

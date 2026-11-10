@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.machine;
 
-import static org.junit.jupiter.api.Assertions.*;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -11,46 +10,89 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
+import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
 import com.circulation.prototype_eng.api.structure.StructureHatchBinding;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
+import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructureQuery;
+import com.circulation.prototype_eng.api.structure.StructureReadWindow;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import com.circulation.prototype_eng.structure.StructureRefresh;
 import com.circulation.prototype_eng.structure.TemplateStructure;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
-import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
-import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
-import com.circulation.prototype_eng.api.recipe.MachineRecipe;
-import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
-import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
-import com.circulation.prototype_eng.structure.StructureRefresh;
-import java.time.Duration;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import com.circulation.prototype_eng.api.structure.StructureReadWindow;
-import com.circulation.prototype_eng.api.structure.StructurePredicate;
-import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import java.util.ArrayList;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
 class ControllerStructureUpdatesTest {
+    private static final BlockPos BODY = new BlockPos(1, 0, 0);
+    private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"),
+        (_, _) -> fail("Logical tests never read a game world"), UnaryOperator.identity(), String::equals);
+
+    private static StructureConfiguration configuration(Runnable matching) {
+        var predicate = StructurePredicates.test(MARKER, value -> {
+            matching.run();
+            return "body".equals(value);
+        });
+        return new StructureConfiguration(new TemplateStructure(id("shape"), BlockOrientation.NORTH_UP,
+            BlockPos.ORIGIN, false, new StructurePattern(Map.of(BODY, predicate)), List.of(), List.of()), BlockOrientation.NORTH_UP);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("controller_structure_test", name);
+    }
+
+    private static StructureHatchBinding binding(ResourceHatch hatch) {
+        return new StructureHatchBinding(new Object(), hatch, null, null);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake");
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(failure);
+        }
+    }
+
     @Test
     void shorterStructurePublishesBeforeTheLongerStructureReopensItsThirdReadRound() {
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1);
@@ -66,7 +108,8 @@ class ControllerStructureUpdatesTest {
                 BlockPos.ORIGIN, false, new StructurePattern(pattern), List.of(), List.of()), BlockOrientation.NORTH_UP);
             for (var fixture : List.of(longer, shorter)) {
                 fixture.updates.checkPolicy(new StructureCheckPolicy(1_000_000, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
-                fixture.host.workerRead = () -> { };
+                fixture.host.workerRead = () -> {
+                };
             }
             shorter.onChanged = () -> {
                 assertEquals(512, longer.host.windows.size(), "The third read round must not bind before this owner publishes");
@@ -168,7 +211,8 @@ class ControllerStructureUpdatesTest {
              var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
             first.updates.tick(0);
             second.updates.tick(0);
-            first.host.workerRead = () -> { };
+            first.host.workerRead = () -> {
+            };
             second.host.onRead = first.updates::invalidate;
             first.updates.enqueueTick(5);
             second.updates.enqueueTick(5);
@@ -178,6 +222,7 @@ class ControllerStructureUpdatesTest {
             observer.submit(() -> assertThrows(IllegalStateException.class, first.host.windows.getFirst()::read)).get(5, TimeUnit.SECONDS);
         }
     }
+
     @Test
     void firstRealHostTickAtNonzeroWorldTimeCompletesOnTheOwnerBeforeNotification() {
         try (var fixture = new Fixture()) {
@@ -290,9 +335,64 @@ class ControllerStructureUpdatesTest {
             assertEquals(before.successfulTicks() + 1, process.state().successfulTicks());
         }
     }
-    private static final BlockPos BODY = new BlockPos(1, 0, 0);
-    private static final StructureQuery<String> MARKER = new StructureQuery<>(id("marker"),
-        (_, _) -> fail("Logical tests never read a game world"), UnaryOperator.identity(), String::equals);
+
+    @Test
+    void joinedEvaluationRetainsBindingsAndExitsBeforeOwnerPublicationAndOrdinaryProcessing() throws Exception {
+        try (var fixture = new Fixture();
+             var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
+            fixture.tick(0);
+            var matching = new CountDownLatch(1);
+            var processing = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            var processExited = new CountDownLatch(1);
+            var matchExited = new CountDownLatch(1);
+            var accepted = fixture.machine().components().get(MachineHatches.TYPE);
+            fixture.host.configuration = configuration(() -> {
+                assertNotSame(fixture.owner, Thread.currentThread());
+                matching.countDown();
+                try {
+                    await(release);
+                } finally {
+                    matchExited.countDown();
+                }
+            });
+            fixture.onChanged = () -> {
+                assertSame(fixture.owner, Thread.currentThread());
+                assertEquals(1, processExited.getCount());
+                assertEquals(0, matchExited.getCount());
+            };
+            fixture.scheduler.submit(() -> fixture.lifecycle().runScheduled(() -> {
+                assertTrue(fixture.machine().canProcessRecipes());
+                assertNotNull(fixture.machine().components().get(MachineHatches.TYPE));
+                processing.countDown();
+                processExited.countDown();
+            }), ExecutionMode.CONCURRENT);
+            var observation = observer.submit(() -> {
+                await(matching);
+                try {
+                    assertEquals(1, fixture.changes);
+                    assertEquals(1, processExited.getCount());
+                    assertEquals(1, processing.getCount());
+                    assertSame(accepted, fixture.machine().components().get(MachineHatches.TYPE));
+                } finally {
+                    release.countDown();
+                }
+            });
+            try {
+                fixture.updates.tick(5);
+                assertEquals(2, fixture.changes);
+                assertEquals(0, matchExited.getCount());
+                assertEquals(1, processing.getCount());
+                fixture.scheduler.tick();
+                observation.get(5, TimeUnit.SECONDS);
+                assertEquals(2, fixture.changes);
+                assertEquals(0, processExited.getCount());
+                assertTrue(fixture.machine().canProcessRecipes());
+            } finally {
+                release.countDown();
+            }
+        }
+    }
 
     @Test
     void tickZeroAndFormationChangesUseTheOriginalFiveAndTwentyTickCadence() {
@@ -358,10 +458,11 @@ class ControllerStructureUpdatesTest {
                 fixture.host.value = oldValue;
                 var oldRequest = Objects.requireNonNull(refresh.prepare());
                 var oldResult = oldRequest.evaluate();
-                    fixture.scheduler.runAtBoundary(() -> {
-                        fixture.updates.invalidate();
-                        fixture.host.configuration = configuration(() -> {});
-                        fixture.host.value = "body";
+                fixture.scheduler.runAtBoundary(() -> {
+                    fixture.updates.invalidate();
+                    fixture.host.configuration = configuration(() -> {
+                    });
+                    fixture.host.value = "body";
                 });
                 var replacement = Objects.requireNonNull(refresh.prepare());
                 assertFalse(refresh.publish(oldResult));
@@ -390,7 +491,9 @@ class ControllerStructureUpdatesTest {
             var release = new CountDownLatch(1);
             fixture.host.configuration = configuration(() -> {
                 assertNotSame(fixture.owner, Thread.currentThread());
-                matching.countDown(); await(release); });
+                matching.countDown();
+                await(release);
+            });
             var retirement = observer.submit(() -> {
                 await(matching);
                 try {
@@ -399,11 +502,14 @@ class ControllerStructureUpdatesTest {
                     assertEquals(1, fixture.changes);
                 } finally {
                     release.countDown();
-            }
+                }
             });
-            try { fixture.updates.tick(5);
-                retirement.get(5, TimeUnit.SECONDS); }
-            finally { release.countDown(); }
+            try {
+                fixture.updates.tick(5);
+                retirement.get(5, TimeUnit.SECONDS);
+            } finally {
+                release.countDown();
+            }
             assertEquals(MachineLifecycle.State.UNLOADED, fixture.lifecycle().state());
             assertEquals(1, fixture.changes);
             int reads = fixture.host.reads;
@@ -488,89 +594,21 @@ class ControllerStructureUpdatesTest {
             var failure = new AssertionError("current evaluation failed");
             fixture.host.configuration = configuration(() -> {
                 assertNotSame(fixture.owner, Thread.currentThread());
-                throw failure; });
+                throw failure;
+            });
             assertSame(failure, assertThrows(AssertionError.class, () -> fixture.updates.tick(5)));
             assertFalse(fixture.controller.active());
             assertEquals(1, fixture.changes);
         }
         try (var fixture = new Fixture()) {
             fixture.tick(0);
-            fixture.scheduler.submit(() -> { throw new IllegalStateException("unrelated task failed"); }, ExecutionMode.CONCURRENT);
+            fixture.scheduler.submit(() -> {
+                throw new IllegalStateException("unrelated task failed");
+            }, ExecutionMode.CONCURRENT);
             assertThrows(IllegalStateException.class, fixture.scheduler::tick);
             assertThrows(IllegalStateException.class, () -> fixture.updates.tick(5));
             assertFalse(fixture.controller.active());
             assertEquals(1, fixture.changes);
-        }
-    }
-
-    private static StructureConfiguration configuration(Runnable matching) {
-        var predicate = StructurePredicates.test(MARKER, value -> { matching.run(); return "body".equals(value); });
-        return new StructureConfiguration(new TemplateStructure(id("shape"), BlockOrientation.NORTH_UP,
-            BlockPos.ORIGIN, false, new StructurePattern(Map.of(BODY, predicate)), List.of(), List.of()), BlockOrientation.NORTH_UP);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("controller_structure_test", name); }
-    private static StructureHatchBinding binding(ResourceHatch hatch) { return new StructureHatchBinding(new Object(), hatch, null, null); }
-    private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(5, TimeUnit.SECONDS), "Timed out waiting for test handshake"); }
-        catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new AssertionError(failure); }
-    }
-
-    @Test
-    void joinedEvaluationRetainsBindingsAndExitsBeforeOwnerPublicationAndOrdinaryProcessing() throws Exception {
-        try (var fixture = new Fixture();
-             var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
-            fixture.tick(0);
-            var matching = new CountDownLatch(1);
-            var processing = new CountDownLatch(1);
-            var release = new CountDownLatch(1);
-            var processExited = new CountDownLatch(1);
-            var matchExited = new CountDownLatch(1);
-            var accepted = fixture.machine().components().get(MachineHatches.TYPE);
-            fixture.host.configuration = configuration(() -> {
-                assertNotSame(fixture.owner, Thread.currentThread());
-                matching.countDown();
-                try {
-                    await(release);
-                } finally {
-                    matchExited.countDown();
-                }
-            });
-            fixture.onChanged = () -> {
-                assertSame(fixture.owner, Thread.currentThread());
-                assertEquals(1, processExited.getCount());
-                assertEquals(0, matchExited.getCount());
-            };
-            fixture.scheduler.submit(() -> fixture.lifecycle().runScheduled(() -> {
-                assertTrue(fixture.machine().canProcessRecipes());
-                assertNotNull(fixture.machine().components().get(MachineHatches.TYPE));
-                processing.countDown();
-                processExited.countDown();
-            }), ExecutionMode.CONCURRENT);
-            var observation = observer.submit(() -> {
-                await(matching);
-                try {
-                    assertEquals(1, fixture.changes);
-                    assertEquals(1, processExited.getCount());
-                    assertEquals(1, processing.getCount());
-                    assertSame(accepted, fixture.machine().components().get(MachineHatches.TYPE));
-                } finally {
-                    release.countDown();
-                }
-            });
-            try {
-                fixture.updates.tick(5);
-                assertEquals(2, fixture.changes);
-                assertEquals(0, matchExited.getCount());
-                assertEquals(1, processing.getCount());
-                fixture.scheduler.tick();
-                observation.get(5, TimeUnit.SECONDS);
-                assertEquals(2, fixture.changes);
-                assertEquals(0, processExited.getCount());
-                assertTrue(fixture.machine().canProcessRecipes());
-            } finally {
-                release.countDown();
-            }
         }
     }
 
@@ -582,13 +620,16 @@ class ControllerStructureUpdatesTest {
         private final MachineController controller;
         private final ControllerStructureUpdates updates;
         private volatile int changes;
-        private Runnable onChanged = () -> {};
+        private Runnable onChanged = () -> {
+        };
 
         private Fixture() {
             this(new TaskScheduler(Thread.currentThread(), 2, 1), true);
         }
 
-        private Fixture(TaskScheduler scheduler) { this(scheduler, false); }
+        private Fixture(TaskScheduler scheduler) {
+            this(scheduler, false);
+        }
 
         @SuppressWarnings("NonAtomicOperationOnVolatileField")
         // Only the asserted owner writes; observer threads read the count.
@@ -604,9 +645,19 @@ class ControllerStructureUpdatesTest {
                 changes++;
             });
         }
-        private MachineInstance machine() { return Objects.requireNonNull(controller.machine()); }
-        private MachineLifecycle lifecycle() { return Objects.requireNonNull(machine().lifecycle()); }
-        private void tick(long now) { updates.tick(now); scheduler.tick(); }
+
+        private MachineInstance machine() {
+            return Objects.requireNonNull(controller.machine());
+        }
+
+        private MachineLifecycle lifecycle() {
+            return Objects.requireNonNull(machine().lifecycle());
+        }
+
+        private void tick(long now) {
+            updates.tick(now);
+            scheduler.tick();
+        }
 
         @Override
         public void close() {
@@ -619,32 +670,69 @@ class ControllerStructureUpdatesTest {
     }
 
     private static final class ExternalHatch implements ResourceHatch {
-        @Override @Nullable public ResourceStorage input() { return null; }
-        @Override @Nullable public ResourceStorage output() { return null; }
-        @Override public boolean isValid() { return true; }
+        @Override
+        @Nullable
+        public ResourceStorage input() {
+            return null;
+        }
+
+        @Override
+        @Nullable
+        public ResourceStorage output() {
+            return null;
+        }
+
+        @Override
+        public boolean isValid() {
+            return true;
+        }
     }
 
     private static final class Host implements MachineStructureHost {
         private final Thread owner = Thread.currentThread();
-        private StructureConfiguration configuration = configuration(() -> {});
+        private final List<StructureReadWindow<?>> windows = new ArrayList<>();
+        private StructureConfiguration configuration = configuration(() -> {
+        });
         private String value = "body";
         private StructureHatchBinding binding = StructureHatchBinding.EMPTY;
-        private Consumer<BlockPos> onDiscovery = _ -> {};
+        private Consumer<BlockPos> onDiscovery = _ -> {
+        };
         private Runnable onRead = () -> {
         };
         private int reads;
         private boolean available = true;
         private boolean multiplePositions;
-        @Nullable private Runnable workerRead;
-        private final List<StructureReadWindow<?>> windows = new ArrayList<>();
+        @Nullable
+        private Runnable workerRead;
 
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("No World in logical controller tests"); }
-        @Override public void requireServerThread() {
-            if (Thread.currentThread() != owner) { throw new IllegalStateException("Not the owner thread"); }
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
         }
-        @Override public StructureConfiguration structureConfiguration() { requireServerThread(); return configuration; }
-        @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); return available; }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No World in logical controller tests");
+        }
+
+        @Override
+        public void requireServerThread() {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Not the owner thread");
+            }
+        }
+
+        @Override
+        public StructureConfiguration structureConfiguration() {
+            requireServerThread();
+            return configuration;
+        }
+
+        @Override
+        public boolean isAreaLoaded(StructureBounds bounds) {
+            requireServerThread();
+            return available;
+        }
 
         @Override
         @Nullable
@@ -668,11 +756,16 @@ class ControllerStructureUpdatesTest {
             assertSame(MARKER, query);
             if (!multiplePositions) assertEquals(BODY, position);
             String captured = value;
-            var window = StructureReadWindow.joined(() -> { callback.run(); return (T) captured; });
+            var window = StructureReadWindow.joined(() -> {
+                callback.run();
+                return (T) captured;
+            });
             windows.add(window);
             return window;
         }
-        @Override public StructureHatchBinding hatchesAt(BlockPos position) {
+
+        @Override
+        public StructureHatchBinding hatchesAt(BlockPos position) {
             requireServerThread();
             var found = binding;
             onDiscovery.accept(position);

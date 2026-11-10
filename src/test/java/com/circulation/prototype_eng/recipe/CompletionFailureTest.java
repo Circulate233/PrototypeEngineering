@@ -44,7 +44,104 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CompletionFailureTest {
     private static final KeyType TYPE = new KeyType("completion_failure");
     private static final Key MATERIAL = new Key(TYPE, "material");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static void assertChildScope(RecipeProcess process, RequirementPath expected, RecipeStage stage) {
+        assertEquals(expected, process.requirementPath());
+        if (stage == RecipeStage.TICK) {
+            assertEquals(new RecipeProcess.Tick(0, 0, 0, 0), process.tickContext());
+        } else {
+            assertThrows(NullPointerException.class, process::tickContext);
+        }
+    }
+
+    private static RequirementTransaction transaction(List<? extends ResourceReservation> tokens, Runnable complete) {
+        return transaction(tokens, NO_OP, complete, () -> RequirementTransaction.Resolution.UNKNOWN);
+    }
+
+    private static RequirementTransaction transaction(List<? extends ResourceReservation> tokens, Runnable commit, Runnable complete,
+                                                      Supplier<RequirementTransaction.Resolution> resolution) {
+        return new RequirementTransaction() {
+            @Override
+            public ProcessResult result() {
+                return ProcessResult.SUCCESS;
+            }
+
+            @Override
+            public List<? extends ResourceReservation> reservations() {
+                return tokens;
+            }
+
+            @Override
+            public void commit() {
+                commit.run();
+            }
+
+            @Override
+            public void complete() {
+                complete.run();
+            }
+
+            @Override
+            public void rollback() {
+                throw new AssertionError("A terminal transaction cannot roll back");
+            }
+
+            @Override
+            public Resolution resolution() {
+                return resolution.get();
+            }
+        };
+    }
+
+    private static RecipeRequirement<String> requirement(ResourceLocation id,
+                                                         BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquisition, StorageContext... contexts) {
+        var system = new RecipeRequirementSystem<String>() {
+            @Override
+            public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return List.of(contexts);
+            }
+
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquisition.apply(process, RecipeStage.START);
+            }
+
+            @Override
+            public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquisition.apply(process, RecipeStage.TICK);
+            }
+
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return acquisition.apply(process, RecipeStage.END);
+            }
+        };
+        return new RecipeRequirementType<>(id, system).requirement(id, "payload");
+    }
+
+    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 1);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("completion_test", name);
+    }
+
+    private static SlottedResourceBuffer buffer(Runnable notification) {
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(TYPE, 100);
+        return new SlottedResourceBuffer(1, capacities, notification);
+    }
+
+    private static ResourceReservation reserve(SlottedResourceBuffer storage, boolean insert, long amount, String name,
+                                               List<String> events, Runnable afterComplete) {
+        var reservation = insert ? storage.reserveInsert(storage.snapshot(), MATERIAL, amount)
+            : storage.reserveExtract(storage.snapshot(), MATERIAL, amount);
+        assertEquals(ReservationResult.Status.ACCEPTED, reservation.status());
+        return new TrackedReservation(Objects.requireNonNull(reservation.reservation()), name, events, afterComplete);
+    }
 
     @Test
     void businessCompletionAndTokenFaultsStillFinishEveryTokenAndPublishEveryDomain() {
@@ -60,13 +157,25 @@ class CompletionFailureTest {
                 throw notificationFault;
             }
         });
-        var second = buffer(() -> { if (armed[0]) { events.add("notify:second"); } });
-        var third = buffer(() -> { if (armed[0]) { events.add("notify:third"); } });
+        var second = buffer(() -> {
+            if (armed[0]) {
+                events.add("notify:second");
+            }
+        });
+        var third = buffer(() -> {
+            if (armed[0]) {
+                events.add("notify:third");
+            }
+        });
         for (var storage : List.of(first, second, third)) {
             storage.insert(MATERIAL, 80, Actionable.MODULATE);
         }
-        var tokens = List.of(reserve(first, false, 10, "first", events, () -> { throw firstFault; }),
-            reserve(second, false, 10, "second", events, () -> { throw secondFault; }),
+        var tokens = List.of(reserve(first, false, 10, "first", events, () -> {
+                throw firstFault;
+            }),
+            reserve(second, false, 10, "second", events, () -> {
+                throw secondFault;
+            }),
             reserve(third, false, 10, "third", events, NO_OP));
         armed[0] = true;
 
@@ -98,21 +207,21 @@ class CompletionFailureTest {
         var process = process(0,
             requirement(firstId, (current, stage) -> stage != RecipeStage.END ? RequirementTransaction.SUCCESS
                 : transaction(List.of(reserve(input, false, 5, "input", events, NO_OP)), () -> {
-                    assertEquals(new RequirementPath(null, firstId, firstId), current.requirementPath());
-                    events.add("complete:first");
-                    throw primary;
-                })),
+                assertEquals(new RequirementPath(null, firstId, firstId), current.requirementPath());
+                events.add("complete:first");
+                throw primary;
+            })),
             requirement(secondId, (current, stage) -> stage != RecipeStage.END ? RequirementTransaction.SUCCESS
                 : transaction(List.of(reserve(output, true, 7, "output", events, NO_OP)), () -> {
-                    assertEquals(new RequirementPath(null, secondId, secondId), current.requirementPath());
-                    events.add("complete:second");
-                    throw secondFault;
-                })),
+                assertEquals(new RequirementPath(null, secondId, secondId), current.requirementPath());
+                events.add("complete:second");
+                throw secondFault;
+            })),
             requirement(thirdId, (current, stage) -> stage != RecipeStage.END ? RequirementTransaction.SUCCESS
                 : transaction(List.of(), () -> {
-                    assertEquals(new RequirementPath(null, thirdId, thirdId), current.requirementPath());
-                    events.add("complete:third");
-                })));
+                assertEquals(new RequirementPath(null, thirdId, thirdId), current.requirementPath());
+                events.add("complete:third");
+            })));
 
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
         assertArrayEquals(new Throwable[]{secondFault}, primary.getSuppressed());
@@ -152,8 +261,12 @@ class CompletionFailureTest {
                 () -> assertChildScope(current, childPath, stage), () -> {
                     assertChildScope(current, childPath, stage);
                     events.add("complete:child:" + stage);
-                    if (stage == RecipeStage.START) { throw primary; }
-                    if (stage == RecipeStage.TICK) { throw tickFault; }
+                    if (stage == RecipeStage.START) {
+                        throw primary;
+                    }
+                    if (stage == RecipeStage.TICK) {
+                        throw tickFault;
+                    }
                 }, () -> {
                     assertChildScope(current, childPath, stage);
                     return completionsConfirmed.get() ? RequirementTransaction.Resolution.COMPLETED : RequirementTransaction.Resolution.UNKNOWN;
@@ -162,10 +275,10 @@ class CompletionFailureTest {
         var laterId = new ResourceLocation("zz_completion", "after_checkpoint");
         var later = requirement(laterId, (current, stage) -> stage != RecipeStage.START ? RequirementTransaction.SUCCESS
             : transaction(List.of(), () -> {
-                assertEquals(new RequirementPath(null, laterId, laterId), current.requirementPath());
-                assertThrows(NullPointerException.class, current::tickContext);
-                events.add("complete:later");
-            }));
+            assertEquals(new RequirementPath(null, laterId, laterId), current.requirementPath());
+            assertThrows(NullPointerException.class, current::tickContext);
+            events.add("complete:later");
+        }));
         var process = process(1, RecipeRequirements.CHECKPOINT.requirement(checkpointId, new CheckpointRequirement(0, child)), later);
 
         assertSame(primary, assertThrows(IllegalStateException.class, process::tick));
@@ -205,81 +318,50 @@ class CompletionFailureTest {
         assertEquals(17, input.availableAmount(MATERIAL));
     }
 
-    private static void assertChildScope(RecipeProcess process, RequirementPath expected, RecipeStage stage) {
-        assertEquals(expected, process.requirementPath());
-        if (stage == RecipeStage.TICK) {
-            assertEquals(new RecipeProcess.Tick(0, 0, 0, 0), process.tickContext());
-        } else {
-            assertThrows(NullPointerException.class, process::tickContext);
-        }
-    }
-
-    private static RequirementTransaction transaction(List<? extends ResourceReservation> tokens, Runnable complete) {
-        return transaction(tokens, NO_OP, complete, () -> RequirementTransaction.Resolution.UNKNOWN);
-    }
-
-    private static RequirementTransaction transaction(List<? extends ResourceReservation> tokens, Runnable commit, Runnable complete,
-                                                     Supplier<RequirementTransaction.Resolution> resolution) {
-        return new RequirementTransaction() {
-            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-            @Override public List<? extends ResourceReservation> reservations() { return tokens; }
-            @Override public void commit() { commit.run(); }
-            @Override public void complete() { complete.run(); }
-            @Override public void rollback() { throw new AssertionError("A terminal transaction cannot roll back"); }
-            @Override public Resolution resolution() { return resolution.get(); }
-        };
-    }
-
-    private static RecipeRequirement<String> requirement(ResourceLocation id,
-        BiFunction<RecipeProcess, RecipeStage, RequirementTransaction> acquisition, StorageContext... contexts) {
-        var system = new RecipeRequirementSystem<String>() {
-            @Override public List<StorageContext> storageContexts(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return List.of(contexts);
-            }
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquisition.apply(process, RecipeStage.START);
-            }
-            @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquisition.apply(process, RecipeStage.TICK);
-            }
-            @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
-                return acquisition.apply(process, RecipeStage.END);
-            }
-        };
-        return new RecipeRequirementType<>(id, system).requirement(id, "payload");
-    }
-
-    private static RecipeProcess process(int duration, RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), duration, ObjectArrayList.of(requirements)), 1);
-    }
-
-    private static ResourceLocation id(String name) {
-        return new ResourceLocation("completion_test", name);
-    }
-
-    private static SlottedResourceBuffer buffer(Runnable notification) {
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
-        capacities.put(TYPE, 100);
-        return new SlottedResourceBuffer(1, capacities, notification);
-    }
-
-    private static ResourceReservation reserve(SlottedResourceBuffer storage, boolean insert, long amount, String name,
-                                               List<String> events, Runnable afterComplete) {
-        var reservation = insert ? storage.reserveInsert(storage.snapshot(), MATERIAL, amount)
-            : storage.reserveExtract(storage.snapshot(), MATERIAL, amount);
-        assertEquals(ReservationResult.Status.ACCEPTED, reservation.status());
-        return new TrackedReservation(Objects.requireNonNull(reservation.reservation()), name, events, afterComplete);
-    }
-
     private record TrackedReservation(ResourceReservation delegate, String name, List<String> events,
                                       Runnable afterComplete) implements ResourceReservation {
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public boolean supportsSequentialUse() { return delegate.supportsSequentialUse(); }
-        @Override public void exposeApplied() { delegate.exposeApplied(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
-        @Override public void apply() { events.add("apply:" + name); delegate.apply(); }
-        @Override public void complete() { events.add("complete:" + name); delegate.complete(); afterComplete.run(); }
-        @Override public void rollback() { events.add("rollback:" + name); delegate.rollback(); }
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public boolean supportsSequentialUse() {
+            return delegate.supportsSequentialUse();
+        }
+
+        @Override
+        public void exposeApplied() {
+            delegate.exposeApplied();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
+
+        @Override
+        public void apply() {
+            events.add("apply:" + name);
+            delegate.apply();
+        }
+
+        @Override
+        public void complete() {
+            events.add("complete:" + name);
+            delegate.complete();
+            afterComplete.run();
+        }
+
+        @Override
+        public void rollback() {
+            events.add("rollback:" + name);
+            delegate.rollback();
+        }
     }
 }

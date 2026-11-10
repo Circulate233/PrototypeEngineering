@@ -30,9 +30,48 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineDeclarationExecutionTest {
+    private static RecipeProcess process(MachineInstance owner, ResourceLocation group) {
+        return new RecipeProcess(owner, new MachineRecipe(id("recipe_" + group.getPath()), 3, List.of(), Set.of(group)), 1);
+    }
+
+    private static MachineType.Builder declaration(String name) {
+        return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure"));
+    }
+
+    private static MachineLifecycle attach(MachineInstance machine) {
+        var thread = Thread.currentThread();
+        var identity = new MachineIdentity(Objects.requireNonNull(machine.type()).id(), 0, BlockPos.ORIGIN);
+        return new MachineLifecycle(machine, new MachineLifecycleHost() {
+            @Override
+            public MachineIdentity identity() {
+                return identity;
+            }
+
+            @Override
+            public World world() {
+                throw new AssertionError("Logical tests do not create a game World");
+            }
+
+            @Override
+            public void requireServerThread() {
+                assertSame(thread, Thread.currentThread());
+            }
+        }, new MachineLifecycleRegistry());
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("declaration_test", path);
+    }
+
     @Test
     void declarationConstructionDoesNotRunFactoriesOrGrantSchedulingBeforeAttachedLoad() {
         var calls = new ObjectArrayList<String>();
@@ -41,8 +80,15 @@ class MachineDeclarationExecutionTest {
             calls.add("create");
             return "state";
         }, List.of(new ComponentSystem<>() {
-            @Override public ResourceLocation id() { return MachineDeclarationExecutionTest.id("system"); }
-            @Override public void onTick(MachineInstance owner, String state) { calls.add("tick:" + state); }
+            @Override
+            public ResourceLocation id() {
+                return MachineDeclarationExecutionTest.id("system");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, String state) {
+                calls.add("tick:" + state);
+            }
         }));
         var type = declaration("non_recipe").component(component).executionMode(ExecutionMode.MAIN_THREAD).build();
         var machine = new MachineInstance(type);
@@ -77,8 +123,15 @@ class MachineDeclarationExecutionTest {
         var machine = new MachineInstance(type);
         var lifecycle = attach(machine);
         var component = new ComponentType<MachineInstance, String>(id("observe"), _ -> "state", List.of(new ComponentSystem<>() {
-            @Override public ResourceLocation id() { return MachineDeclarationExecutionTest.id("observe_system"); }
-            @Override public void onTick(MachineInstance owner, String state) { threads.add(Thread.currentThread()); }
+            @Override
+            public ResourceLocation id() {
+                return MachineDeclarationExecutionTest.id("observe_system");
+            }
+
+            @Override
+            public void onTick(MachineInstance owner, String state) {
+                threads.add(Thread.currentThread());
+            }
         }));
         machine.components().create(component, machine);
         machine.components().create(MachineScheduling.TYPE, machine);
@@ -99,8 +152,8 @@ class MachineDeclarationExecutionTest {
         var groupA = id("a");
         var groupB = id("b");
         var explicit = declaration("explicit").component(MachineWorkSlots.TYPE)
-            .workSlot(new WorkSlotDefinition("a", Set.of(groupA)))
-            .workSlot(new WorkSlotDefinition("b", Set.of(groupB))).build();
+                                              .workSlot(new WorkSlotDefinition("a", Set.of(groupA)))
+                                              .workSlot(new WorkSlotDefinition("b", Set.of(groupB))).build();
         var machine = new MachineInstance(explicit);
         var lifecycle = attach(machine);
         var slots = machine.components().create(MachineWorkSlots.TYPE, machine);
@@ -124,24 +177,4 @@ class MachineDeclarationExecutionTest {
         assertTrue(implicitSlots.startIn("main", process(implicit, groupA)));
         implicitLifecycle.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
     }
-
-    private static RecipeProcess process(MachineInstance owner, ResourceLocation group) {
-        return new RecipeProcess(owner, new MachineRecipe(id("recipe_" + group.getPath()), 3, List.of(), Set.of(group)), 1);
-    }
-
-    private static MachineType.Builder declaration(String name) {
-        return MachineType.builder(id(name), GuiText.ResourceStorage, id("structure"));
-    }
-
-    private static MachineLifecycle attach(MachineInstance machine) {
-        var thread = Thread.currentThread();
-        var identity = new MachineIdentity(Objects.requireNonNull(machine.type()).id(), 0, BlockPos.ORIGIN);
-        return new MachineLifecycle(machine, new MachineLifecycleHost() {
-            @Override public MachineIdentity identity() { return identity; }
-            @Override public World world() { throw new AssertionError("Logical tests do not create a game World"); }
-            @Override public void requireServerThread() { assertSame(thread, Thread.currentThread()); }
-        }, new MachineLifecycleRegistry());
-    }
-
-    private static ResourceLocation id(String path) { return new ResourceLocation("declaration_test", path); }
 }

@@ -4,9 +4,10 @@ import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.NumericAttributeModifier;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
-import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -32,9 +33,21 @@ class MachineAttributeCaptureBudgetTest {
         child.addModifier(SPEED, new NumericAttributeModifier("shadow", 7, AttributeModifier.Operation.ADDITION));
         var calls = new AtomicInteger();
         child.addModifier(SPEED, new AttributeModifier() {
-            @Override public String id() { return "double"; }
-            @Override public Operation operation() { return Operation.ADDITION; }
-            @Override public double apply(double base, double current) { calls.incrementAndGet(); return current * 2; }
+            @Override
+            public String id() {
+                return "double";
+            }
+
+            @Override
+            public Operation operation() {
+                return Operation.ADDITION;
+            }
+
+            @Override
+            public double apply(double base, double current) {
+                calls.incrementAndGet();
+                return current * 2;
+            }
         });
         assertEquals(51, child.value(SPEED));
         calls.set(0);

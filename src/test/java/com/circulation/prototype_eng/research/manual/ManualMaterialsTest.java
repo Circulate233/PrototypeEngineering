@@ -5,10 +5,10 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -19,14 +19,31 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ManualMaterialsTest {
     private static final TestResources.KeyType TYPE = new TestResources.KeyType("manual_material");
     private static final TestResources.Key SHARED = new TestResources.Key(TYPE, "shared");
     private static final TestResources.Key OTHER = new TestResources.Key(TYPE, "other");
 
-    @Test void advancesSameKeyInputsSeparatelyUntilTheirDifferentTargetsComplete() {
+    private static RecipeRequirement<?> requirement(String name, GenericStack... inputs) {
+        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(List.of(inputs), List.of()));
+    }
+
+    private static ManualMaterialKey material(String requirement, int inputIndex) {
+        return new ManualMaterialKey(id(requirement), inputIndex);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("prototype_eng_test", name);
+    }
+
+    @Test
+    void advancesSameKeyInputsSeparatelyUntilTheirDifferentTargetsComplete() {
         var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, 2), new GenericStack(SHARED, 4))));
         var firstId = material("input", 0);
         var secondId = material("input", 1);
@@ -62,7 +79,8 @@ class ManualMaterialsTest {
         assertTrue(alreadyComplete.completesResearch());
     }
 
-    @Test void resumesPartialWorkAcrossRequirementsWithoutChargingCompletedItems() {
+    @Test
+    void resumesPartialWorkAcrossRequirementsWithoutChargingCompletedItems() {
         var materials = ManualMaterials.from(List.of(requirement("a", new GenericStack(SHARED, 3)),
             requirement("b", new GenericStack(SHARED, 2), new GenericStack(OTHER, 1))));
         var work = new Object2LongOpenHashMap<ManualMaterialKey>();
@@ -80,7 +98,8 @@ class ManualMaterialsTest {
         assertTrue(materials.complete(plan.expectedWork()));
     }
 
-    @Test void rejectsUnknownRequirementAndInputPositionsEvenWhenTheirWorkIsZero() {
+    @Test
+    void rejectsUnknownRequirementAndInputPositionsEvenWhenTheirWorkIsZero() {
         var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, 2))));
         for (var unknown : List.of(material("missing", 0), material("input", 1))) {
             var work = new Object2LongOpenHashMap<ManualMaterialKey>();
@@ -91,9 +110,10 @@ class ManualMaterialsTest {
         }
     }
 
-    @Test void rejectsNegativeAndOverTargetRestoredWork() {
+    @Test
+    void rejectsNegativeAndOverTargetRestoredWork() {
         var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, 2))));
-        for (long invalid : new long[] {-1, 3}) {
+        for (long invalid : new long[]{-1, 3}) {
             var work = new Object2LongOpenHashMap<ManualMaterialKey>();
             work.put(material("input", 0), invalid);
             assertThrows(IllegalArgumentException.class, () -> materials.validateWork(work));
@@ -102,7 +122,8 @@ class ManualMaterialsTest {
         }
     }
 
-    @Test void rejectsCurrentAndResultingSequenceOverflowBeforePublishingProgress() {
+    @Test
+    void rejectsCurrentAndResultingSequenceOverflowBeforePublishingProgress() {
         var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, Long.MAX_VALUE), new GenericStack(OTHER, 1))));
         var work = new Object2LongOpenHashMap<ManualMaterialKey>();
         work.put(material("input", 0), Long.MAX_VALUE);
@@ -115,7 +136,8 @@ class ManualMaterialsTest {
         assertThrows(ArithmeticException.class, () -> materials.complete(work));
     }
 
-    @Test void acceptsAnExactlyRepresentableFinalSequence() {
+    @Test
+    void acceptsAnExactlyRepresentableFinalSequence() {
         var materials = ManualMaterials.from(List.of(requirement("input", new GenericStack(SHARED, Long.MAX_VALUE - 1), new GenericStack(OTHER, 1))));
         var work = new Object2LongOpenHashMap<ManualMaterialKey>();
         work.put(material("input", 0), Long.MAX_VALUE - 1);
@@ -126,7 +148,8 @@ class ManualMaterialsTest {
         assertEquals(Long.MAX_VALUE, materials.plan(plan.expectedWork()).sequence());
     }
 
-    @Test void capturesDefinitionsAndWorkAndRejectsMutationThroughEntries() {
+    @Test
+    void capturesDefinitionsAndWorkAndRejectsMutationThroughEntries() {
         var definitions = new ObjectArrayList<RecipeRequirement<?>>();
         definitions.add(requirement("input", new GenericStack(SHARED, 2)));
         var materials = ManualMaterials.from(definitions);
@@ -145,7 +168,8 @@ class ManualMaterialsTest {
         assertEquals(2, plan.expectedWork().getLong(material("input", 0)));
     }
 
-    @Test void planConstructorCopiesEveryProvidedMutableMap() {
+    @Test
+    void planConstructorCopiesEveryProvidedMutableMap() {
         var work = new Object2LongOpenHashMap<ManualMaterialKey>();
         work.put(material("input", 0), 1);
         var quantities = new AEKey2LongMap.OpenHashMap();
@@ -158,7 +182,8 @@ class ManualMaterialsTest {
         assertEquals(1, plan.quantities().getLong(SHARED));
     }
 
-    @Test void rejectsEmptyDuplicateAndNonResourceMaterials() {
+    @Test
+    void rejectsEmptyDuplicateAndNonResourceMaterials() {
         assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of()));
         assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of(requirement("empty"))));
         var input = requirement("input", new GenericStack(SHARED, 1));
@@ -167,7 +192,8 @@ class ManualMaterialsTest {
             RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(1, 0, 0, 0, false)))));
     }
 
-    @Test void rejectsResourceEffectsBeyondStaticInputs() {
+    @Test
+    void rejectsResourceEffectsBeyondStaticInputs() {
         var stacks = List.of(new GenericStack(SHARED, 1));
         var unsupported = List.of(
             new ResourceRequirement(stacks, stacks, List.of(), List.of(), false),
@@ -177,18 +203,13 @@ class ManualMaterialsTest {
             new ResourceRequirement(stacks, List.of(), List.of(), List.of(), false, new ResourceChance(50, null), null),
             new ResourceRequirement(stacks, List.of()).withInputAllocation(InputAllocation.SINGLE_SOURCE),
             new ResourceRequirement(stacks, List.of()).withInputAllocation(InputAllocation.custom(id("custom"),
-                _ -> { throw new AssertionError("Manual materials cannot invoke source allocation"); })),
+                _ -> {
+                    throw new AssertionError("Manual materials cannot invoke source allocation");
+                })),
             new ResourceRequirement(stacks, List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS, null,
                 List.of(new FuzzyInputGroup(List.of(SHARED), 1)), List.of()));
         for (var payload : unsupported) {
             assertThrows(IllegalArgumentException.class, () -> ManualMaterials.from(List.of(RecipeRequirements.RESOURCES.requirement(id("input"), payload))));
         }
     }
-
-    private static RecipeRequirement<?> requirement(String name, GenericStack... inputs) {
-        return RecipeRequirements.RESOURCES.requirement(id(name), new ResourceRequirement(List.of(inputs), List.of()));
-    }
-
-    private static ManualMaterialKey material(String requirement, int inputIndex) { return new ManualMaterialKey(id(requirement), inputIndex); }
-    private static ResourceLocation id(String name) { return new ResourceLocation("prototype_eng_test", name); }
 }

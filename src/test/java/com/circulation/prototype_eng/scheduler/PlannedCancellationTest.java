@@ -12,10 +12,17 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlannedCancellationTest {
-    @Test void independentHandlesAndConcurrentRegistrationRemovalNotifyAtMostOnce() throws Exception {
+    @Test
+    void independentHandlesAndConcurrentRegistrationRemovalNotifyAtMostOnce() throws Exception {
         var token = new PlannedCancellationToken();
         var notifications = new ObjectArrayList<Reason>();
         Consumer<Reason> handler = notifications::add;
@@ -37,9 +44,13 @@ class PlannedCancellationTest {
                 assertTrue(start.await(5L, TimeUnit.SECONDS));
                 var registration = racing.onCancel(reason -> {
                     assertEquals(Reason.MACHINE_UNLOAD, reason);
-                    synchronized (calls) { calls[0]++; }
+                    synchronized (calls) {
+                        calls[0]++;
+                    }
                 });
-                if (unregister) { registration.close(); }
+                if (unregister) {
+                    registration.close();
+                }
                 return registration;
             });
             var cancelling = new FutureTask<>(() -> {
@@ -56,15 +67,19 @@ class PlannedCancellationTest {
             }
             try (var _ = registering.get(5L, TimeUnit.SECONDS)) {
                 assertTrue(cancelling.get(5L, TimeUnit.SECONDS));
-                if (unregister) { assertTrue(calls[0] == 0 || calls[0] == 1); }
-                else { assertEquals(1, calls[0]); }
+                if (unregister) {
+                    assertTrue(calls[0] == 0 || calls[0] == 1);
+                } else {
+                    assertEquals(1, calls[0]);
+                }
                 assertFalse(racing.cancel(Reason.SERVER_STOP));
                 assertEquals(Reason.MACHINE_UNLOAD, racing.reason());
             }
         }
     }
 
-    @Test void callbackFailuresStillNotifyEveryRegistrationAndRetainTheFirstReason() {
+    @Test
+    void callbackFailuresStillNotifyEveryRegistrationAndRetainTheFirstReason() {
         var token = new PlannedCancellationToken();
         var notifications = new ObjectArrayList<String>();
         var firstFailure = new AssertionError("first callback failed");
@@ -77,7 +92,7 @@ class PlannedCancellationTest {
             throw laterFailure;
         }); var _ = token.onCancel(_ -> notifications.add("third"))) {
             assertSame(firstFailure, assertThrows(AssertionError.class, () -> token.cancel(Reason.WORKER_FAILURE)));
-            assertArrayEquals(new Throwable[] {laterFailure}, firstFailure.getSuppressed());
+            assertArrayEquals(new Throwable[]{laterFailure}, firstFailure.getSuppressed());
             assertEquals(List.of("first", "second", "third"), notifications);
             assertTrue(token.cancelled());
             assertEquals(Reason.WORKER_FAILURE, token.reason());
@@ -91,7 +106,8 @@ class PlannedCancellationTest {
         }
     }
 
-    @Test void callbacksMayReenterAndCloseOtherHandlesWithoutHoldingTheRegistrationLock() {
+    @Test
+    void callbacksMayReenterAndCloseOtherHandlesWithoutHoldingTheRegistrationLock() {
         var token = new PlannedCancellationToken();
         var notifications = new ObjectArrayList<String>();
         var other = new Registration[1];

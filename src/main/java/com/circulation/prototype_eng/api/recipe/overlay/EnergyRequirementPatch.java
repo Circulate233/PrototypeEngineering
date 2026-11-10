@@ -5,7 +5,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
-/** Immutable tick-rate overrides; null inherits the base, and zero explicitly disables that rate. */
+/**
+ * Immutable tick-rate overrides; null inherits the base, and zero explicitly disables that rate.
+ */
 public record EnergyRequirementPatch(@Nullable Long inputsPerTick, @Nullable Long outputsPerTick,
                                      @Nullable Boolean voidExcessOutputs) {
     public EnergyRequirementPatch {
@@ -14,7 +16,9 @@ public record EnergyRequirementPatch(@Nullable Long inputsPerTick, @Nullable Lon
         }
     }
 
-    /** START input and END output retain their original values. */
+    /**
+     * START input and END output retain their original values.
+     */
     public EnergyRequirement apply(EnergyRequirement base) {
         Objects.requireNonNull(base, "base");
         if (inputsPerTick == null && outputsPerTick == null && voidExcessOutputs == null) {

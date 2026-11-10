@@ -3,9 +3,12 @@ package com.circulation.prototype_eng.recipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessAbortListener;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 
-/** One terminal cleanup wave; no participant failure may skip later owned effects. */
+/**
+ * One terminal cleanup wave; no participant failure may skip later owned effects.
+ */
 public final class RecipeAbortCleanup {
-    private RecipeAbortCleanup() { }
+    private RecipeAbortCleanup() {
+    }
 
     public static void run(RecipeProcess process) {
         if (process.state().lifecycle() != RecipeProcess.Lifecycle.FAILED && process.state().lifecycle() != RecipeProcess.Lifecycle.CANCELLED) {
@@ -31,13 +34,21 @@ public final class RecipeAbortCleanup {
                 }
             }
         }
-        if (failure instanceof RuntimeException runtime) { throw runtime; }
-        if (failure instanceof Error error) { throw error; }
+        if (failure instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
     }
 
     private static Throwable accumulate(Throwable primary, Throwable cleanup) {
-        if (primary == null) { return cleanup; }
-        if (primary != cleanup) { primary.addSuppressed(cleanup); }
+        if (primary == null) {
+            return cleanup;
+        }
+        if (primary != cleanup) {
+            primary.addSuppressed(cleanup);
+        }
         return primary;
     }
 }

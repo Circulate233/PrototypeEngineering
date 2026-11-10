@@ -31,7 +31,22 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         this.ownerCheck = Objects.requireNonNull(ownerCheck, "ownerCheck");
     }
 
-    public boolean owns(Registration registration) { return Objects.requireNonNull(registration).registry == this; }
+    @SuppressWarnings("resource")
+    // These are borrowed live registrations; updating uniqueness must not unregister them.
+    private static void updateUniqueness(ReferenceLinkedOpenHashSet<Registration> machineRegistrations) {
+        if (machineRegistrations.size() == 1) {
+            machineRegistrations.first().unique = true;
+        } else if (machineRegistrations.size() == 2) {
+            for (var registration : machineRegistrations) {
+                registration.unique = false;
+            }
+        }
+        // Larger duplicate groups already contain only non-unique entries; each new entry starts non-unique.
+    }
+
+    public boolean owns(Registration registration) {
+        return Objects.requireNonNull(registration).registry == this;
+    }
 
     /**
      * Replaces another runtime at the exact world object and block position, regardless of machine type.
@@ -76,7 +91,9 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         return registration;
     }
 
-    /** Removes only this exact generation; closing a replaced or already removed registration is harmless. */
+    /**
+     * Removes only this exact generation; closing a replaced or already removed registration is harmless.
+     */
     public void unregister(Registration registration) {
         ownerCheck.run();
         Objects.requireNonNull(registration, "registration");
@@ -98,7 +115,9 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         return revision;
     }
 
-    /** Frozen membership in increasing load order; individual registration state remains live and revocable. */
+    /**
+     * Frozen membership in increasing load order; individual registration state remains live and revocable.
+     */
     public ObjectList<Registration> uniqueRegistrations() {
         ownerCheck.run();
         var result = new ObjectArrayList<Registration>(registrations.size());
@@ -110,7 +129,9 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         return ObjectLists.unmodifiable(result);
     }
 
-    /** Permanently revokes all registrations. A later server must create a new registry. */
+    /**
+     * Permanently revokes all registrations. A later server must create a new registry.
+     */
     @Override
     public void close() {
         ownerCheck.run();
@@ -130,7 +151,8 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         revision = nextRevision;
     }
 
-    @SuppressWarnings("resource") // Registrations are revoked here; removed/remaining index values must not be closed again.
+    @SuppressWarnings("resource")
+    // Registrations are revoked here; removed/remaining index values must not be closed again.
     private void remove(Registration registration) {
         registration.current = false;
         registration.unique = false;
@@ -153,19 +175,9 @@ public final class MachineIdentityRegistry implements AutoCloseable {
         }
     }
 
-    @SuppressWarnings("resource") // These are borrowed live registrations; updating uniqueness must not unregister them.
-    private static void updateUniqueness(ReferenceLinkedOpenHashSet<Registration> machineRegistrations) {
-        if (machineRegistrations.size() == 1) {
-            machineRegistrations.first().unique = true;
-        } else if (machineRegistrations.size() == 2) {
-            for (var registration : machineRegistrations) {
-                registration.unique = false;
-            }
-        }
-        // Larger duplicate groups already contain only non-unique entries; each new entry starts non-unique.
-    }
-
-    /** Exact loaded generation; a unique UUID is necessary identity evidence, never a team or work authorization. */
+    /**
+     * Exact loaded generation; a unique UUID is necessary identity evidence, never a team or work authorization.
+     */
     public static final class Registration implements AutoCloseable {
         private final MachineIdentityRegistry registry;
         private final PersistentMachineIdentity identity;
@@ -207,12 +219,16 @@ public final class MachineIdentityRegistry implements AutoCloseable {
             return loadOrder;
         }
 
-        /** May be read from any thread; all registry mutations remain on the server owner thread. */
+        /**
+         * May be read from any thread; all registry mutations remain on the server owner thread.
+         */
         public boolean current() {
             return current;
         }
 
-        /** May be read from any thread and never confers saved or current execution permission. */
+        /**
+         * May be read from any thread and never confers saved or current execution permission.
+         */
         public boolean unique() {
             return current && unique;
         }

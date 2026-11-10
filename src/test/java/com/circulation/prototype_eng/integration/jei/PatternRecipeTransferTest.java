@@ -14,15 +14,22 @@ import java.util.Objects;
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role.INPUT;
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role.OUTPUT;
 import static com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Text.of;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PatternRecipeTransferTest {
     private static final KeyType TYPE = new KeyType("pattern_transfer");
-    private static GenericStack stack(String name, long amount) { return new GenericStack(new Key(TYPE, name), amount); }
 
-    @Test void completePatternKeepsEveryPageAndOriginalLongQuantities() {
+    private static GenericStack stack(String name, long amount) {
+        return new GenericStack(new Key(TYPE, name), amount);
+    }
+
+    @Test
+    void completePatternKeepsEveryPageAndOriginalLongQuantities() {
         var display = new JeiRecipeDisplay.Builder();
-        for (int i = 0; i < 35; i++) display.resource(stack("input_" + i, i == 20 ? Long.MAX_VALUE : i + 1), INPUT, of(JeiText.Start));
+        for (int i = 0; i < 35; i++)
+            display.resource(stack("input_" + i, i == 20 ? Long.MAX_VALUE : i + 1), INPUT, of(JeiText.Start));
         for (int i = 0; i < 19; i++) display.resource(stack("output_" + i, i + 2), OUTPUT, of(JeiText.End));
         display.scoped(of(JeiText.Tick)).energy(100, INPUT, of(JeiText.EnergyInput, 100));
         var source = new RecipePanelLayout(display.build()).patternRecipe(80);
@@ -34,7 +41,8 @@ class PatternRecipeTransferTest {
         assertEquals(stack("output_18", 20), outputs.getLast().getStack());
     }
 
-    @Test void fuzzyInputIsOneSlotAndMergeKeepsOnlySharedCandidates() {
+    @Test
+    void fuzzyInputIsOneSlotAndMergeKeepsOnlySharedCandidates() {
         var display = new JeiRecipeDisplay.Builder();
         var candidates = display.candidates(new JeiRecipeDisplay.CandidateGroup("input"));
         candidates.resource(stack("a", 4), INPUT, of(JeiText.Fuzzy, "input"));
@@ -51,7 +59,8 @@ class PatternRecipeTransferTest {
         assertEquals(2, Objects.requireNonNull(PatternRecipeTransfer.plan(source.inputs(), List::getLast, false)).size());
     }
 
-    @Test void overflowIsRejectedBeforeAnyTerminalWrite() {
+    @Test
+    void overflowIsRejectedBeforeAnyTerminalWrite() {
         var groups = List.of(List.of(stack("a", Long.MAX_VALUE)), List.of(stack("a", 1)));
         assertNull(PatternRecipeTransfer.plan(groups, List::getFirst, true));
         var separate = Objects.requireNonNull(PatternRecipeTransfer.plan(groups, List::getFirst, false));
@@ -63,7 +72,8 @@ class PatternRecipeTransferTest {
         assertThrows(ArithmeticException.class, () -> new RecipePanelLayout(display.build()).patternRecipe(2));
     }
 
-    @Test void displayedCandidatesAndChanceImportUnchangedWhilePerTickQuantitiesUseRecipeTime() {
+    @Test
+    void displayedCandidatesAndChanceImportUnchangedWhilePerTickQuantitiesUseRecipeTime() {
         for (var detail : List.of(JeiText.Tick, JeiText.Alternative, JeiText.Dynamic, JeiText.Weighted, JeiText.CheckpointScaled)) {
             var display = new JeiRecipeDisplay.Builder();
             display.resource(stack("input", 2), INPUT, of(detail));

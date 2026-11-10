@@ -3,10 +3,13 @@ package com.circulation.prototype_eng.api.research.content;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
-import java.util.Objects;
 import net.minecraft.util.ResourceLocation;
 
-/** Immutable direct-display client text; executable research and reward definitions stay separate. */
+import java.util.Objects;
+
+/**
+ * Immutable direct-display client text; executable research and reward definitions stay separate.
+ */
 public record ResearchContent(String title, String summary, ObjectList<String> description, Icon icon) {
     public ResearchContent {
         title = requiredText(title);
@@ -24,14 +27,17 @@ public record ResearchContent(String title, String summary, ObjectList<String> d
         return trimmed;
     }
 
-    /** A named icon-map entry or an item variant; no item registry lookup occurs while loading text. */
+    public enum Kind {ITEM, ICON}
+
+    /**
+     * A named icon-map entry or an item variant; no item registry lookup occurs while loading text.
+     */
     public record Icon(Kind kind, ResourceLocation id, int meta) {
         public Icon {
             Objects.requireNonNull(kind);
             Objects.requireNonNull(id);
-            if (meta < 0 || kind == Kind.ICON && meta != 0) throw new IllegalArgumentException("Invalid research content icon metadata");
+            if (meta < 0 || kind == Kind.ICON && meta != 0)
+                throw new IllegalArgumentException("Invalid research content icon metadata");
         }
     }
-
-    public enum Kind { ITEM, ICON }
 }

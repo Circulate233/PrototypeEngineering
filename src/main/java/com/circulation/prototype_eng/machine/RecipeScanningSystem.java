@@ -11,7 +11,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/** Admission readiness only. The runtime must independently authorize scheduling existing work. */
+/**
+ * Admission readiness only. The runtime must independently authorize scheduling existing work.
+ */
 public final class RecipeScanningSystem implements MachineSystem<RecipeScanner> {
     private static final ResourceLocation ID = new ResourceLocation(Tags.MOD_ID, "recipe_scanning");
     private final ScanLimits limits;
@@ -22,14 +24,25 @@ public final class RecipeScanningSystem implements MachineSystem<RecipeScanner> 
         this.ready = Objects.requireNonNull(ready);
     }
 
-    @Override public ResourceLocation id() { return ID; }
-    @Override public Set<ResourceLocation> runBefore() { return Set.of(WorkSlotProcessingSystem.ID); }
+    @Override
+    public ResourceLocation id() {
+        return ID;
+    }
 
-    @Override public void onTick(MachineInstance machine, RecipeScanner scanner) {
-        if (scanner.host().owner() != machine) { throw new IllegalArgumentException("Scanner belongs to a different machine"); }
+    @Override
+    public Set<ResourceLocation> runBefore() {
+        return Set.of(WorkSlotProcessingSystem.ID);
+    }
+
+    @Override
+    public void onTick(MachineInstance machine, RecipeScanner scanner) {
+        if (scanner.host().owner() != machine) {
+            throw new IllegalArgumentException("Scanner belongs to a different machine");
+        }
         if (machine.canProcessRecipes() && ready.test(machine)) {
             var lifecycle = machine.lifecycle();
             if (lifecycle != null && lifecycle.deferRecipeScan(scanner, limits)) return;
-            scanner.scan(limits); }
+            scanner.scan(limits);
+        }
     }
 }

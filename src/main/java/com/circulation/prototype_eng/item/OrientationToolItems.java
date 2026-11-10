@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.item;
 
-import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.OrientationToolConfig;
+import com.circulation.prototype_eng.Tags;
 import net.minecraft.item.Item;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -11,7 +11,8 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 public final class OrientationToolItems {
     public static final ControllerOrientationTool TOOL = new ControllerOrientationTool();
 
-    private OrientationToolItems() { }
+    private OrientationToolItems() {
+    }
 
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {

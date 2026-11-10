@@ -2,11 +2,11 @@ package com.circulation.prototype_eng.client.preview;
 
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewCache;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
-import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
+import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
@@ -22,7 +22,15 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class StructureProjectionStateTest {
     private static final ResourceLocation ID = new ResourceLocation("preview_test", "root");

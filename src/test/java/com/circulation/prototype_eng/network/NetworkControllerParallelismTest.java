@@ -82,7 +82,10 @@ class NetworkControllerParallelismTest {
     private static final KeyType ITEMS = new KeyType("network_controller_parallelism");
     private static final Key INPUT = new Key(ITEMS, "input");
     private static final Key OUTPUT = new Key(ITEMS, "output");
-    private static ResourceLocation id(String path) { return new ResourceLocation("network_controller_test", path); }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("network_controller_test", path);
+    }
 
     /** Executes actual source/kernel continuations directly; the scheduler regression separately proves worker dispatch. */
     private static void step(RecipeScanner.ScanAttempt attempt) {
@@ -101,7 +104,8 @@ class NetworkControllerParallelismTest {
         for (var factory : List.<Function<MachineType, MachineInstance>>of(MultithreadController::new, CrossRecipeController::new)) {
             for (boolean sliced : List.of(false, true)) {
                 try (var fixture = new Fixture(factory)) {
-                    var worker = fixture.worker(); var other = fixture.worker();
+                    var worker = fixture.worker();
+                    var other = fixture.worker();
                     assertTrue(fixture.network.refresh());
                     var owner = assertInstanceOf(RecipeController.class, worker.owner);
                     owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
@@ -164,7 +168,8 @@ class NetworkControllerParallelismTest {
         private Fixture(Function<MachineType, MachineInstance> factory) {
             var resources = new NetworkResourceRegistry();
             resources.freeze();
-            var research = new ResearchRegistry(); research.freeze(resources);
+            var research = new ResearchRegistry();
+            research.freeze(resources);
             network = new NetworkRuntime(identities, resources, owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER,
                 ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
             workerRole = role("worker_role", NetworkDeviceRole.DEVICE);
@@ -179,9 +184,10 @@ class NetworkControllerParallelismTest {
             var centerRole = role("center_role", NetworkDeviceRole.NETWORK_CENTER);
             var centerType = type("center").component(ownership).component(centerRole).build();
             attach(MachineAssembly.builder(centerType, "v1").component(ownership, MachineOwnership.CODEC).recreated(centerRole).build()
-                .create(host(centerType.id()), new MachineLifecycleRegistry()));
+                                  .create(host(centerType.id()), new MachineLifecycleRegistry()));
             var supply = new Object2LongOpenHashMap<NetworkResourceType>();
-            supply.put(NetworkResources.THREAD, 1); supply.put(NetworkResources.COMPUTE, 100);
+            supply.put(NetworkResources.THREAD, 1);
+            supply.put(NetworkResources.COMPUTE, 100);
             var card = ComputerSupplyFixtures.key("controller_card");
             var components = new NetworkComputerComponentRegistry();
             ComputerSupplyFixtures.register(components, card, _ -> new NetworkComputerComponent.Capture(NetworkResourceModifier.copyResources(supply), () -> true));
@@ -192,39 +198,79 @@ class NetworkControllerParallelismTest {
                     Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             var computer = MachineAssembly.builder(computerType, "v1").component(ownership, MachineOwnership.CODEC).recreated(installed, computerRole).build()
-                .create(host(computerType.id()), new MachineLifecycleRegistry());
-            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> { });
+                                          .create(host(computerType.id()), new MachineLifecycleRegistry());
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> {
+            });
             assertEquals(1, Objects.requireNonNull(warehouse.input()).insert(card, 1, Actionable.MODULATE));
             Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(), List.of()));
             machines.add(computer);
         }
 
-        private static MachineType.Builder type(String path) { return MachineType.builder(id(path), GuiText.ResourceStorage, id("shape")); }
+        private static MachineType.Builder type(String path) {
+            return MachineType.builder(id(path), GuiText.ResourceStorage, id("shape"));
+        }
+
         private ComponentType<MachineInstance, MachineNetworkDevice> role(String path, NetworkDeviceRole role) {
             return MachineNetworkDevice.component(id(path), ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, 1,
                 Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         }
-        private Worker worker() { return attach(workerAssembly.create(host(workerAssembly.type().id()), new MachineLifecycleRegistry())); }
+
+        private Worker worker() {
+            return attach(workerAssembly.create(host(workerAssembly.type().id()), new MachineLifecycleRegistry()));
+        }
+
         private Worker attach(MachineInstance owner) {
-            var input = new EnergyBuffer(100, () -> { }); var output = new EnergyBuffer(100, () -> { });
+            var input = new EnergyBuffer(100, () -> {
+            });
+            var output = new EnergyBuffer(100, () -> {
+            });
             input.receiveEnergy(100, Actionable.MODULATE);
-            var items = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(ITEMS, 100L), () -> { });
+            var items = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(ITEMS, 100L), () -> {
+            });
             assertEquals(100, Objects.requireNonNull(items.input()).insert(INPUT, 100, Actionable.MODULATE));
             Objects.requireNonNull(owner.lifecycle()).form(new MachineHatches(List.of(items), List.of(input), List.of(output)));
-            machines.add(owner); return new Worker(owner, input, output, items);
+            machines.add(owner);
+            return new Worker(owner, input, output, items);
         }
-        private NetworkRuntime.WorkPermit permit(Worker worker) { return Objects.requireNonNull(Objects.requireNonNull(worker.owner.components().get(workerRole)).workPermit()); }
-        private Host host(ResourceLocation type) { return new Host(world, type, new BlockPos(positions++, 0, 0), player); }
-        private void requireOwner() { if (Thread.currentThread() != ownerThread) throw new IllegalStateException("Wrong owner thread"); }
-        @Override public void close() {
-            for (var machine : machines) Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
-            network.close(); identities.close();
+
+        private NetworkRuntime.WorkPermit permit(Worker worker) {
+            return Objects.requireNonNull(Objects.requireNonNull(worker.owner.components().get(workerRole)).workPermit());
+        }
+
+        private Host host(ResourceLocation type) {
+            return new Host(world, type, new BlockPos(positions++, 0, 0), player);
+        }
+
+        private void requireOwner() {
+            if (Thread.currentThread() != ownerThread) throw new IllegalStateException("Wrong owner thread");
+        }
+
+        @Override
+        public void close() {
+            for (var machine : machines)
+                Objects.requireNonNull(machine.lifecycle()).unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            network.close();
+            identities.close();
         }
     }
-    private record Worker(MachineInstance owner, EnergyBuffer input, EnergyBuffer output, BufferedResourceHatch items) { }
-    private record Host(Object worldIdentity, ResourceLocation type, BlockPos position, UUID placementPlayer) implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(type, 0, position); }
-        @Override public World world() { throw new AssertionError("No Minecraft world in network controller tests"); }
-        @Override public void requireServerThread() { }
+
+    private record Worker(MachineInstance owner, EnergyBuffer input, EnergyBuffer output, BufferedResourceHatch items) {
+    }
+
+    private record Host(Object worldIdentity, ResourceLocation type, BlockPos position,
+                        UUID placementPlayer) implements MachineLifecycleHost {
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(type, 0, position);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No Minecraft world in network controller tests");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

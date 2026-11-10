@@ -8,12 +8,13 @@ import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import org.junit.jupiter.api.Test;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -33,7 +34,8 @@ class StorageDeferredBudgetBoundaryTest {
     private static SlottedResourceBuffer buffer(int slots, long capacity, long initialRevision) {
         var capacities = new Reference2LongArrayMap<AEKeyType>();
         capacities.put(TYPE, capacity);
-        var storage = new SlottedResourceBuffer(slots, capacities, () -> {});
+        var storage = new SlottedResourceBuffer(slots, capacities, () -> {
+        });
         var context = storage.context();
         context.lock();
         try {
@@ -66,7 +68,7 @@ class StorageDeferredBudgetBoundaryTest {
     }
 
     private static ResourceStorage.ReservationCapture insertCapture(StorageFence fence,
-                                                                   SlottedResourceBuffer storage, long amount) {
+                                                                    SlottedResourceBuffer storage, long amount) {
         var capture = new ResourceStorage.ReservationCapture[1];
         fence.access(storage.context(), () -> capture[0] = storage.beginReserveInsert(storage.snapshotFor(KEY), KEY, amount));
         drive(() -> inFence(fence, storage.context(), () -> capture[0].advance(unit())));
@@ -197,22 +199,47 @@ class StorageDeferredBudgetBoundaryTest {
         var simulations = new int[1];
         var reserveCalls = new int[1];
         ResourceStorage external = new ResourceStorage() {
-            @Override public StorageContext context() { return storage.context(); }
-            @Override public StorageSnapshot snapshot() { return storage.snapshot(); }
-            @Override public long amount(AEKey key) { return storage.amount(key); }
-            @Override public long availableAmount(AEKey key) { return storage.availableAmount(key); }
-            @Override public long insert(AEKey key, long amount, Actionable mode) { return storage.insert(key, amount, mode); }
-            @Override public long extract(AEKey key, long amount, Actionable mode) {
+            @Override
+            public StorageContext context() {
+                return storage.context();
+            }
+
+            @Override
+            public StorageSnapshot snapshot() {
+                return storage.snapshot();
+            }
+
+            @Override
+            public long amount(AEKey key) {
+                return storage.amount(key);
+            }
+
+            @Override
+            public long availableAmount(AEKey key) {
+                return storage.availableAmount(key);
+            }
+
+            @Override
+            public long insert(AEKey key, long amount, Actionable mode) {
+                return storage.insert(key, amount, mode);
+            }
+
+            @Override
+            public long extract(AEKey key, long amount, Actionable mode) {
                 assertSame(owner, Thread.currentThread());
                 assertSame(Actionable.SIMULATE, mode);
                 simulations[0]++;
                 return storage.extract(key, amount, mode);
             }
-            @Override public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
+
+            @Override
+            public ReservationResult reserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {
                 reserveCalls[0]++;
                 throw new AssertionError("Cancellation must not issue the unentered reserve callback");
             }
-            @Override public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
+
+            @Override
+            public ReservationResult reserveInsert(StorageSnapshot snapshot, AEKey key, long amount) {
                 reserveCalls[0]++;
                 throw new AssertionError("Cancellation must not issue a different reserve callback");
             }
@@ -229,13 +256,38 @@ class StorageDeferredBudgetBoundaryTest {
         var actualWorker = new Thread[1];
         var originalContext = storage.context();
         ResourceReservation pendingReceipt = new ResourceReservation() {
-            @Override public StorageContext context() { return originalContext; }
-            @Override public boolean canApply() { throw new AssertionError("Unentered reservation cannot be applied"); }
-            @Override public void apply() { throw new AssertionError("Cleanup cannot apply a capture"); }
-            @Override public void complete() { throw new AssertionError("Cleanup cannot complete a capture"); }
-            @Override public void rollback() { throw new AssertionError("The original source must use its budget callback"); }
-            @Override public Resolution resolution() { return capture.resolution(); }
-            @Override public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
+            @Override
+            public StorageContext context() {
+                return originalContext;
+            }
+
+            @Override
+            public boolean canApply() {
+                throw new AssertionError("Unentered reservation cannot be applied");
+            }
+
+            @Override
+            public void apply() {
+                throw new AssertionError("Cleanup cannot apply a capture");
+            }
+
+            @Override
+            public void complete() {
+                throw new AssertionError("Cleanup cannot complete a capture");
+            }
+
+            @Override
+            public void rollback() {
+                throw new AssertionError("The original source must use its budget callback");
+            }
+
+            @Override
+            public Resolution resolution() {
+                return capture.resolution();
+            }
+
+            @Override
+            public boolean rollbackWithinBudget(RecipeWorkBudget budget) {
                 actualWorker[0] = Thread.currentThread();
                 assertNotSame(owner, actualWorker[0]);
                 originalContext.requireLock();

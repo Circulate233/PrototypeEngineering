@@ -2,17 +2,19 @@ package com.circulation.prototype_eng.api.client.jei;
 
 import ae2.api.integrations.hei.IngredientConverter;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
-import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
 import com.circulation.prototype_eng.integration.jei.RecipeInformationLayout;
+import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
 import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.gui.IDrawable;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredients;
@@ -20,24 +22,21 @@ import mezz.jei.api.recipe.IIngredientType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
+import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 import java.util.Objects;
-import javax.annotation.ParametersAreNonnullByDefault;
-
-import mcp.MethodsReturnNonnullByDefault;
-import org.jetbrains.annotations.Nullable;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
@@ -46,13 +45,6 @@ class JeiRecipeIntegrationTest {
     private static final KeyType FLUID = new KeyType("jei_fluid_like");
     private static final IIngredientType<GenericStack> ITEM_INGREDIENT = new IngredientType();
     private static final IIngredientType<GenericStack> FLUID_INGREDIENT = new IngredientType();
-
-    private static class IngredientType implements IIngredientType<GenericStack> {
-        @Override
-        public Class<GenericStack> getIngredientClass() {
-            return GenericStack.class;
-        }
-    }
 
     private static ResourceLocation id(String name) {
         return new ResourceLocation("jei_test", name);
@@ -248,12 +240,21 @@ class JeiRecipeIntegrationTest {
         var fallbackCalls = new ObjectArrayList<GenericStack>();
         // Exercise routing/indexing with a pure carrier. Production uses AE2S GenericStack.wrapInItemStack.
         var fallback = new IngredientConverter<GenericStack>() {
-            @Override public IIngredientType<GenericStack> getIngredientType() { return ITEM_INGREDIENT; }
-            @Override public GenericStack getIngredientFromStack(GenericStack stack) {
+            @Override
+            public IIngredientType<GenericStack> getIngredientType() {
+                return ITEM_INGREDIENT;
+            }
+
+            @Override
+            public GenericStack getIngredientFromStack(GenericStack stack) {
                 fallbackCalls.add(stack);
                 return stack;
             }
-            @Override public GenericStack getStackFromIngredient(GenericStack stack) { return stack; }
+
+            @Override
+            public GenericStack getStackFromIngredient(GenericStack stack) {
+                return stack;
+            }
         };
         var bridge = new JeiRecipeIngredients(display, converters, List.of(ITEM_INGREDIENT, FLUID_INGREDIENT), identities(display, converters),
             fallback, key -> key.getType() == ITEM);
@@ -351,7 +352,8 @@ class JeiRecipeIntegrationTest {
         for (int i = 0; i < 33; i++) builder.resource(stack(ITEM, "input" + i, 1), JeiRecipeDisplay.Role.INPUT);
         var materialPages = new RecipePanelLayout(builder.build());
         assertEquals(3, materialPages.pageCount());
-        for (int i = 0; i < materialPages.pageCount(); i++) assertEquals(display.information(), materialPages.information(i));
+        for (int i = 0; i < materialPages.pageCount(); i++)
+            assertEquals(display.information(), materialPages.information(i));
         assertThrows(IllegalArgumentException.class, () -> layout.information(-1));
         assertThrows(IllegalArgumentException.class, () -> layout.information(layout.pageCount()));
     }
@@ -463,6 +465,13 @@ class JeiRecipeIntegrationTest {
         assertEquals(Long.MAX_VALUE - 1, registryRow.stack().amount());
         assertSame(unique.what(), uniqueRow.stack().what());
         assertEquals(11, uniqueRow.stack().amount());
+    }
+
+    private static class IngredientType implements IIngredientType<GenericStack> {
+        @Override
+        public Class<GenericStack> getIngredientClass() {
+            return GenericStack.class;
+        }
     }
 
     /**

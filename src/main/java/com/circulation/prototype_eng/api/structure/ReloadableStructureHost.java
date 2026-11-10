@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
-import org.jetbrains.annotations.Nullable;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Actual mutable configuration responsibility for built-in and independent external hosts.
@@ -12,6 +12,8 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 public interface ReloadableStructureHost extends MachineStructureHost {
     void installStructureConfiguration(@Nullable StructureConfiguration configuration);
 
-    /** Exact active owner, including host-object reuse; old lifecycle ownership cannot become true again. */
+    /**
+     * Exact active owner, including host-object reuse; old lifecycle ownership cannot become true again.
+     */
     boolean structureLifecycleCurrent(MachineLifecycle lifecycle);
 }

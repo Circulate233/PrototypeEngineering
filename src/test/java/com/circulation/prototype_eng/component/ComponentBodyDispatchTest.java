@@ -19,6 +19,21 @@ class ComponentBodyDispatchTest {
     private static final Runnable NO_OP = () -> {
     };
 
+    private static ComponentType<Object, String> install(ComponentMap<Object> map, Object owner, String name,
+                                                         List<String> events) {
+        return install(map, owner, new RecordingSystem(name, events));
+    }
+
+    private static ComponentType<Object, String> install(ComponentMap<Object> map, Object owner, RecordingSystem system) {
+        var type = new ComponentType<>(id(system.name), _ -> system.name, List.of(system));
+        map.create(type, owner);
+        return type;
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("component_body_test", name);
+    }
+
     @Test
     void blockedBusinessReturnStillRunsAllPostsAfterOnePreAndTickDispatch() {
         var map = new ComponentMap<>();
@@ -165,21 +180,6 @@ class ComponentBodyDispatchTest {
         var events = new ObjectArrayList<String>();
         new ComponentMap<>().tick(new Object(), () -> events.add("body"));
         assertEquals(List.of("body"), events);
-    }
-
-    private static ComponentType<Object, String> install(ComponentMap<Object> map, Object owner, String name,
-                                                        List<String> events) {
-        return install(map, owner, new RecordingSystem(name, events));
-    }
-
-    private static ComponentType<Object, String> install(ComponentMap<Object> map, Object owner, RecordingSystem system) {
-        var type = new ComponentType<>(id(system.name), _ -> system.name, List.of(system));
-        map.create(type, owner);
-        return type;
-    }
-
-    private static ResourceLocation id(String name) {
-        return new ResourceLocation("component_body_test", name);
     }
 
     private static final class RecordingSystem implements ComponentSystem<Object, String> {

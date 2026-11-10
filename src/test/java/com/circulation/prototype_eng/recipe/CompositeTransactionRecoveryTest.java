@@ -28,15 +28,59 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CompositeTransactionRecoveryTest {
     private static final RecipeProcess.Tick TICK = new RecipeProcess.Tick(4, 6, 2, 3);
     private static final ResourceLocation SCORE = id("score");
-    private static final RecipeRequirementType<Integer> NUMBER = new RecipeRequirementType<>(id("number"), new RecipeRequirementSystem<>() {});
+    private static final RecipeRequirementType<Integer> NUMBER = new RecipeRequirementType<>(id("number"), new RecipeRequirementSystem<>() {
+    });
     private static final RecipeOverlayType<Integer, Integer> ADD = new RecipeOverlayType<>(id("add"), NUMBER, Math::addExact);
 
-    @Test void checkpointRetriesOnlyItsUnconfirmedChildAndRestoresEveryFrozenScope() {
+    private static ResourceBatch checkpointBatch(RecipeProcess process) {
+        var acquisition = RecipeStageExecutor.prepare(process, RecipeStage.TICK, RequirementTransaction.SUCCESS);
+        process.withTickContext(TICK, () -> {
+            acquisition.acquire();
+            return null;
+        });
+        var batch = Objects.requireNonNull(ResourceBatch.tryAcquireSequential(process.declaredStorageContexts(),
+            acquisition.reservations(), acquisition.transactions()));
+        while (acquisition.hasContinuation()) {
+            for (var source : batch.sources()) {
+                if (source.state() == ResourceBatch.SourceState.RESERVED) {
+                    assertTrue(source.apply());
+                }
+            }
+            assertTrue(batch.stage(() -> true));
+            batch.acquireNext(acquisition::acquireNext);
+            batch.append(acquisition.stepReservations(), acquisition.stepTransactions());
+        }
+        return batch;
+    }
+
+    private static ResourceBatch batch(RequirementTransaction transaction) {
+        return Objects.requireNonNull(ResourceBatch.tryAcquire(transaction.reservations(), List.of(transaction)));
+    }
+
+    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 10, List.of(requirements)), 17);
+    }
+
+    private static NumericAttributeModifier add(String name, double value) {
+        return new NumericAttributeModifier(name, value, AttributeModifier.Operation.ADDITION);
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("composite_recovery", name);
+    }
+
+    @Test
+    void checkpointRetriesOnlyItsUnconfirmedChildAndRestoresEveryFrozenScope() {
         var effects = new Effects(TICK);
         var checkpoint = RecipeRequirements.CHECKPOINT.requirement(id("checkpoint"), new CheckpointRequirement(5, effects.requirement()));
         var process = process(checkpoint);
@@ -58,7 +102,8 @@ class CompositeTransactionRecoveryTest {
         assertThrows(NullPointerException.class, process::tickContext);
     }
 
-    @Test void checkpointConfirmsAfterMutationFaultsWithoutReplayingAnyChildOrChangingDirection() {
+    @Test
+    void checkpointConfirmsAfterMutationFaultsWithoutReplayingAnyChildOrChangingDirection() {
         for (boolean complete : List.of(false, true)) {
             var effects = new Effects(TICK);
             var checkpoint = RecipeRequirements.CHECKPOINT.requirement(id("checkpoint"), new CheckpointRequirement(5, effects.requirement()));
@@ -68,8 +113,11 @@ class CompositeTransactionRecoveryTest {
             tick.proof = true;
             tick.failAfter = true;
             assertSame(tick.failure, assertThrows(IllegalStateException.class, () -> {
-                if (complete) { batch.commit(() -> true); }
-                else { batch.rollback(); }
+                if (complete) {
+                    batch.commit(() -> true);
+                } else {
+                    batch.rollback();
+                }
             }));
             process.requireQuiescent();
             assertTrue(batch.resolveBusiness());
@@ -77,13 +125,17 @@ class CompositeTransactionRecoveryTest {
                 assertEquals(complete ? 1 : 0, effects.at(stage).completions);
                 assertEquals(complete ? 0 : 1, effects.at(stage).rollbacks);
             }
-            if (complete) { assertThrows(IllegalStateException.class, batch::rollback); }
-            else { assertThrows(IllegalStateException.class, () -> batch.commit(() -> true)); }
+            if (complete) {
+                assertThrows(IllegalStateException.class, batch::rollback);
+            } else {
+                assertThrows(IllegalStateException.class, () -> batch.commit(() -> true));
+            }
             batch.finish();
         }
     }
 
-    @Test void selectorStartAndEndKeepTheirOwnEffectsWhileRecoveringTheExactChild() {
+    @Test
+    void selectorStartAndEndKeepTheirOwnEffectsWhileRecoveringTheExactChild() {
         var selection = new Selection();
         var start = selection.requirement.acquire(selection.process, RecipeStage.START);
         var childStart = selection.effects.at(RecipeStage.START);
@@ -117,7 +169,8 @@ class CompositeTransactionRecoveryTest {
         ending.finish();
     }
 
-    @Test void selectorRollbackRetriesTheChildWithoutReplayingItsCompletedEffectCleanup() {
+    @Test
+    void selectorRollbackRetriesTheChildWithoutReplayingItsCompletedEffectCleanup() {
         var selection = new Selection();
         var start = selection.requirement.acquire(selection.process, RecipeStage.START);
         var child = selection.effects.at(RecipeStage.START);
@@ -139,7 +192,8 @@ class CompositeTransactionRecoveryTest {
         batch.finish();
     }
 
-    @Test void selectorOwnUnknownEndCleanupCannotBeHiddenByAConfirmedChild() {
+    @Test
+    void selectorOwnUnknownEndCleanupCannotBeHiddenByAConfirmedChild() {
         var selection = new Selection();
         var starting = batch(selection.requirement.acquire(selection.process, RecipeStage.START));
         assertTrue(starting.commit(() -> true));
@@ -156,7 +210,8 @@ class CompositeTransactionRecoveryTest {
         assertThrows(IllegalStateException.class, ending::finish);
     }
 
-    @Test void selectorOwnUnknownStartUndoRetainsPendingAndPreservesTheReplacingWriter() {
+    @Test
+    void selectorOwnUnknownStartUndoRetainsPendingAndPreservesTheReplacingWriter() {
         var selection = new Selection();
         var start = selection.requirement.acquire(selection.process, RecipeStage.START);
         var child = selection.effects.at(RecipeStage.START);
@@ -177,36 +232,6 @@ class CompositeTransactionRecoveryTest {
         assertThrows(IllegalStateException.class, batch::finish);
     }
 
-    private static ResourceBatch checkpointBatch(RecipeProcess process) {
-        var acquisition = RecipeStageExecutor.prepare(process, RecipeStage.TICK, RequirementTransaction.SUCCESS);
-        process.withTickContext(TICK, () -> { acquisition.acquire(); return null; });
-        var batch = Objects.requireNonNull(ResourceBatch.tryAcquireSequential(process.declaredStorageContexts(),
-            acquisition.reservations(), acquisition.transactions()));
-        while (acquisition.hasContinuation()) {
-            for (var source : batch.sources()) {
-                if (source.state() == ResourceBatch.SourceState.RESERVED) { assertTrue(source.apply()); }
-            }
-            assertTrue(batch.stage(() -> true));
-            batch.acquireNext(acquisition::acquireNext);
-            batch.append(acquisition.stepReservations(), acquisition.stepTransactions());
-        }
-        return batch;
-    }
-
-    private static ResourceBatch batch(RequirementTransaction transaction) {
-        return Objects.requireNonNull(ResourceBatch.tryAcquire(transaction.reservations(), List.of(transaction)));
-    }
-
-    private static RecipeProcess process(RecipeRequirement<?>... requirements) {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 10, List.of(requirements)), 17);
-    }
-
-    private static NumericAttributeModifier add(String name, double value) {
-        return new NumericAttributeModifier(name, value, AttributeModifier.Operation.ADDITION);
-    }
-
-    private static ResourceLocation id(String name) { return new ResourceLocation("composite_recovery", name); }
-
     private static final class Selection {
         private final Effects effects = new Effects(null);
         private final RecipeRequirement<Integer> target = NUMBER.requirement(id("target"), 10);
@@ -223,21 +248,40 @@ class CompositeTransactionRecoveryTest {
             overlays.put(target, "foreign", ADD, 3).complete();
         }
 
-        private SelectiveState state() { return Objects.requireNonNull(process.components().get(SelectiveState.TYPE)); }
-        private SelectiveState.Selection decision() { return Objects.requireNonNull(state().selection(requirement.path(null))); }
+        private SelectiveState state() {
+            return Objects.requireNonNull(process.components().get(SelectiveState.TYPE));
+        }
+
+        private SelectiveState.Selection decision() {
+            return Objects.requireNonNull(state().selection(requirement.path(null)));
+        }
     }
 
     private static final class Effects {
         private final Object2ObjectOpenHashMap<RecipeStage, Effect> stages = new Object2ObjectOpenHashMap<>();
-        @Nullable private final RecipeProcess.Tick tick;
+        @Nullable
+        private final RecipeProcess.Tick tick;
 
-        private Effects(@Nullable RecipeProcess.Tick tick) { this.tick = tick; }
+        private Effects(@Nullable RecipeProcess.Tick tick) {
+            this.tick = tick;
+        }
 
         private RecipeRequirement<Effects> requirement() {
             var type = new RecipeRequirementType<>(id("effect"), new RecipeRequirementSystem<Effects>() {
-                @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Effects> requirement) { return acquire(process, RecipeStage.START); }
-                @Override public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Effects> requirement) { return acquire(process, RecipeStage.TICK); }
-                @Override public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Effects> requirement) { return acquire(process, RecipeStage.END); }
+                @Override
+                public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Effects> requirement) {
+                    return acquire(process, RecipeStage.START);
+                }
+
+                @Override
+                public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<Effects> requirement) {
+                    return acquire(process, RecipeStage.TICK);
+                }
+
+                @Override
+                public RequirementTransaction end(RecipeProcess process, RecipeRequirement<Effects> requirement) {
+                    return acquire(process, RecipeStage.END);
+                }
             });
             return type.requirement(id("child"), this);
         }
@@ -248,15 +292,19 @@ class CompositeTransactionRecoveryTest {
             return effect;
         }
 
-        private Effect at(RecipeStage stage) { return Objects.requireNonNull(stages.get(stage)); }
+        private Effect at(RecipeStage stage) {
+            return Objects.requireNonNull(stages.get(stage));
+        }
     }
 
     private static final class Effect implements RequirementTransaction {
         private final IllegalStateException failure = new IllegalStateException("terminal acknowledgement unavailable");
         private final RecipeProcess process;
         private final RequirementPath path;
-        @Nullable private final RecipeProcess.Tick tick;
-        private Runnable onCommit = () -> {};
+        @Nullable
+        private final RecipeProcess.Tick tick;
+        private Runnable onCommit = () -> {
+        };
         private boolean failBefore;
         private boolean failAfter;
         private boolean proof;
@@ -273,20 +321,54 @@ class CompositeTransactionRecoveryTest {
 
         private void scope() {
             assertEquals(path, process.requirementPath());
-            if (tick == null) { assertThrows(NullPointerException.class, process::tickContext); }
-            else { assertEquals(tick, process.tickContext()); }
+            if (tick == null) {
+                assertThrows(NullPointerException.class, process::tickContext);
+            } else {
+                assertEquals(tick, process.tickContext());
+            }
         }
 
-        @Override public ProcessResult result() { scope(); return ProcessResult.SUCCESS; }
-        @Override public void commit() { scope(); commits++; onCommit.run(); }
-        @Override public void complete() { scope(); completions++; finish(Resolution.COMPLETED); }
-        @Override public void rollback() { scope(); rollbacks++; finish(Resolution.ROLLED_BACK); }
-        @Override public Resolution resolution() { scope(); return proof ? terminal : Resolution.UNKNOWN; }
+        @Override
+        public ProcessResult result() {
+            scope();
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public void commit() {
+            scope();
+            commits++;
+            onCommit.run();
+        }
+
+        @Override
+        public void complete() {
+            scope();
+            completions++;
+            finish(Resolution.COMPLETED);
+        }
+
+        @Override
+        public void rollback() {
+            scope();
+            rollbacks++;
+            finish(Resolution.ROLLED_BACK);
+        }
+
+        @Override
+        public Resolution resolution() {
+            scope();
+            return proof ? terminal : Resolution.UNKNOWN;
+        }
 
         private void finish(Resolution expected) {
-            if (failBefore) { throw failure; }
+            if (failBefore) {
+                throw failure;
+            }
             terminal = expected;
-            if (failAfter) { throw failure; }
+            if (failAfter) {
+                throw failure;
+            }
         }
     }
 }

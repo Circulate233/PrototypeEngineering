@@ -23,17 +23,47 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipeStageAcquisitionTest {
-    @Test void acquisitionExceptionRetainsOriginalTokensAndTheFinalTransitionForExactCleanup() {
-        var energy = energy(() -> {});
+    private static EnergyBuffer energy(Runnable changed) {
+        var energy = new EnergyBuffer(100, changed);
+        energy.receiveEnergy(100, Actionable.MODULATE);
+        return energy;
+    }
+
+    @SafeVarargs
+    private static RecipeProcess process(Supplier<RequirementTransaction>... acquisitions) {
+        var type = new RecipeRequirementType<>(new ResourceLocation("acquisition_test", "external"), new RecipeRequirementSystem<Supplier<RequirementTransaction>>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Supplier<RequirementTransaction>> requirement) {
+                return requirement.payload().get();
+            }
+        });
+        var requirements = new ObjectArrayList<RecipeRequirement<?>>();
+        for (int index = 0; index < acquisitions.length; index++) {
+            requirements.add(type.requirement(new ResourceLocation("acquisition_test", "effect_" + index), acquisitions[index]));
+        }
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(new ResourceLocation("acquisition_test", "recipe"), 10, requirements), 17);
+    }
+
+    @Test
+    void acquisitionExceptionRetainsOriginalTokensAndTheFinalTransitionForExactCleanup() {
+        var energy = energy(() -> {
+        });
         var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation());
         var effect = new Effect(List.of(token));
         var transition = new Effect(List.of());
         var failure = new IllegalArgumentException("later acquisition failed");
         int[] calls = {0};
-        var process = process(() -> effect, () -> { calls[0]++; throw failure; });
+        var process = process(() -> effect, () -> {
+            calls[0]++;
+            throw failure;
+        });
         var acquisition = RecipeStageExecutor.prepare(process, RecipeStage.START, transition);
         assertFalse(acquisition.resolved());
         assertSame(failure, assertThrows(IllegalArgumentException.class, acquisition::acquire));
@@ -55,12 +85,17 @@ class RecipeStageAcquisitionTest {
         assertEquals(1, calls[0]);
     }
 
-    @Test void resultFailureRecordsItsTransactionBeforeReadingTheResultAndDoesNotLoseItsToken() {
-        var energy = energy(() -> {});
+    @Test
+    void resultFailureRecordsItsTransactionBeforeReadingTheResultAndDoesNotLoseItsToken() {
+        var energy = energy(() -> {
+        });
         var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation());
         var failure = new IllegalStateException("result unavailable");
         var effect = new Effect(List.of(token)) {
-            @Override public ProcessResult result() { throw failure; }
+            @Override
+            public ProcessResult result() {
+                throw failure;
+            }
         };
         var process = process(() -> effect);
         var acquisition = RecipeStageExecutor.prepare(process, RecipeStage.START, RequirementTransaction.SUCCESS);
@@ -73,12 +108,17 @@ class RecipeStageAcquisitionTest {
         assertEquals(100, energy.energySnapshot().availableEnergy());
     }
 
-    @Test void aThrowingTokenInventoryCannotBecomeResolvedEvenAfterKnownBusinessUndo() {
-        var energy = energy(() -> {});
+    @Test
+    void aThrowingTokenInventoryCannotBecomeResolvedEvenAfterKnownBusinessUndo() {
+        var energy = energy(() -> {
+        });
         var unlisted = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation());
         var failure = new IllegalStateException("token inventory unavailable");
         var effect = new Effect(List.of(unlisted)) {
-            @Override public List<? extends ResourceReservation> reservations() { throw failure; }
+            @Override
+            public List<? extends ResourceReservation> reservations() {
+                throw failure;
+            }
         };
         var acquisition = RecipeStageExecutor.prepare(process(() -> effect), RecipeStage.START, RequirementTransaction.SUCCESS);
         assertSame(failure, assertThrows(IllegalStateException.class, acquisition::acquire));
@@ -92,7 +132,8 @@ class RecipeStageAcquisitionTest {
         assertFalse(acquisition.resolved(), "An external token release does not prove the missing inventory");
     }
 
-    @Test void noOpRequirementsAreFilteredAndTheSingleTransitionStillNeedsRealSettlement() {
+    @Test
+    void noOpRequirementsAreFilteredAndTheSingleTransitionStillNeedsRealSettlement() {
         var transition = new Effect(List.of());
         var acquisition = RecipeStageExecutor.prepare(process(() -> RequirementTransaction.SUCCESS,
             () -> RequirementTransaction.SUCCESS), RecipeStage.START, transition);
@@ -107,13 +148,22 @@ class RecipeStageAcquisitionTest {
         assertThrows(IllegalStateException.class, acquisition::rollbackSynchronously);
     }
 
-    @Test void notificationFailureAfterTerminalCallbacksIsResolvedAndNeverRefundsOrReplaysThem() {
+    @Test
+    void notificationFailureAfterTerminalCallbacksIsResolvedAndNeverRefundsOrReplaysThem() {
         boolean[] armed = {false};
         var failure = new IllegalStateException("terminal notification failed");
-        var energy = energy(() -> { if (armed[0]) { throw failure; } });
+        var energy = energy(() -> {
+            if (armed[0]) {
+                throw failure;
+            }
+        });
         var token = new TrackedToken(Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation()));
         var effect = new Effect(List.of(token)) {
-            @Override public void complete() { super.complete(); armed[0] = true; }
+            @Override
+            public void complete() {
+                super.complete();
+                armed[0] = true;
+            }
         };
         var acquisition = RecipeStageExecutor.prepare(process(() -> effect), RecipeStage.START, RequirementTransaction.SUCCESS);
         acquisition.acquire();
@@ -129,8 +179,10 @@ class RecipeStageAcquisitionTest {
         assertThrows(IllegalStateException.class, acquisition::rollbackSynchronously);
     }
 
-    @Test void unknownBusinessCleanupReturnsPendingAndRetriesOnlyAfterItsExactProof() {
-        var energy = energy(() -> {});
+    @Test
+    void unknownBusinessCleanupReturnsPendingAndRetriesOnlyAfterItsExactProof() {
+        var energy = energy(() -> {
+        });
         var token = new TrackedToken(Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation()));
         var effect = new Effect(List.of(token));
         var transition = new Effect(List.of());
@@ -154,13 +206,23 @@ class RecipeStageAcquisitionTest {
         process.requireQuiescent();
     }
 
-    @Test void exactSourceProofAfterMutationConfirmsCleanupWithoutReplayingTheTerminalCallback() {
-        var energy = energy(() -> {});
+    @Test
+    void exactSourceProofAfterMutationConfirmsCleanupWithoutReplayingTheTerminalCallback() {
+        var energy = energy(() -> {
+        });
         boolean[] proof = {false};
         var failure = new IllegalStateException("source acknowledgement unavailable");
         var token = new TrackedToken(Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation())) {
-            @Override public void complete() { super.complete(); throw failure; }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public void complete() {
+                super.complete();
+                throw failure;
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         var acquisition = RecipeStageExecutor.prepare(process(() -> new Effect(List.of(token))), RecipeStage.START, RequirementTransaction.SUCCESS);
         acquisition.acquire();
@@ -175,15 +237,21 @@ class RecipeStageAcquisitionTest {
         assertEquals(75, energy.savedEnergy());
     }
 
-    @Test void rejectedStorageLockBoundariesDoNotConsumeTheUnstartedSettlementAttempt() {
-        var energy = energy(() -> {});
-        var other = new StorageContext(() -> {});
+    @Test
+    void rejectedStorageLockBoundariesDoNotConsumeTheUnstartedSettlementAttempt() {
+        var energy = energy(() -> {
+        });
+        var other = new StorageContext(() -> {
+        });
         var effect = new Effect(List.of(Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation())));
         var acquisition = RecipeStageExecutor.prepare(process(() -> effect), RecipeStage.START, RequirementTransaction.SUCCESS);
         acquisition.acquire();
         other.lock();
-        try { assertThrows(IllegalStateException.class, acquisition::settleSynchronously); }
-        finally { other.unlock(); }
+        try {
+            assertThrows(IllegalStateException.class, acquisition::settleSynchronously);
+        } finally {
+            other.unlock();
+        }
         assertFalse(acquisition.resolved());
         assertSame(ProcessResult.SUCCESS, acquisition.settleSynchronously());
         assertTrue(acquisition.resolved());
@@ -192,26 +260,50 @@ class RecipeStageAcquisitionTest {
         var undo = RecipeStageExecutor.prepare(process(() -> new Effect(List.of())), RecipeStage.START, RequirementTransaction.SUCCESS);
         undo.acquire();
         other.lock();
-        try { assertThrows(IllegalStateException.class, undo::rollbackSynchronously); }
-        finally { other.unlock(); }
+        try {
+            assertThrows(IllegalStateException.class, undo::rollbackSynchronously);
+        } finally {
+            other.unlock();
+        }
         undo.rollbackSynchronously();
         assertTrue(undo.resolved());
     }
 
-    @Test void directRollbackRetryQueriesBeforeAnyCallbackReplayAndAQueryBoundaryFailureCanRetry() {
-        var energy = energy(() -> {});
+    @Test
+    void directRollbackRetryQueriesBeforeAnyCallbackReplayAndAQueryBoundaryFailureCanRetry() {
+        var energy = energy(() -> {
+        });
         boolean[] proof = {false};
         boolean[] contextFails = {false};
         var contextFailure = new IllegalArgumentException("context query unavailable");
         var sourceFailure = new IllegalStateException("source rollback acknowledged late");
         TrackedToken token = new TrackedToken(Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation())) {
-            @Override public StorageContext context() { if (contextFails[0]) { throw contextFailure; } return super.context(); }
-            @Override public void rollback() { super.rollback(); throw sourceFailure; }
-            @Override public Resolution resolution() { return proof[0] ? super.resolution() : Resolution.UNKNOWN; }
+            @Override
+            public StorageContext context() {
+                if (contextFails[0]) {
+                    throw contextFailure;
+                }
+                return super.context();
+            }
+
+            @Override
+            public void rollback() {
+                super.rollback();
+                throw sourceFailure;
+            }
+
+            @Override
+            public Resolution resolution() {
+                return proof[0] ? super.resolution() : Resolution.UNKNOWN;
+            }
         };
         var businessFailure = new IllegalStateException("business rollback acknowledged late");
         Effect effect = new Effect(List.of(token)) {
-            @Override public void rollback() { super.rollback(); throw businessFailure; }
+            @Override
+            public void rollback() {
+                super.rollback();
+                throw businessFailure;
+            }
         };
         var acquisition = RecipeStageExecutor.prepare(process(() -> effect), RecipeStage.START, RequirementTransaction.SUCCESS);
         acquisition.acquire();
@@ -229,8 +321,10 @@ class RecipeStageAcquisitionTest {
         assertEquals(100, energy.energySnapshot().availableEnergy());
     }
 
-    @Test void deferredListsKeepRawTokenIdentitySoABatchRejectsCrossStageTokenAliases() {
-        var energy = energy(() -> {});
+    @Test
+    void deferredListsKeepRawTokenIdentitySoABatchRejectsCrossStageTokenAliases() {
+        var energy = energy(() -> {
+        });
         var token = Objects.requireNonNull(energy.reserveExtractEnergy(energy.energySnapshot(), 25).reservation());
         var first = RecipeStageExecutor.prepare(process(() -> new Effect(List.of(token))), RecipeStage.START, RequirementTransaction.SUCCESS);
         var second = RecipeStageExecutor.prepare(process(() -> new Effect(List.of(token))), RecipeStage.START, RequirementTransaction.SUCCESS);
@@ -244,57 +338,95 @@ class RecipeStageAcquisitionTest {
         assertTrue(first.resolved());
     }
 
-    private static EnergyBuffer energy(Runnable changed) {
-        var energy = new EnergyBuffer(100, changed);
-        energy.receiveEnergy(100, Actionable.MODULATE);
-        return energy;
-    }
-
-    @SafeVarargs
-    private static RecipeProcess process(Supplier<RequirementTransaction>... acquisitions) {
-        var type = new RecipeRequirementType<>(new ResourceLocation("acquisition_test", "external"), new RecipeRequirementSystem<Supplier<RequirementTransaction>>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Supplier<RequirementTransaction>> requirement) { return requirement.payload().get(); }
-        });
-        var requirements = new ObjectArrayList<RecipeRequirement<?>>();
-        for (int index = 0; index < acquisitions.length; index++) {
-            requirements.add(type.requirement(new ResourceLocation("acquisition_test", "effect_" + index), acquisitions[index]));
-        }
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(new ResourceLocation("acquisition_test", "recipe"), 10, requirements), 17);
-    }
-
     private static class Effect implements RequirementTransaction {
         private final IllegalStateException failure = new IllegalStateException("business acknowledgement unavailable");
         private final List<ResourceReservation> tokens;
-        private Resolution terminal = Resolution.REVERSIBLE;
-        private boolean failComplete;
-        private boolean proof;
         int commits;
         int completions;
         int rollbacks;
+        private Resolution terminal = Resolution.REVERSIBLE;
+        private boolean failComplete;
+        private boolean proof;
 
-        private Effect(List<ResourceReservation> tokens) { this.tokens = tokens; }
-        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-        @Override public List<? extends ResourceReservation> reservations() { return tokens; }
-        @Override public void commit() { commits++; }
-        @Override public void complete() {
+        private Effect(List<ResourceReservation> tokens) {
+            this.tokens = tokens;
+        }
+
+        @Override
+        public ProcessResult result() {
+            return ProcessResult.SUCCESS;
+        }
+
+        @Override
+        public List<? extends ResourceReservation> reservations() {
+            return tokens;
+        }
+
+        @Override
+        public void commit() {
+            commits++;
+        }
+
+        @Override
+        public void complete() {
             completions++;
-            if (failComplete) { throw failure; }
+            if (failComplete) {
+                throw failure;
+            }
             terminal = Resolution.COMPLETED;
         }
-        @Override public void rollback() { rollbacks++; terminal = Resolution.ROLLED_BACK; }
-        @Override public Resolution resolution() { return proof ? terminal : Resolution.UNKNOWN; }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            terminal = Resolution.ROLLED_BACK;
+        }
+
+        @Override
+        public Resolution resolution() {
+            return proof ? terminal : Resolution.UNKNOWN;
+        }
     }
 
     private static class TrackedToken implements ResourceReservation {
         private final ResourceReservation delegate;
         int completions;
         int rollbacks;
-        private TrackedToken(ResourceReservation delegate) { this.delegate = delegate; }
-        @Override public StorageContext context() { return delegate.context(); }
-        @Override public boolean canApply() { return delegate.canApply(); }
-        @Override public void apply() { delegate.apply(); }
-        @Override public void complete() { completions++; delegate.complete(); }
-        @Override public void rollback() { rollbacks++; delegate.rollback(); }
-        @Override public Resolution resolution() { return delegate.resolution(); }
+
+        private TrackedToken(ResourceReservation delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public StorageContext context() {
+            return delegate.context();
+        }
+
+        @Override
+        public boolean canApply() {
+            return delegate.canApply();
+        }
+
+        @Override
+        public void apply() {
+            delegate.apply();
+        }
+
+        @Override
+        public void complete() {
+            completions++;
+            delegate.complete();
+        }
+
+        @Override
+        public void rollback() {
+            rollbacks++;
+            delegate.rollback();
+        }
+
+        @Override
+        public Resolution resolution() {
+            return delegate.resolution();
+        }
     }
 }

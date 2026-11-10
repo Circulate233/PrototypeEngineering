@@ -2,14 +2,15 @@ package com.circulation.prototype_eng.recipe;
 
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementContinuation;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparation;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
-import java.util.Objects;
-import java.util.function.Supplier;
 import org.jetbrains.annotations.Nullable;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+
+import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Keeps pure work at the original ordered continuation boundary, under its captured path/tick.
@@ -122,12 +123,15 @@ public class PreparedRequirement implements RequirementTransaction, RequirementC
         return terminal;
     }
 
-    @Override public boolean completeWithinBudget(RecipeWorkBudget work) {
+    @Override
+    public boolean completeWithinBudget(RecipeWorkBudget work) {
         if (!work.take()) return false;
         terminal = Resolution.COMPLETED;
         return true;
     }
-    @Override public boolean rollbackWithinBudget(RecipeWorkBudget work) {
+
+    @Override
+    public boolean rollbackWithinBudget(RecipeWorkBudget work) {
         if (!work.take()) return false;
         terminal = Resolution.ROLLED_BACK;
         return true;

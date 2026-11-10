@@ -2,30 +2,33 @@ package com.circulation.prototype_eng;
 
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
-import com.circulation.prototype_eng.api.storage.HatchMode;
-import com.circulation.prototype_eng.api.storage.HatchTier;
-import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
-import it.unimi.dsi.fastutil.objects.Reference2LongMap;
-import net.minecraftforge.common.config.Configuration;
-import java.io.File;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchConfiguration;
 import com.circulation.prototype_eng.api.storage.HatchConfigurationUpdates;
+import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
+import net.minecraftforge.common.config.Configuration;
+
+import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+
 /** File defaults and explicit script targets are published as a single immutable generation. */
 public final class HatchConfig {
     private static volatile State state = new State(0, defaults(), Map.of());
 
-    private HatchConfig() {}
+    private HatchConfig() {
+    }
 
     private static List<Defaults> defaults() {
         return Arrays.stream(HatchTier.values()).map(tier -> new Defaults(

@@ -20,15 +20,15 @@ import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
-import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
-import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismConstraint;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
@@ -43,8 +43,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -57,17 +57,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecipeControllersTest {
     private static final ScanLimits LIMITS = new ScanLimits(32, 32);
-    private static ResourceLocation id(String path) { return new ResourceLocation("controllers_test", path); }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("controllers_test", path);
+    }
+
     private static MachineRecipe recipe(String name, int quantity, int threads, Set<ResourceLocation> groups) {
         return new MachineRecipe(id(name), 4, List.of(), groups, threads, RecipeParallelismSelection.fixed(quantity));
     }
+
     private static RecipeCatalog catalog(MachineRecipe... recipes) {
         return new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "controller.pool", List.of(recipes))));
     }
+
     private static void allowance(MachineInstance owner, int parallel, int threads) {
         owner.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, parallel);
         owner.attributes().setBase(StandardMachineAttributes.MAX_CONCURRENT_PROCESSES, threads);
     }
+
     private static RecipeScanner.Result retained(RecipeScanner scanner) {
         var attempt = scanner.beginScan(LIMITS);
         RecipeScanner.Result result = null;
@@ -84,7 +91,8 @@ class RecipeControllersTest {
         for (boolean sliced : List.of(false, true)) {
             int[] selections = {0};
             var owner = new MultithreadController() {
-                @Override public List<RecipePool> getRecipePools(RecipeCatalog directory) {
+                @Override
+                public List<RecipePool> getRecipePools(RecipeCatalog directory) {
                     selections[0]++;
                     return directory.pools();
                 }
@@ -109,7 +117,8 @@ class RecipeControllersTest {
 
     @Test
     void eachThreadMayRunTheSameRecipeWithinItsGlobalLogicalThreadLimit() {
-        var owner = new MultithreadController(); allowance(owner, 3, 3);
+        var owner = new MultithreadController();
+        allowance(owner, 3, 3);
         var recipe = recipe("repeat", 1, 2, Set.of());
         var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("a"), new WorkSlotDefinition("b"),
             new WorkSlotDefinition("c")), Set.of());
@@ -124,13 +133,16 @@ class RecipeControllersTest {
         for (boolean sliced : List.of(false, true)) {
             int[] selections = {0};
             var owner = new CrossRecipeController() {
-                @Override public List<RecipePool> getRecipePools(RecipeCatalog directory) {
+                @Override
+                public List<RecipePool> getRecipePools(RecipeCatalog directory) {
                     selections[0]++;
                     return directory.pools();
                 }
             };
             allowance(owner, 3, 0);
-            var a = recipe("a", 1, 1, Set.of()); var b = recipe("b", 1, 1, Set.of()); var c = recipe("c", 1, 1, Set.of());
+            var a = recipe("a", 1, 1, Set.of());
+            var b = recipe("b", 1, 1, Set.of());
+            var c = recipe("c", 1, 1, Set.of());
             var host = owner.createRecipeHost(List.of(), Set.of());
             assertTrue(host.slots().isEmpty());
             var scanner = owner.createRecipeScanner(host, catalog(a, b, c), () -> 7);
@@ -145,11 +157,13 @@ class RecipeControllersTest {
     @Test
     void crossRecipeCompletesAnotherRoundWhenOneRecipeCanLegallyUseTheRemainder() {
         for (boolean sliced : List.of(false, true)) {
-            var owner = new CrossRecipeController(); allowance(owner, 2, 0);
+            var owner = new CrossRecipeController();
+            allowance(owner, 2, 0);
             var recipe = recipe("another_round", 1, 2, Set.of());
             var host = owner.createRecipeHost(List.of(), Set.of());
             var scanner = owner.createRecipeScanner(host, catalog(recipe), () -> 5);
-            if (sliced) retained(scanner); else scanner.scan(LIMITS);
+            if (sliced) retained(scanner);
+            else scanner.scan(LIMITS);
             assertEquals(2, host.activeProcesses().size());
             assertEquals(2, owner.recipeThreadCount(recipe.id()));
             assertEquals(0, host.sharedUsage(recipe).available());
@@ -159,25 +173,27 @@ class RecipeControllersTest {
     @Test
     void finalEventQuantityMayExceedTheAllowanceAndBlocksLaterAdmissions() {
         for (boolean sliced : List.of(false, true)) {
-          for (var owner : List.of(new CrossRecipeController(), new MultithreadController())) {
-            allowance(owner, 2, 2);
-            var over = recipe("over", 5, 1, Set.of()); var later = recipe("later", 1, 1, Set.of());
-            var host = owner.createRecipeHost(owner instanceof CrossRecipeController ? List.of()
-                : List.of(new WorkSlotDefinition("a"), new WorkSlotDefinition("b")), Set.of());
-            var scanner = owner.createRecipeScanner(host, catalog(over, later), () -> 2);
-            assertEquals(RecipeScanner.Status.ADMITTED, (sliced ? retained(scanner) : scanner.scan(LIMITS)).status());
-            assertEquals(1, host.activeProcesses().size());
-            assertEquals(5, RecipeParallelism.effective(host.activeProcesses().getFirst()));
-            assertEquals(5, host.sharedUsage(later).occupied());
-            assertEquals(0, host.sharedUsage(later).available());
-          }
+            for (var owner : List.of(new CrossRecipeController(), new MultithreadController())) {
+                allowance(owner, 2, 2);
+                var over = recipe("over", 5, 1, Set.of());
+                var later = recipe("later", 1, 1, Set.of());
+                var host = owner.createRecipeHost(owner instanceof CrossRecipeController ? List.of()
+                    : List.of(new WorkSlotDefinition("a"), new WorkSlotDefinition("b")), Set.of());
+                var scanner = owner.createRecipeScanner(host, catalog(over, later), () -> 2);
+                assertEquals(RecipeScanner.Status.ADMITTED, (sliced ? retained(scanner) : scanner.scan(LIMITS)).status());
+                assertEquals(1, host.activeProcesses().size());
+                assertEquals(5, RecipeParallelism.effective(host.activeProcesses().getFirst()));
+                assertEquals(5, host.sharedUsage(later).occupied());
+                assertEquals(0, host.sharedUsage(later).available());
+            }
         }
     }
 
     @Test
     void separateHostsSpendTheSameRemainingParallelBalance() {
         for (boolean sliced : List.of(false, true)) {
-            var owner = new CrossRecipeController(); allowance(owner, 3, 1);
+            var owner = new CrossRecipeController();
+            allowance(owner, 3, 1);
             var occupiedRecipe = recipe("occupied", 1, 1, Set.of());
             var existing = new MachineWorkSlots(owner, List.of(new WorkSlotDefinition("existing")));
             var occupied = new RecipeProcess(owner, occupiedRecipe, 1);
@@ -186,7 +202,8 @@ class RecipeControllersTest {
             var candidate = new MachineRecipe(id("remaining"), 4, List.of());
             var scanning = owner.createRecipeHost(List.of(), Set.of());
             var scanner = owner.createRecipeScanner(scanning, catalog(candidate), () -> 2);
-            if (sliced) retained(scanner); else scanner.scan(LIMITS);
+            if (sliced) retained(scanner);
+            else scanner.scan(LIMITS);
             assertEquals(2, RecipeParallelism.effective(scanning.activeProcesses().getFirst()));
             assertEquals(3, scanning.sharedUsage(candidate).occupied());
             assertEquals(0, existing.sharedUsage(candidate).available());
@@ -196,46 +213,57 @@ class RecipeControllersTest {
     @Test
     void pureYieldLetsAnotherThreadRunWhileRetainingTheFirstThreadsCursorAndSeed() {
         for (boolean sliced : List.of(false, true)) {
-          for (boolean bounded : List.of(false, true)) {
-            var owner = new MultithreadController(); allowance(owner, 2, 2);
-            var blocked = recipe("blocked", 1, 1, Set.of(id("a")));
-            var nextA = recipe("next_a", 1, 1, Set.of(id("a")));
-            var ready = recipe("ready", 1, 1, Set.of(id("b")));
-            var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("a", Set.of(id("a"))),
-                new WorkSlotDefinition("b", Set.of(id("b")))), Set.of());
-            long[] seeds = {0};
-            var constraint = new RecipeParallelismConstraint() {
-                @Override public int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
-                    return bounded ? Math.min(1, currentLimit) : currentLimit;
+            for (boolean bounded : List.of(false, true)) {
+                var owner = new MultithreadController();
+                allowance(owner, 2, 2);
+                var blocked = recipe("blocked", 1, 1, Set.of(id("a")));
+                var nextA = recipe("next_a", 1, 1, Set.of(id("a")));
+                var ready = recipe("ready", 1, 1, Set.of(id("b")));
+                var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("a", Set.of(id("a"))),
+                    new WorkSlotDefinition("b", Set.of(id("b")))), Set.of());
+                long[] seeds = {0};
+                var constraint = new RecipeParallelismConstraint() {
+                    @Override
+                    public int upperBound(MachineInstance machine, MachineRecipe recipe, int currentLimit) {
+                        return bounded ? Math.min(1, currentLimit) : currentLimit;
+                    }
+
+                    @Override
+                    public ProcessResult test(RecipeProcess process) {
+                        return process.recipe() == blocked ? RecipeText.Cancelled.blocked() : ProcessResult.SUCCESS;
+                    }
+                };
+                var scanner = RecipeScanner.multithreaded(host, catalog(blocked, nextA, ready), RecipeProcessFactory.STANDARD,
+                    List.of(constraint), List.of(), _ -> false, () -> ++seeds[0], List.of());
+                for (int tick = 0; tick < (bounded ? 3 : 4); tick++) {
+                    if (sliced) {
+                        var attempt = scanner.beginScan(new ScanLimits(1, 1));
+                        attempt.advance(new RecipeWorkBudget(10000), () -> true);
+                        if (!attempt.finished()) {
+                            assertFalse(attempt.hasObligations());
+                            attempt.releasePureYield();
+                        }
+                    } else scanner.scan(new ScanLimits(1, 1));
+                    if (tick == 0) assertTrue(host.activeProcesses().isEmpty());
+                    if (tick == 1) assertSame(ready, Objects.requireNonNull(host.requireSlot("b").process()).recipe());
                 }
-                @Override public ProcessResult test(RecipeProcess process) {
-                    return process.recipe() == blocked ? RecipeText.Cancelled.blocked() : ProcessResult.SUCCESS;
-                }
-            };
-            var scanner = RecipeScanner.multithreaded(host, catalog(blocked, nextA, ready), RecipeProcessFactory.STANDARD,
-                List.of(constraint), List.of(), _ -> false, () -> ++seeds[0], List.of());
-            for (int tick = 0; tick < (bounded ? 3 : 4); tick++) {
-                if (sliced) {
-                    var attempt = scanner.beginScan(new ScanLimits(1, 1));
-                    attempt.advance(new RecipeWorkBudget(10000), () -> true);
-                    if (!attempt.finished()) { assertFalse(attempt.hasObligations()); attempt.releasePureYield(); }
-                } else scanner.scan(new ScanLimits(1, 1));
-                if (tick == 0) assertTrue(host.activeProcesses().isEmpty());
-                if (tick == 1) assertSame(ready, Objects.requireNonNull(host.requireSlot("b").process()).recipe());
+                assertSame(nextA, Objects.requireNonNull(host.requireSlot("a").process()).recipe());
+                assertEquals(2, Objects.requireNonNull(host.requireSlot("b").process()).seed());
+                assertEquals(bounded ? 3 : 4, Objects.requireNonNull(host.requireSlot("a").process()).seed());
             }
-            assertSame(nextA, Objects.requireNonNull(host.requireSlot("a").process()).recipe());
-            assertEquals(2, Objects.requireNonNull(host.requireSlot("b").process()).seed());
-            assertEquals(bounded ? 3 : 4, Objects.requireNonNull(host.requireSlot("a").process()).seed());
-          }
         }
     }
 
     @Test
     void eventQuantityDrivesActualStartTickAndEndEnergy() {
-        var owner = new CrossRecipeController(); allowance(owner, 2, 1);
+        var owner = new CrossRecipeController();
+        allowance(owner, 2, 1);
         var energy = RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 1, 0, 3, false));
         var recipe = new MachineRecipe(id("energy_recipe"), 1, List.of(energy), Set.of(), 1, RecipeParallelismSelection.fixed(5));
-        var input = new EnergyBuffer(200, () -> { }); var output = new EnergyBuffer(200, () -> { });
+        var input = new EnergyBuffer(200, () -> {
+        });
+        var output = new EnergyBuffer(200, () -> {
+        });
         input.receiveEnergy(100, Actionable.MODULATE);
         owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(), List.of(input), List.of(output)));
         var host = owner.createRecipeHost(List.of(), Set.of());
@@ -250,12 +278,15 @@ class RecipeControllersTest {
 
     @Test
     void speculativeAdmissionsAcrossHostsClaimTheRecipeLimitOnlyWhenCompleted() {
-        var owner = new MultithreadController(); allowance(owner, 4, 1);
+        var owner = new MultithreadController();
+        allowance(owner, 4, 1);
         var recipe = recipe("one_thread", 1, 1, Set.of());
         var first = new MachineWorkSlots(owner, List.of(new WorkSlotDefinition("a")));
         var second = new MachineWorkSlots(owner, List.of(new WorkSlotDefinition("b")));
-        var a = new RecipeProcess(owner, recipe, 1); var b = new RecipeProcess(owner, recipe, 2);
-        var pendingA = first.beginAdmission("a", a); var pendingB = second.beginAdmission("b", b);
+        var a = new RecipeProcess(owner, recipe, 1);
+        var b = new RecipeProcess(owner, recipe, 2);
+        var pendingA = first.beginAdmission("a", a);
+        var pendingB = second.beginAdmission("b", b);
         assertFalse(pendingA.advance(new RecipeWorkBudget(1), () -> true));
         assertFalse(pendingB.advance(new RecipeWorkBudget(1), () -> true));
         assertEquals(0, owner.recipeThreadCount(recipe.id()));
@@ -263,7 +294,8 @@ class RecipeControllersTest {
         assertTrue(pendingB.admitted());
         assertTrue(pendingA.advance(new RecipeWorkBudget(1000), () -> true));
         assertFalse(pendingA.admitted());
-        assertNull(a.host()); assertSame(second, b.host());
+        assertNull(a.host());
+        assertSame(second, b.host());
         assertEquals(1, owner.recipeThreadCount(recipe.id()));
         assertTrue(second.cancel(b));
         assertEquals(0, owner.recipeThreadCount(recipe.id()));
@@ -272,42 +304,51 @@ class RecipeControllersTest {
 
     @Test
     void dynamicCodecRoundTripsSeveralProcessesAndRejectsCounterWithoutPublishing() {
-        var owner = new CrossRecipeController(); allowance(owner, 3, 1);
-        var a = recipe("saved_a", 1, 1, Set.of()); var b = recipe("saved_b", 1, 1, Set.of());
+        var owner = new CrossRecipeController();
+        allowance(owner, 3, 1);
+        var a = recipe("saved_a", 1, 1, Set.of());
+        var b = recipe("saved_b", 1, 1, Set.of());
         var host = owner.createRecipeHost(List.of(), Set.of());
         owner.createRecipeScanner(host, catalog(a, b), () -> 7).scan(LIMITS);
         var codec = new MachineWorkSlotsNbt("v1", List.of(RecipeProcessNbt.builder(a, "v1").build(), RecipeProcessNbt.builder(b, "v1").build()));
         var saved = codec.encode(host);
-        var restoredOwner = new CrossRecipeController(); allowance(restoredOwner, 1, 0);
+        var restoredOwner = new CrossRecipeController();
+        allowance(restoredOwner, 1, 0);
         var restored = restoredOwner.createRecipeHost(List.of(), Set.of());
         codec.restore(restored, saved);
         assertEquals(2, restored.activeProcesses().size());
         assertNotSame(host.activeProcesses().getFirst(), restored.activeProcesses().getFirst());
         assertEquals(0, restored.sharedUsage(a).available(), "Reducing the cap preserves existing work");
-        var before = restored.snapshot(); var malformed = saved.copy(); malformed.setLong("NextSlot", 0);
+        var before = restored.snapshot();
+        var malformed = saved.copy();
+        malformed.setLong("NextSlot", 0);
         assertThrows(IllegalArgumentException.class, () -> codec.restore(restored, malformed));
         assertEquals(before, restored.snapshot());
         restored.restore(restored.snapshot());
-        var anotherOwner = new CrossRecipeController(); var another = anotherOwner.createRecipeHost(List.of(), Set.of());
+        var anotherOwner = new CrossRecipeController();
+        var another = anotherOwner.createRecipeHost(List.of(), Set.of());
         codec.restore(another, codec.encode(restored));
         assertEquals(2, another.activeProcesses().size());
         assertEquals(2, another.nextRuntimeSlot());
-        another.restoreRuntimeCounter(10); another.restoreRuntimeCounter(3);
+        another.restoreRuntimeCounter(10);
+        another.restoreRuntimeCounter(3);
         assertEquals(10, another.nextRuntimeSlot());
     }
 
     @Test
     void actualAssemblyFactoriesSelectControllersHostsAndScannersForCreateAndRestore() {
         for (Function<MachineType, MachineInstance> factory : List.<Function<MachineType, MachineInstance>>of(MultithreadController::new, CrossRecipeController::new)) {
-            var recipe = recipe("assembled", 1, 2, Set.of()); var second = recipe("assembled_second", 1, 2, Set.of());
+            var recipe = recipe("assembled", 1, 2, Set.of());
+            var second = recipe("assembled_second", 1, 2, Set.of());
             var directory = catalog(recipe, second);
             var scannerType = RecipeScanning.component(id("scanner"), () -> directory, LIMITS);
             var type = MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape"))
-                .component(MachineWorkSlots.TYPE).component(scannerType).recipePool(id("pool"))
-                .workSlot(new WorkSlotDefinition("a")).workSlot(new WorkSlotDefinition("b")).build();
+                                  .component(MachineWorkSlots.TYPE).component(scannerType).recipePool(id("pool"))
+                                  .workSlot(new WorkSlotDefinition("a")).workSlot(new WorkSlotDefinition("b")).build();
             var codec = new MachineWorkSlotsNbt("v1", List.of(RecipeProcessNbt.builder(recipe, "v1").build(), RecipeProcessNbt.builder(second, "v1").build()));
             var assembly = MachineAssembly.builder(type, "v1").instanceFactory(factory).workSlots(codec).recreated(scannerType).build();
-            var original = assembly.create(new Host(), new MachineLifecycleRegistry()); allowance(original, 2, 2);
+            var original = assembly.create(new Host(), new MachineLifecycleRegistry());
+            allowance(original, 2, 2);
             var saved = assembly.encode(original);
             var restored = assembly.restore(new Host(), saved, new MachineLifecycleRegistry());
             assertEquals(original.getClass(), restored.getClass());
@@ -358,24 +399,37 @@ class RecipeControllersTest {
             allowance(owner, 1, 1);
             var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("a")), Set.of());
             var recipe = recipe("tiny_ticks", 1, 1, Set.of());
-            int[] creations = {0}; long[] seeds = {0};
+            int[] creations = {0};
+            long[] seeds = {0};
             var factory = new RecipeProcessFactory() {
-                @Override public RecipeProcess create(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
+                @Override
+                public RecipeProcess create(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
                     return new RecipeProcess(machine, definition, seed, tuning);
                 }
+
                 @Override
-                @SuppressWarnings("ReturnOfInnerClass") // The fixture intentionally returns its retained pure creation cursor.
+                @SuppressWarnings("ReturnOfInnerClass")
+                // The fixture intentionally returns its retained pure creation cursor.
                 public Creation beginCreation(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
                     creations[0]++;
                     return new Creation() {
                         private int units;
                         private RecipeProcess result;
-                        @Override public boolean advance(RecipeWorkBudget budget) {
-                            while (units < 40) { if (!budget.take()) return false; units++; }
+
+                        @Override
+                        public boolean advance(RecipeWorkBudget budget) {
+                            while (units < 40) {
+                                if (!budget.take()) return false;
+                                units++;
+                            }
                             if (result == null) result = create(machine, definition, seed, tuning);
                             return true;
                         }
-                        @Override public RecipeProcess result() { return Objects.requireNonNull(result); }
+
+                        @Override
+                        public RecipeProcess result() {
+                            return Objects.requireNonNull(result);
+                        }
                     };
                 }
             };
@@ -386,7 +440,10 @@ class RecipeControllersTest {
                 if (pending == null) pending = scanner.beginScan(LIMITS);
                 pending.advance(new RecipeWorkBudget(1), () -> true);
                 if (pending.finished()) pending = null;
-                else if (!pending.hasObligations()) { pending.releasePureYield(); pending = null; }
+                else if (!pending.hasObligations()) {
+                    pending.releasePureYield();
+                    pending = null;
+                }
             }
             assertEquals(1, host.activeProcesses().size(), "One-unit ticks must reach admission: multi=" + multi
                 + ", creations=" + creations[0] + ", seeds=" + seeds[0] + ", pending=" + (pending != null));
@@ -400,14 +457,18 @@ class RecipeControllersTest {
 
     @Test
     void siblingPureCandidatesDoNotContinuouslyRevokeEachOthersLongCreationAndChecks() {
-        var owner = new MultithreadController(); allowance(owner, 2, 2);
+        var owner = new MultithreadController();
+        allowance(owner, 2, 2);
         var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("a"), new WorkSlotDefinition("b")), Set.of());
         var recipe = recipe("long_siblings", 1, 2, Set.of());
-        int[] creations = {0}; int[] checks = {0};
+        int[] creations = {0};
+        int[] checks = {0};
         var factory = new RecipeProcessFactory() {
-            @Override public RecipeProcess create(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
+            @Override
+            public RecipeProcess create(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
                 return new RecipeProcess(machine, definition, seed, tuning);
             }
+
             @Override
             @SuppressWarnings("ReturnOfInnerClass") // Retained pure fixture creation deliberately spans ticks.
             public Creation beginCreation(MachineInstance machine, MachineRecipe definition, long seed, ProbabilityTuning tuning) {
@@ -415,12 +476,21 @@ class RecipeControllersTest {
                 return new Creation() {
                     private int units;
                     private RecipeProcess result;
-                    @Override public boolean advance(RecipeWorkBudget budget) {
-                        while (units < 40) { if (!budget.take()) return false; units++; }
+
+                    @Override
+                    public boolean advance(RecipeWorkBudget budget) {
+                        while (units < 40) {
+                            if (!budget.take()) return false;
+                            units++;
+                        }
                         if (result == null) result = create(machine, definition, seed, tuning);
                         return true;
                     }
-                    @Override public RecipeProcess result() { return Objects.requireNonNull(result); }
+
+                    @Override
+                    public RecipeProcess result() {
+                        return Objects.requireNonNull(result);
+                    }
                 };
             }
         };
@@ -432,13 +502,29 @@ class RecipeControllersTest {
                 return new Check() {
                     private int units;
                     private boolean cancelled;
-                    @Override public boolean advance(RecipeWorkBudget budget, BooleanSupplier allowed) {
-                        if (cancelled || !allowed.getAsBoolean()) { cancelled = true; return true; }
-                        while (units < 40) { if (!budget.take()) return false; units++; }
+
+                    @Override
+                    public boolean advance(RecipeWorkBudget budget, BooleanSupplier allowed) {
+                        if (cancelled || !allowed.getAsBoolean()) {
+                            cancelled = true;
+                            return true;
+                        }
+                        while (units < 40) {
+                            if (!budget.take()) return false;
+                            units++;
+                        }
                         return true;
                     }
-                    @Override public ProcessResult result() { return cancelled ? RecipeText.Cancelled.blocked() : ProcessResult.SUCCESS; }
-                    @Override public void cancel() { cancelled = true; }
+
+                    @Override
+                    public ProcessResult result() {
+                        return cancelled ? RecipeText.Cancelled.blocked() : ProcessResult.SUCCESS;
+                    }
+
+                    @Override
+                    public void cancel() {
+                        cancelled = true;
+                    }
                 };
             }
         };
@@ -448,7 +534,10 @@ class RecipeControllersTest {
             if (pending == null) pending = scanner.beginScan(LIMITS);
             pending.advance(new RecipeWorkBudget(1), () -> true);
             if (pending.finished()) pending = null;
-            else if (!pending.hasObligations()) { pending.releasePureYield(); pending = null; }
+            else if (!pending.hasObligations()) {
+                pending.releasePureYield();
+                pending = null;
+            }
         }
         assertEquals(2, host.activeProcesses().size());
         if (pending != null) while (!pending.finished()) pending.advance(new RecipeWorkBudget(1), () -> true);
@@ -458,8 +547,18 @@ class RecipeControllersTest {
     }
 
     private static final class Host implements MachineLifecycleHost {
-        @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
-        @Override public World world() { throw new AssertionError("No World in controller fixtures"); }
-        @Override public void requireServerThread() { }
+        @Override
+        public MachineIdentity identity() {
+            return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN);
+        }
+
+        @Override
+        public World world() {
+            throw new AssertionError("No World in controller fixtures");
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
     }
 }

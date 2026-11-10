@@ -34,26 +34,33 @@ public final class ResearchDiskImport {
         return new Result(result.accepted() ? Status.ACCEPTED : Status.DATA_CENTER_REJECTED, result);
     }
 
-    /** Freeze the exact before/after batch without writing a live database or issuing item effects. */
+    /**
+     * Freeze the exact before/after batch without writing a live database or issuing item effects.
+     */
     public static Preparation prepare(UUID operationId, UUID actor, String teamId, ResearchDiskData data,
                                       DataCenterResearchSnapshot target, TeamResearchView cloud) {
         var result = precheck(data, target, cloud);
         if (!result.accepted()) return new Preparation(result, null);
-        if (!Objects.requireNonNull(teamId).equals(cloud.teamId())) throw new IllegalArgumentException("Disk import belongs to another team");
-        var candidate = ResearchDataCenter.restore(target, cloud.registry(), () -> { }, () -> { });
+        if (!Objects.requireNonNull(teamId).equals(cloud.teamId()))
+            throw new IllegalArgumentException("Disk import belongs to another team");
+        var candidate = ResearchDataCenter.restore(target, cloud.registry(), () -> {
+        }, () -> {
+        });
         var checked = candidate.storeFromDisk(data.entries(), cloud);
-        if (!checked.accepted()) throw new IllegalStateException("Disk import candidate changed during pure preparation");
+        if (!checked.accepted())
+            throw new IllegalStateException("Disk import candidate changed during pure preparation");
         return new Preparation(result, new ResearchDiskCommit(operationId, actor, teamId, data.tier(), data.entries(), target, candidate.snapshot()));
     }
+
+    public enum Status {ACCEPTED, DISK_TIER_TOO_HIGH, DATA_CENTER_REJECTED}
 
     public record Preparation(Result result, @Nullable ResearchDiskCommit commit) {
         public Preparation {
             Objects.requireNonNull(result);
-            if (result.accepted() == (commit == null)) throw new IllegalArgumentException("Disk import preparation differs from its result");
+            if (result.accepted() == (commit == null))
+                throw new IllegalArgumentException("Disk import preparation differs from its result");
         }
     }
-
-    public enum Status {ACCEPTED, DISK_TIER_TOO_HIGH, DATA_CENTER_REJECTED}
 
     /**
      * Backend details are absent only when disk tier alone prevents the database precheck.

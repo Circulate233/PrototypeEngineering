@@ -19,6 +19,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineIdentityRegistryTest {
+    private static MachineIdentityRegistry registry() {
+        var owner = Thread.currentThread();
+        return new MachineIdentityRegistry(() -> {
+            if (Thread.currentThread() != owner) {
+                throw new IllegalStateException("Not the server owner thread");
+            }
+        });
+    }
+
+    private static PersistentMachineIdentity identity(long machine) {
+        return new PersistentMachineIdentity(new UUID(0, machine), new UUID(1, 1));
+    }
+
+    private static MachineIdentity location(int x) {
+        return new MachineIdentity(new ResourceLocation("test", "machine"), 0, new BlockPos(x, 2, 3));
+    }
+
     @Test
     void aRecoveredUniqueRegistrationCannotReuseTheBatchCapturedBeforeItsCopyArrived() {
         try (var registry = registry()) {
@@ -213,23 +230,6 @@ class MachineIdentityRegistryTest {
         assertEquals(List.of(registration), registry.uniqueRegistrations());
         registration.close();
         assertTrue(registry.uniqueRegistrations().isEmpty());
-    }
-
-    private static MachineIdentityRegistry registry() {
-        var owner = Thread.currentThread();
-        return new MachineIdentityRegistry(() -> {
-            if (Thread.currentThread() != owner) {
-                throw new IllegalStateException("Not the server owner thread");
-            }
-        });
-    }
-
-    private static PersistentMachineIdentity identity(long machine) {
-        return new PersistentMachineIdentity(new UUID(0, machine), new UUID(1, 1));
-    }
-
-    private static MachineIdentity location(int x) {
-        return new MachineIdentity(new ResourceLocation("test", "machine"), 0, new BlockPos(x, 2, 3));
     }
 
     private record EqualToken(String value) {

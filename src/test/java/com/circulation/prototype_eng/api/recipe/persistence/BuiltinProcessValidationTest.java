@@ -10,11 +10,11 @@ import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttrib
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.matching.NamedResourceMatcher;
+import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
-import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
-import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
@@ -46,6 +46,33 @@ class BuiltinProcessValidationTest {
     private static final KeyType TYPE = new KeyType("process_validation");
     private static final Key MATERIAL = new Key(TYPE, "material");
     private static final Key WRONG = new Key(TYPE, "wrong");
+
+    private static SelectiveState.SelectionSnapshot decided(int index, boolean completed) {
+        return new SelectiveState.SelectionSnapshot(true, index, completed, List.of(), List.of());
+    }
+
+    private static RecipeRequirement<SelectiveRequirement> selector(String name) {
+        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(List.of()));
+    }
+
+    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, int time, RecipeRequirement<?> child, boolean scaled) {
+        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(time, child, scaled));
+    }
+
+    private static RecipeRequirement<ResourceRequirement> resource() {
+        var matcher = new NamedResourceMatcher(id("exact"), AEKey::equals);
+        return RecipeRequirements.RESOURCES.requirement(id("resource"), new ResourceRequirement(List.of(), List.of(), List.of(),
+            List.of(), false, ResourceChance.ALWAYS, null, List.of(new FuzzyInputGroup(List.of(MATERIAL), 1)),
+            List.of(new DynamicInputGroup(matcher, MATERIAL, 1))));
+    }
+
+    private static RecipeProcess process(RecipeRequirement<?> root) {
+        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 20, List.of(root)), 1);
+    }
+
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("process_validation_test", path);
+    }
 
     @Test
     void zeroWidthNestedTickAllowsMissingPositiveChildButRejectsAnInventedDecision() {
@@ -120,7 +147,8 @@ class BuiltinProcessValidationTest {
         var resource = resource();
         var capacity = new Reference2LongArrayMap<AEKeyType>();
         capacity.put(TYPE, 20);
-        var hatch = new BufferedResourceHatch(HatchMode.INPUT, 1, capacity, () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.INPUT, 1, capacity, () -> {
+        });
         var input = Objects.requireNonNull(hatch.input());
         input.insert(MATERIAL, 10, Actionable.MODULATE);
         var machine = new MachineInstance();
@@ -186,32 +214,5 @@ class BuiltinProcessValidationTest {
             ResourceInputLocks.Kind.FUZZY, 0), MATERIAL);
         var index = new RecipeDefinitionIndex(process.recipe());
         assertThrows(IllegalArgumentException.class, () -> BuiltinProcessValidation.validate(process, index, false, false));
-    }
-
-    private static SelectiveState.SelectionSnapshot decided(int index, boolean completed) {
-        return new SelectiveState.SelectionSnapshot(true, index, completed, List.of(), List.of());
-    }
-
-    private static RecipeRequirement<SelectiveRequirement> selector(String name) {
-        return RecipeRequirements.SELECTIVE.requirement(id(name), new SelectiveRequirement(List.of()));
-    }
-
-    private static RecipeRequirement<CheckpointRequirement> checkpoint(String name, int time, RecipeRequirement<?> child, boolean scaled) {
-        return RecipeRequirements.CHECKPOINT.requirement(id(name), new CheckpointRequirement(time, child, scaled));
-    }
-
-    private static RecipeRequirement<ResourceRequirement> resource() {
-        var matcher = new NamedResourceMatcher(id("exact"), AEKey::equals);
-        return RecipeRequirements.RESOURCES.requirement(id("resource"), new ResourceRequirement(List.of(), List.of(), List.of(),
-            List.of(), false, ResourceChance.ALWAYS, null, List.of(new FuzzyInputGroup(List.of(MATERIAL), 1)),
-            List.of(new DynamicInputGroup(matcher, MATERIAL, 1))));
-    }
-
-    private static RecipeProcess process(RecipeRequirement<?> root) {
-        return new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 20, List.of(root)), 1);
-    }
-
-    private static ResourceLocation id(String path) {
-        return new ResourceLocation("process_validation_test", path);
     }
 }

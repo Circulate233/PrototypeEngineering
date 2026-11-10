@@ -40,15 +40,59 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RecipeScanPreparationTest {
     private static final ComponentType<RecipeProcess, Counter> COUNTER = new ComponentType<>(id("counter"), _ -> new Counter(),
         List.of(new ComponentSystem<>() {
-            @Override public ResourceLocation id() { return RecipeScanPreparationTest.id("counter_system"); }
-            @Override public void onPreTick(RecipeProcess owner, Counter component) {
+            @Override
+            public ResourceLocation id() {
+                return RecipeScanPreparationTest.id("counter_system");
+            }
+
+            @Override
+            public void onPreTick(RecipeProcess owner, Counter component) {
                 component.value++;
                 component.actualPreCalls++;
             }
         }));
     private static final KeyType KEY_TYPE = new KeyType("scan_preparation");
     private static final Key MATERIAL = new Key(KEY_TYPE, "material");
-    private static final Runnable NO_OP = () -> { };
+    private static final Runnable NO_OP = () -> {
+    };
+
+    private static RecipeScanPreparation layer(String name, int amount, ProcessResult result, List<String> events,
+                                               RuntimeException cleanupFailure) {
+        return process -> {
+            var counter = counter(process);
+            events.add("prepare:" + name);
+            counter.value += amount;
+            return new Projection(counter, result, List.of(), () -> {
+                events.add("rollback:" + name);
+                counter.value -= amount;
+                if (cleanupFailure != null) {
+                    throw cleanupFailure;
+                }
+            });
+        };
+    }
+
+    private static RecipeProcess candidate() {
+        var requirement = new RecipeRequirementType<Boolean>(id("initialization_type"), new RecipeRequirementSystem<>() {
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> definition) {
+                var counter = counter(process);
+                var result = counter.value == 1 ? ProcessResult.SUCCESS : new ProcessResult.Blocked("component has not initialized");
+                return new StartInitialization(counter, result);
+            }
+        }).requirement(id("initialization"), true);
+        var process = new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 3, List.of(requirement)), 17);
+        process.components().create(COUNTER, process);
+        return process;
+    }
+
+    private static Counter counter(RecipeProcess process) {
+        return Objects.requireNonNull(process.components().get(COUNTER));
+    }
+
+    private static ResourceLocation id(String name) {
+        return new ResourceLocation("scan_preparation_test", name);
+    }
 
     @Test
     void reversibleProjectionMakesStartObservableWithoutDuplicatingActualFirstTickInitialization() {
@@ -137,7 +181,10 @@ class RecipeScanPreparationTest {
             preparations.add(layer("first", 2, ProcessResult.SUCCESS, events, firstCleanup));
             preparations.add(layer("second", 3, ProcessResult.SUCCESS, events, secondCleanup));
             if (throwInPreparation) {
-                preparations.add(_ -> { events.add("prepare:throwing"); throw primary; });
+                preparations.add(_ -> {
+                    events.add("prepare:throwing");
+                    throw primary;
+                });
             }
             assertSame(primary, assertThrows(IllegalStateException.class, () -> RecipeScanProbes.check(process, preparations, _ -> {
                 events.add("check");
@@ -191,10 +238,10 @@ class RecipeScanPreparationTest {
             counter(owner).value += 7;
             return new Projection(counter(owner), ProcessResult.SUCCESS,
                 List.of(Objects.requireNonNull(material.reservation()), Objects.requireNonNull(power.reservation())), () -> {
-                    events.add("rollback:broken");
-                    counter(owner).value -= 7;
-                    throw cleanupFailure;
-                });
+                events.add("rollback:broken");
+                counter(owner).value -= 7;
+                throw cleanupFailure;
+            });
         };
         boolean[] checked = {false};
         var failure = assertThrows(IllegalArgumentException.class, () -> RecipeScanProbes.check(process,
@@ -233,44 +280,38 @@ class RecipeScanPreparationTest {
         assertEquals(1, counter(process).startCommits);
     }
 
-    private static RecipeScanPreparation layer(String name, int amount, ProcessResult result, List<String> events,
-                                                RuntimeException cleanupFailure) {
-        return process -> {
-            var counter = counter(process);
-            events.add("prepare:" + name);
-            counter.value += amount;
-            return new Projection(counter, result, List.of(), () -> {
-                events.add("rollback:" + name);
-                counter.value -= amount;
-                if (cleanupFailure != null) { throw cleanupFailure; }
-            });
-        };
-    }
-
-    private static RecipeProcess candidate() {
-        var requirement = new RecipeRequirementType<Boolean>(id("initialization_type"), new RecipeRequirementSystem<>() {
-            @Override public RequirementTransaction start(RecipeProcess process, RecipeRequirement<Boolean> definition) {
-                var counter = counter(process);
-                var result = counter.value == 1 ? ProcessResult.SUCCESS : new ProcessResult.Blocked("component has not initialized");
-                return new StartInitialization(counter, result);
-            }
-        }).requirement(id("initialization"), true);
-        var process = new RecipeProcess(new MachineInstance(), new MachineRecipe(id("recipe"), 3, List.of(requirement)), 17);
-        process.components().create(COUNTER, process);
-        return process;
-    }
-
     private record StartInitialization(Counter counter, ProcessResult result) implements RequirementTransaction {
-        @Override public void commit() { counter.startCommits++; }
-        @Override public void complete() { counter.startCompletions++; }
-        @Override public void rollback() { }
+        @Override
+        public void commit() {
+            counter.startCommits++;
+        }
+
+        @Override
+        public void complete() {
+            counter.startCompletions++;
+        }
+
+        @Override
+        public void rollback() {
+        }
     }
 
     private record Projection(Counter counter, ProcessResult result, List<ResourceReservation> reservations,
                               Runnable cleanup) implements RequirementTransaction {
-        @Override public void commit() { counter.projectionCommits++; }
-        @Override public void complete() { counter.projectionCompletions++; }
-        @Override public void rollback() { cleanup.run(); }
+        @Override
+        public void commit() {
+            counter.projectionCommits++;
+        }
+
+        @Override
+        public void complete() {
+            counter.projectionCompletions++;
+        }
+
+        @Override
+        public void rollback() {
+            cleanup.run();
+        }
     }
 
     private static final class Counter {
@@ -281,7 +322,4 @@ class RecipeScanPreparationTest {
         private int projectionCommits;
         private int projectionCompletions;
     }
-
-    private static Counter counter(RecipeProcess process) { return Objects.requireNonNull(process.components().get(COUNTER)); }
-    private static ResourceLocation id(String name) { return new ResourceLocation("scan_preparation_test", name); }
 }

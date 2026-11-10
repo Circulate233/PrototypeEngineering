@@ -4,13 +4,14 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
 import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
-import com.circulation.prototype_eng.api.structure.StructurePlan;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
+import com.circulation.prototype_eng.api.structure.StructurePlan;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructureQueries;
@@ -29,22 +30,28 @@ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.jetbrains.annotations.NotNull;
 
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 
-import static org.junit.jupiter.api.Assertions.*;
-import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class StructureJsonLoaderTest {
     private static final StructureQuery<Token> STATE = new StructureQuery<>(id("fake_state"),
@@ -52,18 +59,29 @@ class StructureJsonLoaderTest {
     private static final StructureQuery<Boolean> ENABLED = new StructureQuery<>(id("fake_enabled"),
         (_, _) -> fail("The addon predicate never reads a World"), UnaryOperator.identity(), Boolean::equals);
 
-    private static ResourceLocation id(String path) { return new ResourceLocation("test", path); }
-    private static StructureCatalog emptyCatalog() { return new StructureCatalog(List.of()); }
+    private static ResourceLocation id(String path) {
+        return new ResourceLocation("test", path);
+    }
+
+    private static StructureCatalog emptyCatalog() {
+        return new StructureCatalog(List.of());
+    }
+
     private static @NotNull StructureDefinition definition(StructureCatalog catalog, String name) {
         return Objects.requireNonNull(catalog.get(id(name)), "Missing test definition: " + name);
     }
-    private static StructureJsonLoader load(String json) { return StructureJsonLoader.readSources(Map.of("shape.json", json)); }
+
+    private static StructureJsonLoader load(String json) {
+        return StructureJsonLoader.readSources(Map.of("shape.json", json));
+    }
+
     private static StructurePredicateRegistry builtins() {
         var registry = new StructurePredicateRegistry();
         BuiltinStructurePredicates.register(registry);
         registry.freeze();
         return registry;
     }
+
     private static boolean matches(MachineStructure shape, FakeSource source, BlockOrientation orientation) {
         var plan = new StructurePlan(shape, BlockPos.ORIGIN, orientation);
         return plan.match(StructureSnapshot.capture(plan.reads(), source)) != null;
@@ -215,12 +233,14 @@ class StructureJsonLoaderTest {
         var position = new BlockPos(1, 0, 0);
         source.put(STATE, position, new Token(id("second"), 0));
         source.put(ENABLED, position, true);
-        var tag = new NBTTagCompound(); tag.setInteger("amount", 7);
+        var tag = new NBTTagCompound();
+        tag.setInteger("amount", 7);
         source.put(StructureQueries.TILE_NBT, position, tag);
         assertTrue(matches(shape, source, BlockOrientation.NORTH_UP));
         source.put(ENABLED, position, false);
         assertFalse(matches(shape, source, BlockOrientation.NORTH_UP));
-        source.put(ENABLED, position, true); tag.setInteger("amount", 1);
+        source.put(ENABLED, position, true);
+        tag.setInteger("amount", 1);
         assertFalse(matches(shape, source, BlockOrientation.NORTH_UP));
     }
 
@@ -233,7 +253,8 @@ class StructureJsonLoaderTest {
         String display = "\"display\":{\"key\":\"visual\",\"blocks\":[{\"blockId\":\"test:second\"}],\"tileNbt\":\"{amount:7}\"}";
         var catalog = load(base.formatted(display)).resolve(emptyCatalog(), builtins(), new FakeBlocks());
         var plain = load(base.formatted("\"predicates\":[]")).resolve(emptyCatalog(), builtins(), new FakeBlocks());
-        var source = new FakeSource(); source.put(STATE, new BlockPos(1, 0, 0), new Token(id("first"), 0));
+        var source = new FakeSource();
+        source.put(STATE, new BlockPos(1, 0, 0), new Token(id("first"), 0));
         assertTrue(matches(definition(catalog, "shape").shape(), source, BlockOrientation.NORTH_UP));
         assertTrue(matches(definition(plain, "shape").shape(), source, BlockOrientation.NORTH_UP));
         assertEquals(id("second"), definition(catalog, "shape").displays().get(new BlockPos(1, 0, 0)).options().getFirst().blockId());
@@ -250,7 +271,8 @@ class StructureJsonLoaderTest {
               "predicates":[{"id":"prototype_eng:block_id_regex","params":{"pattern":"test:.*"}}]}]}
             """).resolve(emptyCatalog(), builtins(), blocks), "shape").shape();
         blocks.known.clear();
-        var source = new FakeSource(); source.put(STATE, new BlockPos(1, 0, 0), new Token(id("first"), 0));
+        var source = new FakeSource();
+        source.put(STATE, new BlockPos(1, 0, 0), new Token(id("first"), 0));
         assertTrue(matches(shape, source, BlockOrientation.NORTH_UP));
         var air = definition(load("""
             {"id":"test:shape","type":"template","pattern":[{"pos":{"x":1,"y":0,"z":0},"blockId":"minecraft:air"}]}
@@ -269,7 +291,8 @@ class StructureJsonLoaderTest {
         for (var orientation : List.of(BlockOrientation.EAST_UP, BlockOrientation.SOUTH_UP)) {
             var source = new FakeSource();
             var expected = StructureTransform.of(orientation).apply(new BlockPos(3, 0, 0));
-            var tag = new NBTTagCompound(); tag.setInteger("amount", 7);
+            var tag = new NBTTagCompound();
+            tag.setInteger("amount", 7);
             source.put(StructureQueries.TILE_NBT, expected, tag);
             source.put(STATE, expected, new Token(id("first"), 3));
             assertTrue(matches(shape, source, orientation));
@@ -284,7 +307,8 @@ class StructureJsonLoaderTest {
             "parent.json", "{\"id\":\"test:parent\",\"type\":\"template\",\"offset\":{\"x\":1,\"y\":0,\"z\":0},\"pattern\":[],\"children\":[\"test:child\"]}",
             "child.json", "{\"id\":\"test:child\",\"type\":\"template\",\"pattern\":[{\"pos\":{\"x\":0,\"y\":0,\"z\":0},\"blockId\":\"test:first\"}]}"
         )).resolve(emptyCatalog(), builtins(), new FakeBlocks());
-        var source = new FakeSource(); source.put(STATE, new BlockPos(1, 0, 0), new Token(id("second"), 0));
+        var source = new FakeSource();
+        source.put(STATE, new BlockPos(1, 0, 0), new Token(id("second"), 0));
         assertFalse(matches(definition(catalog, "parent").shape(), source, BlockOrientation.NORTH_UP));
         source.put(STATE, new BlockPos(1, 0, 0), new Token(id("first"), 0));
         assertTrue(matches(definition(catalog, "parent").shape(), source, BlockOrientation.NORTH_UP));
@@ -307,7 +331,9 @@ class StructureJsonLoaderTest {
     void catalogAndMachineRuntimeStayUnpublishedAfterMissingAssemblyThenPublishTheCompleteRetry() {
         var catalog = load("{\"id\":\"test:shape\",\"type\":\"template\",\"pattern\":[]}").resolve(emptyCatalog(), builtins(), new FakeBlocks());
         var type = MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape")).build();
-        var registry = new MachineTypeRegistry(); registry.register(type); registry.freeze();
+        var registry = new MachineTypeRegistry();
+        registry.register(type);
+        registry.freeze();
         assertThrows(IllegalArgumentException.class, () -> registry.resolveRuntime(catalog, List.of()));
         assertThrows(IllegalStateException.class, registry::structureCatalog);
         assertThrows(IllegalStateException.class, () -> registry.structure(type));
@@ -400,7 +426,8 @@ class StructureJsonLoaderTest {
             {"id":"test:shape","type":"template","pattern":[{"pos":{"x":1,"y":0,"z":0},
              "predicates":[{"id":"test:enabled","params":{"configuration":{"expected":true}}}]}]}
             """);
-        var source = new FakeSource(); source.put(ENABLED, new BlockPos(1, 0, 0), true);
+        var source = new FakeSource();
+        source.put(ENABLED, new BlockPos(1, 0, 0), true);
         for (int attempt = 0; attempt < 2; attempt++) {
             var shape = definition(loader.resolve(emptyCatalog(), registry, new FakeBlocks()), "shape").shape();
             assertTrue(matches(shape, source, BlockOrientation.NORTH_UP));
@@ -420,41 +447,69 @@ class StructureJsonLoaderTest {
         assertFalse(matches(shape, source, BlockOrientation.NORTH_UP));
     }
 
-    private record Token(ResourceLocation id, int meta) {}
+    private record Token(ResourceLocation id, int meta) {
+    }
 
     private static final class FakeBlocks implements StructureBlockResolver {
         private final ObjectLinkedOpenHashSet<ResourceLocation> known = new ObjectLinkedOpenHashSet<>(List.of(id("first"), id("second"), new ResourceLocation("minecraft", "air")));
-        private void check(ResourceLocation id) { if (!known.contains(id)) throw new IllegalArgumentException("Unknown block " + id); }
-        @Override public StructurePredicate block(ResourceLocation id) {
+
+        private void check(ResourceLocation id) {
+            if (!known.contains(id)) throw new IllegalArgumentException("Unknown block " + id);
+        }
+
+        @Override
+        public StructurePredicate block(ResourceLocation id) {
             check(id);
             return StructurePredicates.test(STATE, value -> value != null && value.id.equals(id));
         }
-        @Override public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) {
+
+        @Override
+        public StructurePredicate state(ResourceLocation id, int meta, Map<String, String> nbt) {
             check(id);
             var state = StructurePredicates.test(STATE, value -> value != null && value.id.equals(id) && value.meta == meta);
             return nbt.isEmpty() ? state : StructurePredicates.all(List.of(state, StructurePredicates.nbt(nbt)));
         }
-        @Override public StructurePredicate regex(String expression) {
+
+        @Override
+        public StructurePredicate regex(String expression) {
             var pattern = Pattern.compile(expression);
             var frozen = Set.copyOf(known.stream().filter(id -> pattern.matcher(id.toString()).matches()).toList());
             return StructurePredicates.test(STATE, value -> value != null && frozen.contains(value.id));
         }
-        @Override public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
-            check(id); return new StructureDisplay.BlockOption(id, meta, nbt);
+
+        @Override
+        public StructureDisplay.BlockOption displayState(ResourceLocation id, int meta, Map<String, String> nbt) {
+            check(id);
+            return new StructureDisplay.BlockOption(id, meta, nbt);
         }
-        @Override public List<StructureDisplay.BlockOption> displayRegex(String expression) {
+
+        @Override
+        public List<StructureDisplay.BlockOption> displayRegex(String expression) {
             var pattern = Pattern.compile(expression);
             return known.stream().filter(id -> pattern.matcher(id.toString()).matches())
-                .map(id -> new StructureDisplay.BlockOption(id, 0, Map.of())).toList();
+                        .map(id -> new StructureDisplay.BlockOption(id, 0, Map.of())).toList();
         }
     }
 
     private static final class FakeSource implements StructureReadSource {
         private final Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Object> values = new Object2ObjectOpenHashMap<>();
-        private <T> void put(StructureQuery<T> query, BlockPos position, T value) { values.put(new StructureReadPlan.Read<>(position, query), value); }
-        @Override public void requireServerThread() {}
-        @Override public boolean isAreaLoaded(StructureBounds bounds) { return true; }
-        @Override @SuppressWarnings("unchecked") public <T> T read(StructureQuery<T> query, BlockPos position) {
+
+        private <T> void put(StructureQuery<T> query, BlockPos position, T value) {
+            values.put(new StructureReadPlan.Read<>(position, query), value);
+        }
+
+        @Override
+        public void requireServerThread() {
+        }
+
+        @Override
+        public boolean isAreaLoaded(StructureBounds bounds) {
+            return true;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T read(StructureQuery<T> query, BlockPos position) {
             return (T) values.get(new StructureReadPlan.Read<>(position, query));
         }
     }

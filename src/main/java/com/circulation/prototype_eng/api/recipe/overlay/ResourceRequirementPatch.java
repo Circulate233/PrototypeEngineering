@@ -7,7 +7,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Immutable IO overrides: null inherits the base field, while an empty list explicitly clears it. */
+/**
+ * Immutable IO overrides: null inherits the base field, while an empty list explicitly clears it.
+ */
 public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
                                        @Nullable List<GenericStack> inputsPerTick,
                                        @Nullable List<GenericStack> outputsPerTick,
@@ -20,7 +22,16 @@ public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
         outputs = copy(outputs);
     }
 
-    /** Keeps probability, random outputs and group/lock definitions unchanged. */
+    private static @Nullable List<GenericStack> copy(@Nullable List<GenericStack> stacks) {
+        if (stacks == null) {
+            return null;
+        }
+        return ResourceRequirement.canonicalStacks(stacks);
+    }
+
+    /**
+     * Keeps probability, random outputs and group/lock definitions unchanged.
+     */
     public ResourceRequirement apply(ResourceRequirement base) {
         Objects.requireNonNull(base, "base");
         if (inputs == null && inputsPerTick == null && outputsPerTick == null && outputs == null
@@ -34,11 +45,4 @@ public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
             voidExcessOutputs == null ? base.voidExcessOutputs() : voidExcessOutputs,
             base.chance(), base.randomOutputs(), base.fuzzyInputs(), base.dynamicInputs(), base.inputAllocation());
     }
-
-    private static @Nullable List<GenericStack> copy(@Nullable List<GenericStack> stacks) {
-        if (stacks == null) {
-            return null;
-        }
-        return ResourceRequirement.canonicalStacks(stacks);
-            }
 }

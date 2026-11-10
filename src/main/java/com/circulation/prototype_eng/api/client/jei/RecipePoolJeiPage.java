@@ -4,14 +4,14 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.localization.RecipePoolTitle;
+import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.recipe.IRecipeCategory;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
 import javax.annotation.ParametersAreNonnullByDefault;
-
-import mcp.MethodsReturnNonnullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * One native JEI category per canonical pool. Custom pages need not extend the default page.
@@ -20,10 +20,27 @@ import mcp.MethodsReturnNonnullByDefault;
 @ParametersAreNonnullByDefault
 @MethodsReturnNonnullByDefault
 public interface RecipePoolJeiPage extends IRecipeCategory<RecipePoolJeiRecipe> {
-    RecipePool pool();
-
     static String uid(ResourceLocation poolId) {
         return new ResourceLocation(Tags.MOD_ID, "pool/" + poolId.getNamespace() + "/" + poolId.getPath()).toString();
+    }
+
+    RecipePool pool();
+
+    /**
+     * Pure preparation for the same category. Prepared wrapper ingredients must be stable before
+     * page installation and while its display token is inactive; custom interactions honor isCurrent().
+     */
+    default @Nullable PreparedUpdate prepareUpdate(RecipePool target, RecipeJeiDisplays.Snapshot displays) {
+        return null;
+    }
+
+    interface PreparedUpdate {
+        RecipePoolJeiPage page();
+        RecipePool pool();
+        RecipePoolJeiRecipe createRecipe(MachineRecipe recipe, JeiRecipeDisplay display, JeiRecipeIngredients ingredients);
+
+        /** Single use: validate the captured owner data, then assign prepared data without external callbacks. */
+        void apply();
     }
 
     @Override
