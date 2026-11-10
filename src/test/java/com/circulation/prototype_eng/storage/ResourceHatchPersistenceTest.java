@@ -103,6 +103,34 @@ class ResourceHatchPersistenceTest {
     }
 
     @Test
+    void droppedHatchRetainsItsConfigurationButCannotRestoreEjectedMaterialsAgain() {
+        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(3, Map.of(FIRST, 64L)),
+            new ResourceHatchConfiguration.Side(5, Map.of(SECOND, 1024L)));
+        var tag = base();
+        tag.setBoolean("AutoInput", true);
+        tag.setLong("MaxFluidOutRate", 777);
+        tag.setTag("EffectiveProfile", HatchConfigurationNbt.resource(profile));
+        tag.setTag("Input", entries(2, A, 57));
+        tag.setTag("Output", entries(4, B, 999));
+        var tile = new ResourceHatchBlockEntity();
+        tile.loadTag(tag);
+        var drop = tile.saveForItemDrop();
+        assertEquals(0, drop.getTagList("Input", 10).tagCount());
+        assertEquals(0, drop.getTagList("Output", 10).tagCount());
+        assertEquals(tag.getCompoundTag("EffectiveProfile"), drop.getCompoundTag("EffectiveProfile"));
+        assertTrue(drop.getBoolean("AutoInput"));
+        assertEquals(777, drop.getLong("MaxFluidOutRate"));
+        assertEquals(57, Objects.requireNonNull(tile.storage().input()).getAmount(2));
+        assertEquals(999, Objects.requireNonNull(tile.storage().output()).getAmount(4));
+        var placed = new ResourceHatchBlockEntity();
+        placed.loadTag(drop);
+        assertEquals(3, Objects.requireNonNull(placed.storage().input()).size());
+        assertEquals(5, Objects.requireNonNull(placed.storage().output()).size());
+        assertEquals(0, Objects.requireNonNull(placed.storage().input()).getAmount(2));
+        assertEquals(0, Objects.requireNonNull(placed.storage().output()).getAmount(4));
+    }
+
+    @Test
     void legacySavedLayoutAndGenericStackEntriesRestoreBeforeAnyCurrentTarget() {
         var tag = base();
         tag.setInteger("Slots", 96);

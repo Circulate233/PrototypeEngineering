@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Consumer;
 
 /**
  * Owns buffers independently of their block entity or GUI.
@@ -279,6 +280,17 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
                 output.context().invalidate();
             }
         });
+    }
+
+    /** Eject each independent side once; unresolved tokens deliver their final balance later. */
+    public List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
+        Objects.requireNonNull(deferredDrops);
+        var drops = new ObjectArrayList<GenericStack>();
+        locked(() -> {
+            if (input != null) drops.addAll(input.removeForDrops(deferredDrops));
+            if (output != null) drops.addAll(output.removeForDrops(deferredDrops));
+        });
+        return List.copyOf(drops);
     }
 
     public void save(NBTTagCompound tag) {

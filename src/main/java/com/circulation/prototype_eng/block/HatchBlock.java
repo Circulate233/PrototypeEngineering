@@ -101,7 +101,7 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         var stack = new ItemStack(this);
         T tile = getTileEntity(world, pos);
         if (tile != null) {
-            NBTTagCompound saved = tile.writeToNBT(new NBTTagCompound());
+            NBTTagCompound saved = itemDropData(tile);
             saved.removeTag("x");
             saved.removeTag("y");
             saved.removeTag("z");
@@ -110,9 +110,14 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         drops.add(stack);
     }
 
+    /** Resource hatches keep settings here and eject their contents through AE's additional drops. */
+    protected NBTTagCompound itemDropData(T tile) {
+        return tile.writeToNBT(new NBTTagCompound());
+    }
+
     @Override
     public boolean removedByPlayer(@NotNull IBlockState state, @NotNull World world, @NotNull BlockPos pos, @NotNull EntityPlayer player, boolean willHarvest) {
-        // Keep the tile until harvestBlock has encoded its contents in the drop.
+        // Keep the tile until harvestBlock has captured settings and AE has ejected its contents.
         return willHarvest || super.removedByPlayer(state, world, pos, player, false);
     }
 

@@ -21,10 +21,12 @@ import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.BitSet;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Independent multi-type slots. Every view and reservation shares one balance and lock.
@@ -44,6 +46,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final BitSet changedSlots;
     private int activeReservations;
     private int externalReservations;
+    private boolean destroyed;
+    private volatile @Nullable Consumer<List<GenericStack>> destructionDrops;
 
     public SlottedResourceBuffer(int slots, Map<AEKeyType, Long> capacities, Runnable onChanged) {
         if (slots <= 0 || capacities.isEmpty()) {
@@ -61,7 +65,14 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         // a no-fence pending install from rehashing after its new entry has already been written.
         extractHolds = new AEKey2LongMap.OpenHashMap(slots);
         insertHolds = new AEKey2LongMap.OpenHashMap(slots);
-        context = new StorageContext(onChanged);
+        Objects.requireNonNull(onChanged);
+        context = new StorageContext(() -> {
+            try {
+                onChanged.run();
+            } finally {
+                publishDestructionDrops();
+            }
+        });
         keys = new AEKey[slots];
         amounts = new long[slots];
         reservedExtract = new long[slots];
@@ -560,6 +571,51 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         for (int slot = 0; slot < keys.length; slot++)
             result.add(keys[slot] == null ? null : new GenericStack(keys[slot], amounts[slot]));
         return result;
+    }
+
+    /** Permanent removal retains exact token journals until their final completion or compensation. */
+    List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
+        context.requireLock();
+        if (destroyed) return List.of();
+        context.invalidate();
+        destroyed = true;
+        destructionDrops = Objects.requireNonNull(deferredDrops);
+        if (activeReservations != 0) return List.of();
+        destructionDrops = null;
+        return takeDestroyedContents();
+    }
+
+    private void publishDestructionDrops() {
+        if (destructionDrops == null) return;
+        Consumer<List<GenericStack>> receiver;
+        List<GenericStack> drops;
+        context.lock();
+        try {
+            receiver = destructionDrops;
+            if (receiver == null || activeReservations != 0) return;
+            drops = takeDestroyedContents();
+            destructionDrops = null;
+        } finally {
+            context.unlock();
+        }
+        if (!drops.isEmpty()) receiver.accept(drops);
+    }
+
+    private List<GenericStack> takeDestroyedContents() {
+        context.requireLock();
+        if (!destroyed || context.isValid() || activeReservations != 0)
+            throw new IllegalStateException("Destruction requires retired storage and settled reservations");
+        var drops = new ObjectArrayList<GenericStack>(totals.size());
+        for (var entry : totals.object2LongEntrySet())
+            if (entry.getLongValue() > 0) drops.add(new GenericStack(entry.getKey(), entry.getLongValue()));
+        // The context is permanently invalid and no token can still address a slot. No new revision
+        // credit is spent here: invalidation already revoked every old snapshot and capability.
+        totals.clear();
+        Arrays.fill(keys, null);
+        Arrays.fill(amounts, 0);
+        freeSlots.set(0, keys.length);
+        changedSlots.set(0, keys.length);
+        return List.copyOf(drops);
     }
 
     private void requireRestorable() {

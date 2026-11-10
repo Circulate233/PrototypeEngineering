@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.storage.ResourceHatchBlockEntity;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
@@ -43,6 +44,11 @@ public class ResourceHatchBlock extends HatchBlock<ResourceHatchBlockEntity> {
 
     public HatchTier tier() {
         return tier;
+    }
+
+    @Override
+    protected NBTTagCompound itemDropData(ResourceHatchBlockEntity tile) {
+        return tile.saveForItemDrop();
     }
 
     @Override

@@ -2,7 +2,11 @@ package com.circulation.prototype_eng.storage;
 
 import ae2.api.AECapabilities;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
+import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.GenericStack;
+import ae2.items.misc.GenericResourcePackageItem;
 import ae2.tile.AEBaseTile;
+import ae2.util.Platform;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
@@ -18,7 +22,10 @@ import com.circulation.prototype_eng.api.storage.ResourceHatchSettings;
 import com.circulation.prototype_eng.block.ResourceHatchBlock;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
@@ -33,6 +40,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.Objects;
+import java.util.List;
 
 public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
     private static final VarHandle STORAGE_DIRTY;
@@ -389,6 +397,45 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         tag.setLong("MaxFluidInRate", maxFluidInputRate);
         tag.setLong("MaxFluidOutRate", maxFluidOutputRate);
         storage().save(tag);
+    }
+
+    /** Only settings travel with the hatch item; AE's additional-drop hook owns stored resources. */
+    public NBTTagCompound saveForItemDrop() {
+        var tag = new NBTTagCompound();
+        saveAdditional(tag);
+        if (mode.hasInput()) tag.setTag("Input", new NBTTagList());
+        if (mode.hasOutput()) tag.setTag("Output", new NBTTagList());
+        return tag;
+    }
+
+    @Override
+    public void addAdditionalDrops(List<ItemStack> drops) {
+        super.addAdditionalDrops(drops);
+        if (world == null || world.isRemote) return;
+        var removalWorld = world;
+        var removalPosition = pos.toImmutable();
+        var server = Objects.requireNonNull(removalWorld.getMinecraftServer());
+        var contents = storage().removeForDrops(deferred -> {
+            Runnable deliver = () -> {
+                var delayed = new ObjectArrayList<ItemStack>();
+                addResourceDrops(deferred, delayed, removalWorld, removalPosition);
+                Platform.spawnDrops(removalWorld, removalPosition, delayed);
+            };
+            if (server.isCallingFromMinecraftThread()) deliver.run();
+            else server.addScheduledTask(deliver);
+        });
+        addResourceDrops(contents, drops, removalWorld, removalPosition);
+    }
+
+    private static void addResourceDrops(List<GenericStack> contents, List<ItemStack> drops, World world, BlockPos position) {
+        for (var stack : contents) {
+            // AEItemKey's list cap and amount+stackSize-1 estimate must not discard a large long
+            // balance or later keys. Use AE's native package before either limit can be exceeded.
+            if (stack.what() instanceof AEItemKey item
+                && stack.amount() > (long) Math.max(1, item.getMaxStackSize()) * Math.max(0, 500 - drops.size()))
+                GenericResourcePackageItem.addDrop(stack.what(), stack.amount(), drops);
+            else stack.what().addDrops(stack.amount(), drops, world, position);
+        }
     }
 
     @Override
