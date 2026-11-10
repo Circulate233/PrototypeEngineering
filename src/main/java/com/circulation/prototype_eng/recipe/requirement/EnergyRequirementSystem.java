@@ -14,7 +14,6 @@ import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
-
 import java.util.List;
 import java.util.Objects;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
@@ -24,9 +23,14 @@ import com.circulation.prototype_eng.api.recipe.requirement.RequirementPreparati
 import com.circulation.prototype_eng.recipe.PreparedRequirement;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import org.jetbrains.annotations.Nullable;
-
-/** PM's independent FE start/tick/end IO, with each source counted once per operation. */
+import com.circulation.prototype_eng.api.energy.EnergyInput;
+import com.circulation.prototype_eng.api.energy.EnergySnapshot;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
+/**
+ * PM's independent FE start/tick/end IO, with each source counted once per operation.
+ */
 public final class EnergyRequirementSystem implements RecipeRequirementSystem<EnergyRequirement> {
+
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // The owner binding intentionally retains its captured callback scope.
     public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
@@ -48,11 +52,13 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         var hatches = process.hatches();
         var parallelCapture = process.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
         return new RequirementPreparation() {
-            @Nullable private EnergyQuantities quantities;
+            @Nullable
+            private EnergyQuantities quantities;
             private int direction;
             private int index;
             private long remaining = -1;
             private ReferenceOpenHashSet<StorageContext> visited = new ReferenceOpenHashSet<>();
+            @Nullable private EnergyAllocationCursor allocation;
 
             @Override
             public boolean ownerWorkMetered() {
@@ -77,7 +83,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             public RequirementTransaction acquire() {
                 var reservations = new ObjectArrayList<ResourceReservation>();
                 var budget = process.preparationBudget();
-                if (!parallelCapture.current()) return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);
+                if (!parallelCapture.current())
+                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);
                 if (quantities == null) {
                     if (!parallelCapture.advance(budget)) return paused(reservations);
                     quantities = new EnergyQuantities(input, output, Math.max(1, (int) Math.floor(parallelCapture.result())));
@@ -92,6 +99,14 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                 }
                 try {
                     while (direction < 2) {
+                        if (direction == 0 && remaining > 0 && payload.inputAllocation() != InputAllocation.SPLITTABLE) {
+                            if (allocation == null)
+                                allocation = new EnergyAllocationCursor(hatches.energyInputs(), remaining, payload.inputAllocation(), stage, id);
+                            if (!allocation.advance(budget, reservations)) return paused(reservations);
+                            if (allocation.result != ProcessResult.SUCCESS)
+                                return ReservedRequirement.frozen(allocation.result, reservations);
+                            remaining = 0;
+                        }
                         int count = direction == 0 ? hatches.energyInputs().size() : hatches.energyOutputs().size();
                         while (remaining > 0 && index < count) {
                             if (!budget.take()) {
@@ -146,10 +161,23 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                         @SuppressWarnings("UnnecessaryLocalVariable") // The captured cleanup owns this exact reservation list.
                         var retained = reservations;
                         var cleanup = process.capturePreparedCleanup(new RequirementTransaction() {
-                            @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
-                            @Override public List<ResourceReservation> reservations() { return retained; }
-                            @Override public void commit() { }
-                            @Override public void rollback() { }
+                            @Override
+                            public ProcessResult result() {
+                                return ProcessResult.SUCCESS;
+                            }
+
+                            @Override
+                            public List<ResourceReservation> reservations() {
+                                return retained;
+                            }
+
+                            @Override
+                            public void commit() {
+                            }
+
+                            @Override
+                            public void rollback() {
+                            }
                         });
                         cleanup.reject();
                         throw failure;
@@ -159,6 +187,92 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                 }
             }
         };
+    }
+
+    /** Source capture and exact reservation stay on the original owner and original stage. */
+    private static final class EnergyAllocationCursor {
+        private final List<EnergyInput> candidates;
+        private final long amount;
+        private final InputAllocation allocation;
+        private final RecipeStage stage;
+        private final String id;
+        private final ReferenceOpenHashSet<StorageContext> seen = new ReferenceOpenHashSet<>();
+        private final ObjectArrayList<EnergyInput> sources = new ObjectArrayList<>();
+        private final ObjectArrayList<EnergySnapshot> snapshots = new ObjectArrayList<>();
+        private final ObjectArrayList<InputAllocation.Source> facts = new ObjectArrayList<>();
+        private int candidate;
+        private int verified;
+        private int source;
+        @Nullable private InputAllocationPlan plan;
+        private ProcessResult result = ProcessResult.SUCCESS;
+
+        private EnergyAllocationCursor(List<EnergyInput> candidates, long amount, InputAllocation allocation,
+                                       RecipeStage stage, String id) {
+            this.candidates = candidates;
+            this.amount = amount;
+            this.allocation = allocation;
+            this.stage = stage;
+            this.id = id;
+        }
+
+        private boolean advance(RecipeWorkBudget budget, List<ResourceReservation> reservations) {
+            while (candidate < candidates.size()) {
+                if (!budget.take()) return false;
+                var input = candidates.get(candidate++);
+                var context = input.context();
+                if (!input.isValid() || !seen.add(context)) continue;
+                context.lock();
+                try {
+                    if (!input.isValid()) return changed();
+                    var snapshot = input.energySnapshot();
+                    if (snapshot.context() != context || !context.current(snapshot.revision())) return changed();
+                    facts.add(new InputAllocation.Source(sources.size(), context.sourceIdentity(), snapshot.revision(),
+                        Math.min(snapshot.availableEnergy(), snapshot.maxExtract()), InputAllocationPlan.NO_RESOURCES,
+                        snapshot.availableEnergy(), snapshot.maxExtract()));
+                    sources.add(input);
+                    snapshots.add(snapshot);
+                } finally {
+                    context.unlock();
+                }
+            }
+            if (sources.isEmpty()) { result = RecipeText.NoEnergyInput.blocked(id); return true; }
+            if (plan == null) plan = new InputAllocationPlan(allocation, stage, 0, null, amount, facts);
+            if (!plan.advance(budget)) return false;
+            if (plan.missing() != 0) { result = RecipeText.EnergyMissing.blocked(id, Long.toString(plan.missing())); return true; }
+            while (verified < sources.size()) {
+                if (!budget.take()) return false;
+                var input = sources.get(verified);
+                var snapshot = snapshots.get(verified++);
+                var context = input.context();
+                context.lock();
+                try {
+                    if (!input.isValid() || !context.current(snapshot.revision())) return changed();
+                } finally {
+                    context.unlock();
+                }
+            }
+            while (source < sources.size()) {
+                if (!budget.take()) return false;
+                int index = source++;
+                long assigned = plan.amount(index);
+                if (assigned == 0) continue;
+                var input = sources.get(index);
+                var snapshot = snapshots.get(index);
+                var context = input.context();
+                context.lock();
+                try {
+                    if (!input.isValid() || !context.current(snapshot.revision())) return changed();
+                    var reserved = input.reserveExtractEnergy(snapshot, assigned);
+                    if (reserved.status() != ReservationResult.Status.ACCEPTED) return changed();
+                    reservations.add(Objects.requireNonNull(reserved.reservation()));
+                } finally {
+                    context.unlock();
+                }
+            }
+            return true;
+        }
+
+        private boolean changed() { result = RecipeText.StorageChanged.blocked(); return true; }
     }
 
     private static class EnergyQuantities implements RecipePureComputation {
@@ -187,24 +301,26 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             return true;
         }
     }
+
     @Override
     public RequirementTransaction start(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement) {
-        return acquire(process, requirement, requirement.payload().input(), 0);
+        return acquire(process, requirement, RecipeStage.START, requirement.payload().input(), 0);
     }
 
     @Override
     public RequirementTransaction tick(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement) {
-        return acquire(process, requirement, requirement.payload().inputPerTick(), requirement.payload().outputPerTick());
+        return acquire(process, requirement, RecipeStage.TICK, requirement.payload().inputPerTick(), requirement.payload().outputPerTick());
     }
 
     @Override
     public RequirementTransaction end(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement) {
-        return acquire(process, requirement, 0, requirement.payload().output());
+        return acquire(process, requirement, RecipeStage.END, 0, requirement.payload().output());
     }
-
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
-                                                   long input, long output) {
-        if (input == 0 && output == 0) { return RequirementTransaction.SUCCESS; }
+                                                  RecipeStage stage, long input, long output) {
+        if (input == 0 && output == 0) {
+            return RequirementTransaction.SUCCESS;
+        }
         int parallelism = RecipeParallelism.effective(process);
         input = RecipeParallelism.scaleCount(input, parallelism);
         output = RecipeParallelism.scaleCount(output, parallelism);
@@ -212,7 +328,13 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         try {
             var hatches = process.hatches();
             String id = requirement.id().toString();
-            ProcessResult result = reserveInput(hatches, input, id, reservations);
+            ProcessResult result;
+            if (input != 0 && requirement.payload().inputAllocation() != InputAllocation.SPLITTABLE) {
+                var allocation = new EnergyAllocationCursor(hatches.energyInputs(), input, requirement.payload().inputAllocation(), stage, id);
+                if (!allocation.advance(new RecipeWorkBudget(Long.MAX_VALUE), reservations))
+                    throw new IllegalStateException("Unbounded energy allocation did not finish");
+                result = allocation.result;
+            } else result = reserveInput(hatches, input, id, reservations);
             if (result == ProcessResult.SUCCESS) {
                 result = reserveOutput(hatches, output, requirement.payload().voidExcessOutputs(), id, reservations);
             }

@@ -19,15 +19,29 @@ public record ResourceRequirement(List<GenericStack> inputs, List<GenericStack> 
                                   List<GenericStack> outputsPerTick, List<GenericStack> outputs,
                                   boolean voidExcessOutputs, ResourceChance chance,
                                   @Nullable RandomOutputPool randomOutputs, List<FuzzyInputGroup> fuzzyInputs,
-                                  List<DynamicInputGroup> dynamicInputs) {
+                                  List<DynamicInputGroup> dynamicInputs, InputAllocation inputAllocation) {
     public ResourceRequirement {
         inputs = canonicalStacks(inputs);
         inputsPerTick = canonicalStacks(inputsPerTick);
         outputsPerTick = canonicalStacks(outputsPerTick);
         outputs = canonicalStacks(outputs);
         Objects.requireNonNull(chance);
+        Objects.requireNonNull(inputAllocation);
         fuzzyInputs = copyGroups(fuzzyInputs);
         dynamicInputs = copyGroups(dynamicInputs);
+    }
+
+    public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,
+                               List<GenericStack> outputsPerTick, List<GenericStack> outputs,
+                               boolean voidExcessOutputs, ResourceChance chance, @Nullable RandomOutputPool randomOutputs,
+                               List<FuzzyInputGroup> fuzzyInputs, List<DynamicInputGroup> dynamicInputs) {
+        this(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs, chance, randomOutputs,
+            fuzzyInputs, dynamicInputs, InputAllocation.SPLITTABLE);
+    }
+
+    public ResourceRequirement withInputAllocation(InputAllocation allocation) {
+        return new ResourceRequirement(inputs, inputsPerTick, outputsPerTick, outputs, voidExcessOutputs,
+            chance, randomOutputs, fuzzyInputs, dynamicInputs, allocation);
     }
 
     public ResourceRequirement(List<GenericStack> inputs, List<GenericStack> inputsPerTick,

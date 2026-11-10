@@ -21,11 +21,12 @@ import it.unimi.dsi.fastutil.objects.ObjectSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.ApiStatus;
-
 import java.util.List;
 import java.util.Objects;
-
-/** Tier-zero unit advancement retains each static input's identity even when several use one key. */
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
+/**
+ * Tier-zero unit advancement retains each static input's identity even when several use one key.
+ */
 @ApiStatus.Internal
 public final class ManualMaterials {
     private final ObjectList<Material> materials;
@@ -36,7 +37,9 @@ public final class ManualMaterials {
         for (var material : materials) { byId.put(material.id(), material); }
     }
 
-    /** ResearchLevelStage additionally restricts real tier-zero definitions to AEItemKey inputs. */
+    /**
+     * ResearchLevelStage additionally restricts real tier-zero definitions to AEItemKey inputs.
+     */
     public static ManualMaterials from(List<RecipeRequirement<?>> requirements) {
         Objects.requireNonNull(requirements);
         var materials = new ObjectArrayList<Material>();
@@ -47,19 +50,23 @@ public final class ManualMaterials {
                 throw new IllegalArgumentException("Duplicate manual material requirement " + requirement.id());
             }
             if (requirement.type() != RecipeRequirements.RESOURCES
-                || !(requirement.payload() instanceof ResourceRequirement(var inputs, var inputsPerTick, var outputsPerTick,
-                    var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs))
+                || !(requirement.payload() instanceof ResourceRequirement(
+                var inputs, var inputsPerTick, var outputsPerTick,
+                var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs, var inputAllocation
+            ))
                 || !inputsPerTick.isEmpty() || !outputsPerTick.isEmpty() || !outputs.isEmpty()
                 || voidExcess || !chance.equals(ResourceChance.ALWAYS) || randomOutputs != null
-                || !fuzzyInputs.isEmpty() || !dynamicInputs.isEmpty()) {
-                throw new IllegalArgumentException("Manual research supports only static START inputs: " + requirement.id());
+                || !fuzzyInputs.isEmpty() || !dynamicInputs.isEmpty() || inputAllocation != InputAllocation.SPLITTABLE) {
+                throw new IllegalArgumentException("Manual research supports only static START inputs with default source allocation: " + requirement.id());
             }
             for (int inputIndex = 0; inputIndex < inputs.size(); inputIndex++) {
                 var input = inputs.get(inputIndex);
                 materials.add(new Material(new ManualMaterialKey(requirement.id(), inputIndex), input.what(), input.amount()));
             }
         }
-        if (materials.isEmpty()) { throw new IllegalArgumentException("Manual research requires at least one material input"); }
+        if (materials.isEmpty()) {
+            throw new IllegalArgumentException("Manual research requires at least one material input");
+        }
         return new ManualMaterials(materials);
     }
 

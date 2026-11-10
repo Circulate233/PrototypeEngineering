@@ -28,13 +28,17 @@ import java.util.UUID;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
-
-/** Bounded AE2 GuiSync display pages, detached from research owners and recovery payloads. */
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
+/**
+ * Bounded AE2 GuiSync display pages, detached from research owners and recovery payloads.
+ */
 public record ResearchGuiSnapshot(boolean initialized, boolean savePending, ResearchPlayerView.TeamStatus teamStatus,
                                   Decision personalPermission, Decision teamViewPermission, Decision queuePermission,
-                                  Decision startPermission, Decision blacklistPermission, Tab tab, int total, int offset,
+                                  Decision startPermission, Decision blacklistPermission, Tab tab, int total,
+                                  int offset,
                                   ObjectList<Entry> rows, @Nullable Selection selected,
-                                  int detailTotal, int detailOffset, ObjectList<Detail> details, Decision forgetPermission, Decision adminPermission) implements PacketWritable {
+                                  int detailTotal, int detailOffset,
+                                  ObjectList<Detail> details, Decision forgetPermission, Decision adminPermission) implements PacketWritable {
     public static final int MAX_ROWS = 6;
     public static final int MAX_DETAILS = 6;
     public static final int MAX_PACKET_BYTES = 16384;
@@ -269,15 +273,20 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         return result;
     }
 
-    /** Reads the exact static input amount, without instantiating inventory or invoking execution hooks. */
+    /**
+     * Reads the exact static input amount, without instantiating inventory or invoking execution hooks.
+     */
     static ObjectList<Detail> materialDetails(List<RecipeRequirement<?>> requirements, @Nullable ResearchPlayerView.ManualRow manual) {
         var result = new ObjectArrayList<Detail>();
         for (var requirement : requirements) {
             if (requirement.type() != RecipeRequirements.RESOURCES || !(requirement.payload() instanceof ResourceRequirement(
-                var inputs, var inputsPerTick, var outputsPerTick, var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs))
+                var inputs, var inputsPerTick, var outputsPerTick, var outputs, var voidExcess, var chance,
+                var randomOutputs, var fuzzyInputs, var dynamicInputs, var inputAllocation
+            ))
                 || !inputsPerTick.isEmpty() || !outputsPerTick.isEmpty() || !outputs.isEmpty()
-                || voidExcess || !chance.equals(ResourceChance.ALWAYS) || randomOutputs != null || !fuzzyInputs.isEmpty() || !dynamicInputs.isEmpty()) {
-                throw new IllegalArgumentException("Manual research display requires static resource inputs");
+                || voidExcess || !chance.equals(ResourceChance.ALWAYS) || randomOutputs != null || !fuzzyInputs.isEmpty() || !dynamicInputs.isEmpty()
+                || inputAllocation != InputAllocation.SPLITTABLE) {
+                throw new IllegalArgumentException("Manual research display requires static resource inputs with default source allocation");
             }
             for (int input = 0; input < inputs.size(); input++) {
                 var key = new ManualMaterialKey(requirement.id(), input);

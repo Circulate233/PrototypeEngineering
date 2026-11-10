@@ -22,6 +22,6 @@ public record EnergyRequirementPatch(@Nullable Long inputsPerTick, @Nullable Lon
         }
         return new EnergyRequirement(base.input(), inputsPerTick == null ? base.inputPerTick() : inputsPerTick,
             outputsPerTick == null ? base.outputPerTick() : outputsPerTick, base.output(),
-            voidExcessOutputs == null ? base.voidExcessOutputs() : voidExcessOutputs);
+            voidExcessOutputs == null ? base.voidExcessOutputs() : voidExcessOutputs, base.inputAllocation());
     }
 }

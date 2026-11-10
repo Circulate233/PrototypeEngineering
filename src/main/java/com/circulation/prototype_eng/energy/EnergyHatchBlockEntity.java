@@ -8,6 +8,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.energy.CapabilityEnergy;
 import org.jetbrains.annotations.NotNull;
@@ -41,6 +43,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     private HatchMode mode;
     private EnergyBuffer buffer;
     private EnergyBuffer outputBuffer;
+    @Nullable private String allocationLocation;
     private List<StorageContext> contexts;
     private ForgeEnergyPort port;
     private long maxInputRate;
@@ -68,6 +71,35 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
             && block.getTileEntity(world, pos) == this) {
             initializeConfiguration(block.mode(), block.tier());
         }
+        bindSourceIdentities();
+    }
+
+    /** Physical labels are facts about the world-owned tile, not source access tokens. */
+    protected @Nullable String allocationLocation() {
+        return world != null && world.getTileEntity(pos) == this
+            ? "prototype_eng:energy/" + world.provider.getDimension() + "/" + pos.getX() + "/" + pos.getY() + "/" + pos.getZ()
+            : null;
+    }
+
+    private void bindSourceIdentities() {
+        if (buffer == null || !buffer.isValid() || isInvalid()) return;
+        var location = allocationLocation();
+        if (location == null || location.equals(allocationLocation)) return;
+        buffer.context().bindSourceIdentity(location + (mode.hasInput() ? "/input" : "/output"));
+        if (outputBuffer != null && outputBuffer != buffer) outputBuffer.context().bindSourceIdentity(location + "/output");
+        allocationLocation = location;
+    }
+
+    @Override
+    public void setPos(@NotNull BlockPos position) {
+        if (allocationLocation != null && !pos.equals(position)) invalidate();
+        super.setPos(position);
+    }
+
+    @Override
+    public void setWorld(@NotNull World nextWorld) {
+        if (allocationLocation != null && world != nextWorld) invalidate();
+        super.setWorld(nextWorld);
     }
 
     /**
@@ -98,6 +130,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     }
 
     private void createStorage() {
+        allocationLocation = null;
         buffer = new EnergyBuffer(HatchConfig.energyCapacity(tier), effectiveInputRate(), effectiveOutputRate(), this::requestStorageSave);
         outputBuffer = mode == HatchMode.MIXED
             ? new EnergyBuffer(HatchConfig.energyCapacity(tier), effectiveInputRate(), effectiveOutputRate(), this::requestStorageSave)
@@ -125,16 +158,19 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     /** Compatibility access to the input balance, or the sole output balance on output hatches. */
     @Override
     public EnergyBuffer storage() {
+        bindSourceIdentities();
         return buffer;
     }
 
     @Override
     public @Nullable EnergyBuffer inputStorage() {
+        bindSourceIdentities();
         return mode.hasInput() ? buffer : null;
     }
 
     @Override
     public @Nullable EnergyBuffer outputStorage() {
+        bindSourceIdentities();
         return outputBuffer;
     }
 
@@ -200,6 +236,7 @@ public class EnergyHatchBlockEntity extends AEBaseTile implements EnergyHatchGui
     @Nullable
     public <T> T getCapability(@NotNull Capability<T> capability, @Nullable EnumFacing side) {
         if (!isInvalid()) {
+            bindSourceIdentities();
             if (capability == HatchCapabilities.ENERGY_INPUT && mode.hasInput()) {
                 return HatchCapabilities.ENERGY_INPUT.cast(buffer);
             }

@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.probability.BinomialSampler;
 import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
@@ -104,6 +105,7 @@ class ResourceComputation implements RecipePureComputation {
         var originalPool = payload.randomOutputs();
         var currentPool = current.randomOutputs();
         return payload.voidExcessOutputs() == current.voidExcessOutputs() && payload.chance().equals(current.chance())
+            && payload.inputAllocation() == current.inputAllocation()
             && payload.inputs().size() == current.inputs().size() && payload.inputsPerTick().size() == current.inputsPerTick().size()
             && payload.outputsPerTick().size() == current.outputsPerTick().size() && payload.outputs().size() == current.outputs().size()
             && payload.fuzzyInputs().size() == current.fuzzyInputs().size() && payload.dynamicInputs().size() == current.dynamicInputs().size()
@@ -270,6 +272,14 @@ class ResourceComputation implements RecipePureComputation {
             source++;
         }
         while (quantityPhase < 4) {
+            if (quantityPhase % 2 == 0 && payload.inputAllocation() != InputAllocation.SPLITTABLE
+                && (stage != RecipeStage.START || payload.fuzzyInputs().isEmpty() && payload.dynamicInputs().isEmpty())) {
+                if (!budget.take()) return false;
+                // The owner projection cursor scales these separately. Their joint key total may
+                // exceed long even though every independent demand and physical balance is valid.
+                quantityPhase++;
+                continue;
+            }
             var inputs = inputs();
             var outputs = outputs();
             var stacks = quantityPhase % 2 == 0 ? inputs : outputs;
@@ -285,7 +295,7 @@ class ResourceComputation implements RecipePureComputation {
                     return false;
                 }
                 var value = stacks.get(stack++);
-                // Aggregate before scaling, preserving overflow and saturation of the existing path.
+                // Default/group selection retains its existing aggregate quantity contract.
                 addChecked(target, value.what(), value.amount());
             }
             if (sourceEntries == null) {

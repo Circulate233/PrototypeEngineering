@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
@@ -137,6 +138,11 @@ class ResearchGuiSnapshotTest {
         var ticking = RecipeRequirements.RESOURCES.requirement(id("ticking"), new ResourceRequirement(ObjectList.of(),
             ObjectList.of(new GenericStack(item, 1)), ObjectList.of(), ObjectList.of(), false));
         assertThrows(IllegalArgumentException.class, () -> materialDetails(ObjectList.of(ticking), manual));
+        for (var policy : ObjectList.of(InputAllocation.SINGLE_SOURCE,
+            InputAllocation.custom(id("custom"), _ -> { throw new AssertionError("Display cannot invoke source allocation"); }))) {
+            var allocated = RecipeRequirements.RESOURCES.requirement(id("allocated"), requirement.payload().withInputAllocation(policy));
+            assertThrows(IllegalArgumentException.class, () -> materialDetails(ObjectList.of(allocated), manual));
+        }
     }
 
     @Test void allTabsAndManualRowsRoundTripWithoutConsumingTheFollowingGuiSyncField() {

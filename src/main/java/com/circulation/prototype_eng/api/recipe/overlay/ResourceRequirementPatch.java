@@ -32,7 +32,7 @@ public record ResourceRequirementPatch(@Nullable List<GenericStack> inputs,
             outputsPerTick == null ? base.outputsPerTick() : outputsPerTick,
             outputs == null ? base.outputs() : outputs,
             voidExcessOutputs == null ? base.voidExcessOutputs() : voidExcessOutputs,
-            base.chance(), base.randomOutputs(), base.fuzzyInputs(), base.dynamicInputs());
+            base.chance(), base.randomOutputs(), base.fuzzyInputs(), base.dynamicInputs(), base.inputAllocation());
     }
 
     private static @Nullable List<GenericStack> copy(@Nullable List<GenericStack> stacks) {

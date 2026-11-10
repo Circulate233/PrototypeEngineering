@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -149,6 +150,15 @@ class ResearchDefinitionTest {
         assertThrows(IllegalArgumentException.class, () -> stage(1, 1).researchTier(0).materialRequirement(requirement).build());
         var ordinary = stage(1, 1).materialRequirement(requirement).build();
         assertSame(requirement, ordinary.materialRequirements().getFirst());
+        var fixed = new ResourceRequirement(List.of(), List.of());
+        assertDoesNotThrow(() -> stage(1, 1).researchTier(0)
+            .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("default_allocation"), fixed)).build());
+        for (var policy : List.of(InputAllocation.SINGLE_SOURCE,
+            InputAllocation.custom(id("custom"), _ -> { throw new AssertionError("Definition validation cannot invoke allocation"); }))) {
+            var allocated = RecipeRequirements.RESOURCES.requirement(id("allocated"), fixed.withInputAllocation(policy));
+            assertThrows(IllegalArgumentException.class, () -> stage(1, 1).researchTier(0).materialRequirement(allocated).build());
+            assertSame(allocated, stage(1, 1).materialRequirement(allocated).build().materialRequirements().getFirst());
+        }
     }
 
     private static ResearchDefinition.Builder definition(String name, int maxLevel) {

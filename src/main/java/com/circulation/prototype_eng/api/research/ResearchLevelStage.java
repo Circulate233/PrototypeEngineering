@@ -19,10 +19,9 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
-
 import java.util.Objects;
 import java.util.function.Consumer;
-
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 /**
  * PN's inclusive level range, fixed prerequisites/materials and sparse exact-level reward choices.
  * Material definitions retain complete requirement payloads and must remain immutable, as for recipes.
@@ -109,17 +108,24 @@ public final class ResearchLevelStage {
      * explicitly instead of accepting then silently dropping their tick/output/chance effects.
      */
     private void validateManualMaterials() {
-        if (researchTier != 0) { return; }
-        if (!resourceFormula.baseDemands().isEmpty()) { throw new IllegalArgumentException("Tier-zero research cannot declare numeric resources"); }
+        if (researchTier != 0) {
+            return;
+        }
+        if (!resourceFormula.baseDemands().isEmpty()) {
+            throw new IllegalArgumentException("Tier-zero research cannot declare numeric resources");
+        }
         for (var requirement : materialRequirements) {
             if (requirement.type() != RecipeRequirements.RESOURCES
-                || !(requirement.payload() instanceof ResourceRequirement(var inputs, var inputsPerTick, var outputsPerTick,
-                    var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs))
+                || !(requirement.payload() instanceof ResourceRequirement(
+                var inputs, var inputsPerTick, var outputsPerTick,
+                var outputs, var voidExcess, var chance, var randomOutputs, var fuzzyInputs, var dynamicInputs, var inputAllocation
+            ))
                 || !inputsPerTick.isEmpty() || !outputsPerTick.isEmpty() || !outputs.isEmpty()
                 || !chance.equals(ResourceChance.ALWAYS) || randomOutputs != null
                 || !fuzzyInputs.isEmpty() || !dynamicInputs.isEmpty() || voidExcess
+                || inputAllocation != InputAllocation.SPLITTABLE
                 || inputs.stream().anyMatch(stack -> !(stack.what() instanceof AEItemKey))) {
-                throw new IllegalArgumentException("Tier-zero research supports only static AEItemKey START inputs: " + requirement.id());
+                throw new IllegalArgumentException("Tier-zero research supports only static AEItemKey START inputs with default source allocation: " + requirement.id());
             }
         }
     }

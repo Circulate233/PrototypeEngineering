@@ -16,6 +16,8 @@ import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import org.jetbrains.annotations.NotNull;
@@ -48,6 +50,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private int slots;
     private Reference2LongMap<AEKeyType> capacities;
     private BufferedResourceHatch hatch;
+    @Nullable private String allocationLocation;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
     private boolean autoInput;
@@ -78,6 +81,37 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             && block.getTileEntity(world, pos) == this) {
             initializeConfiguration(block.mode(), block.tier());
         }
+        bindSourceIdentities();
+    }
+
+    /** Physical labels are captured only once the world owns this tile at its final position. */
+    protected @Nullable String allocationLocation() {
+        return world != null && world.getTileEntity(pos) == this
+            ? "prototype_eng:resource/" + world.provider.getDimension() + "/" + pos.getX() + "/" + pos.getY() + "/" + pos.getZ()
+            : null;
+    }
+
+    private void bindSourceIdentities() {
+        if (hatch == null || !hatch.isValid() || isInvalid()) return;
+        var location = allocationLocation();
+        if (location == null || location.equals(allocationLocation)) return;
+        var input = hatch.input();
+        var output = hatch.output();
+        if (input != null) input.context().bindSourceIdentity(location + "/input");
+        if (output != null) output.context().bindSourceIdentity(location + "/output");
+        allocationLocation = location;
+    }
+
+    @Override
+    public void setPos(@NotNull BlockPos position) {
+        if (allocationLocation != null && !pos.equals(position)) invalidate();
+        super.setPos(position);
+    }
+
+    @Override
+    public void setWorld(@NotNull World nextWorld) {
+        if (allocationLocation != null && world != nextWorld) invalidate();
+        super.setWorld(nextWorld);
     }
 
     /** Completes only an unsaved no-arg instance; explicit construction and NBT remain authoritative. */
@@ -112,6 +146,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
      */
     public BufferedResourceHatch storage() {
         if (hatch == null) {
+            allocationLocation = null;
             capacities = capacities == null ? HatchConfig.resourceCapacities(tier) : capacities;
             hatch = new BufferedResourceHatch(mode, slots, capacities, this::requestStorageSave);
             port = new HatchInventoryPort(hatch, true, true);
@@ -120,6 +155,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
                 hatch.invalidate();
             }
         }
+        bindSourceIdentities();
         return hatch;
     }
 

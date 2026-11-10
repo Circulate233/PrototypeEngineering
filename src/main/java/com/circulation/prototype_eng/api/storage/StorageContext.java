@@ -6,8 +6,9 @@ import java.util.Objects;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jetbrains.annotations.Nullable;
-
-/** Shared identity, lifetime and lock of one physical balance, including all of its adapters. */
+/**
+ * Shared identity, lifetime and lock of one physical balance, including all of its adapters.
+ */
 public final class StorageContext {
     private static final VarHandle NEXT_ORDER;
     private static final VarHandle DIRTY;
@@ -30,6 +31,8 @@ public final class StorageContext {
     }
 
     private final long order = (long) NEXT_ORDER.getAndAdd(1L);
+    private String sourceIdentity = "lifetime:" + order;
+    private boolean sourceIdentityBound;
     private final ReentrantLock lock = new ReentrantLock();
     private final Runnable onChanged;
     private volatile boolean valid = true;
@@ -55,6 +58,38 @@ public final class StorageContext {
 
     public long order() {
         return order;
+    }
+
+    /** Pure diagnostic label read under the same lock as a quantity snapshot. */
+    public String sourceIdentity() {
+        requireLock();
+        return sourceIdentity;
+    }
+
+    /**
+     * Binds a stable host-supplied label once, before capability use. This never changes physical
+     * identity, lock order or permission. Binding advances the ordinary revision, invalidating any
+     * earlier facts; active reservations/fences prevent binding. Unbound in-memory sources retain
+     * an explicitly lifetime-only label. Moving/replacing a host requires a new context.
+     */
+    public void bindSourceIdentity(String identity) {
+        Objects.requireNonNull(identity);
+        if (identity.isBlank()) throw new IllegalArgumentException("Empty storage source identity");
+        lock();
+        try {
+            if (sourceIdentityBound) {
+                if (!sourceIdentity.equals(identity)) throw new IllegalStateException("Storage source identity is already bound");
+                return;
+            }
+            if (!valid || fence() != null || reservedChanges != 0 || deferredMutations != 0)
+                throw new IllegalStateException("Source identity binding requires an idle live storage");
+            requireChange();
+            sourceIdentity = identity;
+            sourceIdentityBound = true;
+            recordChange();
+        } finally {
+            unlock();
+        }
     }
 
     public boolean isValid() {

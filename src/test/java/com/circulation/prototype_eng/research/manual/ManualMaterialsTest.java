@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
 import com.circulation.prototype_eng.api.research.manual.ManualMaterialKey;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -174,6 +175,9 @@ class ManualMaterialsTest {
             new ResourceRequirement(stacks, stacks),
             new ResourceRequirement(stacks, List.of(), List.of(), List.of(), true),
             new ResourceRequirement(stacks, List.of(), List.of(), List.of(), false, new ResourceChance(50, null), null),
+            new ResourceRequirement(stacks, List.of()).withInputAllocation(InputAllocation.SINGLE_SOURCE),
+            new ResourceRequirement(stacks, List.of()).withInputAllocation(InputAllocation.custom(id("custom"),
+                _ -> { throw new AssertionError("Manual materials cannot invoke source allocation"); })),
             new ResourceRequirement(stacks, List.of(), List.of(), List.of(), false, ResourceChance.ALWAYS, null,
                 List.of(new FuzzyInputGroup(List.of(SHARED), 1)), List.of()));
         for (var payload : unsupported) {

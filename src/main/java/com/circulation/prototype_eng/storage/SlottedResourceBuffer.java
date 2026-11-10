@@ -15,7 +15,6 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +22,10 @@ import java.util.Objects;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import java.util.Iterator;
-
-/** Independent multi-type slots. Every view and reservation shares one balance and lock. */
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
+/**
+ * Independent multi-type slots. Every view and reservation shares one balance and lock.
+ */
 public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final StorageContext context;
     private final Reference2LongArrayMap<AEKeyType> capacities = new Reference2LongArrayMap<>();
@@ -123,7 +124,8 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
      */
     private final class AvailableCapture implements QuantityCapture {
         private long revision = -1;
-        private AEKey2LongMap quantities = new AEKey2LongMap.LinkdOpenHashMap();
+        private ImmutableResourceAmounts.Builder quantitiesBuilder = ImmutableResourceAmounts.builder();
+        @Nullable private ImmutableResourceAmounts quantities;
         private Iterator<Object2LongMap.Entry<AEKey>> entries;
         private boolean complete;
 
@@ -134,11 +136,13 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 if (complete) {
                     return true;
                 }
-                if (context.isValid() && !context.current(context.revision())) { return false;
+                if (context.isValid() && !context.current(context.revision())) {
+                    return false;
                 }
                 if (revision != context.revision()) {
                     revision = context.revision();
-                    quantities = new AEKey2LongMap.LinkdOpenHashMap();
+                    quantitiesBuilder = ImmutableResourceAmounts.builder();
+                    quantities = null;
                     entries = totals.object2LongEntrySet().iterator();
                 }
                 if (context.isValid()) {
@@ -152,11 +156,11 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                             throw new IllegalStateException("Extraction holds exceed stored resources");
                         }
                         if (amount > 0) {
-                            quantities.addTo(entry.getKey(), amount);
+                            quantitiesBuilder.addTo(entry.getKey(), amount);
                         }
                     }
                 }
-                quantities = new AEKey2LongMap.UnmodifiableMap(quantities);
+                quantities = quantitiesBuilder.build();
                 complete = true;
                 return true;
             } finally {
@@ -169,7 +173,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
             if (!complete) {
                 throw new IllegalStateException("Quantity capture is incomplete");
             }
-            return quantities;
+            return Objects.requireNonNull(quantities);
         }
 
         @Override
@@ -299,6 +303,13 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
                 return 0;
             }
             long limit = Math.min(amount, insert ? insertionHeadroom(key) : totals.getLong(key) - extractHolds.getLong(key));
+            // This final native buffer has no extraction filter/rate beyond key identity and
+            // per-slot holds. Their aggregate is exact: simulation need not walk sparse slots.
+            // Writes and slot-specific requests retain the original per-slot preflight.
+            if (!insert && onlySlot < 0 && mode == Actionable.SIMULATE) {
+                if (limit < 0) throw new IllegalStateException("Extraction holds exceed stored resources");
+                return limit;
+            }
             long transferred = onlySlot >= 0 ? slotTransferable(onlySlot, key, limit, insert)
                 : transferSlots(key, limit, insert, false);
             if (transferred == 0 || mode == Actionable.SIMULATE) {
