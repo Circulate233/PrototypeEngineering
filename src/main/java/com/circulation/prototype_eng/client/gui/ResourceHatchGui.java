@@ -10,7 +10,9 @@ import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.container.slot.AppEngSlot;
 import ae2.core.localization.Tooltips;
+import ae2.core.localization.ButtonToolTips;
 import ae2.helpers.InventoryAction;
+import ae2.text.TextComponentItemStack;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.ResourceHatchContainer;
 import com.circulation.prototype_eng.localization.GuiText;
@@ -205,8 +207,22 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
             super.renderHoveredToolTip(mouseX, mouseY);
             return;
         }
-        var lines = new ObjectArrayList<ITextComponent>();
         var key = resource.getGenericDisplayKey();
+        var carried = getCarriedItem();
+        var emptying = container.isInputSlot(slot.slotNumber) ? ContainerItemStrategies.getEmptyingAction(carried) : null;
+        if (emptying != null) {
+            drawTooltipWithHeader(mouseX, mouseY, Tooltips.getEmptyingTooltip(ButtonToolTips.StoreAction, carried, emptying));
+            return;
+        }
+        if (key != null && !(key instanceof AEItemKey) && !carried.isEmpty()) {
+            var context = ContainerItemStrategies.findCarriedContextForKey(key, playerInventory.player, container);
+            if (context != null && context.insert(key, resource.getGenericDisplayAmount(), Actionable.SIMULATE) > 0) {
+                drawTooltipWithHeader(mouseX, mouseY, List.of(Tooltips.muted(ButtonToolTips.FillAction.text(
+                    Tooltips.getMouseButtonText(0), Tooltips.of(TextComponentItemStack.of(carried))))));
+                return;
+            }
+        }
+        var lines = new ObjectArrayList<ITextComponent>();
         if (key != null) {
             if (AEKeyRendering.get(key.getType()) != null) lines.addAll(AEKeyRendering.getTooltip(key));
             else lines.add(key.getDisplayName());
@@ -217,15 +233,6 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
                 container.typeSlots(container.isInputSlot(slot.slotNumber))));
             lines.add(GuiText.ResourceStored.text(key.formatAmount(resource.getGenericDisplayAmount(), AmountFormat.FULL),
                 key.formatAmount(container.capacity(slot.slotNumber, key), AmountFormat.FULL)));
-        }
-        var carried = getCarriedItem();
-        var emptying = container.isInputSlot(slot.slotNumber) ? ContainerItemStrategies.getEmptyingAction(carried) : null;
-        if (emptying != null)
-            lines.add(GuiText.EmptyContainer.text(Tooltips.getMouseButtonText(1), emptying.description()));
-        if (key != null && !(key instanceof AEItemKey) && !carried.isEmpty()) {
-            var context = ContainerItemStrategies.findCarriedContextForKey(key, playerInventory.player, container);
-            if (context != null && context.insert(key, resource.getGenericDisplayAmount(), Actionable.SIMULATE) > 0)
-                lines.add(GuiText.FillContainer.text(Tooltips.getMouseButtonText(0)));
         }
         if (!lines.isEmpty()) {
             if (key != null) drawKeyTooltipWithImages(mouseX, mouseY, key, lines);
