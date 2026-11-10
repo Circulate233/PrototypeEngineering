@@ -26,7 +26,8 @@
     "client.MinecraftPreviewGuiMixin",
     "client.GuiContainerPreviewMixin",
     "client.GuiScreenPreviewMixin",
-    "client.ModRegistryRecipePoolPagesMixin"
+    "client.ModRegistryRecipePoolPagesMixin",
+    "client.CtmHatchBloomMetadataMixin"
   ],
   "injectors": {
     "defaultRequire": 1

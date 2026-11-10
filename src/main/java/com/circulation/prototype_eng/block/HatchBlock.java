@@ -17,9 +17,12 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.NonNullList;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
+import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.fml.relauncher.SideOnly;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -42,6 +45,13 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
         setResistance(10.0F);
         setSoundType(SoundType.METAL);
         setHarvestLevel("pickaxe", 1);
+    }
+
+    /** Sparse emissive overlays require alpha testing even when CTM is not installed. */
+    @Override
+    @SideOnly(Side.CLIENT)
+    public @NotNull BlockRenderLayer getRenderLayer() {
+        return BlockRenderLayer.CUTOUT;
     }
 
     /**
