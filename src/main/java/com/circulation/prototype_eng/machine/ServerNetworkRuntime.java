@@ -5,10 +5,11 @@ import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistr
 import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Objects;
-
-/** Session-wide network publication, refreshed only at scheduler owner boundaries. */
+import com.circulation.prototype_eng.api.network.NetworkParticipants;
+/**
+ * Session-wide network publication, refreshed only at scheduler owner boundaries.
+ */
 public final class ServerNetworkRuntime {
     @Nullable private static volatile Session session;
 
@@ -26,6 +27,13 @@ public final class ServerNetworkRuntime {
         var current = session;
         if (current == null || current.server != server) { throw new IllegalStateException("No network runtime for this server session"); }
         return current.runtime;
+    }
+
+    /** Attach external devices to the same session and budgets used by the machine scheduler. */
+    @SuppressWarnings("resource") // Server stop owns the borrowed runtime.
+    public static NetworkParticipants participants(MinecraftServer server) {
+        requireThread(server);
+        return forServer(server).participants();
     }
 
     /** Scheduler shutdown must first prove all accepted work has exited. */

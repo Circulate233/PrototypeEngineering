@@ -182,5 +182,9 @@ public final class NetworkPlanner {
             this.contributions = ObjectLists.unmodifiable(contributions);
             this.owners = Object2ObjectMaps.unmodifiable(owners);
         }
+
+        OwnerTeamResolution owner(UUID ownerId) {
+            return Objects.requireNonNull(owners.get(ownerId));
+        }
     }
 }
