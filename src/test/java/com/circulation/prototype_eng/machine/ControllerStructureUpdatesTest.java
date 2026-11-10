@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.machine;
 
+import static org.junit.jupiter.api.Assertions.*;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -28,7 +29,6 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -37,8 +37,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
-
-import static org.junit.jupiter.api.Assertions.*;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -48,8 +46,138 @@ import com.circulation.prototype_eng.structure.StructureRefresh;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import com.circulation.prototype_eng.api.structure.StructureReadWindow;
+import com.circulation.prototype_eng.api.structure.StructurePredicate;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import java.util.ArrayList;
 class ControllerStructureUpdatesTest {
+    @Test
+    void shorterStructurePublishesBeforeTheLongerStructureReopensItsThirdReadRound() {
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1);
+             var longer = new Fixture(scheduler); var shorter = new Fixture(scheduler);
+             var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
+            longer.updates.tick(0);
+            shorter.updates.tick(0);
+            var pattern = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
+            var predicate = StructurePredicates.test(MARKER, "body"::equals);
+            for (int x = 1; x <= 600; x++) pattern.put(new BlockPos(x, 0, 0), predicate);
+            longer.host.multiplePositions = true;
+            longer.host.configuration = new StructureConfiguration(new TemplateStructure(id("longer"), BlockOrientation.NORTH_UP,
+                BlockPos.ORIGIN, false, new StructurePattern(pattern), List.of(), List.of()), BlockOrientation.NORTH_UP);
+            for (var fixture : List.of(longer, shorter)) {
+                fixture.updates.checkPolicy(new StructureCheckPolicy(1_000_000, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
+                fixture.host.workerRead = () -> { };
+            }
+            shorter.onChanged = () -> {
+                assertEquals(512, longer.host.windows.size(), "The third read round must not bind before this owner publishes");
+                var borrowed = List.copyOf(longer.host.windows);
+                assertDoesNotThrow(() -> observer.submit(() -> {
+                    for (var window : borrowed) assertThrows(IllegalStateException.class, window::read);
+                }).get(5, TimeUnit.SECONDS));
+            };
+            longer.updates.enqueueTick(5);
+            shorter.updates.enqueueTick(5);
+            scheduler.tick();
+            assertEquals(600, longer.host.windows.size(), "The longer structure actually required three read rounds");
+            assertTrue(longer.lifecycle().formed());
+            assertTrue(shorter.lifecycle().formed());
+            assertEquals(2, longer.changes);
+            assertEquals(2, shorter.changes);
+        }
+    }
+
+    @Test
+    void queuedTicksOfOneHostNeverDispatchTheSameCaptureCursorTwice() {
+        try (var fixture = new Fixture()) {
+            fixture.tick(0);
+            fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
+            var reads = new AtomicInteger();
+            fixture.host.workerRead = reads::incrementAndGet;
+            fixture.updates.enqueueTick(5);
+            fixture.updates.enqueueTick(6);
+            fixture.updates.enqueueTick(7);
+            fixture.scheduler.tick();
+            assertEquals(1, reads.get());
+            assertEquals(2, fixture.changes);
+            assertEquals(StructureCheckPolicy.Status.MATCHED, fixture.updates.checkStatus());
+        }
+    }
+
+    @Test
+    void periodicControllersReadAndMatchInParallelAndCloseAllWindowsBeforePublication() throws Exception {
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1);
+             var first = new Fixture(scheduler); var second = new Fixture(scheduler);
+             var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
+            first.updates.enqueueTick(81);
+            second.updates.enqueueTick(81);
+            assertEquals(1, first.changes);
+            assertEquals(1, second.changes);
+            var reading = new CountDownLatch(2);
+            var matching = new CountDownLatch(2);
+            var readsExited = new AtomicInteger();
+            var matchesExited = new AtomicInteger();
+            var observations = new AtomicInteger();
+            for (var fixture : List.of(first, second)) {
+                fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
+                fixture.host.workerRead = () -> {
+                    assertNotSame(fixture.owner, Thread.currentThread());
+                    reading.countDown();
+                    await(reading);
+                    readsExited.incrementAndGet();
+                };
+                var invocations = new AtomicInteger();
+                fixture.host.configuration = configuration(() -> {
+                    if (invocations.getAndIncrement() == 0) {
+                        assertEquals(2, readsExited.get());
+                        matching.countDown();
+                        await(matching);
+                        matchesExited.incrementAndGet();
+                    }
+                });
+                fixture.onChanged = () -> {
+                    assertEquals(2, readsExited.get());
+                    assertEquals(2, matchesExited.get());
+                };
+                fixture.updates.enqueueTick(101, () -> {
+                    assertEquals(2, matchesExited.get());
+                    assertEquals(2, first.changes);
+                    assertEquals(2, second.changes);
+                    observations.incrementAndGet();
+                });
+            }
+            assertEquals(1, first.changes, "Periodic calls gather until the original scheduler boundary");
+            scheduler.tick();
+            assertEquals(2, observations.get());
+            assertEquals(2, first.changes);
+            assertEquals(2, second.changes);
+            assertTrue(first.machine().canProcessRecipes());
+            assertTrue(second.machine().canProcessRecipes());
+            var windows = new ArrayList<>(first.host.windows);
+            windows.addAll(second.host.windows);
+            assertEquals(2, windows.size());
+            observer.submit(() -> {
+                for (var window : windows) assertThrows(IllegalStateException.class, window::read);
+            }).get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void aRevokedPreparedOwnerStillClosesItsBorrowedReadWindow() throws Exception {
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 1);
+             var first = new Fixture(scheduler); var second = new Fixture(scheduler);
+             var observer = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory())) {
+            first.updates.tick(0);
+            second.updates.tick(0);
+            first.host.workerRead = () -> { };
+            second.host.onRead = first.updates::invalidate;
+            first.updates.enqueueTick(5);
+            second.updates.enqueueTick(5);
+            scheduler.tick();
+            assertFalse(first.lifecycle().formed());
+            assertEquals(1, first.host.windows.size());
+            observer.submit(() -> assertThrows(IllegalStateException.class, first.host.windows.getFirst()::read)).get(5, TimeUnit.SECONDS);
+        }
+    }
     @Test
     void firstRealHostTickAtNonzeroWorldTimeCompletesOnTheOwnerBeforeNotification() {
         try (var fixture = new Fixture()) {
@@ -449,14 +577,24 @@ class ControllerStructureUpdatesTest {
     private static final class Fixture implements AutoCloseable {
         private final Thread owner = Thread.currentThread();
         private final Host host = new Host();
-        private final TaskScheduler scheduler = new TaskScheduler(owner, 2, 1);
+        private final TaskScheduler scheduler;
+        private final boolean ownsScheduler;
         private final MachineController controller;
         private final ControllerStructureUpdates updates;
         private volatile int changes;
         private Runnable onChanged = () -> {};
 
-        @SuppressWarnings("NonAtomicOperationOnVolatileField") // Only the asserted owner writes; observer threads read the count.
         private Fixture() {
+            this(new TaskScheduler(Thread.currentThread(), 2, 1), true);
+        }
+
+        private Fixture(TaskScheduler scheduler) { this(scheduler, false); }
+
+        @SuppressWarnings("NonAtomicOperationOnVolatileField")
+        // Only the asserted owner writes; observer threads read the count.
+        private Fixture(TaskScheduler scheduler, boolean ownsScheduler) {
+            this.scheduler = scheduler;
+            this.ownsScheduler = ownsScheduler;
             var type = MachineType.builder(id("machine"), RecipeText.Cancelled, id("shape")).executionMode(ExecutionMode.MAIN_THREAD).build();
             controller = new MachineController(MachineAssembly.builder(type, "v1").build(), host, scheduler, new MachineLifecycleRegistry());
             controller.load(null);
@@ -469,9 +607,14 @@ class ControllerStructureUpdatesTest {
         private MachineInstance machine() { return Objects.requireNonNull(controller.machine()); }
         private MachineLifecycle lifecycle() { return Objects.requireNonNull(machine().lifecycle()); }
         private void tick(long now) { updates.tick(now); scheduler.tick(); }
-        @Override public void close() {
-            try { controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD); }
-            finally { scheduler.close(); }
+
+        @Override
+        public void close() {
+            try {
+                controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+            } finally {
+                if (ownsScheduler) scheduler.close();
+            }
         }
     }
 
@@ -491,6 +634,9 @@ class ControllerStructureUpdatesTest {
         };
         private int reads;
         private boolean available = true;
+        private boolean multiplePositions;
+        @Nullable private Runnable workerRead;
+        private final List<StructureReadWindow<?>> windows = new ArrayList<>();
 
         @Override public MachineIdentity identity() { return new MachineIdentity(id("machine"), 0, BlockPos.ORIGIN); }
         @Override public World world() { throw new AssertionError("No World in logical controller tests"); }
@@ -499,14 +645,32 @@ class ControllerStructureUpdatesTest {
         }
         @Override public StructureConfiguration structureConfiguration() { requireServerThread(); return configuration; }
         @Override public boolean isAreaLoaded(StructureBounds bounds) { requireServerThread(); return available; }
-        @Override @Nullable @SuppressWarnings("unchecked") // Only the fixture's String descriptor is captured.
+
+        @Override
+        @Nullable
+        @SuppressWarnings("unchecked") // Only the fixture's String descriptor is captured.
         public <T> T read(StructureQuery<T> query, BlockPos position) {
             requireServerThread();
             assertSame(MARKER, query);
-            assertEquals(BODY, position);
+            if (!multiplePositions) assertEquals(BODY, position);
             reads++;
             onRead.run();
             return (T) value;
+        }
+
+        @Override
+        @Nullable
+        @SuppressWarnings("unchecked") // Only the fixture's String descriptor is borrowed.
+        public <T> StructureReadWindow<T> beginWorkerRead(StructureQuery<T> query, BlockPos position) {
+            requireServerThread();
+            var callback = workerRead;
+            if (callback == null) return MachineStructureHost.super.beginWorkerRead(query, position);
+            assertSame(MARKER, query);
+            if (!multiplePositions) assertEquals(BODY, position);
+            String captured = value;
+            var window = StructureReadWindow.joined(() -> { callback.run(); return (T) captured; });
+            windows.add(window);
+            return window;
         }
         @Override public StructureHatchBinding hatchesAt(BlockPos position) {
             requireServerThread();

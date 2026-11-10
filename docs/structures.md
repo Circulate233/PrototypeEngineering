@@ -1,5 +1,15 @@
 # 结构定义、快照与匹配
 
+## 2026-11-10：周期结构检查的跨控制器批次
+
+实际控制器和自动登记宿主现通过 `ControllerStructureUpdates.enqueueTick` 将周期检查加入原 TaskScheduler 的相邻结构队列项；首真实 tick 仍在 owner 完整检查。原公开 `tick` 保留即时边界调用。控制器的准确 attachment epoch 渲染状态观察附在同一个结构队列项完成后执行，避免每台 TE 的独立观察边界提前冲刷队列、使实际路径重新串行。
+
+每批最多原 `workerThreads` 个宿主，遇到 reload、retire 等原 FIFO 普通边界即截断。同一准确宿主的积压项不进入同一个批次，原队列项和观察顺序全部保留；不得跨边界去重或同时续办同一捕获游标。`StructureSnapshot.Capture` 将原算法拆为 owner 的 area/加载复核/最多256个 read-port 绑定、原 worker 的实际读/复制、全批实际退出后的 owner 强制关闭。各宿主完成捕获后进入同一批次的 detached matcher；阶段续办共用该宿主本软片的 work/deadline，不重置5ms软片或5秒attempt。短deadline不会取消其他宿主；worker超时、拒绝、异常和撤权均先按原 Batch 证明实际退出，再清理已借用窗口。旧 `beginCapture(..., JoinedWorker)` 同步入口复用同一 capture 算法。
+
+完整 freshness recapture/rematch、实际 discovery、binding/provider复核和 lifecycle 原子发布仍逐 owner执行。普通/source/pending 未退出或未完成确认时不进入结构边界；准备前缀、缓存事实和阶段完成均不新增安装授权。未知 shape/predicate 的原 virtual 调用保持，纯计划/朝向缓存尚未接入，仍是已确认的后继性能缺口。
+
+新增源码测试覆盖双控制器原生端口读取与匹配同时进入、准确 owner 观察在批次完成后执行、撤权仍关闭窗口、FIFO边界、独立deadline、pending确认、失败及超时后的真实退出。独立复核后共新增10项行为测试，包括全批owner完成之后才开启下一轮窗口、运行中短job独立deadline。最终完整1744 tests/224 suites全零；9个所属Java本机全级零、完整读回一致，MCP build成功。首次修改前内容与复核证据位于 `build/staging/structure-parallel-reuse/`，统一构建日志/XML见 `build/staging/resumed-goal-plan/unified/third-results/`。
+
 ## 2026-11-09：原 worker 读取、预算与完整安装
 
 默认 Java 定义使用 `TemplateStructure.create` / `SliceStructure.create`，JSON resolver 选择同类增量工厂；原 public 构造器及旧 shape/predicate 的 transform、collectReads、match virtual 合作调用保持。transform 后仍保留默认 binding，child 和 predicate 使用其真实 begin hook，不反射识别覆盖、不封闭继承点。转换、最大潜在声明、AND/OR/offset/NBT/property、事实捕获、匹配树冻结、实际 occurrence DFS、discovery、位置 merge sort、仓室/port 索引冻结都逐项记 units，在下一真实 host tick 续办。

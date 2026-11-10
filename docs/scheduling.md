@@ -1,5 +1,7 @@
 # 普通调度、所有权与服务器接线
 
+2026-11-10 周期结构检查新增同一 scheduler 内的相邻队列项批次：`enqueueStructureCheck` 不立即冲刷空闲 owner，最多按当前 workerThreads 聚合，在原边界 FIFO 的非结构动作之前停止。每个宿主交付显式捕获/匹配阶段及原 deadline；同批原 worker 全部实际退出后才逐 owner 清理/续办，允许同一个软片内多轮256-read窗口，预算和deadline不续期。原 ordinary/source/pending、失败关闭、worker策略/有限lane和重载义务不变；结构完成后的准确宿主观察与结构项一起排队，不能用逐台观察边界使实际TE接线重新串行。独立复核修正全批owner完成回调与下一轮准备的边界，以及运行中的每job独立deadline；最终完整1744 tests/224 suites全零，9个所属Java本机全级零及完整读回一致，MCP build成功；入口 [结构说明](structures.md) 和 `build/staging/structure-parallel-reuse/`。
+
 TaskScheduler 持有完整 PlannedExecution，保留 pending、取消与实际退出证明，并支持先清理后停原 lane 的 tryClose。2A 已将公共三参 scheduler 的正式机器入口接到原组件游标、生命周期、工位 coordinator 与纯 prepare；服务器只追加普通 CONCURRENT 网络 admission/refresh。具体所有权边界见[planned 所有权](scheduler-planned-ownership.md)与[正式执行](planned-execution.md)。
 
 PM JavaTaskSchedulerBackend 的普通 MAIN_THREAD / CONCURRENT 路径已迁移，保留真实线程池、共享资源亲和分组和 join。planned runner、真实配方阶段协调、取消与 deadline 及调度器持有的清理基础现已完成，见[执行屏障](planned-execution.md)和[原实现审计](planned-migration-audit.md)；真实配方资源预留/提交/补偿、纯 prepare、PN 消费与 2A 正式机器接线已完成。`PLANNED_PARALLEL` 只接受交付真实 lifecycle-bound MachineInstance 的 PlannedMachineTask，Runnable 正式提交仍拒绝，正式执行不会落入普通并发。源码入口为 `api/scheduler`、`scheduler/TaskScheduler` 和 `scheduler/ServerTaskSchedulers`。

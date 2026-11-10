@@ -15,7 +15,6 @@ import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
-
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -31,7 +30,8 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import java.util.function.Supplier;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.scheduler.SchedulerReport;
-
+import java.util.function.Consumer;
+import java.util.function.Function;
 /**
  * Owned ordinary worker pool and serialized affinity lanes. Every tick joins all accepted tasks
  * before returning or throwing. No Future escapes and no accepted Future is cancelled. Failures
@@ -265,14 +265,168 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     /**
+     * Enqueues periodic structure preparation without draining an idle scheduler. Consecutive
+     * entries share a worker batch at the next owner boundary; an intervening ordinary boundary
+     * remains an ordering fence. First-load checks continue to use runAtBoundary directly.
+     */
+    public void enqueueStructureCheck(Supplier<StructureWork> prepare) {
+        enqueueStructureCheck(prepare, () -> { });
+    }
+
+    /** Owner observation follows this check without inserting a fence between adjacent checks. */
+    public void enqueueStructureCheck(Supplier<StructureWork> prepare, Runnable completed) {
+        enqueueStructureCheck(prepare, prepare, completed);
+    }
+
+    /** Repeated submissions of one exact owner retain FIFO order and cannot share a worker batch. */
+    public void enqueueStructureCheck(Object ownerIdentity, Supplier<StructureWork> prepare, Runnable completed) {
+        requireOwner();
+        Objects.requireNonNull(ownerIdentity);
+        Objects.requireNonNull(prepare);
+        Objects.requireNonNull(completed);
+        if (state != State.IDLE && state != State.MAIN && state != State.PLANNED && state != State.BOUNDARY)
+            throw new IllegalStateException("Structure preparation cannot be requested from this owner phase");
+        synchronized (submissionLock) {
+            if (!acceptingBoundary) throw new IllegalStateException("Scheduler owner boundary is closed");
+            boundaryActions.enqueue(new StructureBoundary(ownerIdentity, prepare, completed));
+        }
+    }
+
+    /**
+     * One detached computation. After whole-batch exit, all joined callbacks close their windows,
+     * then all completed callbacks finish owner transitions. A returned supplier prepares the next
+     * round only after every completed callback has returned; it must not prepare eagerly.
+     */
+    public record StructureWork(PlannedDeadline deadline, Supplier<Boolean> action,
+                                Consumer<PlannedTaskExecutor.Result<Boolean>> joined,
+                                Function<PlannedTaskExecutor.Result<Boolean>, Supplier<StructureWork>> completed) {
+        public StructureWork(PlannedDeadline deadline, Supplier<Boolean> action,
+                             Function<PlannedTaskExecutor.Result<Boolean>, Supplier<StructureWork>> completed) {
+            this(deadline, action, _ -> { }, completed);
+        }
+
+        public StructureWork {
+            Objects.requireNonNull(deadline);
+            Objects.requireNonNull(action);
+            Objects.requireNonNull(joined);
+            Objects.requireNonNull(completed);
+        }
+    }
+
+    private final class StructureBoundary implements Runnable {
+        private final Object ownerIdentity;
+        private final Supplier<StructureWork> prepare;
+        private final Runnable completed;
+
+        private StructureBoundary(Object ownerIdentity, Supplier<StructureWork> prepare, Runnable completed) {
+            this.ownerIdentity = ownerIdentity;
+            this.prepare = prepare;
+            this.completed = completed;
+        }
+
+        @Override
+        public void run() {
+            var entries = new ObjectArrayList<StructureBoundary>();
+            entries.add(this);
+            synchronized (submissionLock) {
+                while (entries.size() < workerThreads && !boundaryActions.isEmpty() && boundaryActions.first() instanceof StructureBoundary next) {
+                    if (containsOwner(entries, next.ownerIdentity)) break;
+                    boundaryActions.dequeue();
+                    entries.add(next);
+                }
+            }
+            runStructureBatch(entries);
+        }
+    }
+
+    private static boolean containsOwner(List<StructureBoundary> entries, Object ownerIdentity) {
+        for (var entry : entries) if (entry.ownerIdentity == ownerIdentity) return true;
+        return false;
+    }
+
+    private void runStructureBatch(List<StructureBoundary> entries) {
+        // Allocate all owner bookkeeping before any preparation may borrow native read ports.
+        var prepared = new ObjectArrayList<StructureWork>(entries.size());
+        var next = new ObjectArrayList<StructureWork>(entries.size());
+        var continuations = new ObjectArrayList<Supplier<StructureWork>>(entries.size());
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(entries.size());
+        var outcomes = new ObjectArrayList<PlannedTaskExecutor.Result<Boolean>>(entries.size());
+        var failures = new Failures();
+        for (var entry : entries) {
+            try {
+                var work = entry.prepare.get();
+                if (work != null) prepared.add(work);
+            } catch (RuntimeException | Error failure) { failures.add(failure); }
+        }
+        while (!prepared.isEmpty()) {
+            List<PlannedTaskExecutor.Result<Boolean>> results = null;
+            Throwable dispatchFailure = null;
+            try {
+                jobs.clear();
+                long now = System.nanoTime();
+                long longest = 1;
+                for (var work : prepared) {
+                    longest = Math.max(longest, work.deadline.remainingNanos(now));
+                    // Each action keeps its own original deadline and work allowance. The envelope
+                    // only bounds dispatch/join; a shorter attempt cannot cancel another host.
+                    jobs.add(new PlannedTaskExecutor.Job<>(null, work.action, work.deadline));
+                }
+                results = runStructureWorkers(jobs, new PlannedDeadline(now, longest));
+            }
+            catch (RuntimeException | Error failure) { dispatchFailure = failure; failures.add(failure); }
+            outcomes.clear();
+            for (int index = 0; index < prepared.size(); index++) {
+                var result = results == null
+                    ? new PlannedTaskExecutor.Failure<Boolean>(Objects.requireNonNull(dispatchFailure)) : results.get(index);
+                try { prepared.get(index).joined.accept(result); }
+                catch (RuntimeException | Error failure) {
+                    failures.add(failure);
+                    result = new PlannedTaskExecutor.Failure<>(failure);
+                }
+                outcomes.add(result);
+            }
+            // Every borrowed read port is closed before any owner discovers, publishes or opens
+            // the next round. Cleanup failures cannot skip another host's compulsory close.
+            continuations.clear();
+            for (int index = 0; index < prepared.size(); index++) {
+                try {
+                    var continued = prepared.get(index).completed.apply(outcomes.get(index));
+                    if (continued != null) continuations.add(continued);
+                } catch (RuntimeException | Error failure) { failures.add(failure); }
+            }
+            // Finish every owner transition before any continuation can borrow the next windows.
+            next.clear();
+            for (var continuation : continuations) {
+                try {
+                    var continued = continuation.get();
+                    if (continued != null) next.add(continued);
+                } catch (RuntimeException | Error failure) { failures.add(failure); }
+            }
+            var completed = prepared;
+            prepared = next;
+            next = completed;
+        }
+        for (var entry : entries) {
+            try { entry.completed.run(); }
+            catch (RuntimeException | Error failure) { failures.add(failure); }
+        }
+        failures.throwIfPresent();
+    }
+
+    /**
      * Executes one explicitly safe structure computation through the existing planned worker runner.
      * Only the exclusive owner boundary may borrow loaded references. The owner does not resume any
      * World/source/ordinary work until every accepted action has physically exited, including after
      * stopped/failed dispatch or interruption. The exact batch is retained before dispatch.
      */
     public <T> PlannedTaskExecutor.Result<T> runStructureWorker(Supplier<? extends T> action, PlannedDeadline deadline) {
+        return runStructureWorkers(List.of(new PlannedTaskExecutor.Job<T>(null, action)), deadline).getFirst();
+    }
+
+    private <T> List<PlannedTaskExecutor.Result<T>> runStructureWorkers(List<PlannedTaskExecutor.Job<T>> jobs, PlannedDeadline deadline) {
         requireOwner();
-        Objects.requireNonNull(action); Objects.requireNonNull(deadline);
+        Objects.requireNonNull(jobs);
+        Objects.requireNonNull(deadline);
         if (state != State.BOUNDARY || !boundaryReady)
             throw new IllegalStateException("Structure worker requires the exclusive joined owner boundary");
         requireHealthy();
@@ -286,10 +440,11 @@ public final class TaskScheduler implements AutoCloseable {
         boundaryReady = false;
         Throwable primary = null;
         try {
-            plannedTasks.runPrepare(List.of(new PlannedTaskExecutor.Job<T>(null, action)), deadline, batch -> borrowed.batch = batch);
-            var result = Objects.requireNonNull(borrowed.batch).results().getFirst();
-            if (result instanceof PlannedTaskExecutor.Failure<T>(var failure)) primary = failure;
-            return result;
+            plannedTasks.runPrepare(jobs, deadline, batch -> borrowed.batch = batch);
+            var results = Objects.requireNonNull(borrowed.batch).results();
+            for (var result : results)
+                if (result instanceof PlannedTaskExecutor.Failure<T>(var failure) && primary == null) primary = failure;
+            return results;
         } catch (RuntimeException | Error failure) {
             primary = failure;
             throw failure;
@@ -308,8 +463,8 @@ public final class TaskScheduler implements AutoCloseable {
                     measurement.cleanupWallNanos += System.nanoTime() - cleanupStart;
                     measurement.structureWorkerWallNanos += System.nanoTime() - structureStart;
                 }
+            }
         }
-    }
     }
 
     public void tick() {

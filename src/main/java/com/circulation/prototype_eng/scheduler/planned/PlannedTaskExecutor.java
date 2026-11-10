@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
@@ -17,7 +16,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-
 /**
  * PM's ordered planned execution barriers, separate from coordinator policy. Executors are borrowed,
  * never cancelled or closed here. A stopped result is not an exit proof: retain its Batch until
@@ -74,7 +72,7 @@ public final class PlannedTaskExecutor {
     }
 
     private <T> Batch<T> run(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline,
-                            Consumer<Batch<T>> beforeDispatch) {
+                             Consumer<Batch<T>> beforeDispatch) {
         var batch = new Batch<>(dispatches, Objects.requireNonNull(deadline), nanoTime);
         var registrations = new ObjectArrayList<PlannedCancellationToken.Registration>();
         var tokens = new ReferenceOpenHashSet<PlannedCancellationToken>();
@@ -82,18 +80,29 @@ public final class PlannedTaskExecutor {
         Throwable primary = null;
         try {
             beforeDispatch.accept(batch);
-            if (interrupted) { batch.stop(Reason.INTERRUPTED); }
+            if (interrupted) {
+                batch.stop(Reason.INTERRUPTED);
+            }
             for (var dispatch : dispatches) {
                 var token = dispatch.job.cancellation();
-                if (token != null && tokens.add(token)) { registrations.add(token.onCancel(batch::stop)); }
+                if (token != null && tokens.add(token)) {
+                    registrations.add(token.onCancel(batch::stop));
+                }
             }
             for (var entry : batch.entries) {
-                if (!batch.accept(entry)) { break; }
-                try { entry.executor.execute(() -> batch.execute(entry)); }
-                catch (RuntimeException | Error failure) { batch.rejected(entry, failure); }
+                if (!batch.accept(entry)) {
+                    if (batch.stopReason() != null) break;
+                    continue;
+                }
+                try {
+                    entry.executor.execute(() -> batch.execute(entry));
+                } catch (RuntimeException | Error failure) {
+                    batch.rejected(entry, failure);
+                }
             }
-            try { batch.awaitTerminal(); }
-            catch (InterruptedException failure) {
+            try {
+                batch.awaitTerminal();
+            } catch (InterruptedException failure) {
                 interrupted = true;
                 batch.stop(Reason.INTERRUPTED);
             }
@@ -104,29 +113,42 @@ public final class PlannedTaskExecutor {
         } finally {
             Throwable cleanup = null;
             for (var registration : registrations) {
-                try { registration.close(); }
-                catch (RuntimeException | Error failure) {
-                    if (cleanup == null) { cleanup = failure; }
-                    else { Batch.suppress(cleanup, failure); }
+                try {
+                    registration.close();
+                } catch (RuntimeException | Error failure) {
+                    if (cleanup == null) {
+                        cleanup = failure;
+                    } else {
+                        Batch.suppress(cleanup, failure);
+                    }
                 }
             }
             if (interrupted) {
-                try { Thread.currentThread().interrupt(); }
-                catch (RuntimeException | Error failure) {
-                    if (cleanup == null) { cleanup = failure; }
-                    else { Batch.suppress(cleanup, failure); }
+                try {
+                    Thread.currentThread().interrupt();
+                } catch (RuntimeException | Error failure) {
+                    if (cleanup == null) {
+                        cleanup = failure;
+                    } else {
+                        Batch.suppress(cleanup, failure);
+                    }
                 }
             }
             if (cleanup != null) {
-                if (primary != null) { Batch.suppress(primary, cleanup); }
-                else {
+                if (primary != null) {
+                    Batch.suppress(primary, cleanup);
+                } else {
                     batch.abort(cleanup);
                     primary = cleanup;
                 }
             }
         }
-        if (primary instanceof RuntimeException runtime) { throw runtime; }
-        if (primary instanceof Error error) { throw error; }
+        if (primary instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (primary instanceof Error error) {
+            throw error;
+        }
         return batch;
     }
 
@@ -140,8 +162,16 @@ public final class PlannedTaskExecutor {
         return Math.floorMod(hash, sourceLanes.length);
     }
 
-    public record Job<T>(@Nullable PlannedCancellationToken cancellation, Supplier<? extends T> action) {
-        public Job { Objects.requireNonNull(action); }
+    /** A null per-job deadline preserves the original batch-wide planned execution policy. */
+    public record Job<T>(@Nullable PlannedCancellationToken cancellation, Supplier<? extends T> action,
+                         @Nullable PlannedDeadline deadline) {
+        public Job(@Nullable PlannedCancellationToken cancellation, Supplier<? extends T> action) {
+            this(cancellation, action, null);
+        }
+
+        public Job {
+            Objects.requireNonNull(action);
+        }
     }
 
     public record SourceJob<T>(String affinity, Job<T> job) {
@@ -171,6 +201,7 @@ public final class PlannedTaskExecutor {
         private final CountDownLatch exited = new CountDownLatch(1);
         private final PlannedDeadline deadline;
         private final LongSupplier nanoTime;
+        private final boolean individualDeadlines;
         private int unfinished;
         private int runningOrEligible;
         @Nullable private Reason stopReason;
@@ -180,10 +211,18 @@ public final class PlannedTaskExecutor {
             this.deadline = deadline;
             this.nanoTime = nanoTime;
             this.entries = new ObjectArrayList<>(dispatches.size());
-            for (var dispatch : dispatches) { entries.add(new Entry<>(dispatch.executor, dispatch.job.action())); }
+            boolean individual = false;
+            for (var dispatch : dispatches) {
+                entries.add(new Entry<>(dispatch.executor, dispatch.job.action(), dispatch.job.deadline()));
+                individual |= dispatch.job.deadline() != null;
+            }
+            individualDeadlines = individual;
             unfinished = entries.size();
             runningOrEligible = entries.size();
-            if (entries.isEmpty()) { terminal.countDown(); exited.countDown(); }
+            if (entries.isEmpty()) {
+                terminal.countDown();
+                exited.countDown();
+            }
         }
 
         /** Immutable ordered terminal snapshots. Late task returns never overwrite these outcomes. */
@@ -213,8 +252,16 @@ public final class PlannedTaskExecutor {
 
         private boolean accept(Entry<T> entry) {
             synchronized (lock) {
-                if (stopReason == null && deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); }
-                if (stopReason != null) { return false; }
+                if (stopReason == null && deadline.expired(nanoTime.getAsLong())) {
+                    stopLocked(Reason.WORKER_TIMEOUT);
+                }
+                if (stopReason != null) {
+                    return false;
+                }
+                if (entry.deadline != null && entry.deadline.expired(nanoTime.getAsLong())) {
+                    stopEntryLocked(entry, Reason.WORKER_TIMEOUT);
+                    return false;
+                }
                 entry.stage = Stage.QUEUED;
                 return true;
             }
@@ -222,35 +269,62 @@ public final class PlannedTaskExecutor {
 
         private void execute(Entry<T> entry) {
             synchronized (lock) {
-                if (entry.stage != Stage.QUEUED) { return; }
+                if (entry.stage != Stage.QUEUED) {
+                    return;
+                }
                 try {
-                    if (deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); return; }
+                    if (deadline.expired(nanoTime.getAsLong())) {
+                        stopLocked(Reason.WORKER_TIMEOUT);
+                        return;
+                    }
+                    if (entry.deadline != null && entry.deadline.expired(nanoTime.getAsLong())) {
+                        stopEntryLocked(entry, Reason.WORKER_TIMEOUT);
+                        return;
+                    }
                 } catch (Throwable failure) {
                     try {
-                        if (entry.result == null) { publish(entry, new Failure<>(failure)); }
-                    } finally { finish(entry); }
+                        if (entry.result == null) {
+                            publish(entry, new Failure<>(failure));
+                        }
+                    } finally {
+                        finish(entry);
+                    }
                     return;
                 }
                 entry.stage = Stage.RUNNING;
                 entry.thread = Thread.currentThread();
             }
             Result<T> result;
-            try { result = new Success<>(entry.action.get()); }
-            catch (Throwable failure) { result = new Failure<>(failure); }
+            try {
+                result = new Success<>(entry.action.get());
+            } catch (Throwable failure) {
+                result = new Failure<>(failure);
+            }
             synchronized (lock) {
                 try {
-                    if (entry.result == null && deadline.expired(nanoTime.getAsLong())) { stopLocked(Reason.WORKER_TIMEOUT); }
-                    if (entry.result == null) { publish(entry, result); }
+                    if (entry.result == null && deadline.expired(nanoTime.getAsLong())) {
+                        stopLocked(Reason.WORKER_TIMEOUT);
+                    }
+                    if (entry.result == null && entry.deadline != null && entry.deadline.expired(nanoTime.getAsLong())) {
+                        stopEntryLocked(entry, Reason.WORKER_TIMEOUT);
+                    }
+                    if (entry.result == null) {
+                        publish(entry, result);
+                    }
                 } catch (Throwable failure) {
                     if (entry.result == null) {
                         if (result instanceof Failure<T>(var businessFailure)) {
                             suppress(businessFailure, failure);
                             publish(entry, result);
-                        } else { publish(entry, new Failure<>(failure)); }
+                        } else {
+                            publish(entry, new Failure<>(failure));
+                        }
                     }
                 } finally {
                     entry.thread = null;
-                    if (entry.stage != Stage.DONE) { finish(entry); }
+                    if (entry.stage != Stage.DONE) {
+                        finish(entry);
+                    }
                 }
             }
         }
@@ -264,9 +338,33 @@ public final class PlannedTaskExecutor {
         }
 
         private void awaitTerminal() throws InterruptedException {
+            if (individualDeadlines) {
+                awaitIndividualDeadlines();
+                return;
+            }
             long remaining = deadline.remainingNanos(nanoTime.getAsLong());
             if (terminal.getCount() != 0 && (remaining == 0 || !terminal.await(remaining, TimeUnit.NANOSECONDS))) {
                 stop(Reason.WORKER_TIMEOUT);
+            }
+        }
+
+        /** The waiting owner services each deadline; no new timer pool or backend is needed. */
+        private void awaitIndividualDeadlines() throws InterruptedException {
+            while (terminal.getCount() != 0) {
+                long remaining;
+                synchronized (lock) {
+                    long now = nanoTime.getAsLong();
+                    remaining = deadline.remainingNanos(now);
+                    if (remaining == 0) { stopLocked(Reason.WORKER_TIMEOUT); return; }
+                    for (var entry : entries) {
+                        if (entry.result != null || entry.deadline == null) continue;
+                        long local = entry.deadline.remainingNanos(now);
+                        if (local == 0) stopEntryLocked(entry, Reason.WORKER_TIMEOUT);
+                        else remaining = Math.min(remaining, local);
+                    }
+                    if (unfinished == 0) return;
+                }
+                if (terminal.await(remaining, TimeUnit.NANOSECONDS)) return;
             }
         }
 
@@ -275,24 +373,37 @@ public final class PlannedTaskExecutor {
         }
 
         private void stopLocked(Reason reason) {
-            if (stopReason != null || unfinished == 0) { return; }
+            if (stopReason != null || unfinished == 0) {
+                return;
+            }
             stopReason = reason;
             Throwable failure = null;
             for (var entry : entries) {
-                if (entry.result != null) { continue; }
-                boolean running = entry.stage == Stage.RUNNING;
-                publish(entry, new Stopped<>(reason, running));
-                if (running) {
-                    // Keep the entry pinned until interrupt is delivered, avoiding a later task on a reused thread.
-                    try { Objects.requireNonNull(entry.thread).interrupt(); }
-                    catch (RuntimeException | Error interrupt) {
-                        if (failure == null) { failure = interrupt; }
-                        else { suppress(failure, interrupt); }
+                try { stopEntryLocked(entry, reason); }
+                catch (RuntimeException | Error interrupt) {
+                    if (failure == null) {
+                        failure = interrupt;
+                    } else {
+                        suppress(failure, interrupt);
                     }
-                } else { finish(entry); }
+                }
             }
-            if (failure instanceof RuntimeException runtime) { throw runtime; }
-            if (failure instanceof Error error) { throw error; }
+            if (failure instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (failure instanceof Error error) {
+                throw error;
+            }
+        }
+
+        private void stopEntryLocked(Entry<T> entry, Reason reason) {
+            if (entry.result != null) return;
+            boolean running = entry.stage == Stage.RUNNING;
+            publish(entry, new Stopped<>(reason, running));
+            if (running) {
+                // Pin the exact running entry under the lock until interrupt has been delivered.
+                Objects.requireNonNull(entry.thread).interrupt();
+            } else finish(entry);
         }
 
         private void abort(Throwable primary) {
@@ -328,16 +439,19 @@ public final class PlannedTaskExecutor {
 
     private enum Stage { NEW, QUEUED, RUNNING, DONE }
     private record Dispatch<T>(ExecutorService executor, Job<T> job) { }
+
     private static final class Entry<T> {
         private final ExecutorService executor;
         private final Supplier<? extends T> action;
+        @Nullable private final PlannedDeadline deadline;
         private Stage stage = Stage.NEW;
         @Nullable private Thread thread;
         @Nullable private Result<T> result;
 
-        private Entry(ExecutorService executor, Supplier<? extends T> action) {
+        private Entry(ExecutorService executor, Supplier<? extends T> action, @Nullable PlannedDeadline deadline) {
             this.executor = executor;
             this.action = action;
+            this.deadline = deadline;
         }
     }
 }

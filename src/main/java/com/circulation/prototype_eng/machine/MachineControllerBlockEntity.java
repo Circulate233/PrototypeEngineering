@@ -231,14 +231,14 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             }
         }
         machine = machine();
-        if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
-            structures.tick(now);
-        }
         // Observe typed state only after the scheduler joins this machine's workers.
         var observedEpoch = attachmentEpoch;
-        scheduler().runAtBoundary(() -> {
+        Runnable observe = () -> {
             if (observedEpoch == attachmentEpoch && wantsLoad && isAttached()) observeRenderState();
-        });
+        };
+        if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
+            structures.enqueueTick(now, observe);
+        } else scheduler().runAtBoundary(observe);
         // Components may mutate on scheduler workers; a server-side save mark covers their next pass.
         markDirty();
     }

@@ -109,7 +109,7 @@ public final class StructureReloadCoordinator {
                     var reload = automatic.prepareReload(catalog);
                     if (reload != null) { automatic.revokeReload(reload); automatic.pauseReload(reload); automatic.installReload(reload); }
                 }
-                automatic.tick(now);
+                automatic.enqueueTick(now);
             }
         });
     }

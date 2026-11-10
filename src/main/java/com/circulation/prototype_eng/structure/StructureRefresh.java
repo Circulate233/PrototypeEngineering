@@ -17,11 +17,9 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-
 import com.circulation.prototype_eng.api.structure.StructureComponentProvider;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import java.util.function.BooleanSupplier;
@@ -30,7 +28,6 @@ import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import java.util.Iterator;
-
 /**
  * PM's capture/worker/apply flow, with current-world validation and public hatch discovery.
  * One coordinator belongs to one loaded lifecycle; prepare/publish/invalidate are server-only.
@@ -108,6 +105,91 @@ public final class StructureRefresh {
             }
         };
         } finally { active = false; }
+    }
+
+    /** Same authority and planning as beginPrepare, with an explicit externally joined read phase. */
+    @SuppressWarnings("ReturnOfInnerClass") // The cursor retains this exact refresh owner and its revocation proof.
+    public ParallelPreparation beginParallelPrepare() {
+        enter();
+        try {
+            var owner = new Object();
+            preparationOwner = owner;
+            pending = null;
+            return new ParallelPreparation(owner, host.structureConfiguration());
+        } finally { active = false; }
+    }
+
+    public final class ParallelPreparation {
+        private final Object owner;
+        @Nullable private final StructureConfiguration configuration;
+        @Nullable private StructureOperation<StructurePlan> planning;
+        @Nullable private StructureSnapshot.Capture capture;
+        private boolean complete;
+        @Nullable private Request result;
+
+        private ParallelPreparation(Object owner, @Nullable StructureConfiguration configuration) {
+            this.owner = owner;
+            this.configuration = configuration;
+        }
+
+        public boolean complete() { host.requireServerThread(); return complete; }
+        @Nullable public Request result() { host.requireServerThread(); return result; }
+
+        @Nullable public Runnable prepareWorker(RecipeWorkBudget work) {
+            enter();
+            try {
+                if (complete) return null;
+                if (!current()) { complete = true; return null; }
+                if (planning == null) {
+                    if (!work.take()) return null;
+                    planning = StructurePlan.beginCreate(Objects.requireNonNull(configuration).definition(),
+                        host.identity().controllerPos(), configuration.orientation());
+                }
+                if (!planning.advance(work)) return null;
+                var plan = Objects.requireNonNull(planning.result());
+                if (capture == null) {
+                    if (!work.take()) return null;
+                    capture = StructureSnapshot.beginParallelCapture(plan.reads(), host);
+                }
+                var action = capture.prepareWorker(work);
+                if (action != null) return action;
+                if (!capture.complete()) return null;
+                complete = true;
+                var snapshot = capture.result();
+                if (snapshot != null && current()) {
+                    diagnostics = snapshot.failures();
+                    pending = new Request(Objects.requireNonNull(configuration), plan, snapshot);
+                    result = pending;
+                }
+                return null;
+            } catch (RuntimeException | Error failure) { failPreparation(failure); throw failure; }
+            finally { active = false; }
+        }
+
+        /** Cleanup is unconditional, even when another owner's preparation revoked this request. */
+        public void finishWorker(boolean accepted, @Nullable Throwable primary) {
+            enter();
+            try {
+                Objects.requireNonNull(capture).finishWorker(accepted, primary);
+                if (primary instanceof RuntimeException runtime) throw runtime;
+                if (primary instanceof Error error) throw error;
+                if (primary != null) throw new IllegalStateException("Structure capture worker failed", primary);
+            } catch (RuntimeException | Error failure) { failPreparation(failure); throw failure; }
+            finally { active = false; }
+        }
+
+        private boolean current() {
+            return preparationOwner == owner && configuration != null && lifecycle.state() == MachineLifecycle.State.LOADED
+                && !lifecycle.retired() && configurationCurrent(configuration);
+        }
+
+        private void failPreparation(Throwable failure) {
+            lifecycle.refreshStructure(this::current, () -> {
+                if (failure instanceof RuntimeException runtime) throw runtime;
+                if (failure instanceof Error error) throw error;
+                throw new IllegalStateException("Structure preparation failed", failure);
+            });
+        }
     }
 
     /** Revokes pending results and pauses existing bindings, at the scheduler's exclusive boundary. */

@@ -40,111 +40,161 @@ public final class StructureSnapshot {
     /** Only detached facts survive a slice; every borrowed read port is closed after actual exit. */
     public static StructureOperation<StructureSnapshot> beginCapture(StructureReadPlan plan, StructureReadSource source,
                                                                     @Nullable JoinedWorker worker) {
-        Objects.requireNonNull(plan); Objects.requireNonNull(source).requireServerThread();
+        var capture = new Capture(plan, source, worker != null);
         return new StructureOperation<>() {
-            private final Object2ObjectOpenHashMap<StructureBounds, Fact<Boolean>> areas = new Object2ObjectOpenHashMap<>();
-            private final Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Fact<?>> reads = new Object2ObjectOpenHashMap<>();
-            private final ObjectArrayList<Failure> failures = new ObjectArrayList<>();
-            private int areaIndex;
-            private int readIndex;
-            @Nullable private StructureOperation<Boolean> areaRead;
-
-            @Override
-            public boolean advance(RecipeWorkBudget work) {
-                source.requireServerThread();
+            @Override public boolean advance(RecipeWorkBudget work) {
                 if (complete()) return true;
-                while (areaIndex < plan.areas().size()) {
-                    var bounds = plan.areas().get(areaIndex);
+                while (!capture.complete()) {
+                    var action = capture.prepareWorker(work);
+                    if (action == null) {
+                        if (!capture.complete()) return false;
+                        break;
+                    }
+                    Throwable primary = null;
+                    boolean accepted = false;
                     try {
-                        if (areaRead == null) {
-                            if (!work.take()) return false;
-                            areaRead = worker == null ? source.beginAreaRead(bounds) : source.beginWorkerAreaRead(bounds);
-                        }
-                        if (!areaRead.advance(work)) return false;
-                        areas.put(bounds, new Fact<>(areaRead.result(), null));
-                    } catch (RuntimeException failure) {
-                        areas.put(bounds, new Fact<>(null, failure)); failures.add(new Failure(bounds, null, failure));
-                    }
-                    areaRead = null; areaIndex++;
+                        if (worker == null) { action.run(); accepted = true; }
+                        else accepted = worker.run(action);
+                    } catch (RuntimeException | Error failure) { primary = failure; throw failure; }
+                    finally { capture.finishWorker(accepted, primary); }
                 }
-                do {
-                var beforeRead = readIndex;
-                var batch = new ObjectArrayList<PendingRead<?>>();
-                Throwable primary = null;
-                try {
-                    while (readIndex < plan.reads().size() && batch.size() < 256) {
-                        var read = plan.reads().get(readIndex);
-                        var loaded = areas.get(StructureBounds.at(read.position()));
-                        if (loaded.failure() != null || !Boolean.TRUE.equals(loaded.value())) {
-                            if (!work.take()) break;
-                            readIndex++; continue;
-                        }
-                        var accounting = work instanceof StructureCheckPolicy.Work actual ? actual : null;
-                        if (accounting == null ? !work.take(3) : !accounting.reserveAtomic(3)) break;
-                        readIndex++;
-                        try {
-                            if (accounting != null) accounting.completeReserved();
-                            if (!source.isAreaLoaded(StructureBounds.at(read.position()))) {
-                                areas.put(StructureBounds.at(read.position()), new Fact<>(false, null)); continue;
-                            }
-                        } catch (RuntimeException failure) {
-                            areas.put(StructureBounds.at(read.position()), new Fact<>(null, failure));
-                            failures.add(new Failure(StructureBounds.at(read.position()), null, failure)); continue;
-                        }
-                        prepare(read, batch, accounting);
-                    }
-                    if (!batch.isEmpty()) {
-                        boolean[] stopped = { false };
-                        int[] completedReads = { 0 };
-                        Runnable action = () -> {
-                            for (var read : batch) {
-                                if (!work.take(0)) { stopped[0] = true; return; }
-                                read.capture(reads, failures, work);
-                                completedReads[0]++;
-                            }
-                        };
-                        if (worker == null) action.run();
-                        else if (!worker.run(action)) { finish(null); return true; }
-                        if (stopped[0]) {
-                            readIndex = batch.get(completedReads[0]).index();
-                            if (completedReads[0] == 0 && work instanceof StructureCheckPolicy.Work actual)
-                                actual.atomicTimeInsufficient();
-                            return false;
-                        }
-                    }
-                } catch (RuntimeException | Error failure) {
-                    primary = failure;
-                    throw failure;
-                } finally {
-                    closeReads(batch, work, primary);
-                }
-                if (readIndex == beforeRead && readIndex < plan.reads().size()) return false;
-                } while (readIndex < plan.reads().size());
-                if (readIndex < plan.reads().size() || !work.take()) return false;
-                // All entries were added at their charged visits. This operation owns the list and
-                // never mutates it after finish, so publication needs no second linear freeze pass.
-                finish(new StructureSnapshot(areas, reads, Collections.unmodifiableList(failures)));
+                finish(capture.result());
                 return true;
             }
+        };
+    }
 
-            private <T> void prepare(StructureReadPlan.Read<T> read, ObjectArrayList<PendingRead<?>> batch,
-                                     @Nullable StructureCheckPolicy.Work accounting) {
+    /** Owner preparation and cleanup bracket exactly one externally joined read batch. */
+    public static Capture beginParallelCapture(StructureReadPlan plan, StructureReadSource source) {
+        return new Capture(plan, source, true);
+    }
+
+    public static final class Capture {
+        private final StructureReadPlan plan;
+        private final StructureReadSource source;
+        private final boolean workerReads;
+        private final Object2ObjectOpenHashMap<StructureBounds, Fact<Boolean>> areas = new Object2ObjectOpenHashMap<>();
+        private final Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Fact<?>> reads = new Object2ObjectOpenHashMap<>();
+        private final ObjectArrayList<Failure> failures = new ObjectArrayList<>();
+        private final ObjectArrayList<PendingRead<?>> pending = new ObjectArrayList<>();
+        private int areaIndex, readIndex, completedReads;
+        private boolean complete;
+        @Nullable private StructureSnapshot result;
+        @Nullable private StructureOperation<Boolean> areaRead;
+        @Nullable private RecipeWorkBudget borrowedWork;
+
+        private Capture(StructureReadPlan plan, StructureReadSource source, boolean workerReads) {
+            this.plan = Objects.requireNonNull(plan);
+            this.source = Objects.requireNonNull(source);
+            source.requireServerThread();
+            this.workerReads = workerReads;
+        }
+
+        public boolean complete() { source.requireServerThread(); return complete; }
+        @Nullable public StructureSnapshot result() { source.requireServerThread(); return result; }
+
+        /** A non-null action must be physically joined, then finished, before any further advance. */
+        @Nullable public Runnable prepareWorker(RecipeWorkBudget work) {
+            source.requireServerThread();
+            Objects.requireNonNull(work);
+            if (borrowedWork != null) throw new IllegalStateException("Previous structure reads have not been joined and closed");
+            if (complete) return null;
+            while (areaIndex < plan.areas().size()) {
+                var bounds = plan.areas().get(areaIndex);
                 try {
-                    if (accounting != null) accounting.completeReserved();
-                    if (worker == null) {
-                        var value = source.read(read.query(), read.position());
-                        if (accounting != null) accounting.completeReserved();
-                        reads.put(read, new Fact<>(read.query().copy(value), null));
-                        return;
+                    if (areaRead == null) {
+                        if (!work.take()) return null;
+                        areaRead = workerReads ? source.beginWorkerAreaRead(bounds) : source.beginAreaRead(bounds);
                     }
-                    var window = source.beginWorkerRead(read.query(), read.position());
-                    if (window == null) areas.put(StructureBounds.at(read.position()), new Fact<>(false, null));
-                    else batch.add(new PendingRead<>(readIndex - 1, read, window));
+                    if (!areaRead.advance(work)) return null;
+                    areas.put(bounds, new Fact<>(areaRead.result(), null));
                 } catch (RuntimeException failure) {
-                    reads.put(read, new Fact<>(null, failure)); failures.add(new Failure(StructureBounds.at(read.position()), read.query(), failure));
+                    areas.put(bounds, new Fact<>(null, failure)); failures.add(new Failure(bounds, null, failure));
+                }
+                areaRead = null; areaIndex++;
+            }
+            Throwable primary = null;
+            try {
+                while (readIndex < plan.reads().size() && pending.size() < 256) {
+                    var read = plan.reads().get(readIndex);
+                    var loaded = areas.get(StructureBounds.at(read.position()));
+                    if (loaded.failure() != null || !Boolean.TRUE.equals(loaded.value())) {
+                        if (!work.take()) break;
+                        readIndex++; continue;
+                    }
+                    var accounting = work instanceof StructureCheckPolicy.Work actual ? actual : null;
+                    if (accounting == null ? !work.take(3) : !accounting.reserveAtomic(3)) break;
+                    readIndex++;
+                    try {
+                        if (accounting != null) accounting.completeReserved();
+                        if (!source.isAreaLoaded(StructureBounds.at(read.position()))) {
+                            areas.put(StructureBounds.at(read.position()), new Fact<>(false, null)); continue;
+                        }
+                    } catch (RuntimeException failure) {
+                        areas.put(StructureBounds.at(read.position()), new Fact<>(null, failure));
+                        failures.add(new Failure(StructureBounds.at(read.position()), null, failure)); continue;
+                    }
+                    prepare(read, accounting);
+                }
+                if (!pending.isEmpty()) {
+                    borrowedWork = work;
+                    completedReads = 0;
+                    return this::readPending;
+                }
+                if (readIndex == plan.reads().size() && work.take()) {
+                    result = new StructureSnapshot(areas, reads, Collections.unmodifiableList(failures));
+                    complete = true;
+                }
+                return null;
+            } catch (RuntimeException | Error failure) { primary = failure; throw failure; }
+            finally {
+                // Failed owner preparation may already have opened ports. No worker was dispatched.
+                if (primary != null) {
+                    try { closeReads(pending, work, primary); }
+                    finally { pending.clear(); borrowedWork = null; }
                 }
             }
-        };
+        }
+
+        private void readPending() {
+            var work = Objects.requireNonNull(borrowedWork);
+            for (var read : pending) {
+                if (!work.take(0)) return;
+                read.capture(reads, failures, work);
+                completedReads++;
+            }
+        }
+
+        /** Must be called after all accepted actions physically exit, including failed dispatch. */
+        public void finishWorker(boolean accepted, @Nullable Throwable primary) {
+            source.requireServerThread();
+            var work = Objects.requireNonNull(borrowedWork, "No borrowed structure read batch");
+            try {
+                if (!accepted) { complete = true; result = null; }
+                else if (completedReads < pending.size()) {
+                    readIndex = pending.get(completedReads).index();
+                    if (completedReads == 0 && work instanceof StructureCheckPolicy.Work actual) actual.atomicTimeInsufficient();
+                }
+                closeReads(pending, work, primary);
+            } finally { pending.clear(); borrowedWork = null; }
+        }
+
+        private <T> void prepare(StructureReadPlan.Read<T> read, @Nullable StructureCheckPolicy.Work accounting) {
+            try {
+                if (accounting != null) accounting.completeReserved();
+                if (!workerReads) {
+                    var value = source.read(read.query(), read.position());
+                    if (accounting != null) accounting.completeReserved();
+                    reads.put(read, new Fact<>(read.query().copy(value), null));
+                    return;
+                }
+                var window = source.beginWorkerRead(read.query(), read.position());
+                if (window == null) areas.put(StructureBounds.at(read.position()), new Fact<>(false, null));
+                else pending.add(new PendingRead<>(readIndex - 1, read, window));
+            } catch (RuntimeException failure) {
+                reads.put(read, new Fact<>(null, failure)); failures.add(new Failure(StructureBounds.at(read.position()), read.query(), failure));
+            }
+        }
     }
 
     private static void closeReads(ObjectArrayList<PendingRead<?>> batch, RecipeWorkBudget work, @Nullable Throwable primary) {

@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.structure.StructureRefresh;
 import org.jetbrains.annotations.Nullable;
-
 import java.util.Objects;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
@@ -22,7 +21,7 @@ import com.circulation.prototype_eng.api.structure.StructureOperation;
 import com.circulation.prototype_eng.api.structure.StructurePredicateResult;
 import com.circulation.prototype_eng.api.structure.StructureSnapshot;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
-
+import java.util.function.Supplier;
 /**
  * PM's controller cadence and concurrent matching, owned by one loaded controller generation.
  * Capture and completion use the scheduler's exclusive owner boundary; workers only evaluate
@@ -97,6 +96,23 @@ public class ControllerStructureUpdates {
         lastTick = now;
         if (!canRefresh() || current == null && checked && now < nextCheckAt) { return; }
         scheduler.runAtBoundary(() -> checkAtBoundary(now));
+    }
+
+    /** Native periodic ticks gather adjacent checks; the first real tick remains synchronous. */
+    public void enqueueTick(long now) {
+        enqueueTick(now, () -> { });
+    }
+
+    /** The exact host's owner observation follows the completed slice, including a no-check tick. */
+    public void enqueueTick(long now, Runnable observed) {
+        host.requireServerThread();
+        Objects.requireNonNull(observed);
+        if (firstCheckPending) { tick(now); scheduler.runAtBoundary(observed); return; }
+        lastTick = now;
+        scheduler.enqueueStructureCheck(this, () -> {
+            var check = prepareCheckAtBoundary(now);
+            return check == null ? null : check.next();
+        }, observed);
     }
 
     /** The native load continuation belongs to the first real update and already holds the boundary. */
@@ -232,6 +248,7 @@ public class ControllerStructureUpdates {
         private final StructureConfiguration configuration;
         private final PlannedDeadline deadline;
         @Nullable private StructureOperation<StructureRefresh.Request> preparation;
+        @Nullable private StructureRefresh.ParallelPreparation parallelPreparation;
         @Nullable private StructureRefresh.Request request;
         @Nullable private StructureOperation<StructureRefresh.Result> evaluation;
         @Nullable private StructureOperation<StructureAssembly> discovery;
@@ -243,21 +260,39 @@ public class ControllerStructureUpdates {
     }
 
     private void checkAtBoundary(long now) {
+        var check = prepareCheckAtBoundary(now);
+        if (check == null) return;
+        var step = check.next();
+        while (step != null) {
+            PlannedTaskExecutor.Result<Boolean> result;
+            try {
+                result = check.first ? new PlannedTaskExecutor.Success<>(step.action().get())
+                    : scheduler.runStructureWorker(step.action(), step.deadline());
+            } catch (RuntimeException | Error failure) { result = new PlannedTaskExecutor.Failure<>(failure); }
+            try { step.joined().accept(result); }
+            catch (RuntimeException | Error failure) { result = new PlannedTaskExecutor.Failure<>(failure); }
+            var continuation = step.completed().apply(result);
+            step = continuation == null ? null : continuation.get();
+        }
+    }
+
+    @Nullable
+    private Check prepareCheckAtBoundary(long now) {
         host.requireServerThread();
-        if (!canRefresh() || advanced && advancedAt == now) return;
+        if (!canRefresh() || advanced && advancedAt == now) return null;
         if (status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) {
-            if (budgetBlockedConfiguration == host.structureConfiguration()) return;
+            if (budgetBlockedConfiguration == host.structureConfiguration()) return null;
             status = StructureCheckPolicy.Status.IDLE; checked = false; budgetBlockedConfiguration = null;
         }
-        if (current == null && checked && now < nextCheckAt) return;
+        if (current == null && checked && now < nextCheckAt) return null;
         var configuration = host.structureConfiguration();
-        if (configuration == null) return;
+        if (configuration == null) return null;
         advanced = true;
         advancedAt = now;
         boolean first = firstCheckPending;
         if (current == null) {
             checked = true;
-        nextCheckAt = now + (lifecycle.formed() ? 20L : 5L);
+            nextCheckAt = now + (lifecycle.formed() ? 20L : 5L);
             current = new Attempt(configuration, PlannedDeadline.after(policy.timeout()));
         }
         var attempt = current;
@@ -265,71 +300,157 @@ public class ControllerStructureUpdates {
             current = null;
             status = StructureCheckPolicy.Status.EXPIRED;
             lifecycle.structureReadiness(false);
-            return; }
-        long started = System.nanoTime();
-        var work = new StructureCheckPolicy.Work(policy.workUnits(), attempt.deadline, policy.sliceTime(),
-            first && policy.finalMode() == StructureCheckPolicy.FinalMode.COOPERATIVE);
-        StructureCheckPolicy.Work tail = null;
-        try {
-            var worker = first ? null : worker(attempt);
-            if (attempt.preparation == null) attempt.preparation = refresh.beginPrepare(worker);
-            if (!attempt.preparation.advance(work)) {
-                status = first || work.spent() == 0 || work.needsAtomicTime() || work.atomicMinimum() > policy.workUnits()
-                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
-                lifecycle.structureReadiness(false);
-                return;
+            return null;
+        }
+        return new Check(attempt, first);
+    }
+
+    /** One owner's allowance and detached steps; no shared mutable work budget crosses hosts. */
+    private final class Check {
+        private final Attempt attempt;
+        private final boolean first;
+        private final long started = System.nanoTime();
+        private final StructureCheckPolicy selectedPolicy = policy;
+        private final StructureCheckPolicy.Work work;
+        @Nullable private final StructureSnapshot.JoinedWorker worker;
+        @Nullable private StructureCheckPolicy.Work tail;
+        private boolean capturing;
+        private boolean accounted;
+
+        private Check(Attempt attempt, boolean first) {
+            this.attempt = attempt;
+            this.first = first;
+            work = new StructureCheckPolicy.Work(selectedPolicy.workUnits(), attempt.deadline, selectedPolicy.sliceTime(),
+                first && selectedPolicy.finalMode() == StructureCheckPolicy.FinalMode.COOPERATIVE);
+            worker = first ? null : worker(attempt);
+        }
+
+        @Nullable private TaskScheduler.StructureWork next() {
+            host.requireServerThread();
+            try {
+                if (current != attempt) { finishAccounting(); return null; }
+                if (attempt.request == null) {
+                    boolean prepared;
+                    if (first) {
+                        if (attempt.preparation == null) attempt.preparation = refresh.beginPrepare(null);
+                        prepared = attempt.preparation.advance(work);
+                        if (prepared) attempt.request = attempt.preparation.result();
+                    } else {
+                        if (attempt.parallelPreparation == null) attempt.parallelPreparation = refresh.beginParallelPrepare();
+                        var action = attempt.parallelPreparation.prepareWorker(work);
+                        if (action != null) {
+                            capturing = true;
+                            return new TaskScheduler.StructureWork(attempt.deadline, () -> { action.run(); return true; }, this::closeCapture, this::complete);
+                        }
+                        prepared = attempt.parallelPreparation.complete();
+                        if (prepared) attempt.request = attempt.parallelPreparation.result();
+                    }
+                    if (current != attempt) { finishAccounting(); return null; }
+                    if (!prepared) { yieldWork(); finishAccounting(); return null; }
+                    if (attempt.request == null || attempt.stopped) { stopAttempt(attempt); finishAccounting(); return null; }
+                }
+                if (attempt.evaluation == null) attempt.evaluation = attempt.request.beginEvaluate();
+                return new TaskScheduler.StructureWork(attempt.deadline,
+                    () -> Objects.requireNonNull(attempt.evaluation).advance(work), this::complete);
+            } catch (RuntimeException | Error failure) {
+                try { fail(failure); }
+                finally { finishAccounting(); }
+                throw failure;
             }
-            if (attempt.request == null) attempt.request = attempt.preparation.result();
-        if (attempt.request == null || attempt.stopped) { stopAttempt(attempt); return; }
-            if (attempt.evaluation == null) attempt.evaluation = attempt.request.beginEvaluate();
-            boolean[] evaluated = { false };
-            Runnable action = () -> evaluated[0] = Objects.requireNonNull(attempt.evaluation).advance(work);
-            if (worker == null) action.run();
-            else if (!worker.run(action)) { stopAttempt(attempt); return; }
-            if (!evaluated[0]) {
-                status = first || work.spent() == 0 || work.atomicMinimum() > policy.workUnits()
-                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
-                lifecycle.structureReadiness(false);
-                return; }
-        var result = Objects.requireNonNull(attempt.evaluation.result());
-            if (attempt.discovery == null) attempt.discovery = refresh.beginDiscovery(result);
-            if (!attempt.discovery.advance(work)) {
-                status = first || work.spent() == 0 || work.atomicMinimum() > policy.workUnits()
-                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
-                lifecycle.structureReadiness(false);
-                return;
+        }
+
+        private void closeCapture(PlannedTaskExecutor.Result<Boolean> outcome) {
+            host.requireServerThread();
+            var failure = outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var cause) ? cause : null;
+            boolean accepted = outcome instanceof PlannedTaskExecutor.Success<Boolean>(var success) && success;
+            // The scheduler runs all such closes before any completion or publication callback.
+            Objects.requireNonNull(attempt.parallelPreparation).finishWorker(accepted, failure);
+        }
+
+        @Nullable private Supplier<TaskScheduler.StructureWork> complete(PlannedTaskExecutor.Result<Boolean> outcome) {
+            host.requireServerThread();
+            if (capturing) {
+                capturing = false;
+                try {
+                    if (outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) {
+                        if (cause instanceof RuntimeException runtime) throw runtime;
+                        if (cause instanceof Error error) throw error;
+                        throw new IllegalStateException("Structure capture worker failed", cause);
+                    }
+                    boolean accepted = outcome instanceof PlannedTaskExecutor.Success<Boolean>(var success) && success;
+                    if (current != attempt) { finishAccounting(); return null; }
+                    if (!accepted || attempt.deadline.expired(System.nanoTime())) {
+                        stopAttempt(attempt); finishAccounting(); return null;
+                    }
+                    return this::next;
+                } catch (RuntimeException | Error failure) {
+                    try { fail(failure); }
+                    finally { finishAccounting(); }
+                    throw failure;
+                }
             }
-            tail = work.tail(policy.finalMode() == StructureCheckPolicy.FinalMode.COOPERATIVE);
-            boolean published = refresh.publish(result, tail, worker);
-            if (current != attempt) return;
-        current = null;
-            if (published) {
-                firstCheckPending = false;
-                status = refresh.publicationStatus() == StructurePredicateResult.MATCHED
-                    ? StructureCheckPolicy.Status.MATCHED : StructureCheckPolicy.Status.MISMATCH;
-                changed.run();
-            } else {
-                status = tail.expired() || attempt.stopped ? StructureCheckPolicy.Status.EXPIRED
-                    : policy.finalMode() == StructureCheckPolicy.FinalMode.STRICT && tail.exhausted()
-                    ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.UNAVAILABLE;
-                lifecycle.structureReadiness(false);
-                checked = false;
-                if (status == StructureCheckPolicy.Status.UNAVAILABLE) firstCheckPending = false;
-            }
-        } catch (RuntimeException | Error failure) {
-            current = null;
+            try {
+                if (outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var cause)) {
+                    if (cause instanceof RuntimeException runtime) throw runtime;
+                    if (cause instanceof Error error) throw error;
+                    throw new IllegalStateException("Structure worker failed", cause);
+                }
+                if (current != attempt) return null;
+                if (outcome instanceof PlannedTaskExecutor.Stopped<Boolean> || attempt.deadline.expired(System.nanoTime())) {
+                    stopAttempt(attempt); return null;
+                }
+                if (!(outcome instanceof PlannedTaskExecutor.Success<Boolean>(var evaluated)) || !evaluated) {
+                    yieldWork(); return null;
+                }
+                var result = Objects.requireNonNull(Objects.requireNonNull(attempt.evaluation).result());
+                if (attempt.discovery == null) attempt.discovery = refresh.beginDiscovery(result);
+                if (!attempt.discovery.advance(work)) { yieldWork(); return null; }
+                tail = work.tail(selectedPolicy.finalMode() == StructureCheckPolicy.FinalMode.COOPERATIVE);
+                boolean published = refresh.publish(result, tail, worker);
+                if (current != attempt) return null;
+                current = null;
+                if (published) {
+                    firstCheckPending = false;
+                    status = refresh.publicationStatus() == StructurePredicateResult.MATCHED
+                        ? StructureCheckPolicy.Status.MATCHED : StructureCheckPolicy.Status.MISMATCH;
+                    changed.run();
+                } else {
+                    status = tail.expired() || attempt.stopped ? StructureCheckPolicy.Status.EXPIRED
+                        : selectedPolicy.finalMode() == StructureCheckPolicy.FinalMode.STRICT && tail.exhausted()
+                        ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.UNAVAILABLE;
+                    lifecycle.structureReadiness(false);
+                    checked = false;
+                    if (status == StructureCheckPolicy.Status.UNAVAILABLE) firstCheckPending = false;
+                    if (status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) budgetBlockedConfiguration = attempt.configuration;
+                }
+                return null;
+            } catch (RuntimeException | Error failure) { fail(failure); throw failure; }
+            finally { finishAccounting(); }
+        }
+
+        private void yieldWork() {
+            status = first || work.spent() == 0 || work.needsAtomicTime() || work.atomicMinimum() > selectedPolicy.workUnits()
+                ? StructureCheckPolicy.Status.NEEDS_MORE_BUDGET : StructureCheckPolicy.Status.YIELD;
+            lifecycle.structureReadiness(false);
+        }
+
+        private void fail(Throwable failure) {
+            if (current == attempt) current = null;
             if (attempt.request != null) refresh.fail(attempt.request, failure);
-            throw failure;
-        } finally {
+        }
+
+        private void finishAccounting() {
+            if (accounted) return;
+            accounted = true;
             lastWorkUnits = work.spent() + (tail == null ? 0 : tail.spent());
             totalWorkUnits = Math.addExact(totalWorkUnits, lastWorkUnits);
             lastElapsedNanos = System.nanoTime() - started;
             requiredAtomicUnits = Math.max(work.atomicMinimum(), tail == null ? 0 : tail.atomicMinimum());
-            if (attempt.deadline.expired(System.nanoTime()) && status == StructureCheckPolicy.Status.YIELD) stopAttempt(attempt);
-            if (status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) {
+            if (current == attempt && attempt.deadline.expired(System.nanoTime()) && status == StructureCheckPolicy.Status.YIELD) stopAttempt(attempt);
+            if (current == attempt && status == StructureCheckPolicy.Status.NEEDS_MORE_BUDGET) {
                 current = null; budgetBlockedConfiguration = attempt.configuration;
             }
-    }
+        }
     }
 
     private StructureSnapshot.JoinedWorker worker(Attempt attempt) {
