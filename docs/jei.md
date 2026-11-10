@@ -92,6 +92,16 @@ R32 机器绑定已实现验证：JEI 新增 1 项行为包含在 focused 37 tes
 
 默认 `AutoLayoutRecipePage` 在顶部显示本地化机器数量，悬停列出静态关联机器的本地化名称与 ID；没有 Item 代表的合法 MachineType 仍能被说明，不虚构物品或输出。自定义页直接使用实际 `page.pool().machines()` 接口。新增文案沿 `JeiText.Machines` / LocalizationEnum，两语言各追加 1 键。必要轻量 fixture 验证实际默认 wrapper tooltip 消费准确关联，并排除只有同 group 的无绑定机器；未初始化 FML/Bootstrap/nativeItem，也不代表 OpenGL 或原生 catalyst 实机验收。
 
+## 2026-11-10 结构页完整样板导入
+
+空样板根因：StructurePreviewJeiRecipe只登记控制器输出索引，Category未创建原生JEI材料槽，AE通用导入器从空layout取得空资源；原PE长数量导入器只注册普通RecipePool UID。现对独立结构UID为ContainerPatternEncodingTerm/ContainerPEATerm注册同一PE导入器，直接消费准确wrapper的完整材料快照，保留原controller输出索引供JEI检索，不用屏幕槽位或渲染采样推算用料。
+
+Scene.materials统计完整model.cells并仅排除原点控制器占用，整种及单格选择共同参与；切片数量由当前model/settings决定，Y层、scan与visible不截断材料。无显式选择时与已准备的实际显示状态匹配，不能固定取缺失的候选0。采用不含片层过滤的独立StructurePickWorld调用原生getPickBlock；空气不需要材料，流体沿构造器既有规则计1000mB/格。按显示/选项先分组，再用AEKey2LongMap.addTo按完整AEKey/NBT累计long并预检溢出，不经ItemStack.count传大数量。快照按model/token/场景/世界及资源重载撤权，缺表示、partial或无真实物品时明确拒绝，不静默遗漏。缓存避免稳定帧重复扫描整个结构。
+
+导入将已选材料作为singleton候选，避免AE书签/网络优先级更改当前选择；继续使用既有事件、前后容量预检、候选元数据及GenericStack SET_FILTER包。StructurePatternOutput是仅客户端的Forge静态订阅者，在实际PatternRecipeTransferEvent中仅处理结构UID的加工输出，将控制器副本按JeiText.PatternStructureName本地化为“原名-结构”/“original name-Structure”，数量1及原NBT保留；名称以导入时语言写入物品NBT。普通机器配方和其他分类不受该命名逻辑影响。事件取消、重载失效或序列化后撤权时均不写终端。
+
+本地源码提交 `ac66590`。6Java及两语言本机MCP errorsOnly:false全级零、完整读回匹配，Spotless/必要构建（-x test）和MCP build通过；未新增或运行测试。可视addon已编译安装到run/mods，boundary_structure完整输入169、各片层仍169、JEI候选替换109及本地化控制器输出的操作说明见 `run/visual-examples/README.md`；构造器单格108+1与整种109的设置独立于JEI，不把工具NBT当结构页当前选择。原始证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/structure-jei-import/`；真实终端编码和客户端视觉仍待用户重启复验，未启动游戏。
+
 ## D2 结构预览联动
 
 PrototypeJeiPlugin注册实际StructurePreviewJeiCategory/Recipe；静态canonical MachineType.structureId关联独立机器结构页和已有controller catalyst，完整服务端客户端目录供view选择，不枚举世界实例或执行matcher。AutoLayoutRecipePage的嵌入预览使用公开concrete Panel/Scene；独立custom RecipePoolJeiPage可调用StructurePreviewScreens.panel，不继承默认实现。全屏viewer直接AEBaseGui，保留即时HEI父页和准确机器原容器返回。原生GuiOpen/InitPre/InitPost、取消与嵌套owner撤销保持；嵌入的Mouse/Keyboard事件仅消费实际绘制控件，拖拽跨draw继续且关闭后准确一次up不泄露到父槽位。

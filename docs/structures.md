@@ -1,5 +1,11 @@
 # 结构定义、快照与匹配
 
+## 2026-11-10：JEI导入的完整材料快照
+
+独立结构JEI页导入直接消费当前Scene的完整材料快照，使用完整model.cells及当前global/cell选择，排除原点控制器，不按Y层/scan/visible或采样裁剪。无显式选择时采用当前已准备的真实表示状态，避免默认候选0缺失时与画面不一致。原生getPickBlock在不含片层过滤的独立代表世界执行，材料数量另用AEKey2LongMap/addTo保留long；已知空气省略，流体按1000mB/格，未知/partial材料拒绝完整导入。缓存随选择、目录、世界、资源重载与面板关闭失效，导入事件前后再次检查准确快照。
+
+实际控制器×1作为输出，通过AE2S事件本地化重命名为“原名-结构”。这批不增加重复切片GUI或改变普通配方页语义；当前可视boundary_structure为固定5层TemplateStructure，完整169输入不因层预览变化。源码提交 `ac66590`，实现、示例及验证边界见[JEI](jei.md)和[实施进度](implementation-status.md)。
+
 ## 2026-11-10：构造器单格选择与投影片层
 
 StructurePreviewSettings保留原构造器重载，新增按最终相对BlockPos保存的CellChoice(display, option)。显式单格优先于全局displayOptions；withOrientation用StructureTransform.between旋转坐标，不能直接复制旧朝向坐标。View对准确当前Cell和token验证单格修改；全局修改清除该display的单格覆盖，批量服务端快照一次重建，恢复原选中位置。显示解析、世界观察和实际搭建共同消费该选择；模型重建不再重置已选片层，初次初始化后只按含控制器的范围限位。
