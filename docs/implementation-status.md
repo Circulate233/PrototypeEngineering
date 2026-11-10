@@ -1,5 +1,11 @@
 # 实施进度
 
+- 2026-11-10 按用户新要求调整机械构造器，源码本地提交 `2f4cdac`（16Java＋中英各8个新增语言键），未推送。右键不同控制器只绑定，右键已绑定控制器打开，潜行右键绑定并打开；服务器在控制器边界再次校验玩家/准确工具/原容器/世界和权限。两件工具补原生物品使用tooltip。右侧单击材料保持线框，250ms同行双击可选材料在左侧固定面板展开全部候选；固定材料按钮显示完整BOM并展开右侧材料分组。构造器撤去狭窄候选轨和树内候选子列表，原大面板使用6列×8行可滚动原生槽位网格，候选包含当前项；展示库存改用AE原生库存/槽位，避免InventoryBasic把大数量截为64。
+- 预览方块替换按准确相对坐标保存CellMaterialSelections，只改当前格；右侧双击模式写全局MaterialSelections并清除该材料全部单格覆盖。显示、投影观察和实际搭建共同消费局部优先选择，朝向变化旋转坐标键；服务器重新验证当前绑定计划的准确格/完整材料候选/朝向，不能借别的目录项授权。未保存默认0继续保留未显式选择语义，已保存0正常生效。最终只读复核补修View每次候选重建重置中间层的问题：首次初始化后保留当前层，仅按含控制器的新范围限位。原GUI切片仍仅预览、服务器构建默认minCount边界保留。
+- GUI世界投影采用30,000ms单调时钟期限，关闭界面后仍可显示至到期；移动/旋转/切层不续期。构造器由持久BuilderIdentity和准确绑定关联同一玩家/世界/连接，首次库存NBT同步滞后只允许原ItemStack引用承接；必须手持对应构造器才截获Shift＋滚轮。正向底层→顶层→完整→底层，反向相反，层范围含独立控制器零层；初始采用GUI当前片层或三维完整投影。到期由tick/render撤销意图并释放绘制缓存；既有扩展/命令无限期project API不变。
+- 验证：未新增或运行测试，统一Spotless/compileTestJava/build -x test成功，片层保持补修后的同命令再次成功；compileTestJava仅编译现有测试。16Java及两语言逐文件本机IDEA get_file_problems(errorsOnly:false)最终错误/警告/弱警告均零，完整前后read_file与磁盘全文一致；MCP build isSuccess:true/problems:[]。首最终检查在Panel发现冗余return和浮点参数上下文中的整数除法两条警告，调整共享投影成功分支及整数槽位坐标后清零；保留原报告。Gradle日志仍有既有incubator vector和弃用提示，不把IDEA全级零表述为编译器无警告。
+- 证据入口 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/builder-ux/`，含三代理before/handoff/冻结源码、root validation/build-*.log、18文件原始MCP及完整读回比较、最终源码快照和精确提交脚本/结果。提交使用隔离索引，语言只提交原HEAD＋本批精确后缀，原有语言修改仍未暂存；原已暂存JeiResourceReloadTest的完整patch、依赖修改及INDEX.md~字节保持。未启动Minecraft/服务端、Bootstrap/FML或桌面IDE；真实GUI/GL和自动搭建仍待用户复验。截图紫黑物品的静态审查确认当前PE/AE2S/Cleanroom pick链返回独立注册物品的meta0，模型注册链存在，本批没有据此宣称新增视觉修复。总体Goal保持暂停。
+
 - 2026-11-10 修复层预览完全空白：Scene把meshes.renderScene与tiles.draw限制在threeDimensional，导致已有层过滤渲染根本未调用；现两模式共用原入口，整机成型模型继续只在三维绘制。独立控制器允许在层模式解析、零层绘制，使用formingModelsVisible避免沿用隐藏的成型控制器状态。PreviewBlockAccess在层模式把隐藏Y层作为空气，恢复切面顶/底面的可见性；原layer缓存失效逻辑不变。
 - 层线框在原有2048准备访问预算中建立Y索引，包含内部截面格而非仅三维全局边界；树高亮遵守Y过滤。滑块用sceneBounds而非仅材料bounds，包含独立控制器零层。源码仅改Scene/BlockAccess/Panel三个文件，未改GUI布局、匹配/网络/库存或资源。按用户要求未新增测试、未执行测试；Spotless、compileTestJava/build -x test通过，最终控制器显示细化后的build -x test也通过。3Java本机MCP errorsOnly:false错误/警告/弱警告均零、完整源码读回一致；MCP build isSuccess:true/problems:[]。
 - 写前、冻结源码、原日志、MCP/读回及源码复核在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-layer/`。背景依赖、两语言、原暂存JeiResourceReloadTest及INDEX.md~字节/索引保持。未启动Minecraft/服务端、Bootstrap/FML或桌面IDE，真实GL层画面待用户复验。源码已本地提交 `edfff6b`，未推送，总体Goal仍暂停。

@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-10 构造器新交互已实现：不同控制器右键只绑定、已绑定打开、潜行绑定并打开；固定材料面板显示完整可滚动BOM/候选网格，右侧单击线框、双击整种替换，预览点击只改单格。GUI投影30秒，手持对应构造器Shift＋滚轮循环底层至顶层及完整投影，初始采用GUI片层；材料替换后保留片层，两工具补用法tooltip。16Java及两语言本机MCP全级零/完整读回、Spotless及必要构建（跳过test）、MCP build通过，未新增或运行测试。源码本地提交 `2f4cdac`，未推送、未启动游戏；原依赖/两语言背景/暂存测试/INDEX.md~保留。入口[结构工具](structure-tools.md)、[结构](structures.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/builder-ux/`，总体Goal仍暂停。
+
 - 2026-11-10 层预览空白已修：取消Scene对方块/TESR的三维限定，接通已有层渲染；隐藏层不再剔除切面，零层控制器及整层线框/高亮正确按层消费。滑块范围含独立控制器零层。仅3Java，源码核对、Spotless/必要构建（跳过test）、本机MCP全级零/完整读回及MCP build通过；未新增或运行测试。入口[结构](structures.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-layer/`。源码已本地提交 `edfff6b`，未推送、未启动游戏。
 
 - 2026-11-10 结构预览截图反馈已修：预览/构建树/实际用料统一原生getPickBlock；本地原生Slot及正常物品tooltip；候选/材料各自滚动；悬停和已选亮线框无深度遮挡；相机pitch射线纠正，最近实际命中直接切换选择。17Java本机MCP全级零/完整读回、必要构建与MCP build通过。按最新指示撤去全部新增静态测试，仅更新既有选择预期；细节与真实验证轨迹见[实施进度](implementation-status.md)。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/preview-native-items/`，源码已本地提交 `a1aa5f1`，未推送。需重启客户端复验新增Mixin桥，未自行启动游戏。
@@ -24,7 +26,7 @@
 
 ## 下一步
 
-- 新实机反馈优先：由用户重启客户端，先复验层预览切换/上下层/零层控制器/线框，再核对原生图标/tooltip、候选滚动、悬停/已选线框、最近命中切换和真实搭建用料；仓室掉落/拾取/重新放置及退出世界也待实机。此前新增Mixin方法不能仅F3+T应用。
+- 新实机反馈优先：由用户重启客户端，先复验构造器三种绑定/打开行为、右侧双击整种与左侧单格替换、完整材料网格/滚动、30秒到期及Shift＋滚轮片层循环；再核对层预览零层控制器/线框、原生图标/tooltip、最近命中和真实搭建用料。截图紫黑物品本批仅静态审查当前pick/model链，不宣称新增视觉修复；仓室掉落/拾取/重新放置及退出世界也待实机。此前新增Mixin方法不能仅F3+T应用。
 
 1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
 2. 先复验仓室方块/物品在无 CTM、仅 CTM、CTM+Lumenized 下的颜色、透明覆盖及局部发光；未自行启动游戏。总体 Goal 暂停，恢复后再按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等 Java 前提，再接 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。

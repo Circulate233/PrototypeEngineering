@@ -1,5 +1,11 @@
 # 结构定义、快照与匹配
 
+## 2026-11-10：构造器单格选择与投影片层
+
+StructurePreviewSettings保留原构造器重载，新增按最终相对BlockPos保存的CellChoice(display, option)。显式单格优先于全局displayOptions；withOrientation用StructureTransform.between旋转坐标，不能直接复制旧朝向坐标。View对准确当前Cell和token验证单格修改；全局修改清除该display的单格覆盖，批量服务端快照一次重建，恢复原选中位置。显示解析、世界观察和实际搭建共同消费该选择；模型重建不再重置已选片层，初次初始化后只按含控制器的范围限位。
+
+StructurePreviews新增projectFor(..., durationMillis)，GUI采用30,000ms；既有project保持无限期扩展入口。replaceProjection要求准确当前意图，切层/旋转/移动均保留原期限。对应构造器的Shift＋滚轮循环所有Y片层与完整投影，含控制器零层；初始采用GUI当前层或三维完整投影。到期由tick/render消费并释放原生绘制缓存。完整BOM按全局与稀疏单格覆盖用fastutil addTo累加，展示仍用正常AE槽位与物品tooltip。真实GL/交互复验仍由用户完成，验证见[结构工具](structure-tools.md)和[实施进度](implementation-status.md)。
+
 ## 2026-11-10：层预览空白修复
 
 Scene主绘制原先用threeDimensional把方块模型/TESR全部挡在层模式之外；现两种模式都进入已有renderScene/tiles.draw，由原层过滤决定可见格，整机成型模型仍只在三维绘制。独立控制器在零层解析/绘制，层模式不沿用会隐藏控制器的成型状态。隐藏Y层在邻居查询中按空气处理，避免把当前切面的顶/底面剔除；原有layer缓存失效保持。
