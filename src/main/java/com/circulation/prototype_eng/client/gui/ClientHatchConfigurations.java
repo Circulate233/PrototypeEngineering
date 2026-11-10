@@ -1,6 +1,6 @@
 package com.circulation.prototype_eng.client.gui;
 
-import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import org.jetbrains.annotations.Nullable;
 

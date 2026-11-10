@@ -289,8 +289,9 @@ public final class RecipeRegistry {
 
     private boolean matchesPrepared(Prepared prepared) {
         Objects.requireNonNull(prepared);
+        var capturedPublication = publication;
         return prepared.owner == this && !prepared.consumed && frozen == prepared.expected
-            && prepared.publication == publication && (publication == null || !publication.closed)
+            && prepared.publication == capturedPublication && (capturedPublication == null || !capturedPublication.closed)
             && (prepared.codecPreparation == null || Objects.requireNonNull(processCodecs).canInstall(prepared.codecPreparation));
     }
 

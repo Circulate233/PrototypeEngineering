@@ -10,7 +10,7 @@ import com.circulation.prototype_eng.api.client.structure.StructureProjectionOpt
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;

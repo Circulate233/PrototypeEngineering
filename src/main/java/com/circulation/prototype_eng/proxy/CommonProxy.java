@@ -21,7 +21,7 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
-import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.recipe.ServerRecipeManifests;
 import com.circulation.prototype_eng.recipe.ServerRecipeDefinitions;
 import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
@@ -45,14 +45,14 @@ import com.circulation.prototype_eng.scheduler.SchedulerCommand;
 import com.circulation.prototype_eng.scheduler.SchedulerConfig;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.storage.HatchCapabilityRegistration;
-import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.storage.ServerHatchConfigurations;
 import com.circulation.prototype_eng.structure.json.BuiltinStructurePredicates;
 import com.circulation.prototype_eng.structure.json.ForgeStructureBlocks;
 import com.circulation.prototype_eng.structure.json.StructureJsonLoader;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
-import com.circulation.prototype_eng.structure.reload.StructureNetwork;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.network.InitNetwork;
 import com.circulation.prototype_eng.structure.reload.StructureReloadCommand;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
@@ -89,7 +89,7 @@ public class CommonProxy implements IGuiHandler {
         OrientationToolConfig.load(event.getModConfigurationDirectory());
         structureDirectory = event.getModConfigurationDirectory().toPath().resolve(Tags.MOD_ID).resolve("structures");
         structureData = StructureJsonLoader.readDirectory(structureDirectory);
-        StructureNetwork.register();
+        InitNetwork.init();
         HatchCapabilityRegistration.register();
         NetworkRegistry.INSTANCE.registerGuiHandler(PrototypeEngineering.instance, this);
         PrototypeEngineering.LOGGER.info("Loading {} {}", Tags.MOD_NAME, Tags.VERSION);
@@ -172,7 +172,7 @@ public class CommonProxy implements IGuiHandler {
     }
 
     /**
-     * Client override schedules onto the actual client thread; common class loads no client API.
+     * AE dispatch invokes the client override on its owner; common class loads no client API.
      */
     public void receiveHatchConfiguration(HatchConfigurationPacket packet, Object connection) {
         throw new IllegalStateException("Server proxy cannot receive client hatch display configuration");

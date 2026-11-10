@@ -20,7 +20,7 @@ import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import com.circulation.prototype_eng.localization.StructurePreviewText;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;

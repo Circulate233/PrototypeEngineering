@@ -2,7 +2,7 @@ package com.circulation.prototype_eng.api.client.structure;
 
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
 

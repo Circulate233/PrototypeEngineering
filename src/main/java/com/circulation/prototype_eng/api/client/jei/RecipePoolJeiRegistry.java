@@ -183,20 +183,34 @@ public class RecipePoolJeiRegistry {
         return ObjectLists.unmodifiable(result);
     }
 
-    private void requireSamePools(List<RecipePool> pools) {
-        if (pools.size() != registeredPools.size()) throw new IllegalArgumentException("JEI replacement changed the pool set");
+    /** Pool membership and category bindings cannot change during a definition update. */
+    public boolean acceptsPools(List<RecipePool> pools) {
+        requireFrozen();
+        if (pools.size() != registeredPools.size()) return false;
         var remaining = new Object2ObjectLinkedOpenHashMap<>(registeredPools);
         for (var pool : pools) {
             var previous = remaining.remove(pool.id());
             if (previous == null || previous.hasExistingJeiPage() != pool.hasExistingJeiPage()
                 || !Objects.equals(previous.existingJeiPageId(), pool.existingJeiPageId()))
-                throw new IllegalArgumentException("JEI replacement changed a category binding: " + pool.id());
+                return false;
         }
+        return true;
+    }
+
+    private void requireSamePools(List<RecipePool> pools) {
+        if (!acceptsPools(pools)) throw new IllegalArgumentException("JEI replacement changed the pool set or category bindings");
     }
 
     public List<RecipePoolJeiPage.PreparedUpdate> prepareUpdates(List<RecipePool> pools, RecipeJeiDisplays.Snapshot displays) {
+        var updates = tryPrepareUpdates(pools, displays);
+        if (updates == null) throw new IllegalStateException("A JEI page does not support definition updates");
+        return updates;
+    }
+
+    /** A supported shape with an unsupported page is an ordinary preparation rejection. */
+    public @Nullable List<RecipePoolJeiPage.PreparedUpdate> tryPrepareUpdates(List<RecipePool> pools, RecipeJeiDisplays.Snapshot displays) {
         requireFrozen();
-        requireSamePools(pools);
+        if (!acceptsPools(pools)) return null;
         var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>();
         var remaining = new Object2ObjectLinkedOpenHashMap<>(pages);
         for (var pool : pools) {
@@ -204,7 +218,7 @@ public class RecipePoolJeiRegistry {
             var page = remaining.remove(pool.id());
             if (page == null) throw new IllegalArgumentException("JEI replacement has unknown pool: " + pool.id());
             var update = page.prepareUpdate(pool, displays);
-            if (update == null) throw new IllegalStateException("JEI page does not support definition updates: " + pool.id());
+            if (update == null) return null;
             if (update.page() != page || update.pool() != pool || !RecipePoolJeiPage.uid(pool.id()).equals(page.getUid()))
                 throw new IllegalArgumentException("JEI page prepared a foreign pool or category: " + pool.id());
             updates.add(update);

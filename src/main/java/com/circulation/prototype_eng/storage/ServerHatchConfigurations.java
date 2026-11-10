@@ -4,7 +4,7 @@ import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
-import com.circulation.prototype_eng.structure.reload.StructureNetwork;
+import com.circulation.prototype_eng.network.InitNetwork;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
@@ -50,7 +50,7 @@ public final class ServerHatchConfigurations {
             var snapshot = HatchConfig.snapshot(current.id);
             byte[] payload = snapshot.encode();
             for (var player : current.server.getPlayerList().getPlayers())
-                StructureNetwork.sendHatchConfiguration(snapshot, payload, player);
+                InitNetwork.sendHatchConfiguration(snapshot, payload, player);
         });
     }
 
@@ -64,7 +64,7 @@ public final class ServerHatchConfigurations {
             if (!current.current() || player.connection != connection
                 || current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player) return;
             var snapshot = HatchConfig.snapshot(current.id);
-            StructureNetwork.sendHatchConfiguration(snapshot, snapshot.encode(), player);
+            InitNetwork.sendHatchConfiguration(snapshot, snapshot.encode(), player);
         });
     }
 

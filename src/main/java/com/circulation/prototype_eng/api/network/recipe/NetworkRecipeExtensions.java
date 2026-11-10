@@ -183,9 +183,10 @@ public final class NetworkRecipeExtensions {
 
     private boolean matchesPrepared(Prepared prepared) {
         Objects.requireNonNull(prepared);
+        var capturedBinding = publicationBinding;
         return prepared.owner == this && !prepared.consumed && frozen == prepared.expected
-            && prepared.publicationBinding == publicationBinding
-            && (publicationBinding == null || publicationBinding.publication.live());
+            && prepared.publicationBinding == capturedBinding
+            && (capturedBinding == null || capturedBinding.publication.live());
     }
 
     public synchronized void install(Prepared prepared) {

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.reload;
 
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewCache;

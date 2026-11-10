@@ -1,8 +1,10 @@
-package com.circulation.prototype_eng.structure.reload;
+package com.circulation.prototype_eng.network;
 
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
-import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestPacket;
-import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
+import com.circulation.prototype_eng.structure.reload.StructureReloadCoordinator;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
@@ -14,19 +16,24 @@ import java.util.UUID;
 /**
  * Actual Forge channel registration, packet decoding, and server-owner delivery.
  */
-public final class StructureNetwork {
+public final class InitNetwork {
     private static final SimpleNetworkWrapper CHANNEL = NetworkRegistry.INSTANCE.newSimpleChannel("pe_structures");
     private static boolean registered;
+    private static int nextPacketId;
 
-    private StructureNetwork() {
+    private InitNetwork() {
     }
 
-    public static void register() {
+    public static void init() {
         if (registered) throw new IllegalStateException("Structure network already registered");
-        CHANNEL.registerMessage(StructureCatalogPacket.Handler.class, StructureCatalogPacket.class, 0, Side.CLIENT);
-        CHANNEL.registerMessage(HatchConfigurationPacket.Handler.class, HatchConfigurationPacket.class, 1, Side.CLIENT);
-        CHANNEL.registerMessage(RecipeDefinitionManifestPacket.Handler.class, RecipeDefinitionManifestPacket.class, 2, Side.CLIENT);
+        registerClientbound(StructureCatalogPacket.class);
+        registerClientbound(HatchConfigurationPacket.class);
+        registerClientbound(RecipeDefinitionManifestPacket.class);
         registered = true;
+    }
+
+    private static <T extends ConnectionClientboundPacket> void registerClientbound(Class<T> packetClass) {
+        CHANNEL.registerMessage(new ClientboundPayloadHandler<>(), packetClass, nextPacketId++, Side.CLIENT);
     }
 
     public static void sendHatchConfiguration(HatchConfigurationSnapshot snapshot, byte[] payload, EntityPlayerMP player) {
@@ -35,8 +42,8 @@ public final class StructureNetwork {
             CHANNEL.sendTo(HatchConfigurationPacket.part(snapshot, payload, index), player);
     }
 
-    public static void announceRecipeDefinitions(UUID session, long generation, EntityPlayerMP player) {
-        CHANNEL.sendTo(RecipeDefinitionManifestPacket.notice(session, generation), player);
+    public static void announceRecipeDefinitions(UUID session, long generation, boolean declarationRequired, EntityPlayerMP player) {
+        CHANNEL.sendTo(RecipeDefinitionManifestPacket.notice(session, generation, declarationRequired), player);
     }
 
     public static void sendRecipeDefinitions(RecipeDefinitionManifest manifest, byte[] payload, EntityPlayerMP player) {

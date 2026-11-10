@@ -6,7 +6,7 @@ import com.circulation.prototype_eng.api.client.gui.MachineScreenRegistry;
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
-import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
@@ -48,9 +48,9 @@ import com.circulation.prototype_eng.container.StructureToolContainer;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
-import com.circulation.prototype_eng.storage.HatchConfigurationPacket;
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.network.NetHandlerPlayClient;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
@@ -335,58 +335,65 @@ public class ClientProxy extends CommonProxy {
                 new ClientRecipeDefinitions.Renderer() {
                     @Override
                     public ClientRecipeDefinitions.ApplyResult apply(ClientRecipeDeclarations.Declaration declaration) {
-                    if (!Loader.isModLoaded("jei")) return new ClientRecipeDefinitions.ApplyResult(false, "HEI is not loaded");
+                        if (!Loader.isModLoaded("jei"))
+                            return new ClientRecipeDefinitions.ApplyResult(false, "HEI is not loaded");
                         var result = PrototypeJeiPlugin.applyDefinitions(declaration.snapshot(), declaration.displays());
                         return new ClientRecipeDefinitions.ApplyResult(result.ready(), result.reason());
                     }
 
                     @Override
                     public void withdraw(String reason) {
-                    if (Loader.isModLoaded("jei")) PrototypeJeiPlugin.withdrawDefinitions(reason);
+                        if (Loader.isModLoaded("jei")) PrototypeJeiPlugin.withdrawDefinitions(reason);
                     }
-            });
+
+                    @Override
+                    public ClientRecipeDefinitions.ApplyResult showLocalStatic() {
+                        if (!Loader.isModLoaded("jei"))
+                            return new ClientRecipeDefinitions.ApplyResult(false, "HEI is not loaded");
+                        var result = PrototypeJeiPlugin.showLocalStaticDefinitions();
+                        return new ClientRecipeDefinitions.ApplyResult(result.ready(), result.reason());
+                    }
+                });
         return recipeDefinitions;
     }
 
     @Override
     public void receiveRecipeDefinitions(RecipeDefinitionManifestPacket packet, Object connection) {
-        Minecraft.getMinecraft().addScheduledTask(() -> {
-            var minecraft = Minecraft.getMinecraft();
-            if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
-            try {
-                recipeDefinitions().receive(handler.getNetworkManager(), packet);
-            } catch (RuntimeException failure) {
-                PrototypeEngineering.LOGGER.error("Cannot apply authoritative recipe declaration manifest", failure);
-            }
-        });
+        var minecraft = packetOwner();
+        if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+        try {
+            recipeDefinitions().receive(handler.getNetworkManager(), packet);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot apply authoritative recipe declaration manifest", failure);
+        }
     }
 
     @Override
     public void receiveHatchConfiguration(HatchConfigurationPacket packet, Object connection) {
-        Minecraft.getMinecraft().addScheduledTask(() -> {
-            if (!(connection instanceof NetHandlerPlayClient handler) || Minecraft.getMinecraft().getConnection() != handler)
-                return;
-            try {
-                hatchConfigurations().receive(handler.getNetworkManager(), packet);
-            } catch (RuntimeException invalid) {
-                PrototypeEngineering.LOGGER.error("Cannot install authoritative hatch configuration", invalid);
-            }
-        });
+        var minecraft = packetOwner();
+        if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+        try {
+            hatchConfigurations().receive(handler.getNetworkManager(), packet);
+        } catch (RuntimeException invalid) {
+            PrototypeEngineering.LOGGER.error("Cannot install authoritative hatch configuration", invalid);
+        }
     }
 
     @Override
     public void receiveStructureCatalog(StructureCatalogPacket packet, Object connection) {
-        Minecraft.getMinecraft().addScheduledTask(() -> {
-            var minecraft = Minecraft.getMinecraft();
-            if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler)
-                return;
-            var manager = handler.getNetworkManager();
-            try {
-                structures().receive(manager, packet);
-            } catch (RuntimeException failure) {
-                PrototypeEngineering.LOGGER.error("Cannot install authoritative structure catalog", failure);
-            }
-        });
+        var minecraft = packetOwner();
+        if (!(connection instanceof NetHandlerPlayClient handler) || minecraft.getConnection() != handler) return;
+        try {
+            structures().receive(handler.getNetworkManager(), packet);
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Cannot install authoritative structure catalog", failure);
+        }
+    }
+
+    private static Minecraft packetOwner() {
+        var minecraft = Minecraft.getMinecraft();
+        if (!minecraft.isCallingFromMinecraftThread()) throw new IllegalStateException("Clientbound handling requires the client owner");
+        return minecraft;
     }
 
     @SubscribeEvent

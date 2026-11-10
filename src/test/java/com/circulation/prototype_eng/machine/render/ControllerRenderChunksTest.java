@@ -9,7 +9,7 @@ import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.client.render.ClientMachineRenderSnapshots;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
-import com.circulation.prototype_eng.structure.reload.StructureCatalogPacket;
+import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;

@@ -26,6 +26,7 @@ import mezz.jei.api.IModRegistry;
 import mezz.jei.api.IJeiRuntime;
 import mezz.jei.api.ingredients.IIngredientRegistry;
 import mezz.jei.gui.recipes.RecipesGui;
+import mezz.jei.config.Config;
 import net.minecraft.client.Minecraft;
 import org.jetbrains.annotations.Nullable;
 import mezz.jei.api.JEIPlugin;
@@ -64,6 +65,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
     @Nullable private static Runnable runtimeUnavailable;
     private static RecipeRegistry.Snapshot registrationSnapshot;
     private static RecipeJeiDisplays registrationDisplays;
+    @Nullable private static Definitions localStaticBaseline;
     private static boolean declarationEventPosted;
     private static boolean applying;
     private static boolean withdrawing;
@@ -121,6 +123,13 @@ public class PrototypeJeiPlugin implements IModPlugin {
         return apply(snapshot, displays, false);
     }
 
+    /** Local legacy view only; this does not establish a matching remote declaration. */
+    public static ApplyResult showLocalStaticDefinitions() {
+        var baseline = localStaticBaseline;
+        if (baseline == null) return new ApplyResult(false, runtime == null, "Local static recipe baseline is not captured");
+        return apply(baseline.snapshot(), baseline.displays(), true);
+    }
+
     private static ApplyResult apply(RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays displays, boolean staticInitial) {
         Objects.requireNonNull(snapshot);
         Objects.requireNonNull(displays);
@@ -144,14 +153,22 @@ public class PrototypeJeiPlugin implements IModPlugin {
                                               mezz.jei.recipes.RecipeRegistry registry, RecipesGui gui) {
         var capturedRuntime = runtime;
         var capturedIngredients = Objects.requireNonNull(ingredients);
+        var capturedDesiredSource = desiredResolved;
         long capturedInvalidation = invalidationEpoch;
         var token = new RecipePoolJeiRecipe.DisplayToken();
         var wrappers = new ObjectArrayList<RecipePoolJeiRecipe>();
         var previous = generation;
         try {
-            if (!staticInitial && !matchesDesired(snapshot, displays)) throw new IllegalStateException("Local JEI declaration is no longer the desired server generation");
+            boolean initialDesired = staticInitial || matchesDesired(snapshot, displays);
+            if (!initialDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
+                return rejectGeneration("Local JEI declaration is no longer the desired server generation", capturedInvalidation, token, previous, wrappers, registry, gui);
+            if (!RecipePoolJeiRegistry.INSTANCE.acceptsPools(snapshot.orderedPools()))
+                return rejectGeneration("JEI replacement changed the pool set or category bindings", capturedInvalidation, token, previous, wrappers, registry, gui);
             var descriptions = displays.snapshot(RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools()));
-            var updates = staticInitial ? initialUpdates() : RecipePoolJeiRegistry.INSTANCE.prepareUpdates(snapshot.orderedPools(), descriptions);
+            var updates = staticInitial && initialPagesMatch(snapshot) ? initialUpdates()
+                : RecipePoolJeiRegistry.INSTANCE.tryPrepareUpdates(snapshot.orderedPools(), descriptions);
+            if (updates == null)
+                return rejectGeneration("A JEI page does not support definition updates", capturedInvalidation, token, previous, wrappers, registry, gui);
             var allDisplays = new ObjectArrayList<JeiRecipeDisplay>();
             for (var recipe : RecipePoolJeiRegistry.INSTANCE.ownedRecipes(snapshot.orderedPools())) allDisplays.add(descriptions.describe(recipe));
             var converters = IngredientConverters.getConverters();
@@ -171,8 +188,9 @@ public class PrototypeJeiPlugin implements IModPlugin {
                     wrappers.add(wrapper);
                 }
             }
-            if (invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients || !staticInitial && !matchesDesired(snapshot, displays))
-                throw new IllegalStateException("HEI runtime or desired declaration changed during preparation");
+            boolean preparedDesired = staticInitial || matchesDesired(snapshot, displays);
+            if (!preparedDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
+                return rejectGeneration("HEI runtime or desired declaration changed during preparation", capturedInvalidation, token, previous, wrappers, registry, gui);
             if (previous != null) previous.token.revoke();
             JeiRecipeInputs.reset();
             HeiRecipeGeneration.closeLayout(Minecraft.getMinecraft(), gui);
@@ -186,23 +204,32 @@ public class PrototypeJeiPlugin implements IModPlugin {
             for (var update : updates) if (update.page().pool() != update.pool()) throw new IllegalStateException("JEI page did not install its prepared pool");
             for (var wrapper : wrappers) if (!access.confirmed(wrapper, false))
                 throw new IllegalStateException("HEI category or focus mappings changed after page data installation");
-            if (invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients || !staticInitial && !matchesDesired(snapshot, displays))
-                throw new IllegalStateException("HEI runtime or desired declaration became obsolete during installation");
-            generation = new Generation(snapshot, displays.frozenCopy(), descriptions, identities, ObjectLists.unmodifiable(wrappers), token);
+            var preparedGeneration = new Generation(snapshot, displays.frozenCopy(), descriptions, identities, ObjectLists.unmodifiable(wrappers), token);
+            boolean finalDesired = staticInitial || matchesDesired(snapshot, displays);
+            if (!finalDesired || desiredResolved != capturedDesiredSource || invalidationEpoch != capturedInvalidation || runtime != capturedRuntime || ingredients != capturedIngredients)
+                return rejectGeneration("HEI runtime or desired declaration became obsolete during installation", capturedInvalidation, token, previous, wrappers, registry, gui);
+            generation = preparedGeneration;
             token.activate();
             unreadyReason = "";
             return status();
         } catch (RuntimeException | Error failure) {
-            token.revoke();
-            if (previous != null) previous.token.revoke();
-            JeiRecipeInputs.reset();
-            if (invalidationEpoch == capturedInvalidation) unreadyReason = "JEI definition update failed: " + failure;
-            try {
-                HeiRecipeGeneration.closeLayout(Minecraft.getMinecraft(), gui);
-                HeiRecipeGeneration.hideAll(new HeiRecipeGeneration.NativeAccess(registry), previous == null ? List.of() : previous.wrappers, wrappers);
-            } catch (RuntimeException | Error cleanupFailure) { unreadyReason += "; cleanup failed: " + cleanupFailure; }
-            return status();
+            return rejectGeneration("JEI definition update failed: " + failure, capturedInvalidation, token, previous, wrappers, registry, gui);
         }
+    }
+
+    private static ApplyResult rejectGeneration(String reason, long expectedInvalidation,
+                                                RecipePoolJeiRecipe.DisplayToken token, @Nullable Generation previous,
+                                                List<RecipePoolJeiRecipe> wrappers, mezz.jei.recipes.RecipeRegistry registry,
+                                                RecipesGui gui) {
+        token.revoke();
+        if (previous != null) previous.token.revoke();
+        JeiRecipeInputs.reset();
+        if (invalidationEpoch == expectedInvalidation) unreadyReason = reason;
+        try {
+            HeiRecipeGeneration.closeLayout(Minecraft.getMinecraft(), gui);
+            HeiRecipeGeneration.hideAll(new HeiRecipeGeneration.NativeAccess(registry), previous == null ? List.of() : previous.wrappers, wrappers);
+        } catch (RuntimeException | Error cleanupFailure) { unreadyReason += "; cleanup failed: " + cleanupFailure; }
+        return status();
     }
 
     /** Unchanged initial custom pages keep the original static extension contract. */
@@ -217,6 +244,13 @@ public class PrototypeJeiPlugin implements IModPlugin {
             @Override public void apply() {}
         });
         return updates;
+    }
+
+    private static boolean initialPagesMatch(RecipeRegistry.Snapshot snapshot) {
+        for (var page : RecipePoolJeiRegistry.INSTANCE.pages()) {
+            if (snapshot.pools().get(page.pool().id()) != page.pool()) return false;
+        }
+        return true;
     }
 
     private static void requireClientOwner() {
@@ -263,14 +297,17 @@ public class PrototypeJeiPlugin implements IModPlugin {
         var resolved = desiredResolved == null ? null : desiredResolved.get();
         registrationSnapshot = resolved != null ? resolved.snapshot() : generation != null ? generation.snapshot : RecipeRegistry.INSTANCE.snapshot();
         var pools = registrationSnapshot.orderedPools();
+        var initialLocal = localStaticBaseline == null ? RecipeRegistry.INSTANCE.snapshot() : null;
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var displays = RecipeJeiDisplays.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();
         JeiRecipeInputs.reset();
         pages.beginRegistration();
         displays.beginRegistration();
-        MinecraftForge.EVENT_BUS.post(new RecipePoolJeiRegistrationEvent(pages, displays, helper, pools));
+        MinecraftForge.EVENT_BUS.post(new RecipePoolJeiRegistrationEvent(pages, displays, helper,
+            initialLocal == null ? pools : initialLocal.orderedPools()));
         displays.freeze();
+        if (initialLocal != null) localStaticBaseline = new Definitions(initialLocal, displays.frozenCopy());
         var categoryDisplays = resolved != null ? resolved.displays() : desiredResolved != null && generation != null ? generation.displays : displays;
         registrationDisplays = categoryDisplays;
         deferPoolRegistration = ExternalRecipePoolPages.requested(pools);
@@ -305,7 +342,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         for (var pool : pools) {
             var target = pool.existingJeiPageId();
             if (pool.hasExistingJeiPage() && target != null && !target.isBlank()
-                && mezz.jei.config.Config.isRecipeCategoryDisabled(target)) known.add(target);
+                && Config.isRecipeCategoryDisabled(target)) known.add(target);
         }
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();

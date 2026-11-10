@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
+
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.HatchConfig;

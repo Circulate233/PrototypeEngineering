@@ -1,11 +1,9 @@
-package com.circulation.prototype_eng.structure.reload;
+package com.circulation.prototype_eng.network.clientbound;
 
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.network.ConnectionClientboundPacket;
+import com.circulation.prototype_eng.storage.HatchConfigurationSnapshot;
 import io.netty.buffer.ByteBuf;
-import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
-import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
-import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
-import net.minecraftforge.fml.relauncher.Side;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -14,7 +12,7 @@ import java.util.UUID;
 /**
  * Each 16 KiB message is below vanilla's actual 1 MiB S2C custom-payload limit.
  */
-public final class StructureCatalogPacket implements IMessage {
+public final class HatchConfigurationPacket extends ConnectionClientboundPacket {
     public static final int CHUNK_BYTES = 16 * 1024;
     private UUID session;
     private long sequence;
@@ -22,10 +20,10 @@ public final class StructureCatalogPacket implements IMessage {
     private int index;
     private byte[] bytes;
 
-    public StructureCatalogPacket() {
+    public HatchConfigurationPacket() {
     }
 
-    public StructureCatalogPacket(UUID session, long sequence, int totalBytes, int index, byte[] bytes) {
+    public HatchConfigurationPacket(UUID session, long sequence, int totalBytes, int index, byte[] bytes) {
         this.session = Objects.requireNonNull(session);
         this.sequence = sequence;
         this.totalBytes = totalBytes;
@@ -34,8 +32,8 @@ public final class StructureCatalogPacket implements IMessage {
         validate();
     }
 
-    public static StructureCatalogPacket part(StructureReloadCoordinator.Publication publication, byte[] payload, int index) {
-        return new StructureCatalogPacket(publication.view().session(), publication.view().sequence(), payload.length, index,
+    public static HatchConfigurationPacket part(HatchConfigurationSnapshot snapshot, byte[] payload, int index) {
+        return new HatchConfigurationPacket(snapshot.session(), snapshot.revision(), payload.length, index,
             Arrays.copyOfRange(payload, index * CHUNK_BYTES, Math.min(payload.length, (index + 1) * CHUNK_BYTES)));
     }
 
@@ -64,29 +62,29 @@ public final class StructureCatalogPacket implements IMessage {
     }
 
     private void validate() {
-        if (session == null || sequence < 0 || totalBytes <= 0 || totalBytes > StructureCatalogCodec.MAX_BYTES
+        if (session == null || sequence < 0 || totalBytes <= 0 || totalBytes > HatchConfigurationSnapshot.MAX_BYTES
             || index < 0 || index >= chunks() || bytes == null || bytes.length != Math.min(CHUNK_BYTES, totalBytes - index * CHUNK_BYTES))
-            throw new IllegalArgumentException("Invalid structure catalog chunk bounds");
+            throw new IllegalArgumentException("Invalid hatch configuration chunk bounds");
     }
 
     @Override
-    public void fromBytes(ByteBuf buffer) {
+    protected void read(ByteBuf buffer) {
         if (buffer.readableBytes() < 36 || buffer.readableBytes() > CHUNK_BYTES + 36)
-            throw new IllegalArgumentException("Invalid structure catalog message length");
+            throw new IllegalArgumentException("Invalid hatch configuration message length");
         session = new UUID(buffer.readLong(), buffer.readLong());
         sequence = buffer.readLong();
         totalBytes = buffer.readInt();
         index = buffer.readInt();
         int length = buffer.readInt();
         if (length < 0 || length > CHUNK_BYTES || length != buffer.readableBytes())
-            throw new IllegalArgumentException("Invalid structure catalog chunk length");
+            throw new IllegalArgumentException("Invalid hatch configuration chunk length");
         bytes = new byte[length];
         buffer.readBytes(bytes);
         validate();
     }
 
     @Override
-    public void toBytes(ByteBuf buffer) {
+    protected void write(ByteBuf buffer) {
         validate();
         buffer.writeLong(session.getMostSignificantBits());
         buffer.writeLong(session.getLeastSignificantBits());
@@ -97,13 +95,8 @@ public final class StructureCatalogPacket implements IMessage {
         buffer.writeBytes(bytes);
     }
 
-    public static final class Handler implements IMessageHandler<StructureCatalogPacket, IMessage> {
-        @Override
-        public IMessage onMessage(StructureCatalogPacket message, MessageContext context) {
-            if (context.side != Side.CLIENT)
-                throw new IllegalStateException("Structure catalog is server-to-client only");
-            PrototypeEngineering.proxy.receiveStructureCatalog(message, context.netHandler);
-            return null;
-        }
+    @Override
+    protected void handleClientConnection(Object connection) {
+        PrototypeEngineering.proxy.receiveHatchConfiguration(this, connection);
     }
 }

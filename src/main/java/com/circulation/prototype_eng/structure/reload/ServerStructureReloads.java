@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.reload;
 
+import com.circulation.prototype_eng.network.InitNetwork;
+
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -53,7 +55,7 @@ public final class ServerStructureReloads {
                     current.publishedCatalog = current.candidateCatalog;
                     current.candidateCatalog = null;
                 }
-                for (var player : server.getPlayerList().getPlayers()) StructureNetwork.send(publication, player);
+                for (var player : server.getPlayerList().getPlayers()) InitNetwork.send(publication, player);
             });
         var subscription = MachineLifecycleRegistry.GLOBAL.register(new MachineLifecycleListener() {
             @Override
@@ -162,7 +164,7 @@ public final class ServerStructureReloads {
         current.scheduler.runAtBoundary(() -> {
             if (session == current && player.connection == connection && server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player) {
                 current.coordinator.enrollLoaded();
-                StructureNetwork.send(current.coordinator.publication(), player);
+                InitNetwork.send(current.coordinator.publication(), player);
             }
         });
     }
