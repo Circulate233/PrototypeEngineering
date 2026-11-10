@@ -11,7 +11,11 @@
 
 原模型美术署名为 **WI_8614_ice**，X：`@wi8614ice`、`@wi8614art`；模型中的原始 credit 字段继续保留。十阶模型加载、动画与实际渲染仍待游戏内验证。
 
-普通仓室使用标准 Forge 方块模型，不走 PM 的机器 Gecko/TESR 管线。发光路径位于纹理 `.mcmeta`：`ctm.layer=BLOOM`、`gregtech=true`、`extra.light=15`；这些声明已经保留。原 PM 的 `gradle/scripts/dependencies.gradle:71–72` 使用 Lumenized 编译依赖与 CTM 运行依赖。实际后处理仍需兼容的 CTM 与 BLOOM 层提供者（如原环境的 GregTech/Lumenized）；本项目当前未声明这些附加依赖，也未验证外部组合，不另造仓室渲染器。机器自定义 Gecko/Bloom 管线则仍是后续迁移项。
+普通仓室继续使用标准 Forge 方块模型。共有 44 个模型的 52 个 `bloom_*` 元素明确 `shade=false`，普通外壳及 AO 保持；外壳先绘制、稀疏彩色发光层后绘制。共享 `HatchBlock` 使用 CUTOUT 通道，使无 CTM 时透明像素也不会覆盖底图，实体的 opaque/fullCube 和存储行为不变。
+
+30 份 CTM 元数据保留原 `layer=BLOOM`、`gregtech=true`、`extra.light=15` 和动画，新增布尔 `prototype_eng_bloom` 标记。客户端 optional Mixin 只处理带该标记的元数据：实际枚举存在 BLOOM 时原样交给 CTM/Lumenized；不存在时深拷贝并仅把 layer 转为 CUTOUT，保持局部满亮参数。未标记资源不变，不修改全局枚举或其他模组纹理。没有 CTM 时仍正常显示颜色与透明覆盖；局部满亮与 Bloom 后处理分别由 CTM 和相应提供者完成。
+
+用户反馈中的白灰区域已有现场日志证据：未加载 Lumenized 的启动中，30 份纹理因未知 BLOOM 层解析失败，CTM 回退普通无元数据纹理，失去 light/专用层；物品原发光面仍参加方向漫反射，造成压暗。上述修复保持同一方块/物品模型父链、UV、几何、credit 及全部 163 个现存方块 PNG，6 份动画参数不变。新证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-model-parity/`；真实 GL/可选 Bloom 组合仍由用户重启客户端复验。
 
 本轮静态核对 128 份模型 JSON 的模型/纹理引用，无缺失引用；未将资源哈希检查包装为自动化测试。
 

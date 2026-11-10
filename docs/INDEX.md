@@ -4,8 +4,10 @@
 
 ## 当前检查点
 
+- 总体 Goal 保持暂停。本次单独处理用户仓室方块/物品白灰及 Lumenized 物品发暗反馈，源码已本地提交 `16640be`，未推送。44 模型/52 发光元素关闭方向漫反射并改为外壳先绘制；30 标记元数据缺 BLOOM 时仅复制回退 CUTOUT，保留 light=15，有原生层时保留 Bloom；共享仓室 CUTOUT 保透明覆盖。专项4/1、完整1872/248均全零，4 Java 与 Mixin 配置本机全级零、MCP build 成功。入口 [仓室美术](assets.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-model-parity/`；需重启客户端复验，新 Mixin 不能仅靠资源刷新应用。
+
 - 2026-11-10 局部定义替换 A–E、外部 JEI 页面绑定和 AE 网络包结构已完成本轮实现与验证。专项 67 tests/12 suites、完整构建 1868 tests/247 suites，失败/错误/跳过均为零；67 Java 本机 MCP 全级零、完整读回匹配，MCP build 成功。源码已本地提交 `644e710`，未推送。入口 [定义替换](recipe-definition-replacement.md)，新证据位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/unified-final/`。
-- 当前总 goal 为 active。本批已本地提交 `e35604e` 结构纯计划缓存、`2c55f70` 仓室配置/自动IO、`812c0f9` 大槽窗口/禁用滑块；未推送。完整1814 tests/237 suites全零，73Java与两语言本机全级零/完整读回，MCP build成功；精确候选编译与独立复核通过，原暂存及工作字节保留。自动IO部分结算/回调重入、邻居和同TE内容变化的公平刷新已修复；材料提示仅槽位数量/槽位容量，AE默认等价与比例API保持，自动IO默认关闭，能源用户限额默认-1、0禁止且保留profile配置上限。证据从 `build/staging/chat-goal-recovery-2026-11-10/handoff.md` 进入。
+- 历史仓室/结构批次已本地提交 `e35604e` 结构纯计划缓存、`2c55f70` 仓室配置/自动IO、`812c0f9` 大槽窗口/禁用滑块；未推送。完整1814 tests/237 suites全零，73Java与两语言本机全级零/完整读回，MCP build成功；精确候选编译与独立复核通过，原暂存及工作字节保留。自动IO部分结算/回调重入、邻居和同TE内容变化的公平刷新已修复；材料提示仅槽位数量/槽位容量，AE默认等价与比例API保持，自动IO默认关闭，能源用户限额默认-1、0禁止且保留profile配置上限。证据从 `build/staging/chat-goal-recovery-2026-11-10/handoff.md` 进入。
 - 2026-11-10 总 goal 已恢复。本批已实现输入来源策略、跨控制器周期结构检查并发、PN 外部网络参与者；独立复核发现的问题均已修复。完整构建 1744 tests / 224 suites 全零，37 Java 本机全级零及完整读回一致，MCP build 成功。已本地提交 `b49f62c` / `239b52d` / `ad8c584`，未推送；入口 `build/staging/resumed-goal-plan/plan.md`、`unified/third-results/` 及同目录 `exact-commit-preparation/`。
 - GUI/两件工具修复已提交 `73233cb` / `7bcb5e5`；用户最新回复“尚未复验”。范围结构选择器、机械构建器、仓室/控制器、JEI 与样板导入的实机结果仍待用户，不能以构建通过替代。入口 [结构工具](structure-tools.md)、[GUI 修复](gui-parity.md)、[JEI](jei.md)。新反馈优先。
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
@@ -13,7 +15,7 @@
 ## 下一步
 
 1. 定义替换本轮已验证并本地提交 `644e710`；保留两语言现有文案、`JeiResourceReloadTest` 与 `docs/INDEX.md~` 背景。当前基线为用户的 `b2dee38 spotless`，原 Gradle 导入修复已包含其中。
-2. 按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等剩余 Java 前提，然后继续 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。
+2. 先复验仓室方块/物品在无 CTM、仅 CTM、CTM+Lumenized 下的颜色、透明覆盖及局部发光；未自行启动游戏。总体 Goal 暂停，恢复后再按实际 PM/PN 调用补核命名 matcher/modifier 与普通 ZSData 桥接等 Java 前提，再接 CraftTweaker。原 CT 计划随清理丢失，按规格和源码恢复最小范围；不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓。
 3. 游戏由用户自行启动，GUI/工具/真实 HEI 页面和 AE 客户端调度仍待实机复验；纯行为测试不冒充原生运行通过。
 4. 用户已确认手动清理 build/.idea。原 stage 的 before/XML/MCP 原文件未恢复，旧条目只作历史；后续证据均保存在上述 build 外 recovery 目录。
 

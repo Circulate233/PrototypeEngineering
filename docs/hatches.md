@@ -1,5 +1,7 @@
 # 仓室核心与扩展接入
 
+2026-11-10 仓室模型反馈已落实窄修：普通外壳保持原光照，彩色发光面单独关闭方向漫反射并后绘制；CUTOUT 处理透明像素。CTM 缺少原生 BLOOM 枚举时，仅自有标记元数据回退 CUTOUT 并保留 light=15；安装 Lumenized 时保留原 BLOOM 层。方块/物品继续同源，不改贴图、动画、外壳 AO 或实体存储。原因、可选组合和证据见 [仓室美术来源](assets.md)。
+
 资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 契约和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。独立 FE 已接入同批预留/补偿；完整调度及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。
 
 当前已接入独立资源/FE 存储、公开发现契约、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现。完整构建、逻辑用例与 IDEA MCP 零诊断证据见[实施进度](implementation-status.md)，游戏内验收仍待补齐。
