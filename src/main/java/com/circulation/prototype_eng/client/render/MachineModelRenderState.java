@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.client.render;
 
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.data.ComponentData;
 import com.circulation.prototype_eng.client.render.gecko.GeckoModelBaker;
 import com.circulation.prototype_eng.client.render.gecko.GeckoRenderRequest;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -73,9 +74,14 @@ public class MachineModelRenderState implements AutoCloseable {
 
     public <T extends AEBaseTile & MachineControllerHost> void submit(T tile, ClientMachineRenderSnapshots.View view,
                                                                       BooleanSupplier accepted, float partialTicks) {
+        submit(tile, view, accepted, partialTicks, null);
+    }
+
+    public <T extends AEBaseTile & MachineControllerHost> void submit(T tile, ClientMachineRenderSnapshots.View view,
+                                                                      BooleanSupplier accepted, float partialTicks, @Nullable ComponentData.Snapshot data) {
         var origin = currentWorldOrigin();
         var state = states.get(tile);
-        var selected = state != null && state.view == view ? state.geometry : StructureRenderAnchors.select(view.snapshot(), view.bindings());
+        var selected = state != null && state.view == view && state.data == data ? state.geometry : StructureRenderAnchors.select(view.snapshot(), view.bindings(), data);
         if (state != null && (state.world != tile.getWorld() || !state.origin.equals(origin) || state.view.bindings() != view.bindings() || !sameGeometry(state.geometry, selected))) {
             withdraw(tile);
             state = null;
@@ -87,6 +93,7 @@ public class MachineModelRenderState implements AutoCloseable {
         state.view = view;
         state.accepted = accepted;
         state.geometry = selected;
+        state.data = data;
         var captured = state;
         BooleanSupplier current = () -> states.get(tile) == captured && captured.view == view && accepted.getAsBoolean() &&
             !tile.isInvalid() && tile.getWorld() == captured.world;
@@ -206,7 +213,7 @@ public class MachineModelRenderState implements AutoCloseable {
     public AxisAlignedBB bounds(AEBaseTile tile, ClientMachineRenderSnapshots.View view) {
         var state = states.get(tile);
         // Unknown model extents must reach the owner once; native frustum/distance checks happen before render.
-        if (state == null || state.view != view || !state.origin.equals(currentWorldOrigin()) || !state.complete || state.geometry.stream().anyMatch(anchor -> anchor.binding().forceGlobalRenderer()))
+        if (state == null || state.view != view || !state.accepted.getAsBoolean() || !state.origin.equals(currentWorldOrigin()) || !state.complete || state.geometry.stream().anyMatch(anchor -> anchor.binding().forceGlobalRenderer()))
             return MachineControllerRenderer.CONSERVATIVE_BOUNDS;
         return state.bounds;
     }
@@ -327,6 +334,7 @@ public class MachineModelRenderState implements AutoCloseable {
         final BlockPos origin;
         List<StructureRenderAnchors.Anchor> geometry;
         ClientMachineRenderSnapshots.View view;
+        ComponentData.@Nullable Snapshot data;
         BooleanSupplier accepted;
         AxisAlignedBB bounds;
         boolean complete;

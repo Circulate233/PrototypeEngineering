@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
 import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
 import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
+import com.circulation.prototype_eng.api.client.render.MachineRenderRegistrationEvent;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
@@ -228,6 +229,12 @@ public class ClientProxy extends CommonProxy {
         structures();
         if (renderSnapshots == null) renderSnapshots = new ClientMachineRenderSnapshots(structures(), renderBindings());
         return renderSnapshots;
+    }
+
+    @Override
+    public void postInit() {
+        super.postInit();
+        MinecraftForge.EVENT_BUS.post(new MachineRenderRegistrationEvent(renderBindings()));
     }
 
     @Override

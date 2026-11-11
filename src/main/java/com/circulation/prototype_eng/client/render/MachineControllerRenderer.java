@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.client.render;
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.api.data.ComponentData;
 import com.circulation.prototype_eng.proxy.ClientProxy;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
@@ -62,6 +63,11 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
 
     protected abstract ClientMachineRenderSnapshots.@Nullable View view(T tile);
 
+    /** Independent host renderers may supply a complete, attachment-validated ordinary data snapshot. */
+    protected ComponentData.@Nullable Snapshot animationData(T tile, ClientMachineRenderSnapshots.View view) {
+        return null;
+    }
+
     protected ClientMachineRenderSnapshots snapshots() {
         return client().renderSnapshots();
     }
@@ -102,7 +108,8 @@ public abstract class MachineControllerRenderer<T extends AEBaseTile & MachineCo
             frustum.setPosition(TileEntityRendererDispatcher.staticPlayerX, TileEntityRendererDispatcher.staticPlayerY, TileEntityRendererDispatcher.staticPlayerZ);
             if (!frustum.isBoundingBoxInFrustum(models().bounds(tile, view))) return;
         }
-        models().submit(tile, view, () -> snapshots().current(view), partialTicks);
+        var data = animationData(tile, view);
+        models().submit(tile, view, () -> snapshots().current(view) && animationData(tile, view) == data, partialTicks, data);
     }
 
     @Override

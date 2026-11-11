@@ -4,6 +4,7 @@ import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.GeckoStructureBinding;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
+import com.circulation.prototype_eng.api.data.ComponentData;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -11,6 +12,7 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -20,6 +22,11 @@ public final class StructureRenderAnchors {
     }
 
     public static List<Anchor> select(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings) {
+        return select(snapshot, bindings, null);
+    }
+
+    /** Data has already been captured from the exact client attachment; workers only see chosen names. */
+    public static List<Anchor> select(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings, @Nullable ComponentData.Snapshot data) {
         var result = new ObjectArrayList<Anchor>();
         var type = snapshot.display().type();
         boolean structurePath = snapshot.display().formed() && bindings.structures().keySet().stream().anyMatch(key -> key.machine().equals(type));
@@ -41,26 +48,26 @@ public final class StructureRenderAnchors {
                 int count = perSlice ? occurrence.repetitions() : 1;
                 for (int slice = 0; slice < count; slice++) {
                     var origin = perSlice ? MachineRenderSnapshot.sliceAnchor(occurrence.origin(), occurrence.sliceStep(), slice) : occurrence.origin();
-                    result.add(anchor(snapshot, new Part(Kind.STRUCTURE, occurrence.structure(), snapshot.path(index), perSlice ? slice : -1), origin, binding.model()));
+                    result.add(anchor(snapshot, new Part(Kind.STRUCTURE, occurrence.structure(), snapshot.path(index), perSlice ? slice : -1), origin, binding.model(), data));
                 }
             }
         } else {
             var machine = bindings.machines().get(type);
             if (machine != null)
-                result.add(anchor(snapshot, new Part(Kind.MACHINE, type, List.of(), -1), snapshot.controller(), machine));
+                result.add(anchor(snapshot, new Part(Kind.MACHINE, type, List.of(), -1), snapshot.controller(), machine, data));
             // Only actual assembled IDs participate; no client component factories or declaration guesses.
             for (var id : snapshot.components()) {
                 var binding = bindings.components().get(id);
                 if (binding != null)
-                    result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, List.of(), -1), snapshot.controller(), binding));
+                    result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, List.of(), -1), snapshot.controller(), binding, data));
             }
         }
         return List.copyOf(result);
     }
 
-    private static Anchor anchor(MachineRenderSnapshot snapshot, Part part, BlockPos origin, GeckoModelBinding binding) {
+    private static Anchor anchor(MachineRenderSnapshot snapshot, Part part, BlockPos origin, GeckoModelBinding binding, @Nullable ComponentData.Snapshot data) {
         return new Anchor(part, origin, snapshot.display().orientation(), modelOffset(snapshot.display().orientation(), binding), binding,
-            binding.effectiveLayers(snapshot.animation()));
+            binding.effectiveLayers(snapshot.animation(), data));
     }
 
     private static boolean perSlice(MachineRenderSnapshot.Occurrence occurrence, GeckoStructureBinding binding) {
