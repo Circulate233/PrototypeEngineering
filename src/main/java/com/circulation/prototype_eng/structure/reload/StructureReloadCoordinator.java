@@ -101,9 +101,13 @@ public final class StructureReloadCoordinator {
         requireOwner();
         if (closed || applying)
             throw new IllegalStateException("Loaded enrollment requires a live idle structure owner");
-        for (var entry : new ObjectArrayList<>(loadedHosts.reference2ObjectEntrySet())) {
-            var lifecycle = entry.getKey();
-            var loaded = entry.getValue();
+        // Fastutil map entries retain table indexes; removing an earlier host can invalidate them.
+        var pending = new ObjectArrayList<LoadedIdentity>(loadedHosts.size());
+        for (var entry : loadedHosts.reference2ObjectEntrySet())
+            pending.add(new LoadedIdentity(entry.getKey(), entry.getValue()));
+        for (var entry : pending) {
+            var lifecycle = entry.lifecycle();
+            var loaded = entry.loaded();
             if (loadedHosts.get(lifecycle) != loaded) continue;
             if (lifecycle.state() != MachineLifecycle.State.LOADED || lifecycle.retired() || !loaded.host.structureLifecycleCurrent(lifecycle)) {
                 unloaded(lifecycle);
@@ -277,6 +281,9 @@ public final class StructureReloadCoordinator {
     }
 
     private record Prepared(Registration registration, ControllerStructureUpdates.Reload reload) {
+    }
+
+    private record LoadedIdentity(MachineLifecycle lifecycle, Loaded loaded) {
     }
 
     private static final class Loaded {
