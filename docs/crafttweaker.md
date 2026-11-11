@@ -36,10 +36,70 @@ return [AllocationPortion.create(context.sources[0].index, context.amount)] as A
 
 NetworkConfiguration五角色为NETWORK_CENTER、COMPUTER、RESEARCH_STATION、DATA_CENTER、DEVICE；它安装MachineOwnership、真实device/work和对应计算槽/数据库组件。供给向量不是伪造owner或已提交槽内容的授权，DATA_CENTER使用原CODEC与持久化barrier，gate使用准确研究对象/priority；NETWORK_CENTER和RESEARCH_STATION级别须正数，DATA_CENTER容量须正数，其它role容量为0。
 
+## 控制器工厂、简单池与最终并行选择
+
+`MachineType.processing(names, candidates, probes)`默认创建真正的MultithreadController，扫描器和work host由实际owner提供；`factory(MachineFactory.crossRecipe())`选择CrossRecipeController，Java addon可提供自己的MachineFactory与MachineComponent句柄。装配新建与恢复共用同一factory、组件descriptor和codec；默认PLANNED_PARALLEL及显式executionMode保持。下列为声明片段，`names`、实际需求、结构与翻译由调用方提供：
+
+```zenscript
+import mods.prototype_eng.MachineType;
+import mods.prototype_eng.MachineFactory;
+import mods.prototype_eng.recipe.Recipe;
+import mods.prototype_eng.recipe.ParallelismSelection;
+import mods.prototype_eng.recipe.Pool;
+import mods.prototype_eng.jei.Options;
+var recipe = Recipe.withSelection("your_addon:recipe", "v1", 10, [], [], 4,
+    ParallelismSelection.create(function(suggested as int) { return suggested + 1; }));
+var pool = Pool.simple("your_addon:pool", "your_addon.pool.title", [recipe])
+    .jeiOptions(Options.create(true, "expanded"));
+pool.register();
+MachineType.create("your_addon:machine", "your_addon.machine.title", "your_addon:shape")
+    .factory(MachineFactory.crossRecipe()).recipePool("your_addon:pool")
+    .processing(names, 8, 8).register("v1");
+```
+
+`ParallelismSelection.fixed(n)`提供固定值；int SAM在candidate配置后、完整资源准入前选择最终数量，可能超过suggested，仍须支付最终数量的START/TICK/END物料、FE和网络费用。回调只能作纯计算；unknown输入改写不凭此获得固定输入预筛保证。`Pool.simple`使用实际owner输入策略及原SimpleRecipePool索引，未知输入改写按底层契约回退；Java `ZenRecipePool.of`保留准确addon pool/recipe/codec。
+
+## 渲染注册与普通data属性
+
+```zenscript
+import mods.prototype_eng.render.RenderBindings;
+var model = RenderBindings.gecko().geo("your_addon:geo/model.json")
+    .texture("your_addon:textures/model.png").animation("your_addon:animations/model.json")
+    .defaultAnimation("idle").animationLayer("base")
+    .animationStateKey("animation").animationLayersStateKey("animation_layers")
+    .modelOffset(0.0, 0.0, 0.0).yOffset(0.0).pass("default");
+RenderBindings.bindGeckoToMachineType("your_addon:machine", model);
+RenderBindings.bindGeckoToStructure("your_addon:machine", "your_addon:shape",
+    model.sliceMode("per_slice"));
+```
+
+也可用`bindGeckoToComponentType`绑定装配组件。每次bind冻结当前builder值；启动ClientProxy.postInit的MachineRenderRegistrationEvent消费原生renderSnapshots/renderer共用的同一个MachineRenderBindings，注册在回调前关闭，资源重载不重放启动声明。geo与texture必须提供；pass支持default、transparent、bloom、bloom_transparent，sliceMode支持per_slice或structure_only。modelOffset随front/top旋转，yOffset沿世界Y，forceGlobalRenderer(true)使用原生全局renderer入口。
+
+普通data的动画属性读取同步快照中的字符串，animation_layers为逗号分隔的有序名称。优先序为typed MachineAnimationState、data层名称、data单名称、声明layers/default；机器须安装componentData并由实际服务器owner写入普通data。Basic renderer只取准确attachment、完整装配和匹配display generation的数据；自定义原生renderer通过受保护的animationData提供同样验证过的ComponentData.Snapshot。数据身份改变撤销旧draw/hide接受结果；worker只收到冻结动画名称、坐标、朝向与epoch，不调用World/TE或脚本回调。
+
+## JEI默认设置与独立页面
+
+`Options.defaults(chanceOverlay, "alternatives")`设置全局默认；每池`jeiOptions(Options.create(chanceOverlay, "expanded"))`覆盖概率标记及候选轮播/展开方式，实际默认原生页和tooltip继续使用原row的long数量。池构造方法返回新句柄，配置后调用register。`existingJeiPage(uid)`对有效外部UID继续仅注册机器入口。
+
+独立页面使用`customJeiPage(Page.named("your_addon:page"))`。客户端Java addon先以`ScriptJeiEvents.page(id, actualPage)`登记从准确canonical pool创建的RecipePoolJeiPage实例，client event把该实例交给原RecipePoolJeiRegistry；页面继续承担自己的layout/draw/update职责，可读取公共options。缺少已命名实例会明确拒绝；此入口不提供GUI/layout DSL。
+
 ## 验证范围
 
-本批真实SDK Parser/Compiler→SAM→canonical Java运行行为随正常build验证：1918 tests/261 suites全零，60Java本机MCP全级零/全文和普通bytes匹配，MCP build成功。测试fixture在首GenericRegistry载IData及SDK的ExpandAnyDict、ExpandDataStringDict、ExpandInt、ExpandBool、ExpandString五个实际扩展，保留SDK本身caster/equality/array机制，避免不完整环境先缓存primitive castRules。上述fixture环境不是完整FML/CT原生运行初始化。
+最新完整build含Spotless成功50s，1921 tests/264 suites全零；真实SDK Parser/Compiler→SAM→canonical Java行为包含在该build中。官方735main＋271test＋generated Tags共1007Java本机MCP errorsOnly:false全级零，38修改源码及Tags完整读回和当前bytes匹配，原生MCP build成功。G1–G5及已确认代码scope已闭合，独立审计未发现其它确证代码缺口。测试fixture在首GenericRegistry载IData及SDK的ExpandAnyDict、ExpandDataStringDict、ExpandInt、ExpandBool、ExpandString五个实际扩展，保留SDK本身caster/equality/array机制，避免不完整环境先缓存primitive castRules。上述fixture环境不是完整FML/CT原生运行初始化。
 
-第二阶段普通data INDEX/member/IData已有真实Compiler同helper验证；SDK718必要的单类Mixin注入仅核descriptor/profile及调用helper，用户仍需重启客户端验收实际注入。World sampler使用owner线程的合约已有行为证明，真实World/FTB/native数据库/网络、保存和客户端同步及GUI/HEI/视觉仍待游戏复验，由用户自行启动。总体Goal仍active；完整scope独立审计继续。
+第二阶段普通data INDEX/member/IData已有真实Compiler同helper验证；SDK718必要的单类Mixin注入仅核descriptor/profile及调用helper，用户仍需重启客户端验收实际注入。World sampler使用owner线程的合约已有行为证明，真实World/FTB/native数据库/网络、保存和客户端同步及GUI/HEI/视觉仍待游戏复验，由用户自行启动。整体Goal仍active，等待用户原生验收。
 
-最新源码提交、准确manifest/原始XML/MCP/保护证据从[实施进度](implementation-status.md)及`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/ct-third-exact/`进入。源码阅读从`integration/crafttweaker/{structure,recipe,resource,research,network}`与对应`api`开始。
+最新源码提交为`8c5ba388`/`f4b749e5`/`58fc925f`；准确manifest/原始XML/MCP/保护证据从[实施进度](implementation-status.md)及`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/ct-fourth-exact/`、同级`full-idea-current/final/`进入。源码阅读从`integration/crafttweaker/{render,jei,structure,recipe,resource,research,network}`与对应`api`开始。
+
+
+## 用户原生复验入口
+
+以下均未报告游戏通过；由用户完整重启客户端，实际结果记入后续实施状态。旧[可视示例步骤](../run/visual-examples/README.md)继续适用，忽略示例目录不在官方IDE检查scope。
+
+| 范围 | 待观察的结果 |
+|---|---|
+| SDK与普通data | 实际CT脚本member/INDEX/IData赋值注入成功，保存重进后值保持；动画单属性与CSV层变化只接受当前owner数据 |
+| World/保存与同步 | 成型/重附/卸载、退出世界与重连后数据和render代正确；末tick新data保存，旧片和过期session无效 |
+| FTB/研究/数据库/五网络角色 | 实际actor/team权限、研究站阶段投料、下载/奖励/原生盘与数据库重启；最终并行物料/FE/网络费用及旧代补偿 |
+| GUI/工具/HEI/AE样板 | 既有构造器绑定/单格与整种替换/30秒及Shift滚轮；结构JEI完整169用料/候选/“原名-结构”输出并实际编码；默认选项与独立页重建 |
+| 复杂渲染 | machine/component/structure资源绑定、四pass、每slice/整structure锚点、front/top旋转与Y偏移、普通data动画及Gecko/Bloom视觉 |
