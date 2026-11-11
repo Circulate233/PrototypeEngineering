@@ -16,7 +16,6 @@ import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Comparator;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -92,9 +91,7 @@ public record DataCenterGuiSnapshot(boolean initialized, boolean savePending, St
         }
         var source = new ObjectArrayList<Entry>();
         if (view.viewPermission() == Decision.ALLOWED) {
-            var definitions = new ObjectArrayList<>(registry.all());
-            definitions.sort(Comparator.comparing(definition -> definition.id().toString()));
-            for (var definition : definitions) {
+            for (var definition : registry.sortedById()) {
                 int cloudLevel = cloud == null ? 0 : cloud.completedLevel(definition.id());
                 int stored = database == null ? 0 : database.storedResearch().getInt(definition.id());
                 boolean ordinary = !definition.specialOnly() && definition.deliveryPolicy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM;
@@ -105,7 +102,7 @@ public record DataCenterGuiSnapshot(boolean initialized, boolean savePending, St
             }
         }
         int offset = source.isEmpty() ? 0 : Math.min(request.offset() / MAX_ROWS, (source.size() - 1) / MAX_ROWS) * MAX_ROWS;
-        var rows = new ObjectArrayList<>(source.subList(offset, offset + Math.min(MAX_ROWS, source.size() - offset)));
+        var rows = source.subList(offset, offset + Math.min(MAX_ROWS, source.size() - offset));
         Selection selected = null;
         for (var row : rows) if (row.selection().equals(request.selection())) selected = row.selection();
         if (selected == null && !rows.isEmpty()) selected = rows.getFirst().selection();

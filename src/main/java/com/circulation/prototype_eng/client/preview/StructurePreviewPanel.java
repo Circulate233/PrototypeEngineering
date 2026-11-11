@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
@@ -436,7 +437,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             for (var entry : counts.object2LongEntrySet())
                 if (entry.getLongValue() > 0) materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
             materials.sort(Comparator.comparingLong(ConstructionMaterial::amount).reversed());
-            constructionMaterials = List.copyOf(materials);
+            constructionMaterials = ObjectLists.unmodifiable(materials);
         }
         return constructionMaterials;
     }

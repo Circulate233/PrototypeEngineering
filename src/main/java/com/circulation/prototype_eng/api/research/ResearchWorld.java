@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
+import java.util.List;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
@@ -81,6 +82,7 @@ public final class ResearchWorld {
     private final ResearchEligibility eligibility;
     private final Consumer<ResearchWorldSnapshot> writer;
     private final Object2ObjectLinkedOpenHashMap<String, TeamProgress> teams = new Object2ObjectLinkedOpenHashMap<>();
+    @Nullable private List<TeamProgress> capturedTeams;
     private final ResearchDownloadSources downloadSources;
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadOperation> downloads = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<UUID, ResearchDownloadReceipt> downloadReceipts = new Object2ObjectLinkedOpenHashMap<>();
@@ -224,13 +226,23 @@ public final class ResearchWorld {
         });
     }
 
+    private List<TeamProgress> teamSnapshot() {
+        if (capturedTeams == null) capturedTeams = ObjectLists.unmodifiable(new ObjectArrayList<>(teams.values()));
+        return capturedTeams;
+    }
+
     private void applyDestructions() {
         if (pendingDestructions.isEmpty()) {
             return;
         }
         for (var site : pendingDestructions) {
             for (var team : teams.values()) {
-                if (team.station.sites().stream().anyMatch(source -> source.sameStation(site))) {
+                boolean present = false;
+                for (var source : team.station.sites()) if (source.sameStation(site)) {
+                    present = true;
+                    break;
+                }
+                if (present) {
                     try {
                         team.station.destroy(site, PlannedDeadline.after(Duration.ofSeconds(5)));
                     } catch (RuntimeException | Error failure) {
@@ -451,7 +463,7 @@ public final class ResearchWorld {
                 return null;
             var teamSnapshot = team == null ? null : team.research.snapshot();
             var knownMembers = team == null ? ObjectSets.<UUID>emptySet() : team.knownMembers;
-            var blacklist = team == null ? ObjectSets.<ResourceLocation>emptySet() : new ObjectOpenHashSet<>(team.blacklist);
+            var blacklist = team == null ? ObjectSets.<ResourceLocation>emptySet() : team.blacklistSnapshot();
             var decision = permission == null ? ResearchPermissionPolicy.Decision.ALLOWED
                 : Objects.requireNonNull(permissions.can(Objects.requireNonNull(action), permission));
             var view = decision == ResearchPermissionPolicy.Decision.ALLOWED
@@ -527,6 +539,7 @@ public final class ResearchWorld {
                 team.research.restore(snapshot.research());
                 team.knownMembers = snapshot.knownMembers();
                 team.blacklist.addAll(snapshot.blacklist());
+                team.capturedBlacklist = null;
                 team.manual.restore(snapshot.manualSessions());
                 team.station.restore(snapshot.stationWork());
                 restoredTeams.put(snapshot.teamId(), team);
@@ -540,6 +553,7 @@ public final class ResearchWorld {
             }
             players = restoredPlayers;
             teams.putAll(restoredTeams);
+            capturedTeams = null;
             for (var operation : saved.downloads()) downloads.put(operation.id(), operation);
             for (var receipt : saved.downloadReceipts()) downloadReceipts.put(receipt.operationId(), receipt);
             for (var operation : saved.diskImports()) diskImports.put(operation.id(), operation);
@@ -1482,7 +1496,10 @@ public final class ResearchWorld {
                             && permissions.can(action, permission) == ResearchPermissionPolicy.Decision.ALLOWED && teams.get(target) == previous;
                     },
                     () -> {
-                        if (previous == null) teams.put(target, team);
+                        if (previous == null) {
+                            teams.put(target, team);
+                            capturedTeams = null;
+                        }
                         captureTeam(target, capturedMembers);
                     });
             } finally {
@@ -1557,6 +1574,7 @@ public final class ResearchWorld {
             }
             var team = captureTeam(membership.teamId(), membership.members());
             boolean changed = value ? team.blacklist.add(id) : team.blacklist.remove(id);
+            if (changed) team.capturedBlacklist = null;
             if (changed) {
                 dirty = true;
             }
@@ -1593,7 +1611,7 @@ public final class ResearchWorld {
                     dirty = true;
                 }
             }
-            for (var team : new ObjectArrayList<>(teams.values())) {
+            for (var team : teamSnapshot()) {
                 if (!current.getAsBoolean()) {
                     break;
                 }
@@ -1720,11 +1738,11 @@ public final class ResearchWorld {
         if (team == null) {
             team = new TeamProgress(id, new TeamResearchQueue(registry, resources, id), players);
             teams.put(id, team);
+            capturedTeams = null;
             dirty = true;
         }
-        var copy = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
-        if (!copy.equals(team.knownMembers)) {
-            team.knownMembers = copy;
+        if (!members.equals(team.knownMembers)) {
+            team.knownMembers = ObjectSets.unmodifiable(new ObjectOpenHashSet<>(members));
             dirty = true;
         }
         return team;
@@ -1743,11 +1761,13 @@ public final class ResearchWorld {
         for (var id : team.knownMembers) {
             members.put(id, Objects.requireNonNull(players.get(id)));
         }
-        var blacklist = new ObjectOpenHashSet<>(team.blacklist);
+        Set<ResourceLocation> blacklist = team.blacklistSnapshot();
         if (disappeared) {
+            var blocked = new ObjectOpenHashSet<>(blacklist);
             for (var definition : registry.all()) {
-                blacklist.add(definition.id());
+                blocked.add(definition.id());
             }
+            blacklist = blocked;
         }
         return eligibility.calculateStructural(team.id, team.knownMembers, members, team.research.completedLevelsSnapshot(), blacklist);
     }
@@ -1976,7 +1996,14 @@ public final class ResearchWorld {
         private final ManualResearch manual;
         private final ResearchStationWork station;
         private final ObjectSet<ResourceLocation> blacklist = new ObjectOpenHashSet<>();
+        @Nullable private ObjectSet<ResourceLocation> capturedBlacklist;
         private ObjectSet<UUID> knownMembers = ObjectSets.emptySet();
+
+        private ObjectSet<ResourceLocation> blacklistSnapshot() {
+            if (capturedBlacklist == null) capturedBlacklist = blacklist.isEmpty() ? ObjectSets.emptySet()
+                : ObjectSets.unmodifiable(new ObjectOpenHashSet<>(blacklist));
+            return capturedBlacklist;
+        }
 
         private TeamProgress(String id, TeamResearchQueue queue, Map<UUID, PlayerResearchState> sources) {
             this.id = id;

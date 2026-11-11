@@ -1779,7 +1779,11 @@ public final class RecipeProcess {
                 transactions.addAll(stage.acquisition.transactions());
             }
             transactions.addAll(Objects.requireNonNull(participants));
-            boolean sequential = round.stream().anyMatch(stage -> stage.acquisition.sequential());
+            boolean sequential = false;
+            for (var stage : round) if (stage.acquisition.sequential()) {
+                sequential = true;
+                break;
+            }
             var contexts = new ObjectArrayList<StorageContext>();
             if (sequential) {
                 for (var stage : round) {

@@ -10,7 +10,6 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -86,9 +85,9 @@ public final class MachineComputerComponents implements MachineLifecycleListener
             throw new IllegalStateException("Computer capture requires its exact live owner and formation");
         }
         var hatches = MachineHatches.get(owner);
-        boolean capturedHostsValid = source != null || hatches.resources().stream().allMatch(ResourceHatch::isValid);
+        boolean capturedHostsValid = source != null || validResources(hatches);
         var sources = source == null ? new Sources(capturedHostsValid ? sources(hatches) : List.of(),
-            () -> MachineHatches.get(owner) == hatches && hatches.resources().stream().allMatch(ResourceHatch::isValid))
+            () -> MachineHatches.get(owner) == hatches && validResources(hatches))
             : Objects.requireNonNull(source.apply(owner), "Computer physical sources capture");
         var installed = NetworkComputerComponentInventory.capture(registry, owner, sources.storages());
         var combined = new Object2LongOpenHashMap<>(NetworkResourceModifier.copyResources(declared));
@@ -108,6 +107,11 @@ public final class MachineComputerComponents implements MachineLifecycleListener
         });
     }
 
+    private static boolean validResources(MachineHatches hatches) {
+        for (var hatch : hatches.resources()) if (!hatch.isValid()) return false;
+        return true;
+    }
+
     private List<? extends SlottedResourceStorage> sources(MachineHatches hatches) {
         var result = new ObjectArrayList<SlottedResourceStorage>();
         for (var hatch : hatches.resources()) {
@@ -118,7 +122,7 @@ public final class MachineComputerComponents implements MachineLifecycleListener
                 result.add(output);
             }
         }
-        return List.copyOf(result);
+        return result; // Private builder; the Sources constructor performs the one required freeze.
     }
 
     private boolean live() {

@@ -9,7 +9,7 @@ import java.util.Objects;
 /** True next-tick client open queue: chat closes after executing its command. */
 public final class PreviewClientOpenQueue {
     public static final PreviewClientOpenQueue INSTANCE = new PreviewClientOpenQueue();
-    private final ObjectArrayList<Runnable> pending = new ObjectArrayList<>();
+    private ObjectArrayList<Runnable> pending = new ObjectArrayList<>();
 
     private PreviewClientOpenQueue() {
     }
@@ -21,8 +21,8 @@ public final class PreviewClientOpenQueue {
     @SubscribeEvent
     public void tick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END || pending.isEmpty()) return;
-        var ready = new ObjectArrayList<>(pending);
-        pending.clear();
+        var ready = pending;
+        pending = new ObjectArrayList<>();
         for (var action : ready) action.run();
     }
 }

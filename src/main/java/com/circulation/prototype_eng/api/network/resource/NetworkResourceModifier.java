@@ -39,9 +39,11 @@ public final class NetworkResourceModifier {
     }
 
     /**
-     * Copies non-negative quantities and rejects conflicting metadata for a shared resource id.
+     * Captures non-negative quantities and rejects conflicting metadata for a shared resource id.
+     * Only this library's already validated immutable vector can be reused without another copy.
      */
     public static Object2LongMap<NetworkResourceType> copyResources(Object2LongMap<NetworkResourceType> resources) {
+        if (resources instanceof CanonicalResources canonical && canonical.nonNegative) return canonical;
         return freeze(copy(resources, true, new Object2ObjectOpenHashMap<>()));
     }
 
@@ -72,7 +74,7 @@ public final class NetworkResourceModifier {
     }
 
     private static Object2LongMap<NetworkResourceType> freeze(Object2LongOpenHashMap<NetworkResourceType> quantities) {
-        return Object2LongMaps.unmodifiable(new FrozenResources(quantities));
+        return new CanonicalResources(new FrozenResources(quantities));
     }
 
     public Object2LongMap<NetworkResourceType> flatAdjustments() {
@@ -88,7 +90,11 @@ public final class NetworkResourceModifier {
      */
     public Object2LongMap<NetworkResourceType> apply(Object2LongMap<NetworkResourceType> base) {
         var metadata = new Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType>();
-        var quantities = copy(base, true, metadata);
+        Object2LongMap<NetworkResourceType> quantities;
+        if (base instanceof CanonicalResources canonical && canonical.nonNegative) {
+            quantities = canonical;
+            for (var type : canonical.keySet()) requireConsistentType(type, metadata);
+        } else quantities = copy(base, true, metadata);
         for (var type : flat.keySet()) {
             requireConsistentType(type, metadata);
         }
@@ -112,19 +118,34 @@ public final class NetworkResourceModifier {
     /**
      * Frozen entries close the setValue mutation route left open by fastutil's map/set wrappers.
      */
+    private static final class CanonicalResources extends Object2LongMaps.UnmodifiableMap<NetworkResourceType> {
+        @Serial
+        private static final long serialVersionUID = 1L;
+        private final boolean nonNegative;
+
+        private CanonicalResources(FrozenResources quantities) {
+            super(quantities);
+            nonNegative = quantities.nonNegative;
+        }
+    }
+
     private static final class FrozenResources extends AbstractObject2LongMap<NetworkResourceType> {
         @Serial
         private static final long serialVersionUID = 1L;
         private final Object2LongOpenHashMap<NetworkResourceType> quantities;
         private final ObjectSet<Object2LongMap.Entry<NetworkResourceType>> entries;
+        private final boolean nonNegative;
 
         private FrozenResources(Object2LongOpenHashMap<NetworkResourceType> quantities) {
             this.quantities = quantities;
             var entries = new ObjectOpenHashSet<Object2LongMap.Entry<NetworkResourceType>>();
+            boolean nonNegative = true;
             for (var entry : quantities.object2LongEntrySet()) {
                 entries.add(new BasicEntry<>(entry.getKey(), entry.getLongValue()));
+                nonNegative &= entry.getLongValue() >= 0;
             }
             this.entries = ObjectSets.unmodifiable(entries);
+            this.nonNegative = nonNegative;
         }
 
         @Override

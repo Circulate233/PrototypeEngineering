@@ -288,8 +288,11 @@ public final class PreviewBlockModels implements AutoCloseable {
     private List<StructureProjectionState.Sample> drawSamples(StructurePreviewModel model, List<StructureProjectionState.Sample> samples,
                                                               StructurePreviews.Projection intent, Object token, double x, double y, double z, BooleanSupplier guard) {
         BooleanSupplier valid = () -> cache.currentEpoch(token) && current(model) && guard.getAsBoolean();
-        var ordered = new ObjectArrayList<>(samples);
-        ordered.sort((left, right) -> Double.compare(distance(right.position(), x, y, z), distance(left.position(), x, y, z)));
+        var visible = new ObjectArrayList<StructureProjectionState.Sample>();
+        double maximumDistance = intent.options().maxDistance() * intent.options().maxDistance();
+        for (var sample : samples)
+            if (distance(sample.position(), x, y, z) <= maximumDistance) visible.add(sample);
+        visible.sort((left, right) -> Double.compare(distance(right.position(), x, y, z), distance(left.position(), x, y, z)));
         var buffer = buffers.borrow();
         boolean building = false;
         Throwable failure = null;
@@ -300,10 +303,6 @@ public final class PreviewBlockModels implements AutoCloseable {
             buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.BLOCK);
             building = true;
             // C selected/paid cell visits already. Preparation and emission pay a separate, bounded quad work budget.
-            var visible = new ObjectArrayList<StructureProjectionState.Sample>();
-            for (var sample : ordered)
-                if (distance(sample.position(), x, y, z) <= intent.options().maxDistance() * intent.options().maxDistance())
-                    visible.add(sample);
             pending = sampleModels.present(model, visible, intent.options().blockModelBuildVisitsPerFrame(), valid, buffer::addVertexData);
             buffer.finishDrawing();
             building = false;

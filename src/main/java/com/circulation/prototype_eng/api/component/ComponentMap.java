@@ -34,6 +34,8 @@ public final class ComponentMap<E> {
     private long graphValidatedRevision = -1;
     private long assemblyCapturedRevision = -1;
     private List<SavedBinding<E, ?>> frozenAssembly = ObjectLists.emptyList();
+    private long orderedBindingsRevision = -1;
+    private List<SavedBinding<E, ?>> frozenOrderedBindings = ObjectLists.emptyList();
 
     /**
      * Checks declaration identities and the same dependency/system graph used by live dispatch,
@@ -250,11 +252,17 @@ public final class ComponentMap<E> {
      * ordered. This deliberately does not validate the graph and must not replace save validation.
      */
     public List<SavedBinding<E, ?>> assemblyBindings() {
+        long revision = components.revision();
+        if (assemblyCapturedRevision == revision) return frozenAssembly;
         var result = new ObjectArrayList<SavedBinding<E, ?>>();
-        for (var node : components.assemblyComponents()) {
-            result.add(node.component().saved(node.dependencies()));
+        var nodes = components.assemblyIterator();
+        while (nodes.hasNext()) {
+            var node = nodes.next();
+            result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
         }
-        return ObjectLists.unmodifiable(result);
+        frozenAssembly = ObjectLists.unmodifiable(result);
+        assemblyCapturedRevision = revision;
+        return frozenAssembly;
     }
 
     /**
@@ -267,6 +275,12 @@ public final class ComponentMap<E> {
     /** Original component dependency order, charged before each current publication visit. */
     @Nullable
     public List<SavedBinding<E, ?>> orderedBindings(RecipeWorkBudget work) {
+        long revision = components.revision();
+        if (orderedBindingsRevision == revision) {
+            for (int index = 0; index < frozenOrderedBindings.size(); index++)
+                if (!work.take()) return null;
+            return frozenOrderedBindings;
+        }
         var result = new ObjectArrayList<SavedBinding<E, ?>>();
         var ordered = components.orderedComponents(work);
         if (ordered == null) return null;
@@ -274,7 +288,9 @@ public final class ComponentMap<E> {
             if (!work.take()) return null;
             result.add(node.component().saved(new FrozenDependencies<>(node.dependencies())));
         }
-        return ObjectLists.unmodifiable(result);
+        frozenOrderedBindings = ObjectLists.unmodifiable(result);
+        orderedBindingsRevision = revision;
+        return frozenOrderedBindings;
     }
 
     /**

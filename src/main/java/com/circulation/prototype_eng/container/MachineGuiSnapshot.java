@@ -40,7 +40,13 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
     }
 
     public MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset, List<Entry> entries) {
-        this(formed, active, totalSlots, offset, entries, entries.stream().map(Entry::status).reduce(WorkSlotStatus.IDLE, MachineGuiSnapshot::combine), Details.EMPTY);
+        this(formed, active, totalSlots, offset, entries, overall(entries), Details.EMPTY);
+    }
+
+    private static WorkSlotStatus overall(List<Entry> entries) {
+        var status = WorkSlotStatus.IDLE;
+        for (var entry : entries) status = combine(status, entry.status());
+        return status;
     }
 
     @SuppressWarnings("unused") // AE2 GuiSync invokes the public ByteBuf constructor.

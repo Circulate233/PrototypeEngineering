@@ -66,7 +66,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             if (result == ProcessResult.SUCCESS) {
                 result = reserveOutput(hatches, output, requirement.payload().voidExcessOutputs(), id, reservations);
             }
-            return new ReservedRequirement(result, reservations);
+            return ReservedRequirement.frozen(result, reservations);
         } catch (RuntimeException | Error failure) {
             ReservedRequirement.rollbackAfterFailure(reservations, failure);
             throw failure;

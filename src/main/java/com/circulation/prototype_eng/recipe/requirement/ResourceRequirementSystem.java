@@ -75,7 +75,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             if (resolveInputs) {
                 selection = ResourceInputResolver.resolve(process, requirement, hatches, checkTimes, scaled(inputs, checkTimes));
                 if (selection.result() != ProcessResult.SUCCESS) {
-                    return new ReservedRequirement(selection.result(), reservations);
+                    return ReservedRequirement.frozen(selection.result(), reservations);
                 }
                 inputs = selection.inputs();
             }
@@ -97,7 +97,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 ProcessResult checked = preflight(hatches, inputs, checkTimes, payload.inputAllocation(), stage, checkedOutputs,
                     !inputs.isEmpty(), needsOutput, payload.voidExcessOutputs(), id);
                 if (checked != ProcessResult.SUCCESS) {
-                    return new ReservedRequirement(checked, reservations);
+                    return ReservedRequirement.frozen(checked, reservations);
                 }
             }
             ProcessResult result = payload.inputAllocation() == InputAllocation.SPLITTABLE
@@ -106,7 +106,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             if (result == ProcessResult.SUCCESS) {
                 result = reserve(hatches, produced, false, needsOutput, payload.voidExcessOutputs(), id, reservations);
             }
-            var reserved = new ReservedRequirement(result, reservations);
+            var reserved = ReservedRequirement.frozen(result, reservations);
             if (result == ProcessResult.SUCCESS && selection != null) {
                 selection.install();
                 return new ResolvedResources(reserved, selection);
@@ -362,7 +362,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
             @Override
             public RequirementTransaction acquire() {
                 if (process.hatches() != hatches) {
-                    return new ReservedRequirement(RecipeText.StorageChanged.blocked(), List.of());
+                    return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), List.of());
                 }
                 var budget = process.preparationBudget();
                 if (!parallelCapture.current() || chanceCapture != null && !chanceCapture.current())

@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.api.research.station;
 
+import java.util.Collections;
+import java.util.function.Function;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.energy.EnergyOutput;
@@ -77,11 +80,12 @@ public final class ResearchStations {
         return saved;
     }
 
-    private static MachineHatches pool(List<MachineHatches> sources) {
+    private static <T> MachineHatches pool(List<T> sources, Function<T, MachineHatches> hatchesOf) {
         var resources = new ObjectArrayList<ResourceHatch>();
         var inputs = new ObjectArrayList<EnergyInput>();
         var outputs = new ObjectArrayList<EnergyOutput>();
-        for (var hatches : sources) {
+        for (var source : sources) {
+            var hatches = hatchesOf.apply(source);
             resources.addAll(hatches.resources());
             inputs.addAll(hatches.energyInputs());
             outputs.addAll(hatches.energyOutputs());
@@ -139,8 +143,14 @@ public final class ResearchStations {
         var lifecycle = machine.lifecycle();
         return identity.unique() && identity.runtimeIdentity() == machine && lifecycle != null && lifecycle.state() == MachineLifecycle.State.LOADED
             && lifecycle.host().worldIdentity() == identity.worldIdentity() && lifecycle.host().identity().equals(identity.location())
-            && MachineHatches.get(machine) == hatches && hatches.resources().stream().allMatch(ResourceHatch::isValid)
-            && hatches.energyInputs().stream().allMatch(EnergyInput::isValid) && hatches.energyOutputs().stream().allMatch(EnergyOutput::isValid);
+            && MachineHatches.get(machine) == hatches && validHatches(hatches);
+    }
+
+    private static boolean validHatches(MachineHatches hatches) {
+        for (var hatch : hatches.resources()) if (!hatch.isValid()) return false;
+        for (var input : hatches.energyInputs()) if (!input.isValid()) return false;
+        for (var output : hatches.energyOutputs()) if (!output.isValid()) return false;
+        return true;
     }
 
     public boolean absent(Site site) {
@@ -251,7 +261,7 @@ public final class ResearchStations {
         if (leased.isEmpty()) {
             return null;
         }
-        var result = new Capture(this, teamId, requiredTier, dimension, leased, pool(leased.stream().map(Station::hatches).toList()));
+        var result = new Capture(this, teamId, requiredTier, dimension, leased, pool(leased, Station::hatches));
         return result.current() ? result : null;
     }
 
@@ -291,7 +301,7 @@ public final class ResearchStations {
             }
         }
         var result = new Capture(this, teamId, requiredTier, saved.getFirst().location().dimension(), restored,
-            pool(restored.stream().map(Station::hatches).toList()), saved);
+            pool(restored, Station::hatches), saved);
         return result.current() ? result : null;
     }
 
@@ -322,7 +332,7 @@ public final class ResearchStations {
             }
             restored.add(restoredSite);
         }
-        var result = new CleanupSources(this, saved, restored, pool(restored.stream().map(PhysicalSite::hatches).toList()));
+        var result = new CleanupSources(this, saved, restored, pool(restored, PhysicalSite::hatches));
         return result.current() ? result : null;
     }
 
@@ -443,7 +453,7 @@ public final class ResearchStations {
             this.selector = selector;
             this.revision = revision;
             this.environment = environment;
-            this.sources = List.copyOf(sources);
+            this.sources = Collections.unmodifiableList(sources);
         }
 
         public TeamResearchStart.Environment environment() {
@@ -452,9 +462,8 @@ public final class ResearchStations {
 
         public boolean current() {
             selector.ownerCheck.run();
-            if (selector.identities.revision() != revision || !sources.stream().allMatch(AdmissionDevice::current)) {
-                return false;
-            }
+            if (selector.identities.revision() != revision) return false;
+            for (var source : sources) if (!source.current()) return false;
             return sources.isEmpty() || environment.availableResources().equals(sources.getFirst().permit.availableResources());
         }
     }
@@ -471,7 +480,7 @@ public final class ResearchStations {
         private CleanupSources(ResearchStations selector, List<Site> sites, List<PhysicalSite> physical, MachineHatches hatches) {
             this.selector = selector;
             this.sites = sites;
-            this.physical = List.copyOf(physical);
+            this.physical = Collections.unmodifiableList(physical);
             this.hatches = hatches;
         }
 
@@ -489,7 +498,8 @@ public final class ResearchStations {
 
         public boolean current() {
             selector.ownerCheck.run();
-            return physical.stream().allMatch(PhysicalSite::current);
+            for (var site : physical) if (!site.current()) return false;
+            return true;
         }
     }
 
@@ -517,10 +527,16 @@ public final class ResearchStations {
             this.teamId = teamId;
             this.requiredTier = requiredTier;
             this.dimension = dimension;
-            this.stations = List.copyOf(stations);
-            sites = originalSites == null ? this.stations.stream().map(station -> new Site(station.identity.identity(), station.identity.location(),
-                Objects.requireNonNull(station.machine.lifecycle()).host().controllerBlockId())).toList() : originalSites;
-            machines = this.stations.stream().map(Station::machine).toList();
+            this.stations = Collections.unmodifiableList(stations);
+            var capturedSites = originalSites == null ? new ObjectArrayList<Site>(stations.size()) : null;
+            var capturedMachines = new ObjectArrayList<MachineInstance>(stations.size());
+            for (var station : this.stations) {
+                if (capturedSites != null) capturedSites.add(new Site(station.identity.identity(), station.identity.location(),
+                    Objects.requireNonNull(station.machine.lifecycle()).host().controllerBlockId()));
+                capturedMachines.add(station.machine());
+            }
+            sites = capturedSites == null ? originalSites : ObjectLists.unmodifiable(capturedSites);
+            machines = ObjectLists.unmodifiable(capturedMachines);
             this.hatches = hatches;
             var ids = new ObjectLinkedOpenHashSet<UUID>();
             stations.forEach(station -> ids.add(station.identity.identity().machineId()));
@@ -576,7 +592,8 @@ public final class ResearchStations {
                     return false;
                 }
             }
-            return stations.stream().allMatch(Station::physicallyCurrent);
+            for (var station : stations) if (!station.physicallyCurrent()) return false;
+            return true;
         }
     }
 }

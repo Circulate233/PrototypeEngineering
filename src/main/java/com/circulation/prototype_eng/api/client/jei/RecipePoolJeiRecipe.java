@@ -42,9 +42,12 @@ public class RecipePoolJeiRecipe implements IRecipeWrapper {
         this.display = Objects.requireNonNull(display);
         this.ingredients = Objects.requireNonNull(ingredients);
         if (!page.getUid().equals(RecipePoolJeiPage.uid(pool.id()))) throw new IllegalArgumentException("JEI preparation changed category UID");
-        if (pool.recipes().stream().noneMatch(member -> member == recipe)) {
-            throw new IllegalArgumentException("JEI wrapper recipe is outside its canonical pool");
+        boolean member = false;
+        for (var candidate : pool.recipes()) if (candidate == recipe) {
+            member = true;
+            break;
         }
+        if (!member) throw new IllegalArgumentException("JEI wrapper recipe is outside its canonical pool");
     }
 
     public RecipePoolJeiPage page() {

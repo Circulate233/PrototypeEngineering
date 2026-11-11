@@ -229,7 +229,7 @@ final class StructurePredicateDisplays {
                 support.put(visit.predicate, new Support(pass, pass && local));
             } else if (fact instanceof Material(var exact, var membership, var authored)) {
                 boolean pass = (exact == null || sameState(seed, exact)) && (membership == null || member(seed, membership))
-                    && (authored == null || authored.options().stream().anyMatch(option -> compatibleAuthor(seed.option, option)));
+                    && (authored == null || compatibleAuthor(seed.option, authored));
                 support.put(visit.predicate, new Support(pass, pass));
             } else {
                 support.put(visit.predicate, new Support(true, false));
@@ -250,9 +250,16 @@ final class StructurePredicateDisplays {
         });
     }
 
+    private static boolean compatibleAuthor(StructureDisplay.BlockOption seed, StructureDisplay authored) {
+        for (var option : authored.options()) if (compatibleAuthor(seed, option)) return true;
+        return false;
+    }
+
     private static boolean compatibleAuthor(StructureDisplay.BlockOption seed, StructureDisplay.BlockOption authored) {
-        return seed.blockId().equals(authored.blockId()) && seed.meta() == authored.meta()
-            && authored.properties().entrySet().stream().allMatch(entry -> entry.getValue().equals(seed.properties().get(entry.getKey())));
+        if (!seed.blockId().equals(authored.blockId()) || seed.meta() != authored.meta()) return false;
+        for (var entry : authored.properties().entrySet())
+            if (!entry.getValue().equals(seed.properties().get(entry.getKey()))) return false;
+        return true;
     }
 
     private static boolean member(Seed seed, ReferenceSet<Block> blocks) {

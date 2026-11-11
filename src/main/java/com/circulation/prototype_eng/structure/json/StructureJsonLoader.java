@@ -1,5 +1,9 @@
 package com.circulation.prototype_eng.structure.json;
 
+import java.nio.file.attribute.BasicFileAttributes;
+import org.jetbrains.annotations.NotNull;
+import java.nio.file.FileVisitResult;
+import java.nio.file.SimpleFileVisitor;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.structure.MachineStructure;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
@@ -57,10 +61,16 @@ public final class StructureJsonLoader {
         if (!Files.isDirectory(directory))
             throw new StructureJsonException(directory.toString(), "$", "Structure root is not an accessible directory");
         var sources = new Object2ObjectLinkedOpenHashMap<String, String>();
-        try (var paths = Files.walk(directory)) {
-            var files = paths.filter(Files::isRegularFile)
-                             .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json"))
-                             .sorted(Comparator.comparing(path -> directory.relativize(path).toString().replace('\\', '/'))).toList();
+        try {
+            var files = new ObjectArrayList<Path>();
+            Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+                @Override
+                public @NotNull FileVisitResult visitFile(@NotNull Path file, @NotNull BasicFileAttributes attributes) {
+                    if (Files.isRegularFile(file) && file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".json")) files.add(file);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+            files.sort(Comparator.comparing(path -> directory.relativize(path).toString().replace('\\', '/')));
             for (var file : files) {
                 String source = directory.relativize(file).toString().replace('\\', '/');
                 try {
@@ -80,7 +90,9 @@ public final class StructureJsonLoader {
      */
     public static StructureJsonLoader readSources(Map<String, String> sources) {
         var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>();
-        for (var source : sources.keySet().stream().sorted().toList()) {
+        var orderedSources = new ObjectArrayList<>(sources.keySet());
+        orderedSources.sort(Comparator.naturalOrder());
+        for (var source : orderedSources) {
             var root = StructureJsonParameters.read(source, new StringReader(Objects.requireNonNull(sources.get(source))));
             var definition = data(root);
             var prior = definitions.putIfAbsent(definition.id, definition);
@@ -257,7 +269,12 @@ public final class StructureJsonLoader {
                         if (childData == null)
                             throw reference.location.error("Unknown child structure: " + reference.id);
                         if (!visiting.add(reference.id)) {
-                            String cycle = String.join(" -> ", visiting.stream().map(ResourceLocation::toString).toList()) + " -> " + reference.id;
+                            var cycle = new StringBuilder();
+                            for (var visited : visiting) {
+                                if (!cycle.isEmpty()) cycle.append(" -> ");
+                                cycle.append(visited);
+                            }
+                            cycle.append(" -> ").append(reference.id);
                             throw reference.location.error("Structure reference cycle: " + cycle);
                         }
                         stack.add(new Frame(childData));

@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.structure.json;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
@@ -68,7 +69,7 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
                 if (block != Blocks.AIR) result.add(block);
             }
         }
-        var frozen = List.copyOf(result);
+        var frozen = ObjectLists.unmodifiable(result);
         regexBlocks.put(expression, frozen);
         return frozen;
     }
@@ -96,6 +97,6 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
             if (result.size() == 32) break;
             result.add(displayState(block.getRegistryName(), 0, Map.of()));
         }
-        return List.copyOf(result);
+        return ObjectLists.unmodifiable(result);
     }
 }

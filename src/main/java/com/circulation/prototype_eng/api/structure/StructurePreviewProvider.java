@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
@@ -22,7 +24,9 @@ public interface StructurePreviewProvider {
             offset = Objects.requireNonNull(offset).toImmutable();
             sliceOffset = Objects.requireNonNull(sliceOffset).toImmutable();
             if (minCount < 0 || maxCount < minCount) throw new IllegalArgumentException("Invalid preview slice counts");
-            cells = cells.stream().map(position -> Objects.requireNonNull(position).toImmutable()).toList();
+            var positions = new ObjectArrayList<BlockPos>(cells.size());
+            for (var position : cells) positions.add(Objects.requireNonNull(position).toImmutable());
+            cells = ObjectLists.unmodifiable(positions);
             children = List.copyOf(children);
         }
     }

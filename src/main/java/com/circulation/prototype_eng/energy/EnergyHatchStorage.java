@@ -109,7 +109,7 @@ public final class EnergyHatchStorage {
                 if ((input != null && !input.idleForReplacement()) || (output != null && !output.idleForReplacement()))
                     return null;
                 return new Capture(input == null ? 0 : input.savedEnergy(), output == null ? 0 : output.savedEnergy(),
-                    contexts.stream().map(c -> new HatchReplacement.Version(c, c.revision())).toList());
+                    HatchReplacement.captureVersions(contexts));
             });
             if (capture == null) return HatchReplacement.of(HatchReconfigurationStatus.PENDING_BUSY);
             if (capture.input > (target.input() == null ? 0 : target.input().capacity())
@@ -120,7 +120,7 @@ public final class EnergyHatchStorage {
             candidate.bindSourceIdentities(location);
             var publish = preparePublication.apply(candidate);
             return fence.access(() -> {
-                if (!current.getAsBoolean() || !capture.versions.stream().allMatch(HatchReplacement.Version::current))
+                if (!current.getAsBoolean() || !HatchReplacement.current(capture.versions))
                     return HatchReplacement.of(HatchReconfigurationStatus.STALE_TARGET);
                 contexts.forEach(StorageContext::requireRetirement);
                 contexts.forEach(StorageContext::invalidate);

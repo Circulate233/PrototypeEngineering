@@ -172,7 +172,7 @@ public final class HatchAutoTransfer {
         if (hatch.output() != null) addContext(contexts, hatch.output().context());
         if (!includePeer(contexts, peer.contexts()) || !tryLocks(contexts)) return;
         try {
-            if (!current.getAsBoolean() || contexts.stream().anyMatch(context -> !context.isValid())) return;
+            if (!current.getAsBoolean() || !validContexts(contexts)) return;
             var cursor = cursors[face];
             if (inputEnabled && hatch.input() instanceof SlottedResourceBuffer input)
                 importResources(input, peer, cursor, fluidInputRate, current);
@@ -301,7 +301,7 @@ public final class HatchAutoTransfer {
         if (output != null) addContext(contexts, output.context());
         if (!includePeer(contexts, peerContexts) || !tryLocks(contexts)) return;
         try {
-            if (!current.getAsBoolean() || contexts.stream().anyMatch(context -> !context.isValid())) return;
+            if (!current.getAsBoolean() || !validContexts(contexts)) return;
             if (inputEnabled && input != null && remote.canExtract()) {
                 long offered = input.receiveEnergy(Integer.MAX_VALUE, Actionable.SIMULATE);
                 var reservation = offered > 0 ? input.reserveTransfer(offered, true) : null;
@@ -334,6 +334,11 @@ public final class HatchAutoTransfer {
             }
             throw failure;
         }
+    }
+
+    private static boolean validContexts(List<StorageContext> contexts) {
+        for (var context : contexts) if (!context.isValid()) return false;
+        return true;
     }
 
     private static void addContext(List<StorageContext> contexts, StorageContext context) {

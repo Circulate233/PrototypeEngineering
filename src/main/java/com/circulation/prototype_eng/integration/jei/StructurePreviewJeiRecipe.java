@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
@@ -42,13 +44,19 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
 
     public StructurePreviewJeiRecipe(MachineType machine, List<ItemStack> controllers) {
         this.machine = Objects.requireNonNull(machine);
-        this.controllers = controllers.stream().map(ItemStack::copy).toList();
+        this.controllers = copyControllers(controllers);
+    }
+
+    private static List<ItemStack> copyControllers(List<ItemStack> controllers) {
+        var result = new ObjectArrayList<ItemStack>(controllers.size());
+        for (var controller : controllers) result.add(controller.copy());
+        return ObjectLists.unmodifiable(result);
     }
 
     @Override
     public void getIngredients(IIngredients ingredients) {
         if (!controllers.isEmpty())
-            ingredients.setOutputs(VanillaTypes.ITEM, controllers.stream().map(ItemStack::copy).toList());
+            ingredients.setOutputs(VanillaTypes.ITEM, copyControllers(controllers));
     }
 
     @Override
@@ -133,12 +141,18 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
         var scene = panel.scene();
         var materials = scene.materials();
         if (materials == null) return null;
-        var output = controllers.stream().filter(stack -> !stack.isEmpty()).findFirst().orElse(ItemStack.EMPTY).copy();
+        var output = ItemStack.EMPTY;
+        for (var controller : controllers) if (!controller.isEmpty()) {
+            output = controller.copy();
+            break;
+        }
         if (output.isEmpty()) return null;
         output.setCount(1);
         var key = AEItemKey.of(output);
         if (key == null) return null;
-        var recipe = new JeiPatternRecipe(materials.stream().map(List::of).toList(), List.of(List.of(new GenericStack(key, 1))));
+        var inputs = new ObjectArrayList<List<GenericStack>>(materials.size());
+        for (var material : materials) inputs.add(List.of(material));
+        var recipe = new JeiPatternRecipe(inputs, List.of(List.of(new GenericStack(key, 1))));
         return new Pattern(recipe, () -> panel != null && !panel.closed() && panel.scene() == scene && scene.materialsCurrent(materials));
     }
 

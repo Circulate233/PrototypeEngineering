@@ -161,8 +161,10 @@ public final class BuiltModelBuffers {
     }
 
     public boolean hasVertices() {
-        return !gpu.isEmpty() || builders.values().stream().anyMatch(builder -> builder.getVertexCount() > 0) ||
-            packed.values().stream().anyMatch(ByteBuffer::hasRemaining);
+        if (!gpu.isEmpty()) return true;
+        for (var builder : builders.values()) if (builder.getVertexCount() > 0) return true;
+        for (var buffer : packed.values()) if (buffer.hasRemaining()) return true;
+        return false;
     }
 
     public boolean bindTexture() {

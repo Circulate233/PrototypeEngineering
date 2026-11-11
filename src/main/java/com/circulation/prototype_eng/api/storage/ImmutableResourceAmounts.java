@@ -32,6 +32,21 @@ public final class ImmutableResourceAmounts extends Object2LongMaps.Unmodifiable
         return EMPTY;
     }
 
+    /** One-key planning does not need a hash table or a temporary mutable builder. */
+    public static ImmutableResourceAmounts single(AEKey key, long amount) {
+        Objects.requireNonNull(key);
+        if (amount < 0) throw new IllegalArgumentException("Negative resource snapshot amount");
+        return amount == 0 ? EMPTY : new ImmutableResourceAmounts(new SingleAmount(key, amount));
+    }
+
+    @SuppressWarnings("CloneableClassInSecureContext") // Singleton cloning retains the same immutable key/amount and exposes no backing storage.
+    private static final class SingleAmount extends Object2LongMaps.Singleton<AEKey> implements AEKey2LongMap {
+        private SingleAmount(AEKey key, long amount) { super(key, amount); }
+
+        @Override public long addTo(AEKey key, long increment) { throw new UnsupportedOperationException("Immutable resource quantities"); }
+        @Override public void forEachEntry(ObjLongConsumer<? super AEKey> action) { action.accept(key, value); }
+    }
+
     /** Copies arbitrary external views; only this final owning type can safely be reused. */
     public static ImmutableResourceAmounts copyOf(AEKey2LongMap source) {
         Objects.requireNonNull(source);

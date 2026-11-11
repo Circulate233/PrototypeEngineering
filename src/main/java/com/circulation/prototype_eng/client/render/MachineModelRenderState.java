@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.client.render;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.data.ComponentData;
@@ -25,7 +26,11 @@ public class MachineModelRenderState implements AutoCloseable {
     private final MachineRenderOptions options;
     private final MachineModelHides hides = new MachineModelHides();
     private final Reference2ObjectOpenHashMap<AEBaseTile, State> states = new Reference2ObjectOpenHashMap<>();
-    private final ObjectArrayList<MachineModelPasses.Entry> pending = new ObjectArrayList<>();
+    @Nullable private List<AEBaseTile> capturedTiles;
+    @Nullable private Runnable capturedFailureRevoker;
+    private ObjectArrayList<MachineModelPasses.Entry> pending = new ObjectArrayList<>();
+    @Nullable
+    private ObjectArrayList<MachineModelPasses.Entry> reusablePending;
 
     public MachineModelRenderState(ModelBuildCache cache, MachineRenderOptions options) {
         this.cache = cache;
@@ -89,8 +94,13 @@ public class MachineModelRenderState implements AutoCloseable {
         if (state == null) {
             state = new State(tile.getWorld(), selected, view, accepted, origin);
             states.put(tile, state);
+            capturedTiles = null;
+            capturedFailureRevoker = null;
         }
-        state.view = view;
+        if (state.view != view) {
+            state.view = view;
+            capturedFailureRevoker = null;
+        }
         state.accepted = accepted;
         state.geometry = selected;
         state.data = data;
@@ -167,8 +177,7 @@ public class MachineModelRenderState implements AutoCloseable {
 
     public void flush() {
         if (pending.isEmpty()) return;
-        var entries = new ObjectArrayList<>(pending);
-        pending.clear();
+        var entries = takePending();
         Throwable failure = null;
         try {
             var camera = new Vec3d(TileEntityRendererDispatcher.staticPlayerX,
@@ -177,7 +186,7 @@ public class MachineModelRenderState implements AutoCloseable {
         } catch (RuntimeException | Error exception) {
             failure = exception;
             // A failed native replacement must revoke its cached draw and world-hiding permissions.
-            for (var tile : List.copyOf(states.keySet()))
+            for (var tile : tileSnapshot())
                 try {
                     withdraw(tile);
                 } catch (RuntimeException | Error cleanup) {
@@ -194,15 +203,33 @@ public class MachineModelRenderState implements AutoCloseable {
         } catch (RuntimeException | Error exception) {
             failure = BuiltModelBuffers.append(failure, exception);
         }
+        recyclePending(entries);
         BuiltModelBuffers.rethrow(failure);
+    }
+
+    private ObjectArrayList<MachineModelPasses.Entry> takePending() {
+        var entries = pending;
+        pending = reusablePending == null ? new ObjectArrayList<>(entries.size()) : reusablePending;
+        reusablePending = null;
+        return entries;
+    }
+
+    private void recyclePending(ObjectArrayList<MachineModelPasses.Entry> entries) {
+        entries.clear();
+        if (reusablePending == null) reusablePending = entries;
     }
 
     public boolean global(AEBaseTile tile, ClientMachineRenderSnapshots.View view) {
         var state = states.get(tile);
         if (state == null || state.view != view || !state.accepted.getAsBoolean() || !state.origin.equals(currentWorldOrigin()) || !state.complete)
-            return !StructureRenderAnchors.select(view.snapshot(), view.bindings()).isEmpty();
-        return state.geometry.stream().anyMatch(anchor -> anchor.binding().forceGlobalRenderer()) ||
+            return StructureRenderAnchors.hasBinding(view.snapshot(), view.bindings());
+        return forcesGlobalRenderer(state.geometry) ||
             state.bounds.maxX - state.bounds.minX > 32 || state.bounds.maxY - state.bounds.minY > 32 || state.bounds.maxZ - state.bounds.minZ > 32;
+    }
+
+    private static boolean forcesGlobalRenderer(List<StructureRenderAnchors.Anchor> geometry) {
+        for (var anchor : geometry) if (anchor.binding().forceGlobalRenderer()) return true;
+        return false;
     }
 
     public AxisAlignedBB bounds(AEBaseTile tile) {
@@ -213,16 +240,22 @@ public class MachineModelRenderState implements AutoCloseable {
     public AxisAlignedBB bounds(AEBaseTile tile, ClientMachineRenderSnapshots.View view) {
         var state = states.get(tile);
         // Unknown model extents must reach the owner once; native frustum/distance checks happen before render.
-        if (state == null || state.view != view || !state.accepted.getAsBoolean() || !state.origin.equals(currentWorldOrigin()) || !state.complete || state.geometry.stream().anyMatch(anchor -> anchor.binding().forceGlobalRenderer()))
+        if (state == null || state.view != view || !state.accepted.getAsBoolean() || !state.origin.equals(currentWorldOrigin()) || !state.complete || forcesGlobalRenderer(state.geometry))
             return MachineControllerRenderer.CONSERVATIVE_BOUNDS;
         return state.bounds;
     }
 
+    private List<AEBaseTile> tileSnapshot() {
+        if (capturedTiles == null) capturedTiles = ObjectLists.unmodifiable(new ObjectArrayList<>(states.keySet()));
+        return capturedTiles;
+    }
+
     private Runnable failureRevoker() {
+        if (capturedFailureRevoker != null) return capturedFailureRevoker;
         var captured = new ObjectArrayList<OwnedView>();
         for (var entry : states.reference2ObjectEntrySet())
             captured.add(new OwnedView(entry.getKey(), entry.getValue(), entry.getValue().view));
-        return () -> {
+        capturedFailureRevoker = () -> {
             Throwable failure = null;
             for (var owned : captured)
                 if (states.get(owned.tile) == owned.state && owned.state.view == owned.view) try {
@@ -232,13 +265,13 @@ public class MachineModelRenderState implements AutoCloseable {
                 }
             BuiltModelBuffers.rethrow(failure);
         };
+        return capturedFailureRevoker;
     }
 
     /** Revoked views release draw/hide rights immediately while immutable geometry may remain cached for the successor. */
     public void invalidateViews() {
         for (var state : states.values()) state.complete = false;
-        var entries = new ObjectArrayList<>(pending);
-        pending.clear();
+        var entries = takePending();
         Throwable failure = null;
         try {
             closeEntries(entries);
@@ -255,6 +288,7 @@ public class MachineModelRenderState implements AutoCloseable {
         } catch (RuntimeException | Error exception) {
             failure = BuiltModelBuffers.append(failure, exception);
         }
+        recyclePending(entries);
         BuiltModelBuffers.rethrow(failure);
     }
 
@@ -266,7 +300,7 @@ public class MachineModelRenderState implements AutoCloseable {
         } catch (RuntimeException | Error exception) {
             failure = exception;
         }
-        for (var tile : List.copyOf(states.keySet()))
+        for (var tile : tileSnapshot())
             try {
                 var state = states.get(tile);
                 if (state != null && (tile.isInvalid() || tile.getWorld() != state.world || !state.origin.equals(origin)))
@@ -284,6 +318,8 @@ public class MachineModelRenderState implements AutoCloseable {
 
     public void withdraw(AEBaseTile tile) {
         var old = states.remove(tile);
+        capturedTiles = null;
+        capturedFailureRevoker = null;
         if (old == null) return;
         Throwable failure = null;
         try {
@@ -302,7 +338,7 @@ public class MachineModelRenderState implements AutoCloseable {
     @Override
     public void close() {
         Throwable failure = null;
-        for (var tile : List.copyOf(states.keySet()))
+        for (var tile : tileSnapshot())
             try {
                 withdraw(tile);
             } catch (RuntimeException | Error exception) {

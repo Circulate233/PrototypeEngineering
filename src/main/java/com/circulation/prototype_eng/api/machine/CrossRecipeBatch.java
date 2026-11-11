@@ -48,8 +48,7 @@ public final class CrossRecipeBatch {
             var process = slot.process();
             if (process != null && process != candidate) {
                 if (!signature.equals(signature(process))) return false;
-                if ((signature.opaque.keySet().stream().anyMatch(key -> !key.retimed) || signature.policies.stream().anyMatch(policy -> policy.wrapper != null
-                    || !policy.chance.equals(ResourceChance.ALWAYS)))
+                if (signature.requiresOriginalDuration()
                     && candidate.recipe().durationTicks() != process.recipe().durationTicks()) return false;
             }
         }
@@ -245,7 +244,13 @@ public final class CrossRecipeBatch {
     }
 
     private record Signature(AEKey2LongMap inputs, AEKey2LongMap outputs, ObjectOpenHashSet<TickPolicy> policies,
-                             Object2IntOpenHashMap<OpaqueTick> opaque) { }
+                             Object2IntOpenHashMap<OpaqueTick> opaque) {
+        private boolean requiresOriginalDuration() {
+            for (var key : opaque.keySet()) if (!key.retimed) return true;
+            for (var policy : policies) if (policy.wrapper != null || !policy.chance.equals(ResourceChance.ALWAYS)) return true;
+            return false;
+        }
+    }
     private record OpaqueTick(RecipeRequirementType<?> type, Object key, boolean retimed) { }
     private record ProbabilisticTick(List<GenericStack> inputs, List<GenericStack> outputs, double chance) { }
     private record TickPolicy(ResourceChance chance, InputAllocation allocation, boolean voidOutputs, @Nullable RecipeRequirement<?> wrapper) { }

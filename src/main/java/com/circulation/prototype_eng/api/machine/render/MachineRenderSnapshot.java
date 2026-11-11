@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.machine.render;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.ints.IntList;
 
 import com.circulation.prototype_eng.api.structure.StructureBounds;
@@ -52,7 +53,7 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
             if (memberships > MAX_POSITIONS) throw new IllegalArgumentException("Too many accepted block memberships");
             all.addAll(node.blocks());
         }
-        if (!List.copyOf(all).equals(positions))
+        if (!samePositions(all, positions))
             throw new IllegalArgumentException("Accepted positions must be the ordered distinct occurrence union");
         if (new ObjectLinkedOpenHashSet<>(components).size() != components.size())
             throw new IllegalArgumentException("Duplicate actual component ID");
@@ -64,7 +65,14 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
         if (positions.size() > MAX_POSITIONS) throw new IllegalArgumentException("Too many accepted positions");
         var result = new ObjectArrayList<BlockPos>(positions.size());
         for (var position : positions) result.add(Objects.requireNonNull(position).toImmutable());
-        return List.copyOf(result);
+        return ObjectLists.unmodifiable(result);
+    }
+
+    private static boolean samePositions(ObjectLinkedOpenHashSet<BlockPos> all, List<BlockPos> positions) {
+        if (all.size() != positions.size()) return false;
+        int index = 0;
+        for (var position : all) if (!position.equals(positions.get(index++))) return false;
+        return true;
     }
 
     public static BlockPos sliceAnchor(BlockPos origin, BlockPos step, int index) {

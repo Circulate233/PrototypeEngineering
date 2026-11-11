@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 
@@ -16,7 +18,18 @@ public record HatchReplacement(HatchReconfigurationStatus status, List<Version> 
     }
 
     public boolean unchanged() {
-        return !versions.isEmpty() && versions.stream().allMatch(Version::current);
+        return !versions.isEmpty() && current(versions);
+    }
+
+    public static List<Version> captureVersions(List<StorageContext> contexts) {
+        var result = new ObjectArrayList<Version>(contexts.size());
+        for (var context : contexts) result.add(new Version(context, context.revision()));
+        return ObjectLists.unmodifiable(result);
+    }
+
+    public static boolean current(List<Version> versions) {
+        for (var version : versions) if (!version.current()) return false;
+        return true;
     }
 
     public record Version(StorageContext context, long revision) {

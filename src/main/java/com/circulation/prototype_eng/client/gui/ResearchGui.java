@@ -105,6 +105,17 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         return new Selection(entry.id(), entry.targetLevel(), entry.entryId());
     }
 
+    private static boolean hasRewardChoice(ResearchGuiSnapshot view, ResourceLocation group) {
+        for (var detail : view.details())
+            if (detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE && detail.id().equals(group)) return true;
+        return false;
+    }
+
+    private static boolean hasSelection(ResearchGuiSnapshot view, Selection target) {
+        for (var entry : view.rows()) if (entry.selection().equals(target)) return true;
+        return false;
+    }
+
     private static ResearchContainer.Kind primaryKind(Tab tab) {
         return switch (tab) {
             case RESEARCH -> ResearchContainer.Kind.START;
@@ -245,8 +256,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             rebuildDescription(entry == null ? null : entry.id());
         }
         if (entry != null && entry.selectedGroup() != null) selectedGroup = entry.selectedGroup();
-        else if (selectedGroup != null && view.details().stream().noneMatch(detail -> detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE
-            && detail.id().equals(selectedGroup))) selectedGroup = null;
+        else if (selectedGroup != null && !hasRewardChoice(view, selectedGroup)) selectedGroup = null;
         for (int i = 0; i < tabs.length; i++) tabs[i].enabled = view.tab().ordinal() != i;
         for (int i = 0; i < rows.length; i++) {
             var button = rows[i];
@@ -435,14 +445,14 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
                 return;
             }
             var target = rowSelections[button.id - 100];
-            if (!container.databaseMode && target != null && actionTab == view.tab() && view.rows().stream().anyMatch(entry -> entry.selection().equals(target))) {
+            if (!container.databaseMode && target != null && actionTab == view.tab() && hasSelection(view, target)) {
                 container.requestView(view.tab(), view.offset(), target, 0);
             }
         } else if (button.id >= 200 && button.id < 200 + choices.length) {
             int index = button.id - 200;
             var group = choiceGroups[index];
             if (group != null && Objects.equals(choiceSelections[index], view.selected()) && view.tab() == Tab.REWARDS
-                && view.details().stream().anyMatch(detail -> detail.kind() == ResearchGuiSnapshot.Kind.REWARD_CHOICE && detail.id().equals(group))) {
+                && hasRewardChoice(view, group)) {
                 selectedGroup = group;
             }
         } else {

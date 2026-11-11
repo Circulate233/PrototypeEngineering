@@ -34,6 +34,9 @@ import java.util.function.Consumer;
  */
 public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final StorageContext context;
+    private @Nullable StorageSnapshot cachedSnapshot;
+    private @Nullable StorageSnapshot cachedKeySnapshot;
+    private @Nullable AEKey cachedSnapshotKey;
     private final Reference2LongArrayMap<AEKeyType> capacities = new Reference2LongArrayMap<>();
     private final AEKey[] keys;
     private final long[] amounts;
@@ -121,20 +124,21 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     public StorageSnapshot snapshot() {
         context.lock();
         try {
-            var available = new AEKey2LongMap.LinkdOpenHashMap();
+            if (cachedSnapshot != null && context.current(cachedSnapshot.revision())) return cachedSnapshot;
+            var available = ImmutableResourceAmounts.builder();
             if (context.isValid()) {
-                totals.forEachEntry(available::addTo);
                 extractHolds.forEachEntry((key, held) -> {
-                    long previous = available.addTo(key, -held);
-                    if (previous < held) {
+                    if (totals.getLong(key) < held) {
                         throw new IllegalStateException("Extraction holds exceed stored resources");
                     }
-                    if (previous == held) {
-                        available.removeLong(key);
-                    }
+                });
+                totals.forEachEntry((key, total) -> {
+                    long amount = total - extractHolds.getLong(key);
+                    if (amount > 0) available.addTo(key, amount);
                 });
             }
-            return new StorageSnapshot(context, context.revision(), available);
+            cachedSnapshot = new StorageSnapshot(context, context.revision(), available.build());
+            return cachedSnapshot;
         } finally {
             context.unlock();
         }
@@ -144,15 +148,15 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     public StorageSnapshot snapshotFor(AEKey key) {
         context.lock();
         try {
-            var available = new AEKey2LongMap.LinkdOpenHashMap();
+            Objects.requireNonNull(key);
+            if (key.equals(cachedSnapshotKey) && cachedKeySnapshot != null && context.current(cachedKeySnapshot.revision())) return cachedKeySnapshot;
             long amount = context.isValid() ? totals.getLong(key) - extractHolds.getLong(key) : 0;
             if (amount < 0) {
                 throw new IllegalStateException("Extraction holds exceed stored resources");
             }
-            if (amount > 0) {
-                available.addTo(key, amount);
-            }
-            return new StorageSnapshot(context, context.revision(), available);
+            cachedSnapshotKey = key;
+            cachedKeySnapshot = new StorageSnapshot(context, context.revision(), ImmutableResourceAmounts.single(key, amount));
+            return cachedKeySnapshot;
         } finally {
             context.unlock();
         }
@@ -492,7 +496,10 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     public int[] drainChangedSlots() {
         context.lock();
         try {
-            int[] result = changedSlots.stream().toArray();
+            int[] result = new int[changedSlots.cardinality()];
+            int cursor = 0;
+            for (int slot = changedSlots.nextSetBit(0); slot >= 0; slot = changedSlots.nextSetBit(slot + 1))
+                result[cursor++] = slot;
             changedSlots.clear();
             return result;
         } finally {

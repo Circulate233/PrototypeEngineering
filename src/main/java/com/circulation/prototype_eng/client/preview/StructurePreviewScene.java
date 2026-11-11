@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
@@ -542,7 +543,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         if (closed || view.model() != model || view.token() != expected || access != currentAccess || world != mc.world) return null;
         var result = new ObjectArrayList<GenericStack>(totals.size());
         totals.forEachEntry((key, amount) -> result.add(new GenericStack(key, amount)));
-        materialStacks = List.copyOf(result);
+        materialStacks = ObjectLists.unmodifiable(result);
         return materialStacks;
     }
 

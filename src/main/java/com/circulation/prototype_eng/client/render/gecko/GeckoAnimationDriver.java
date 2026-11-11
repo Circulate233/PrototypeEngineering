@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.resources.IResourceManager;
 import net.minecraft.util.ResourceLocation;
 import software.bernie.geckolib3.core.IAnimatable;
@@ -21,7 +23,6 @@ import software.bernie.shadowed.eliotlash.molang.MolangParser;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Objects;
 
 /** Mutable parser/controller/processor belong to one serially borrowed owner/part model instance. */
 public class GeckoAnimationDriver implements IAnimatable {
@@ -54,10 +55,18 @@ public class GeckoAnimationDriver implements IAnimatable {
     }
 
     public static List<String> pickAnimationNames(AnimationFile file, List<String> preferred) {
-        var chosen = preferred.stream().map(String::trim).filter(name -> !name.isEmpty() && file.getAnimation(name) != null).toList();
-        if (!chosen.isEmpty()) return chosen;
-        return file.getAllAnimations().stream().map(animation -> animation.animationName).filter(Objects::nonNull)
-                   .sorted().limit(1).toList();
+        var chosen = new ObjectArrayList<String>();
+        for (var value : preferred) {
+            var name = value.trim();
+            if (!name.isEmpty() && file.getAnimation(name) != null) chosen.add(name);
+        }
+        if (!chosen.isEmpty()) return ObjectLists.unmodifiable(chosen);
+        String first = null;
+        for (var animation : file.getAllAnimations()) {
+            var name = animation.animationName;
+            if (name != null && (first == null || name.compareTo(first) < 0)) first = name;
+        }
+        return first == null ? List.of() : List.of(first);
     }
 
     @Override

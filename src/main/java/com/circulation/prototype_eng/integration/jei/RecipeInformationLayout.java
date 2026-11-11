@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.integration.jei;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
@@ -19,7 +20,7 @@ public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
             paragraphs.add(new Paragraph(source, lines, x, y, height));
             y += height + 3;
         }
-        return new RecipeInformationLayout(List.copyOf(paragraphs), Math.max(0, y - 3));
+        return new RecipeInformationLayout(ObjectLists.unmodifiable(paragraphs), Math.max(0, y - 3));
     }
 
     public record Font(int lineHeight, BiFunction<JeiRecipeDisplay.Text, Integer, List<String>> wrap) {

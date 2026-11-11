@@ -191,7 +191,9 @@ public class ControllerOrientationTool extends AEBaseItem {
     @Override
     public boolean isBookEnchantable(@NotNull ItemStack stack, @NotNull ItemStack book) {
         var enchantments = EnchantmentHelper.getEnchantments(book);
-        return !enchantments.isEmpty() && enchantments.keySet().stream().allMatch(enchantment -> canApplyAtEnchantingTable(stack, enchantment));
+        if (enchantments.isEmpty()) return false;
+        for (var enchantment : enchantments.keySet()) if (!canApplyAtEnchantingTable(stack, enchantment)) return false;
+        return true;
     }
 
     @Override

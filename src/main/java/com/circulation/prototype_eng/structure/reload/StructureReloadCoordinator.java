@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.reload;
 
+import java.util.List;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
@@ -32,6 +34,7 @@ public final class StructureReloadCoordinator {
     private Publication publication;
     private boolean applying;
     private boolean closed;
+    @Nullable private List<LoadedIdentity> capturedLoaded;
 
     public StructureReloadCoordinator(TaskScheduler scheduler, MachineTypeRegistry registry, Supplier<StructureCatalog> readCandidate,
                                       Consumer<Publication> publishClients) {
@@ -74,6 +77,7 @@ public final class StructureReloadCoordinator {
     public void unloaded(MachineLifecycle lifecycle) {
         requireOwner();
         loadedHosts.remove(lifecycle);
+        capturedLoaded = null;
         var removed = new ObjectArrayList<ControllerStructureUpdates>();
         for (var updates : registrations.keySet()) if (updates.lifecycle() == lifecycle) removed.add(updates);
         for (var updates : removed) unregister(updates);
@@ -91,6 +95,7 @@ public final class StructureReloadCoordinator {
         var existing = loadedHosts.get(lifecycle);
         if (existing != null && existing.machine == machine && existing.host == host) return;
         loadedHosts.put(lifecycle, new Loaded(machine, host));
+        capturedLoaded = null;
     }
 
     /**
@@ -102,10 +107,7 @@ public final class StructureReloadCoordinator {
         if (closed || applying)
             throw new IllegalStateException("Loaded enrollment requires a live idle structure owner");
         // Fastutil map entries retain table indexes; removing an earlier host can invalidate them.
-        var pending = new ObjectArrayList<LoadedIdentity>(loadedHosts.size());
-        for (var entry : loadedHosts.reference2ObjectEntrySet())
-            pending.add(new LoadedIdentity(entry.getKey(), entry.getValue()));
-        for (var entry : pending) {
+        for (var entry : loadedSnapshot()) {
             var lifecycle = entry.lifecycle();
             var loaded = entry.loaded();
             if (loadedHosts.get(lifecycle) != loaded) continue;
@@ -134,7 +136,8 @@ public final class StructureReloadCoordinator {
         scheduler.runAtBoundary(() -> {
             if (closed) return;
             enrollLoaded();
-            for (var loaded : new ObjectArrayList<>(loadedHosts.values())) {
+            for (var captured : loadedSnapshot()) {
+                var loaded = captured.loaded();
                 var automatic = loaded.automatic;
                 if (automatic == null || !automatic.loaded()) continue;
                 var catalog = registry.structureCatalog();
@@ -149,6 +152,15 @@ public final class StructureReloadCoordinator {
                 automatic.enqueueTick(now);
             }
         });
+    }
+
+    private List<LoadedIdentity> loadedSnapshot() {
+        if (capturedLoaded == null) {
+            var captured = new ObjectArrayList<LoadedIdentity>(loadedHosts.size());
+            for (var entry : loadedHosts.reference2ObjectEntrySet()) captured.add(new LoadedIdentity(entry.getKey(), entry.getValue()));
+            capturedLoaded = ObjectLists.unmodifiable(captured);
+        }
+        return capturedLoaded;
     }
 
     public boolean registered(MachineLifecycle lifecycle) {
@@ -273,6 +285,7 @@ public final class StructureReloadCoordinator {
         for (var registration : registrations.values()) registration.active = false;
         registrations.clear();
         loadedHosts.clear();
+        capturedLoaded = null;
     }
 
     private void requireOwner() {

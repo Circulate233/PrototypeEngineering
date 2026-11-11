@@ -1505,12 +1505,11 @@ public final class RecipeStageExecutor {
             }
             var tokens = stepReservations();
             var steps = stepTransactions();
-            if (tokens.stream().allMatch(ResourceReservation::supportsSequentialUse)) {
-                batch.append(tokens, steps);
-            } else {
+            for (var token : tokens) if (!token.supportsSequentialUse()) {
                 batch.appendForRollback(tokens, steps);
                 throw new IllegalArgumentException("Continued storage reservations must support reversible sequential use");
             }
+            batch.append(tokens, steps);
         }
 
         /**

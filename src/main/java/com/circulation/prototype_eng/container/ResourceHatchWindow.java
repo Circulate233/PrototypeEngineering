@@ -70,6 +70,10 @@ public final class ResourceHatchWindow {
         private int firstSlot;
         private long countedRevision = -1;
         private int usedSlots, usedTypes;
+        private long capturedRevision = -1;
+        private int capturedFirstSlot = -1;
+        @Nullable
+        private ResourceHatchWindowSnapshot.Side captured;
 
         private SideState(@Nullable SlottedResourceStorage storage) {
             this.storage = storage;
@@ -84,6 +88,7 @@ public final class ResourceHatchWindow {
             storage.context().lock();
             try {
                 long current = storage.context().revision();
+                if (captured != null && capturedFirstSlot == firstSlot && storage.context().current(capturedRevision)) return captured;
                 if (countedRevision != current) {
                     int occupied = 0;
                     var keys = new ObjectOpenHashSet<AEKey>();
@@ -104,7 +109,11 @@ public final class ResourceHatchWindow {
                     var stack = storage.getStack(firstSlot + cell);
                     entries.add(new ResourceHatchWindowSnapshot.Entry(stack, stack == null ? 0 : storage.getMaxAmount(stack.what())));
                 }
-                return new ResourceHatchWindowSnapshot.Side(firstSlot, storage.size(), usedSlots, usedTypes, entries);
+                var snapshot = new ResourceHatchWindowSnapshot.Side(firstSlot, storage.size(), usedSlots, usedTypes, entries);
+                captured = snapshot;
+                capturedRevision = current;
+                capturedFirstSlot = firstSlot;
+                return snapshot;
             } finally {
                 storage.context().unlock();
             }

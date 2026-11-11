@@ -50,8 +50,23 @@ public final class PreviewEmbeddedInput {
     @SubscribeEvent
     public void tick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
-        for (var entry : new ObjectArrayList<>(active))
-            if (!entry.panel.ownerCurrent() || System.currentTimeMillis() - entry.touched > 250) entry.panel.close();
+        for (int index = 0; index < active.size(); index++) {
+            var entry = active.get(index);
+            if (!expired(entry)) continue;
+            // Reads above invoke no cleanup. Freeze only the unvisited suffix before close can
+            // remove/reopen panels; the ordinary all-current tick allocates no snapshot.
+            var remaining = new ObjectArrayList<>(active.subList(index, active.size()));
+            remaining.getFirst().panel.close();
+            for (int cursor = 1; cursor < remaining.size(); cursor++) {
+                var next = remaining.get(cursor);
+                if (expired(next)) next.panel.close();
+            }
+            return;
+        }
+    }
+
+    private static boolean expired(Active entry) {
+        return !entry.panel.ownerCurrent() || System.currentTimeMillis() - entry.touched > 250;
     }
 
     /** Called at HEI's actual input entry, which runs even for already-cancelled Forge events. */

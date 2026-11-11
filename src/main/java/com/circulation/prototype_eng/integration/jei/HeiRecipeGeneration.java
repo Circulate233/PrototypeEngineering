@@ -89,18 +89,22 @@ final class HeiRecipeGeneration {
         public boolean confirmed(RecipePoolJeiRecipe recipe, boolean immediateTail) {
             var category = recipe.page();
             if (registry.getRecipeCategory(category.getUid()) != category
-                || registry.getRecipeWrappers(category).stream().noneMatch(candidate -> candidate == recipe)) return false;
+                || !containsRecipe(registry.getRecipeWrappers(category), recipe)) return false;
             if (immediateTail && registry.getRecipeById(registry.getRecipeId(recipe), category) != recipe) return false;
             var ingredients = registry.getIngredients(recipe);
             return focuses(recipe, ingredients.getInputIngredients(), IFocus.Mode.INPUT)
                 && focuses(recipe, ingredients.getOutputIngredients(), IFocus.Mode.OUTPUT);
         }
 
+        private static boolean containsRecipe(Iterable<?> candidates, RecipePoolJeiRecipe recipe) {
+            for (var candidate : candidates) if (candidate == recipe) return true;
+            return false;
+        }
+
         @SuppressWarnings("rawtypes") // HEI's Ingredients exposes flattened maps with erased ingredient types.
         private boolean focuses(RecipePoolJeiRecipe recipe, Map<IIngredientType, List> entries, IFocus.Mode mode) {
             for (var ingredients : entries.values()) for (Object ingredient : ingredients) {
-                if (ingredient != null && registry.getRecipeWrappers(recipe.page(), registry.createFocus(mode, ingredient))
-                    .stream().noneMatch(candidate -> candidate == recipe)) return false;
+                if (ingredient != null && !containsRecipe(registry.getRecipeWrappers(recipe.page(), registry.createFocus(mode, ingredient)), recipe)) return false;
             }
             return true;
         }

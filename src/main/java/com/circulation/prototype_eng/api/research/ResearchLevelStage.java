@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.research;
 
+import java.util.List;
+import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.AEItemKey;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -170,10 +172,15 @@ public final class ResearchLevelStage {
                 || !chance.equals(ResourceChance.ALWAYS) || randomOutputs != null
                 || !fuzzyInputs.isEmpty() || !dynamicInputs.isEmpty() || voidExcess
                 || inputAllocation != InputAllocation.SPLITTABLE
-                || inputs.stream().anyMatch(stack -> !(stack.what() instanceof AEItemKey))) {
+                || !onlyItems(inputs)) {
                 throw new IllegalArgumentException("Tier-zero research supports only static AEItemKey START inputs with default source allocation: " + requirement.id());
             }
         }
+    }
+
+    private static boolean onlyItems(List<GenericStack> inputs) {
+        for (var stack : inputs) if (!(stack.what() instanceof AEItemKey)) return false;
+        return true;
     }
 
     public static final class Builder {

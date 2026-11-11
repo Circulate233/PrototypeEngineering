@@ -136,9 +136,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         }
         switch (request.tab()) {
             case RESEARCH -> {
-                var definitions = new ObjectArrayList<>(registry.all());
-                definitions.sort(Comparator.comparing(ResearchDefinition::id, ID_ORDER));
-                for (var definition : definitions)
+                for (var definition : registry.sortedById())
                     source.add(row(view, definition, view.team().viewPermission() == Decision.ALLOWED
                         ? view.team().structuralTargets().getInt(definition.id()) : 0, 0, null, null, null));
             }
@@ -353,7 +351,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
     }
 
     private static <T> ObjectList<T> page(ObjectList<T> source, int offset, int limit) {
-        return new ObjectArrayList<>(source.subList(offset, offset + Math.min(limit, source.size() - offset)));
+        return source.subList(offset, offset + Math.min(limit, source.size() - offset));
     }
 
     private static <T> ObjectList<T> frozen(ObjectList<T> source) {

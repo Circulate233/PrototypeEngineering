@@ -67,9 +67,15 @@ public final class RecipeProcessNbt {
         var overlays = new ObjectArrayList<>(builder.overlays);
         overlays.add(new RecipeOverlayNbt.Binding<>(RecipeOverlayTypes.RESOURCE_IO, BuiltinOverlayCodecs.resourceIo(builder.resources)));
         overlays.add(new RecipeOverlayNbt.Binding<>(RecipeOverlayTypes.ENERGY_RATES, BuiltinOverlayCodecs.ENERGY_RATES));
-        stableResourceGroups = builder.overlays.stream().noneMatch(binding -> binding.type().requirementType() == RecipeRequirements.RESOURCES);
-        stableStructure = builder.overlays.stream().noneMatch(binding -> binding.type().requirementType() == RecipeRequirements.CHECKPOINT
-            || binding.type().requirementType() == RecipeRequirements.SELECTIVE);
+        boolean resourcesStable = true;
+        boolean structureStable = true;
+        for (var binding : builder.overlays) {
+            var type = binding.type().requirementType();
+            resourcesStable &= type != RecipeRequirements.RESOURCES;
+            structureStable &= type != RecipeRequirements.CHECKPOINT && type != RecipeRequirements.SELECTIVE;
+        }
+        stableResourceGroups = resourcesStable;
+        stableStructure = structureStable;
         if (!builder.overlays.isEmpty() && validators.isEmpty()) {
             throw new IllegalArgumentException("Custom overlays require a validator for their historical process invariants");
         }

@@ -88,7 +88,7 @@ public final class NetworkComputerComponentInventory {
         }
         var providers = new ObjectArrayList<BooleanSupplier>();
         var resources = calculate(registry, computer, installed, providers);
-        return new NetworkComputerComponentInventory(List.copyOf(contexts), revisions, List.copyOf(providers), resources, capturedValid);
+        return new NetworkComputerComponentInventory(contexts, revisions, providers, resources, capturedValid);
     }
 
     private static Object2LongMap<NetworkResourceType> calculate(NetworkComputerComponentRegistry registry, MachineInstance computer, AEKey2LongMap installed,
@@ -129,7 +129,9 @@ public final class NetworkComputerComponentInventory {
      * Safe inside a foreign storage fence: version proofs acquire no physical storage locks or resample providers.
      */
     public boolean current() {
-        return capturedValid && currentStorages() && providers.stream().allMatch(BooleanSupplier::getAsBoolean) && currentStorages();
+        if (!capturedValid || !currentStorages()) return false;
+        for (var provider : providers) if (!provider.getAsBoolean()) return false;
+        return currentStorages();
     }
 
     private boolean currentStorages() {

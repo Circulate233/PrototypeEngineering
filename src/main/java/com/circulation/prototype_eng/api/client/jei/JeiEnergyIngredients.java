@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.client.jei;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Energy;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay.Role;
@@ -44,7 +45,7 @@ public final class JeiEnergyIngredients {
         var result = new ObjectArrayList<Energy>();
         for (var line : display.information())
             if (line.energy() != null && line.energy().role() == role) result.add(line.energy());
-        return List.copyOf(result);
+        return ObjectLists.unmodifiable(result);
     }
 
     public static void index(IIngredients ingredients, JeiRecipeDisplay display) {

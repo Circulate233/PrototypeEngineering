@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.client.preview;
 
+import java.util.Collections;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
@@ -443,7 +444,7 @@ public final class StructurePreviewView {
         if (key.equals(materialKey)) return materialRows;
         var result = materialRows(complete, names, unknownName);
         if (key.token != token || key.names != namesRevision || complete != model()) return List.of();
-        materialRows = List.copyOf(filterAndSort(result));
+        materialRows = Collections.unmodifiableList(filterAndSort(result));
         materialKey = key;
         return materialRows;
     }

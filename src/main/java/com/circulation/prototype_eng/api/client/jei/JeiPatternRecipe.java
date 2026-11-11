@@ -34,7 +34,11 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
         for (var group : groups) {
             var candidates = new ObjectArrayList<GenericStack>();
             for (var row : group) {
-                boolean perTick = row.details().stream().anyMatch(JeiPatternRecipe::perTick);
+                boolean perTick = false;
+                for (var detail : row.details()) if (perTick(detail)) {
+                    perTick = true;
+                    break;
+                }
                 long amount = perTick ? Math.multiplyExact(row.stack().amount(), durationTicks) : row.stack().amount();
                 candidates.add(new GenericStack(row.stack().what(), amount));
             }

@@ -187,9 +187,12 @@ public final class ResearchStationWork {
         requireOwner();
         Objects.requireNonNull(site);
         Objects.requireNonNull(deadline);
-        if (sites().stream().noneMatch(source -> source.sameStation(site))) {
-            return true;
+        boolean present = false;
+        for (var source : sites()) if (source.sameStation(site)) {
+            present = true;
+            break;
         }
+        if (!present) return true;
         destroyedSite = site;
         if (stored != null && suspendedProcess == null && cleanup == null && cycle == null) {
             // A cold snapshot has no instantiated lifetime effects or resumable source tokens.

@@ -66,7 +66,6 @@ public final class MachineModelPasses {
 
     static void drawPass(ModelBuildCache cache, List<Entry> entries, Vec3d camera, MachineRenderPass pass, boolean fullbright) {
         boolean transparent = pass == MachineRenderPass.TRANSPARENT || pass == MachineRenderPass.BLOOM_TRANSPARENT;
-        var selected = selected(entries, camera, pass);
         float oldX = OpenGlHelper.lastBrightnessX, oldY = OpenGlHelper.lastBrightnessY;
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
         Throwable failure = null;
@@ -84,11 +83,12 @@ public final class MachineModelPasses {
                 GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
                 GL11.glDepthMask(false);
                 GL11.glDepthFunc(GL11.GL_LEQUAL);
-                for (var entry : selected)
+                for (var entry : selected(entries, camera, pass))
                     drawGroup(cache, List.of(entry), pass, fullbright ? 0xF000F0 : entry.combinedLight);
             } else {
                 Map<Bucket, List<Entry>> groups = new Object2ObjectLinkedOpenHashMap<>();
-                for (var entry : selected) {
+                for (var entry : entries) {
+                    if (!entry.current.getAsBoolean()) continue;
                     var buffers = entry.lease.buffers();
                     var key = new Bucket(buffers.origin(), buffers.textureIdentity(), fullbright ? 0xF000F0 : entry.combinedLight);
                     groups.computeIfAbsent(key, _ -> new ObjectArrayList<>()).add(entry);

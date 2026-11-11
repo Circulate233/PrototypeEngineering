@@ -212,7 +212,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
                     return null;
                 return new Capture(input == null ? List.of() : input.committedContents(),
                     output == null ? List.of() : output.committedContents(),
-                    contexts.stream().map(c -> new HatchReplacement.Version(c, c.revision())).toList());
+                    HatchReplacement.captureVersions(contexts));
             });
             if (captured == null) return HatchReplacement.of(HatchReconfigurationStatus.PENDING_BUSY);
             // The old fence stays held, but its access scope must not touch any new context.
@@ -226,7 +226,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             candidate.bindSourceIdentities(location);
             var publish = preparePublication.apply(candidate);
             return fence.access(() -> {
-                if (!current.getAsBoolean() || !captured.versions.stream().allMatch(HatchReplacement.Version::current))
+                if (!current.getAsBoolean() || !HatchReplacement.current(captured.versions))
                     return HatchReplacement.of(HatchReconfigurationStatus.STALE_TARGET);
                 contexts.forEach(StorageContext::requireRetirement);
                 contexts.forEach(StorageContext::invalidate);

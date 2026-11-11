@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -44,8 +43,7 @@ final class TransactionGroup implements ReversibleTransaction {
     }
 
     private TransactionGroup(List<? extends ReversibleTransaction> transactions, boolean frozen) {
-        this.transactions = frozen ? transactions : new ObjectArrayList<>(transactions);
-        if (!frozen) this.transactions.forEach(Objects::requireNonNull);
+        this.transactions = frozen ? transactions : List.copyOf(transactions);
         terminal = new boolean[transactions.size()];
         uncertain = new boolean[transactions.size()];
     }

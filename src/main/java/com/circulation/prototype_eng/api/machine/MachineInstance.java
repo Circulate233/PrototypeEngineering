@@ -40,8 +40,9 @@ import java.util.function.LongSupplier;
 public class MachineInstance implements PlannedMachineTask {
     private final ReferenceOpenHashSet<MachineWorkSlots> recipeHosts =
         new ReferenceOpenHashSet<>();
-    private final ObjectArrayList<MachineWorkSlots> recipeHostOrder = new ObjectArrayList<>();
-    private final List<MachineWorkSlots> recipeHostView = ObjectLists.unmodifiable(recipeHostOrder);
+    private List<MachineWorkSlots> recipeHostView = ObjectLists.emptyList();
+    @Nullable
+    private List<RecipeScanner> recipeScannerSnapshot;
     private final ReferenceOpenHashSet<RecipeScanner> recipeScanners =
         new ReferenceOpenHashSet<>();
     private final ReferenceOpenHashSet<RecipeProcess> recipeOccupants =
@@ -77,10 +78,13 @@ public class MachineInstance implements PlannedMachineTask {
     public void registerRecipeHost(MachineWorkSlots host) {
         if (Objects.requireNonNull(host).owner() != this) throw new IllegalArgumentException("Foreign recipe host");
         if (!recipeHosts.add(host)) return;
-        recipeHostOrder.add(host);
+        var hosts = new ObjectArrayList<>(recipeHostView);
+        hosts.add(host);
+        recipeHostView = ObjectLists.unmodifiable(hosts);
         recipeRosterRevision = Math.incrementExact(recipeRosterRevision);
     }
 
+    /** Immutable registration snapshot; only registering a new host publishes a replacement. */
     public List<MachineWorkSlots> recipeHosts() {
         return recipeHostView;
     }
@@ -104,11 +108,13 @@ public class MachineInstance implements PlannedMachineTask {
 
     public final void registerRecipeScanner(RecipeScanner scanner) {
         if (scanner.host().owner() != this) throw new IllegalArgumentException("Foreign recipe scanner");
-        recipeScanners.add(scanner);
+        if (recipeScanners.add(scanner)) recipeScannerSnapshot = null;
     }
 
     public final List<RecipeScanner> recipeScanners() {
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(recipeScanners));
+        if (recipeScannerSnapshot == null)
+            recipeScannerSnapshot = ObjectLists.unmodifiable(new ObjectArrayList<>(recipeScanners));
+        return recipeScannerSnapshot;
     }
 
     public boolean supportsStableFixedInputLowerBounds() {

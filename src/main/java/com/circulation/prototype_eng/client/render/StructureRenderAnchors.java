@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.client.render;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.ints.IntList;
 
 import ae2.api.orientation.BlockOrientation;
@@ -33,7 +34,7 @@ public final class StructureRenderAnchors {
     public static List<Anchor> select(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings, @Nullable ComponentData.Snapshot data) {
         var result = new ObjectArrayList<Anchor>();
         var type = snapshot.display().type();
-        boolean structurePath = snapshot.display().formed() && bindings.structures().keySet().stream().anyMatch(key -> key.machine().equals(type));
+        boolean structurePath = usesStructureBindings(snapshot, bindings);
         if (structurePath) {
             long anchorCount = 0;
             for (var occurrence : snapshot.occurrences()) {
@@ -66,7 +67,26 @@ public final class StructureRenderAnchors {
                     result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, IntList.of(), -1), snapshot.controller(), binding, data));
             }
         }
-        return List.copyOf(result);
+        return ObjectLists.unmodifiable(result);
+    }
+
+    /** Frustum classification needs only binding presence, never a copied/expanded anchor graph. */
+    public static boolean hasBinding(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings) {
+        var type = snapshot.display().type();
+        if (usesStructureBindings(snapshot, bindings)) {
+            for (var occurrence : snapshot.occurrences())
+                if (bindings.structures().containsKey(new MachineRenderBindings.StructureKey(type, occurrence.structure()))) return true;
+            return false;
+        }
+        if (bindings.machines().containsKey(type)) return true;
+        for (var component : snapshot.components()) if (bindings.components().containsKey(component)) return true;
+        return false;
+    }
+
+    private static boolean usesStructureBindings(MachineRenderSnapshot snapshot, MachineRenderBindings.View bindings) {
+        if (snapshot.display().formed()) for (var key : bindings.structures().keySet())
+            if (key.machine().equals(snapshot.display().type())) return true;
+        return false;
     }
 
     private static Anchor anchor(MachineRenderSnapshot snapshot, Part part, BlockPos origin, GeckoModelBinding binding, @Nullable ComponentData.Snapshot data) {

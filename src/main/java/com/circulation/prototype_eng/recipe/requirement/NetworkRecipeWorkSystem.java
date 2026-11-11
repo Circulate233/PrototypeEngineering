@@ -67,7 +67,7 @@ public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<Ne
     }
 
     private static RequirementTransaction rejected(ProcessResult result) {
-        return new ReservedRequirement(result, List.of());
+        return ReservedRequirement.frozen(result, List.of());
     }
 
     @Override

@@ -20,5 +20,10 @@ public record ZenNetworkRecipeContext(MachineRecipe value) {
  @ZenGetter("maxConcurrentThreads") public int maxConcurrentThreads() { return value.maxConcurrentThreads(); }
  @ZenMethod public boolean matches(ZenRecipe recipe) { return value==Objects.requireNonNull(recipe).recipe(); }
  @ZenMethod public boolean inGroup(String groupId) { return value.recipeGroups().contains(new ResourceLocation(groupId)); }
- @ZenGetter("requirements") public ZenRequirement[] requirements() { return value.orderedRequirements().stream().map(ZenRequirement::new).toArray(ZenRequirement[]::new); }
+ @ZenGetter("requirements") public ZenRequirement[] requirements() {
+     var requirements=value.orderedRequirements();
+     var result=new ZenRequirement[requirements.size()];
+     for(int i=0;i<result.length;i++) result[i]=new ZenRequirement(requirements.get(i));
+     return result;
+ }
 }

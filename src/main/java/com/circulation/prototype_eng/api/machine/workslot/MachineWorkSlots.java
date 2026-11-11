@@ -894,8 +894,8 @@ public final class MachineWorkSlots {
         private boolean stopped;
         private boolean finished;
 
-        private TickGroup(List<TickBatch> batches) {
-            this.batches = ObjectLists.unmodifiable(new ObjectArrayList<>(batches));
+        private TickGroup(ObjectArrayList<TickBatch> batches) {
+            this.batches = ObjectLists.unmodifiable(batches);
             for (var batch : batches) {
                 for (var entry : batch.entries) {
                     processes.add(entry.process);

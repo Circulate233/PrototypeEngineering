@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -15,14 +17,16 @@ import java.util.Set;
 public final class GeckoAnimatedBoneIndex {
     private final Map<String, Set<String>> bones;
     private final Set<String> all;
-    private final List<String> sortedNames;
+    private final List<String> fallbackNames;
 
     private GeckoAnimatedBoneIndex(Map<String, Set<String>> bones) {
         this.bones = Collections.unmodifiableMap(bones);
         var union = new ObjectLinkedOpenHashSet<String>();
         bones.values().forEach(union::addAll);
         all = Collections.unmodifiableSet(union);
-        sortedNames = bones.keySet().stream().sorted().toList();
+        String first = null;
+        for (var name : bones.keySet()) if (first == null || name.compareTo(first) < 0) first = name;
+        fallbackNames = first == null ? List.of() : List.of(first);
     }
 
     @SuppressWarnings("deprecation")
@@ -47,8 +51,12 @@ public final class GeckoAnimatedBoneIndex {
     }
 
     public List<String> pickAnimationNames(List<String> preferred) {
-        var selected = preferred.stream().map(String::trim).filter(bones::containsKey).toList();
-        return selected.isEmpty() ? sortedNames.stream().limit(1).toList() : selected;
+        var selected = new ObjectArrayList<String>();
+        for (var value : preferred) {
+            var name = value.trim();
+            if (bones.containsKey(name)) selected.add(name);
+        }
+        return selected.isEmpty() ? fallbackNames : ObjectLists.unmodifiable(selected);
     }
 
     public Set<String> animatedBonesFor(List<String> preferred) {

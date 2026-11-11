@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.client.render;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.math.Vec3d;
 import net.minecraftforge.fml.common.Loader;
@@ -9,7 +10,8 @@ import java.util.List;
 
 /** The two native post-processing draws share forks; retirement cannot return their buffers between phases. */
 public final class MachineModelBloom {
-    private static final ObjectArrayList<Batch> pending = new ObjectArrayList<>();
+    private static ObjectArrayList<Batch> pending = new ObjectArrayList<>();
+    private static ObjectArrayList<Batch> reusable;
     private static boolean secondPhase;
 
     private MachineModelBloom() {
@@ -41,7 +43,7 @@ public final class MachineModelBloom {
                         throw failure;
                     }
                 }
-            pending.add(new Batch(cache, List.copyOf(retained), revoke));
+            pending.add(new Batch(cache, ObjectLists.unmodifiable(retained), revoke));
         } catch (RuntimeException | Error failure) {
             for (var entry : retained)
                 try {
@@ -105,8 +107,9 @@ public final class MachineModelBloom {
 
     /** Frame end also releases a skipped second phase, before any next frame begins. */
     public static void clear() {
-        var old = new ObjectArrayList<>(pending);
-        pending.clear();
+        var old = pending;
+        pending = reusable == null ? new ObjectArrayList<>(old.size()) : reusable;
+        reusable = null;
         secondPhase = false;
         Throwable failure = null;
         for (var batch : old)
@@ -116,6 +119,8 @@ public final class MachineModelBloom {
                 } catch (RuntimeException | Error exception) {
                     failure = BuiltModelBuffers.append(failure, exception);
                 }
+        old.clear();
+        if (reusable == null) reusable = old;
         BuiltModelBuffers.rethrow(failure);
     }
 

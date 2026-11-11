@@ -17,6 +17,8 @@ import java.util.function.BooleanSupplier;
 public class MachineModelHides implements AutoCloseable {
     private final Thread owner = Thread.currentThread();
     private final Map<BlockPos, Lease> leases = new Object2ObjectOpenHashMap<>();
+    @Nullable
+    private List<Lease> capturedLeases;
 
     public @Nullable Lease acquire(Object world, Object tile, BlockPos controller, List<BlockPos> positions, BooleanSupplier current) {
         requireOwner();
@@ -33,6 +35,7 @@ public class MachineModelHides implements AutoCloseable {
                 return null;
             }
             leases.put(controller, lease);
+            capturedLeases = null;
             return lease;
         } catch (RuntimeException | Error failure) {
             try {
@@ -47,7 +50,7 @@ public class MachineModelHides implements AutoCloseable {
     public void tick() {
         requireOwner();
         Throwable failure = null;
-        for (var lease : List.copyOf(leases.values()))
+        for (var lease : leaseSnapshot())
             try {
                 if (!lease.current.getAsBoolean() || entries().get(lease.controller) != lease.positions) lease.close();
             } catch (RuntimeException | Error cleanup) {
@@ -59,7 +62,7 @@ public class MachineModelHides implements AutoCloseable {
     public void unload(Object world) {
         requireOwner();
         Throwable failure = null;
-        for (var lease : List.copyOf(leases.values()))
+        for (var lease : leaseSnapshot())
             if (lease.world == world) try {
                 lease.close();
             } catch (RuntimeException | Error exception) {
@@ -72,13 +75,18 @@ public class MachineModelHides implements AutoCloseable {
     public void close() {
         requireOwner();
         Throwable failure = null;
-        for (var lease : List.copyOf(leases.values()))
+        for (var lease : leaseSnapshot())
             try {
                 lease.close();
             } catch (RuntimeException | Error exception) {
                 failure = BuiltModelBuffers.append(failure, exception);
             }
         BuiltModelBuffers.rethrow(failure);
+    }
+
+    private List<Lease> leaseSnapshot() {
+        if (capturedLeases == null) capturedLeases = ObjectLists.unmodifiable(new ObjectArrayList<>(leases.values()));
+        return capturedLeases;
     }
 
     protected Map<BlockPos, Collection<BlockPos>> entries() {
@@ -131,7 +139,7 @@ public class MachineModelHides implements AutoCloseable {
             closed = true;
             var current = owner.leases.get(controller);
             if (current != null && current != this) return;
-            owner.leases.remove(controller, this);
+            if (owner.leases.remove(controller, this)) owner.capturedLeases = null;
             if (owner.entries().get(controller) == positions) owner.remove(controller);
         }
     }

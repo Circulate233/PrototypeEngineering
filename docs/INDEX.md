@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 集合复制/顺序流审查：AST覆盖746正式Java/初始1000候选，64个stream和21个toList入口已清零（原无parallelStream）。组件/宿主/扫描器、库存单key/全量、网络不可变向量、资源窗口、团队/黑名单、结构重载与客户端成员表按图/存储/成员变化缓存；绘制/Bloom队列移交并复用，骨骼估算仅cache miss冻结key，frustum无锚点整表构建，研究定义排序移到freeze，移除私有builder/分页的重复复制。必要外部输入/真实工作账本/变化事实/排序及故障隔离保留，不能宣称剩余复制全在冷路径。完整Spotless/build1963tests/270suites全零，66Java本机MCP全级零、MCP build通过。详见[分配与复制审查](allocation-performance.md)，证据collection-allocation-audit/；未新增镜像测试/启动游戏/开子代理/推送，原背景和暂存保留。
+
 - 2026-11-12 共享仓室边界核实：内置仓室复用同一物理StorageContext；库存按context去别名，资源/FE按共享锁/revision/预留结算，调度已有shared-affinity传递串行。新增真实双控制器共仓/重复别名/四策略流程验证：两台均选2并行、仅一台足额执行，另一台不付款不推进；第一台失去结构后共享仓室仍可用，补料后第二台继续。49专项/7suites及Spotless/build通过，修改test本机MCP全级零、MCP build通过；本轮未改运行语义。注意库存建议并非全局配额，准入未长期持有物料，仍可超额选中后等待，不承诺公平分摊；设计建议与源码依据见[共享仓室](storage-redesign.md#共享仓室的并发与并行边界2026-11-12)。证据shared-hatch-audit/；未开子代理/启动游戏/推送，原背景与暂存保留。
 
 - 2026-11-12 单输入不限输出/JEI动态布局：SimpleRecipePool.Entry改为完整outputs列表（可为空），保单输出便捷重载、原AEKey/long输入索引、freeze/CT/codec。自动选择SingleInputRecipePage，一个输入常驻、输出最多24组/页；通用页每侧最多16组，按当前真实数量动态网格，仅绘实际槽框，箭头居中、说明接在材料区后，同池按最大需要量测。翻页撤旧原生槽/同步坐标与FE，不累加tooltip；索引和样板保持完整。参考MMCE布局原则，保PM资产/自定义和外部页优先。52专项及完整1962tests/270suites全零，10Java本机MCP全级零及MCP build通过。入口[JEI](jei.md#2026-11-12-单输入多输出与动态材料布局)、[简单池](recipes.md#配方池接口与简单配方索引)；证据single-input-multi-output/。未开子代理/启动游戏/推送，原背景/暂存保留；实际GL和鼠标/样板操作待用户重启复验。
@@ -152,6 +154,7 @@
 | 真实阶段/一次tick会话/延迟post/准确恢复 | [recipe-tick-sessions.md](recipe-tick-sessions.md) |
 | 跨lane资源独占/批次结算/准确token恢复 | [deferred-resource-batches.md](deferred-resource-batches.md) |
 | 业务query/需求作用域/复合事务/revision额度 | [transaction-recovery.md](transaction-recovery.md) |
+| 集合复制/流调用/热路径分配 | [allocation-performance.md](allocation-performance.md) |
 | 结构匹配/快照/发布 | [structures.md](structures.md)、[structure-migration-audit.md](structure-migration-audit.md) |
 | 存储/预留/FE | [storage-redesign.md](storage-redesign.md) |
 | 仓室/美术来源 | [hatches.md](hatches.md)、[assets.md](assets.md)、[controller-assets.md](controller-assets.md) |

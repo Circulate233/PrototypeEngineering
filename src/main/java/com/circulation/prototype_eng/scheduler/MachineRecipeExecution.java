@@ -836,7 +836,7 @@ final class MachineRecipeExecution implements PlannedExecution {
         private PolicyWork(Entry entry, MachineWorkSlots host) {
             this.entry = entry;
             this.host = host;
-            hosts = entry.candidate.machine instanceof CrossRecipeController ? List.copyOf(entry.candidate.machine.recipeHosts()) : List.of(host);
+            hosts = entry.candidate.machine instanceof CrossRecipeController ? entry.candidate.machine.recipeHosts() : List.of(host);
             boolean workAsync = Objects.requireNonNull(entry.candidate.policy).workAsync();
             boolean ownerRequired = false;
             if (workAsync) {

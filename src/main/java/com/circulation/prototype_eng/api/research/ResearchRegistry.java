@@ -15,6 +15,7 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.Comparator;
 
 /**
  * Loading-thread registration, followed by one atomic validated publication for runtime readers.
@@ -109,7 +110,10 @@ public final class ResearchRegistry {
             }
             materials.put(definition.id(), stages);
         }
-        frozen = new Frozen(definitions, ObjectLists.unmodifiable(new ObjectArrayList<>(definitions.values())), materials);
+        var orderedById = new ObjectArrayList<>(definitions.values());
+        orderedById.sort(Comparator.comparing(definition -> definition.id().toString()));
+        frozen = new Frozen(definitions, ObjectLists.unmodifiable(new ObjectArrayList<>(definitions.values())),
+            ObjectLists.unmodifiable(orderedById), materials);
         registrations.clear();
     }
 
@@ -123,6 +127,11 @@ public final class ResearchRegistry {
 
     public ObjectList<ResearchDefinition> all() {
         return requireFrozen().ordered;
+    }
+
+    /** Stable GUI order is prepared once at definition freeze, independently of registration order. */
+    public ObjectList<ResearchDefinition> sortedById() {
+        return requireFrozen().orderedById;
     }
 
     /**
@@ -200,6 +209,7 @@ public final class ResearchRegistry {
 
     private record Frozen(Object2ObjectLinkedOpenHashMap<ResourceLocation, ResearchDefinition> byId,
                           ObjectList<ResearchDefinition> ordered,
+                          ObjectList<ResearchDefinition> orderedById,
                           Object2ObjectOpenHashMap<ResourceLocation, Int2ObjectOpenHashMap<RecipeProcessNbt>> materials) {
     }
 }

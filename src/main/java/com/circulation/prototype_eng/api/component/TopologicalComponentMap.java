@@ -163,7 +163,7 @@ public final class TopologicalComponentMap<K, C> {
     public void addFirst(K key, C component) {
         var roots = new ObjectArrayList<K>();
         for (var node : nodes.values()) {
-            if (!node.key().equals(key) && node.dependencies().stream().noneMatch(nodes::containsKey)) {
+            if (!node.key().equals(key) && !hasInstalledDependency(node)) {
                 roots.add(node.key());
             }
         }
@@ -171,6 +171,11 @@ public final class TopologicalComponentMap<K, C> {
         for (K root : roots) {
             addDependency(root, key);
         }
+    }
+
+    private boolean hasInstalledDependency(Node<K, C> node) {
+        for (var dependency : node.dependencies()) if (nodes.containsKey(dependency)) return true;
+        return false;
     }
 
     public void addTail(K key, C component) {
@@ -194,10 +199,6 @@ public final class TopologicalComponentMap<K, C> {
         nodes.clear();
         pending.clear();
         revision++;
-    }
-
-    List<Node<K, C>> assemblyComponents() {
-        return ObjectLists.unmodifiable(new ObjectArrayList<>(nodes.values()));
     }
 
     /**

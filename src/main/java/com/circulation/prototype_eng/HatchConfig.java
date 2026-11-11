@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng;
 
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
@@ -17,7 +18,6 @@ import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 import net.minecraftforge.common.config.Configuration;
 
 import java.io.File;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -31,9 +31,11 @@ public final class HatchConfig {
     }
 
     private static List<Defaults> defaults() {
-        return Arrays.stream(HatchTier.values()).map(tier -> new Defaults(
+        var result = new ObjectArrayList<Defaults>();
+        for (var tier : HatchTier.values()) result.add(new Defaults(
             tier.slotsPerSide(HatchMode.INPUT), tier.slotsPerSide(HatchMode.MIXED), tier.itemsPerSlot(),
-            tier.energyCapacity(), tier.energyTransfer())).toList();
+            tier.energyCapacity(), tier.energyTransfer()));
+        return ObjectLists.unmodifiable(result);
     }
 
     public static synchronized void load(File directory) {
@@ -79,7 +81,7 @@ public final class HatchConfig {
         ServerHatchConfigurations.requireConfigurationOwner();
         var before = state;
         var next = new Object2ObjectOpenHashMap<>(before.overrides);
-        for (var target : List.copyOf(targets))
+        for (var target : targets)
             next.put(Key.of(target.tier(), target.configuration()), target.configuration());
         long revision = Math.incrementExact(before.revision);
         state = new State(revision, before.defaults, Map.copyOf(next));

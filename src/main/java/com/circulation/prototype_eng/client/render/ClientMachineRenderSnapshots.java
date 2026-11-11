@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.render;
 
+import java.util.List;
+import it.unimi.dsi.fastutil.objects.ObjectLists;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
@@ -28,6 +30,8 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     private final MachineRenderBindings.Registration bindingListener;
     private Object resourceEpoch = new Object();
     private boolean closed;
+    @Nullable private List<Owner> capturedOwners;
+    @Nullable private List<Listener> capturedListeners;
 
     public ClientMachineRenderSnapshots(ClientStructureCatalog catalog, MachineRenderBindings bindings) {
         this.catalog = Objects.requireNonNull(catalog);
@@ -58,6 +62,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
             old.assembler.retire();
         }
         owners.put(owner.position, owner);
+        capturedOwners = null;
         invalidate();
         return owner;
     }
@@ -125,9 +130,11 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         requireOwner();
         var entry = new Listener(Objects.requireNonNull(callback));
         listeners.add(entry);
+        capturedListeners = null;
         return () -> {
             requireOwner();
             listeners.remove(entry);
+            capturedListeners = null;
         };
     }
 
@@ -140,13 +147,14 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     public void unloadWorld(Object world) {
         requireOwner();
         boolean removed = false;
-        for (var owner : new ObjectArrayList<>(owners.values()))
+        for (var owner : ownerSnapshot())
             if (owner.world == world) {
                 owner.active = false;
                 owner.view = null;
                 owner.waiting = null;
                 owner.assembler.retire();
                 owners.remove(owner.position);
+                capturedOwners = null;
                 removed = true;
             }
         if (removed) invalidate();
@@ -162,13 +170,14 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
     public void tick() {
         requireOwner();
         boolean removed = false;
-        for (var owner : new ObjectArrayList<>(owners.values()))
+        for (var owner : ownerSnapshot())
             if (!attached(owner)) {
                 owner.active = false;
                 owner.view = null;
                 owner.waiting = null;
                 owner.assembler.retire();
                 owners.remove(owner.position);
+                capturedOwners = null;
                 removed = true;
             }
         if (removed) invalidate();
@@ -179,7 +188,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         // Revoke all prior views before consumer cleanup. Partial directory data never calls this.
         for (var owner : owners.values()) owner.view = null;
         invalidate();
-        for (var owner : new ObjectArrayList<>(owners.values())) {
+        for (var owner : ownerSnapshot()) {
             if (!catalog.connectedTo(owner.connection)) {
                 owner.close();
                 continue;
@@ -192,7 +201,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         requireOwner();
         for (var owner : owners.values()) owner.view = null;
         invalidate();
-        for (var owner : new ObjectArrayList<>(owners.values())) publish(owner);
+        for (var owner : ownerSnapshot()) publish(owner);
     }
 
     private void publish(Owner owner) {
@@ -224,9 +233,19 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
         return !closed && owner.active && owners.get(owner.position) == owner && catalog.connectedTo(owner.connection) && owner.attached.getAsBoolean();
     }
 
+    private List<Owner> ownerSnapshot() {
+        if (capturedOwners == null) capturedOwners = ObjectLists.unmodifiable(new ObjectArrayList<>(owners.values()));
+        return capturedOwners;
+    }
+
+    private List<Listener> listenerSnapshot() {
+        if (capturedListeners == null) capturedListeners = ObjectLists.unmodifiable(new ObjectArrayList<>(listeners));
+        return capturedListeners;
+    }
+
     private void invalidate() {
         Throwable failure = null;
-        for (var entry : new ObjectArrayList<>(listeners)) {
+        for (var entry : listenerSnapshot()) {
             try {
                 entry.callback.run();
             } catch (RuntimeException | Error caught) {
@@ -250,6 +269,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
             owner.assembler.retire();
         }
         owners.clear();
+        capturedOwners = null;
         Throwable failure = null;
         try {
             invalidate();
@@ -345,6 +365,7 @@ public final class ClientMachineRenderSnapshots implements AutoCloseable {
             assembler.retire();
             if (owners.get(position) == this) {
                 owners.remove(position);
+                capturedOwners = null;
                 invalidate();
             }
         }

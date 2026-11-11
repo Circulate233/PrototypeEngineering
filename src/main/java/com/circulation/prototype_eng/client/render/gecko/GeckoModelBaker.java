@@ -51,9 +51,9 @@ public class GeckoModelBaker {
     }
 
     public int[] estimateRoutedFilteredVertexCounts(GeoModel model, Set<String> active, BakeMode mode, Set<String> potential) {
-        var key = new Estimate(model, Set.copyOf(active), mode, Set.copyOf(potential));
-        var hit = estimates.getAndMoveToLast(key);
+        var hit = estimates.getAndMoveToLast(new Estimate(model, active, mode, potential));
         if (hit != null) return hit.clone();
+        var key = new Estimate(model, Set.copyOf(active), mode, Set.copyOf(potential));
         int[] out = new int[4];
         for (var bone : model.topLevelBones) estimate(bone, active, potential, mode, false, false, 0, out);
         if (estimates.size() == 64) estimates.removeFirst();
