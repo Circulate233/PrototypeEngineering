@@ -1,5 +1,7 @@
 package pe.visual.examples;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
@@ -43,7 +45,7 @@ public final class CompositeStructureExamples {
         var type = Objects.requireNonNull(MachineTypeRegistry.INSTANCE.get(id(name)), "12 composite preinit script is not loaded");
         var shape = MachineTypeRegistry.INSTANCE.structure(type);
         var catalog = StructureCatalogView.capture(new StructureCatalog(List.of(new StructureDefinition(shape))), new UUID(0, 23), 0);
-        var expanded = StructureBuildPlan.expand(catalog, type.structureId(), BlockOrientation.NORTH_UP, Map.of("0/0", repeats));
+        var expanded = StructureBuildPlan.expand(catalog, type.structureId(), BlockOrientation.NORTH_UP, Object2IntMaps.singleton("0/0", repeats));
         var blocks = new Object2ObjectLinkedOpenHashMap<BlockPos, Block>();
         for (var cell : expanded.cells()) {
             var display = Objects.requireNonNull(cell.display(), "Composite example has an unknown material");

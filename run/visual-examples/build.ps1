@@ -49,6 +49,13 @@ $manifestPath = Join-Path $buildPath 'MANIFEST.MF'
     Set-Content -LiteralPath $manifestPath -Encoding ascii
 $temporaryJar = Join-Path $buildPath 'pe_visual_examples-1.0.0-dev.jar'
 $resourcesPath = Join-Path $examplePath 'src/main/resources'
+$packMetadataPath = Join-Path $resourcesPath 'pack.mcmeta'
+if (-not (Test-Path -LiteralPath $packMetadataPath -PathType Leaf)) { throw 'Example resource pack is missing pack.mcmeta; refusing to package untranslated resources.' }
+$packMetadata = Get-Content -Raw -LiteralPath $packMetadataPath -Encoding utf8 | ConvertFrom-Json
+if ($packMetadata.pack.pack_format -ne 3) { throw 'Example resources require pack_format 3 and lowercase en_us/zh_cn language filenames.' }
+foreach ($language in @('en_us','zh_cn')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $resourcesPath "assets/pe_visual_examples/lang/$language.lang") -PathType Leaf)) { throw "Example locale is missing: $language" }
+}
 & $jarPath --create --file $temporaryJar --manifest $manifestPath -C $classesPath . -C $resourcesPath .
 if ($LASTEXITCODE -ne 0) { throw "Example jar creation failed with exit code $LASTEXITCODE. No addon was installed." }
 $modsPath = Join-Path $projectPath 'run/mods'

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
@@ -8,6 +10,7 @@ import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import ae2.core.localization.LocalizationEnum;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -76,7 +79,7 @@ public final class StructurePreviewView {
             throw new IllegalArgumentException("Preview machine does not reference the requested structure");
         this.machine = machine;
         this.settings = Objects.requireNonNull(settings);
-        settings.displayOptions().forEach((display, option) -> alternatives.put(display, option.intValue()));
+        alternatives.putAll(settings.displayOptions());
     }
 
     private static void addCount(Object2LongOpenHashMap<StructureDisplay> counts, @Nullable StructureDisplay display, long delta) {
@@ -107,6 +110,13 @@ public final class StructurePreviewView {
 
     public @Nullable MachineType machine() {
         return machine;
+    }
+
+    /** An unnamed structure in a machine viewer keeps that machine's localized display contract. */
+    public @Nullable LocalizationEnum title() {
+        var current = model();
+        var declared = current == null ? null : current.title();
+        return declared != null ? declared : machine == null ? null : machine.displayName();
     }
 
     public boolean formedPreview() {
@@ -307,26 +317,26 @@ public final class StructurePreviewView {
     }
 
     /** Installs one server-authoritative choice snapshot without one rebuild per cell. */
-    public boolean replaceAlternatives(Object expected, Map<StructureDisplay, Integer> global,
+    public boolean replaceAlternatives(Object expected, Object2IntMap<StructureDisplay> global,
                                        Map<BlockPos, StructurePreviewSettings.CellChoice> local) {
         return replaceSelections(expected, global, local, settings.sliceCounts());
     }
 
     /** One authoritative builder snapshot updates materials and repetition counts together. */
-    public boolean replaceSelections(Object expected, Map<StructureDisplay, Integer> global,
-                                     Map<BlockPos, StructurePreviewSettings.CellChoice> local, Map<StructurePreviewPath, Integer> slices) {
+    public boolean replaceSelections(Object expected, Object2IntMap<StructureDisplay> global,
+                                     Map<BlockPos, StructurePreviewSettings.CellChoice> local, Object2IntMap<StructurePreviewPath> slices) {
         if (expected != token || model() == null) return false;
-        for (var entry : slices.entrySet())
-            if (entry.getKey() == null || entry.getValue() == null || entry.getValue() < 0) return false;
-        for (var entry : global.entrySet())
-            if (entry.getKey() == null || !membership.contains(entry.getKey()) || entry.getValue() == null || entry.getValue() < 0 || entry.getValue() >= entry.getKey().options().size()) return false;
+        for (var entry : slices.object2IntEntrySet())
+            if (entry.getKey() == null || entry.getIntValue() < 0) return false;
+        for (var entry : global.object2IntEntrySet())
+            if (entry.getKey() == null || !membership.contains(entry.getKey()) || entry.getIntValue() < 0 || entry.getIntValue() >= entry.getKey().options().size()) return false;
         for (var entry : local.entrySet()) {
             var cell = cells.get(entry.getKey());
             if (cell == null || entry.getValue() == null || !entry.getValue().display().equals(cell.display())) return false;
         }
         if (settings.displayOptions().equals(global) && settings.cellOptions().equals(local) && settings.sliceCounts().equals(slices)) return true;
         alternatives.clear();
-        global.forEach((display, option) -> alternatives.put(display, option.intValue()));
+        alternatives.putAll(global);
         settings = new StructurePreviewSettings(settings.orientation(), slices, settings.maxOccurrences(), settings.maxCellVisits(), global, local);
         request = null;
         restorePick = picked == null ? null : picked.position();
@@ -339,7 +349,7 @@ public final class StructurePreviewView {
         if (expected != token || complete == null || option < 0 || option >= display.options().size()
             || !membership.contains(display)) return false;
         alternatives.put(display, option);
-        var options = new Object2ObjectOpenHashMap<>(settings.displayOptions());
+        var options = new Object2IntOpenHashMap<>(settings.displayOptions());
         options.put(display, option);
         var local = new Object2ObjectOpenHashMap<>(settings.cellOptions());
         local.values().removeIf(choice -> choice.display().equals(display));
@@ -354,7 +364,7 @@ public final class StructurePreviewView {
             var node = complete.generation().nodes().get(occurrence.node());
             if (node.kind() != StructurePreviewProvider.Kind.SLICE || count < node.minCount() || count > node.maxCount())
                 return false;
-            var choices = new Object2ObjectOpenHashMap<>(settings.sliceCounts());
+            var choices = new Object2IntOpenHashMap<>(settings.sliceCounts());
             choices.put(path, count);
             settings = new StructurePreviewSettings(settings.orientation(), choices, settings.maxOccurrences(), settings.maxCellVisits(), settings.displayOptions(), settings.cellOptions());
             request = null;

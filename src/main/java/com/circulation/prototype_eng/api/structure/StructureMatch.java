@@ -6,7 +6,7 @@ import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.AbstractList;
-import java.util.ArrayDeque;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -70,7 +70,7 @@ public record StructureMatch(MachineStructure structure, BlockPos origin, int re
     @SuppressWarnings("ReturnOfInnerClass") // The cursor retains this immutable accepted occurrence tree.
     public StructureOperation<List<BlockPos>> beginAllBlocks() {
         return new StructureOperation<>() {
-            private final ArrayDeque<Iterator<StructureMatch>> pending = new ArrayDeque<>();
+            private final ObjectArrayList<Iterator<StructureMatch>> pending = new ObjectArrayList<>();
             private final ObjectLinkedOpenHashSet<BlockPos> unique = new ObjectLinkedOpenHashSet<>();
             private final ObjectArrayList<BlockPos> frozen = new ObjectArrayList<>();
             private StructureMatch node = StructureMatch.this;
@@ -93,7 +93,7 @@ public record StructureMatch(MachineStructure structure, BlockPos origin, int re
                         if (!work.take()) return false;
                         unique.add(blocks.next());
                     }
-                    while (!pending.isEmpty() && !pending.peek().hasNext()) {
+                    while (!pending.isEmpty() && !pending.top().hasNext()) {
                         if (!work.take()) return false;
                         pending.pop();
                     }
@@ -102,7 +102,7 @@ public record StructureMatch(MachineStructure structure, BlockPos origin, int re
                         copy = unique.iterator();
                     } else {
                         if (!work.take()) return false;
-                        node = Objects.requireNonNull(pending.peek()).next();
+                        node = Objects.requireNonNull(pending.top()).next();
                     }
                 }
                 while (copy.hasNext()) {

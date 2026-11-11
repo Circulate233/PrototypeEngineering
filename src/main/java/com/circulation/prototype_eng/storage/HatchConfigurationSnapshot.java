@@ -46,17 +46,17 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
     private static void writeSide(DataOutputStream out, ResourceHatchConfiguration.Side side) throws IOException {
         out.writeInt(side.slots());
         out.writeInt(side.capacities().size());
-        var entries = new ObjectArrayList<>(side.capacities().entrySet());
+        var entries = new ObjectArrayList<>(side.capacities().reference2LongEntrySet());
         entries.sort(Comparator.comparing(entry -> entry.getKey().getId().toString()));
         for (var entry : entries) {
             out.writeUTF(entry.getKey().getId().toString());
-            out.writeLong(entry.getValue());
+            out.writeLong(entry.getLongValue());
             if (out.size() > MAX_BYTES) throw new IllegalArgumentException("Hatch configuration snapshot is too large");
         }
         out.writeBoolean(side.basis() != null);
         if (side.basis() != null) {
             out.writeLong(side.basis().itemEquivalent());
-            for (var entry : entries) out.writeLong(side.basis().ratios().get(entry.getKey()));
+            for (var entry : entries) out.writeLong(side.basis().ratios().getLong(entry.getKey()));
         }
     }
 

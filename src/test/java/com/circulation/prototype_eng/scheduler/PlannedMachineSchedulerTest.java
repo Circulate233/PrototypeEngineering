@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.scheduler;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -45,7 +47,6 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -246,7 +247,7 @@ class PlannedMachineSchedulerTest {
         private final RecipeProcess process;
         private final Key raw = new Key(KEYS, "raw");
         private final Key product = new Key(KEYS, "product");
-        private final BufferedResourceHatch warehouse = new BufferedResourceHatch(HatchMode.MIXED, 2, Map.of(KEYS, 10L), () -> {
+        private final BufferedResourceHatch warehouse = new BufferedResourceHatch(HatchMode.MIXED, 2, Reference2LongMaps.singleton(KEYS, 10L), () -> {
         });
         private final EnergyBuffer energy = new EnergyBuffer(20, () -> {
         });

@@ -12,12 +12,14 @@ import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.client.render.StructureRenderAnchors;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntLists;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -35,8 +37,8 @@ public final class PreviewMachineAnchors {
     private GeckoStructureBinding structureBinding;
     private BlockPos sliceStep;
     private StructurePreviewPath pathCursor;
-    private Integer[] pathParts;
-    private List<Integer> occurrencePath;
+    private int[] pathParts;
+    private IntList occurrencePath;
     private boolean perSlice;
     private List<StructureRenderAnchors.Anchor> completed;
 
@@ -76,7 +78,7 @@ public final class PreviewMachineAnchors {
                 machineVisited = true;
                 var binding = bindings.machines().get(machine.id());
                 if (binding != null)
-                    add(new StructureRenderAnchors.Part(StructureRenderAnchors.Kind.MACHINE, machine.id(), List.of(), -1), BlockPos.ORIGIN, binding);
+                    add(new StructureRenderAnchors.Part(StructureRenderAnchors.Kind.MACHINE, machine.id(), IntList.of(), -1), BlockPos.ORIGIN, binding);
                 continue;
             }
             if (occurrence == null) {
@@ -100,7 +102,7 @@ public final class PreviewMachineAnchors {
                 slice = 0;
                 sliceStep = rotation.apply(node.sliceOffset());
                 pathCursor = next.path();
-                pathParts = new Integer[pathCursor.depth()];
+                pathParts = new int[pathCursor.depth()];
                 occurrencePath = null;
                 continue;
             }
@@ -109,7 +111,7 @@ public final class PreviewMachineAnchors {
                 pathCursor = Objects.requireNonNull(pathCursor.parent());
                 continue;
             }
-            if (occurrencePath == null) occurrencePath = List.copyOf(Arrays.asList(pathParts));
+            if (occurrencePath == null) occurrencePath = IntLists.unmodifiable(IntArrayList.wrap(pathParts));
             var node = model.generation().nodes().get(occurrence.node());
             var origin = perSlice ? sliceOrigin(occurrence.origin(), sliceStep, slice) : occurrence.origin();
             add(new StructureRenderAnchors.Part(StructureRenderAnchors.Kind.STRUCTURE, node.id(), occurrencePath, perSlice ? slice : -1), origin, structureBinding.model());

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -46,7 +48,6 @@ import java.io.PrintStream;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,7 +64,7 @@ class ZenAdvancedRecipeBridgeTest {
     }
 
     private static BufferedResourceHatch hatch(HatchMode mode) {
-        return new BufferedResourceHatch(mode, 2, Map.of(TYPE, 100L), () -> {
+        return new BufferedResourceHatch(mode, 2, Reference2LongMaps.singleton(TYPE, 100L), () -> {
         });
     }
 

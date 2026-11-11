@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewCache;
@@ -37,8 +40,7 @@ class StructureProjectionStateTest {
     private static final StructurePreviewSettings SETTINGS = new StructurePreviewSettings(BlockOrientation.NORTH_UP);
 
     private static StructureCatalogView view(UUID session, long sequence, List<BlockPos> cells) {
-        var node = new StructureCatalogView.Node(ID, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE,
-            BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, cells, List.of());
+        var node = new StructureCatalogView.Node(ID, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, cells, IntList.of());
         return new StructureCatalogView(session, sequence, List.of(node), Map.of(ID, new StructureCatalogView.Entry(0, null, Map.of())));
     }
 
@@ -165,7 +167,7 @@ class StructureProjectionStateTest {
         var connection = new Object();
         var catalog = catalog(connection, UUID.randomUUID());
         try (var previews = new StructurePreviews(catalog)) {
-            var settings = new StructurePreviewSettings(BlockOrientation.NORTH_UP, Map.of(), 10, 1);
+            var settings = new StructurePreviewSettings(BlockOrientation.NORTH_UP, Object2IntMaps.emptyMap(), 10, 1);
             var request = Objects.requireNonNull(previews.request(ID, settings));
             var failure = assertThrows(IllegalArgumentException.class, () -> request.advance(1000));
             assertEquals(StructurePreviews.State.FAILED, request.state());

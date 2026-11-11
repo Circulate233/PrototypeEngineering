@@ -44,7 +44,7 @@ public final class StructureToolItem extends AEBaseItem {
 
     @Override
     public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
-        return (builder ? StructureToolText.BuilderTitle : StructureToolText.ScannerTitle).text().getUnformattedText();
+        return (builder ? StructureToolText.BuilderTitle : StructureToolText.ScannerTitle).getLocal();
     }
 
     @Override

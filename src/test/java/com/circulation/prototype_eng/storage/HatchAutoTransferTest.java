@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
@@ -20,7 +22,6 @@ import net.minecraftforge.energy.IEnergyStorage;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -39,7 +40,7 @@ class HatchAutoTransferTest {
     private static final Key KEY = new Key(TYPE, "material");
 
     private static BufferedResourceHatch hatch(HatchMode mode, int slots) {
-        return new BufferedResourceHatch(mode, slots, Map.of(TYPE, 100L), () -> {});
+        return new BufferedResourceHatch(mode, slots, Reference2LongMaps.singleton(TYPE, 100L), () -> {});
     }
 
     private static HatchAutoTransfer.ResourceEndpoint endpoint(MEStorage remote, StorageContext... contexts) {

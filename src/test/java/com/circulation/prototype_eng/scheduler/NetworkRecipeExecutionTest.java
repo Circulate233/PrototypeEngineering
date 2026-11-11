@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.scheduler;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentSystem;
@@ -94,7 +96,6 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -223,7 +224,7 @@ class NetworkRecipeExecutionTest {
             keys.add(key);
             pool.add(new WeightedSampling.Weighted<>(new GenericStack(key, 1), index + 1));
         }
-        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1000, Map.of(type, 10_000L), () -> {
+        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1000, Reference2LongMaps.singleton(type, 10_000L), () -> {
         });
         var firstSlice = new AtomicBoolean(true);
         var tickGate = new AtomicBoolean(true);
@@ -877,7 +878,7 @@ class NetworkRecipeExecutionTest {
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
                                       .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
-            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Map.of(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> {
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Reference2LongMaps.singleton(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> {
             });
             var inventory = Objects.requireNonNull(warehouse.input());
             assertEquals(1, inventory.insert(computeCard, 1, Actionable.MODULATE));

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.reload;
 
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 
 import ae2.api.orientation.BlockOrientation;
@@ -75,7 +77,7 @@ class StructureCatalogSyncTest {
         assertEquals(2, view.sequence());
         assertEquals(2, view.nodes().size());
         var parent = view.nodes().get(view.entries().get(id("parent")).node());
-        assertEquals(parent.children().get(0), parent.children().get(1));
+        assertEquals(parent.children().getInt(0), parent.children().getInt(1));
         var child = view.nodes().get(parent.children().getFirst());
         assertEquals(StructurePreviewProvider.Kind.SLICE, child.kind());
         assertEquals(5, child.maxCount());
@@ -215,8 +217,7 @@ class StructureCatalogSyncTest {
 
     @Test
     void invalidGraphsAndOversizedPresentationFailBeforeTheyCanBeBroadcast() {
-        var node = new StructureCatalogView.Node(id("cyclic"), BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE,
-            BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(), List.of(0));
+        var node = new StructureCatalogView.Node(id("cyclic"), BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(), IntList.of(0));
         assertThrows(IllegalArgumentException.class, () -> new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(id("cyclic"), new StructureCatalogView.Entry(0, null, Map.of()))));
         var base = publication(UUID.randomUUID(), 0).view();
         var entry = base.entries().get(id("parent"));

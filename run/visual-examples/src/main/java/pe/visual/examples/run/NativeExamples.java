@@ -50,6 +50,8 @@ import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Locale;
+import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -57,8 +59,8 @@ import java.util.Set;
 /** Additional data owners keep the existing visual-v1 owners and their persisted schema intact. */
 public final class NativeExamples {
     public enum Text implements LocalizationEnum {
-        Fixed, Cross;
-        @Override public String getTranslationKey() { return "pe_run_tests.native." + name(); }
+        Fixed, Cross, Pool, Structure;
+        @Override public String getTranslationKey() { return "pe_run_tests.native." + name().toLowerCase(Locale.ROOT); }
     }
     private static final ResourceLocation POOL = NativeRunCases.id("native_pool");
     private static final ComponentType<MachineInstance, RecipeScanner> SCAN = RecipeScanning.component(
@@ -111,7 +113,7 @@ public final class NativeExamples {
         recipes.add(weightedRecipe); recipes.add(chanceRecipe);
         event.registry().declareRevision(weightedRecipe, "native-v1");
         event.registry().declareRevision(chanceRecipe, "native-v1");
-        event.registry().register(new DefaultRecipePool(POOL, "pe_run_tests.native.pool", recipes));
+        event.registry().register(new DefaultRecipePool(POOL, Text.Pool.getTranslationKey(), recipes));
     }
     public static void registerRuntime(MachineRuntimeRegistrationEvent event) {
         var predicates = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
@@ -119,8 +121,8 @@ public final class NativeExamples {
         Objects.requireNonNull(cells).forEach((position, block) -> {
             if (!position.equals(BlockPos.ORIGIN)) predicates.put(position, StructurePredicates.blocks(List.of(block)));
         });
-        event.structure(TemplateStructure.create(NativeRunCases.id("native_shape"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
-            false, new StructurePattern(predicates), List.of(), List.of()));
+        event.definition(new StructureDefinition(TemplateStructure.create(NativeRunCases.id("native_shape"), BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
+            false, new StructurePattern(predicates), List.of(), List.of()), Text.Structure.getTranslationKey(), Map.of()));
         for (String name : List.of("native_data_fixed", "native_data_cross")) {
             var type = Objects.requireNonNull(event.registry().get(NativeRunCases.id(name)));
             var codecs = new ObjectArrayList<RecipeProcessNbt>();

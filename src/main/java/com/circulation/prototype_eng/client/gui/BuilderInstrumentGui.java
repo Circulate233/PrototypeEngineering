@@ -17,6 +17,7 @@ import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -48,6 +49,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
             if (preview != null) preview.openMaterialChoices(display);
         });
         tree.selections(() -> preview == null ? null : preview.view().settings());
+        tree.machineTitle(() -> preview == null || preview.view().machine() == null ? null : preview.view().machine().displayName());
         tree.onSliceChanged((key, count) -> {
             if (preview == null) return;
             var path = BuilderState.slicePath(key);
@@ -108,7 +110,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         var slices = BuilderState.previewSlices(tag);
         if (key.equals(appliedSelections) && (!selectionsPending || !view.settings().sliceCounts().equals(slices))) return;
         boolean rebuild = !view.settings().sliceCounts().equals(slices);
-        var globals = new Object2ObjectOpenHashMap<StructureDisplay, Integer>();
+        var globals = new Object2IntOpenHashMap<StructureDisplay>();
         for (var line : model.bom()) {
             var display = line.display();
             if (display == null) continue;

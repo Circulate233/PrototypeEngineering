@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.structure.reload;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -99,7 +100,7 @@ public final class StructureCatalogCodec {
                 var cells = new ObjectArrayList<BlockPos>();
                 int cellCount = count(input);
                 for (int c = 0; c < cellCount; c++) cells.add(position(input));
-                var children = new ObjectArrayList<Integer>();
+                var children = new IntArrayList();
                 int childCount = count(input);
                 for (int c = 0; c < childCount; c++) children.add(input.readInt());
                 nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.values()[kind], offset, min, max, sliceOffset, cells, children, version == 2 ? displays(input, version) : Map.of()));

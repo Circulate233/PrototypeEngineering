@@ -13,6 +13,8 @@ import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
+import ae2.core.localization.LocalizationEnum;
 import net.minecraft.block.Block;
 import net.minecraft.init.Blocks;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
@@ -44,7 +46,8 @@ final class BuilderStructureTree {
     private Consumer<StructureDisplay> materialReplacement = _ -> { };
     private Supplier<StructurePreviewSettings> selections = () -> null;
     private StructurePreviewSettings displayedSelections;
-    private final Map<String, Boolean> expanded = new Object2ObjectLinkedOpenHashMap<>();
+    private final Object2BooleanOpenHashMap<String> expanded = new Object2BooleanOpenHashMap<>();
+    private Supplier<LocalizationEnum> machineTitle = () -> null;
     private BiConsumer<String, Integer> sliceChanged = (_, _) -> { };
     private final List<Hit> hits = new ObjectArrayList<>();
     private final GuiClip clip = new GuiClip();
@@ -83,6 +86,10 @@ final class BuilderStructureTree {
 
     void onSliceChanged(BiConsumer<String, Integer> listener) {
         sliceChanged = Objects.requireNonNull(listener);
+    }
+
+    void machineTitle(Supplier<LocalizationEnum> title) {
+        machineTitle = Objects.requireNonNull(title);
     }
 
     void openMaterials() {
@@ -178,6 +185,8 @@ final class BuilderStructureTree {
             var node = current.nodes().get(instance.index());
             var entry = current.entries().get(node.id());
             String label = entry == null || entry.translationKey() == null ? node.id().toString() : new StructureTitle(entry.translationKey()).getLocal();
+            if (instance.path().equals("0") && (entry == null || entry.translationKey() == null) && machineTitle.get() != null)
+                label = machineTitle.get().getLocal();
             if (node.kind() == StructurePreviewProvider.Kind.SLICE)
                 label += StructureToolText.BuildInstrumentSliceSuffix.getLocal(node.minCount(), node.maxCount(), offset(node.sliceOffset()));
             if (!instance.path().equals("0"))

@@ -21,10 +21,10 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.AbstractList;
-import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -665,7 +665,7 @@ public final class RecipeStageExecutor {
             }
         };
         private final ObjectArrayList<ResourceReservation> synchronousSources = new ObjectArrayList<>();
-        private final ArrayDeque<FlatCandidate> cleanupCandidates = new ArrayDeque<>();
+        private final ReferenceLinkedOpenHashSet<FlatCandidate> cleanupCandidates = new ReferenceLinkedOpenHashSet<>();
         @Nullable
         private ContinuationFrame rejectedAlternative;
         private int requirementCursor;
@@ -767,7 +767,7 @@ public final class RecipeStageExecutor {
             if (state != AcquisitionState.ACQUIRING || cleanupCancelled)
                 throw new IllegalStateException("Cleanup inventory requires its exact acquiring stage");
             var candidate = new FlatCandidate(Objects.requireNonNull(transaction), true);
-            cleanupCandidates.addLast(candidate);
+            cleanupCandidates.add(candidate);
             cleanupRejectionComplete = false;
             return candidate;
         }
@@ -778,7 +778,7 @@ public final class RecipeStageExecutor {
 
         @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
         public @Nullable FlatCandidate cleanupCandidate() {
-            var next = cleanupCandidates.peekFirst();
+            var next = cleanupCandidates.isEmpty() ? null : cleanupCandidates.first();
             if (next != null && (next.rejected || cleanupCancelled) && !next.cleaned) return next;
             return flat != null && (flat.rejected || cleanupCancelled) && !flat.cleaned ? flat : null;
         }
@@ -1978,7 +1978,7 @@ public final class RecipeStageExecutor {
 
             public void releaseCleaned() {
                 if (released) return;
-                if (!cleaned || (auxiliary ? cleanupCandidates.peekFirst() != this : flat != this))
+                if (!cleaned || (auxiliary ? cleanupCandidates.isEmpty() || cleanupCandidates.first() != this : flat != this))
                     throw new IllegalStateException("Flat cleanup has not completed");
                 if (auxiliary) cleanupCandidates.removeFirst();
                 else flat = parent;

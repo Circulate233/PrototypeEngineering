@@ -171,7 +171,7 @@ public final class StructurePreviewExpansion {
         }
         if (frame.child < frame.shape.children().size()) {
             int edge = frame.child++;
-            push(frame.shape.children().get(edge), frame.path.child(edge), frame.childOrigin);
+            push(frame.shape.children().getInt(edge), frame.path.child(edge), frame.childOrigin);
             return;
         }
         stack.removeLast();

@@ -30,6 +30,9 @@ import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.data.MachineDataSnapshot;
 import com.circulation.prototype_eng.proxy.ClientProxy;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.floats.FloatArrayList;
+import it.unimi.dsi.fastutil.floats.FloatList;
+import it.unimi.dsi.fastutil.floats.FloatLists;
 import mezz.jei.api.gui.IDrawable;
 import mezz.jei.api.gui.IRecipeLayout;
 import mezz.jei.api.ingredients.IIngredients;
@@ -327,18 +330,18 @@ public final class RunRenderClient {
         }
         private static void pass(ICommandSender sender, String id, String detail) { sender.sendMessage(new TextComponentString("PE_RUN_TESTS PASS " + id + " " + detail)); }
         private static Frame frame(software.bernie.geckolib3.geo.render.built.GeoModel model, GeckoModelBaker baker) {
-            var pose = new ObjectArrayList<Float>();
+            var pose = new FloatArrayList();
             for (var root : model.topLevelBones) pose(root, pose);
             int total = 0;
             for (int vertices : baker.estimateRoutedFilteredVertexCounts(model, Set.of(), GeckoModelBaker.BakeMode.ALL, Set.of())) total = Math.addExact(total, vertices);
-            return new Frame(total, List.copyOf(pose));
+            return new Frame(total, FloatLists.unmodifiable(pose));
         }
-        private static void pose(GeoBone bone, ObjectArrayList<Float> values) {
+        private static void pose(GeoBone bone, FloatArrayList values) {
             values.add(bone.getRotationX()); values.add(bone.getRotationY()); values.add(bone.getRotationZ());
             values.add(bone.getPositionX()); values.add(bone.getPositionY()); values.add(bone.getPositionZ());
             values.add(bone.getScaleX()); values.add(bone.getScaleY()); values.add(bone.getScaleZ());
             for (var child : bone.childBones) pose(child, values);
         }
-        private record Frame(int vertices, List<Float> pose) { }
+        private record Frame(int vertices, FloatList pose) { }
     }
 }

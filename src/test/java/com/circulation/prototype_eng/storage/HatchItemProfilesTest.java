@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.HatchConfig;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
@@ -9,7 +11,6 @@ import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -26,12 +27,12 @@ class HatchItemProfilesTest {
 
     @Test
     void savedMixedResourceItemsDisplayTheirIndependentEffectiveProfilesInsteadOfNewDefaults() {
-        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Map.of(AEKeyType.items(), 11L, AEKeyType.fluids(), 3210L)),
-            new ResourceHatchConfiguration.Side(128, Map.of(AEKeyType.items(), 77L, AEKeyType.fluids(), 987_654L)));
+        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, new Reference2LongArrayMap<>(new AEKeyType[]{AEKeyType.items(), AEKeyType.fluids()}, new long[]{11L, 3210L})),
+            new ResourceHatchConfiguration.Side(128, new Reference2LongArrayMap<>(new AEKeyType[]{AEKeyType.items(), AEKeyType.fluids()}, new long[]{77L, 987_654L})));
         var tag = identity(HatchMode.MIXED);
         tag.setTag("EffectiveProfile", HatchConfigurationNbt.resource(profile));
         assertEquals(profile, HatchItemProfiles.resource(tag, HatchTier.LV1, HatchMode.MIXED));
-        assertEquals(64_000L, Objects.requireNonNull(HatchItemProfiles.resource(null, HatchTier.LV1, HatchMode.MIXED).input()).capacities().get(AEKeyType.fluids()));
+        assertEquals(64_000L, Objects.requireNonNull(HatchItemProfiles.resource(null, HatchTier.LV1, HatchMode.MIXED).input()).capacities().getLong(AEKeyType.fluids()));
         tag.removeTag("Tier");
         assertThrows(IllegalArgumentException.class, () -> HatchItemProfiles.resource(tag, HatchTier.LV1, HatchMode.MIXED));
     }
@@ -46,7 +47,7 @@ class HatchItemProfilesTest {
         tag.setTag("Capacities", capacities);
         var profile = HatchItemProfiles.resource(tag, HatchTier.LV1, HatchMode.INPUT);
         assertEquals(97, Objects.requireNonNull(profile.input()).slots());
-        assertEquals(7001L, profile.input().capacities().get(AEKeyType.fluids()));
+        assertEquals(7001L, profile.input().capacities().getLong(AEKeyType.fluids()));
         assertNull(profile.output());
     }
 

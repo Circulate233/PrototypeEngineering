@@ -15,7 +15,7 @@ import org.lwjgl.opengl.GLContext;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
-import java.util.ArrayDeque;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,7 +25,7 @@ public class ReusableModelVboUploader implements AutoCloseable {
     public static final int STRIDE = 28;
     private final ModelClientThread client;
     private final Map<Key, Entry> mapped = new Object2ObjectOpenHashMap<>();
-    private final ArrayDeque<Upload> freeUploads = new ArrayDeque<>();
+    private final ObjectArrayFIFOQueue<Upload> freeUploads = new ObjectArrayFIFOQueue<>();
     private long freeUploadBytes;
     private @Nullable ByteBuffer mergeScratch;
     private boolean closed;
@@ -315,7 +315,7 @@ public class ReusableModelVboUploader implements AutoCloseable {
 
     private int borrowUpload() {
         if (freeUploads.isEmpty()) return createBuffer();
-        var free = freeUploads.pop();
+        var free = freeUploads.dequeue();
         freeUploadBytes -= free.bytes;
         return free.id;
     }
@@ -326,11 +326,11 @@ public class ReusableModelVboUploader implements AutoCloseable {
             return;
         }
         while (!freeUploads.isEmpty() && (freeUploads.size() >= 256 || freeUploadBytes + bytes > 128L * 1024 * 1024)) {
-            var old = freeUploads.removeLast();
+            var old = freeUploads.dequeueLast();
             freeUploadBytes -= old.bytes;
             deleteBuffer(old.id);
         }
-        freeUploads.push(new Upload(id, bytes));
+        freeUploads.enqueueFirst(new Upload(id, bytes));
         freeUploadBytes += bytes;
     }
 
@@ -353,7 +353,7 @@ public class ReusableModelVboUploader implements AutoCloseable {
                 }
         }
         while (!freeUploads.isEmpty()) try {
-            deleteBuffer(freeUploads.pop().id);
+            deleteBuffer(freeUploads.dequeue().id);
         } catch (RuntimeException | Error exception) {
             failure = BuiltModelBuffers.append(failure, exception);
         }

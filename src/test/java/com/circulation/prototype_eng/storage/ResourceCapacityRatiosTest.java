@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
@@ -20,7 +23,6 @@ import net.minecraft.util.text.TextComponentString;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,30 +43,33 @@ class ResourceCapacityRatiosTest {
         for (var tier : HatchTier.values()) {
             var profile = HatchConfig.resourceConfiguration(tier, HatchMode.MIXED);
             var side = Objects.requireNonNull(profile.input());
-            assertEquals(tier.itemsPerSlot(), side.capacities().get(AEKeyType.items()));
-            assertEquals(Math.multiplyExact(tier.itemsPerSlot(), 1000), side.capacities().get(AEKeyType.fluids()));
-            assertEquals(Math.multiplyExact(tier.itemsPerSlot(), 250), side.capacities().get(CUSTOM));
+            assertEquals(tier.itemsPerSlot(), side.capacities().getLong(AEKeyType.items()));
+            assertEquals(Math.multiplyExact(tier.itemsPerSlot(), 1000), side.capacities().getLong(AEKeyType.fluids()));
+            assertEquals(Math.multiplyExact(tier.itemsPerSlot(), 250), side.capacities().getLong(CUSTOM));
             assertEquals(side, profile.output());
         }
-        assertEquals(64_000L, Objects.requireNonNull(HatchConfig.resourceConfiguration(HatchTier.LV1, HatchMode.INPUT).input()).capacities().get(AEKeyType.fluids()));
+        assertEquals(64_000L, Objects.requireNonNull(HatchConfig.resourceConfiguration(HatchTier.LV1, HatchMode.INPUT).input()).capacities().getLong(AEKeyType.fluids()));
     }
 
     @Test
     void explicitRatiosProduceImmutableIndependentSidesAndRejectOverflowBeforeStorageCreation() {
         var types = List.of(AEKeyType.items(), AEKeyType.fluids(), CUSTOM);
-        var input = ResourceHatchConfiguration.Side.fromItemEquivalent(3, 64, types, Map.of(CUSTOM, 500L));
+        var input = ResourceHatchConfiguration.Side.fromItemEquivalent(3, 64, types, Reference2LongMaps.singleton(CUSTOM, 500L));
         var output = ResourceHatchConfiguration.Side.fromItemEquivalent(7, 128, types);
-        assertEquals(32_000L, input.capacities().get(CUSTOM));
-        assertEquals(32_000L, output.capacities().get(CUSTOM));
-        assertEquals(64_000L, input.capacities().get(AEKeyType.fluids()));
-        assertEquals(128_000L, output.capacities().get(AEKeyType.fluids()));
+        assertEquals(32_000L, input.capacities().getLong(CUSTOM));
+        assertEquals(32_000L, output.capacities().getLong(CUSTOM));
+        assertEquals(64_000L, input.capacities().getLong(AEKeyType.fluids()));
+        assertEquals(128_000L, output.capacities().getLong(AEKeyType.fluids()));
         assertEquals(input, HatchConfigurationNbt.resourceSide(HatchConfigurationNbt.resource(new ResourceHatchConfiguration(input, null)).getCompoundTag("Input")));
-        assertNull(new ResourceHatchConfiguration.Side(3, Map.of(AEKeyType.items(), 64L, AEKeyType.fluids(), 64_000L)).basis());
-        assertThrows(UnsupportedOperationException.class, () -> input.capacities().entrySet().iterator().next().setValue(1L));
+        assertNull(new ResourceHatchConfiguration.Side(3, new Reference2LongArrayMap<>(new AEKeyType[]{AEKeyType.items(), AEKeyType.fluids()}, new long[]{64L, 64_000L})).basis());
+        assertThrows(UnsupportedOperationException.class, () -> input.capacities().reference2LongEntrySet().iterator().next().setValue(1L));
+        @SuppressWarnings("deprecation") // Verify fastutil's inherited boxed Map bridge also rejects entry writes.
+        var boxedEntry = input.capacities().entrySet().iterator().next();
+        assertThrows(UnsupportedOperationException.class, () -> boxedEntry.setValue(1L));
         assertThrows(ArithmeticException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, Long.MAX_VALUE, types));
-        assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, types, Map.of(CUSTOM, 0L)));
-        assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, types, Map.of(CUSTOM, -1L)));
-        assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, List.of(AEKeyType.items()), Map.of(CUSTOM, 1L)));
+        assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, types, Reference2LongMaps.singleton(CUSTOM, 0L)));
+        assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, types, Reference2LongMaps.singleton(CUSTOM, -1L)));
+        assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, List.of(AEKeyType.items()), Reference2LongMaps.singleton(CUSTOM, 1L)));
         assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, 64, List.of(new ScaledType("invalid_ratio", 0))));
         assertThrows(IllegalArgumentException.class, () -> ResourceHatchConfiguration.Side.fromItemEquivalent(1, -1, types));
     }
@@ -98,7 +103,7 @@ class ResourceCapacityRatiosTest {
         assertEquals(8500, Objects.requireNonNull(old.input()).amount(key));
         var saved = new NBTTagCompound();
         tile.saveAdditional(saved);
-        assertEquals(9000L, Objects.requireNonNull(HatchItemProfiles.resource(saved, HatchTier.LV1, HatchMode.INPUT).input()).capacities().get(SAVED));
+        assertEquals(9000L, Objects.requireNonNull(HatchItemProfiles.resource(saved, HatchTier.LV1, HatchMode.INPUT).input()).capacities().getLong(SAVED));
         var restored = new ResourceHatchBlockEntity();
         restored.loadTag(saved);
         assertEquals(8500, Objects.requireNonNull(restored.storage().input()).amount(key));

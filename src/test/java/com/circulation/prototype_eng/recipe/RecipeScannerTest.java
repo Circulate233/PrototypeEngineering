@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
@@ -429,7 +431,7 @@ class RecipeScannerTest {
         try {
             var env = new Environment(1, 4);
             env.input.insert(MATERIAL, 10, Actionable.MODULATE);
-            var draws = new ObjectArrayList<Long>();
+            var draws = new LongArrayList();
             var policies = new ObjectArrayList<ProbabilityTuning>();
             var calls = new IntArrayList();
             var recipe = recipe("stable_policy", 3, io(1, 0, 0), guard("policy", process -> {
@@ -457,7 +459,7 @@ class RecipeScannerTest {
             assertEquals(8, env.input.amount(MATERIAL));
             assertEquals(1, process.state().successfulTicks());
             assertEquals(List.of(4, 3, 2, 2), calls);
-            assertTrue(draws.stream().allMatch(draw -> draw.equals(draws.getFirst())));
+            assertTrue(draws.longStream().allMatch(draw -> draw == draws.getLong(0)));
             assertEquals(List.of(captured, captured, captured, captured), policies);
         } finally {
             ProbabilityTuning.setDefault(originalTuning);

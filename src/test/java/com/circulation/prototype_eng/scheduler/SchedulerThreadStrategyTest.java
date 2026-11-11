@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.scheduler;
 
+import it.unimi.dsi.fastutil.longs.LongList;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
@@ -11,7 +14,6 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
@@ -176,7 +178,7 @@ class SchedulerThreadStrategyTest {
         var onceCalls = new AtomicInteger();
         var boundaryCalls = new AtomicInteger();
         var captures = new AtomicInteger();
-        var captureBudgets = new ArrayList<Long>();
+        var captureBudgets = new LongArrayList();
         var token = new PlannedCancellationToken();
         var cycle = new AtomicReference<StoppedSourceCycle>();
         var initial = virtualSettings();
@@ -263,7 +265,7 @@ class SchedulerThreadStrategyTest {
             assertEquals(1, sourceCalls.get());
             assertEquals(1, scheduler.registeredCount());
             assertEquals(List.of(initial.plannedTimeout().toNanos(), replacement.plannedTimeout().toNanos()), captureBudgets);
-            assertTrue(cycle.get().cleanupBudgets.stream().allMatch(value -> value == initial.plannedTimeout().toNanos()));
+            assertTrue(cycle.get().cleanupBudgets.longStream().allMatch(value -> value == initial.plannedTimeout().toNanos()));
             scheduler.tick();
             assertEquals(3, registeredCalls.get());
             assertEquals(2, onceCalls.get());
@@ -282,7 +284,7 @@ class SchedulerThreadStrategyTest {
         private final AtomicInteger calls;
         private final Runnable source;
         private final CountDownLatch awaitEntered;
-        private final List<Long> cleanupBudgets = new ArrayList<>();
+        private final LongList cleanupBudgets = new LongArrayList();
         private PlannedTaskExecutor.Batch<Integer> batch;
 
         private StoppedSourceCycle(PlannedTaskExecutor tasks, PlannedDeadline forward, PlannedCancellationToken token,

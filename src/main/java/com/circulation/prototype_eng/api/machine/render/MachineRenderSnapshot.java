@@ -1,9 +1,13 @@
 package com.circulation.prototype_eng.api.machine.render;
 
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntLists;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -94,13 +98,13 @@ public record MachineRenderSnapshot(ControllerDisplayData display, CatalogToken 
         return List.copyOf(result);
     }
 
-    public List<Integer> path(int index) {
-        var reversed = new ObjectArrayList<Integer>();
+    public IntList path(int index) {
+        var reversed = new IntArrayList();
         for (int current = index; occurrences.get(current).parent() >= 0; current = occurrences.get(current).parent())
             reversed.add(occurrences.get(current).childEdge());
-        var result = new ObjectArrayList<Integer>(reversed.size());
-        for (int i = reversed.size() - 1; i >= 0; i--) result.add(reversed.get(i));
-        return List.copyOf(result);
+        var result = new IntArrayList(reversed.size());
+        for (int i = reversed.size() - 1; i >= 0; i--) result.add(reversed.getInt(i));
+        return IntLists.unmodifiable(result);
     }
 
     public record CatalogToken(UUID session, long sequence) {

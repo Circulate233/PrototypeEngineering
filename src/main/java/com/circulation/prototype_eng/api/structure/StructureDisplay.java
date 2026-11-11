@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.TreeMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
 
 /** Visual projection of a declaration. Incomplete projections must never imply matching success. */
 public record StructureDisplay(String key, List<BlockOption> options, @Nullable String tileNbt, boolean complete) {
@@ -37,7 +37,7 @@ public record StructureDisplay(String key, List<BlockOption> options, @Nullable 
         }
 
         public static BlockOption of(IBlockState state, Map<String, String> nbt) {
-            var properties = new TreeMap<String, String>();
+            var properties = new Object2ObjectRBTreeMap<String, String>();
             for (var property : state.getPropertyKeys()) properties.put(property.getName(), propertyName(state, property));
             return new BlockOption(Objects.requireNonNull(state.getBlock().getRegistryName()), state.getBlock().getMetaFromState(state), nbt, properties);
         }

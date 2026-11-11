@@ -1,4 +1,5 @@
 #loader crafttweaker
+import mods.pe_run_tests.Text;
 
 import crafttweaker.data.IData;
 import crafttweaker.world.IWorld;
@@ -166,16 +167,16 @@ CoreCases.overlay("external", OverlayModifier.create("pe_run_tests:core_external
     context.putOverlay(exactOverlay, "number");
 }));
 
-CoreCases.pool(Pool.create("pe_run_tests:core_pool", "PE Run: Core recipes", CoreCases.allRecipes()));
+CoreCases.pool(Pool.create("pe_run_tests:core_pool", Text.CorePool.key, CoreCases.allRecipes()));
 // SimplePool requires exactly one fixed resource requirement. FE stays in the ordinary pool.
-CoreCases.pool(Pool.create("pe_run_tests:core_parallel_pool", "PE Run: Selected pool", [selected]));
-CoreCases.pool(Pool.simple("pe_run_tests:core_simple_pool", "PE Run: Simple fixed pool", [fixed]));
+CoreCases.pool(Pool.create("pe_run_tests:core_parallel_pool", Text.CoreParallelPool.key, [selected]));
+CoreCases.pool(Pool.simple("pe_run_tests:core_simple_pool", Text.CoreSimplePool.key, [fixed]));
 CoreCases.pool(CoreCases.customPool());
 
 // Runtime-visible shape uses real hatch facts. No live world access occurs in validators.
 Structure.template("pe_run_tests:core_shape", "NORTH_UP", 0, 0, 0, false,
     Pattern.create().put(-1,0,0, Predicate.resourceHatch()).put(1,0,0, Predicate.resourceHatch())
-        .put(0,0,1, Predicate.energyInputHatch()).put(0,1,0, Predicate.notAir()), [], []).register();
+        .put(0,0,1, Predicate.energyInputHatch()).put(0,1,0, Predicate.notAir()), [], []).translated(Text.CoreStructure.key).register();
 var query = Query.create("pe_run_tests:core_brightness", function(world as IWorld, pos as IBlockPos) {
     return world.getBrightness(pos) as IData;
 });

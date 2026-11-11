@@ -1,4 +1,5 @@
 #loader preinit
+import mods.pe_run_tests.Text;
 
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.MachineFactory;
@@ -13,18 +14,18 @@ names.defineMatcher(Matcher.create("pe_run_tests:core_matcher", function(candida
     return candidate.sameKey(pattern);
 }));
 
-MachineType.create("pe_run_tests:core_thread", "PE Run: Multithread owner", "pe_run_tests:core_shape")
+MachineType.create("pe_run_tests:core_thread", Text.CoreThread.key, "pe_run_tests:core_shape")
     .componentData().recipePool("pe_run_tests:core_parallel_pool")
     .attribute("prototype_eng:process_parallelism", 4)
     .processing(names, 8, 8).register("run-v1");
-MachineType.create("pe_run_tests:core_cross", "PE Run: Cross-recipe owner", "pe_run_tests:core_shape")
+MachineType.create("pe_run_tests:core_cross", Text.CoreCross.key, "pe_run_tests:core_shape")
     .factory(MachineFactory.crossRecipe()).componentData().recipePool("pe_run_tests:core_parallel_pool")
     .attribute("prototype_eng:process_parallelism", 4)
     .processing(names, 8, 8).register("run-v1");
-MachineType.create("pe_run_tests:core_addon", "PE Run: Addon owner", "pe_run_tests:core_shape")
+MachineType.create("pe_run_tests:core_addon", Text.CoreAddon.key, "pe_run_tests:core_shape")
     .factory(CoreCases.factory()).componentData().recipePool("pe_run_tests:core_custom_pool")
     .processing(names, 8, 8).executionMode("MAIN_THREAD").register("run-v1");
-MachineType.create("pe_run_tests:core_fixed", "PE Run: Fixed parallelism", "pe_run_tests:core_shape")
+MachineType.create("pe_run_tests:core_fixed", Text.CoreFixed.key, "pe_run_tests:core_shape")
     .componentData().recipePool("pe_run_tests:core_simple_pool")
     .attribute("prototype_eng:process_parallelism", 4)
     .processing(names, 8, 8).register("run-v1");

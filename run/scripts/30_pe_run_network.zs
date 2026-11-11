@@ -1,4 +1,5 @@
 #loader crafttweaker
+import mods.pe_run_tests.Text;
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.recipe.Bindings;
 import mods.prototype_eng.recipe.Recipe;
@@ -75,7 +76,7 @@ ResearchDownloads.register(<minecraft:paper>, function(context) {
 var netRecipe = Recipe.withSelection("pe_run_tests:net_recipe", "v1", 80,
     [Requirement.resources("pe_run_tests:net_io", [Resource.item(<minecraft:cobblestone>, 2)], [Resource.item(<minecraft:glass>, 4)]),
      Requirement.energy("pe_run_tests:net_fe", 0, 8, 0, 0, false)], [], 4, ParallelismSelection.fixed(3));
-CoreCases.pool(Pool.create("pe_run_tests:net_pool", "pe_run_tests.pool.network", [netRecipe]));
+CoreCases.pool(Pool.create("pe_run_tests:net_pool", Text.NetworkPool.key, [netRecipe]));
 NetworkRequirements.create().research("pe_run_tests:research_station", 1).resource(compute, 2).bind(netRecipe, 10);
 NetworkRecipes.register(20, function(recipe, requirements) {
     if recipe.matches(netRecipe) { requirements.research("pe_run_tests:research_station", 1); }
@@ -84,4 +85,4 @@ NetworkRender.registerDiskEncoding();
 
 Structure.template("pe_run_tests:net_shape", "NORTH_UP", 0, 0, 0, false,
     Pattern.create().put(0, 0, 0, Predicate.notAir()).put(1, 0, 0, Predicate.resourceHatch())
-        .put(-1, 0, 0, Predicate.resourceHatch()).put(0, 0, 1, Predicate.energyInputHatch()), [], []).register();
+        .put(-1, 0, 0, Predicate.resourceHatch()).put(0, 0, 1, Predicate.energyInputHatch()), [], []).translated(Text.NetworkStructure.key).register();

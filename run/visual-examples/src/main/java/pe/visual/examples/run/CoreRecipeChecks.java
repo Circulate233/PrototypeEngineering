@@ -1,5 +1,9 @@
 package pe.visual.examples.run;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+import ae2.api.stacks.AEKeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -58,8 +62,8 @@ final class CoreRecipeChecks {
     static ZenRecipe externalRecipe() { return currentRecipe; }
 
     static Buffers buffers(long material, long energy) {
-        var input = new BufferedResourceHatch(HatchMode.INPUT, 2, Map.of(MATERIAL_TYPE, 1000L, SECONDARY_TYPE, 2000L), () -> {});
-        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 2, Map.of(MATERIAL_TYPE, 1000L, SECONDARY_TYPE, 2000L), () -> {});
+        var input = new BufferedResourceHatch(HatchMode.INPUT, 2, new Reference2LongArrayMap<>(new AEKeyType[]{MATERIAL_TYPE, SECONDARY_TYPE}, new long[]{1000L, 2000L}), () -> {});
+        var output = new BufferedResourceHatch(HatchMode.OUTPUT, 2, new Reference2LongArrayMap<>(new AEKeyType[]{MATERIAL_TYPE, SECONDARY_TYPE}, new long[]{1000L, 2000L}), () -> {});
         if (material > 0) Objects.requireNonNull(input.input()).insert(MATERIAL, material, Actionable.MODULATE);
         var in = new EnergyBuffer(1000, () -> {});
         var out = new EnergyBuffer(1000, () -> {});
@@ -133,7 +137,7 @@ final class CoreRecipeChecks {
         complete("core_combined_completed", process("combined", combined), 1);
         NativeChecks.check("core_combined_payment", combined.input().input().amount(MATERIAL) == 75 && combined.output().output().amount(PRODUCT) == 2);
         for (var name : List.of("excess_reject", "void")) {
-            var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Map.of(MATERIAL_TYPE, 1L), () -> {});
+            var output = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 1L), () -> {});
             var energy = new EnergyBuffer(2, () -> {});
             var test = new RecipeProcess(owner(new MachineHatches(List.of(output), List.of(), List.of(energy))), recipe(name).recipe(), 17);
             var result = test.tick();
@@ -143,8 +147,8 @@ final class CoreRecipeChecks {
         }
         complete("core_checkpoint_completed", process("checkpoint", checkpoint), 2);
         NativeChecks.check("core_checkpoint_once", checkpoint.output().output().amount(PRODUCT) == 2);
-        var longInput = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(MATERIAL_TYPE, 2147483650L), () -> {});
-        var longOutput = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Map.of(MATERIAL_TYPE, 2147483650L), () -> {});
+        var longInput = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 2147483650L), () -> {});
+        var longOutput = new BufferedResourceHatch(HatchMode.OUTPUT, 1, Reference2LongMaps.singleton(MATERIAL_TYPE, 2147483650L), () -> {});
         longInput.input().insert(MATERIAL, 2147483649L, Actionable.MODULATE);
         var large = new RecipeProcess(owner(new MachineHatches(List.of(longInput, longOutput), List.of(), List.of())), recipe("long").recipe(), 17);
         NativeChecks.check("core_long_resource_payment", large.tick() == ProcessResult.SUCCESS

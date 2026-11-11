@@ -1,4 +1,5 @@
 #loader preinit
+import mods.pe_run_tests.Text;
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.recipe.Bindings;
 import mods.pe_run_tests.NetworkRender;
@@ -9,7 +10,7 @@ for pass in ["default", "transparent", "bloom", "bloom_transparent"] {
         .componentData().component(NetworkRender.markerComponent()).component(NetworkRender.typedAnimationComponent()).recipePool("pe_run_tests:client_custom_pool")
         .processing(names, 8, 8).workSlot("main", [], false, "LOCKED_RETRY").register("v1");
 }
-MachineType.create("pe_run_tests:render_component", "pe_run_tests.machine.render_component", "pe_run_tests:render_whole")
+MachineType.create("pe_run_tests:render_component", Text.RenderComponent.key, "pe_run_tests:render_whole")
     .componentData().component(NetworkRender.markerComponent()).component(NetworkRender.typedAnimationComponent()).recipePool("pe_run_tests:render_default_pool")
     .recipePool("pe_run_tests:client_external_pool")
     .processing(names, 8, 8).workSlot("main", [], false, "LOCKED_RETRY").register("v1");

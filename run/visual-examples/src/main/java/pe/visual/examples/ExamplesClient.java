@@ -1,5 +1,7 @@
 package pe.visual.examples;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDecorator;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeDisplay;
 import com.circulation.prototype_eng.api.client.jei.JeiRecipeIngredients;
@@ -71,8 +73,7 @@ public final class ExamplesClient {
             }
             var type = MachineTypeRegistry.INSTANCE.get(CompositeStructureExamples.id(name));
             if (type == null) throw new CommandException("Composite preinit script has not registered this machine");
-            var settings = new StructurePreviewSettings(orientation,
-                name.equals(CompositeStructureExamples.EXPANDABLE) ? Map.of(StructurePreviewPath.ROOT.child(0), count) : Map.of(), 65536, 1048576);
+            var settings = new StructurePreviewSettings(orientation, name.equals(CompositeStructureExamples.EXPANDABLE) ? Object2IntMaps.singleton(StructurePreviewPath.ROOT.child(0), count) : Object2IntMaps.emptyMap(), 65536, 1048576);
             var mc = Minecraft.getMinecraft();
             var player = mc.player; var world = mc.world; var connection = mc.getConnection();
             var container = player == null ? null : player.openContainer;

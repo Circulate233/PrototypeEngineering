@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.network;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -450,7 +452,7 @@ class NetworkRecipeWorkTest {
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             var computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
                                           .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
-            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> {
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(ComputerSupplyFixtures.TYPE, 64L), () -> {
             });
             assertEquals(1, Objects.requireNonNull(warehouse.input()).insert(card, 1, Actionable.MODULATE));
             Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(), List.of()));

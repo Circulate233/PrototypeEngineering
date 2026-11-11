@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
@@ -40,7 +42,6 @@ import javax.annotation.Nonnull;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -181,7 +182,7 @@ class DynamicInputCandidatesTest {
         secondTag.setTag("data", new ReadableLongArray(secondValues));
         var first = new TaggedKey(type, firstTag, "first");
         var second = new TaggedKey(type, secondTag, "second");
-        var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Map.of(type, 10L), () -> {
+        var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 2, Reference2LongMaps.singleton(type, 10L), () -> {
         });
         var input = Objects.requireNonNull(warehouse.input());
         input.insert(second, 1, Actionable.MODULATE);

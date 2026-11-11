@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyTypes;
@@ -13,7 +15,6 @@ import net.minecraft.nbt.NBTTagList;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -65,8 +66,8 @@ class ResourceHatchPersistenceTest {
 
     @Test
     void asymmetricEffectiveProfilesAndLastSlotsRoundTripWithoutRevivingOldCapabilities() {
-        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Map.of(FIRST, 64L)),
-            new ResourceHatchConfiguration.Side(128, Map.of(SECOND, 1024L)));
+        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Reference2LongMaps.singleton(FIRST, 64L)),
+            new ResourceHatchConfiguration.Side(128, Reference2LongMaps.singleton(SECOND, 1024L)));
         var tag = base();
         tag.setTag("EffectiveProfile", HatchConfigurationNbt.resource(profile));
         tag.setTag("Input", entries(95, A, 57));
@@ -104,8 +105,8 @@ class ResourceHatchPersistenceTest {
 
     @Test
     void droppedHatchRetainsItsConfigurationButCannotRestoreEjectedMaterialsAgain() {
-        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(3, Map.of(FIRST, 64L)),
-            new ResourceHatchConfiguration.Side(5, Map.of(SECOND, 1024L)));
+        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(3, Reference2LongMaps.singleton(FIRST, 64L)),
+            new ResourceHatchConfiguration.Side(5, Reference2LongMaps.singleton(SECOND, 1024L)));
         var tag = base();
         tag.setBoolean("AutoInput", true);
         tag.setLong("MaxFluidOutRate", 777);
@@ -171,8 +172,8 @@ class ResourceHatchPersistenceTest {
         tile.saveAdditional(saved); // Corrupt the real complete modern format, never a synthetic partial modern tag.
         var original = tile.storage();
         var profile = tile.effectiveConfiguration();
-        tile.requestConfiguration(new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(1, Map.of(FIRST, 10L)),
-            new ResourceHatchConfiguration.Side(1, Map.of(SECOND, 10L))));
+        tile.requestConfiguration(new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(1, Reference2LongMaps.singleton(FIRST, 10L)),
+            new ResourceHatchConfiguration.Side(1, Reference2LongMaps.singleton(SECOND, 10L))));
         var status = tile.configurationStatus();
         for (String field : List.of("Mode", "Tier", "AutoInput", "AutoOutput", "MaxFluidInRate", "MaxFluidOutRate")) {
             var missing = saved.copy();

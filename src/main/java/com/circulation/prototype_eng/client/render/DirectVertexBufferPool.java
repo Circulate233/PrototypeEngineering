@@ -4,11 +4,11 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.ArrayDeque;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 
 /** Packed CPU buffers retain their native byte order across borrow/seal/recycle. */
 public class DirectVertexBufferPool implements AutoCloseable {
-    private final Int2ObjectAVLTreeMap<ArrayDeque<ByteBuffer>> free = new Int2ObjectAVLTreeMap<>();
+    private final Int2ObjectAVLTreeMap<ObjectArrayFIFOQueue<ByteBuffer>> free = new Int2ObjectAVLTreeMap<>();
     private final long maxRetainedBytes;
     private final int maxEntries;
     private long retainedBytes;
@@ -36,7 +36,7 @@ public class DirectVertexBufferPool implements AutoCloseable {
         if (!suitable.isEmpty()) {
             int capacity = suitable.firstIntKey();
             var bucket = free.get(capacity);
-            var best = bucket.removeFirst();
+            var best = bucket.dequeue();
             if (bucket.isEmpty()) free.remove(capacity);
             retainedBytes -= capacity;
             count--;
@@ -52,16 +52,16 @@ public class DirectVertexBufferPool implements AutoCloseable {
         int capacity = buffer.capacity();
         var bucket = free.get(capacity);
         if (bucket == null) {
-            bucket = new ArrayDeque<>();
+            bucket = new ObjectArrayFIFOQueue<>();
             free.put(capacity, bucket);
         }
-        bucket.addFirst(buffer);
+        bucket.enqueueFirst(buffer);
         retainedBytes += capacity;
         count++;
         while (maxRetainedBytes > 0 && retainedBytes > maxRetainedBytes || maxEntries > 0 && count > maxEntries) {
             int key = free.lastIntKey();
             var largest = free.get(key);
-            largest.removeLast();
+            largest.dequeueLast();
             retainedBytes -= key;
             count--;
             if (largest.isEmpty()) free.remove(key);

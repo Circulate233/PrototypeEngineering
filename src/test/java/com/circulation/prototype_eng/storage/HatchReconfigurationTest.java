@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.storage.HatchMode;
@@ -13,7 +16,6 @@ import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,7 +32,7 @@ class HatchReconfigurationTest {
     private static final Key B = new Key(SECOND, "b");
 
     private static ResourceHatchConfiguration profile(int slots, long capacity) {
-        return ResourceHatchConfiguration.symmetric(HatchMode.MIXED, slots, Map.of(FIRST, capacity, SECOND, capacity));
+        return ResourceHatchConfiguration.symmetric(HatchMode.MIXED, slots, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{capacity, capacity}));
     }
 
     private static String label(StorageContext context) {
@@ -53,8 +55,8 @@ class HatchReconfigurationTest {
         input.insert(2, A, 7, Actionable.MODULATE);
         output.insert(B, 27, Actionable.MODULATE);
         var oldPort = new HatchInventoryPort(old, true, true);
-        var target = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Map.of(FIRST, 6L)),
-            new ResourceHatchConfiguration.Side(128, Map.of(SECOND, 100L)));
+        var target = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Reference2LongMaps.singleton(FIRST, 6L)),
+            new ResourceHatchConfiguration.Side(128, Reference2LongMaps.singleton(SECOND, 100L)));
         var installed = new BufferedResourceHatch[]{old};
         var result = old.replace(target, "test:resource/1/2/3", () -> {
             }, () -> installed[0] == old,
@@ -164,8 +166,8 @@ class HatchReconfigurationTest {
     @Test
     void nativeItemMetadataUsesTheSlotSideForDifferentCapacities() {
         var items = AEKeyType.items();
-        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Map.of(items, 64L)),
-            new ResourceHatchConfiguration.Side(128, Map.of(items, 1024L, SECOND, 2000L)));
+        var profile = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(96, Reference2LongMaps.singleton(items, 64L)),
+            new ResourceHatchConfiguration.Side(128, new Reference2LongArrayMap<>(new AEKeyType[]{items, SECOND}, new long[]{1024L, 2000L})));
         var hatch = new BufferedResourceHatch(profile, () -> {
         });
         var port = new HatchInventoryPort(hatch, true, true);
@@ -211,8 +213,8 @@ class HatchReconfigurationTest {
         output.insert(0, A, 2, Actionable.MODULATE);
         output.insert(1, A, 3, Actionable.MODULATE);
         output.insert(3, B, 7, Actionable.MODULATE);
-        var target = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(3, Map.of(FIRST, 10L, SECOND, 10L)),
-            new ResourceHatchConfiguration.Side(2, Map.of(FIRST, 10L, SECOND, 10L)));
+        var target = new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(3, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{10L, 10L})),
+            new ResourceHatchConfiguration.Side(2, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{10L, 10L})));
         var installed = new BufferedResourceHatch[]{old};
         assertEquals(HatchReconfigurationStatus.APPLIED, old.replace(target, null, () -> {
             }, () -> true,

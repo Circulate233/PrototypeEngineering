@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.storage.HatchMode;
@@ -13,7 +15,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,7 +34,7 @@ class NativeTransferReservationTest {
 
     @Test
     void resourceExportRefundAndImportActualRemainExactAfterReentrantSameKeyTransfers() {
-        var output = new SlottedResourceBuffer(2, Map.of(TYPE, 50L), () -> {});
+        var output = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 50L), () -> {});
         output.insert(KEY, 90, Actionable.MODULATE);
         output.context().lock();
         try {
@@ -48,7 +49,7 @@ class NativeTransferReservationTest {
         } finally {
             output.context().unlock();
         }
-        var input = new SlottedResourceBuffer(2, Map.of(TYPE, 50L), () -> {});
+        var input = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 50L), () -> {});
         input.insert(KEY, 20, Actionable.MODULATE);
         input.context().lock();
         try {
@@ -107,7 +108,7 @@ class NativeTransferReservationTest {
 
     @Test
     void slotScopedTransferRejectsInvalidResultReplayAndRecipeFenceWithoutLosingItsHold() {
-        var buffer = new SlottedResourceBuffer(100_000, Map.of(TYPE, 100L), () -> {});
+        var buffer = new SlottedResourceBuffer(100_000, Reference2LongMaps.singleton(TYPE, 100L), () -> {});
         buffer.context().lock();
         try {
             var transfer = Objects.requireNonNull(buffer.reserveTransfer(99_999, KEY, 40, true));

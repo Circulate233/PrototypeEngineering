@@ -1,5 +1,10 @@
 package com.circulation.prototype_eng.container;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
@@ -18,7 +23,6 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -61,7 +65,7 @@ class ResourceHatchWindowTest {
         };
     }
 
-    private static SlottedResourceBuffer buffer(int slots, Map<AEKeyType, Long> capacities) {
+    private static SlottedResourceBuffer buffer(int slots, Reference2LongMap<AEKeyType> capacities) {
         return new SlottedResourceBuffer(slots, capacities, () -> {
         });
     }
@@ -87,7 +91,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void lastLogicalSlotAcceptsClicksAndAnOldViewCannotRetargetTheReusedCell() {
-        var input = buffer(40_001, Map.of(FIRST, 10_000L));
+        var input = buffer(40_001, Reference2LongMaps.singleton(FIRST, 10_000L));
         input.insert(0, ITEM, 10, Actionable.MODULATE);
         input.insert(40_000, ITEM, 1_000, Actionable.MODULATE);
         var window = new ResourceHatchWindow(hatch(input, null), 4, 3);
@@ -116,8 +120,8 @@ class ResourceHatchWindowTest {
 
     @Test
     void asymmetricSidesKeepIndependentAmountsAndEveryKeyType() {
-        var input = buffer(40_003, Map.of(FIRST, 100L, SECOND, 3_000_000_000L));
-        var output = buffer(130, Map.of(SECOND, 9_000_000_000L));
+        var input = buffer(40_003, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{100L, 3_000_000_000L}));
+        var output = buffer(130, Reference2LongMaps.singleton(SECOND, 9_000_000_000L));
         input.insert(40_002, FLUID, 2_500_000_000L, Actionable.MODULATE);
         output.insert(129, FLUID, 8_000_000_000L, Actionable.MODULATE);
         var window = new ResourceHatchWindow(hatch(input, output), 5, 7);
@@ -138,7 +142,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void wholeSideInsertionCanReachTheLastSlotWhileTheFirstWindowIsVisible() {
-        var input = buffer(40_001, Map.of(FIRST, 1L));
+        var input = buffer(40_001, Reference2LongMaps.singleton(FIRST, 1L));
         assertEquals(40_000, input.insert(ITEM, 40_000, Actionable.MODULATE));
         var window = new ResourceHatchWindow(hatch(input, null), 9, 7);
         var page = window.capture();
@@ -153,7 +157,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void unversionedNativeUpdatesCannotOverwriteAWindowAndRetiredStorageCannotReceiveClicks() {
-        var input = buffer(100, Map.of(FIRST, 1_000L));
+        var input = buffer(100, Reference2LongMaps.singleton(FIRST, 1_000L));
         input.insert(0, ITEM, 700, Actionable.MODULATE);
         var window = new ResourceHatchWindow(hatch(input, null), 4, 3);
         ResourceHatchWindowSnapshot[] display = {window.capture()};
@@ -191,7 +195,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void doubleTapInsertionCommitsCursorThenInventoryAndPreservesOverflowAndOtherKeys() {
-        var input = buffer(1, Map.of(FIRST, 100L));
+        var input = buffer(1, Reference2LongMaps.singleton(FIRST, 100L));
         var window = new ResourceHatchWindow(hatch(input, null), 4, 3);
         var player = new PlayerStacks();
         player.stacks[0] = new GenericStack(ITEM, 64);
@@ -209,7 +213,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void doubleTapExtractionFillsPartialStacksAndOffhandFromTheWholeLogicalSide() {
-        var input = buffer(40_001, Map.of(FIRST, 1_000L));
+        var input = buffer(40_001, Reference2LongMaps.singleton(FIRST, 1_000L));
         input.insert(0, ITEM, 10, Actionable.MODULATE);
         input.insert(40_000, ITEM, 500, Actionable.MODULATE);
         var window = new ResourceHatchWindow(hatch(input, null), 4, 3);
@@ -232,8 +236,8 @@ class ResourceHatchWindowTest {
 
     @Test
     void anOldOpenOrMoveIdentityCannotEnterAnotherWindowWithTheSameNativeId() {
-        var oldWindow = new ResourceHatchWindow(hatch(buffer(40, Map.of(FIRST, 100L)), null), 4, 3);
-        var newWindow = new ResourceHatchWindow(hatch(buffer(40, Map.of(FIRST, 100L)), null), 4, 3);
+        var oldWindow = new ResourceHatchWindow(hatch(buffer(40, Reference2LongMaps.singleton(FIRST, 100L)), null), 4, 3);
+        var newWindow = new ResourceHatchWindow(hatch(buffer(40, Reference2LongMaps.singleton(FIRST, 100L)), null), 4, 3);
         long oldOpen = oldWindow.capture().revision(), newOpen = newWindow.capture().revision();
         assertTrue(oldWindow.move(oldOpen, 1, 0));
         long oldMove = oldWindow.capture().revision();
@@ -253,7 +257,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void receivedMappingCannotAuthorizeInputUntilItsFrameIsPresented() {
-        var input = buffer(40, Map.of(FIRST, 100L, SECOND, 100L));
+        var input = buffer(40, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{100L, 100L}));
         input.insert(4, ITEM, 20, Actionable.MODULATE);
         input.insert(8, FLUID, 30, Actionable.MODULATE);
         var window = new ResourceHatchWindow(hatch(input, null), 4, 3);
@@ -293,7 +297,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void matchingTransferKeepsAConcurrentReplacementKeyInItsSlot() {
-        var input = buffer(1, Map.of(FIRST, 100L, SECOND, 100L));
+        var input = buffer(1, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{100L, 100L}));
         var original = new GenericStack(ITEM, 40);
         var replacement = new GenericStack(FLUID, 50);
         input.insert(0, ITEM, 40, Actionable.MODULATE);
@@ -308,7 +312,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void firstQuickMoveBindsItsRecordedKeyAndExtractionUnderTheSameLock() {
-        var input = buffer(1, Map.of(FIRST, 100L, SECOND, 100L));
+        var input = buffer(1, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{100L, 100L}));
         input.insert(0, ITEM, 40, Actionable.MODULATE);
         AEKey[] recorded = {null};
         try (var writer = Executors.newSingleThreadExecutor()) {
@@ -333,7 +337,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void doubleTapOnFluidWithAnOrdinaryItemCursorFallsBackToTheUnseenFreeSlot() {
-        var input = buffer(40_001, Map.of(FIRST, 64L, SECOND, 1_000L));
+        var input = buffer(40_001, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{64L, 1_000L}));
         assertEquals(40_000_000, input.insert(FLUID, 40_000_000, Actionable.MODULATE));
         var player = new PlayerStacks();
         player.stacks[0] = new GenericStack(ITEM, 32);
@@ -353,7 +357,7 @@ class ResourceHatchWindowTest {
 
     @Test
     void aHeldContainerThatAcceptsTheSelectedResourceKeepsFillPriority() {
-        var input = buffer(2, Map.of(FIRST, 64L, SECOND, 1_000L));
+        var input = buffer(2, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{64L, 1_000L}));
         input.insert(0, FLUID, 1_000, Actionable.MODULATE);
         var player = new PlayerStacks();
         player.stacks[0] = new GenericStack(ITEM, 1);

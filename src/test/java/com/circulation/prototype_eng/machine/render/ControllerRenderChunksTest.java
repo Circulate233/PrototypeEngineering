@@ -1,5 +1,9 @@
 package com.circulation.prototype_eng.machine.render;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
@@ -46,8 +50,7 @@ class ControllerRenderChunksTest {
     }
 
     static void installCatalog(ClientStructureCatalog client, Object connection, long sequence) {
-        var root = new StructureCatalogView.Node(MachineRenderSnapshotTest.id("root"), BlockOrientation.NORTH_UP, true,
-            StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
+        var root = new StructureCatalogView.Node(MachineRenderSnapshotTest.id("root"), BlockOrientation.NORTH_UP, true, StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), IntList.of());
         var view = new StructureCatalogView(MachineRenderSnapshotTest.SESSION, sequence, List.of(root),
             Map.of(root.id(), new StructureCatalogView.Entry(0, null, Map.of())));
         byte[] bytes = StructureCatalogCodec.encode(view);
@@ -336,7 +339,7 @@ class ControllerRenderChunksTest {
         try (var client = new ClientMachineRenderSnapshots(catalog, bindings)) {
             var world = new Object();
             var tile = new Object();
-            var installed = new ObjectArrayList<Long>();
+            var installed = new LongArrayList();
             var ownerSlot = new ClientMachineRenderSnapshots.Owner[1];
             var newer = snapshot(1, 2, 0, 2);
             ownerSlot[0] = client.attach(world, tile, connection, BlockPos.ORIGIN, MachineRenderSnapshotTest.MACHINE, () -> true, value -> {

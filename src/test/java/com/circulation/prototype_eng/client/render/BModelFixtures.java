@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.client.render;
 
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
@@ -78,7 +81,7 @@ public final class BModelFixtures {
 
     public static GeckoRenderRequest request(ModelAssets assets, GeckoRenderRequest.Owner owner, GeckoModelBaker.BakeMode mode, List<String> layers, long time) {
         var binding = new GeckoModelBinding(GEO, TEXTURE, ANIMATION, "idle", List.of(), 0, 0, 0, 0, MachineRenderPass.DEFAULT, false);
-        return new GeckoRenderRequest(owner, new StructureRenderAnchors.Part(StructureRenderAnchors.Kind.MACHINE, id("machine"), List.of(), -1),
+        return new GeckoRenderRequest(owner, new StructureRenderAnchors.Part(StructureRenderAnchors.Kind.MACHINE, id("machine"), IntList.of(), -1),
             new GeckoRenderRequest.Epoch(), assets.epoch(), binding, layers, mode, BlockPos.ORIGIN, BlockPos.ORIGIN,
             BlockOrientation.NORTH_UP, Vec3d.ZERO, new GeckoRenderRequest.Sample(time, 1));
     }
@@ -182,7 +185,7 @@ public final class BModelFixtures {
     /** Native policy fixture: it models maps/slots only and never calls a GL function. */
     public static class CpuUploader extends ReusableModelVboUploader {
         public final Int2IntOpenHashMap deletes = new Int2IntOpenHashMap(), unmaps = new Int2IntOpenHashMap();
-        public final List<Integer> draws = new ArrayList<>();
+        public final IntList draws = new IntArrayList();
         public final List<byte[]> uploads = new ArrayList<>();
         public int next, failUnmapId;
         public boolean vbo = true;

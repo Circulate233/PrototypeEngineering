@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
+
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEKey;
@@ -25,7 +27,6 @@ import net.minecraft.util.text.ITextComponent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -45,7 +46,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
      * Capacities are per slot and per key type, in that type's native units.
      */
     public BufferedResourceHatch(HatchMode mode, int slotsPerSide,
-                                 Map<AEKeyType, Long> capacities, Runnable onChanged) {
+                                 Reference2LongMap<AEKeyType> capacities, Runnable onChanged) {
         this(ResourceHatchConfiguration.symmetric(mode, slotsPerSide, capacities), onChanged);
     }
 
@@ -74,8 +75,8 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         }
         long needed = 0;
         for (var entry : totals.object2LongEntrySet()) {
-            Long capacity = side.capacities().get(entry.getKey().getType());
-            if (capacity == null) return null;
+            long capacity = side.capacities().getLong(entry.getKey().getType());
+            if (capacity <= 0) return null;
             long amount = entry.getLongValue();
             long slots = amount / capacity + (amount % capacity == 0 ? 0 : 1);
             if (slots > side.slots() - needed) return null;
@@ -89,7 +90,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         for (int slot = 0; slot < Math.min(contents.size(), packed.size()); slot++) {
             var stack = contents.get(slot);
             if (stack == null) continue;
-            long kept = Math.min(stack.amount(), side.capacities().get(stack.what().getType()));
+            long kept = Math.min(stack.amount(), side.capacities().getLong(stack.what().getType()));
             packed.set(slot, new GenericStack(stack.what(), kept));
             remaining.addTo(stack.what(), -kept);
         }
@@ -97,7 +98,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         for (int slot = 0; slot < packed.size(); slot++) {
             var stack = packed.get(slot);
             if (stack == null) continue;
-            long extra = Math.min(remaining.getLong(stack.what()), side.capacities().get(stack.what().getType()) - stack.amount());
+            long extra = Math.min(remaining.getLong(stack.what()), side.capacities().getLong(stack.what().getType()) - stack.amount());
             if (extra == 0) continue;
             packed.set(slot, new GenericStack(stack.what(), stack.amount() + extra));
             remaining.addTo(stack.what(), -extra);
@@ -116,7 +117,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         int slot = 0;
         for (var entry : remaining.object2LongEntrySet()) {
             long amount = entry.getLongValue();
-            long capacity = side.capacities().get(entry.getKey().getType());
+            long capacity = side.capacities().getLong(entry.getKey().getType());
             while (amount > 0) {
                 while (slot < packed.size() && packed.get(slot) != null) slot++;
                 if (slot == packed.size()) return false;

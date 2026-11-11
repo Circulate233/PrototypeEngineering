@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -39,7 +41,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.BiFunction;
 
@@ -150,7 +151,7 @@ class ResearchMaterialCycleTest {
     }
 
     private static SlottedResourceBuffer storage() {
-        return new SlottedResourceBuffer(4, Map.of(TYPE, 100L), () -> {
+        return new SlottedResourceBuffer(4, Reference2LongMaps.singleton(TYPE, 100L), () -> {
         });
     }
 

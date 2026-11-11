@@ -6,14 +6,15 @@ import net.minecraft.block.state.IBlockState;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.TreeMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
 import java.util.UUID;
 
 /** Definition-time projection of retained facts, never an evaluation of matching callbacks. */
@@ -64,17 +65,17 @@ final class StructurePredicateDisplays {
     }
 
     static @Nullable StructureDisplay describe(StructurePredicate root) {
-        var facts = new IdentityHashMap<StructurePredicate, Fact>();
-        var queue = new ArrayDeque<StructurePredicate>();
-        var exactSeeds = new LinkedHashSet<Seed>();
-        var blockSeeds = new LinkedHashSet<Seed>();
-        queue.add(root);
+        var facts = new Reference2ObjectOpenHashMap<StructurePredicate, Fact>();
+        var queue = new ObjectArrayFIFOQueue<StructurePredicate>();
+        var exactSeeds = new ObjectLinkedOpenHashSet<Seed>();
+        var blockSeeds = new ObjectLinkedOpenHashSet<Seed>();
+        queue.enqueue(root);
         while (!queue.isEmpty()) {
-            var predicate = queue.removeFirst();
+            var predicate = queue.dequeue();
             if (facts.containsKey(predicate)) continue;
             var fact = StructurePredicates.displayFact(predicate);
             facts.put(predicate, fact);
-            if (fact instanceof Branch branch) queue.addAll(branch.children);
+            if (fact instanceof Branch branch) for (var child : branch.children) queue.enqueue(child);
             if (fact instanceof Material(var exact, var membership, var authored)) {
                 if (exact != null) exactSeeds.add(new Seed(StructureDisplay.BlockOption.of(exact, Map.of()), exact));
                 if (authored != null) {
@@ -92,7 +93,7 @@ final class StructurePredicateDisplays {
         }
         if (facts.get(root) instanceof Material material && material.authored != null) return material.authored;
         exactSeeds.addAll(blockSeeds);
-        var options = new LinkedHashSet<StructureDisplay.BlockOption>();
+        var options = new ObjectLinkedOpenHashSet<StructureDisplay.BlockOption>();
         boolean complete = true;
         String tileNbt = null;
         boolean tileSeen = false;
@@ -101,7 +102,7 @@ final class StructurePredicateDisplays {
             // Resolve every hard material constraint before an NBT effort limit can retain a partial state.
             var support = stateSupport(root, facts, seed);
             if (!support.pass || !support.localMaterial) continue;
-            var attempts = new ArrayDeque<Attempt>();
+            var attempts = new ObjectArrayList<Attempt>();
             attempts.push(new Attempt(new Pending(root, null), Map.of(), false, false, null, false));
             int steps = 0;
             boolean found = false;
@@ -205,9 +206,9 @@ final class StructurePredicateDisplays {
     private record Visit(StructurePredicate predicate, boolean exit) {
     }
 
-    private static Support stateSupport(StructurePredicate root, IdentityHashMap<StructurePredicate, Fact> facts, Seed seed) {
-        var support = new IdentityHashMap<StructurePredicate, Support>();
-        var pending = new ArrayDeque<Visit>();
+    private static Support stateSupport(StructurePredicate root, Reference2ObjectOpenHashMap<StructurePredicate, Fact> facts, Seed seed) {
+        var support = new Reference2ObjectOpenHashMap<StructurePredicate, Support>();
+        var pending = new ObjectArrayList<Visit>();
         pending.push(new Visit(root, false));
         while (!pending.isEmpty()) {
             var visit = pending.pop();
@@ -243,7 +244,7 @@ final class StructurePredicateDisplays {
 
     private static void fields(StringBuilder text, char domain, Map<String, String> values) {
         text.append(domain).append(values.size()).append(':');
-        new TreeMap<>(values).forEach((name, value) -> {
+        new Object2ObjectRBTreeMap<>(values).forEach((name, value) -> {
             field(text, name);
             field(text, value);
         });
@@ -270,7 +271,7 @@ final class StructurePredicateDisplays {
 
     private static @Nullable Map<String, String> merge(Map<String, String> first, Map<String, String> second) {
         if (second.isEmpty()) return first;
-        var merged = new LinkedHashMap<>(first);
+        var merged = new Object2ObjectLinkedOpenHashMap<>(first);
         for (var entry : second.entrySet()) {
             var prior = merged.putIfAbsent(entry.getKey(), entry.getValue());
             if (prior != null && !prior.equals(entry.getValue())) return null;

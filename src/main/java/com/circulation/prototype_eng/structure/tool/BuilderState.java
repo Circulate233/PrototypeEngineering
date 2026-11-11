@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.tool;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import ae2.api.orientation.BlockOrientation;
@@ -7,12 +9,14 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettin
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectRBTreeMap;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.TreeMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -91,8 +95,8 @@ public final class BuilderState {
 
     public static String optionKey(StructureDisplay.BlockOption option) {
         var key = new StringBuilder(option.blockId() + "@" + option.meta());
-        new TreeMap<>(option.properties()).forEach((name, value) -> key.append('/').append('p').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
-        new TreeMap<>(option.nbt()).forEach((name, value) -> key.append('/').append('n').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
+        new Object2ObjectRBTreeMap<>(option.properties()).forEach((name, value) -> key.append('/').append('p').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
+        new Object2ObjectRBTreeMap<>(option.nbt()).forEach((name, value) -> key.append('/').append('n').append(name.length()).append(':').append(name).append(value.length()).append(':').append(value));
         return key.toString();
     }
 
@@ -172,23 +176,23 @@ public final class BuilderState {
     }
 
     public static String sliceKey(StructurePreviewPath path) {
-        var edges = new ObjectArrayList<Integer>();
+        var edges = new IntArrayList();
         for (var cursor = path; cursor.parent() != null; cursor = cursor.parent()) edges.add(cursor.childIndex());
         var key = new StringBuilder("0");
-        for (int index = edges.size() - 1; index >= 0; index--) key.append('/').append(edges.get(index));
+        for (int index = edges.size() - 1; index >= 0; index--) key.append('/').append(edges.getInt(index));
         return key.toString();
     }
 
-    public static Map<String, Integer> sliceCounts(NBTTagCompound tag) {
-        var result = new Object2ObjectOpenHashMap<String, Integer>();
+    public static Object2IntMap<String> sliceCounts(NBTTagCompound tag) {
+        var result = new Object2IntOpenHashMap<String>();
         var saved = tag.getCompoundTag("SliceSelections");
         for (var key : saved.getKeySet())
             if (saved.hasKey(key, 3) && saved.getInteger(key) >= 0 && slicePath(key) != null) result.put(key, saved.getInteger(key));
         return result;
     }
 
-    public static Map<StructurePreviewPath, Integer> previewSlices(NBTTagCompound tag) {
-        var result = new Object2ObjectOpenHashMap<StructurePreviewPath, Integer>();
+    public static Object2IntMap<StructurePreviewPath> previewSlices(NBTTagCompound tag) {
+        var result = new Object2IntOpenHashMap<StructurePreviewPath>();
         sliceCounts(tag).forEach((key, count) -> result.put(slicePath(key), count));
         return result;
     }

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.network;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -36,7 +38,6 @@ import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -58,7 +59,7 @@ class NetworkComputerComponentsTest {
     }
 
     private static SlottedResourceBuffer buffer(int slots) {
-        return new SlottedResourceBuffer(slots, Map.of(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> {
+        return new SlottedResourceBuffer(slots, Reference2LongMaps.singleton(ComputerSupplyFixtures.TYPE, Long.MAX_VALUE), () -> {
         });
     }
 

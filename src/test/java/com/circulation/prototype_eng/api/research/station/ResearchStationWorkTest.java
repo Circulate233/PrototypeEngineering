@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.research.station;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
@@ -242,7 +244,7 @@ class ResearchStationWorkTest {
         }));
         try (var fixture = new StationFixtures(1, 100, 2, definition); var lanes = new Lanes()) {
             var station = fixture.station(2, 0);
-            var warehouse = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 10_000L), () -> {
+            var warehouse = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10_000L), () -> {
             });
             Objects.requireNonNull(warehouse.input()).insert(RAW, 3, Actionable.MODULATE);
             Objects.requireNonNull(station.machine().lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(station.energy()), List.of(station.energy())));

@@ -1,14 +1,15 @@
 package com.circulation.prototype_eng.client.render;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
+import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
 import net.minecraft.client.renderer.BufferBuilder;
 
-import java.util.ArrayDeque;
 
 /** Buffers enter this pool only after their owned result's final reader exits. */
 public class ModelBufferPool implements AutoCloseable {
-    private final Int2ObjectAVLTreeMap<ArrayDeque<Entry>> free = new Int2ObjectAVLTreeMap<>();
-    private final ArrayDeque<Entry> oversize = new ArrayDeque<>();
+    private final Int2ObjectAVLTreeMap<ObjectArrayFIFOQueue<Entry>> free = new Int2ObjectAVLTreeMap<>();
+    private final ReferenceLinkedOpenHashSet<Entry> oversize = new ReferenceLinkedOpenHashSet<>();
     private final Limits limits;
     private long pooledBytes;
     private long oversizeBytes;
@@ -31,7 +32,7 @@ public class ModelBufferPool implements AutoCloseable {
         if (!suitable.isEmpty()) {
             int capacity = suitable.firstIntKey();
             var bucket = free.get(capacity);
-            var entry = bucket.removeFirst();
+            var entry = bucket.dequeue();
             if (bucket.isEmpty()) free.remove(capacity);
             pooledBytes -= capacity;
             count--;
@@ -62,15 +63,15 @@ public class ModelBufferPool implements AutoCloseable {
             if (limits.oversizeMaxBytes > 0 && capacity > limits.oversizeMaxBytes) return;
             while (!oversize.isEmpty() && (limits.oversizeEntries > 0 && oversize.size() >= limits.oversizeEntries ||
                 limits.oversizeMaxBytes > 0 && capacity > limits.oversizeMaxBytes - oversizeBytes)) evictOversize();
-            oversize.addLast(entry);
+            oversize.add(entry);
             oversizeBytes += capacity;
         } else {
             var bucket = free.get(capacity);
             if (bucket == null) {
-                bucket = new ArrayDeque<>();
+                bucket = new ObjectArrayFIFOQueue<>();
                 free.put(capacity, bucket);
             }
-            bucket.addFirst(entry);
+            bucket.enqueueFirst(entry);
             pooledBytes += capacity;
         }
         count++;
@@ -85,7 +86,7 @@ public class ModelBufferPool implements AutoCloseable {
     }
 
     private void maintain(long now) {
-        while (!oversize.isEmpty() && limits.oversizeTtlNanos > 0 && now - oversize.getFirst().returnedAt >= limits.oversizeTtlNanos)
+        while (!oversize.isEmpty() && limits.oversizeTtlNanos > 0 && now - oversize.first().returnedAt >= limits.oversizeTtlNanos)
             evictOversize();
         while (limits.totalMaxBytes > 0 && pooledBytes + oversizeBytes > limits.totalMaxBytes || limits.maxEntries > 0 && count > limits.maxEntries) {
             if (!oversize.isEmpty()) {
@@ -95,7 +96,7 @@ public class ModelBufferPool implements AutoCloseable {
             if (free.isEmpty()) break;
             int key = free.lastIntKey();
             var bucket = free.get(key);
-            bucket.removeLast();
+            bucket.dequeueLast();
             pooledBytes -= key;
             count--;
             if (bucket.isEmpty()) free.remove(key);

@@ -37,6 +37,7 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.LongSupplier;
+import pe.visual.examples.ExampleText;
 
 /** Run-only executable script fixtures. These detached owners do not claim World/save/sync coverage. */
 @ZenRegister
@@ -246,7 +247,7 @@ public final class CoreCases {
     private record AddonPool(List<MachineRecipe> recipes, List<MachineType> machines) implements RecipePool {
         private AddonPool(List<MachineRecipe> recipes) { this(recipes, List.of()); }
         @Override public ResourceLocation id() { return CoreCases.id("core_custom_pool"); }
-        @Override public String translationKey() { return "PE Run: Addon pool"; }
+        @Override public String translationKey() { return ExampleText.CoreAddonPool.getTranslationKey(); }
         @Override public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) { return new AddonPool(recipes, machines); }
         @Override public RecipeCandidateIndex.Cursor beginCandidates(MachineInstance owner, java.util.Set<ResourceLocation> groups) {
             return ((RecipeCandidateIndex) (machine, requested, scope) -> { customPoolLookups++; return scope; }).beginLookup(owner, groups, recipes);

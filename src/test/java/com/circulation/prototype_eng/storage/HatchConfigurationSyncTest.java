@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import com.circulation.prototype_eng.network.clientbound.HatchConfigurationPacket;
 
 import ae2.api.stacks.AEKeyType;
@@ -20,7 +22,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -37,7 +38,7 @@ class HatchConfigurationSyncTest {
         var profiles = new ObjectArrayList<HatchConfiguration>();
         for (var tier : HatchTier.values())
             for (var mode : HatchMode.values()) {
-                var input = ResourceHatchConfiguration.Side.fromItemEquivalent(96, itemEquivalent, List.of(AEKeyType.items(), AEKeyType.fluids()), Map.of(AEKeyType.fluids(), 2000L));
+                var input = ResourceHatchConfiguration.Side.fromItemEquivalent(96, itemEquivalent, List.of(AEKeyType.items(), AEKeyType.fluids()), Reference2LongMaps.singleton(AEKeyType.fluids(), 2000L));
                 var output = ResourceHatchConfiguration.Side.fromItemEquivalent(128, itemEquivalent + tier.level(), List.of(AEKeyType.items(), AEKeyType.fluids()));
                 profiles.add(new ResourceHatchConfiguration(mode.hasInput() ? input : null, mode.hasOutput() ? output : null));
                 profiles.add(EnergyHatchConfiguration.symmetric(mode, 900_000 + itemEquivalent, 1234 + tier.level()));
@@ -81,12 +82,12 @@ class HatchConfigurationSyncTest {
         var saved = new NBTTagCompound();
         saved.setString("Mode", "INPUT");
         saved.setInteger("Tier", 1);
-        var own = new ResourceHatchConfiguration(ResourceHatchConfiguration.Side.fromItemEquivalent(7, 33, List.of(AEKeyType.fluids()), Map.of(AEKeyType.fluids(), 17L)), null);
+        var own = new ResourceHatchConfiguration(ResourceHatchConfiguration.Side.fromItemEquivalent(7, 33, List.of(AEKeyType.fluids()), Reference2LongMaps.singleton(AEKeyType.fluids(), 17L)), null);
         saved.setTag("EffectiveProfile", HatchConfigurationNbt.resource(own));
         assertTrue(deliver(client, connection, snapshot(session, 3, 1777)));
         assertEquals(1777, Objects.requireNonNull(Objects.requireNonNull(HatchItemProfiles.resource(null, HatchTier.LV1, HatchMode.INPUT, client.view()).input()).basis()).itemEquivalent());
         assertEquals(own, HatchItemProfiles.resource(saved, HatchTier.LV1, HatchMode.INPUT, client.view()));
-        assertEquals(561L, Objects.requireNonNull(own.input()).capacities().get(AEKeyType.fluids()));
+        assertEquals(561L, Objects.requireNonNull(own.input()).capacities().getLong(AEKeyType.fluids()));
     }
 
     @Test
@@ -151,7 +152,7 @@ class HatchConfigurationSyncTest {
         var saved = new NBTTagCompound();
         saved.setString("Mode", "MIXED");
         saved.setInteger("Tier", 1);
-        var profile = HatchConfigurationNbt.resource(ResourceHatchConfiguration.symmetric(HatchMode.MIXED, 1, Map.of(AEKeyType.items(), 64L)));
+        var profile = HatchConfigurationNbt.resource(ResourceHatchConfiguration.symmetric(HatchMode.MIXED, 1, Reference2LongMaps.singleton(AEKeyType.items(), 64L)));
         profile.getCompoundTag("Input").setInteger("Slots", Integer.MAX_VALUE);
         saved.setTag("EffectiveProfile", profile);
         assertThrows(IllegalArgumentException.class, () -> HatchItemProfiles.resource(saved, HatchTier.LV1, HatchMode.MIXED));
@@ -166,7 +167,7 @@ class HatchConfigurationSyncTest {
         declared.getCompoundTag("Input").setLong("ItemEquivalent", 64);
         declared.getCompoundTag("Input").getCompoundTag("CapacityRatios").setLong("prototype_eng_test:missing_ratio_type", 1);
         assertThrows(IllegalArgumentException.class, () -> HatchItemProfiles.resource(item, HatchTier.LV1, HatchMode.INPUT));
-        assertThrows(ArithmeticException.class, () -> new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(Integer.MAX_VALUE, Map.of(AEKeyType.items(), 64L)),
-            new ResourceHatchConfiguration.Side(1, Map.of(AEKeyType.items(), 64L))));
+        assertThrows(ArithmeticException.class, () -> new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(Integer.MAX_VALUE, Reference2LongMaps.singleton(AEKeyType.items(), 64L)),
+            new ResourceHatchConfiguration.Side(1, Reference2LongMaps.singleton(AEKeyType.items(), 64L))));
     }
 }

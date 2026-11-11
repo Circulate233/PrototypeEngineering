@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.objects.Object2IntArrayMap;
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.GeckoStructureBinding;
@@ -56,18 +59,15 @@ class PreviewMachineAnchorsTest {
 
     private static StructureCatalogView catalog() {
         var display = new StructureDisplay("material", List.of(new StructureDisplay.BlockOption(id("block"), 0, Map.of())), null);
-        var root = new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, true, StructurePreviewProvider.Kind.TEMPLATE,
-            BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), List.of(1, 1));
-        var slice = new StructureCatalogView.Node(SLICE, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE,
-            new BlockPos(2, 0, 0), 0, 3, new BlockPos(1, 0, 0), List.of(new BlockPos(0, 1, 0)), List.of());
+        var root = new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, true, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of(1, 1));
+        var slice = new StructureCatalogView.Node(SLICE, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, new BlockPos(2, 0, 0), 0, 3, new BlockPos(1, 0, 0), List.of(new BlockPos(0, 1, 0)), IntList.of());
         return new StructureCatalogView(UUID.randomUUID(), 0, List.of(root, slice), Map.of(
             ROOT, new StructureCatalogView.Entry(0, null, Map.of(new BlockPos(1, 0, 0), display)),
             SLICE, new StructureCatalogView.Entry(1, null, Map.of(new BlockPos(0, 1, 0), display))));
     }
 
     private static StructurePreviewSettings settings(BlockOrientation orientation) {
-        return new StructurePreviewSettings(orientation, Map.of(StructurePreviewPath.ROOT.child(0), 0,
-            StructurePreviewPath.ROOT.child(1), 3), 20, 100);
+        return new StructurePreviewSettings(orientation, new Object2IntArrayMap<>(new StructurePreviewPath[]{StructurePreviewPath.ROOT.child(0), StructurePreviewPath.ROOT.child(1)}, new int[]{0, 3}), 20, 100);
     }
 
     private static StructurePreviewModel model(BlockOrientation orientation) {

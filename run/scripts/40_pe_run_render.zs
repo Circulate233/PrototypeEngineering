@@ -1,4 +1,5 @@
 #loader crafttweaker
+import mods.pe_run_tests.Text;
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.recipe.Bindings;
 import mods.prototype_eng.recipe.Recipe;
@@ -22,20 +23,21 @@ Options.defaults(true, "alternatives");
 var migration = Recipe.create("pe_run_tests:client_migration", "v1", 2400,
     [Requirement.resourceIO("pe_run_tests:client_migration_io", [Resource.item(<minecraft:quartz>, 1)],
         [Resource.item(<minecraft:redstone>, 1)], [], [Resource.item(<minecraft:emerald>, 1)], false)]);
-CoreCases.pool(Pool.create("pe_run_tests:client_custom_pool", "pe_run_tests.pool.client_custom", [recipe, migration])
+CoreCases.pool(Pool.create("pe_run_tests:client_custom_pool", Text.ClientCustomPool.key, [recipe, migration])
     .jeiOptions(Options.create(false, "expanded")).customJeiPage(Page.named("pe_run_tests:client_independent_page")));
 var defaultRecipe = Recipe.create("pe_run_tests:render_default_recipe", "v1", 60,
     [Requirement.resources("pe_run_tests:render_default_io", [Resource.item(<minecraft:cobblestone>, 1)], [Resource.item(<minecraft:glass>, 1)])]);
-CoreCases.pool(Pool.create("pe_run_tests:render_default_pool", "pe_run_tests.pool.render_default", [defaultRecipe])
+CoreCases.pool(Pool.create("pe_run_tests:render_default_pool", Text.RenderDefaultPool.key, [defaultRecipe])
     .jeiOptions(Options.create(true, "alternatives")));
-CoreCases.pool(Pool.create("pe_run_tests:client_external_pool", "pe_run_tests.pool.render_default", [defaultRecipe])
+CoreCases.pool(Pool.create("pe_run_tests:client_external_pool", Text.RenderDefaultPool.key, [defaultRecipe])
     .existingJeiPage("minecraft.crafting"));
 
 var slice = Structure.slice("pe_run_tests:render_per_slice", "NORTH_UP", 0, 1, 0, false,
-    Pattern.create().put(0, 0, 0, Predicate.block("minecraft:glass")), 2, 2, 0, 1, 0, [], []);
+    Pattern.create().put(0, 0, 0, Predicate.block("minecraft:glass")), 2, 2, 0, 1, 0, [], []).translated(Text.RenderSlice.key);
+slice.register();
 Structure.template("pe_run_tests:render_whole", "NORTH_UP", 0, 0, 0, false,
     Pattern.create().put(0, 0, 0, Predicate.notAir()).put(1, 0, 0, Predicate.resourceHatch())
-        .put(-1, 0, 0, Predicate.resourceHatch()), [], [slice]).register();
+        .put(-1, 0, 0, Predicate.resourceHatch()), [], [slice]).translated(Text.RenderStructure.key).register();
 
 var passes = ["default", "transparent", "bloom", "bloom_transparent"];
 for pass in passes {

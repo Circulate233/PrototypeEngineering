@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -60,7 +62,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -87,7 +88,7 @@ class PureRecipePreparationTest {
     }
 
     private static BufferedResourceHatch hatch(HatchMode mode, int slots, AtomicInteger publications) {
-        return new BufferedResourceHatch(mode, slots, Map.of(TYPE, 100_000L), publications::incrementAndGet);
+        return new BufferedResourceHatch(mode, slots, Reference2LongMaps.singleton(TYPE, 100_000L), publications::incrementAndGet);
     }
 
     private static MachineWorkSlots host(BufferedResourceHatch... hatches) {
@@ -379,7 +380,7 @@ class PureRecipePreparationTest {
 
     @Test
     void builtInQuantityCaptureCopiesIncrementallyAndRestartsAfterARealRevisionChange() {
-        var buffer = new SlottedResourceBuffer(1002, Map.of(TYPE, 10L), () -> {
+        var buffer = new SlottedResourceBuffer(1002, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         var first = new Key(TYPE, "a");
         buffer.insert(first, 1, Actionable.MODULATE);
@@ -404,7 +405,7 @@ class PureRecipePreparationTest {
 
     @Test
     void lateMatchingKeyAfterSecondCaptureMergeYieldBlocksOldChoiceAndRetriesFromFreshFacts() {
-        var buffer = new SlottedResourceBuffer(102, Map.of(TYPE, 10L), () -> {
+        var buffer = new SlottedResourceBuffer(102, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         var a = new Key(TYPE, "a");
         var b = new Key(TYPE, "b");
@@ -656,7 +657,7 @@ class PureRecipePreparationTest {
     @Test
     void transparentRootPauseCannotExposeSameStageOutputsToLaterRootInputs() {
         var key = new Key(TYPE, "product");
-        var storage = new SlottedResourceBuffer(1, Map.of(TYPE, 10L), () -> {
+        var storage = new SlottedResourceBuffer(1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         var input = new ResourceHatch() {
             @Override

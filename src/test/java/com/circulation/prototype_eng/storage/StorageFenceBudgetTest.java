@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.api.storage.StorageFence;
@@ -171,7 +173,7 @@ class StorageFenceBudgetTest {
     @Test
     void notificationFaultIsRememberedAcrossSlicesWhileEveryOtherNotificationIsAttemptedOnce() {
         var contexts = new ArrayList<StorageContext>();
-        var called = new ArrayList<Integer>();
+        var called = new IntArrayList();
         var fault = new IllegalStateException("first notification");
         for (int index = 0; index < 24; index++) {
             int identity = index;
@@ -200,7 +202,7 @@ class StorageFenceBudgetTest {
         assertTrue(ending.done());
         assertEquals(24, called.size());
         for (int index = 0; index < 24; index++) {
-            assertEquals(index, called.get(index));
+            assertEquals(index, called.getInt(index));
         }
         assertTrue(ending.advance(new RecipeWorkBudget(1)::take));
         assertEquals(24, called.size());

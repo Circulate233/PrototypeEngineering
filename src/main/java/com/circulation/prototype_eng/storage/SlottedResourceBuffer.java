@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMap;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -24,7 +26,6 @@ import java.util.BitSet;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -49,13 +50,13 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private boolean destroyed;
     private volatile @Nullable Consumer<List<GenericStack>> destructionDrops;
 
-    public SlottedResourceBuffer(int slots, Map<AEKeyType, Long> capacities, Runnable onChanged) {
+    public SlottedResourceBuffer(int slots, Reference2LongMap<AEKeyType> capacities, Runnable onChanged) {
         if (slots <= 0 || capacities.isEmpty()) {
             throw new IllegalArgumentException("A buffer needs slots and supported resource types");
         }
-        for (var entry : capacities.entrySet()) {
+        for (var entry : capacities.reference2LongEntrySet()) {
             AEKeyType type = Objects.requireNonNull(entry.getKey(), "type");
-            long capacity = Objects.requireNonNull(entry.getValue(), "capacity");
+            long capacity = entry.getLongValue();
             if (capacity <= 0) {
                 throw new IllegalArgumentException("Slot capacities must be positive");
             }

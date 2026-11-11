@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure.tool;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
@@ -13,14 +15,13 @@ import net.minecraft.util.math.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Map;
 
 /** Common-side expansion for construction; unknown display requirements remain unbuildable. */
 public final class StructureBuildPlan {
     private StructureBuildPlan() {
     }
 
-    public static Result expand(StructureCatalogView view, ResourceLocation id, BlockOrientation orientation, Map<String, Integer> slices) {
+    public static Result expand(StructureCatalogView view, ResourceLocation id, BlockOrientation orientation, Object2IntMap<String> slices) {
         var root = view.entries().get(id);
         if (root == null) throw new IllegalArgumentException("Unknown construction structure");
         var rotation = StructureTransform.between(view.nodes().get(root.node()).orientation(), orientation);
@@ -56,7 +57,7 @@ public final class StructureBuildPlan {
             }
             var childOrigin = node.kind() == StructurePreviewProvider.Kind.SLICE ? add(origin, multiply(step, (long) count - 1)) : origin;
             for (int child = node.children().size() - 1; child >= 0; child--)
-                pending.add(new Visit(node.children().get(child), visit.path() + "/" + child, childOrigin));
+                pending.add(new Visit(node.children().getInt(child), visit.path() + "/" + child, childOrigin));
         }
         return new Result(List.copyOf(cells.values()), List.copyOf(nodes));
     }

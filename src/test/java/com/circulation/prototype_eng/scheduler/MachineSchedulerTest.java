@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.scheduler;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -23,7 +25,6 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
@@ -118,7 +119,7 @@ class MachineSchedulerTest {
     void resourceAndEnergyAliasesConnectThreeMachinesIntoOneSerialStableLane() {
         Thread owner = Thread.currentThread();
         var keyType = new TestResources.KeyType("scheduler_resources");
-        var shared = new SlottedResourceBuffer(1, Map.of(keyType, 32L), () -> {
+        var shared = new SlottedResourceBuffer(1, Reference2LongMaps.singleton(keyType, 32L), () -> {
         });
         var firstView = new InputView(shared);
         var secondView = new InputView(shared);

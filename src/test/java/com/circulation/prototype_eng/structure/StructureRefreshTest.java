@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure;
 
+import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -329,7 +331,7 @@ class StructureRefreshTest {
         var binding = new StructureHatchBinding(new Object(), resource, energy, energy);
         fixture.host.bindings.put(FIRST, binding);
         fixture.host.bindings.put(SECOND, binding);
-        var events = new ObjectArrayList<Boolean>();
+        var events = new BooleanArrayList();
         try (var ignored = fixture.registry.register(new MachineLifecycleListener() {
             @Override
             public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {
@@ -356,7 +358,7 @@ class StructureRefreshTest {
         var fixture = new Fixture();
         var oldHatch = new ExternalHatch();
         fixture.host.bindings.put(FIRST, binding(oldHatch));
-        var formed = new ObjectArrayList<Boolean>();
+        var formed = new BooleanArrayList();
         try (var ignored = fixture.registry.register(new MachineLifecycleListener() {
             @Override
             public void onFormedChanged(MachineLifecycleEvent.FormedChanged event) {

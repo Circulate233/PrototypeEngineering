@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.machine;
 
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+
 import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentSystem;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -202,7 +204,7 @@ class MachineWorkSlotBatchTest {
         }
         var batch = host.prepareTickBatch();
         batch.begin();
-        var roundSizes = new ObjectArrayList<Integer>();
+        var roundSizes = new IntArrayList();
         @SuppressWarnings("resource")
         var lane = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().factory());
         try {

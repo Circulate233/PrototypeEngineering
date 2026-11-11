@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-11 本地化/集合全量审查收尾：用户指出的测试addon缺pack.mcmeta已补，安装Jar metadata=3/两语言各94条/SHA一致；结构显式标题和机器fallback、工具客户端名称、native/external小写key及固定key枚举已修，527枚举项EN/ZH无缺。带primitive集合的字段/参数/返回值全部fastutil专用接口（AEKeyType为Reference2LongMap、选择表Object2IntMap、路径IntList），不留装箱JDK ABI重载；扫描735main＋19addon＋11脚本直接装箱集合/包装数组零。普通队列/栈迁移并保留身份/顺序，补entry.setValue不可变保护。完整build含Spotless为1923 tests/264 suites全零，11脚本实际SDK编译/97核心断言通过；75正式Java本机MCP全级零，11修改run Java被排除/未知，资源全级零及MCP build成功。示例已安装，无子代理/游戏启动/推送，原背景及暂存保留；详见 [本地化与集合审查](localization-collections-audit.md)，证据localization-collections-audit/。
+
 - 2026-11-11 补齐真实子结构/可拓展结构示例：新增12/23两个实际CT脚本，nested_structure共享pod＋marker跨左右分支复用；expandable_structure为1–4段Slice及随尾段移动的一次性金盖。run新增基于canonical结构图的搭建、真实World冻结断言和显式段数客户端预览命令，具体BOM26及22/31/40/49与操作见 [组合结构示例](../run/scripts/README-composite.md)。同时贯通重复次数滑块→view/用料/投影→工具NBT→服务端occurrence上下界预验→实际构建计划；换绑清理，重开保留。19 addon Java、11脚本SDK编译和核心97断言通过；24 tests/2 suites全零含1项必要的共享occurrence/持久段数/构建对照回归，官方7Java本机MCP全级零，run修改Java因排除不可分析，两语言全级零。示例已重编安装，未启动游戏/推送；World成型、搭建、支付、退出重进及画面仍待用户，总体Goal保持暂停。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/composite-examples/`。
 
 - 2026-11-11 五张实机截图反馈已修：共享材料网格5列×8行横向逐行，内容与滚动条独立；构造器/独立预览使用真实只读展示槽，JEI发布实际ingredient槽，正常书签/检索/高亮；单格与整种选择共享view settings并按具体候选拆分右树数量。候选选择后、外部点击、Esc关闭，旧槽立即撤销；层滑块上高下低，滚轮上加下减。HEI原生转移按钮在异步材料就绪/选择代变化后重新init，消除初次未就绪缓存；客户端名称走getLocal，示例enum/lang统一小写。10主Java及示例两语言本机MCP全级零，示例Java因run排除不可分析；22项既有专项及build/MCP build通过，未新增测试。示例包已重编；首次Jar被运行客户端占用，用户回复“已退出”后安装成功并核对SHA256。需用户完整重启复验本次实际效果，总体Goal保持暂停；不启动游戏、不推送。入口 [结构工具](structure-tools.md)、[JEI](jei.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/preview-feedback/`。
@@ -43,6 +45,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 用户完整启动客户端，先复验本轮metadata修复后的机器/结构中文（包含World子节点、网络、渲染与组合结构），再沿下面既有材料槽/JEI/构造器及组合结构步骤验收。原生注入、World、保存/支付与画面仍待用户；总体Goal保持暂停。后续扩展调用严格primitive fastutil API，见[专项审查](localization-collections-audit.md)。
 
 - 用户完整重启，按 [组合结构实机步骤](../run/scripts/README-composite.md) 使用 `kit composite` 和两类build：嵌套26材料且两份pod/marker，拓展1–4段分别22/31/40/49材料、唯一金盖跟随末段；执行真实structure-check正/负例、投料和显式段数预览。构造器拖重复次数时左右/用料/投影同步，关闭重开/退出重进保留，对空控制器选3段实际构建40材料。SDK编译及NBT/几何行为回归不能代替这些原生结果。
 

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyTypes;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
@@ -15,7 +17,6 @@ import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
 import net.minecraft.nbt.NBTTagCompound;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -34,7 +35,7 @@ class HatchConfigurationRequestTest {
     }
 
     private static ResourceHatchConfiguration resource(int slots, long capacity) {
-        return new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(slots, Map.of(TYPE, capacity)), null);
+        return new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(slots, Reference2LongMaps.singleton(TYPE, capacity)), null);
     }
 
     private static EnergyHatchConfiguration energy(long capacity) {

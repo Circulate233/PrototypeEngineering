@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -355,7 +357,7 @@ class ProcessAbortEffectsTest {
         private final SlottedResourceBuffer input;
         private final SlottedResourceBuffer output;
         private final ObjectArrayList<RequirementPath> cancellations = new ObjectArrayList<>();
-        private final ObjectArrayList<Integer> cancelledPayloads = new ObjectArrayList<>();
+        private final IntArrayList cancelledPayloads = new IntArrayList();
         private ProcessResult startResult = ProcessResult.SUCCESS;
         private ProcessResult tickResult = ProcessResult.SUCCESS;
         private int starts;
@@ -399,7 +401,7 @@ class ProcessAbortEffectsTest {
         public void cancel(RecipeProcess process, RecipeRequirement<Integer> requirement) {
             assertTrue(process.state().lifecycle().isTerminal());
             cancellations.add(process.requirementPath());
-            cancelledPayloads.add(requirement.payload());
+            cancelledPayloads.add(requirement.payload().intValue());
         }
     }
 

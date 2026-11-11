@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.client.gui.GuiLabel;
 import com.circulation.prototype_eng.localization.PreviewUiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.client.Minecraft;
@@ -239,8 +240,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         clipped(7, 10, 115, 18, () -> {
             float y = 10 - 16 * collapseNow;
             sprite("top_machine_prefix_name_base", 7, y, 115, 18);
-            var model = view.model();
-            var titleText = model == null ? null : model.title();
+            var titleText = view.title();
             String title = titleText == null ? view.id().toString() : titleText.getLocal();
             GuiLabel.draw(Minecraft.getMinecraft().fontRenderer, title, 10, y + 5, 109, 10, 0xffffff, false);
             area("title", 7, y, 115, 18, List.of(title), null);
@@ -363,13 +363,13 @@ public final class StructurePreviewPanel implements AutoCloseable {
             int choice = representative(selected);
             var stack = optionStack(selected, choice);
             slot("selected", stack, x, 31, false, List.of(), null);
-            var candidates = new ObjectArrayList<Integer>();
+            var candidates = new IntArrayList();
             for (int index = 0; index < selected.options().size(); index++)
                 if (index != choice && !optionStack(selected, index).isEmpty()) candidates.add(index);
             alternativesCount = candidates.size();
             int row = 1;
             for (int index = alternativesScroll.first(candidates.size(), 9); index < candidates.size() && row <= 9; index++) {
-                int option = candidates.get(index);
+                int option = candidates.getInt(index);
                 var alternative = optionStack(selected, option);
                 slot("option" + option, alternative, x, 31 + row++ * 18, false, List.of(), () -> {
                         if (view.alternative(drawnToken, selected, option))

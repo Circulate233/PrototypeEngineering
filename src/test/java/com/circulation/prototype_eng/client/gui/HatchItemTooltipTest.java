@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.gui;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.energy.EnergyHatchConfiguration;
@@ -25,7 +27,7 @@ class HatchItemTooltipTest {
     @Test
     void resourceLinesShowOnlyDeclaredPerSideSlotCountAndItemEquivalentCapacity() {
         var custom = new TooltipType();
-        var profile = new ResourceHatchConfiguration(ResourceHatchConfiguration.Side.fromItemEquivalent(96, 64, List.of(custom), Map.of(custom, 7L)),
+        var profile = new ResourceHatchConfiguration(ResourceHatchConfiguration.Side.fromItemEquivalent(96, 64, List.of(custom), Reference2LongMaps.singleton(custom, 7L)),
             ResourceHatchConfiguration.Side.fromItemEquivalent(128, Long.MAX_VALUE, List.of(AEKeyType.items())));
         JeiTestLocale.withTranslations(Map.of(
             GuiText.Input.getTranslationKey(), "Input", GuiText.Output.getTranslationKey(), "Output",
@@ -37,7 +39,7 @@ class HatchItemTooltipTest {
             assertEquals(List.of("Input", "Slot count: 96", "Slot capacity: 64",
                 "Output", "Slot count: 128", "Slot capacity: 9,223,372,036,854,775,807"), tooltip);
             tooltip.clear();
-            HatchItemTooltip.resource(new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(2, Map.of(custom, 13L)), null), tooltip);
+            HatchItemTooltip.resource(new ResourceHatchConfiguration(new ResourceHatchConfiguration.Side(2, Reference2LongMaps.singleton(custom, 13L)), null), tooltip);
             assertEquals(List.of("Slot count: 2", "Slot capacity: Not declared"), tooltip);
         });
     }

@@ -32,6 +32,7 @@ import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import pe.visual.examples.run.CoreCases;
+import pe.visual.examples.ExampleText;
 import pe.visual.examples.run.NativeChecks;
 import pe.visual.examples.run.RunNetworkRender;
 import stanhebben.zenscript.*;
@@ -95,7 +96,7 @@ public final class ScriptVerifier {
             ZenResearchRewardCallback.class, ZenResearchRewardEvent.class, ZenResearchStartCondition.class, ZenResearchStartContext.class,
             ZenResearchDownloads.class, ZenResearchDownloadCallback.class, ZenResearchDownloadContext.class,
             ZenResearchServer.class, ZenResearchPermissionCallback.class, ZenResearchPermissionContext.class,
-            CoreCases.class, NativeChecks.class, RunNetworkRender.class)) registry.registerNativeClass(type);
+            ExampleText.class, CoreCases.class, NativeChecks.class, RunNetworkRender.class)) registry.registerNativeClass(type);
         registry.registerBracketHandler(new DeferredBrackets(registry));
     }
 

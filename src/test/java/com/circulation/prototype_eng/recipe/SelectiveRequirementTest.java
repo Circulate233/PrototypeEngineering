@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.booleans.BooleanList;
+import it.unimi.dsi.fastutil.booleans.BooleanArrayList;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -528,7 +531,7 @@ class SelectiveRequirementTest {
         private final long endAmount;
         private final Object2ObjectOpenHashMap<RecipeStage, ProcessResult> results = new Object2ObjectOpenHashMap<>();
         private final List<RequirementPath> paths = new ObjectArrayList<>();
-        private final List<Boolean> committedAtAcquisition = new ObjectArrayList<>();
+        private final BooleanList committedAtAcquisition = new BooleanArrayList();
         private @Nullable RuntimeException resultFault;
         private @Nullable RuntimeException rollbackFault;
         private @Nullable RuntimeException tokenRollbackFault;

@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKeyType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
@@ -487,16 +490,16 @@ class OverlayModifierTest {
             };
         }
 
-        private List<Integer> amounts() {
-            return observations.stream().map(Observation::amount).toList();
+        private IntList amounts() {
+            return IntArrayList.wrap(observations.stream().mapToInt(Observation::amount).toArray());
         }
 
         private List<RecipeStage> stages() {
             return observations.stream().map(Observation::stage).toList();
         }
 
-        private List<Integer> amounts(RequirementPath path) {
-            return observations.stream().filter(observation -> observation.path().equals(path)).map(Observation::amount).toList();
+        private IntList amounts(RequirementPath path) {
+            return IntArrayList.wrap(observations.stream().filter(observation -> observation.path().equals(path)).mapToInt(Observation::amount).toArray());
         }
     }
 }

@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
@@ -13,6 +16,10 @@ import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.localization.StructureToolText;
+import com.circulation.prototype_eng.localization.StructurePreviewText;
+import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import net.minecraft.util.EnumFacing;
@@ -49,13 +56,10 @@ class StructurePreviewInteractionTest {
     }
 
     private static StructureCatalogView view(UUID session, long sequence) {
-        var root = new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE,
-            BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0), new BlockPos(1, 1, 0)), List.of(1, 1));
-        var child = new StructureCatalogView.Node(CHILD, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE,
-            new BlockPos(3, 0, 0), 0, 3, new BlockPos(0, 1, 0), List.of(new BlockPos(1, 0, 0)), List.of(2));
+        var root = new StructureCatalogView.Node(ROOT, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0), new BlockPos(1, 1, 0)), IntList.of(1, 1));
+        var child = new StructureCatalogView.Node(CHILD, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.SLICE, new BlockPos(3, 0, 0), 0, 3, new BlockPos(0, 1, 0), List.of(new BlockPos(1, 0, 0)), IntList.of(2));
         var leafId = new ResourceLocation("preview_ui_test", "leaf");
-        var leaf = new StructureCatalogView.Node(leafId, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE,
-            new BlockPos(0, 0, 1), 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), List.of());
+        var leaf = new StructureCatalogView.Node(leafId, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, new BlockPos(0, 0, 1), 1, 1, BlockPos.ORIGIN, List.of(new BlockPos(1, 0, 0)), IntList.of());
         return new StructureCatalogView(session, sequence, List.of(root, child, leaf), Map.of(
             ROOT, new StructureCatalogView.Entry(0, null, Map.of(new BlockPos(1, 0, 0), A, new BlockPos(1, 1, 0), B)),
             CHILD, new StructureCatalogView.Entry(1, null, Map.of(new BlockPos(1, 0, 0), A)),
@@ -82,6 +86,22 @@ class StructurePreviewInteractionTest {
         first.advance(1000);
         second.advance(1000);
         return new Fixture(catalog, connection, session, service, first, second);
+    }
+
+    @Test
+    void structureTitleUsesItsDeclarationThenTheExplicitMachineLocalization() {
+        try (var f = fixture()) {
+            var machine = MachineType.builder(new ResourceLocation("preview_ui_test", "named"), StructureToolText.BuilderTitle, ROOT).build();
+            var ui = new StructurePreviewView(f.service, ROOT, new StructurePreviewSettings(BlockOrientation.NORTH_UP), machine);
+            ui.advance(1000);
+            assertSame(StructureToolText.BuilderTitle, ui.title());
+            var old = Objects.requireNonNull(ui.model()).generation();
+            var entries = new Object2ObjectLinkedOpenHashMap<>(old.entries());
+            entries.compute(ROOT, (_, root) -> new StructureCatalogView.Entry(Objects.requireNonNull(root).node(), StructurePreviewText.Title.getTranslationKey(), root.displays()));
+            deliver(f.catalog, f.connection, new StructureCatalogView(old.session(), old.sequence() + 1, old.nodes(), entries));
+            ui.advance(1000);
+            assertEquals(StructurePreviewText.Title.getTranslationKey(), Objects.requireNonNull(ui.title()).getTranslationKey());
+        }
     }
 
     @Test
@@ -189,8 +209,8 @@ class StructurePreviewInteractionTest {
             var copied = tag.copy();
             var ui = f.first;
             var old = ui.token();
-            assertTrue(ui.replaceSelections(old, Map.of(A, 1), Map.of(), BuilderState.previewSlices(copied)));
-            assertFalse(ui.replaceSelections(old, Map.of(), Map.of(), Map.of()), "A stale response cannot reset current counts");
+            assertTrue(ui.replaceSelections(old, Object2IntMaps.singleton(A, 1), Map.of(), BuilderState.previewSlices(copied)));
+            assertFalse(ui.replaceSelections(old, Object2IntMaps.emptyMap(), Map.of(), Object2IntMaps.emptyMap()), "A stale response cannot reset current counts");
             ui.advance(1000);
             var model = Objects.requireNonNull(ui.model());
             var construction = StructureBuildPlan.expand(model.generation(), ROOT, ui.settings().orientation(), BuilderState.sliceCounts(copied));
@@ -204,8 +224,8 @@ class StructurePreviewInteractionTest {
             }
             assertEquals(1, ui.alternative(A));
             assertEquals(0, f.second.alternative(A));
-            assertEquals(1, ui.settings().sliceCounts().get(StructurePreviewPath.ROOT.child(0)));
-            assertEquals(3, ui.settings().sliceCounts().get(StructurePreviewPath.ROOT.child(1)));
+            assertEquals(1, ui.settings().sliceCounts().getInt(StructurePreviewPath.ROOT.child(0)));
+            assertEquals(3, ui.settings().sliceCounts().getInt(StructurePreviewPath.ROOT.child(1)));
             assertTrue(f.second.settings().sliceCounts().isEmpty());
         }
     }

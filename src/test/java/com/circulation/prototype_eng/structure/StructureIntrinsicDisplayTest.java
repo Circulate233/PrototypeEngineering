@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure;
 
+import it.unimi.dsi.fastutil.objects.Object2IntMaps;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
@@ -83,7 +85,7 @@ class StructureIntrinsicDisplayTest {
         var model = Objects.requireNonNull(expansion.model());
         assertEquals(0, calls.get());
         assertEquals(Map.of("axis", "x"), Objects.requireNonNull(model.cells().getFirst().display()).options().getFirst().properties());
-        assertNotNull(StructureBuildPlan.expand(wire, shape.id(), BlockOrientation.NORTH_UP, Map.of()).cells().getFirst().display());
+        assertNotNull(StructureBuildPlan.expand(wire, shape.id(), BlockOrientation.NORTH_UP, Object2IntMaps.emptyMap()).cells().getFirst().display());
         var plan = new StructurePlan(shape, BlockPos.ORIGIN, BlockOrientation.NORTH_UP);
         var source = new StructureReadSource() {
             @Override public void requireServerThread() { }
@@ -143,7 +145,7 @@ class StructureIntrinsicDisplayTest {
         var expansion = new StructurePreviewExpansion(view, id("legacy"), new StructurePreviewSettings(BlockOrientation.NORTH_UP));
         while (expansion.model() == null) expansion.advance(8);
         assertEquals(display, Objects.requireNonNull(expansion.model()).cells().getFirst().display());
-        assertEquals(display, StructureBuildPlan.expand(view, id("legacy"), BlockOrientation.NORTH_UP, Map.of()).cells().getFirst().display());
+        assertEquals(display, StructureBuildPlan.expand(view, id("legacy"), BlockOrientation.NORTH_UP, Object2IntMaps.emptyMap()).cells().getFirst().display());
     }
 
     @Test
@@ -214,7 +216,7 @@ class StructureIntrinsicDisplayTest {
         assertTrue(model.cells().stream().anyMatch(cell -> override.equals(cell.display())));
         assertTrue(model.cells().stream().anyMatch(cell -> Objects.requireNonNull(cell.display()).options().getFirst().nbt().equals(Map.of("side", "a"))));
         assertTrue(model.cells().stream().anyMatch(cell -> Objects.requireNonNull(cell.display()).options().getFirst().nbt().equals(Map.of("side", "b"))));
-        assertTrue(StructureBuildPlan.expand(view, parent.id(), BlockOrientation.NORTH_UP, Map.of()).cells().stream().allMatch(cell -> cell.display() != null));
+        assertTrue(StructureBuildPlan.expand(view, parent.id(), BlockOrientation.NORTH_UP, Object2IntMaps.emptyMap()).cells().stream().allMatch(cell -> cell.display() != null));
     }
 
     @Test

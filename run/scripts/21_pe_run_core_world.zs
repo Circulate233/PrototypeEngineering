@@ -1,4 +1,5 @@
 #loader crafttweaker
+import mods.pe_run_tests.Text;
 import crafttweaker.world.IWorld;
 import crafttweaker.world.IBlockPos;
 import crafttweaker.data.IData;
@@ -34,16 +35,17 @@ var gate = Predicate.all([Predicate.anyOf([test.at(1,0,0)])]);
 gate.register("pe_run_tests:core_world_gate");
 CoreCases.worldPredicate(gate);
 var leaf = Structure.slice("pe_run_tests:core_world_leaf", "NORTH_UP", 3,0,0, false,
-    Pattern.create(), 1,1, 0,1,0, [gate], []);
+    Pattern.create(), 1,1, 0,1,0, [gate], []).translated(Text.WorldLeaf.key);
 var branch = Structure.template("pe_run_tests:core_world_branch", "NORTH_UP", 2,0,0, false,
-    Pattern.create(), [], [leaf]);
+    Pattern.create(), [], [leaf]).translated(Text.WorldBranch.key);
 var shape = Structure.template("pe_run_tests:core_world_shape", "NORTH_UP", 0,0,0, false,
     Pattern.create().put(-1,0,0, Predicate.resourceHatch()).put(1,0,0, Predicate.resourceHatch())
         .put(6,0,0, Predicate.anyOf([Predicate.block("minecraft:redstone_lamp"), Predicate.block("minecraft:lit_redstone_lamp")])),
-    [], [branch]);
+    [], [branch]).translated(Text.WorldStructure.key);
+leaf.register(); branch.register();
 CoreCases.worldShape(shape);
 shape.register();
-CoreCases.pool(Pool.create("pe_run_tests:core_world_pool", "PE Run: Actual world recipe",
+CoreCases.pool(Pool.create("pe_run_tests:core_world_pool", Text.CoreWorldPool.key,
     [Recipe.create("pe_run_tests:core_world_recipe", "run-v1", 40,
         [Requirement.resources("pe_run_tests:core_world_io", [Resource.item(<minecraft:iron_ingot>, 1)],
             [Resource.item(<minecraft:gold_ingot>, 1)])]) ]));

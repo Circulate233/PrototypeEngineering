@@ -60,6 +60,8 @@ import pe.visual.examples.VisualExamples;
 
 import javax.annotation.Nullable;
 import java.util.List;
+import java.util.Locale;
+import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import java.util.Map;
 import java.util.Objects;
 
@@ -67,8 +69,8 @@ import java.util.Objects;
 @Mod.EventBusSubscriber(modid = VisualExamples.MOD_ID)
 public final class ExternalHatchExamples {
     public enum Text implements LocalizationEnum {
-        Machine;
-        @Override public String getTranslationKey() { return "pe_run_tests.external." + name(); }
+        Machine, Pool;
+        @Override public String getTranslationKey() { return "pe_run_tests.external." + name().toLowerCase(Locale.ROOT); }
     }
     public static final ResourceLocation BLOCK_ID = NativeRunCases.id("external_filtered_hatch");
     private static final ResourceLocation MACHINE_ID = NativeRunCases.id("external_filter");
@@ -98,15 +100,15 @@ public final class ExternalHatchExamples {
         var recipe = new MachineRecipe(NativeRunCases.id("external_exchange"), 80, List.of(
             RecipeRequirements.RESOURCES.requirement(NativeRunCases.id("external_io"), new ResourceRequirement(
                 List.of(item(Items.IRON_INGOT, 1), water(250)), List.of(item(Items.GOLD_NUGGET, 2), water(50))))));
-        event.registry().register(new DefaultRecipePool(POOL_ID, "pe_run_tests.external.pool", List.of(recipe)));
+        event.registry().register(new DefaultRecipePool(POOL_ID, Text.Pool.getTranslationKey(), List.of(recipe)));
         event.registry().declareRevision(recipe, "external-v1");
     }
     public static void registerRuntime(MachineRuntimeRegistrationEvent event) {
         var cells = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
         cells.put(new BlockPos(-1, 0, 0), StructurePredicates.blocks(List.of(BLOCK)));
         cells.put(new BlockPos(0, 1, 0), StructurePredicates.blocks(List.of(Blocks.IRON_BLOCK)));
-        event.structure(TemplateStructure.create(NativeRunCases.id("external_shape"), BlockOrientation.NORTH_UP,
-            BlockPos.ORIGIN, false, new StructurePattern(cells), List.of(), List.of()));
+        event.definition(new StructureDefinition(TemplateStructure.create(NativeRunCases.id("external_shape"), BlockOrientation.NORTH_UP,
+            BlockPos.ORIGIN, false, new StructurePattern(cells), List.of(), List.of()), Text.Machine.getTranslationKey(), Map.of()));
         var type = Objects.requireNonNull(event.registry().get(MACHINE_ID));
         var recipe = Objects.requireNonNull(RecipeRegistry.INSTANCE.get(POOL_ID)).recipes().getFirst();
         var codec = RecipeProcessNbt.builder(recipe, "external-v1").component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC)

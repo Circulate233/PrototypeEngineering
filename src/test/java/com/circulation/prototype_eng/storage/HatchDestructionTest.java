@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.storage;
 
+import ae2.api.stacks.AEKeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.HatchMode;
@@ -10,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 
@@ -27,7 +29,7 @@ class HatchDestructionTest {
     private static final Key B = new Key(SECOND, "b");
 
     private static BufferedResourceHatch hatch(HatchMode mode) {
-        return new BufferedResourceHatch(mode, 3, Map.of(FIRST, Long.MAX_VALUE, SECOND, 1000L), () -> { });
+        return new BufferedResourceHatch(mode, 3, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{Long.MAX_VALUE, 1000L}), () -> { });
     }
 
     private static SlottedResourceBuffer input(BufferedResourceHatch hatch) {

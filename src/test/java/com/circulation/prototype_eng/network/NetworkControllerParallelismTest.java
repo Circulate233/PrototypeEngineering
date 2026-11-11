@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.network;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -66,7 +68,6 @@ import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -199,7 +200,7 @@ class NetworkControllerParallelismTest {
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             var computer = MachineAssembly.builder(computerType, "v1").component(ownership, MachineOwnership.CODEC).recreated(installed, computerRole).build()
                                           .create(host(computerType.id()), new MachineLifecycleRegistry());
-            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(ComputerSupplyFixtures.TYPE, 64L), () -> {
+            var warehouse = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(ComputerSupplyFixtures.TYPE, 64L), () -> {
             });
             assertEquals(1, Objects.requireNonNull(warehouse.input()).insert(card, 1, Actionable.MODULATE));
             Objects.requireNonNull(computer.lifecycle()).form(new MachineHatches(List.of(warehouse), List.of(), List.of()));
@@ -225,7 +226,7 @@ class NetworkControllerParallelismTest {
             var output = new EnergyBuffer(100, () -> {
             });
             input.receiveEnergy(100, Actionable.MODULATE);
-            var items = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(ITEMS, 100L), () -> {
+            var items = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(ITEMS, 100L), () -> {
             });
             assertEquals(100, Objects.requireNonNull(items.input()).insert(INPUT, 100, Actionable.MODULATE));
             Objects.requireNonNull(owner.lifecycle()).form(new MachineHatches(List.of(items), List.of(input), List.of(output)));

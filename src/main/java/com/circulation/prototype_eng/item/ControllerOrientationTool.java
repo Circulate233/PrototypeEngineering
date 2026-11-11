@@ -80,7 +80,7 @@ public class ControllerOrientationTool extends AEBaseItem {
 
     @Override
     public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
-        return OrientationToolText.Name.text().getUnformattedText();
+        return OrientationToolText.Name.getLocal();
     }
 
     @Override

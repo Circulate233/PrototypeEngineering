@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.api.research.manual;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+
+
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
@@ -750,7 +753,7 @@ class ManualResearchTest {
 
     private static final class FakeInventory implements ManualResearchInventory {
         private final UUID player;
-        private final ObjectArrayList<Long> sequences = new ObjectArrayList<>();
+        private final LongArrayList sequences = new LongArrayList();
         private long amount;
         private int prepared;
         private int consumed;

@@ -1,5 +1,9 @@
 package com.circulation.prototype_eng.client.preview;
 
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
@@ -40,8 +44,7 @@ class PreviewBlockModelsTest {
     private static final ResourceLocation ID = new ResourceLocation("block_models_test", "root");
 
     private static StructurePreviewModel model(BlockPos... positions) {
-        var node = new StructureCatalogView.Node(ID, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE,
-            BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(positions), List.of());
+        var node = new StructureCatalogView.Node(ID, BlockOrientation.NORTH_UP, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.of(positions), IntList.of());
         var view = new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(ID, new StructureCatalogView.Entry(0, null, Map.of())));
         var builder = new StructurePreviewModel.Builder(view, ID, new StructurePreviewSettings(BlockOrientation.NORTH_UP));
         for (var position : positions)
@@ -311,7 +314,7 @@ class PreviewBlockModelsTest {
             sink.accept(new int[]{++prepared[0]});
             return prepared[0] == 3;
         });
-        var emitted = new ObjectArrayList<Integer>();
+        var emitted = new IntArrayList();
         assertEquals(List.of(sample), cpu.present(input, List.of(sample), 1, () -> true, data -> emitted.add(data[0])));
         assertEquals(0, prepared[0]); // only admission was permitted
         assertEquals(List.of(sample), cpu.present(input, List.of(sample), 2, () -> true, data -> emitted.add(data[0])));
@@ -356,7 +359,7 @@ class PreviewBlockModelsTest {
                 return step[0] == 2;
             };
         });
-        var emitted = new ObjectArrayList<Integer>();
+        var emitted = new IntArrayList();
         for (int round = 0; round < 3; round++) {
             cpu.present(input, List.of(first), 1, () -> true, data -> emitted.add(data[0]));
             cpu.present(input, List.of(second), 1, () -> true, data -> emitted.add(data[0]));
@@ -379,7 +382,7 @@ class PreviewBlockModelsTest {
             sink.accept(new int[]{cell.position().getX()});
             return true;
         });
-        var emitted = new ObjectArrayList<Integer>();
+        var emitted = new IntArrayList();
         for (int frame = 0; frame < 8; frame++)
             cpu.present(input, List.of(second, first), 1, () -> true, data -> emitted.add(data[0]));
         assertTrue(emitted.contains(0));
@@ -395,7 +398,7 @@ class PreviewBlockModelsTest {
             sink.accept(new int[]{cell.position().getX()});
             return true;
         });
-        var emitted = new ObjectArrayList<Integer>();
+        var emitted = new IntArrayList();
         for (int frame = 0; frame < 6; frame++)
             cpu.present(input, List.of(second, first), 1, () -> true, _ -> {
             });
@@ -421,7 +424,7 @@ class PreviewBlockModelsTest {
 
     private static final class RecordingBaker implements PreviewBlockModelCache.ChunkBaker {
         final ObjectArrayList<StructurePreviewModel.Cell> cells = new ObjectArrayList<>();
-        final ObjectArrayList<Integer> uploads = new ObjectArrayList<>();
+        final IntArrayList uploads = new IntArrayList();
         final ObjectArrayList<Mesh> meshes = new ObjectArrayList<>();
         int closes;
         boolean empty;

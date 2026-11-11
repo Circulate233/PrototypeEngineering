@@ -23,6 +23,7 @@ import com.circulation.prototype_eng.storage.HatchFluidHandler;
 import com.circulation.prototype_eng.storage.HatchInventoryPort;
 import com.circulation.prototype_eng.storage.HatchItemHandler;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Reference2LongArrayMap;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -38,7 +39,6 @@ import javax.annotation.Nullable;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /** A genuinely separate AE tile; only the existing bounded storage engine and public adapters are reused. */
@@ -60,7 +60,9 @@ public final class ExternalFilteredHatch extends AEBaseTile implements ResourceH
     public ExternalFilteredHatch() { }
 
     private BufferedResourceHatch freshBackend() {
-        var capacities = Map.of(AEKeyType.items(), 64L, AEKeyType.fluids(), 1000L);
+        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        capacities.put(AEKeyType.items(), 64L);
+        capacities.put(AEKeyType.fluids(), 1000L);
         return new BufferedResourceHatch(ResourceHatchConfiguration.symmetric(HatchMode.MIXED, 2, capacities),
             () -> DIRTY.setRelease(this, true));
     }

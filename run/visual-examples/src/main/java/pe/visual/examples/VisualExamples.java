@@ -106,14 +106,14 @@ public final class VisualExamples {
         press.add(simple("crush_stone", 40, new ItemStack(Blocks.COBBLESTONE), 2, new ItemStack(Blocks.SAND), 1));
         press.add(simple("cut_iron", 60, new ItemStack(Items.IRON_INGOT), 1, new ItemStack(Items.IRON_NUGGET), 9));
         press.add(simple("saw_log", 20, new ItemStack(Blocks.LOG), 1, new ItemStack(Blocks.PLANKS), 4));
-        registerPool(event, new SimpleRecipePool(PRESS_POOL, "pe_visual_examples.pool.press", press));
+        registerPool(event, new SimpleRecipePool(PRESS_POOL, ExampleText.PoolPress.getTranslationKey(), press));
         var mix = new ObjectArrayList<MachineRecipe>();
         mix.add(recipe("wet_clay", 60, List.of(item(new ItemStack(Blocks.SAND), 1), fluid(false, 250)),
             List.of(item(new ItemStack(Items.CLAY_BALL), 1)), 16));
         mix.add(recipe("lava_stone", 100, List.of(item(new ItemStack(Blocks.COBBLESTONE), 1), fluid(true, 250)),
             List.of(item(new ItemStack(Blocks.OBSIDIAN), 1)), 32));
         mix.add(recipe("water_transfer", 40, List.of(fluid(false, 1000)), List.of(fluid(false, 1000)), 8));
-        registerPool(event, new DefaultRecipePool(MIXER_POOL, "pe_visual_examples.pool.mixer", mix));
+        registerPool(event, new DefaultRecipePool(MIXER_POOL, ExampleText.PoolMixer.getTranslationKey(), mix));
         var outputs = new RandomOutputPool(List.of(
             new WeightedSampling.Weighted<>(item(new ItemStack(Items.FLINT), 1), 80),
             new WeightedSampling.Weighted<>(item(new ItemStack(Items.IRON_NUGGET), 1), 15),
@@ -127,7 +127,7 @@ public final class VisualExamples {
             RecipeRequirements.RESOURCES.requirement(id("lucky_output"), new ResourceRequirement(List.of(), List.of(), List.of(),
                 List.of(item(new ItemStack(Items.DIAMOND), 1)), false, new ResourceChance(25, null), null)),
             RecipeRequirements.ENERGY.requirement(id("lucky_fe"), new EnergyRequirement(0, 16, 0, 0, false))));
-        registerPool(event, new DefaultRecipePool(SORTER_POOL, "pe_visual_examples.pool.sorter", List.of(lottery, lucky)));
+        registerPool(event, new DefaultRecipePool(SORTER_POOL, ExampleText.PoolSorter.getTranslationKey(), List.of(lottery, lucky)));
         BoundaryExamples.registerRecipes(event);
         NativeExamples.registerRecipes(event);
         ExternalHatchExamples.registerRecipes(event);

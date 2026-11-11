@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -80,7 +82,7 @@ class InputAllocationTest {
     }
 
     private static BufferedResourceHatch input(long amount) {
-        var hatch = new BufferedResourceHatch(HatchMode.INPUT, 2, Map.of(TYPE, 100L), () -> {
+        var hatch = new BufferedResourceHatch(HatchMode.INPUT, 2, Reference2LongMaps.singleton(TYPE, 100L), () -> {
         });
         Objects.requireNonNull(hatch.input()).insert(MATERIAL, amount, Actionable.MODULATE);
         return hatch;
@@ -209,9 +211,9 @@ class InputAllocationTest {
     @Test
     void independentLongProjectionsDoNotOverflowAnUnneededJointKeyTotal() {
         for (boolean planned : List.of(false, true)) {
-            var first = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(TYPE, Long.MAX_VALUE), () -> {
+            var first = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(TYPE, Long.MAX_VALUE), () -> {
             });
-            var second = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(TYPE, Long.MAX_VALUE), () -> {
+            var second = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(TYPE, Long.MAX_VALUE), () -> {
             });
             Objects.requireNonNull(first.input()).insert(MATERIAL, Long.MAX_VALUE, Actionable.MODULATE);
             Objects.requireNonNull(second.input()).insert(MATERIAL, Long.MAX_VALUE, Actionable.MODULATE);
@@ -227,9 +229,9 @@ class InputAllocationTest {
     @Test
     void overflowingCustomAvailabilityIsRejectedBeforeTheCallbackOrPayment() {
         for (boolean planned : List.of(false, true)) {
-            var first = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(TYPE, Long.MAX_VALUE), () -> {
+            var first = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(TYPE, Long.MAX_VALUE), () -> {
             });
-            var second = new BufferedResourceHatch(HatchMode.INPUT, 1, Map.of(TYPE, Long.MAX_VALUE), () -> {
+            var second = new BufferedResourceHatch(HatchMode.INPUT, 1, Reference2LongMaps.singleton(TYPE, Long.MAX_VALUE), () -> {
             });
             Objects.requireNonNull(first.input()).insert(MATERIAL, Long.MAX_VALUE, Actionable.MODULATE);
             Objects.requireNonNull(second.input()).insert(MATERIAL, Long.MAX_VALUE, Actionable.MODULATE);
@@ -314,7 +316,7 @@ class InputAllocationTest {
 
     @Test
     void bothNativeSnapshotExportsRejectEntryWritesAndOwnTheirValues() {
-        var storage = new SlottedResourceBuffer(2, Map.of(TYPE, 10L), () -> {
+        var storage = new SlottedResourceBuffer(2, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         storage.insert(MATERIAL, 8, Actionable.MODULATE);
         var snapshot = storage.snapshot();
@@ -342,7 +344,7 @@ class InputAllocationTest {
             List.of(new InputAllocation.Portion(context.sources().getFirst().index(), context.amount())));
         for (var policy : List.of(InputAllocation.SINGLE_SOURCE, custom)) {
             var key = new SlotVisitKey();
-            var storage = new SlottedResourceBuffer(4096, Map.of(TYPE, 10L), () -> {
+            var storage = new SlottedResourceBuffer(4096, Reference2LongMaps.singleton(TYPE, 10L), () -> {
             });
             storage.insert(4095, key, 3, Actionable.MODULATE);
             var hatch = new ResourceHatch() {
@@ -501,7 +503,7 @@ class InputAllocationTest {
     void resourceStorageReconstructionRetiresOldFactsAndRebindsPhysicalLabels() {
         // The real resource tile's config requires initialized AEConfig. Exercise its existing
         // configurable storage save/load/retire boundary without bootstrapping a game or global config.
-        var original = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 10L), () -> {
+        var original = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         var input = Objects.requireNonNull(original.input());
         var output = Objects.requireNonNull(original.output());
@@ -513,7 +515,7 @@ class InputAllocationTest {
         var saved = new NBTTagCompound();
         original.save(saved);
         original.invalidate();
-        var reattached = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 10L), () -> {
+        var reattached = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         reattached.load(saved);
         var restored = Objects.requireNonNull(reattached.input());
@@ -523,7 +525,7 @@ class InputAllocationTest {
         assertEquals(identity, identity(restored.context()));
         reattached.invalidate();
         assertFalse(restored.isValid());
-        var movedHatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 10L), () -> {
+        var movedHatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 10L), () -> {
         });
         movedHatch.load(saved);
         var moved = Objects.requireNonNull(movedHatch.input());

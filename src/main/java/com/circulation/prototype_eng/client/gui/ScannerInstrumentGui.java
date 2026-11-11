@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.gui;
 
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.client.gui.AEBaseGui;
 import com.circulation.prototype_eng.api.client.structure.ClientStructureCatalog;
@@ -298,7 +300,7 @@ public final class ScannerInstrumentGui extends AEBaseGui<StructureToolContainer
         closePreview();
         var id = new ResourceLocation("prototype_eng", "scanner_preview");
         var north = BlockOrientation.get(EnumFacing.NORTH, EnumFacing.UP);
-        var node = new StructureCatalogView.Node(id, north, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.copyOf(displays.keySet()), List.of());
+        var node = new StructureCatalogView.Node(id, north, false, StructurePreviewProvider.Kind.TEMPLATE, BlockPos.ORIGIN, 1, 1, BlockPos.ORIGIN, List.copyOf(displays.keySet()), IntList.of());
         var catalog = ClientStructureCatalog.local(new StructureCatalogView(UUID.randomUUID(), 0, List.of(node), Map.of(id, new StructureCatalogView.Entry(0, null, displays))));
         previews = new StructurePreviews(catalog);
         var view = new StructurePreviewView(previews, id, new StructurePreviewSettings(north));

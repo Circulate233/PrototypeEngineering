@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
@@ -41,7 +43,6 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongSupplier;
@@ -88,7 +89,7 @@ class RecipeScannerGenerationTest {
     }
 
     private static BufferedResourceHatch hatch(MachineInstance owner) {
-        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Map.of(TYPE, 100L), () -> { });
+        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 1, Reference2LongMaps.singleton(TYPE, 100L), () -> { });
         owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(), List.of()));
         return hatch;
     }

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.render;
 
+import it.unimi.dsi.fastutil.ints.IntList;
+
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.render.GeckoModelBinding;
 import com.circulation.prototype_eng.api.client.render.GeckoStructureBinding;
@@ -7,6 +9,8 @@ import com.circulation.prototype_eng.api.client.render.MachineRenderBindings;
 import com.circulation.prototype_eng.api.data.ComponentData;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntLists;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -54,12 +58,12 @@ public final class StructureRenderAnchors {
         } else {
             var machine = bindings.machines().get(type);
             if (machine != null)
-                result.add(anchor(snapshot, new Part(Kind.MACHINE, type, List.of(), -1), snapshot.controller(), machine, data));
+                result.add(anchor(snapshot, new Part(Kind.MACHINE, type, IntList.of(), -1), snapshot.controller(), machine, data));
             // Only actual assembled IDs participate; no client component factories or declaration guesses.
             for (var id : snapshot.components()) {
                 var binding = bindings.components().get(id);
                 if (binding != null)
-                    result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, List.of(), -1), snapshot.controller(), binding, data));
+                    result.add(anchor(snapshot, new Part(Kind.COMPONENT, id, IntList.of(), -1), snapshot.controller(), binding, data));
             }
         }
         return List.copyOf(result);
@@ -85,9 +89,9 @@ public final class StructureRenderAnchors {
 
     public enum Kind {MACHINE, COMPONENT, STRUCTURE}
 
-    public record Part(Kind kind, ResourceLocation id, List<Integer> occurrencePath, int slice) {
+    public record Part(Kind kind, ResourceLocation id, IntList occurrencePath, int slice) {
         public Part {
-            occurrencePath = List.copyOf(occurrencePath);
+            occurrencePath = IntLists.unmodifiable(new IntArrayList(occurrencePath));
         }
     }
 

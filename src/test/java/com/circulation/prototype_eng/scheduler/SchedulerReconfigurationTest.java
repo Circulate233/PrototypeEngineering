@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.scheduler;
 
+import it.unimi.dsi.fastutil.longs.LongList;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.api.scheduler.ScheduledTask;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
@@ -76,7 +79,7 @@ class SchedulerReconfigurationTest {
         var oldLane = executor();
         var retained = new Retained();
         var captures = new AtomicInteger();
-        var timeouts = new ArrayList<Long>();
+        var timeouts = new LongArrayList();
         var next = settings(2, 2, Duration.ofMillis(1234), 10);
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1, oldWorkers,
             new ExecutorService[]{oldLane}, (_, deadline) -> {
@@ -114,7 +117,7 @@ class SchedulerReconfigurationTest {
             assertSame(next, scheduler.effectiveSettings());
             assertNull(scheduler.pendingSettings());
             assertEquals(List.of(Duration.ofSeconds(5).toNanos(), next.plannedTimeout().toNanos()), timeouts);
-            assertTrue(retained.cleanupBudgets.stream().allMatch(value -> value == Duration.ofSeconds(5).toNanos()));
+            assertTrue(retained.cleanupBudgets.longStream().allMatch(value -> value == Duration.ofSeconds(5).toNanos()));
             assertTrue(retained.exitProofs > 0);
             scheduler.tick();
             assertEquals(initialRuns + 3, runs.get(), "One-shot work must not replay");
@@ -249,7 +252,7 @@ class SchedulerReconfigurationTest {
     }
 
     private static final class Retained implements PlannedExecution {
-        private final List<Long> cleanupBudgets = new ArrayList<>();
+        private final LongList cleanupBudgets = new LongArrayList();
         private boolean confirmed;
         private Reason cancelled;
         private int exitProofs;

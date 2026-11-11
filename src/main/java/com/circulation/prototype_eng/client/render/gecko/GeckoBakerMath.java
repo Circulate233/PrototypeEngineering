@@ -9,7 +9,7 @@ import software.bernie.geckolib3.geo.render.built.GeoCube;
 
 import javax.vecmath.Matrix3f;
 import javax.vecmath.Matrix4f;
-import java.util.ArrayDeque;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.util.Objects;
 
 /** The original Gecko affine, pivot, Z/Y/X rotation and reflected-normal conventions. No GL calls. */
@@ -115,10 +115,10 @@ public final class GeckoBakerMath {
     }
 
     public static final class MatrixStack {
-        private final ArrayDeque<Matrix4f> models = new ArrayDeque<>();
-        private final ArrayDeque<Matrix3f> normals = new ArrayDeque<>();
-        private final ArrayDeque<Matrix4f> freeModels = new ArrayDeque<>();
-        private final ArrayDeque<Matrix3f> freeNormals = new ArrayDeque<>();
+        private final ObjectArrayList<Matrix4f> models = new ObjectArrayList<>();
+        private final ObjectArrayList<Matrix3f> normals = new ObjectArrayList<>();
+        private final ObjectArrayList<Matrix4f> freeModels = new ObjectArrayList<>();
+        private final ObjectArrayList<Matrix3f> freeNormals = new ObjectArrayList<>();
         private final Matrix4f tempModel = new Matrix4f();
         private final Matrix3f tempNormal = new Matrix3f();
 
@@ -142,11 +142,11 @@ public final class GeckoBakerMath {
         }
 
         Matrix4f model() {
-            return models.getFirst();
+            return models.top();
         }
 
         Matrix3f normal() {
-            return normals.getFirst();
+            return normals.top();
         }
 
         public void push() {
