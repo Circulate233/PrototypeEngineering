@@ -17,6 +17,6 @@ public class MachineControllerItem extends AEBaseBlockItem {
 
     @Override
     public @NotNull String getItemStackDisplayName(@NotNull ItemStack stack) {
-        return controller.type().displayName().text().getUnformattedText();
+        return controller.type().displayName().getLocal();
     }
 }

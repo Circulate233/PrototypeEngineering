@@ -1,5 +1,11 @@
 # JEI 配方池页面
 
+## 2026-11-11 结构页原生材料槽与转移就绪
+
+结构页的候选和固定用料注册到该layout实际IGuiItemStackGroup，由HEI绘制物品、数量、高亮和tooltip，书签/配方/用途键可识别实际槽位；隐藏、滚动或选择改变时撤销旧槽。固定用料与构造器共用5列横向逐行网格和独立滚动条，保持完整用料及单格选项拆分，不因点中某方块改成1件清单。
+
+转移按钮原先在异步预览未创建时缓存了“等待完整预览”错误，之后未重查。现在材料真正就绪或选择代改变时，对同一个原生RecipeTransferButton重新init；仍从完整模型统计全结构材料，仅排除原点控制器，任意片层不改变169材料，未知/partial材料仍拒绝。用户从普通/PEA样板终端完整重启后复验：等待可见预览就绪，按钮应恢复可用，实际编码名称应本地化。此次没有新增Mixin或改终端写包语义。
+
 ## 2026-11-10：静态回退与资源重建修复
 
 原故障是 frozen provider 基线生成了新的 display 对象，而静态页面继续复用旧引用量测。现在 category 的最终 descriptions Snapshot 同时供默认页测量、初始 wrapper 和 query index 使用；静态重建只有 recipe/provider 身份相同时复用旧描述，默认页仍按当前 Snapshot prepareUpdate。无 prepareUpdate 的独立旧自定义页只在 pool、description 和已确认 page Data 均准确相同时保留原 factory；发生部分安装失败后不能误用该路径。原未测量断言、wrapper身份校验和 managed declaration/owner/token/原生确认门保持。

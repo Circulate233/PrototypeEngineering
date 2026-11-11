@@ -45,6 +45,6 @@ public final class StructurePreviewJeiCategory implements IRecipeCategory<Struct
 
     @Override
     public void setRecipe(IRecipeLayout layout, StructurePreviewJeiRecipe wrapper, IIngredients ingredients) {
-        wrapper.retirePanel();
+        wrapper.bindLayout(layout);
     }
 }

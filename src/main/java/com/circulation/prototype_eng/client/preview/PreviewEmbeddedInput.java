@@ -9,6 +9,7 @@ import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.input.Keyboard;
 
 import java.util.function.BiPredicate;
 
@@ -105,7 +106,16 @@ public final class PreviewEmbeddedInput {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void key(GuiScreenEvent.KeyboardInputEvent.Pre event) {
-        if (PreviewScreenTransitions.blocked(event.getGui())) event.setCanceled(true);
+        if (PreviewScreenTransitions.blocked(event.getGui())) {
+            event.setCanceled(true);
+            return;
+        }
+        if (Keyboard.getEventKeyState() && Keyboard.getEventKey() == Keyboard.KEY_ESCAPE)
+            for (var entry : active)
+                if (entry.host == event.getGui() && fresh(entry) && entry.panel.dismissMaterials()) {
+                    event.setCanceled(true);
+                    return;
+                }
     }
 
     private record Active(GuiScreen host, StructurePreviewPanel panel, int x, int y, long touched) {

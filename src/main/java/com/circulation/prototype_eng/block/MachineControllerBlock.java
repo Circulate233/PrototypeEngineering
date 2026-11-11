@@ -78,7 +78,7 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
 
     @Override
     public @NotNull String getLocalizedName() {
-        return type.displayName().text().getUnformattedText();
+        return type.displayName().getLocal();
     }
 
     @Override

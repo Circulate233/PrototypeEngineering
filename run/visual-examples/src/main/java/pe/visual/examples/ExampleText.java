@@ -1,6 +1,7 @@
 package pe.visual.examples;
 
 import ae2.core.localization.LocalizationEnum;
+import java.util.Locale;
 
 public enum ExampleText implements LocalizationEnum {
     Press, Mixer, Sorter, CustomPage, Input, Output, Kit, Charged, NoEnergy, Drained, NoEnergyOutput,
@@ -10,6 +11,6 @@ public enum ExampleText implements LocalizationEnum {
 
     @Override
     public String getTranslationKey() {
-        return "pe_visual_examples." + name();
+        return "pe_visual_examples." + name().toLowerCase(Locale.ROOT);
     }
 }

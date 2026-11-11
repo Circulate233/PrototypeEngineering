@@ -90,6 +90,14 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         if (!navigation.viewerCurrent(this) || panel == null || panel.closed()) return;
         super.drawScreen(mouseX, mouseY, partialTicks);
+        var materialSlot = panel.slotAt(mouseX - guiLeft, mouseY - guiTop, 0, 0);
+        if (materialSlot != null) {
+            boolean rendered = panel.ownsSlot(hoveredSlot);
+            hoveredSlot = materialSlot;
+            if (!rendered) panel.renderItemTooltip(mouseX, mouseY, mouseX - guiLeft, mouseY - guiTop);
+            return;
+        }
+        if (panel.ownsSlot(hoveredSlot)) hoveredSlot = null;
         for (var control : buttonList) if (control.visible && control.isMouseOver()) return;
         if (panel.renderItemTooltip(mouseX, mouseY, mouseX - guiLeft, mouseY - guiTop)) return;
         var tooltip = panel.tooltip(mouseX - guiLeft, mouseY - guiTop);
@@ -106,6 +114,10 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
     @Override
     protected void keyTyped(char typed, int key) {
         if (!navigation.viewerCurrent(this)) return;
+        if (key == Keyboard.KEY_ESCAPE && panel != null && panel.dismissMaterials()) {
+            hoveredSlot = null;
+            return;
+        }
         if (key == Keyboard.KEY_ESCAPE || mc.gameSettings.keyBindInventory.isActiveAndMatches(key)) {
             backRequest.keyPress();
         }
@@ -169,6 +181,11 @@ public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
     @Override
     public Slot MT_getSlotUnderMouse() {
         return null;
+    }
+
+    @Override
+    protected Slot findSlot(int x, int y) {
+        return panel == null ? null : panel.slotAt(x - guiLeft, y - guiTop, 0, 0);
     }
 
     @Override

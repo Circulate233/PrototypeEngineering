@@ -12,6 +12,8 @@ import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.ingredients.VanillaTypes;
+import mezz.jei.api.gui.IRecipeLayout;
+import mezz.jei.gui.recipes.RecipeLayout;
 import mezz.jei.api.recipe.IRecipeWrapper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
@@ -31,6 +33,8 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     private final List<ItemStack> controllers;
     private StructurePreviewView view;
     private StructurePreviewPanel panel;
+    private IRecipeLayout layout;
+    private Object transferToken, transferMaterials;
 
     public StructurePreviewJeiRecipe(MachineType machine, List<ItemStack> controllers) {
         this.machine = Objects.requireNonNull(machine);
@@ -47,8 +51,25 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     public void drawInfo(Minecraft minecraft, int width, int height, int mouseX, int mouseY) {
         if (view == null || view.previews().closed())
             view = new StructurePreviewView(StructurePreviews.client(), machine.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP), machine);
-        if (panel == null || panel.closed()) panel = new StructurePreviewPanel(view);
+        if (layout != null) layout.getItemStacks().getGuiIngredients().clear();
+        if (panel == null || panel.closed()) {
+            panel = new StructurePreviewPanel(view);
+            if (layout != null) panel.ingredientSlots((index, stack, x, y) -> {
+                var slots = layout.getItemStacks();
+                slots.init(index, true, x, y);
+                slots.set(index, stack);
+            }, () -> layout.getItemStacks().getGuiIngredients().clear());
+        }
         panel.draw(StructurePreviewJeiCategory.WIDTH, StructurePreviewJeiCategory.HEIGHT, mouseX, mouseY, minecraft.getRenderPartialTicks(), true);
+        // HEI caches its first transfer error before the async preview has been drawn.
+        // Refresh that native button when either the selected generation or its ready materials change.
+        var materials = panel.scene().materials();
+        if ((transferToken != view.token() || transferMaterials != materials) && layout instanceof RecipeLayout nativeLayout
+            && nativeLayout.getRecipeTransferButton() != null && minecraft.player != null) {
+            transferToken = view.token();
+            transferMaterials = materials;
+            nativeLayout.getRecipeTransferButton().init(minecraft.player.openContainer, minecraft.player);
+        }
     }
 
     @Override
@@ -67,6 +88,12 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     public void retirePanel() {
         if (panel != null) panel.close();
         panel = null;
+        transferToken = transferMaterials = null;
+    }
+
+    public void bindLayout(IRecipeLayout next) {
+        retirePanel();
+        layout = Objects.requireNonNull(next);
     }
 
     @Nullable Pattern patternRecipe() {

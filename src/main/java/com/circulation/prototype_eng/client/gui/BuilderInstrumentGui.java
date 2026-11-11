@@ -8,6 +8,10 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
+import net.minecraft.inventory.Slot;
+import net.minecraft.inventory.ClickType;
+import org.jetbrains.annotations.NotNull;
+import org.lwjgl.input.Keyboard;
 import com.circulation.prototype_eng.container.StructureToolContainer;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
@@ -42,6 +46,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         tree.onMaterialReplacement(display -> {
             if (preview != null) preview.openMaterialChoices(display);
         });
+        tree.selections(() -> preview == null ? null : preview.view().settings());
     }
 
     private void refresh() {
@@ -157,6 +162,14 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void drawScreen(int x, int y, float partial) {
         super.drawScreen(x, y, partial);
+        var materialSlot = preview == null ? null : preview.slotAt(x - guiLeft - 4, y - guiTop - 2, 4, 2);
+        if (materialSlot != null) {
+            boolean rendered = preview.ownsSlot(hoveredSlot);
+            hoveredSlot = materialSlot;
+            if (!rendered) preview.renderItemTooltip(x, y, x - guiLeft - 4, y - guiTop - 2);
+            return;
+        }
+        if (preview != null && preview.ownsSlot(hoveredSlot)) hoveredSlot = null;
         if (preview != null && preview.renderItemTooltip(x, y, x - guiLeft - 4, y - guiTop - 2)) return;
         List<String> tip = preview == null ? List.of() : preview.tooltip(x - guiLeft - 4, y - guiTop - 2);
         if (tip.isEmpty()) tip = tree.tooltip(x - guiLeft - 191, y - guiTop - 8);
@@ -165,6 +178,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     protected void mouseClicked(int x, int y, int button) throws IOException {
+        if (preview != null) preview.dismissMaterialsOutside(x - guiLeft - 4, y - guiTop - 2);
         if (button == 0 && taskHover(x, y)) {
             container.action("task");
             return;
@@ -172,6 +186,31 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         if (tree.press(x - guiLeft - 191, y - guiTop - 8, button)) return;
         if (preview != null && preview.press(x - guiLeft - 4, y - guiTop - 2, button)) return;
         super.mouseClicked(x, y, button);
+    }
+
+    @Override
+    protected void keyTyped(char character, int code) throws IOException {
+        if (code == Keyboard.KEY_ESCAPE && preview != null && preview.dismissMaterials()) {
+            hoveredSlot = null;
+            return;
+        }
+        super.keyTyped(character, code);
+    }
+
+    @Override
+    protected Slot findSlot(int x, int y) {
+        var slot = preview == null ? null : preview.slotAt(x - guiLeft - 4, y - guiTop - 2, 4, 2);
+        return slot == null ? super.findSlot(x, y) : slot;
+    }
+
+    @Override
+    protected boolean checkHotbarKeys(int code) {
+        return preview != null && preview.ownsSlot(getSlotUnderMouse()) || super.checkHotbarKeys(code);
+    }
+
+    @Override
+    protected void handleMouseClick(Slot slot, int id, int button, @NotNull ClickType type) {
+        if (preview == null || !preview.ownsSlot(slot)) super.handleMouseClick(slot, id, button, type);
     }
 
     @Override

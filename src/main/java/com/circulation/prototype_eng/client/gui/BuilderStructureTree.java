@@ -18,6 +18,7 @@ import net.minecraft.init.Blocks;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
 import com.circulation.prototype_eng.structure.tool.StructureToolExport;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import org.jetbrains.annotations.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
@@ -33,12 +34,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
 final class BuilderStructureTree {
     private final StructureToolContainer container;
     private final Consumer<Set<BlockPos>> highlight;
     private Consumer<StructureDisplay> materialReplacement = _ -> { };
+    private Supplier<StructurePreviewSettings> selections = () -> null;
+    private StructurePreviewSettings displayedSelections;
     private final Map<String, Boolean> expanded = new Object2ObjectLinkedOpenHashMap<>();
     private final Map<String, Integer> slices = new Object2ObjectLinkedOpenHashMap<>();
     private final List<Hit> hits = new ObjectArrayList<>();
@@ -70,6 +74,10 @@ final class BuilderStructureTree {
 
     void onMaterialReplacement(Consumer<StructureDisplay> listener) {
         materialReplacement = Objects.requireNonNull(listener);
+    }
+
+    void selections(Supplier<StructurePreviewSettings> current) {
+        selections = Objects.requireNonNull(current);
     }
 
     void openMaterials() {
@@ -143,8 +151,10 @@ final class BuilderStructureTree {
 
     private void refresh(StructureCatalogView current, ResourceLocation id, BlockOrientation orientation) {
         var tag = container.snapshot();
-        String next = id + tag.getCompoundTag("MaterialSelections").toString() + slices + orientation;
-        if (current == catalog && next.equals(key)) return;
+        var settings = selections.get();
+        String next = id + tag.getCompoundTag("MaterialSelections").toString() + tag.getCompoundTag("CellMaterialSelections") + slices + orientation;
+        if (current == catalog && next.equals(key) && Objects.equals(settings, displayedSelections)) return;
+        displayedSelections = settings;
         catalog = current;
         itemChoices.clear();
         itemOrientation = orientation;
@@ -174,10 +184,18 @@ final class BuilderStructureTree {
             }
             if (node.kind() == StructurePreviewProvider.Kind.SLICE)
                 row.children.add(new Row(instance.path() + "/slice", StructureToolText.BuildInstrumentSliceSlider.getLocal(instance.count(), node.maxCount()), 3, null, instance.path(), node.minCount(), node.maxCount(), instance.count()));
-            var counts = new Object2LongLinkedOpenHashMap<StructureDisplay>();
-            for (var cell : plan.cells())
-                if (cell.display() != null && (cell.path().equals(instance.path()) || cell.path().startsWith(instance.path() + "/")))
-                    counts.addTo(cell.display(), 1);
+            var counts = new Object2LongLinkedOpenHashMap<MaterialChoice>();
+            for (var cell : plan.cells()) {
+                var display = cell.display();
+                if (display == null || !(cell.path().equals(instance.path()) || cell.path().startsWith(instance.path() + "/"))) continue;
+                var choice = BuilderState.choice(tag, display, cell.position(), orientation);
+                if (settings != null) {
+                    var local = settings.cellOptions().get(cell.position());
+                    int option = local != null && display.equals(local.display()) ? local.option() : settings.displayOptions().getOrDefault(display, 0);
+                    choice = display.options().get(option);
+                }
+                counts.addTo(new MaterialChoice(display, choice), 1);
+            }
             if (counts.isEmpty()) continue;
             var materials = new Row(instance.path() + "/materials", StructureToolText.BuildInstrumentMaterialsTitleWithCount.getLocal(counts.size()), 1, null, instance.path(), 0, 0, 0);
             row.children.add(materials);
@@ -185,10 +203,11 @@ final class BuilderStructureTree {
             var materialsByCount = new ObjectArrayList<>(counts.object2LongEntrySet());
             materialsByCount.sort((a, b) -> Long.compare(b.getLongValue(), a.getLongValue()));
             for (var count : materialsByCount) {
-                var display = count.getKey();
-                var choice = BuilderState.choice(tag, display);
+                var display = count.getKey().display;
+                var choice = count.getKey().option;
                 boolean alternatives = display.options().size() > 1;
                 var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(name(choice, display.tileNbt()), count.getLongValue()), 2, display, instance.path(), 0, 0, 0);
+                material.option = choice;
                 materials.children.add(material);
             }
         }
@@ -307,7 +326,7 @@ final class BuilderStructureTree {
             StructureToolDraw.image("gui_build_instrument/button/" + (open(row) ? "withdraw" : "expand") + "_" + (row.id.equals(pressed) ? "pressed" : hover ? "selected" : "default"), x + width - 15, y + 1, 11, 12);
         }
         if (row.display != null) {
-            var icon = stack(BuilderState.choice(container.snapshot(), row.display), row.display.tileNbt());
+            var icon = stack(row.option, row.display.tileNbt());
             GlStateManager.pushMatrix();
             try {
                 GlStateManager.translate(x + 2, y + 1, 0);
@@ -426,10 +445,13 @@ final class BuilderStructureTree {
         return List.of();
     }
 
+    private record MaterialChoice(StructureDisplay display, StructureDisplay.BlockOption option) { }
+
     private static final class Row {
         final String id, label;
         final int kind;
         final StructureDisplay display;
+        StructureDisplay.BlockOption option;
         final String path;
         final int min, max, value;
         final List<Row> children = new ObjectArrayList<>();

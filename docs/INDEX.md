@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-11 五张实机截图反馈已修：共享材料网格5列×8行横向逐行，内容与滚动条独立；构造器/独立预览使用真实只读展示槽，JEI发布实际ingredient槽，正常书签/检索/高亮；单格与整种选择共享view settings并按具体候选拆分右树数量。候选选择后、外部点击、Esc关闭，旧槽立即撤销；层滑块上高下低，滚轮上加下减。HEI原生转移按钮在异步材料就绪/选择代变化后重新init，消除初次未就绪缓存；客户端名称走getLocal，示例enum/lang统一小写。10主Java及示例两语言本机MCP全级零，示例Java因run排除不可分析；22项既有专项及build/MCP build通过，未新增测试。示例包已重编；首次Jar被运行客户端占用，用户回复“已退出”后安装成功并核对SHA256。需用户完整重启复验本次实际效果，总体Goal保持暂停；不启动游戏、不推送。入口 [结构工具](structure-tools.md)、[JEI](jei.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/preview-feedback/`。
+
 - 2026-11-11 run 示例套件已收尾，统一入口 [run/README.md](../run/README.md) 与 [覆盖矩阵](../run/COVERAGE.md)。18 个 addon Java 编译打包并安装成功；全部9脚本实际SDK718编译、97项核心行为断言通过。补齐扫描纯计算/存储结算驱动、区分准入探测与首tick付款、固定最终5并行的不足付款拒绝，原与恢复进程END输出均通过。19个run Java（含验证器）本机MCP逐文件 errorsOnly:false 均因排除目录拒绝分析，错误/警告/弱警告未知。原生世界/FTB/保存/GUI/HEI/视觉仍待用户测试，总体Goal按用户最新指示保持暂停；未启动游戏、未推送。详细证据见实施进度。
 
 - 2026-11-11 原生复验交接补齐：[CT文档](crafttweaker.md#用户原生复验入口)现有可复制的普通loader SDK member/INDEX/IData/snapshot完整脚本，并按SDK→既有169结构/工具→运行中退出重进排序。脚本局部data不冒充owner保存/同步；现有示例未安装componentData及研究/网络/复杂渲染场景，仍须真实接入验收。仅文档补缺，未重跑build/tests或启动游戏，整体Goal仍active；写前和源码依据在 `resumed-goal/native-handoff-review/`。
@@ -39,6 +41,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 优先复验2026-11-11本批：完整重启后核对机器中文名；JEI与构造器材料网格横向逐行且不盖滚动条，材料及候选能按原生书签键/R/U识别。构造器玻璃单格替换后左网格和右树同时108＋1，整种后109；选择后自动关闭，外部点击及Esc直接关闭。打开结构页等待预览就绪后转移键应恢复可用，任一片层仍导入完整169材料；层滑块上方对应高层、下方低层，滚轮方向一致。以上为待用户原生结果，不以22项行为测试或IDE检查替代。
 
 - 材料仓手持水桶/空桶时复验AE原生左右键存入、左键装填提示的分行、深灰文案/灰色资源与内嵌图标；原Shift整批交互保留，但不再使用自有拼接说明。空光标时原资源名称、数量/容量提示保持。用户自行重启客户端观察，未以源码检查代替渲染验收。
 

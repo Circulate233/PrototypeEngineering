@@ -37,6 +37,10 @@ import java.util.function.Supplier;
 public final class StructurePreviewPanel implements AutoCloseable {
     public static final int WIDTH = 184, HEIGHT = 220;
     static final int SCENE_X = 6, SCENE_Y = 13;
+    private static final int MATERIAL_COLUMNS = 5, MATERIAL_ROWS = 8, MATERIAL_STEP = 19;
+    private static final Rect MATERIAL_PANEL = new Rect(29, 31, 134, 163);
+    private static final Rect MATERIAL_CONTENT = new Rect(32, 34, 107, 157);
+    private static final Rect MATERIAL_SCROLL = new Rect(152, 34, 10, 157);
     private final StructurePreviewView view;
     private final StructurePreviewScene scene;
     private final EntityPlayer player;
@@ -46,8 +50,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private final GuiClip clip = new GuiClip();
     private final ObjectArrayList<Action> actions = new ObjectArrayList<>();
     private final ObjectArrayList<ItemSlot> itemSlots = new ObjectArrayList<>();
-    private final AppEngInternalInventory displayInventory = new AppEngInternalInventory(null, 1, Integer.MAX_VALUE);
-    private final Slot displaySlot = new AppEngSlot(displayInventory, 0, 1, 1);
+    private final AppEngInternalInventory displayInventory = new AppEngInternalInventory(null, 64, Integer.MAX_VALUE);
+    private final ObjectArrayList<Slot> displaySlots = new ObjectArrayList<>();
+    private SlotRenderer ingredientSlots;
+    private Runnable clearIngredients = () -> { };
     private final PreviewListScroll alternativesScroll = new PreviewListScroll(), materialsScroll = new PreviewListScroll();
     private int alternativesCount, materialsCount;
     private boolean construction;
@@ -64,7 +70,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     };
     private GuiScreen host;
     private Object drawnToken;
-    private boolean closed, collapsed, layerDragging;
+    private boolean closed, collapsed, layerDragging, materialsDragging;
     private float collapseNow, sidebarNow = 1;
     private long frameTime = -1;
     private String pressed;
@@ -129,6 +135,17 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public void onAlternativeSelected(BiConsumer<StructureDisplay, Integer> listener) {
         alternativeSelected = Objects.requireNonNull(listener);
+    }
+
+    /** Embedded hosts publish the visible cells as their own native ingredient slots. */
+    public void ingredientSlots(SlotRenderer renderer, Runnable clear) {
+        ingredientSlots = Objects.requireNonNull(renderer);
+        clearIngredients = Objects.requireNonNull(clear);
+    }
+
+    @FunctionalInterface
+    public interface SlotRenderer {
+        void render(int index, ItemStack stack, int x, int y);
     }
 
     public StructurePreviewView view() {
@@ -281,6 +298,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     private void toggleMaterials() {
+        invalidateSlots();
         if (!construction) {
             view.materialsOpen = !view.materialsOpen;
             return;
@@ -314,7 +332,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         sprite("right_layer_selection", 165, 33, 10, 158);
         int maximum = bounds.max().getY() - bounds.min().getY();
         int index = Math.clamp(view.layer - bounds.min().getY(), 0, maximum);
-        int y = 44 + (int) Math.round(maximum == 0 ? 0 : 124.0 * index / maximum);
+        int y = 44 + (int) Math.round(maximum == 0 ? 0 : 124.0 * (maximum - index) / maximum);
         boolean hover = new Rect(165, 33, 10, 158).contains(mouseX, mouseY);
         sprite(layerDragging ? "slider_press" : hover ? "slider_selected" : "slider_default", 167, y, 7, 12);
         area("layer", 165, 33, 10, 158, List.of(PreviewUiText.SliceY.getLocal(view.layer)), null);
@@ -324,7 +342,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         var bounds = view.sceneBounds();
         if (bounds == null) return;
         int min = bounds.min().getY(), max = bounds.max().getY();
-        view.layer = min + (int) Math.round(Math.clamp(y - 33 - 11 - 6, 0, 124) / 124.0 * (max - min));
+        view.layer = max - (int) Math.round(Math.clamp(y - 33 - 11 - 6, 0, 124) / 124.0 * (max - min));
     }
 
     private void materials() {
@@ -359,36 +377,13 @@ public final class StructurePreviewPanel implements AutoCloseable {
                     });
             }
         });
-        var model = view.model();
-        if (!view.materialsOpen || model == null) return;
-        sprite("base_material_preview_ui", 29, 31, 134, 163);
-        var bom = selected == null ? new ObjectArrayList<>(model.bom())
-            : new ObjectArrayList<>(List.of(new StructurePreviewModel.BomLine(selected, 1)));
-        bom.sort(Comparator.comparingLong(StructurePreviewModel.BomLine::count).reversed());
-        var visible = new ObjectArrayList<MaterialRow>();
-        for (var line : bom) {
-            var display = line.display();
-            if (display == null || selected != null && !selected.equals(display)) continue;
-            var stack = optionStack(display, representative(display));
-            if (stack.isEmpty()) continue;
-            int count = selected == null ? (int) Math.min(Integer.MAX_VALUE, line.count()) : 1;
-            stack.setCount(count);
-            visible.add(new MaterialRow(stack));
-        }
-        materialsScroll.identity(selected);
-        materialsCount = visible.size();
-        clipped(29, 31, 134, 163, () -> {
-            int first = materialsScroll.first(visible.size(), 8);
-            for (int row = 0; row < 8 && first + row < visible.size(); row++)
-                slot("material" + (first + row), visible.get(first + row).stack, 33, 35 + row * 20, true, List.of(), null);
-        });
+        if (view.materialsOpen && view.model() != null) materialGrid(completeMaterials(), null, null);
     }
 
     private void constructionMaterials() {
         updateConstructionChoice();
         var model = view.model();
         if (!view.materialsOpen || model == null) return;
-        sprite("base_material_preview_ui", 29, 31, 134, 163);
         var display = constructionChoice;
         var cell = constructionCell;
         List<ConstructionMaterial> rows;
@@ -397,55 +392,77 @@ public final class StructurePreviewPanel implements AutoCloseable {
             for (int option = 0; option < display.options().size(); option++) choices.add(new ConstructionMaterial(display, option, 1));
             rows = choices;
         } else {
-            if (constructionMaterialsToken != view.token()) {
-                constructionMaterialsToken = view.token();
-                var counts = new Object2LongLinkedOpenHashMap<ConstructionChoice>();
-                for (var line : model.bom())
-                    counts.addTo(new ConstructionChoice(line.display(), view.alternative(line.display())), line.count());
-                for (var entry : view.settings().cellOptions().entrySet()) {
-                    var represented = view.at(entry.getKey());
-                    var choice = entry.getValue();
-                    if (represented == null || !choice.display().equals(represented.display())) continue;
-                    int global = view.alternative(choice.display());
-                    if (global != choice.option()) {
-                        counts.addTo(new ConstructionChoice(choice.display(), global), -1);
-                        counts.addTo(new ConstructionChoice(choice.display(), choice.option()), 1);
-                    }
-                }
-                var materials = new ObjectArrayList<ConstructionMaterial>(counts.size());
-                for (var entry : counts.object2LongEntrySet())
-                    if (entry.getLongValue() > 0) materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
-                materials.sort(Comparator.comparingLong(ConstructionMaterial::amount).reversed());
-                constructionMaterials = List.copyOf(materials);
-            }
-            rows = constructionMaterials;
+            rows = completeMaterials();
         }
+        materialGrid(rows, display, cell);
+    }
+
+    private List<ConstructionMaterial> completeMaterials() {
+        var model = Objects.requireNonNull(view.model());
+        if (constructionMaterialsToken != view.token()) {
+            constructionMaterialsToken = view.token();
+            var counts = new Object2LongLinkedOpenHashMap<ConstructionChoice>();
+            for (var line : model.bom())
+                counts.addTo(new ConstructionChoice(line.display(), view.alternative(line.display())), line.count());
+            for (var entry : view.settings().cellOptions().entrySet()) {
+                var represented = view.at(entry.getKey());
+                var choice = entry.getValue();
+                if (represented == null || !choice.display().equals(represented.display())) continue;
+                int global = view.alternative(choice.display());
+                if (global != choice.option()) {
+                    counts.addTo(new ConstructionChoice(choice.display(), global), -1);
+                    counts.addTo(new ConstructionChoice(choice.display(), choice.option()), 1);
+                }
+            }
+            var materials = new ObjectArrayList<ConstructionMaterial>(counts.size());
+            for (var entry : counts.object2LongEntrySet())
+                if (entry.getLongValue() > 0) materials.add(new ConstructionMaterial(entry.getKey().display, entry.getKey().option, entry.getLongValue()));
+            materials.sort(Comparator.comparingLong(ConstructionMaterial::amount).reversed());
+            constructionMaterials = List.copyOf(materials);
+        }
+        return constructionMaterials;
+    }
+
+    private void materialGrid(List<ConstructionMaterial> rows, @Nullable StructureDisplay display, @Nullable BlockPos cell) {
+        sprite("base_material_preview_ui", 29, 31, 134, 163);
         materialsScroll.identity(new ConstructionChoice(display, 0));
-        materialsCount = (rows.size() + 5) / 6;
-        clipped(29, 31, 134, 163, () -> {
-            int first = materialsScroll.first(materialsCount, 8) * 6;
-            for (int visible = 0; visible < 48 && first + visible < rows.size(); visible++) {
+        materialsCount = (rows.size() + MATERIAL_COLUMNS - 1) / MATERIAL_COLUMNS;
+        clipped(MATERIAL_CONTENT.x, MATERIAL_CONTENT.y, (int) MATERIAL_CONTENT.width, (int) MATERIAL_CONTENT.height, () -> {
+            int first = materialsScroll.first(materialsCount, MATERIAL_ROWS) * MATERIAL_COLUMNS;
+            for (int visible = 0; visible < MATERIAL_COLUMNS * MATERIAL_ROWS && first + visible < rows.size(); visible++) {
                 int index = first + visible;
                 var row = rows.get(index);
                 var stack = row.display == null ? ItemStack.EMPTY : optionStack(row.display, row.option);
                 if (!stack.isEmpty()) stack.setCount((int) Math.min(Integer.MAX_VALUE, row.amount));
                 int option = row.option;
                 Runnable choose = display == null ? null : () -> chooseConstruction(display, cell, option);
-                int slotX = 33 + visible % 6 * 20, slotY = 35 + visible / 6 * 20;
+                int slotX = 33 + visible % MATERIAL_COLUMNS * MATERIAL_STEP, slotY = 35 + visible / MATERIAL_COLUMNS * MATERIAL_STEP;
                 slot("construction_material" + index, stack, slotX, slotY,
                     display == null, row.display == null ? List.of(PreviewUiText.Unknown.getLocal()) : List.of(), choose);
             }
         });
+        int maximum = Math.max(0, materialsCount - MATERIAL_ROWS);
+        int thumbY = 35 + (int) Math.round(maximum == 0 ? 0 : 143.0 * materialsScroll.first(materialsCount, MATERIAL_ROWS) / maximum);
+        sprite(materialsDragging ? "slider_press" : MATERIAL_SCROLL.contains(mouseX, mouseY) ? "slider_selected" : "slider_default", 154, thumbY, 7, 12);
+        area("materialsScroll", MATERIAL_SCROLL.x, MATERIAL_SCROLL.y, (int) MATERIAL_SCROLL.width, (int) MATERIAL_SCROLL.height, List.of(), null);
     }
 
     private void chooseConstruction(StructureDisplay display, @Nullable BlockPos position, int option) {
+        var previousPick = view.picked();
+        boolean changed;
         if (position == null) {
-            if (view.alternative(drawnToken, display, option)) alternativeSelected.accept(display, option);
-            return;
+            changed = view.alternative(drawnToken, display, option);
+            if (changed) alternativeSelected.accept(display, option);
+        } else {
+            var cell = view.at(position);
+            changed = cell != null && display.equals(cell.display()) && view.alternativeCell(drawnToken, cell, option);
+            if (changed) cellAlternativeSelected.accept(cell, option);
         }
-        var cell = view.at(position);
-        if (cell != null && display.equals(cell.display()) && view.alternativeCell(drawnToken, cell, option))
-            cellAlternativeSelected.accept(cell, option);
+        if (changed) {
+            dismissMaterials();
+            // Model rebuilding restores this same cell; that restoration is not another click.
+            lastConstructionPick = previousPick;
+        }
     }
 
     private record ConstructionChoice(@Nullable StructureDisplay display, int option) { }
@@ -453,14 +470,22 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     private void slot(String id, ItemStack stack, float x, float y, boolean amount, List<String> tooltip, @Nullable Runnable run) {
         if (!amount && !stack.isEmpty()) stack.setCount(1);
+        int index = itemSlots.size();
+        while (displaySlots.size() <= index)
+            displaySlots.add(new AppEngSlot(displayInventory, displaySlots.size(), 1, 1));
+        var nativeSlot = displaySlots.get(index);
+        nativeSlot.xPos = nativeSlot.yPos = 1;
+        var bounds = new Rect(x, y, 18, 18);
+        boolean fullyVisible = currentClip == null || x >= currentClip.x && y >= currentClip.y
+            && x + 18 <= currentClip.x + currentClip.width && y + 18 <= currentClip.y + currentClip.height;
         GlStateManager.pushMatrix();
         try {
             GlStateManager.translate(x, y, 0);
             GuiAtlas.state(0, 0, 73, 0, 18, 18);
-            if (!stack.isEmpty()) {
+            if (!stack.isEmpty() && fullyVisible && ingredientSlots == null) {
                 RenderHelper.enableGUIStandardItemLighting();
-                displayInventory.setItemDirect(0, stack);
-                if (host instanceof PreviewNativeGui.Slots nativeSlots) nativeSlots.prototype_eng$renderSlot(displaySlot);
+                displayInventory.setItemDirect(index, stack);
+                if (host instanceof PreviewNativeGui.Slots nativeSlots) nativeSlots.prototype_eng$renderSlot(nativeSlot);
                 else {
                     // HEI RecipesGui is a GuiScreen, so use its ordinary native item renderer.
                     var mc = Minecraft.getMinecraft();
@@ -468,12 +493,22 @@ public final class StructurePreviewPanel implements AutoCloseable {
                     mc.getRenderItem().renderItemOverlayIntoGUI(mc.fontRenderer, stack, 1, 1, null);
                 }
                 RenderHelper.disableStandardItemLighting();
+                if (bounds.contains(mouseX, mouseY)) {
+                    GlStateManager.disableLighting();
+                    GlStateManager.disableDepth();
+                    Gui.drawRect(1, 1, 17, 17, 0x80ffffff);
+                    GlStateManager.enableDepth();
+                }
             }
         } finally {
             GlStateManager.popMatrix();
         }
         area(id, x, y, 18, 18, tooltip, run);
-        if (!stack.isEmpty()) itemSlots.add(new ItemSlot(stack, new Rect(x, y, 18, 18), currentClip));
+        if (!stack.isEmpty() && fullyVisible) {
+            displayInventory.setItemDirect(index, stack);
+            itemSlots.add(new ItemSlot(stack, nativeSlot, bounds, currentClip));
+            if (ingredientSlots != null) ingredientSlots.render(index, stack, (int) x, (int) y);
+        }
     }
 
     private int representative(StructureDisplay display) {
@@ -483,14 +518,19 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public boolean press(int x, int y, int button) {
         if (!inputCurrent()) return false;
+        dismissMaterialsOutside(x, y);
         for (int i = actions.size() - 1; i >= 0; i--) {
             var action = actions.get(i);
             if (!action.contains(x, y)) continue;
+            if (ingredientSlots != null && action.run == null && !itemAt(x, y).isEmpty()) return false;
             if (button == 0 && action.id.equals("layer")) {
                 layerDragging = true;
                 updateLayer(y);
+            } else if (button == 0 && action.id.equals("materialsScroll")) {
+                materialsDragging = true;
+                updateMaterialsScroll(y);
             } else if (button == 0 && action.run != null) pressed = action.id;
-            if (button == 0 && (layerDragging || action.run != null))
+            if (button == 0 && (layerDragging || materialsDragging || action.run != null))
                 Minecraft.getMinecraft().getSoundHandler().playSound(PositionedSoundRecord.getMasterRecord(SoundEvents.UI_BUTTON_CLICK, 1));
             return true;
         }
@@ -499,10 +539,40 @@ public final class StructurePreviewPanel implements AutoCloseable {
         return scene.press(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
     }
 
+    public boolean dismissMaterials() {
+        if (!view.materialsOpen) return false;
+        view.materialsOpen = false;
+        constructionChoice = null;
+        constructionCell = null;
+        lastConstructionPick = view.picked();
+        invalidateSlots();
+        return true;
+    }
+
+    private void invalidateSlots() {
+        itemSlots.clear();
+        clearIngredients.run();
+    }
+
+    public void dismissMaterialsOutside(int x, int y) {
+        if (!view.materialsOpen || MATERIAL_PANEL.contains(x, y)) return;
+        for (var action : actions)
+            if (action.id.equals("material_preview_ui") && action.contains(x, y)) return;
+        dismissMaterials();
+    }
+
+    private void updateMaterialsScroll(int y) {
+        materialsScroll.position((y - 41) / 143.0, materialsCount, MATERIAL_ROWS);
+    }
+
     public boolean drag(int x, int y) {
         if (!inputCurrent()) return false;
         if (layerDragging) {
             updateLayer(y);
+            return true;
+        }
+        if (materialsDragging) {
+            updateMaterialsScroll(y);
             return true;
         }
         if (pressed != null) return true;
@@ -514,11 +584,17 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (!inputCurrent()) {
             pressed = null;
             layerDragging = false;
+            materialsDragging = false;
             return false;
         }
         if (button == 0 && layerDragging) {
             layerDragging = false;
             updateLayer(y);
+            return true;
+        }
+        if (button == 0 && materialsDragging) {
+            materialsDragging = false;
+            updateMaterialsScroll(y);
             return true;
         }
         if (button == 0 && pressed != null) {
@@ -527,22 +603,32 @@ public final class StructurePreviewPanel implements AutoCloseable {
             for (var action : actions)
                 if (previous.equals(action.id) && action.contains(x, y) && action.run != null) {
                     action.run.run();
+                    invalidateSlots();
                     break;
                 }
             return true;
         }
         var rect = scene.viewport();
-        return scene.release(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
+        boolean handled = scene.release(rect.x() + x - SCENE_X, rect.y() + y - SCENE_Y, button);
+        if (handled) invalidateSlots();
+        return handled;
     }
 
     public boolean wheel(int x, int y, int delta) {
         if (!inputCurrent() || delta == 0) return false;
         if (!construction && view.picked() != null && new Rect(9, 31, 18, 181).contains(x, y)) {
             alternativesScroll.wheel(delta, alternativesCount, 9);
+            invalidateSlots();
             return true;
         }
         if (view.materialsOpen && new Rect(29, 31, 134, 163).contains(x, y)) {
-            materialsScroll.wheel(delta, materialsCount, 8);
+            materialsScroll.wheel(delta, materialsCount, MATERIAL_ROWS);
+            invalidateSlots();
+            return true;
+        }
+        if (!view.threeDimensional && new Rect(165, 33, 10, 158).contains(x, y)) {
+            var bounds = view.sceneBounds();
+            if (bounds != null) view.layer = Math.clamp(view.layer + Integer.signum(delta), bounds.min().getY(), bounds.max().getY());
             return true;
         }
         for (var action : actions) if (action.contains(x, y)) return true;
@@ -563,6 +649,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     }
 
     public boolean renderItemTooltip(int screenX, int screenY, int localX, int localY) {
+        if (ingredientSlots != null) return false;
         var stack = itemAt(localX, localY);
         if (stack.isEmpty()) return false;
         ((PreviewNativeGui) host).prototype_eng$renderItemTooltip(stack, screenX, screenY);
@@ -578,13 +665,28 @@ public final class StructurePreviewPanel implements AutoCloseable {
         return ItemStack.EMPTY;
     }
 
-    private record ItemSlot(ItemStack stack, Rect bounds, @Nullable Rect clip) { }
-    private record MaterialRow(ItemStack stack) { }
+    public @Nullable Slot slotAt(int x, int y, int offsetX, int offsetY) {
+        if (!inputCurrent()) return null;
+        for (var item : itemSlots)
+            if (item.bounds.contains(x, y) && (item.clip == null || item.clip.contains(x, y))) {
+                item.slot.xPos = (int) item.bounds.x + offsetX + 1;
+                item.slot.yPos = (int) item.bounds.y + offsetY + 1;
+                return item.slot;
+            }
+        return null;
+    }
+
+    public boolean ownsSlot(@Nullable Slot slot) {
+        return slot != null && displaySlots.contains(slot);
+    }
+
+    private record ItemSlot(ItemStack stack, Slot slot, Rect bounds, @Nullable Rect clip) { }
 
     @Override
     public void close() {
         if (closed) return;
         closed = true;
+        invalidateSlots();
         PreviewEmbeddedInput.INSTANCE.remove(this);
         scene.close();
     }
