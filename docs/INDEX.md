@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-11 默认GUI截图反馈：背景裁去原图第二页空线框；标题只显示一次，删除正文/标题/预留图案的重复tooltip，线程行只补全配方ID、有效并行及截断原因。结构仅显示formed的未成型/已成型，不读取临时processing gate显示检查中；执行模式/四策略不进入玩家正文或tooltip。同步删除10个无用枚举及中英各10键，保留作者调度配置。Spotless/build -x test及MCP build通过，两Java＋两语言本机MCP全级零。入口[机器GUI](machine-gui.md)，证据controller-gui-cleanup/；未新增或运行测试、未启动游戏/推送，原背景/暂存保留。
+
 - 2026-11-11 异步配方策略/组合池：按用户默认FULL_ASYNC，另有ASYNC_SCAN/ASYNC_WORK/SYNCHRONOUS，Java/CT/保存/GUI接通；候选worker批量并发＋main复核准入，stock空库存不建Process。多线程优先上次真实完成ID，失败同预算回发现，单项PP上界避免百万线性probe；跨配方下一pass无复制轮转。实际多池Selection组合缓存16/worker冷编译，保child策略/全局priority/宽松bound/freshness，纯库存beginMatch与CT Pool.combine保准确codec。work fixedlane/原coordinator，shared affinity串行、独立组重叠，明确owner-only PN账本保main/纯kernel并发；独占claim真实退出归还及中断/异常回归。完整Spotless/build1957tests/270suites全零，459枚举key无缺，45Java＋两语言本机MCP全级零、MCP build通过。入口[配方执行策略](recipe-execution-policy.md)，证据async-recipe-policy/及各专项。原背景/暂存保留，未启动游戏/推送，总体Goal暂停。
 
 - 2026-11-11 无用lang清理：7枚举删除92个无调用常量，中英各删104键（含4旧无等级仓室＋8旧预览键）。正式各438、示例各94；455枚举键无缺，77真实生成键和38个JSON/脚本间接枚举逐项保留，四语言无重复/不对称。完整Spotless/build1928tests/264suites全零，7Java＋两语言本机MCP全级零及MCP build成功。入口[本地化审查](localization-collections-audit.md)，证据unused-lang/；未开子代理/启动游戏/推送，原背景/暂存保留，总体Goal暂停。
@@ -58,9 +60,9 @@
 
 ## 下一步
 
-- 用户重启复验本轮配方线程策略：新控制器默认FULL_ASYNC，事件需主线程的声明选择ASYNC_SCAN或SYNCHRONOUS；GUI四策略中文、旧Mode存档恢复、混合池来源/JEI与主线程准入、运行完成后的每工位优先重试及跨配方轮转均可观察。PN permit/预算保持owner，外部requiresOwnerThread声明要覆盖结构children。单元/Compiler/真实Executor证据不代替World/自定义事件实际线程安全，具体入口[策略说明](recipe-execution-policy.md)。
+- 用户重启复验本轮配方线程策略：新控制器默认FULL_ASYNC，事件需主线程的声明选择ASYNC_SCAN或SYNCHRONOUS；作者Java/CT四策略配置、旧Mode存档恢复、混合池来源/JEI与主线程准入、运行完成后的每工位优先重试及跨配方轮转均可观察。策略不展示在玩家GUI。PN permit/预算保持owner，外部requiresOwnerThread声明要覆盖结构children。单元/Compiler/真实Executor证据不代替World/自定义事件实际线程安全，具体入口[策略说明](recipe-execution-policy.md)。
 
-- 用户完整重启复验默认GUI：未成型/成型/检查中/阻塞状态及结构中文，空扩展不出现；多线程保留闲置线程，跨配方每行准确对应一个活进程，结束/取消后列表和分页收缩，跨页汇总及有效并行一致。超过七行时滑块在独立槽道，拖动/滚轮不盖内容；玩家背包操作与主tab中文正常。库存API与stock单配方百万父并行→库存可用2的一次probe已有行为回归，实际World/FE/保护回调和画面仍待用户，不以编译替代。
+- 用户完整重启复验默认GUI：标题只显示一次，结构只显示未成型/已成型，周期结构检查不跳“检查中”，正文/标题没有重复tooltip，也不展示执行策略；空扩展按钮和背景线框均不出现。多线程保留闲置线程，跨配方每行准确对应一个活进程，结束/取消后列表和分页收缩，跨页汇总及有效并行一致。超过七行时滑块在独立槽道，拖动/滚轮不盖内容；玩家背包操作与主tab中文正常。库存API与stock单配方百万父并行→库存可用2的一次probe已有行为回归，实际World/FE/保护回调和画面仍待用户，不以编译替代。
 
 - 完整重启复验本轮控制器：朝上/朝下分别换yaw放置，顶部随视角变化；启用转向工具，六个面的大中心、四边、四角显示/命中一致。正面中心只转spin，非正面中心对齐，边翻转保留完整朝向，四角不耗耐久；主/副手与潜行规则一致，空气切模式正常；退出重进保留方向。GL画面与真实放置/输入仍待用户，不以几何/模型测试替代。
 

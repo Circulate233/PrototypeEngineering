@@ -3,12 +3,10 @@ package com.circulation.prototype_eng.client.gui;
 import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.widgets.ITooltip;
-import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.container.MachineContainer;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
 import com.circulation.prototype_eng.localization.MachineGuiText;
-import com.circulation.prototype_eng.localization.StructureTitle;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
@@ -72,7 +70,9 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
 
     @Override
     public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
-        GuiAtlas.draw(MAIN, x, y, 0, 0, 384, 256, 384, 256);
+        // The source image also contains an empty extension tab; draw only the body and main tab.
+        GuiAtlas.draw(MAIN, x + 19, y, 19, 0, 365, 256, 384, 256);
+        GuiAtlas.draw(MAIN, x, y, 0, 0, 19, 22, 384, 256);
         drawRect(x + 140, y + 9, x + 376, y + 165, 0x4c424242);
         for (int row = 0; row < container.snapshot.entries().size(); row++) {
             int top = y + LIST_Y + row * ROW_HEIGHT;
@@ -87,10 +87,20 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 144, 13, 228, 10, 0xffffff, true);
         var snapshot = container.snapshot;
         var details = snapshot.details();
-        var information = information();
-        for (int line = 0; line < information.size(); line++)
-            GuiLabel.draw(fontRenderer, information.get(line), 144, 27 + line * 13, 228, 10,
-                line == 0 ? snapshot.formed() ? 0x55ff55 : 0xff5555 : 0xe0e0e0, false);
+        GuiLabel.draw(fontRenderer, MachineGuiText.Structure.getLocal((snapshot.formed() ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal()),
+            144, 27, 228, 10, snapshot.formed() ? 0x55ff55 : 0xff5555, false);
+        int lineY = 40;
+        if (snapshot.formed()) {
+            GuiLabel.draw(fontRenderer, MachineGuiText.Status.getLocal((snapshot.active()
+                ? MachineGuiText.status(snapshot.overallStatus()) : MachineGuiText.Inactive).getLocal()), 144, lineY, 228, 10, 0xe0e0e0, false);
+            lineY += 13;
+        }
+        if (snapshot.active()) {
+            GuiLabel.draw(fontRenderer, details.crossRecipe() ? MachineGuiText.Recipes.getLocal(details.running())
+                : MachineGuiText.Threads.getLocal(details.running(), details.threadLimit()), 144, lineY, 228, 10, 0xe0e0e0, false);
+            GuiLabel.draw(fontRenderer, MachineGuiText.Parallelism.getLocal(details.usedParallelism(), details.parallelismLimit()),
+                144, lineY + 13, 228, 10, 0xe0e0e0, false);
+        }
         for (int row = 0; row < snapshot.entries().size(); row++) {
             var entry = snapshot.entries().get(row);
             int top = LIST_Y + row * ROW_HEIGHT;
@@ -116,62 +126,19 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         }
     }
 
-    private MachineGuiText summaryStatus() {
-        if (!container.snapshot.formed()) return MachineGuiText.NotFormed;
-        if (!container.snapshot.active()) return MachineGuiText.Inactive;
-        if (!container.snapshot.details().processing()) return MachineGuiText.CheckingStructure;
-        return MachineGuiText.status(container.snapshot.overallStatus());
-    }
-
-    @SuppressWarnings("resource") // ClientProxy owns the shared preview service; this screen only reads its catalog.
-    private List<String> information() {
-        var snapshot = container.snapshot;
-        var details = snapshot.details();
-        var lines = new ObjectArrayList<String>();
-        lines.add(MachineGuiText.Structure.getLocal((snapshot.formed() ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal()));
-        if (!details.structure().isEmpty()) {
-            var catalog = StructurePreviews.client().catalogView();
-            var structure = catalog == null ? null : catalog.entries().get(new ResourceLocation(details.structure()));
-            lines.add(structure == null || structure.translationKey() == null ? Objects.requireNonNull(container.getGuiTitle()).getFormattedText()
-                : new StructureTitle(structure.translationKey()).getLocal());
-        }
-        lines.add(MachineGuiText.Status.getLocal(summaryStatus().getLocal()));
-        if (!snapshot.active()) return lines;
-        lines.add(details.crossRecipe() ? MachineGuiText.Recipes.getLocal(details.running())
-            : MachineGuiText.Threads.getLocal(details.running(), details.threadLimit()));
-        lines.add(MachineGuiText.Parallelism.getLocal(details.usedParallelism(), details.parallelismLimit()));
-        var mode = details.policy() == null ? switch (details.mode()) {
-            case MAIN_THREAD -> MachineGuiText.MainThreadMode;
-            case CONCURRENT -> MachineGuiText.ConcurrentMode;
-            case PLANNED_PARALLEL -> MachineGuiText.PlannedMode;
-        } : switch (details.policy()) {
-            case FULL_ASYNC -> MachineGuiText.FullAsyncPolicy;
-            case ASYNC_SCAN -> MachineGuiText.AsyncScanPolicy;
-            case ASYNC_WORK -> MachineGuiText.AsyncWorkPolicy;
-            case SYNCHRONOUS -> MachineGuiText.SynchronousPolicy;
-        };
-        lines.add(MachineGuiText.Execution.getLocal(mode.getLocal()));
-        return lines;
-    }
-
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
-        if (isPointInRegion(144, 13, 228, 10, mouseX, mouseY)) {
-            drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
-        } else if (isPointInRegion(144, 27, 228, 6 * 13, mouseX, mouseY)) {
-            drawHoveringText(information(), mouseX, mouseY);
-        } else if (isPointInRegion(138, 173, 72, 72, mouseX, mouseY)) {
-            drawHoveringText(List.of(MachineGuiText.Placeholder.getLocal()), mouseX, mouseY);
-        } else if (isPointInRegion(LIST_X, LIST_Y, 89, LIST_HEIGHT, mouseX, mouseY)) {
+        if (isPointInRegion(LIST_X, LIST_Y, 89, LIST_HEIGHT, mouseX, mouseY)) {
             int row = (mouseY - guiTop - LIST_Y) / ROW_HEIGHT;
             if (row < container.snapshot.entries().size()) {
                 var entry = container.snapshot.entries().get(row);
                 var lines = new ObjectArrayList<String>();
-                lines.add(MachineGuiText.reason(entry));
+                String reason = MachineGuiText.reason(entry);
+                if (fontRenderer.getStringWidth(reason) > 81) lines.add(reason);
                 if (!entry.recipe().isEmpty()) lines.add(entry.recipe());
                 if (entry.parallelism() > 0) lines.add(MachineGuiText.RecipeParallelism.getLocal(entry.parallelism()));
-                drawHoveringText(lines, mouseX, mouseY);
+                if (!lines.isEmpty()) drawHoveringText(lines, mouseX, mouseY);
             }
         }
     }

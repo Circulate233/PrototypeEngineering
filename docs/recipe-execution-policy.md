@@ -11,7 +11,7 @@
 | `ASYNC_WORK`（半异步2） | 主线程 | 尽可能在 worker |
 | `SYNCHRONOUS` | 主线程 | 主线程 |
 
-Java 在机器创建声明中调用 `MachineType.Builder.executionPolicy(ControllerExecutionPolicy.ASYNC_SCAN)`；CT 对应 `.executionPolicy("ASYNC_SCAN")`，其余三个枚举名相同。GUI显示实际策略，scheduling组件保存Policy；旧存档只有Mode时按原ExecutionMode恢复，不擅自改变已有机器的执行位置。非空policy由原正式planner承接，`ExecutionMode`仍用于普通任务及旧声明，不新增另一套线程池或机器调度器。
+Java 在机器创建声明中调用 `MachineType.Builder.executionPolicy(ControllerExecutionPolicy.ASYNC_SCAN)`；CT 对应 `.executionPolicy("ASYNC_SCAN")`，其余三个枚举名相同。scheduling组件保存Policy；策略由作者配置，属于内部调度，不在玩家GUI或tooltip中显示。旧存档只有Mode时按原ExecutionMode恢复，不擅自改变已有机器的执行位置。非空policy由原正式planner承接，`ExecutionMode`仍用于普通任务及旧声明，不新增另一套线程池或机器调度器。
 
 异步允许作者把自己的事件放到worker，不能使原生World/TE API自动获得线程安全。已知只能由owner处理的需求通过 `RecipeRequirementSystem.requiresOwnerThread()` 声明；默认false，扩展作者可显式覆盖。声明须稳定并覆盖系统可引入的全部结构child。首次执行时按进程实际冻结需求（包含机器提供者和嵌套child）缓存该事实；同工位宿主存在owner-only需求时，其整批配方结算保留owner，避免跨需求/进程事务被拆开。PN的`NetworkRecipeWorkSystem`明确声明true，许可、身份/来源证明和团队预算账本的owner检查保留；FULL_ASYNC下这类结算的纯prepare和来源动作仍走原workers/lanes。用户任意事件的可异步性不由框架猜测。
 
