@@ -9,10 +9,13 @@ import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSets;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -68,13 +71,17 @@ final class MachineRecipeExecutionFactory implements TaskScheduler.PlannedFactor
             }
             var lifecycle = Objects.requireNonNull(machine.lifecycle());
             var machineMode = machine.executionMode();
+            var policy = machine.executionPolicy();
             if (!unique.add(machine)) {
                 throw new IllegalStateException("Machine registered through multiple scheduled hosts");
             }
             captured.add(new MachineRecipeExecution.Candidate(machine, lifecycle,
                 () -> candidate.current().getAsBoolean() && candidate.task().executionMode() == candidate.mode()
                     && machine(candidate.task()) == machine
-                    && machine.lifecycle() == lifecycle && machine.executionMode() == machineMode));
+                    && machine.lifecycle() == lifecycle && machine.executionMode() == machineMode
+                    && machine.executionPolicy() == policy, policy,
+                policy != null && policy.workAsync()
+                    ? ObjectSets.unmodifiable(new ObjectOpenHashSet<>(candidate.task().affinityKeys())) : Set.of()));
         }
         if (captured.isEmpty()) {
             return null;

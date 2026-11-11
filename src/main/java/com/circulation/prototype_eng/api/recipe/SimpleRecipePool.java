@@ -110,6 +110,11 @@ public final class SimpleRecipePool implements RecipePool {
     }
 
     @Override
+    public RecipeCandidateIndex.Cursor beginMatch(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
+        return inputIndex.beginMatch(inventory, parallelism, groups);
+    }
+
+    @Override
     public boolean hasExistingJeiPage() {
         return existingJeiPageId != null;
     }

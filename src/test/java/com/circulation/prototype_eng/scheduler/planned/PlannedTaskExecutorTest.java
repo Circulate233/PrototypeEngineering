@@ -9,6 +9,7 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor.Job;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor.SourceJob;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor.Stopped;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor.Success;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -56,6 +58,148 @@ class PlannedTaskExecutorTest {
             } catch (InterruptedException failure) {
                 interrupted.countDown();
             }
+        }
+    }
+
+    @Test
+    void synchronousViewRunsBothKindsOnTheCallerAndKeepsOrderedFailuresWithoutSubmitting() {
+        Thread caller = Thread.currentThread();
+        var threads = new ObjectArrayList<Thread>();
+        var published = new ObjectArrayList<Batch<String>>();
+        var failure = new IllegalStateException("inline failure");
+        try (var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
+            var original = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+            var inline = original.synchronous();
+            assertSame(inline, original.synchronous());
+            assertSame(inline, inline.synchronous());
+            workers.shutdown();
+            lane.shutdown();
+            var prepared = inline.runPrepare(List.of(new Job<>(null, () -> {
+                threads.add(Thread.currentThread());
+                assertEquals(1, published.size(), "Original batch must be published before its first callback");
+                assertFalse(published.getFirst().quiescent());
+                return "first";
+            }), new Job<>(null, () -> {
+                threads.add(Thread.currentThread());
+                throw failure;
+            }), new Job<>(null, () -> {
+                threads.add(Thread.currentThread());
+                return "last";
+            })), deadline(), published::add);
+            assertEquals(List.of(new Success<>("first"), new Failure<>(failure), new Success<>("last")), prepared.results());
+            assertTrue(prepared.quiescent());
+            var sourced = inline.runOnSourceLanes(List.of(new SourceJob<>("source:a", new Job<>(null, () -> {
+                threads.add(Thread.currentThread());
+                return "query";
+            })), new SourceJob<>("source:b", new Job<>(null, () -> {
+                threads.add(Thread.currentThread());
+                return "compensate";
+            }))), deadline());
+            assertEquals(List.of(new Success<>("query"), new Success<>("compensate")), sourced.results());
+            assertTrue(sourced.quiescent());
+            assertEquals(List.of(caller, caller, caller, caller, caller), threads);
+        }
+    }
+
+    @Test
+    void synchronousCancellationAndDeadlineRetainStartedResultsWithoutInterruptingTheCaller() {
+        var token = new PlannedCancellationToken();
+        var clock = new Clock(20);
+        try (var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
+            var inline = new PlannedTaskExecutor(workers, new ExecutorService[]{lane}, () -> clock.now).synchronous();
+            var cancelled = inline.runOnSourceLanes(List.of(new SourceJob<>("source", new Job<>(token, () -> {
+                assertTrue(token.cancel(Reason.EXPLICIT_CANCEL));
+                assertFalse(Thread.currentThread().isInterrupted());
+                return "cancelled callback returned";
+            })), new SourceJob<>("source", new Job<>(token, () -> fail("Cancelled successor ran")))), new PlannedDeadline(20, 100));
+            assertEquals(List.of(new Stopped<>(Reason.EXPLICIT_CANCEL, true), new Stopped<>(Reason.EXPLICIT_CANCEL, false)), cancelled.results());
+            assertTrue(cancelled.quiescent());
+            var timedOut = inline.runPrepare(List.of(new Job<>(null, () -> {
+                clock.now = 120;
+                return "late";
+            }), new Job<>(null, () -> fail("Expired successor ran"))), new PlannedDeadline(20, 100));
+            assertEquals(List.of(new Stopped<>(Reason.WORKER_TIMEOUT, true), new Stopped<>(Reason.WORKER_TIMEOUT, false)), timedOut.results());
+            assertTrue(timedOut.quiescent());
+            assertFalse(Thread.currentThread().isInterrupted());
+            clock.now = 1000;
+            var individual = inline.runPrepare(List.of(new Job<>(null, () -> {
+                clock.now = 1005;
+                return "local timeout";
+            }, new PlannedDeadline(1000, 5)), new Job<>(null, () -> "unexpired successor")), new PlannedDeadline(1000, 100));
+            assertEquals(List.of(new Stopped<>(Reason.WORKER_TIMEOUT, true), new Success<>("unexpired successor")), individual.results());
+            assertNull(individual.stopReason());
+            assertTrue(individual.quiescent());
+            assertFalse(Thread.currentThread().isInterrupted());
+        }
+    }
+
+    @Test
+    void synchronousNestedPrepareAndSourceWorkFinishInsideTheOriginalSingleSourceLane() {
+        var threads = new ConcurrentLinkedQueue<Thread>();
+        try (var workers = Executors.newSingleThreadExecutor(); var lane = Executors.newSingleThreadExecutor()) {
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+            var inline = executor.synchronous();
+            var outer = executor.runOnSourceLanes(List.of(new SourceJob<>("source:nested", new Job<>(null, () -> {
+                threads.add(Thread.currentThread());
+                var prepared = inline.runPrepare(List.of(new Job<>(null, () -> {
+                    threads.add(Thread.currentThread());
+                    return "prepared";
+                })), deadline());
+                var source = inline.runOnSourceLanes(List.of(new SourceJob<>("source:nested", new Job<>(null, () -> {
+                    threads.add(Thread.currentThread());
+                    return "committed";
+                }))), deadline());
+                assertTrue(prepared.quiescent());
+                assertTrue(source.quiescent());
+                return source.results().getFirst();
+            }))), deadline());
+            outer.awaitQuiescence();
+            assertEquals(List.of(new Success<>(new Success<>("committed"))), outer.results());
+            assertEquals(3, threads.size());
+            assertEquals(1, Set.copyOf(threads).size());
+            assertFalse(threads.contains(Thread.currentThread()));
+        }
+    }
+
+    @Test
+    void synchronousSourcesKeepIndependentPreparationsParallelInsideOneOccupiedSourceLane() {
+        var entered = new CountDownLatch(2);
+        var threads = new ConcurrentLinkedQueue<Thread>();
+        var sourceThreads = new ConcurrentLinkedQueue<Thread>();
+        try (var workers = Executors.newFixedThreadPool(2); var lane = Executors.newSingleThreadExecutor()) {
+            var executor = new PlannedTaskExecutor(workers, new ExecutorService[]{lane});
+            var mixed = executor.synchronousSources();
+            assertSame(mixed, mixed.synchronousSources());
+            assertSame(executor.synchronous(), mixed.synchronous());
+            assertSame(mixed, executor.synchronous().synchronousSources());
+            var outer = executor.runOnSourceLanes(List.of(new SourceJob<>("same-source", new Job<>(null, () -> {
+                sourceThreads.add(Thread.currentThread());
+                var prepared = mixed.runPrepare(List.of(new Job<>(null, () -> {
+                    threads.add(Thread.currentThread());
+                    entered.countDown();
+                    await(entered);
+                    return "first";
+                }), new Job<>(null, () -> {
+                    threads.add(Thread.currentThread());
+                    entered.countDown();
+                    await(entered);
+                    return "second";
+                })), deadline());
+                prepared.awaitQuiescence();
+                assertEquals(List.of(new Success<>("first"), new Success<>("second")), prepared.results());
+                var committed = mixed.runOnSourceLanes(List.of(new SourceJob<>("same-source", new Job<>(null, () -> {
+                    sourceThreads.add(Thread.currentThread());
+                    return "committed";
+                }))), deadline());
+                assertTrue(committed.quiescent());
+                return committed.results().getFirst();
+            }))), deadline());
+            outer.awaitQuiescence();
+            assertEquals(List.of(new Success<>(new Success<>("committed"))), outer.results());
+            assertEquals(0, entered.getCount());
+            assertEquals(2, Set.copyOf(threads).size());
+            assertEquals(1, Set.copyOf(sourceThreads).size());
+            assertFalse(threads.contains(sourceThreads.element()));
         }
     }
 

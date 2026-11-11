@@ -344,6 +344,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 ## 逻辑线程控制器与整机共享并行
 
+2026-11-11最新线程行为见[配方执行策略](recipe-execution-policy.md)：新控制器默认FULL_ASYNC；四策略独立选择候选发现与机器工作，内部ExecutionMode仍路由原正式planner。多线程完成后的单项重试、跨配方公平轮转、多池实际组合及owner-only需求例外已接入，下面旧阶段关于运行时默认PLANNED_PARALLEL指其调度路由，不表示业务回调始终主线程。
+
 公开 `RecipeController`、`MultithreadController` 与 `CrossRecipeController` 是实际机器运行时基准；通过原 `MachineAssembly.instanceFactory(MultithreadController::new)` / `CrossRecipeController::new` 选择。`MachineWorkSlots.TYPE` 调用 owner 的 `createRecipeHost`，默认 `RecipeScanning.component` 调用 owner 的 `createRecipeScanner`。这两处 factory、控制器类和 protected `defaultExecutionMode()` 均保留继承扩展。普通 `MachineInstance` 默认仍为 CONCURRENT；两种具体控制器默认 PLANNED_PARALLEL，原自动 `MachineScheduling.TYPE` 装配/保存采用实际运行时选择。显式 `MachineType.Builder.executionMode(...)`、恢复的 scheduling component 和外部 override 优先，纯计算与 source work 使用既有 worker/lane/coordinator。
 
 多线程控制器为每个声明的 `WorkSlot` 保留独立 pool selection、group scope、candidate cursor、search seed 与纯 factory/check 游标。无权利的让步轮到后继工位；已经占用的工位和未成型门限继续沿原宿主规则处理。跨配方控制器按目录顺序继续 A、B 等候选，成功后仍完成当前轮；整轮有准入且仍有共享余量时开始下一轮并重新采样 pool selection，同一配方可在其逻辑线程上限内再次准入。整轮无新增可行准入才穷尽；candidates/probes/工作预算在所有工位和轮次间共享，不能每成功一次刷新预算。
@@ -357,6 +359,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 当前共同验证入口：`build/staging/controller-shared-parallel/`、`build/staging/recipe-pool-strategies/` 与 `build/staging/controller-pool-plan/review.md`。最终状态见实施进度；实际游戏 World/网络包未启动验收。
 
 ## 配方池接口与简单配方索引
+
+混合提供者使用[CompositeRecipePool与异步发现](recipe-execution-policy.md#多个提供者的组合配方池)。新增纯库存预算游标`beginMatch`供Default/Simple/组合复用，实际多池Selection已走组合策略入口；异步`CandidatePass`只产生候选，main收据和freshness后才建进程并准入。组合16项、单项重试64项缓存有界；首次冷组合在发现worker编译，主线程只捕获provider引用。
 
 `RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。
 

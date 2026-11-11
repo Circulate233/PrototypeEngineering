@@ -7,6 +7,8 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
@@ -15,10 +17,13 @@ import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -29,6 +34,7 @@ final class MachineRecipeExecution implements PlannedExecution {
     private final Thread owner = Thread.currentThread();
     private final PlannedTaskExecutor tasks;
     private final ObjectArrayList<Entry> entries = new ObjectArrayList<>();
+    private final ObjectArrayList<ObjectArrayList<Entry>> callbackGroups = new ObjectArrayList<>();
     private final PlannedDeadline forwardDeadline;
     private final Runnable refresh;
     private final BooleanSupplier tickCurrent;
@@ -40,6 +46,9 @@ final class MachineRecipeExecution implements PlannedExecution {
     private boolean finished;
     @Nullable
     private Throwable unreported;
+    @Nullable
+    private PlannedTaskExecutor.Batch<Boolean> workerBatch;
+    private final ObjectArrayList<Entry> workerClaims = new ObjectArrayList<>();
 
     MachineRecipeExecution(PlannedTaskExecutor tasks, List<Candidate> candidates, PlannedDeadline forwardDeadline,
                            Runnable refresh, BooleanSupplier tickCurrent) {
@@ -47,8 +56,27 @@ final class MachineRecipeExecution implements PlannedExecution {
         this.forwardDeadline = Objects.requireNonNull(forwardDeadline);
         this.refresh = Objects.requireNonNull(refresh);
         this.tickCurrent = Objects.requireNonNull(tickCurrent);
+        boolean needsGroups = false;
         for (var candidate : candidates) {
             entries.add(new Entry(candidate));
+            needsGroups |= candidate.policy != null && candidate.policy.workAsync();
+        }
+        if (!needsGroups) return;
+        var union = new TaskScheduler.UnionFind(entries.size());
+        var owners = new Object2IntOpenHashMap<>();
+        owners.defaultReturnValue(-1);
+        for (int index = 0; index < entries.size(); index++)
+            for (var key : entries.get(index).candidate.affinities) {
+                int previous = owners.putIfAbsent(Objects.requireNonNull(key), index);
+                if (previous >= 0) union.union(index, previous);
+            }
+        var groups = new Int2ObjectLinkedOpenHashMap<ObjectArrayList<Entry>>();
+        for (int index = 0; index < entries.size(); index++)
+            groups.computeIfAbsent(union.find(index), _ -> new ObjectArrayList<>()).add(entries.get(index));
+        callbackGroups.addAll(groups.values());
+        for (var group : callbackGroups) {
+            String affinity = group.getFirst().affinity;
+            for (var entry : group) entry.affinity = affinity;
         }
     }
 
@@ -70,6 +98,11 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
         executing = true;
         try {
+            if (workerBatch != null || !workerClaims.isEmpty()) {
+                var receiptFailure = reclaimWorkers(workerClaims, null);
+                if (receiptFailure != null) record(receiptFailure);
+                if (!workerClaims.isEmpty()) return false;
+            }
             if (!acquired) {
                 acquired = true;
                 if (forwardAllowed()) {
@@ -83,15 +116,14 @@ final class MachineRecipeExecution implements PlannedExecution {
                     }
                     continue;
                 }
+                if (!settlePolicyWork(cleanupDeadline)) break;
                 if (!settleScans(cleanupDeadline)) break;
                 if (!forwardAllowed()) {
                     retireCursors();
                     break;
                 }
                 try {
-                    for (var entry : entries) {
-                        advanceCursor(entry);
-                    }
+                    advanceCursors();
                     boolean scans = false;
                     for (var entry : entries) {
                         if (entry.handle != null && !entry.handle.finished() && entry.handle.deferredRecipeScan() != null) {
@@ -109,11 +141,18 @@ final class MachineRecipeExecution implements PlannedExecution {
                         if (handle != null && !handle.finished()) {
                             var deferred = handle.deferredRecipeWork();
                             if (deferred != null) {
-                                hosts.add(deferred);
+                                if (entry.candidate.policy == null) hosts.add(deferred);
+                                else if (entry.policyWork == null) entry.policyWork = new PolicyWork(entry, deferred);
                             }
                         }
                     }
                     if (hosts.isEmpty()) {
+                        boolean policyPending = false;
+                        for (var entry : entries) if (entry.policyWork != null) {
+                            policyPending = true;
+                            break;
+                        }
+                        if (policyPending) continue;
                         releaseMachines();
                         break;
                     }
@@ -196,37 +235,224 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
     }
 
+    private void advanceCursors() {
+        var delegated = workerClaims;
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>();
+        Throwable failure = null;
+        try {
+            for (var entry : entries) {
+                var policy = entry.candidate.policy;
+                if (policy == null || !policy.workAsync()) {
+                    advanceCursor(entry);
+                    continue;
+                }
+                var handle = entry.handle;
+                if (handle == null || entry.dispatch == null || entry.cursorDone || handle.finished()
+                    || handle.deferredRecipeWork() != null || handle.deferredRecipeScan() != null) continue;
+                refresh.run();
+                if (!forwardAllowed()) break;
+                // Register before either claim: a later capture/refresh failure must reclaim both.
+                delegated.add(entry);
+                var dispatchAction = entry.dispatch.delegateWorker(() -> advanceWorkerCursor(entry));
+                entry.dispatchWorker = dispatchAction;
+                entry.worker = handle.delegateWorker(dispatchAction);
+            }
+            for (var group : callbackGroups) {
+                boolean ready = false;
+                for (var entry : group) if (entry.worker != null) {
+                    ready = true;
+                    break;
+                }
+                if (ready) jobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> {
+                    for (var entry : group) if (entry.worker != null && workerAllowed(entry)) entry.worker.run();
+                    return true;
+                }));
+            }
+            if (!jobs.isEmpty()) tasks.runPrepare(jobs, forwardDeadline, batch -> workerBatch = batch);
+        } catch (RuntimeException | Error observed) {
+            failure = observed;
+        } finally {
+            failure = reclaimWorkers(delegated, failure);
+        }
+        if (failure != null) record(failure);
+    }
+
+    private static Throwable appendFailure(@Nullable Throwable first, Throwable next) {
+        if (first == null) return next;
+        if (first == next) return first;
+        if (next instanceof VirtualMachineError && !(first instanceof VirtualMachineError)) {
+            next.addSuppressed(first);
+            return next;
+        }
+        first.addSuppressed(next);
+        return first;
+    }
+
+    @Nullable
+    private Throwable reclaimWorkers(List<Entry> delegated, @Nullable Throwable failure) {
+        var batch = workerBatch;
+        if (batch != null) {
+            try {
+                batch.awaitQuiescence();
+            } catch (RuntimeException | Error observed) {
+                failure = appendFailure(failure, observed);
+            }
+            if (!batch.quiescent()) return appendFailure(failure, new IllegalStateException("Machine callbacks have not exited"));
+        }
+        for (int index = 0; index < delegated.size(); index++) {
+            var entry = delegated.get(index);
+            try {
+                if (entry.worker != null) Objects.requireNonNull(entry.handle).finishWorker(entry.worker);
+                entry.worker = null;
+            } catch (RuntimeException | Error observed) {
+                failure = appendFailure(failure, observed);
+            }
+            try {
+                if (entry.dispatchWorker != null) entry.dispatchWorker.reclaim();
+                entry.dispatchWorker = null;
+            } catch (RuntimeException | Error observed) {
+                failure = appendFailure(failure, observed);
+            }
+        }
+        if (batch != null) {
+            for (int index = 0; index < batch.results().size(); index++) {
+                try {
+                    var outcome = batch.results().get(index);
+                    if (outcome instanceof PlannedTaskExecutor.Failure<Boolean>(var observed)) failure = appendFailure(failure, observed);
+                    else if (outcome instanceof PlannedTaskExecutor.Stopped<Boolean>(var reason, _)) cancellation.cancel(reason);
+                } catch (RuntimeException | Error observed) {
+                    failure = appendFailure(failure, observed);
+                }
+            }
+        }
+        workerBatch = null;
+        boolean reclaimed = true;
+        for (var entry : delegated) reclaimed &= entry.worker == null && entry.dispatchWorker == null;
+        if (reclaimed) delegated.clear();
+        return failure;
+    }
+
+    private boolean workerAllowed(Entry entry) {
+        return !cancellation.cancelled() && !forwardDeadline.expired(System.nanoTime())
+            && entry.candidate.lifecycle.schedulingAllowed();
+    }
+
+    private void advanceWorkerCursor(Entry entry) {
+        var dispatch = Objects.requireNonNull(entry.dispatch);
+        var handle = Objects.requireNonNull(entry.handle);
+        if (!entry.begun) {
+            if (!workerAllowed(entry)) return;
+            entry.begun = true;
+            dispatch.begin();
+        }
+        while (workerAllowed(entry)) {
+            entry.advanced = dispatch.advance();
+            if (handle.deferredRecipeScan() != null || handle.deferredRecipeWork() != null) return;
+            if (!entry.advanced) {
+                entry.cursorDone = true;
+                dispatch.finish();
+                return;
+            }
+        }
+    }
+
+    private boolean settlePolicyWork(PlannedDeadline cleanupDeadline) {
+        var delegated = workerClaims;
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>();
+        Throwable failure = null;
+        try {
+            for (var entry : entries) {
+                var work = entry.policyWork;
+                if (work == null) continue;
+                var handle = Objects.requireNonNull(entry.handle);
+                if (work.asynchronous) {
+                    delegated.add(entry);
+                    var action = handle.delegateWorker(() -> work.advance(cleanupDeadline));
+                    entry.worker = action;
+                    jobs.add(new PlannedTaskExecutor.SourceJob<>(entry.affinity, new PlannedTaskExecutor.Job<>(null, () -> {
+                        action.run();
+                        return work.complete;
+                    })));
+                } else handle.cleanup(() -> work.advance(cleanupDeadline));
+            }
+            if (!jobs.isEmpty()) tasks.runOnSourceLanes(jobs, cleanupDeadline, batch -> workerBatch = batch);
+        } catch (RuntimeException | Error observed) {
+            failure = observed;
+        } finally {
+            failure = reclaimWorkers(delegated, failure);
+        }
+        if (failure != null) record(failure);
+        boolean complete = true;
+        for (var entry : entries) {
+            var work = entry.policyWork;
+            if (work == null) continue;
+            var handle = Objects.requireNonNull(entry.handle);
+            if (work.complete) {
+                if (work.failure != null) handle.recordFailure(work.failure);
+                if (work.stopReason != null) cancellation.cancel(work.stopReason);
+                handle.finishDeferredRecipeWork(work.host);
+                entry.policyWork = null;
+            } else complete = false;
+        }
+        return complete;
+    }
+
     /**
      * No successor normal/work-slot callback runs while any exact scan handle still owns work.
      */
     private boolean settleScans(PlannedDeadline cleanupDeadline) {
-        boolean settled = true;
-        for (var entry : entries) {
-            var handle = entry.handle;
-            if (handle == null || handle.finished()) continue;
-            var request = handle.deferredRecipeScan();
-            if (request == null) continue;
-            if (entry.scan == null) {
-                if (!forwardAllowed()) {
-                    handle.finishDeferredRecipeScan(request);
-                    continue;
+        var discoveries = new ObjectArrayList<ScanWork>();
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>();
+        while (true) {
+            boolean settled = true;
+            for (var entry : entries) {
+                var handle = entry.handle;
+                if (handle == null || handle.finished()) continue;
+                var request = handle.deferredRecipeScan();
+                if (request == null) continue;
+                if (entry.scan == null) {
+                    if (!forwardAllowed()) {
+                        handle.finishDeferredRecipeScan(request);
+                        continue;
+                    }
+                    var policy = entry.candidate.policy;
+                    if (policy != null && !policy.scanAsync()) {
+                        handle.run(() -> request.scanner().scan(request.limits()));
+                        handle.finishDeferredRecipeScan(request);
+                        continue;
+                    }
+                    entry.scan = new ScanWork(request);
+                    // Capture before any callback can throw. The consumed onTick is never replayed.
+                    var originalScan = Objects.requireNonNull(entry.scan);
+                    handle.run(() -> originalScan.attempt = request.scanner().beginScan(request.limits(), policy != null && policy.scanAsync()));
+                    if (entry.scan.attempt == null) {
+                        handle.finishDeferredRecipeScan(request);
+                        entry.scan = null;
+                        continue;
+                    }
                 }
-                entry.scan = new ScanWork(request);
-                // Capture before any callback can throw. The consumed onTick is never replayed.
-                var originalScan = Objects.requireNonNull(entry.scan);
-                handle.run(() -> originalScan.attempt = request.scanner().beginScan(request.limits()));
-                if (entry.scan.attempt == null) {
-                    handle.finishDeferredRecipeScan(request);
-                    entry.scan = null;
-                    continue;
-                }
+                if (!advanceScan(entry, cleanupDeadline, discoveries, jobs)) settled = false;
             }
-            if (!advanceScan(entry, cleanupDeadline)) settled = false;
+            if (jobs.isEmpty()) return settled;
+            try {
+                // Capture every owner's discovery first; waiting per machine serializes idle scans.
+                tasks.runPrepare(jobs, forwardDeadline, barrier -> {
+                    for (int index = 0; index < discoveries.size(); index++) {
+                        var scan = discoveries.get(index);
+                        scan.barrier = barrier;
+                        scan.receiptCursor = index;
+                    }
+                });
+            } catch (RuntimeException | Error failure) {
+                record(failure);
+            }
+            discoveries.clear();
+            jobs.clear();
         }
-        return settled;
     }
 
-    private boolean advanceScan(Entry entry, PlannedDeadline cleanupDeadline) {
+    private boolean advanceScan(Entry entry, PlannedDeadline cleanupDeadline, ObjectArrayList<ScanWork> discoveries,
+                                ObjectArrayList<PlannedTaskExecutor.Job<Boolean>> discoveryJobs) {
         var scan = Objects.requireNonNull(entry.scan);
         var handle = Objects.requireNonNull(entry.handle);
         var attempt = Objects.requireNonNull(scan.attempt);
@@ -247,7 +473,9 @@ final class MachineRecipeExecution implements PlannedExecution {
                         } else if (outcome instanceof PlannedTaskExecutor.Stopped<Boolean> stopped) {
                             cancellation.cancel(stopped.reason());
                         } else if (outcome instanceof PlannedTaskExecutor.Success<Boolean>(var completed)) {
-                            if (scan.computation != null) {
+                            if (scan.discovery != null) {
+                                attempt.finishDiscovery(scan.discovery, completed);
+                            } else if (scan.computation != null) {
                                 if (completed) attempt.finishComputation(scan.computation);
                             } else {
                                 var source = scan.sources.get(index);
@@ -261,17 +489,19 @@ final class MachineRecipeExecution implements PlannedExecution {
                         }
                     } finally {
                         scan.work.reclaim(scan.slices.removeLast());
-                        if (scan.computation == null) scan.sources.removeLast();
-                        scan.receiptCursor--;
+                        if (scan.computation == null && scan.discovery == null) scan.sources.removeLast();
+                        scan.receiptCursor = scan.discovery != null ? -1 : scan.receiptCursor - 1;
                         // This quiescent receipt is consumed even when record immediately throws fatal.
                         // Clearing the last barrier prevents -1 from selecting the same receipts again.
                         if (scan.receiptCursor < 0) {
                             scan.computation = null;
+                            scan.discovery = null;
                             scan.barrier = null;
                         }
                     }
                 }
                 scan.computation = null;
+                scan.discovery = null;
                 scan.barrier = null;
                 if (scan.sourceUnknown) {
                     scan.sourceUnknown = false;
@@ -297,7 +527,16 @@ final class MachineRecipeExecution implements PlannedExecution {
                 entry.scan = null;
                 return true;
             }
-            if (!attempt.hasObligations() && (scan.work.remaining() != 0 || !forwardAllowed())) {
+            var discovery = attempt.discoveryWork();
+            if (discovery != null && forwardAllowed() && scan.work.remaining() > 1) {
+                var slice = scan.work.allocate(scan.work.remaining() - 1);
+                scan.slices.add(slice);
+                scan.discovery = discovery;
+                discoveries.add(scan);
+                discoveryJobs.add(new PlannedTaskExecutor.Job<>(cancellation, () -> discovery.advance(slice)));
+                return false;
+            }
+            if (discovery == null && !attempt.hasObligations() && (scan.work.remaining() != 0 || !forwardAllowed())) {
                 attempt.releasePureYield();
                 handle.finishDeferredRecipeScan(scan.request);
                 entry.scan = null;
@@ -467,12 +706,30 @@ final class MachineRecipeExecution implements PlannedExecution {
     @Override
     public void awaitExit() {
         requireOwner();
-        if (coordinator != null) {
-            coordinator.awaitExit();
+        Throwable failure = null;
+        try {
+            if (workerBatch != null) workerBatch.awaitQuiescence();
+        } catch (RuntimeException | Error observed) {
+            failure = appendFailure(failure, observed);
+        }
+        try {
+            if (coordinator != null) coordinator.awaitExit();
+        } catch (RuntimeException | Error observed) {
+            failure = appendFailure(failure, observed);
         }
         for (var entry : entries) {
-            if (entry.scan != null && entry.scan.barrier != null) entry.scan.barrier.awaitQuiescence();
+            try {
+                if (entry.scan != null && entry.scan.barrier != null) entry.scan.barrier.awaitQuiescence();
+            } catch (RuntimeException | Error observed) {
+                failure = appendFailure(failure, observed);
+            }
+            try {
+                if (entry.policyWork != null && entry.policyWork.original != null) entry.policyWork.original.awaitWorkerExit();
+            } catch (RuntimeException | Error observed) {
+                failure = appendFailure(failure, observed);
+            }
         }
+        rethrow(failure);
     }
 
     @Override
@@ -493,11 +750,16 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
     }
 
-    record Candidate(MachineInstance machine, MachineLifecycle lifecycle, BooleanSupplier current) {
+    record Candidate(MachineInstance machine, MachineLifecycle lifecycle, BooleanSupplier current,
+                     @Nullable ControllerExecutionPolicy policy, Set<?> affinities) {
+        Candidate(MachineInstance machine, MachineLifecycle lifecycle, BooleanSupplier current) {
+            this(machine, lifecycle, current, null, Set.of());
+        }
     }
 
     private static final class Entry {
         private final Candidate candidate;
+        private String affinity;
         @Nullable
         private MachineLifecycle.ScheduledExecution handle;
         @Nullable
@@ -507,9 +769,17 @@ final class MachineRecipeExecution implements PlannedExecution {
         private boolean cursorDone;
         @Nullable
         private ScanWork scan;
+        @Nullable
+        private PolicyWork policyWork;
+        @Nullable
+        private MachineLifecycle.ScheduledExecution.WorkerAction worker;
+        @Nullable
+        private ComponentMap.TickDispatch<MachineInstance>.WorkerDispatch dispatchWorker;
 
         private Entry(Candidate candidate) {
             this.candidate = candidate;
+            affinity = candidate.policy != null && candidate.policy.workAsync()
+                ? "pe/controller/" + Integer.toUnsignedString(System.identityHashCode(candidate.machine)) : "";
         }
     }
 
@@ -524,12 +794,60 @@ final class MachineRecipeExecution implements PlannedExecution {
         private PlannedTaskExecutor.Batch<Boolean> barrier;
         @Nullable
         private RecipePureComputation computation;
+        @Nullable
+        private RecipeCatalog.CandidatePass discovery;
         private boolean resolving;
         private int receiptCursor = -1;
         private boolean sourceUnknown;
 
         private ScanWork(MachineLifecycle.ScheduledExecution.DeferredScan request) {
             this.request = request;
+        }
+    }
+
+    private final class PolicyWork {
+        private final Entry entry;
+        private final MachineWorkSlots host;
+        private final boolean asynchronous;
+        private final PlannedTaskExecutor runner;
+        @Nullable
+        private PlannedRecipeCoordinator original;
+        private boolean complete;
+        @Nullable
+        private Throwable failure;
+        @Nullable
+        private Reason stopReason;
+
+        private PolicyWork(Entry entry, MachineWorkSlots host) {
+            this.entry = entry;
+            this.host = host;
+            boolean workAsync = Objects.requireNonNull(entry.candidate.policy).workAsync();
+            boolean ownerRequired = false;
+            if (workAsync) {
+                for (var slot : host.slots()) {
+                    var process = slot.process();
+                    if (process != null && process.requiresOwnerThread()) {
+                        ownerRequired = true;
+                        break;
+                    }
+                }
+            }
+            asynchronous = workAsync && !ownerRequired;
+            runner = !workAsync ? tasks.synchronous() : ownerRequired ? tasks : tasks.synchronousSources();
+        }
+
+        private void advance(PlannedDeadline cleanupDeadline) {
+            if (original == null) original = new PlannedRecipeCoordinator(runner, List.of(host), forwardDeadline, cancellation,
+                () -> !cancellation.cancelled() && entry.candidate.lifecycle.schedulingAllowed());
+            try {
+                do {
+                    original.advance(cleanupDeadline);
+                } while (!original.finished() && original.workYielded() && workerAllowed(entry));
+            } finally {
+                complete = original.finished();
+                failure = original.failure();
+                stopReason = original.stopReason();
+            }
         }
     }
 }

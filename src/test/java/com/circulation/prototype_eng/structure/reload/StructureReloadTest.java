@@ -17,6 +17,7 @@ import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.structure.ReloadableStructureHost;
 import com.circulation.prototype_eng.api.structure.StructureBounds;
 import com.circulation.prototype_eng.api.structure.StructureCatalog;
+import com.circulation.prototype_eng.api.structure.StructureCheckPolicy;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
 import com.circulation.prototype_eng.api.structure.StructureDefinition;
 import com.circulation.prototype_eng.api.structure.StructureHatchBinding;
@@ -35,6 +36,7 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -105,6 +107,9 @@ class StructureReloadTest {
     @Test
     void sameOrientationReloadRebuildsExternalHatchesAndRejectsBothOldSuccessAndFailure() {
         try (var fixture = new Fixture()) {
+            // This tests reload identity and bindings; host scheduling pauses must not exhaust a 5 ms slice.
+            fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5),
+                StructureCheckPolicy.FinalMode.COOPERATIVE));
             fixture.updates.tick(0);
             fixture.scheduler.tick();
             assertEquals(List.of(fixture.host.first), MachineHatches.get(fixture.machine).resources());

@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.MachineRecipeRequire
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 
 import java.util.function.LongSupplier;
 
@@ -20,6 +21,11 @@ public abstract class RecipeController extends MachineInstance {
     @Override
     protected ExecutionMode defaultExecutionMode() {
         return ExecutionMode.PLANNED_PARALLEL;
+    }
+
+    @Override
+    protected ControllerExecutionPolicy defaultExecutionPolicy() {
+        return ControllerExecutionPolicy.FULL_ASYNC;
     }
 
     @Override

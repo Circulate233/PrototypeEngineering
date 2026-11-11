@@ -10,7 +10,7 @@ import com.circulation.prototype_eng.container.MachineGuiSnapshot;
  */
 public enum MachineGuiText implements LocalizationEnum {
     Idle, Running, Error, ErrorWithMessage, Status, MainPage, Placeholder, Structure, Formed, NotFormed, Inactive, CheckingStructure, Threads, Recipes, Parallelism, Execution,
-    MainThreadMode, ConcurrentMode, PlannedMode, ThreadRow, RecipeParallelism;
+    MainThreadMode, ConcurrentMode, PlannedMode, FullAsyncPolicy, AsyncScanPolicy, AsyncWorkPolicy, SynchronousPolicy, ThreadRow, RecipeParallelism;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".machine." + name();
 

@@ -17,6 +17,8 @@ import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionUpdates;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
+import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayPipeline;
@@ -237,6 +239,65 @@ class ZenRecipeBridgeTest {
     }
 
     @Test
+    void realZenCompilerCombinesMixedProvidersWithoutReplacingSharedRecipeAndCodecHandles() throws Exception {
+        Harness.combined = null;
+        var compiled = compile("""
+            import mods.prototype_eng.recipe.Requirement;
+            import mods.prototype_eng.recipe.Recipe;
+            import mods.prototype_eng.recipe.Pool;
+            import tests.prototype_eng.Harness;
+            var first = Recipe.create("combined_bridge:first", "v1", 2,
+                [Requirement.resources("combined_bridge:io", [Harness.resource()], [Harness.resource()])]);
+            var second = Recipe.create("combined_bridge:second", "v2", 3,
+                [Requirement.energy("combined_bridge:energy", 0, 0, 0, 0, false)]);
+            var simple = Pool.simple("combined_bridge:simple", "combined.simple", [first]);
+            var general = Pool.create("combined_bridge:general", "combined.general", [first, second]);
+            var combined = Pool.combine("combined_bridge:combined", "combined.title", [simple, general, simple]);
+            Harness.captureCombined(combined, first, second);
+            """, "combined_pools.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        var combined = Objects.requireNonNull(Harness.combined);
+        var first = Objects.requireNonNull(Harness.combinedFirst);
+        var second = Objects.requireNonNull(Harness.combinedSecond);
+        var providers = Objects.requireNonNull(assertInstanceOf(CompositeRecipePool.class, combined.value())).pools();
+        assertEquals(2, providers.size());
+        assertInstanceOf(SimpleRecipePool.class, providers.getFirst());
+        assertInstanceOf(DefaultRecipePool.class, providers.getLast());
+        assertEquals(List.of(first, second), combined.recipes());
+        var registry = new RecipeRegistry();
+        registry.register(combined.value());
+        var codecs = new RecipeProcessCodecs(combined.recipes().stream().map(ZenRecipe::codec).toList());
+        registry.bindProcessCodecs(codecs);
+        for (var recipe : combined.recipes()) registry.declareRevision(recipe.recipe(), recipe.revision());
+        registry.freeze();
+        assertEquals(List.of(first.recipe(), second.recipe()), registry.catalog().recipes());
+        assertSame(first.codec(), codecs.snapshot().require(first.recipe()));
+        assertSame(second.codec(), codecs.snapshot().require(second.recipe()));
+        assertEquals("v2", registry.snapshot().revision(second.recipe()));
+    }
+
+    @Test
+    void combiningSharedRecipesRejectsConflictingCodecOrRevisionBeforeRegistration() {
+        var first = ZenRecipe.create("combined_conflict:recipe", "v1", 2, new ZenRequirement[0]);
+        var original = ZenRecipePool.create("combined_conflict:first", "pool.first", new ZenRecipe[]{first});
+        var anotherVersion = ZenRecipePool.create("combined_conflict:second", "pool.second", new ZenRecipe[]{new ZenRecipe(first.recipe(), "v2")});
+        assertThrows(IllegalArgumentException.class, () -> ZenRecipePool.combine("combined_conflict:combined", "pool.combined",
+            new ZenRecipePool[]{original, anotherVersion}));
+        var anotherCodec = ZenRecipePool.create("combined_conflict:second", "pool.second", new ZenRecipe[]{new ZenRecipe(first.recipe(), "v1")});
+        assertThrows(IllegalArgumentException.class, () -> ZenRecipePool.combine("combined_conflict:combined", "pool.combined",
+            new ZenRecipePool[]{original, anotherCodec}));
+        var sameCodec = ZenRecipePool.create("combined_conflict:second", "pool.second", new ZenRecipe[]{new ZenRecipe(first.codec())});
+        var combined = ZenRecipePool.combine("combined_conflict:combined", "pool.combined", new ZenRecipePool[]{original, sameCodec});
+        assertEquals(1, combined.recipes().size());
+        assertSame(first, combined.recipes().getFirst());
+        var anotherDefinition = ZenRecipePool.create("combined_conflict:second", "pool.second", new ZenRecipe[]{
+            ZenRecipe.create("combined_conflict:recipe", "v1", 3, new ZenRequirement[0])});
+        assertThrows(IllegalArgumentException.class, () -> ZenRecipePool.combine("combined_conflict:combined", "pool.combined",
+            new ZenRecipePool[]{original, anotherDefinition}));
+    }
+
+    @Test
     void realZenScriptDataOperatorsAndIDataConversionsPreserveIndependentSnapshots() throws Exception {
         Harness.data = null;
         Harness.dataSnapshot = null;
@@ -434,6 +495,9 @@ class ZenRecipeBridgeTest {
         private static int scriptDefault;
         private static ZenRecipeUpdates publisher;
         private static ZenRecipeUpdateTask task;
+        private static ZenRecipePool combined;
+        private static ZenRecipe combinedFirst;
+        private static ZenRecipe combinedSecond;
         private static final ObjectArrayList<ZenRecipeUpdateResult> results = new ObjectArrayList<>();
 
         @ZenMethod
@@ -468,6 +532,13 @@ class ZenRecipeBridgeTest {
         @ZenMethod
         public static ZenResource resource() {
             return new ZenResource(KEY, 1);
+        }
+
+        @ZenMethod
+        public static void captureCombined(ZenRecipePool pool, ZenRecipe first, ZenRecipe second) {
+            combined = pool;
+            combinedFirst = first;
+            combinedSecond = second;
         }
 
         @ZenMethod

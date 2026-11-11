@@ -34,6 +34,16 @@ public interface RecipePool {
         return ResourceRecipeIndex.forFixedInputs(recipes(), _ -> true).match(inventory, parallelism);
     }
 
+    /**
+     * Pure, cooperative matching of an immutable inventory snapshot. No machine/world references
+     * may be read, no START callbacks run, and no resources are acquired. The caller owns snapshot
+     * freshness and final admission. Legacy match overrides execute once as an opaque callback;
+     * built-in pools meter their postings and returned members separately.
+     */
+    default RecipeCandidateIndex.Cursor beginMatch(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
+        return new RecipeInventoryLookup(this, inventory, parallelism, groups);
+    }
+
     /** Whether this pool delegates JEI recipes to a category supplied by another registration. */
     default boolean hasExistingJeiPage() {
         return false;

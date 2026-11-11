@@ -4,9 +4,11 @@ import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.MultithreadController;
 import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
 import com.circulation.prototype_eng.api.machine.attribute.NumericAttributeModifier;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.machine.component.MachineScheduling;
 import com.circulation.prototype_eng.api.machine.component.MachineSystem;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
@@ -24,6 +26,8 @@ import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.localization.RecipeText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -127,6 +131,44 @@ class MachineAssemblyTest {
     private static void assertStopped(MachineInstance machine, MachineAssembly assembly) {
         assertThrows(IllegalStateException.class, machine::onSchedule);
         assertThrows(IllegalStateException.class, () -> assembly.encode(machine));
+    }
+
+    @Test
+    void explicitControllerPolicySurvivesPersistenceAndSavedSelectionOverridesTheDeclaration() {
+        for (var policy : ControllerExecutionPolicy.values()) {
+            var type = declaration().executionMode(ExecutionMode.MAIN_THREAD).executionPolicy(policy).build();
+            var assembly = MachineAssembly.builder(type, "v1").instanceFactory(MultithreadController::new).build();
+            var owner = assembly.create(new Host(), new MachineLifecycleRegistry());
+            assertEquals(ExecutionMode.PLANNED_PARALLEL, owner.executionMode());
+            assertEquals(policy, owner.executionPolicy());
+            var saved = assembly.encode(owner);
+            assertEquals(policy.name(), entry(saved, MachineScheduling.TYPE).getCompoundTag("Data").getString("Policy"));
+            var restored = assembly.restore(new Host(), saved, new MachineLifecycleRegistry());
+            assertEquals(policy, restored.executionPolicy());
+            assertEquals(saved, assembly.encode(restored));
+            restored.components().put(MachineScheduling.TYPE, new MachineScheduling(ExecutionMode.CONCURRENT, ControllerExecutionPolicy.SYNCHRONOUS));
+            var changed = assembly.restore(new Host(), assembly.encode(restored), new MachineLifecycleRegistry());
+            assertEquals(ControllerExecutionPolicy.SYNCHRONOUS, changed.executionPolicy());
+            assertEquals(ExecutionMode.PLANNED_PARALLEL, changed.executionMode());
+        }
+    }
+
+    @Test
+    void legacySchedulingNbtKeepsItsOriginalModeAndRejectsMalformedPolicy() {
+        var type = declaration().executionPolicy(ControllerExecutionPolicy.FULL_ASYNC).build();
+        var assembly = MachineAssembly.builder(type, "v1").instanceFactory(MultithreadController::new).build();
+        var saved = assembly.encode(assembly.create(new Host(), new MachineLifecycleRegistry()));
+        var scheduling = entry(saved, MachineScheduling.TYPE).getCompoundTag("Data");
+        scheduling.removeTag("Policy");
+        scheduling.setString("Mode", ExecutionMode.MAIN_THREAD.name());
+        var legacy = assembly.restore(new Host(), saved, new MachineLifecycleRegistry());
+        assertNull(legacy.executionPolicy());
+        assertEquals(ExecutionMode.MAIN_THREAD, legacy.executionMode());
+        assertFalse(entry(assembly.encode(legacy), MachineScheduling.TYPE).getCompoundTag("Data").hasKey("Policy"));
+        scheduling.setInteger("Policy", 1);
+        assertThrows(IllegalArgumentException.class, () -> assembly.restore(new Host(), saved, new MachineLifecycleRegistry()));
+        scheduling.setString("Policy", "UNKNOWN");
+        assertThrows(IllegalArgumentException.class, () -> assembly.restore(new Host(), saved, new MachineLifecycleRegistry()));
     }
 
     @Test

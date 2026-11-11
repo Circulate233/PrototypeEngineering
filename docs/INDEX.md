@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-11 异步配方策略/组合池：按用户默认FULL_ASYNC，另有ASYNC_SCAN/ASYNC_WORK/SYNCHRONOUS，Java/CT/保存/GUI接通；候选worker批量并发＋main复核准入，stock空库存不建Process。多线程优先上次真实完成ID，失败同预算回发现，单项PP上界避免百万线性probe；跨配方下一pass无复制轮转。实际多池Selection组合缓存16/worker冷编译，保child策略/全局priority/宽松bound/freshness，纯库存beginMatch与CT Pool.combine保准确codec。work fixedlane/原coordinator，shared affinity串行、独立组重叠，明确owner-only PN账本保main/纯kernel并发；独占claim真实退出归还及中断/异常回归。完整Spotless/build1957tests/270suites全零，459枚举key无缺，45Java＋两语言本机MCP全级零、MCP build通过。入口[配方执行策略](recipe-execution-policy.md)，证据async-recipe-policy/及各专项。原背景/暂存保留，未启动游戏/推送，总体Goal暂停。
+
 - 2026-11-11 无用lang清理：7枚举删除92个无调用常量，中英各删104键（含4旧无等级仓室＋8旧预览键）。正式各438、示例各94；455枚举键无缺，77真实生成键和38个JSON/脚本间接枚举逐项保留，四语言无重复/不对称。完整Spotless/build1928tests/264suites全零，7Java＋两语言本机MCP全级零及MCP build成功。入口[本地化审查](localization-collections-audit.md)，证据unused-lang/；未开子代理/启动游戏/推送，原背景/暂存保留，总体Goal暂停。
 
 - 2026-11-11 默认控制器GUI/库存匹配收尾：参考MMCE补真实成型/本地化结构名、状态、线程或配方数、long并行占用/上限和执行模式；空扩展隐藏、tab提示本地化。多线程保留声明线程，跨配方仅显示实际进程，独立13像素滚动条槽道不盖列表。RecipePool新增库存首项/库存＋并行候选组，两默认池共享缓存索引；单输入key定向捕获、stock线性路径数量上界及小预算完成proof续办，FE/权限/START仍权威。21专项与完整1928tests/264suites全零，16Java＋两语言本机MCP全级零及MCP build成功，547枚举key无缺/正式两语言无重复。入口[机器GUI](machine-gui.md)、[配方池](recipes.md#配方池接口与简单配方索引)，证据controller-gui-pool-matching/。未开子代理/启动游戏/推送，背景/原暂存保留，总体Goal暂停。
@@ -55,6 +57,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 用户重启复验本轮配方线程策略：新控制器默认FULL_ASYNC，事件需主线程的声明选择ASYNC_SCAN或SYNCHRONOUS；GUI四策略中文、旧Mode存档恢复、混合池来源/JEI与主线程准入、运行完成后的每工位优先重试及跨配方轮转均可观察。PN permit/预算保持owner，外部requiresOwnerThread声明要覆盖结构children。单元/Compiler/真实Executor证据不代替World/自定义事件实际线程安全，具体入口[策略说明](recipe-execution-policy.md)。
 
 - 用户完整重启复验默认GUI：未成型/成型/检查中/阻塞状态及结构中文，空扩展不出现；多线程保留闲置线程，跨配方每行准确对应一个活进程，结束/取消后列表和分页收缩，跨页汇总及有效并行一致。超过七行时滑块在独立槽道，拖动/滚轮不盖内容；玩家背包操作与主tab中文正常。库存API与stock单配方百万父并行→库存可用2的一次probe已有行为回归，实际World/FE/保护回调和画面仍待用户，不以编译替代。
 

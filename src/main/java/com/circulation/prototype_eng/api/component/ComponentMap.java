@@ -426,10 +426,60 @@ public final class ComponentMap<E> {
         private Phase phase = Phase.PREPARED;
         private int cursor;
         private boolean executing;
+        @Nullable
+        private WorkerDispatch delegated;
 
         private TickDispatch(E owner, List<TickEntry<E, ?>> entries) {
             this.owner = owner;
             this.entries = entries;
+        }
+
+        /** Transfers a suspended dispatch chunk; reclaim only after its worker has actually exited. */
+        @SuppressWarnings("ReturnOfInnerClass") // The one-use claim retains this exact captured dispatch.
+        public WorkerDispatch delegateWorker(Runnable action) {
+            requireBoundary();
+            if (Thread.currentThread() != creator || delegated != null)
+                throw new IllegalStateException("Only the undispatched creator may delegate component work");
+            delegated = new WorkerDispatch(Objects.requireNonNull(action));
+            return delegated;
+        }
+
+        public final class WorkerDispatch implements Runnable {
+            private final Runnable action;
+            @Nullable
+            private Thread worker;
+            private boolean started;
+            private boolean complete;
+
+            private WorkerDispatch(Runnable action) {
+                this.action = action;
+            }
+
+            @Override
+            public void run() {
+                synchronized (this) {
+                    if (started || complete || delegated != this) throw new IllegalStateException("Dispatch worker claim was consumed");
+                    started = true;
+                    worker = Thread.currentThread();
+                }
+                try {
+                    action.run();
+                } finally {
+                    synchronized (this) {
+                        worker = null;
+                        complete = true;
+                    }
+                }
+            }
+
+            public void reclaim() {
+                if (Thread.currentThread() != creator) throw new IllegalStateException("Only the dispatch creator may reclaim it");
+                synchronized (this) {
+                    if (delegated != this || started && !complete) throw new IllegalStateException("Dispatch worker is still active or foreign");
+                    complete = true;
+                    delegated = null;
+                }
+            }
         }
 
         /**
@@ -511,7 +561,7 @@ public final class ComponentMap<E> {
         }
 
         private void requireBoundary() {
-            if (Thread.currentThread() != creator || executing) {
+            if (executing || (delegated == null ? Thread.currentThread() != creator : Thread.currentThread() != delegated.worker)) {
                 throw new IllegalStateException("Component dispatch requires its owner outside callbacks");
             }
         }

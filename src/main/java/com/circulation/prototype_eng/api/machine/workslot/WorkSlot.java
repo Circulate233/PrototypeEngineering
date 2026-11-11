@@ -15,6 +15,8 @@ public final class WorkSlot {
     private final WorkSlotDefinition definition;
     @Nullable
     private RecipeProcess process;
+    @Nullable
+    private ResourceLocation lastCompletedRecipe;
     private ProcessResult lastResult = ProcessResult.SUCCESS;
 
     public WorkSlot(WorkSlotDefinition definition) {
@@ -36,6 +38,15 @@ public final class WorkSlot {
     @Nullable
     public RecipeProcess process() {
         return process;
+    }
+
+    /** Transient successful completion hint; restoration and cancellation grant no retry authority. */
+    public @Nullable ResourceLocation lastCompletedRecipe() {
+        return lastCompletedRecipe;
+    }
+
+    void lastCompletedRecipe(@Nullable ResourceLocation recipe) {
+        lastCompletedRecipe = recipe;
     }
 
     public ProcessResult result() {

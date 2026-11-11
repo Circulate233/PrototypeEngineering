@@ -16,6 +16,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBindings;
 import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkConfiguration;
 import crafttweaker.annotations.ZenRegister;
@@ -137,6 +138,13 @@ public final class ZenMachineType {
     public ZenMachineType executionMode(String mode) {
         open();
         builder.executionMode(ExecutionMode.valueOf(mode.toUpperCase(Locale.ROOT)));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType executionPolicy(String policy) {
+        open();
+        builder.executionPolicy(ControllerExecutionPolicy.valueOf(policy.toUpperCase(Locale.ROOT)));
         return this;
     }
 

@@ -5,6 +5,7 @@ import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import it.unimi.dsi.fastutil.objects.Object2DoubleLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
@@ -37,6 +38,8 @@ public final class MachineType {
     private final ExecutionMode executionMode;
     private final boolean explicitExecutionMode;
     @Nullable
+    private final ControllerExecutionPolicy executionPolicy;
+    @Nullable
     private final ResourceLocation controllerModel;
 
     private MachineType(Builder builder) {
@@ -51,6 +54,7 @@ public final class MachineType {
         defaultAttributeBases = Object2DoubleMaps.unmodifiable(new Object2DoubleLinkedOpenHashMap<>(builder.attributes));
         executionMode = builder.executionMode;
         explicitExecutionMode = builder.explicitExecutionMode;
+        executionPolicy = builder.executionPolicy;
         controllerModel = builder.controllerModel;
     }
 
@@ -110,6 +114,12 @@ public final class MachineType {
         return explicitExecutionMode;
     }
 
+    /** Null retains the existing execution-mode selection and the runtime controller's default. */
+    @Nullable
+    public ControllerExecutionPolicy executionPolicy() {
+        return executionPolicy;
+    }
+
     @SuppressWarnings("unused") // Client model registration binds separately without loading client classes here.
     @Nullable
     public ResourceLocation controllerModel() {
@@ -130,6 +140,8 @@ public final class MachineType {
         private final Object2DoubleLinkedOpenHashMap<ResourceLocation> attributes = new Object2DoubleLinkedOpenHashMap<>();
         private ExecutionMode executionMode = ExecutionMode.CONCURRENT;
         private boolean explicitExecutionMode;
+        @Nullable
+        private ControllerExecutionPolicy executionPolicy;
         @Nullable
         private ResourceLocation controllerModel;
 
@@ -187,6 +199,11 @@ public final class MachineType {
         public Builder executionMode(ExecutionMode mode) {
             executionMode = Objects.requireNonNull(mode);
             explicitExecutionMode = true;
+            return this;
+        }
+
+        public Builder executionPolicy(ControllerExecutionPolicy policy) {
+            executionPolicy = Objects.requireNonNull(policy);
             return this;
         }
 

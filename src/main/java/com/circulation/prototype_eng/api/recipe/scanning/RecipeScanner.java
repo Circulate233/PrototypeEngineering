@@ -51,6 +51,9 @@ public final class RecipeScanner {
     private boolean stablePipeline;
     private final MachineWorkSlots host;
     private RecipeCatalog catalog;
+    @Nullable
+    private ResourceLocation lastCrossAdmission;
+    private int crossOffset;
     private RecipeProcessFactory factory;
     private final List<RecipeParallelismConstraint> constraints;
     private List<RecipeCandidateIndex> indexes;
@@ -72,6 +75,13 @@ public final class RecipeScanner {
     private final Object2ObjectOpenHashMap<String, PassState> threadStates = new Object2ObjectOpenHashMap<>();
     private List<MachineRecipe> candidates = List.of();
     private int cursor;
+    private boolean preferredAttempted;
+    private boolean preferredActive;
+    @Nullable
+    private MachineRecipe preferredRecipe;
+    @Nullable
+    private RecipeCandidateIndex.Cursor preferredInventory;
+    private boolean preferredInventoryReady;
     @Nullable
     private Search search;
     private boolean scanning;
@@ -349,12 +359,18 @@ public final class RecipeScanner {
      */
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     public ScanAttempt beginScan(ScanLimits limits) {
+        return beginScan(limits, false);
+    }
+
+    /** Async discovery is driven by an exclusive scheduler worker, then explicitly returned to this owner. */
+    @SuppressWarnings("ReturnOfInnerClass") // The exact attempt retains this scanner's owner and pending obligations.
+    public ScanAttempt beginScan(ScanLimits limits, boolean asynchronousDiscovery) {
         Objects.requireNonNull(limits);
         if (scanning || faulted || activeAttempt != null)
             throw new IllegalStateException("Recipe scanner is executing or faulted");
         started = true;
         refreshGeneration();
-        activeAttempt = new ScanAttempt(limits);
+        activeAttempt = new ScanAttempt(limits, asynchronousDiscovery);
         return activeAttempt;
     }
 
@@ -364,9 +380,23 @@ public final class RecipeScanner {
         return activeAttempt;
     }
 
-    @SuppressWarnings("StatementWithEmptyBody")
-    // Legacy synchronous calls drain the same pool capture without creating an owner attempt.
+    // Both retry and complete discovery spend the caller's original candidate/probe allowance.
     private Result advance(ScanLimits limits) {
+        int examined = 0;
+        int probes = 0;
+        while (true) {
+            var outcome = advancePass(new ScanLimits(limits.candidates() - examined, limits.probes() - probes));
+            examined += outcome.candidates();
+            probes += outcome.probes();
+            if (outcome.status() != Status.EXHAUSTED || !preferredActive)
+                return new Result(outcome.status(), outcome.process(), examined, probes);
+            finishPreferred();
+            if (examined == limits.candidates() || probes == limits.probes()) return result(Status.YIELDED, examined, probes);
+        }
+    }
+
+    @SuppressWarnings("StatementWithEmptyBody") // Explicit synchronous callers drain the retained pool capture.
+    private Result advancePass(ScanLimits limits) {
         var running = new ObjectOpenHashSet<ResourceLocation>();
         var active = host.activeProcesses();
         for (var process : active) {
@@ -386,6 +416,8 @@ public final class RecipeScanner {
             selectionCapture = null;
         }
         if (workPaused()) return result(Status.PAUSED, 0, 0);
+        preparePreferred();
+        while (!capturePreferred(new RecipeWorkBudget(Long.MAX_VALUE))) { /* explicit synchronous caller */ }
         if (discovery != null) {
             var validation = discovery.beginValidation();
             while (!validation.advance(new RecipeWorkBudget(Long.MAX_VALUE))) { /* explicit synchronous caller */ }
@@ -405,6 +437,7 @@ public final class RecipeScanner {
             }
             if (workPaused()) return result(Status.PAUSED, 0, 0);
             candidates = discovery.result();
+            crossOffset = mode == ControllerMode.CROSS_RECIPE ? catalog.candidateOffset(candidates, lastCrossAdmission) : 0;
         }
         int examined = 0;
         int probes = 0;
@@ -412,8 +445,12 @@ public final class RecipeScanner {
             if (workPaused()) {
                 return result(Status.PAUSED, examined, probes);
             }
-            var recipe = candidates.get(cursor);
+            var recipe = candidates.get((int) ((cursor + (long) crossOffset) % candidates.size()));
             examined++;
+            if (!preferredActive && recipe == preferredRecipe) {
+                next();
+                continue;
+            }
             if (mode != ControllerMode.LEGACY) {
                 candidateBasis = host.sharedUsage(recipe);
                 if (candidateBasis.available() == 0) return result(Status.FULL, examined, probes);
@@ -503,7 +540,7 @@ public final class RecipeScanner {
                     return result(Status.YIELDED, examined, probes);
                 }
             }
-            resetPass();
+            if (!preferredActive) resetPass();
             return result(Status.EXHAUSTED, examined, probes);
         }
         return result(Status.YIELDED, examined, probes);
@@ -522,15 +559,21 @@ public final class RecipeScanner {
     }
 
     private int inputBound(MachineRecipe recipe, int currentLimit) {
+        if (!linearFixedInputs(recipe)) return currentLimit;
+        if (preferredActive && preferredInventoryReady)
+            return Math.min(currentLimit, Objects.requireNonNull(preferredInventory).inputParallelismLimit(recipe));
+        return discovery == null ? currentLimit : Math.min(currentLimit, discovery.inputParallelismLimit(recipe));
+    }
+
+    private boolean linearFixedInputs(MachineRecipe recipe) {
         var owner = host.owner();
         // The existing stability assertion covers one START, not arbitrary quantity-dependent rewrites.
         // Only the stock linear pipeline can turn a canonical inventory ceiling into a search bound.
-        if (discovery == null || !stablePipeline || factory != RecipeProcessFactory.STANDARD || !preparations.isEmpty()
+        return !(!stablePipeline || factory != RecipeProcessFactory.STANDARD || !preparations.isEmpty()
             || recipe.parallelismSelection() != RecipeParallelismSelection.NONE
             || owner.getClass() != CrossRecipeController.class && owner.getClass() != MultithreadController.class
             || owner.attributes().hasModifiers(StandardMachineAttributes.PROCESS_PARALLELISM)
-            || !owner.supportsStableFixedInputLowerBounds()) return currentLimit;
-        return Math.min(currentLimit, discovery.inputParallelismLimit(recipe));
+            || !owner.supportsStableFixedInputLowerBounds());
     }
 
     private RecipeProcess candidate(MachineRecipe recipe, int amount, Search current) {
@@ -603,6 +646,7 @@ public final class RecipeScanner {
         if (mode == ControllerMode.CROSS_RECIPE) {
             crossRoundAdmitted = true;
             crossRoundRecipe = process.recipe();
+            lastCrossAdmission = process.recipe().id();
             next();
         } else resetPass();
         return new Result(Status.ADMITTED, process, examined, probes);
@@ -665,6 +709,11 @@ public final class RecipeScanner {
             var state = threadStates.computeIfAbsent(selectedThread, _ -> new PassState());
             state.candidates = candidates;
             state.cursor = cursor;
+            state.preferredAttempted = preferredAttempted;
+            state.preferredActive = preferredActive;
+            state.preferredRecipe = preferredRecipe;
+            state.preferredInventory = preferredInventory;
+            state.preferredInventoryReady = preferredInventoryReady;
             state.search = search;
             state.discovery = discovery;
             state.selection = selection;
@@ -675,6 +724,11 @@ public final class RecipeScanner {
         var state = threadStates.computeIfAbsent(thread, _ -> new PassState());
         candidates = state.candidates;
         cursor = state.cursor;
+        preferredAttempted = state.preferredAttempted;
+        preferredActive = state.preferredActive;
+        preferredRecipe = state.preferredRecipe;
+        preferredInventory = state.preferredInventory;
+        preferredInventoryReady = state.preferredInventoryReady;
         search = state.search;
         discovery = state.discovery;
         selection = state.selection;
@@ -686,6 +740,42 @@ public final class RecipeScanner {
 
     private Set<ResourceLocation> passGroups() {
         return mode == ControllerMode.MULTITHREAD ? host.slots().get(selectedThreadIndex).allowedRecipeGroups() : groups;
+    }
+
+    /** One exact previous recipe is checked before paying for complete pool discovery. */
+    private void preparePreferred() {
+        if (mode != ControllerMode.MULTITHREAD || preferredAttempted) return;
+        preferredAttempted = true;
+        var slot = host.slots().get(selectedThreadIndex);
+        var previous = slot.lastCompletedRecipe();
+        var recipe = previous == null ? null : catalog.recipe(previous);
+        if (recipe == null || !slot.definition().accepts(recipe) || !Objects.requireNonNull(selection).accepts(host.owner(), recipe)) return;
+        preferredRecipe = recipe;
+        preferredActive = true;
+        if (linearFixedInputs(recipe)) preferredInventory = catalog.beginFixedInputCandidates(recipe, host.owner(), passGroups());
+        candidates = ObjectLists.singleton(recipe);
+        cursor = 0;
+        crossOffset = 0;
+    }
+
+    private void finishPreferred() {
+        preferredActive = false;
+        preferredInventory = null;
+        preferredInventoryReady = false;
+        candidates = List.of();
+        cursor = 0;
+        search = null;
+    }
+
+    private boolean capturePreferred(RecipeWorkBudget budget) {
+        if (!preferredActive || preferredInventory == null || preferredInventoryReady) return true;
+        if (!preferredInventory.advance(budget)) {
+            if (!preferredInventory.current()) preferredInventory = catalog.beginFixedInputCandidates(Objects.requireNonNull(preferredRecipe), host.owner(), passGroups());
+            return false;
+        }
+        preferredInventoryReady = true;
+        if (Objects.requireNonNull(preferredInventory.result()).isEmpty()) finishPreferred();
+        return true;
     }
 
     private void next() {
@@ -706,6 +796,12 @@ public final class RecipeScanner {
         pureProgress = null;
         candidates = List.of();
         cursor = 0;
+        crossOffset = 0;
+        preferredAttempted = false;
+        preferredActive = false;
+        preferredRecipe = null;
+        preferredInventory = null;
+        preferredInventoryReady = false;
         search = null;
     }
 
@@ -716,6 +812,13 @@ public final class RecipeScanner {
     private static final class PassState {
         private List<MachineRecipe> candidates = List.of();
         private int cursor;
+        private boolean preferredAttempted;
+        private boolean preferredActive;
+        @Nullable
+        private MachineRecipe preferredRecipe;
+        @Nullable
+        private RecipeCandidateIndex.Cursor preferredInventory;
+        private boolean preferredInventoryReady;
         @Nullable
         private Search search;
         @Nullable
@@ -783,6 +886,10 @@ public final class RecipeScanner {
     public final class ScanAttempt {
         private final Thread owner = Thread.currentThread();
         private final ScanLimits limits;
+        private final boolean asynchronousDiscovery;
+        @Nullable
+        private RecipeCatalog.CandidatePass workerDiscovery;
+        private boolean workerDiscoveryCompleted;
         private int examined;
         private int probes;
         private int phase;
@@ -831,8 +938,9 @@ public final class RecipeScanner {
         private RecipeCandidateIndex.Validation exhaustionValidation;
         private boolean exhaustionChecked;
 
-        private ScanAttempt(ScanLimits limits) {
+        private ScanAttempt(ScanLimits limits, boolean asynchronousDiscovery) {
             this.limits = limits;
+            this.asynchronousDiscovery = asynchronousDiscovery;
             if (host.pendingTickBatch() != null)
                 throw new IllegalStateException("Recipe scanner overlaps a work-slot batch");
         }
@@ -882,6 +990,12 @@ public final class RecipeScanner {
                 }
                 if (phase == 2) {
                     if (cursor == candidates.size()) {
+                        if (preferredActive) {
+                            finishPreferred();
+                            discardPureCandidate();
+                            phase = 1;
+                            continue;
+                        }
                         if (!exhaustionChecked && discovery != null) {
                             if (exhaustionValidation == null) exhaustionValidation = discovery.beginValidation();
                             if (!exhaustionValidation.advance(budget)) return yielded();
@@ -924,8 +1038,12 @@ public final class RecipeScanner {
                     }
                     if (recipe == null) {
                         if (examined >= limits.candidates() || !budget.take()) return yielded();
-                        recipe = candidates.get(cursor);
+                        recipe = candidates.get((int) ((cursor + (long) crossOffset) % candidates.size()));
                         examined++;
+                        if (!preferredActive && recipe == preferredRecipe) {
+                            nextCandidate();
+                            continue;
+                        }
                         slotCursor = mode == ControllerMode.MULTITHREAD ? selectedThreadIndex : 0;
                         checkingSlot = null;
                         slot = null;
@@ -1093,6 +1211,7 @@ public final class RecipeScanner {
                     if (mode == ControllerMode.CROSS_RECIPE) {
                         crossRoundAdmitted = true;
                         crossRoundRecipe = process.recipe();
+                        lastCrossAdmission = process.recipe().id();
                         nextCandidate();
                         continue;
                     }
@@ -1115,6 +1234,13 @@ public final class RecipeScanner {
                 selectionCapture = null;
             }
             if (!allowed.getAsBoolean()) return null;
+            preparePreferred();
+            if (!capturePreferred(budget)) return yielded();
+            if (preferredActive) {
+                discoveryValidated = true;
+                phase = 2;
+                return null;
+            }
             if (discovery != null && !discoveryValidated) {
                 if (discoveryValidation == null) discoveryValidation = discovery.beginValidation();
                 if (!discoveryValidation.advance(budget)) return yielded();
@@ -1125,6 +1251,7 @@ public final class RecipeScanner {
                 if (current && budget.remaining() == 0) return yielded();
                 if (!current) {
                     discovery.restartLiveIndexes();
+                    workerDiscoveryCompleted = false;
                     candidates = List.of();
                     cursor = 0;
                     search = null;
@@ -1136,12 +1263,21 @@ public final class RecipeScanner {
             if (candidates.isEmpty()) {
                 if (discovery == null)
                     discovery = catalog.beginCandidates(Objects.requireNonNull(selection), passGroups(), indexes, captureGeneration());
-                if (!discovery.advance(budget)) {
-                    if (!discovery.current()) discovery.restartLiveIndexes();
-                    return yielded();
+                if (asynchronousDiscovery) {
+                    if (!workerDiscoveryCompleted) {
+                        workerDiscovery = discovery;
+                        return yielded();
+                    }
+                    workerDiscoveryCompleted = false;
+                } else {
+                    if (!discovery.advance(budget)) {
+                        if (!discovery.current()) discovery.restartLiveIndexes();
+                        return yielded();
+                    }
                 }
                 if (!allowed.getAsBoolean()) return null;
                 candidates = discovery.result();
+                crossOffset = mode == ControllerMode.CROSS_RECIPE ? catalog.candidateOffset(candidates, lastCrossAdmission) : 0;
                 discoveryValidated = true;
             }
             phase = 2;
@@ -1211,6 +1347,8 @@ public final class RecipeScanner {
             var progress = pureProgress;
             pureProgress = null;
             var saved = progress.saved;
+            workerDiscovery = saved.workerDiscovery;
+            workerDiscoveryCompleted = saved.workerDiscoveryCompleted;
             phase = saved.phase;
             recipe = saved.recipe;
             slot = saved.slot;
@@ -1362,6 +1500,26 @@ public final class RecipeScanner {
         public @Nullable RecipePureComputation computation() {
             requireOwner();
             return probe == null ? null : probe.computation();
+        }
+
+        /** Candidate discovery creates no process, acquires no transaction and publishes no machine state. */
+        @SuppressWarnings("ReturnOfInnerClass") // Returns the original pass whose exclusive worker must be joined.
+        public @Nullable RecipeCatalog.CandidatePass discoveryWork() {
+            requireOwner();
+            return workerDiscovery;
+        }
+
+        public void finishDiscovery(RecipeCatalog.CandidatePass expected, boolean completed) {
+            requireOwner();
+            if (workerDiscovery != Objects.requireNonNull(expected)) throw new IllegalArgumentException("Different discovery pass");
+            workerDiscovery = null;
+            workerDiscoveryCompleted = completed;
+            if (!expected.current()) {
+                expected.restartLiveIndexes();
+                workerDiscoveryCompleted = false;
+            }
+            discoveryValidation = null;
+            discoveryValidated = false; // An owner proof is mandatory after worker exit, even on Success.
         }
 
         public void finishComputation(RecipePureComputation expected) {

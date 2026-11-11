@@ -11,6 +11,8 @@
 - 默认属性 base，使用 fastutil 原始 double 映射；不预造属性/资源类型系统。
 - 默认执行模式（PM 的 `CONCURRENT`），可选自定义控制器模型位置。
 
+逻辑配方控制器现可另外声明`executionPolicy(ControllerExecutionPolicy)`；新Multithread/Cross默认FULL_ASYNC，其余三个策略为ASYNC_SCAN/ASYNC_WORK/SYNCHRONOUS。非空policy由原PLANNED_PARALLEL路由分别控制发现与工作，不把四策略混入普通任务ExecutionMode。恢复的MachineScheduling组件仍优先，旧仅Mode存档保原行为。具体默认、线程边界和Java/脚本调用见[配方执行策略](recipe-execution-policy.md)。
+
 集合复制并冻结，builder 后续修改不会改变已发布声明。重复 ID/槽名/属性、非有限默认 base 会拒绝。组件与系统排序验证复用 `ComponentMap` 实际 dispatch 的拓扑路径；不创建实体或读取世界。缺席依赖仍是软排序约束，同一 ID 指向不同组件描述符则拒绝。
 
 显示名称由使用方提供本地化枚举，容器调用 `text()`，客户端调用 `getLocal()`；没有裸翻译键或服务端客户端工厂混用。模型位置只是公共数据，具体 GUI/模型绑定后续在客户端注册阶段接入。

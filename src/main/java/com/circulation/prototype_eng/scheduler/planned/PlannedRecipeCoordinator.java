@@ -470,13 +470,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         }
         executing = true;
         try {
-            if (preparing != null) {
-                preparing.awaitQuiescence();
-            }
-            if (current != null && current.barrier != null) {
-                current.barrier.awaitQuiescence();
-            }
-            if (preparedCleanup != null && preparedCleanup.barrier != null) preparedCleanup.barrier.awaitQuiescence();
+            awaitCapturedWorkers();
         } catch (RuntimeException | Error interruption) {
             stop(Reason.INTERRUPTED);
             record(interruption);
@@ -485,6 +479,29 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
         } finally {
             executing = false;
         }
+    }
+
+    /** Join-only handoff after the coordinator action exited; receipts remain owned by its original thread. */
+    public void awaitWorkerExit() {
+        if (executing) throw new IllegalStateException("Coordinator action has not exited");
+        awaitCapturedWorkers();
+    }
+
+    private void awaitCapturedWorkers() {
+        var barriers = new ObjectArrayList<PlannedTaskExecutor.Batch<Boolean>>(3);
+        if (preparing != null) barriers.add(preparing);
+        if (settlement != null && settlement.barrier != null) barriers.add(settlement.barrier);
+        if (preparedCleanup != null && preparedCleanup.barrier != null) barriers.add(preparedCleanup.barrier);
+        Throwable observed = null;
+        for (var barrier : barriers) {
+            try {
+                barrier.awaitQuiescence();
+            } catch (RuntimeException | Error failure) {
+                if (observed == null) observed = failure;
+                else if (observed != failure) observed.addSuppressed(failure);
+            }
+        }
+        rethrow(observed);
     }
 
     private boolean forwardAllowed() {

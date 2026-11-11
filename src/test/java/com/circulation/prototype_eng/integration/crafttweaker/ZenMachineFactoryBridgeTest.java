@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenParallelismCallback;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenParallelismSelection;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipe;
@@ -81,10 +82,10 @@ class ZenMachineFactoryBridgeTest {
                 Pool.create("ct_factory:external_pool", "pool.title", [FactoryHarness.external()]));
             FactoryHarness.machine(MachineType.create("ct_factory:thread", "machine.title", "ct_factory:shape")
                 .recipePool("ct_factory:pool").attribute("prototype_eng:process_parallelism", 4)
-                .processing(names, 8, 8));
+                .processing(names, 8, 8).executionPolicy("async_scan"));
             FactoryHarness.machine(MachineType.create("ct_factory:cross", "machine.title", "ct_factory:shape")
                 .factory(MachineFactory.crossRecipe()).recipePool("ct_factory:pool")
-                .attribute("prototype_eng:process_parallelism", 4).processing(names, 8, 8));
+                .attribute("prototype_eng:process_parallelism", 4).processing(names, 8, 8).executionPolicy("ASYNC_WORK"));
             FactoryHarness.machine(MachineType.create("ct_factory:addon", "machine.title", "ct_factory:shape")
                 .factory(FactoryHarness.factory()).recipePool("ct_factory:external_pool")
                 .processing(names, 8, 8).executionMode("MAIN_THREAD"));
@@ -121,6 +122,7 @@ class ZenMachineFactoryBridgeTest {
                 assertEquals(5, RecipeParallelism.effective(process), "Pure script selection runs before admission and may exceed baseline");
                 assertNotNull(process.components().get(DataComponents.PROCESS));
                 assertEquals(ExecutionMode.PLANNED_PARALLEL, Objects.requireNonNull(owner.components().get(MachineScheduling.TYPE)).mode());
+                assertEquals(i == 0 ? ControllerExecutionPolicy.ASYNC_SCAN : ControllerExecutionPolicy.ASYNC_WORK, owner.executionPolicy());
                 assertEquals(i == 1, work.dynamicRoster());
             } else {
                 assertNull(work.activeProcesses().getFirst().components().get(DataComponents.PROCESS), "Addon codec does not declare script data");
@@ -131,6 +133,7 @@ class ZenMachineFactoryBridgeTest {
             var saved = assembly.encode(owner);
             var restored = assembly.restore(new Host(assembly.type()), saved, new MachineLifecycleRegistry());
             assertEquals(owner.getClass(), restored.getClass());
+            assertEquals(owner.executionPolicy(), restored.executionPolicy());
             var original = work.activeProcesses().getFirst();
             var retained = Objects.requireNonNull(restored.components().get(MachineWorkSlots.TYPE)).activeProcesses().getFirst();
             assertNotSame(original, retained);

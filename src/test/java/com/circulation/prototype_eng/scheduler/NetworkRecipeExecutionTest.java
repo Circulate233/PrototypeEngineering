@@ -67,6 +67,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
@@ -149,13 +150,14 @@ class NetworkRecipeExecutionTest {
     }
 
     @Test
-    void defaultRecipeControllersActuallyDispatchBothAdmittedProcessesToOriginalParallelWorkers() {
+    void fullAsyncRecipeControllersActuallyDispatchBothAdmittedProcessesToOriginalParallelWorkers() {
         for (var factory : List.<Function<MachineType, MachineInstance>>of(MultithreadController::new, CrossRecipeController::new)) {
             try (var fixture = new Fixture(1, 20, 1, true, original -> new MachineRecipe(original.id(), original.durationTicks(),
                 original.orderedRequirements(), original.recipeGroups(), 2, RecipeParallelismSelection.fixed(1)))) {
-                var worker = fixture.worker(true, 2, null, Layout.ORDINARY, factory, true);
+                var worker = fixture.worker(true, 2, null, Layout.ORDINARY, factory, true, ControllerExecutionPolicy.FULL_ASYNC);
                 worker.machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
                 assertEquals(ExecutionMode.PLANNED_PARALLEL, worker.machine.executionMode());
+                assertEquals(ControllerExecutionPolicy.FULL_ASYNC, worker.machine.executionPolicy());
                 assertEquals(ExecutionMode.PLANNED_PARALLEL, Objects.requireNonNull(worker.machine.components().get(MachineScheduling.TYPE)).mode());
                 fixture.tick();
                 assertEquals(0, fixture.pureEntered.getCount(), "Both processes on this actual assembled controller must overlap pure preparation");
@@ -805,7 +807,7 @@ class NetworkRecipeExecutionTest {
 
                 @Override
                 public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
-                    requireOwner();
+                    requireOwner(); // This fixture also installs owner-only PN budget requirements.
                     var worker = Objects.requireNonNull(workers.get(process.owner()));
                     var token = Objects.requireNonNull(worker.energy.reserveExtractEnergy(worker.energy.energySnapshot(), 10).reservation());
                     if (!process.probing()) {
@@ -896,11 +898,11 @@ class NetworkRecipeExecutionTest {
         }
 
         private Worker worker(boolean scanning, int capacity, ExecutionMode mode, Layout layout) {
-            return worker(scanning, capacity, mode, layout, MachineInstance::new, false);
+            return worker(scanning, capacity, mode, layout, MachineInstance::new, false, null);
         }
 
         private Worker worker(boolean scanning, int capacity, ExecutionMode mode, Layout layout,
-                              Function<MachineType, MachineInstance> instanceFactory, boolean defaultScanner) {
+                              Function<MachineType, MachineInstance> instanceFactory, boolean defaultScanner, ControllerExecutionPolicy policy) {
             var events = new ObjectArrayList<String>();
             var before = new ComponentType<>(id("before"), _ -> events, List.of(new MachineSystem<ObjectArrayList<String>>() {
                 @Override
@@ -915,20 +917,20 @@ class NetworkRecipeExecutionTest {
 
                 @Override
                 public void onPreTick(MachineInstance machine, ObjectArrayList<String> component) {
-                    requireOwner();
+                    requireWorkThread(machine);
                     component.add("pre");
                     Objects.requireNonNull(workers.get(machine)).onPre.run();
                 }
 
                 @Override
                 public void onTick(MachineInstance machine, ObjectArrayList<String> component) {
-                    requireOwner();
+                    requireWorkThread(machine);
                     component.add("before");
                 }
 
                 @Override
                 public void onPostTick(MachineInstance machine, ObjectArrayList<String> component) {
-                    requireOwner();
+                    requireWorkThread(machine);
                     component.add("post");
                 }
             }));
@@ -945,7 +947,7 @@ class NetworkRecipeExecutionTest {
 
                 @Override
                 public void onTick(MachineInstance machine, ObjectArrayList<String> component) {
-                    requireOwner();
+                    requireWorkThread(machine);
                     component.add("after");
                     Objects.requireNonNull(workers.get(machine)).onAfter.run();
                 }
@@ -977,6 +979,7 @@ class NetworkRecipeExecutionTest {
             var builder = type("worker_" + position).component(ownership).component(role).component(work).component(before)
                                                     .component(MachineWorkSlots.TYPE).component(after);
             if (mode != null) builder.executionMode(mode);
+            if (policy != null) builder.executionPolicy(policy);
             for (int index = 0; index < capacity; index++) {
                 builder.workSlot(new WorkSlotDefinition("slot_" + index));
             }
@@ -1094,6 +1097,12 @@ class NetworkRecipeExecutionTest {
             if (Thread.currentThread() != owner) {
                 throw new IllegalStateException("Not the server owner");
             }
+        }
+
+        private void requireWorkThread(MachineInstance machine) {
+            var policy = machine.executionPolicy();
+            if (policy != null && policy.workAsync()) assertNotSame(owner, Thread.currentThread());
+            else requireOwner();
         }
 
         @Override

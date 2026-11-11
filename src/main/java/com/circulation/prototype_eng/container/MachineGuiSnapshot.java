@@ -9,10 +9,12 @@ import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import net.minecraft.network.PacketBuffer;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
@@ -113,7 +115,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result, overall,
             new Details(crossRecipe, lifecycle == null ? machine.active() : lifecycle.processingAllowed(), running, crossRecipe ? 0 : threads,
                 usedParallelism, Math.max(0L, (long) Math.floor(machine.attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1))),
-                machine.executionMode(), machine.type() == null ? "" : Objects.requireNonNull(machine.type()).structureId().toString()));
+                machine.executionMode(), machine.type() == null ? "" : Objects.requireNonNull(machine.type()).structureId().toString(), machine.executionPolicy()));
     }
 
     private static WorkSlotStatus combine(WorkSlotStatus first, WorkSlotStatus second) {
@@ -176,6 +178,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         packet.writeByte(overallStatus.ordinal());
         packet.writeBoolean(details.crossRecipe).writeBoolean(details.processing).writeInt(details.running).writeInt(details.threadLimit)
             .writeLong(details.usedParallelism).writeLong(details.parallelismLimit).writeByte(details.mode.ordinal());
+        packet.writeByte(details.policy == null ? -1 : details.policy.ordinal());
         packet.writeString(details.structure);
     }
 
@@ -185,12 +188,21 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         long used = packet.readLong(), limit = packet.readLong();
         int mode = packet.readUnsignedByte();
         if (mode >= ExecutionMode.values().length) throw new IllegalArgumentException("Invalid execution mode");
-        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.values()[mode], packet.readString(MAX_TEXT));
+        int policy = packet.readByte();
+        if (policy < -1 || policy >= ControllerExecutionPolicy.values().length) throw new IllegalArgumentException("Invalid controller execution policy");
+        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.values()[mode], packet.readString(MAX_TEXT),
+            policy == -1 ? null : ControllerExecutionPolicy.values()[policy]);
     }
 
     public record Details(boolean crossRecipe, boolean processing, int running, int threadLimit,
-                          long usedParallelism, long parallelismLimit, ExecutionMode mode, String structure) {
+                          long usedParallelism, long parallelismLimit, ExecutionMode mode, String structure,
+                          @Nullable ControllerExecutionPolicy policy) {
         private static final Details EMPTY = new Details(false, false, 0, 0, 0, 0, ExecutionMode.MAIN_THREAD, "");
+
+        public Details(boolean crossRecipe, boolean processing, int running, int threadLimit,
+                       long usedParallelism, long parallelismLimit, ExecutionMode mode, String structure) {
+            this(crossRecipe, processing, running, threadLimit, usedParallelism, parallelismLimit, mode, structure, null);
+        }
         public Details {
             if (running < 0 || threadLimit < 0 || usedParallelism < 0 || parallelismLimit < 0)
                 throw new IllegalArgumentException("Negative machine GUI count");

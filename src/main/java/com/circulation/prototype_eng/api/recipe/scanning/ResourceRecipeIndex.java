@@ -13,12 +13,14 @@ import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
+import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2IntMap;
 import it.unimi.dsi.fastutil.objects.Reference2IntMaps;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
@@ -51,6 +53,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     private final ReferenceSet<MachineRecipe> indexed;
     private final Object2ObjectMap<AEKey, List<Posting>> postings;
     private final List<MachineRecipe> canonical;
+    private final List<MachineRecipe> unfiltered;
 
     public ResourceRecipeIndex(RecipeCatalog catalog, Collection<Footprint> footprints) {
         this(Objects.requireNonNull(catalog, "catalog").recipes(), footprints);
@@ -82,6 +85,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             }
         }
         indexed = ReferenceSets.unmodifiable(filtered);
+        var retained = new ObjectArrayList<MachineRecipe>();
+        for (var recipe : canonical) if (!filtered.contains(recipe)) retained.add(recipe);
+        unfiltered = ObjectLists.unmodifiable(retained);
         var frozen = new Object2ObjectOpenHashMap<AEKey, List<Posting>>();
         mutable.forEach((key, values) -> frozen.put(key, ObjectLists.unmodifiable(values)));
         postings = Object2ObjectMaps.unmodifiable(frozen);
@@ -112,38 +118,140 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     }
 
     public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
-        Objects.requireNonNull(inventory);
-        if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
-        if (canonical.size() == 1) {
-            var recipe = canonical.getFirst();
-            int ceiling = parallelism;
-            if (indexed.contains(recipe)) {
-                for (var posting : postings.object2ObjectEntrySet()) {
-                    ceiling = Math.min(ceiling, RecipeInventoryMatch.limit(inventory.getLong(posting.getKey()), posting.getValue().getFirst().amount, parallelism));
-                    if (ceiling == 0) return ObjectLists.emptyList();
-                }
-            }
-            return ObjectLists.singleton(new RecipeInventoryMatch(recipe, ceiling));
-        }
-        var matches = new Reference2IntOpenHashMap<MachineRecipe>();
-        var ceilings = new Reference2IntOpenHashMap<MachineRecipe>();
-        var accepted = new ReferenceOpenHashSet<MachineRecipe>();
-        for (var entry : inventory.object2LongEntrySet()) {
-            var values = postings.get(entry.getKey());
-            if (values == null) continue;
-            for (var posting : values) {
-                int ceiling = RecipeInventoryMatch.limit(entry.getLongValue(), posting.amount, parallelism);
-                if (ceiling == 0) continue;
-                matches.addTo(posting.recipe, 1);
-                ceilings.put(posting.recipe, Math.min(ceilings.getOrDefault(posting.recipe, parallelism), ceiling));
-                if (matches.getInt(posting.recipe) == posting.keys) accepted.add(posting.recipe);
-            }
-        }
+        var lookup = new InventoryLookup(inventory, parallelism, Set.of());
+        lookup.advance(new RecipeWorkBudget(Long.MAX_VALUE));
         var result = new ObjectArrayList<RecipeInventoryMatch>();
-        for (var recipe : canonical)
-            if (!indexed.contains(recipe) || accepted.contains(recipe))
-                result.add(new RecipeInventoryMatch(recipe, ceilings.getOrDefault(recipe, parallelism)));
+        for (var recipe : lookup.result()) result.add(new RecipeInventoryMatch(recipe, lookup.inputParallelismLimit(recipe)));
         return ObjectLists.unmodifiable(result);
+    }
+
+    /** Pure snapshot matching; every inventory entry, posting and output member spends its own credit. */
+    @SuppressWarnings("ReturnOfInnerClass") // This pure lookup retains only the immutable index and supplied snapshot.
+    public RecipeCandidateIndex.Cursor beginMatch(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
+        return new InventoryLookup(inventory, parallelism, groups);
+    }
+
+    private final class InventoryLookup implements RecipeCandidateIndex.Cursor {
+        private final AEKey2LongMap inventory;
+        private final int parallelism;
+        private final Iterator<ResourceLocation> inputGroups;
+        private final ObjectLinkedOpenHashSet<ResourceLocation> groups = new ObjectLinkedOpenHashSet<>();
+        private final Reference2IntOpenHashMap<MachineRecipe> matches = new Reference2IntOpenHashMap<>();
+        private final Reference2IntOpenHashMap<MachineRecipe> ceilings = new Reference2IntOpenHashMap<>();
+        private final Int2ObjectAVLTreeMap<MachineRecipe> chosen = new Int2ObjectAVLTreeMap<>();
+        private final ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
+        private Iterator<Object2ObjectMap.Entry<AEKey, List<Posting>>> singleInputs;
+        private Iterator<Object2LongMap.Entry<AEKey>> entries;
+        private Object2LongMap.Entry<AEKey> entry;
+        private List<Posting> keyPostings;
+        private int postingIndex;
+        private int unfilteredIndex;
+        private Iterator<MachineRecipe> ordered;
+        private MachineRecipe pending;
+        private Iterator<ResourceLocation> pendingGroups;
+        private boolean groupAccepted;
+        private int singleCeiling;
+        private int phase;
+
+        private InventoryLookup(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
+            this.inventory = Objects.requireNonNull(inventory);
+            if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
+            this.parallelism = parallelism;
+            singleCeiling = parallelism;
+            inputGroups = Objects.requireNonNull(groups).iterator();
+        }
+
+        @Override
+        public boolean advance(RecipeWorkBudget budget) {
+            Objects.requireNonNull(budget);
+            if (phase == 3) return true;
+            if (phase == 0) {
+                while (inputGroups.hasNext()) {
+                    if (!budget.take()) return false;
+                    groups.add(Objects.requireNonNull(inputGroups.next()));
+                }
+                if (canonical.size() == 1) singleInputs = postings.object2ObjectEntrySet().iterator();
+                else entries = inventory.object2LongEntrySet().iterator();
+                phase = 1;
+            }
+            if (phase == 1) {
+                if (singleInputs != null) {
+                    while (singleCeiling != 0 && singleInputs.hasNext()) {
+                        if (!budget.take()) return false;
+                        var required = singleInputs.next();
+                        singleCeiling = Math.min(singleCeiling, RecipeInventoryMatch.limit(inventory.getLong(required.getKey()),
+                            required.getValue().getFirst().amount, parallelism));
+                    }
+                    var recipe = canonical.getFirst();
+                    if (singleCeiling > 0) {
+                        chosen.put(order.getInt(recipe), recipe);
+                        ceilings.put(recipe, singleCeiling);
+                    }
+                } else {
+                    while (entry != null || entries.hasNext()) {
+                        if (entry == null) {
+                            if (!budget.take()) return false;
+                            entry = entries.next();
+                            keyPostings = postings.get(entry.getKey());
+                            postingIndex = 0;
+                        }
+                        if (keyPostings != null) {
+                            while (postingIndex < keyPostings.size()) {
+                                if (!budget.take()) return false;
+                                var posting = keyPostings.get(postingIndex++);
+                                int ceiling = RecipeInventoryMatch.limit(entry.getLongValue(), posting.amount, parallelism);
+                                if (ceiling == 0) continue;
+                                ceilings.put(posting.recipe, Math.min(ceilings.getOrDefault(posting.recipe, parallelism), ceiling));
+                                if (matches.addTo(posting.recipe, 1) + 1 == posting.keys) chosen.put(order.getInt(posting.recipe), posting.recipe);
+                            }
+                        }
+                        entry = null;
+                    }
+                }
+                phase = 2;
+            }
+            if (phase == 2) {
+                while (unfilteredIndex < unfiltered.size()) {
+                    if (!budget.take()) return false;
+                    var recipe = unfiltered.get(unfilteredIndex++);
+                    chosen.put(order.getInt(recipe), recipe);
+                }
+                if (ordered == null) ordered = chosen.values().iterator();
+                while (pending != null || ordered.hasNext()) {
+                    if (pending == null) {
+                        if (!budget.take()) return false;
+                        var recipe = ordered.next();
+                        pending = recipe;
+                        pendingGroups = recipe.recipeGroups().iterator();
+                        groupAccepted = groups.isEmpty();
+                    }
+                    while (!groupAccepted && pendingGroups.hasNext()) {
+                        if (!budget.take()) return false;
+                        groupAccepted = groups.contains(pendingGroups.next());
+                    }
+                    if (groupAccepted) result.add(pending);
+                    pending = null;
+                }
+                phase = 3;
+            }
+            return true;
+        }
+
+        @Override
+        public List<MachineRecipe> result() {
+            requireComplete();
+            return ObjectLists.unmodifiable(result);
+        }
+
+        @Override
+        public int inputParallelismLimit(MachineRecipe recipe) {
+            requireComplete();
+            return ceilings.getOrDefault(recipe, parallelism);
+        }
+
+        private void requireComplete() {
+            if (phase != 3) throw new IllegalStateException("Inventory opinion is incomplete");
+        }
     }
 
     private static List<GenericStack> fixedInputs(MachineRecipe recipe) {

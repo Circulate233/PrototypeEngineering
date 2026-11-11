@@ -1330,7 +1330,7 @@ public final class TaskScheduler implements AutoCloseable {
         }
     }
 
-    private static final class UnionFind {
+    static final class UnionFind {
         private final int[] parent;
         private final int[] rank;
 

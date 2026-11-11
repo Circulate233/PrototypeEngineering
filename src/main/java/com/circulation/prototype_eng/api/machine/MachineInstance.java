@@ -13,6 +13,7 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedMachineTask;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -231,6 +232,7 @@ public class MachineInstance implements PlannedMachineTask {
 
     @Override
     public ExecutionMode executionMode() {
+        if (executionPolicy() != null) return ExecutionMode.PLANNED_PARALLEL;
         var scheduling = components.get(MachineScheduling.TYPE);
         return scheduling != null ? scheduling.mode() : type != null && type.hasExplicitExecutionMode()
             ? type.executionMode() : defaultExecutionMode();
@@ -239,6 +241,24 @@ public class MachineInstance implements PlannedMachineTask {
     /** Concrete runtimes select their normal scheduler path; explicit declarations remain authoritative. */
     protected ExecutionMode defaultExecutionMode() {
         return ExecutionMode.CONCURRENT;
+    }
+
+    /** A restored or explicitly replaced scheduling component is authoritative, including legacy null. */
+    @Nullable
+    public ControllerExecutionPolicy executionPolicy() {
+        var scheduling = components.get(MachineScheduling.TYPE);
+        if (scheduling != null) return scheduling.policy();
+        if (type != null) {
+            if (type.executionPolicy() != null) return type.executionPolicy();
+            if (type.hasExplicitExecutionMode()) return null;
+        }
+        return defaultExecutionPolicy();
+    }
+
+    /** Ordinary machines retain their execution mode unless a controller policy is explicitly selected. */
+    @Nullable
+    protected ControllerExecutionPolicy defaultExecutionPolicy() {
+        return null;
     }
 
     /**

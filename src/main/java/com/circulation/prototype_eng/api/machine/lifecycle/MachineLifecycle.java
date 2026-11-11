@@ -724,6 +724,10 @@ public final class MachineLifecycle {
         private boolean finished;
         private boolean componentScope;
         @Nullable
+        private WorkerAction workerAction;
+        @Nullable
+        private Thread callbackWorker;
+        @Nullable
         private DeferredScan deferredScan;
         @Nullable
         private MachineWorkSlots deferred;
@@ -777,8 +781,59 @@ public final class MachineLifecycle {
             return true;
         }
 
+        /** Transfers one exclusive callback chunk; the scheduler must prove exit before reclaiming it. */
+        @SuppressWarnings("ReturnOfInnerClass") // This exact lifecycle handle owns the one-use worker claim.
+        public WorkerAction delegateWorker(Runnable execution) {
+            requireOwner();
+            if (workerAction != null) throw new IllegalStateException("A machine callback is already delegated");
+            workerAction = new WorkerAction(Objects.requireNonNull(execution));
+            return workerAction;
+        }
+
+        public void finishWorker(WorkerAction expected) {
+            requireOwner(true);
+            if (workerAction != Objects.requireNonNull(expected)) throw new IllegalArgumentException("Different worker claim");
+            expected.reclaim();
+            workerAction = null;
+        }
+
+        public final class WorkerAction implements Runnable {
+            private final Runnable execution;
+            private boolean started;
+            private boolean completed;
+
+            private WorkerAction(Runnable execution) {
+                this.execution = execution;
+            }
+
+            private synchronized void reclaim() {
+                if (started && !completed) throw new IllegalStateException("Machine worker has not exited");
+                completed = true; // A stopped dispatch must also consume its unstarted claim.
+            }
+
+            @Override
+            public void run() {
+                synchronized (this) {
+                    if (started || completed || workerAction != this)
+                        throw new IllegalStateException("Machine worker claim was already consumed");
+                    started = true;
+                }
+                callbackWorker = Thread.currentThread();
+                componentScope = true;
+                try {
+                    invoke(execution);
+                } finally {
+                    componentScope = false;
+                    callbackWorker = null;
+                    synchronized (this) {
+                        completed = true;
+                    }
+                }
+            }
+        }
+
         private boolean defer(MachineWorkSlots slots) {
-            if (Thread.currentThread() != owner || !executing || !componentScope || finished) {
+            if (!callbackThread() || !executing || !componentScope || finished) {
                 return false;
             }
             if (slots.owner() != lifecycle.machine) {
@@ -798,7 +853,9 @@ public final class MachineLifecycle {
         }
 
         private boolean deferScan(RecipeScanner scanner, ScanLimits limits) {
-            if (Thread.currentThread() != owner || !executing || !componentScope || finished) return false;
+            if (!callbackThread() || !executing || !componentScope || finished) return false;
+            var policy = lifecycle.machine.executionPolicy();
+            if (Thread.currentThread() == owner && policy != null && !policy.scanAsync()) return false;
             if (scanner.host().owner() != lifecycle.machine)
                 throw new IllegalArgumentException("Deferred scanner belongs to another machine");
             if (dispatchedScanners.contains(scanner)) return true;
@@ -812,7 +869,7 @@ public final class MachineLifecycle {
         }
 
         public @Nullable DeferredScan deferredRecipeScan() {
-            requireOwner();
+            requireReader();
             return deferredScan;
         }
 
@@ -827,7 +884,7 @@ public final class MachineLifecycle {
 
         @Nullable
         public MachineWorkSlots deferredRecipeWork() {
-            requireOwner();
+            requireReader();
             return deferred;
         }
 
@@ -884,6 +941,7 @@ public final class MachineLifecycle {
          */
         public boolean tryFinish() {
             requireOwner();
+            if (workerAction != null) return false;
             executing = true;
             try {
                 observe(lifecycle.capture().workSlots());
@@ -919,11 +977,24 @@ public final class MachineLifecycle {
         }
 
         private void requireOwner() {
-            if (Thread.currentThread() != owner || executing || finished || lifecycle.scheduledExecution != this
+            requireOwner(false);
+        }
+
+        private void requireOwner(boolean workerReceipt) {
+            if (Thread.currentThread() != owner || executing || finished || !workerReceipt && workerAction != null || lifecycle.scheduledExecution != this
                 || (int) GATE.getAcquire(lifecycle) != RUNNING) {
                 throw new IllegalStateException("Scheduled execution requires its idle captured owner");
             }
             lifecycle.host.requireServerThread();
+        }
+
+        private boolean callbackThread() {
+            return Thread.currentThread() == owner || Thread.currentThread() == callbackWorker;
+        }
+
+        private void requireReader() {
+            if (Thread.currentThread() == callbackWorker && executing && !finished && lifecycle.scheduledExecution == this) return;
+            requireOwner();
         }
 
         public record DeferredScan(RecipeScanner scanner, ScanLimits limits) {

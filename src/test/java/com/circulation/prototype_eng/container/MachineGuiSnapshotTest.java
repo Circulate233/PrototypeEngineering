@@ -10,6 +10,7 @@ import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import io.netty.buffer.Unpooled;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
@@ -88,6 +89,7 @@ class MachineGuiSnapshotTest {
         assertEquals(8, page.details().usedParallelism());
         assertEquals(3, page.entries().getFirst().parallelism());
         assertTrue(page.details().crossRecipe());
+        assertEquals(ControllerExecutionPolicy.FULL_ASYNC, page.details().policy());
         var packet = Unpooled.buffer();
         try {
             page.writeToPacket(packet);

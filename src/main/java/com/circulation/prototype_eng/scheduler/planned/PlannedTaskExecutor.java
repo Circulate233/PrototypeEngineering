@@ -27,6 +27,12 @@ public final class PlannedTaskExecutor {
     private final ExecutorService workers;
     private final ExecutorService[] sourceLanes;
     private final LongSupplier nanoTime;
+    private final DispatchMode mode;
+    private final PlannedTaskExecutor original;
+    @Nullable
+    private final PlannedTaskExecutor synchronousView;
+    @Nullable
+    private final PlannedTaskExecutor synchronousSourcesView;
 
     public PlannedTaskExecutor(ExecutorService workers, ExecutorService[] sourceLanes) {
         this(workers, sourceLanes, System::nanoTime);
@@ -42,6 +48,38 @@ public final class PlannedTaskExecutor {
             Objects.requireNonNull(lane);
         }
         this.nanoTime = Objects.requireNonNull(nanoTime);
+        mode = DispatchMode.ASYNC;
+        original = this;
+        synchronousView = new PlannedTaskExecutor(this, DispatchMode.SYNCHRONOUS);
+        synchronousSourcesView = new PlannedTaskExecutor(this, DispatchMode.SYNCHRONOUS_SOURCES);
+    }
+
+    private PlannedTaskExecutor(PlannedTaskExecutor original, DispatchMode mode) {
+        workers = original.workers;
+        sourceLanes = original.sourceLanes;
+        nanoTime = original.nanoTime;
+        this.mode = mode;
+        this.original = original;
+        synchronousView = null;
+        synchronousSourcesView = null;
+    }
+
+    /**
+     * Cached calling-thread view of this runner. It shares the same batch/deadline/cancellation
+     * protocol, borrows the same executors, and submits no job to them. Cancellation cannot preempt
+     * a synchronous callback; its exact batch remains nonquiescent until that callback returns.
+     */
+    public PlannedTaskExecutor synchronous() {
+        return Objects.requireNonNull(original.synchronousView);
+    }
+
+    /**
+     * Keeps independent pure preparation jobs on the original worker pool while running source
+     * actions directly on the calling coordinator thread. A coordinator already owns its serial
+     * source lane, so nested source dispatch must not wait for that same occupied lane.
+     */
+    public PlannedTaskExecutor synchronousSources() {
+        return Objects.requireNonNull(original.synchronousSourcesView);
     }
 
     public <T> Batch<T> runPrepare(List<Job<T>> jobs, PlannedDeadline deadline) {
@@ -60,7 +98,7 @@ public final class PlannedTaskExecutor {
         for (var job : jobs) {
             dispatches.add(new Dispatch<>(workers, job));
         }
-        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch));
+        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode == DispatchMode.SYNCHRONOUS);
     }
 
     /**
@@ -82,12 +120,12 @@ public final class PlannedTaskExecutor {
         for (var job : jobs) {
             dispatches.add(new Dispatch<>(sourceLanes[laneIndex(job.affinity())], job.job()));
         }
-        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch));
+        return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode != DispatchMode.ASYNC);
     }
 
     private <T> Batch<T> run(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline,
-                             Consumer<Batch<T>> beforeDispatch) {
-        var batch = new Batch<>(dispatches, Objects.requireNonNull(deadline), nanoTime);
+                             Consumer<Batch<T>> beforeDispatch, boolean synchronous) {
+        var batch = new Batch<>(dispatches, Objects.requireNonNull(deadline), nanoTime, synchronous);
         var registrations = new ObjectArrayList<PlannedCancellationToken.Registration>();
         var tokens = new ReferenceOpenHashSet<PlannedCancellationToken>();
         boolean interrupted = Thread.interrupted();
@@ -109,7 +147,13 @@ public final class PlannedTaskExecutor {
                     continue;
                 }
                 try {
-                    entry.executor.execute(() -> batch.execute(entry));
+                    if (synchronous) {
+                        batch.execute(entry);
+                        if (Thread.interrupted()) {
+                            interrupted = true;
+                            batch.stop(Reason.INTERRUPTED);
+                        }
+                    } else entry.executor.execute(() -> batch.execute(entry));
                 } catch (RuntimeException | Error failure) {
                     batch.rejected(entry, failure);
                 }
@@ -180,6 +224,8 @@ public final class PlannedTaskExecutor {
 
     private enum Stage {NEW, QUEUED, RUNNING, DONE}
 
+    private enum DispatchMode {ASYNC, SYNCHRONOUS, SYNCHRONOUS_SOURCES}
+
     // The type parameter keeps every outcome tied to its batch's success payload type.
     @SuppressWarnings("unused")
     public sealed interface Result<T> permits Success, Failure, Stopped {
@@ -232,6 +278,7 @@ public final class PlannedTaskExecutor {
         private final CountDownLatch exited = new CountDownLatch(1);
         private final PlannedDeadline deadline;
         private final LongSupplier nanoTime;
+        private final boolean synchronous;
         private final boolean individualDeadlines;
         private int unfinished;
         private int runningOrEligible;
@@ -240,9 +287,10 @@ public final class PlannedTaskExecutor {
         @Nullable
         private ObjectList<Result<T>> results;
 
-        private Batch(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline, LongSupplier nanoTime) {
+        private Batch(ObjectList<Dispatch<T>> dispatches, PlannedDeadline deadline, LongSupplier nanoTime, boolean synchronous) {
             this.deadline = deadline;
             this.nanoTime = nanoTime;
+            this.synchronous = synchronous;
             this.entries = new ObjectArrayList<>(dispatches.size());
             boolean individual = false;
             for (var dispatch : dispatches) {
@@ -467,10 +515,10 @@ public final class PlannedTaskExecutor {
             if (entry.result != null) return;
             boolean running = entry.stage == Stage.RUNNING;
             publish(entry, new Stopped<>(reason, running));
-            if (running) {
+            if (running && !synchronous) {
                 // Pin the exact running entry under the lock until interrupt has been delivered.
                 Objects.requireNonNull(entry.thread).interrupt();
-            } else finish(entry);
+            } else if (!running) finish(entry);
         }
 
         private void abort(Throwable primary) {

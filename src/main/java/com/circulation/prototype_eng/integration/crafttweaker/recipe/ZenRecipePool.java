@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
@@ -12,6 +13,7 @@ import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenGetter;
 import stanhebben.zenscript.annotations.ZenMethod;
@@ -82,6 +84,27 @@ public final class ZenRecipePool {
         var entries = new ObjectArrayList<SimpleRecipePool.Entry>(recipes.length);
         for (var recipe : recipes) entries.add(SimpleRecipePool.Entry.of(Objects.requireNonNull(recipe).recipe()));
         return of(new SimpleRecipePool(ZenRecipeSupport.id(id), translationKey, entries), recipes);
+    }
+
+    /** Combines the exact providers and recipe/codec handles; no child is registered implicitly. */
+    @ZenMethod
+    public static ZenRecipePool combine(String id, String translationKey, ZenRecipePool[] pools) {
+        Objects.requireNonNull(pools);
+        var providers = new ObjectArrayList<RecipePool>(pools.length);
+        var handles = new Reference2ObjectOpenHashMap<MachineRecipe, ZenRecipe>();
+        for (var pool : pools) {
+            Objects.requireNonNull(pool);
+            providers.add(pool.value);
+            for (var recipe : pool.recipes) {
+                var previous = handles.putIfAbsent(recipe.recipe(), recipe);
+                if (previous != null && (previous.codec() != recipe.codec() || !previous.revision().equals(recipe.revision())))
+                    throw new IllegalArgumentException("Shared recipe must retain one exact codec and revision: " + recipe.id());
+            }
+        }
+        var combined = new CompositeRecipePool(ZenRecipeSupport.id(id), translationKey, providers);
+        var bindings = new ObjectArrayList<ZenRecipe>(combined.recipes().size());
+        for (var recipe : combined.recipes()) bindings.add(Objects.requireNonNull(handles.get(recipe)));
+        return new ZenRecipePool(combined, ObjectLists.unmodifiable(bindings));
     }
 
     @ZenMethod public ZenRecipePool jeiOptions(ZenJeiOptions settings) {

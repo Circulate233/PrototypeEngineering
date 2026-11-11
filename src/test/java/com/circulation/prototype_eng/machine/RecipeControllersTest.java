@@ -27,6 +27,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismConstraint;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
@@ -35,10 +36,12 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.localization.RecipeText;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
@@ -126,6 +129,65 @@ class RecipeControllersTest {
         assertEquals(2, host.activeProcesses().size());
         assertEquals(2, owner.recipeThreadCount(recipe.id()));
         assertNull(host.requireSlot("c").process());
+    }
+
+    @Test
+    void completedThreadRetriesItsLastRecipeBeforeDiscoveryAndFallsBackAfterOneFailedProbe() {
+        for (boolean sliced : List.of(false, true)) {
+            var owner = new MultithreadController();
+            allowance(owner, 1, 1);
+            var first = recipe("first", 1, 1, Set.of());
+            var previous = recipe("previous", 1, 1, Set.of());
+            var host = owner.createRecipeHost(List.of(new WorkSlotDefinition("main")), Set.of());
+            var completed = new RecipeProcess(owner, previous, 1);
+            assertTrue(host.start(completed));
+            for (int tick = 0; tick < 4; tick++) host.tickProcesses();
+            assertTrue(host.activeProcesses().isEmpty());
+            assertEquals(previous.id(), host.requireSlot("main").lastCompletedRecipe());
+            int[] discoveries = {0};
+            var pool = new RecipePool() {
+                @Override public ResourceLocation id() { return RecipeControllersTest.id("retry_pool"); }
+                @Override public String translationKey() { return "retry.pool"; }
+                @Override public List<MachineRecipe> recipes() { return List.of(first, previous); }
+                @Override public List<MachineType> machines() { return List.of(); }
+                @Override public RecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
+                    throw new AssertionError("The fixture uses an already canonical directory");
+                }
+                @Override public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
+                    discoveries[0]++;
+                    return null;
+                }
+            };
+            var created = new ObjectArrayList<MachineRecipe>();
+            boolean[] rejectPrevious = {false};
+            RecipeProcessFactory factory = (machine, recipe, seed, tuning) -> {
+                created.add(recipe);
+                return new RecipeProcess(machine, recipe, seed, tuning);
+            };
+            var constraint = new RecipeParallelismConstraint() {
+                @Override
+                public ProcessResult test(RecipeProcess process) {
+                    return rejectPrevious[0] && process.recipe() == previous ? RecipeText.Cancelled.blocked() : ProcessResult.SUCCESS;
+                }
+            };
+            var scanner = RecipeScanner.multithreaded(host, new RecipeCatalog(List.of(pool)), factory,
+                List.of(constraint),
+                List.of(), _ -> false, () -> 7, List.of());
+            var retried = sliced ? retained(scanner) : scanner.scan(LIMITS);
+            assertEquals(RecipeScanner.Status.ADMITTED, retried.status());
+            assertSame(previous, Objects.requireNonNull(retried.process()).recipe());
+            assertEquals(List.of(previous), created);
+            assertEquals(0, discoveries[0]);
+            assertTrue(host.cancel(Objects.requireNonNull(retried.process())));
+            assertEquals(previous.id(), host.requireSlot("main").lastCompletedRecipe());
+            rejectPrevious[0] = true;
+            created.clear();
+            var fallback = sliced ? retained(scanner) : scanner.scan(LIMITS);
+            assertEquals(RecipeScanner.Status.ADMITTED, fallback.status());
+            assertSame(first, Objects.requireNonNull(fallback.process()).recipe());
+            assertEquals(List.of(previous, first), created);
+            assertEquals(1, discoveries[0]);
+        }
     }
 
     @Test

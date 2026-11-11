@@ -6,6 +6,8 @@ CT2 4.1.20.718为可选脚本桥；公开Java API及Forge注册subscriber不链�
 
 注册入口排入DefinitionRegistrations的对应event，按实际阶段dispatch；结构predicate先注册再freeze/解析JSON。名称解析得到具体不可变定义和闭包；旧进程使用准确定义、descriptor及历史codec，不能运行时按名称取最新回调。机器声明及装配配置各自安装同一组件/codec；服务器更新、仓室配置和客户端manifest沿既有准确session/owner边界，pending或拒绝不冒充成功。
 
+控制器创建声明可用`.executionPolicy("FULL_ASYNC")`（新逻辑控制器默认），或`ASYNC_SCAN`、`ASYNC_WORK`、`SYNCHRONOUS`显式控制发现/工作位置；内部owner-only需求按声明回退。`Pool.combine(id, titleKey, [simplePool, generalPool])`组合混合provider，保原准确recipe/codec/revision，不隐式注册child，也不把它们改成普通池。两接口均有真实718 Compiler行为回归；完整线程语义、组合声明时点和例子见[配方执行策略](recipe-execution-policy.md)。
+
 ## 完整结构校验
 
 `mods.prototype_eng.structure.Predicate.custom(facts, queries, offsets, controllerOffsets, validator)`先声明所有可能读点。`Query.create(id, capture)`的capture在真实owner采样，worker validator只读冻结Facts；NBT入/出均复制。Facts包含当前base绝对坐标、实际controller与相对offset；`at(...)`使用会随结构旋转的local offset，`atWorld(...)`使用绝对坐标，biomeName保留名称。旧Java两参及budget hooks保持原职责；未可用事实和采样/回调错误仍区分。不要从未知matcher执行结果猜预览材料；需要时显式使用Java withDisplay或JSON display。

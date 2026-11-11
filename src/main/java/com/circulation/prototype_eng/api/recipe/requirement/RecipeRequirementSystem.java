@@ -16,6 +16,16 @@ import java.util.List;
  */
 public interface RecipeRequirementSystem<C> {
     /**
+     * Immutable execution capability for this system's definitions. True keeps acquisition,
+     * settlement and cancellation on the scheduler owner even under an asynchronous work policy.
+     * Pure preparation kernels may still use workers. Declare every potential structural child;
+     * dynamic wrappers must return true if an undeclared child may require the owner.
+     */
+    default boolean requiresOwnerThread() {
+        return false;
+    }
+
+    /**
      * Optional pure preparation at this requirement's actual arrival, after preceding modifiers and
      * overlays. Capture has no effects; only the returned computation runs on a worker. Opaque legacy
      * callbacks retain their owner execution. Null selects the ordinary start/tick/end callback.

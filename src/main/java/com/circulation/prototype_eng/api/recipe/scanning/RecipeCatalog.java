@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.recipe.scanning;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.ints.Int2ObjectAVLTreeMap;
@@ -16,6 +17,7 @@ import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -30,6 +32,9 @@ import java.util.function.BooleanSupplier;
 
 /** Canonical pool/recipe identities and priority are frozen once. Each pool owns its discovery strategy. */
 public final class RecipeCatalog {
+    private static final int COMBINATION_CACHE_SIZE = 16;
+    private static final int RETRY_INDEX_CACHE_SIZE = 64;
+    private static final ResourceLocation COMBINATION_ID = new ResourceLocation("prototype_eng", "selected_recipe_pools");
     private final Map<ResourceLocation, RecipePool> pools;
     private final List<RecipePool> orderedPools;
     private final Map<ResourceLocation, MachineRecipe> recipes;
@@ -38,6 +43,8 @@ public final class RecipeCatalog {
     private final Reference2ObjectOpenHashMap<RecipePool, PoolMembers> members = new Reference2ObjectOpenHashMap<>();
     private final Reference2ObjectOpenHashMap<MachineRecipe, ObjectArrayList<RecipePool>> owners = new Reference2ObjectOpenHashMap<>();
     private final Reference2IntOpenHashMap<MachineRecipe> priority = new Reference2IntOpenHashMap<>();
+    private final ObjectArrayList<Combination> combinations = new ObjectArrayList<>();
+    private final Reference2ObjectLinkedOpenHashMap<MachineRecipe, ResourceRecipeIndex> retryIndexes = new Reference2ObjectLinkedOpenHashMap<>();
 
     public RecipeCatalog(Collection<? extends RecipePool> pools) {
         var knownPools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
@@ -88,6 +95,40 @@ public final class RecipeCatalog {
 
     public List<MachineRecipe> recipes() {
         return orderedRecipes;
+    }
+
+    /** Resolves transient retry hints against this catalog's exact canonical definition. */
+    public @Nullable MachineRecipe recipe(ResourceLocation id) {
+        return recipes.get(Objects.requireNonNull(id));
+    }
+
+    /** Owner capture for a retry whose caller guarantees stable canonical fixed inputs. */
+    @SuppressWarnings("ReturnOfInnerClass") // The keyed capture retains this exact owner's quantity and revision proof.
+    public synchronized RecipeCandidateIndex.Cursor beginFixedInputCandidates(MachineRecipe recipe, MachineInstance machine,
+                                                                              Set<ResourceLocation> groups) {
+        if (recipes.get(Objects.requireNonNull(recipe).id()) != recipe) throw new IllegalArgumentException("Foreign retry recipe");
+        var index = retryIndexes.getAndMoveToLast(recipe);
+        if (index == null) {
+            index = ResourceRecipeIndex.forFixedInputs(ObjectLists.singleton(recipe), _ -> true);
+            if (retryIndexes.size() == RETRY_INDEX_CACHE_SIZE) retryIndexes.removeFirst();
+            retryIndexes.put(recipe, index);
+        }
+        return index.beginLookup(machine, groups, ObjectLists.singleton(recipe));
+    }
+
+    /** Candidates are in canonical order; rotate by a stable ID without copying their list. */
+    int candidateOffset(List<MachineRecipe> candidates, @Nullable ResourceLocation previous) {
+        if (previous == null || candidates.size() < 2) return 0;
+        var recipe = recipes.get(previous);
+        if (recipe == null) return 0;
+        int ordinal = priority.getInt(recipe);
+        int low = 0, high = candidates.size();
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (priority.getInt(candidates.get(middle)) <= ordinal) low = middle + 1;
+            else high = middle;
+        }
+        return low == candidates.size() ? 0 : low;
     }
 
     /** Shared immutable summary; scanners combine it with their own factory/preparation guarantee. */
@@ -159,17 +200,62 @@ public final class RecipeCatalog {
                                Map<ResourceLocation, List<MachineRecipe>> groups) {
     }
 
+    /** Compiled on first discovery demand and shared through a bounded identity cache. */
+    private synchronized @Nullable RecipePool combined(List<RecipePool> selectedPools) {
+        if (selectedPools.isEmpty()) return null;
+        if (selectedPools.size() == 1) return selectedPools.getFirst();
+        for (int index = 0; index < combinations.size(); index++) {
+            var combination = combinations.get(index);
+            if (!combination.matches(selectedPools)) continue;
+            if (index != combinations.size() - 1) {
+                combinations.remove(index);
+                combinations.add(combination);
+            }
+            return combination.pool;
+        }
+        var providers = ObjectLists.unmodifiable(new ObjectArrayList<>(selectedPools));
+        var pool = new CompositeRecipePool(COMBINATION_ID, providers.getFirst().translationKey(), providers);
+        if (combinations.size() == COMBINATION_CACHE_SIZE) combinations.removeFirst();
+        combinations.add(new Combination(providers, pool));
+        return pool;
+    }
+
+    private record Combination(List<RecipePool> providers, CompositeRecipePool pool) {
+        private boolean matches(List<RecipePool> selected) {
+            if (providers.size() != selected.size()) return false;
+            for (int index = 0; index < providers.size(); index++) if (providers.get(index) != selected.get(index)) return false;
+            return true;
+        }
+    }
+
     /** Frozen selected pools identify membership; selection does not enumerate every recipe each pass. */
     public final class Selection {
         private final RecipeCatalog catalog = RecipeCatalog.this;
         private final MachineInstance machine;
-        private final List<RecipePool> selectedPools;
         private final ReferenceOpenHashSet<RecipePool> selected;
+        private final List<RecipePool> selectedPools;
+        private volatile @Nullable RecipePool combinedPool;
 
-        private Selection(MachineInstance machine, List<RecipePool> selectedPools, ReferenceOpenHashSet<RecipePool> selected) {
+        private Selection(MachineInstance machine, ObjectArrayList<RecipePool> selectedPools, ReferenceOpenHashSet<RecipePool> selected) {
             this.machine = machine;
-            this.selectedPools = ObjectLists.unmodifiable(new ObjectArrayList<>(selectedPools));
             this.selected = selected;
+            // SelectionCapture exclusively owns this completed provider list; no recipe is visited here.
+            this.selectedPools = ObjectLists.unmodifiable(selectedPools);
+            combinedPool = selectedPools.size() == 1 ? selectedPools.getFirst() : null;
+        }
+
+        /**
+         * Empty selections have no pool and one provider stays exact. Mixed providers compile lazily
+         * on the first caller, normally the discovery worker; an explicit owner call requests compilation there.
+         */
+        public @Nullable RecipePool combinedPool() {
+            if (selectedPools.size() < 2) return combinedPool;
+            var pool = combinedPool;
+            if (pool == null) {
+                pool = combined(selectedPools);
+                combinedPool = pool;
+            }
+            return pool;
         }
 
         public boolean accepts(MachineInstance owner, MachineRecipe recipe) {
@@ -298,11 +384,12 @@ public final class RecipeCatalog {
                     phase = 2;
                 }
                 if (phase == 2) {
-                    while (pool != null || poolIndex < selection.selectedPools.size()) {
+                    while (pool != null || poolIndex == 0 && selection.combinedPool() != null) {
                         if (!definitionCurrent.getAsBoolean()) return false;
                         if (pool == null) {
                             if (!budget.take()) return false;
-                            pool = selection.selectedPools.get(poolIndex++);
+                            pool = Objects.requireNonNull(selection.combinedPool());
+                            poolIndex = 1;
                             poolMembers = members.get(pool);
                             poolLookup = pool.beginCandidates(machine, frozenGroups);
                             poolReady = poolLookup == null;
@@ -335,7 +422,8 @@ public final class RecipeCatalog {
                                 }
                                 if (!budget.take()) return false;
                                 pendingRecipe = Objects.requireNonNull(poolOpinion.next(), "pool candidate");
-                                if (recipes.get(pendingRecipe.id()) != pendingRecipe || !poolMembers.identities.contains(pendingRecipe))
+                                if (recipes.get(pendingRecipe.id()) != pendingRecipe || (poolMembers == null
+                                    ? !selection.accepts(machine, pendingRecipe) : !poolMembers.identities.contains(pendingRecipe)))
                                     throw new IllegalArgumentException("Pool candidate is foreign or outside its pool: " + pendingRecipe.id());
                                 pendingGroups = pendingRecipe.recipeGroups().iterator();
                                 groupAccepted = frozenGroups.isEmpty();
@@ -422,6 +510,7 @@ public final class RecipeCatalog {
         }
 
         private void fallback() {
+            if (poolMembers == null) throw new IllegalStateException("Composite pool must preserve its own child fallbacks");
             if (frozenGroups.isEmpty()) poolOpinion = poolMembers.recipes.iterator();
             else fallbackGroups = frozenGroups.iterator();
         }

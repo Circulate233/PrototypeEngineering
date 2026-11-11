@@ -74,6 +74,11 @@ public final class DefaultRecipePool implements RecipePool {
     }
 
     @Override
+    public RecipeCandidateIndex.Cursor beginMatch(AEKey2LongMap inventory, int parallelism, Set<ResourceLocation> groups) {
+        return inputIndex.beginMatch(inventory, parallelism, groups);
+    }
+
+    @Override
     public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
         return machine.supportsStableFixedInputLowerBounds() ? inputIndex.beginLookup(machine, groups, recipes) : null;
     }

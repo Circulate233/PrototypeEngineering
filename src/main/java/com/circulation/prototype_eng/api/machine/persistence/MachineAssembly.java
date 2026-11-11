@@ -20,6 +20,7 @@ import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.structure.StructureComponents;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
@@ -53,13 +54,15 @@ public final class MachineAssembly {
         public NBTTagCompound encode(MachineInstance owner, MachineScheduling component) {
             var tag = new NBTTagCompound();
             tag.setString("Mode", component.mode().name());
+            if (component.policy() != null) tag.setString("Policy", component.policy().name());
             return tag;
         }
 
         @Override
         public MachineScheduling restore(MachineInstance owner, MachineScheduling component, NBTTagCompound saved) {
-            StrictNbt.requireKeys(saved, "Mode");
-            return new MachineScheduling(ExecutionMode.valueOf(StrictNbt.requireString(saved, "Mode")));
+            StrictNbt.requireKeys(saved, "Mode", "Policy");
+            return new MachineScheduling(ExecutionMode.valueOf(StrictNbt.requireString(saved, "Mode")),
+                saved.hasKey("Policy") ? ControllerExecutionPolicy.valueOf(StrictNbt.requireString(saved, "Policy")) : null);
         }
     };
 

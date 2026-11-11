@@ -18,6 +18,11 @@ import java.util.List;
  * PN research gating and parallel numeric occupancy share the real stage's commit and compensation.
  */
 public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<NetworkRecipeWork.Binding> {
+    @Override
+    public boolean requiresOwnerThread() {
+        return true;
+    }
+
     private static RequirementTransaction acquire(RecipeProcess process, NetworkRecipeWork.Binding binding,
                                                   boolean occupying, boolean checkCapacity) {
         var device = process.owner().components().get(binding.device());

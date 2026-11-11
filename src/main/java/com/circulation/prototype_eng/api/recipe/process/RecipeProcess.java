@@ -81,6 +81,8 @@ public final class RecipeProcess {
     private boolean purePreparation;
     @Nullable
     private RecipeWorkBudget preparationWork;
+    // Frozen requirement systems/structural children make this process-local capability cache stable.
+    private byte ownerThreadRequirement;
 
     public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed) {
         this(owner, recipe, seed, ProbabilityTuning.defaultTuning());
@@ -313,6 +315,28 @@ public final class RecipeProcess {
      */
     public List<RecipeRequirement<?>> orderedRequirements() {
         return orderedRequirements;
+    }
+
+    /**
+     * Read once at the quiescent owner handoff, including machine-supplied roots and every nested
+     * structural child. This reads only immutable capability/shape metadata and invokes no stage.
+     */
+    public boolean requiresOwnerThread() {
+        if (ownerThreadRequirement == 0) {
+            var pending = new ObjectArrayList<>(orderedRequirements);
+            var visited = new ReferenceOpenHashSet<RecipeRequirement<?>>();
+            while (!pending.isEmpty()) {
+                var requirement = pending.removeLast();
+                if (!visited.add(requirement)) continue;
+                if (requirement.type().system().requiresOwnerThread()) {
+                    ownerThreadRequirement = 2;
+                    return true;
+                }
+                pending.addAll(Objects.requireNonNull(structuralChildren(requirement), "Requirement structural children"));
+            }
+            ownerThreadRequirement = 1;
+        }
+        return ownerThreadRequirement == 2;
     }
 
     /**

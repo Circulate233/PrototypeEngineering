@@ -1,5 +1,7 @@
 # 普通调度、所有权与服务器接线
 
+2026-11-11新增[控制器四种执行策略](recipe-execution-policy.md)，新逻辑控制器默认FULL_ASYNC。原ExecutionMode及planner不变，正常组件通过明确的一次性lifecycle/dispatch claim交给worker，原shared-affinity传递分组仍串行；配方工作在固定lane原线程续办，扫描发现worker输出由owner复核/准入。同步视图复用Batch协议不新建executor，owner-only PN预算及来源/退出/补偿规则保留。下面普通/旧PLANNED条目按其当时职责阅读，不据此假定新policy所有回调仍在owner。
+
 2026-11-10 周期结构检查新增同一 scheduler 内的相邻队列项批次：`enqueueStructureCheck` 不立即冲刷空闲 owner，最多按当前 workerThreads 聚合，在原边界 FIFO 的非结构动作之前停止。每个宿主交付显式捕获/匹配阶段及原 deadline；同批原 worker 全部实际退出后才逐 owner 清理/续办，允许同一个软片内多轮256-read窗口，预算和deadline不续期。原 ordinary/source/pending、失败关闭、worker策略/有限lane和重载义务不变；结构完成后的准确宿主观察与结构项一起排队，不能用逐台观察边界使实际TE接线重新串行。独立复核修正全批owner完成回调与下一轮准备的边界，以及运行中的每job独立deadline；最终完整1744 tests/224 suites全零，9个所属Java本机全级零及完整读回一致，MCP build成功；入口 [结构说明](structures.md) 和 `build/staging/structure-parallel-reuse/`。
 
 TaskScheduler 持有完整 PlannedExecution，保留 pending、取消与实际退出证明，并支持先清理后停原 lane 的 tryClose。2A 已将公共三参 scheduler 的正式机器入口接到原组件游标、生命周期、工位 coordinator 与纯 prepare；服务器只追加普通 CONCURRENT 网络 admission/refresh。具体所有权边界见[planned 所有权](scheduler-planned-ownership.md)与[正式执行](planned-execution.md)。

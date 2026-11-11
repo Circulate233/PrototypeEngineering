@@ -541,6 +541,7 @@ public final class MachineWorkSlots {
         }
         var state = process.state();
         if (state.lifecycle().isTerminal()) {
+            if (state.lifecycle() == RecipeProcess.Lifecycle.COMPLETED) slot.lastCompletedRecipe(process.recipe().id());
             process.detachFrom(this);
             slot.setState(null, state.result());
         } else {
@@ -761,6 +762,7 @@ public final class MachineWorkSlots {
             if (saved.process() != null) {
                 saved.process().attachTo(this);
             }
+            slots.get(i).lastCompletedRecipe(null);
             slots.get(i).setState(saved.process(), saved.result());
         }
         nextRuntimeSlot = restoredNext;

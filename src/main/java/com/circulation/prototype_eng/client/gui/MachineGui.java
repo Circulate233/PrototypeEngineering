@@ -140,10 +140,15 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         lines.add(details.crossRecipe() ? MachineGuiText.Recipes.getLocal(details.running())
             : MachineGuiText.Threads.getLocal(details.running(), details.threadLimit()));
         lines.add(MachineGuiText.Parallelism.getLocal(details.usedParallelism(), details.parallelismLimit()));
-        var mode = switch (details.mode()) {
+        var mode = details.policy() == null ? switch (details.mode()) {
             case MAIN_THREAD -> MachineGuiText.MainThreadMode;
             case CONCURRENT -> MachineGuiText.ConcurrentMode;
             case PLANNED_PARALLEL -> MachineGuiText.PlannedMode;
+        } : switch (details.policy()) {
+            case FULL_ASYNC -> MachineGuiText.FullAsyncPolicy;
+            case ASYNC_SCAN -> MachineGuiText.AsyncScanPolicy;
+            case ASYNC_WORK -> MachineGuiText.AsyncWorkPolicy;
+            case SYNCHRONOUS -> MachineGuiText.SynchronousPolicy;
         };
         lines.add(MachineGuiText.Execution.getLocal(mode.getLocal()));
         return lines;
