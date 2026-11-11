@@ -1,5 +1,9 @@
 # 实施进度
 
+- 2026-11-11 控制器视角放置/九宫格转向已接通：MachineControllerBlock保留原六面front，ControllerOrientation将视角up投影到front平面得到top/spin，垂直退化有yaw回退。OrientationToolOrientations提供共用Part、20/60/20框架与命中逆变换；中心按当前front旋转90°或对齐命中面，四边用cross-axis刚体90°/180°同时转front/top，四角保持。启用转向工具增加onItemUseFirst防GUI抢占，副手让出入口；潜行仍按格操作，旧循环24向移除，空气切模式保持，四角不收费。纯相对变换仍在host owner FIFO读最新方向，有效格保持原配置耐久成本。
+- 新增客户端OrientationToolGridRenderer：指向实际controller host的命中面才绘制，主/副手启用工具识别；青线/有效格金色/无效角暗色，前中心转动箭头、非前中心准星。共享point/part坐标且hit按原生包float精度，无独立屏幕选格；深度测试开启/不写深度，GL状态与buffer恢复。双语枚举tooltip移除旧潜行循环文案、补中心/四边提示。构造器融合档案仍只供拆卸，不增加物品工具效果。
+- 既有OrientationToolOrientationsTest更新旧交互预期并覆盖六面×全部24向、中心4转、边目标、角无效、翻转往返保留twist及FIFO组合；新增1项必要视角放置几何回归，原生旋转模型既有4项同过。首次专项一项仍期望重设的NORTH顶部，核刚体转动后修为正确SOUTH；最终完整spotlessApply/build成功41s，1924tests/264suites失败/错误/跳过0。6main＋1test及两语言逐文件本机MCP errorsOnly:false最终错误/警告/弱警告0，MCP build与533枚举key核对、源指纹和提交保护见 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/controller-face-grid/`。未启动游戏/服务端/FML/Bootstrap、未开子代理/推送，原背景/暂存保留，整体Goal暂停；实际GL/原生放置/点击/保存退出重进仍待用户完整重启复验。
+
 - 2026-11-11 构造器融合/拆卸：新增动态无序IRecipe，一个构造器＋一个工具永久消耗，getRemainingItems全EMPTY，不返还容器或旧工具；当前工具完整数据/附魔档案覆盖，保留绑定/材料选择，任务状态与进度复位。双语tooltip说明仅拆卸、不可取回和覆盖无返还。用户后续明确只用于拆卸并反馈AE误认扳手：确认AE以wrench harvest level>=0识别，中间物品覆盖把默认3级暴露给所有类别，现全部撤去；不复制顶层ench，不提供物品tool classes/level/speed。
 - 拆卸按准确actual state/工具类别及等级预验，保留权限、BreakEvent、removedByPlayer/onPlayerDestroy/harvestBlock与经验，明确传档案快照供精准采集/时运等使用，不借主手附魔。未融合保持3级基线，建造清障不使用档案。流体过权限/事件后按Forge真实源抽取；直接及一层modifiable背包容器在副本填充后准确消费/替换，支持堆叠空桶/部分容量，余物满时正常给出/掉落；未装入余量掉AE GenericResourcePackageItem保留NBT/数量。不可抽流水不造桶，未知handler不删，源抽成功完成目标避免邻居补水反复收集。创造不产资源。
 - 最终完整spotlessApply/build成功36s，既有1923tests/264suites失败/错误/跳过0，无新增镜像/静态测试；7Java与两语言逐文件本机MCP errorsOnly:false错误/警告/弱警告0，MCP build及源码字节/key/精确提交核对见 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/builder-tool-fusion/`。未启动客户端/服务器/FML/Bootstrap、未开子代理/推送。合成消耗、附魔掉落、容器/保护回调和控制器交互仍需完整重启复验，不以既有测试冒充新World行为已运行。原暂存/背景保留，总体Goal保持暂停。

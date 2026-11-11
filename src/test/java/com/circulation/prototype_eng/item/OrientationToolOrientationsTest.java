@@ -2,14 +2,20 @@ package com.circulation.prototype_eng.item;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
+import com.circulation.prototype_eng.machine.ControllerOrientation;
 import net.minecraft.util.EnumFacing;
 import org.junit.jupiter.api.Test;
 
-import java.util.EnumSet;
 import java.util.function.UnaryOperator;
 
+import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.BOTTOM;
+import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.CENTER;
+import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.CORNER;
+import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.LEFT;
+import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.RIGHT;
+import static com.circulation.prototype_eng.item.OrientationToolOrientations.Part.TOP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class OrientationToolOrientationsTest {
     private static final EnumFacing[][] PM_TOPS = {
@@ -28,55 +34,74 @@ class OrientationToolOrientationsTest {
             for (int twist = 0; twist < 4; twist++) {
                 assertEquals(front, current.getSide(RelativeSide.FRONT));
                 assertEquals(PM_TOPS[front.ordinal()][twist], current.getSide(RelativeSide.TOP));
-                current = OrientationToolOrientations.apply(current, front, false);
+                current = OrientationToolOrientations.apply(current, front, CENTER);
             }
             assertEquals(OrientationToolOrientations.canonical(front), current);
         }
     }
 
     @Test
-    void sneakCyclesAllTwentyFourWithTheOriginalFacingOrderFromEveryStartingOrientation() {
-        for (var start : BlockOrientation.values()) {
-            var seen = EnumSet.noneOf(BlockOrientation.class);
-            var current = start;
-            for (int step = 0; step < 24; step++) {
-                assertTrue(seen.add(current), start + " step " + step);
-                var front = current.getSide(RelativeSide.FRONT);
-                var top = current.getSide(RelativeSide.TOP);
-                int twist = 0;
-                while (PM_TOPS[front.ordinal()][twist] != top) {
-                    twist++;
+    void everyVisibleEdgeTargetsItsAdjacentFaceAndAllFourCornersDoNothing() {
+        for (var current : BlockOrientation.values()) {
+            for (var face : EnumFacing.VALUES) {
+                for (var part : OrientationToolOrientations.Part.values()) {
+                    if (part == CORNER) continue;
+                    double u = part == LEFT ? .1 : part == RIGHT ? .9 : .5;
+                    double v = part == BOTTOM ? .1 : part == TOP ? .9 : .5;
+                    var point = OrientationToolOrientations.point(face, u, v);
+                    var clicked = OrientationToolOrientations.part(face, point.x, point.y, point.z);
+                    assertEquals(part, clicked, face + " " + part);
+                    var result = OrientationToolOrientations.apply(current, face, clicked);
+                    assertEquals(OrientationToolOrientations.target(face, part), result.getSide(RelativeSide.FRONT));
                 }
-                var nextFront = twist == 3 ? EnumFacing.VALUES[(front.ordinal() + 1) % 6] : front;
-                var nextTop = PM_TOPS[nextFront.ordinal()][(twist + 1) % 4];
-                current = OrientationToolOrientations.apply(current, EnumFacing.DOWN, true);
-                assertEquals(BlockOrientation.get(nextFront, nextTop), current);
+                for (double u : new double[]{.1, .9}) {
+                    for (double v : new double[]{.1, .9}) {
+                        var corner = OrientationToolOrientations.point(face, u, v);
+                        var part = OrientationToolOrientations.part(face, corner.x, corner.y, corner.z);
+                        assertSame(CORNER, part);
+                        assertSame(current, OrientationToolOrientations.apply(current, face, part));
+                    }
+                }
             }
-            assertEquals(24, seen.size());
-            assertEquals(start, current);
         }
     }
 
     @Test
-    void otherFacesResetToThePmCanonicalTopIncludingVerticalFacing() {
+    void aligningAnotherFaceAndTurningBackPreservesEveryOriginalTwist() {
         for (var current : BlockOrientation.values()) {
             for (var clicked : EnumFacing.VALUES) {
                 if (clicked == current.getSide(RelativeSide.FRONT)) {
                     continue;
                 }
-                assertEquals(BlockOrientation.get(clicked, PM_TOPS[clicked.ordinal()][0]),
-                    OrientationToolOrientations.apply(current, clicked, false));
+                var turned = OrientationToolOrientations.apply(current, clicked, CENTER);
+                assertEquals(clicked, turned.getSide(RelativeSide.FRONT));
+                assertEquals(current, OrientationToolOrientations.apply(turned, current.getSide(RelativeSide.FRONT), CENTER));
             }
         }
     }
 
     @Test
     void relativeRequestsComposeAgainstTheResultOfEarlierRequests() {
-        UnaryOperator<BlockOrientation> eastClick = current -> OrientationToolOrientations.apply(current, EnumFacing.EAST, false);
+        UnaryOperator<BlockOrientation> eastClick = current -> OrientationToolOrientations.apply(current, EnumFacing.EAST, CENTER);
         var current = eastClick.apply(BlockOrientation.NORTH_UP);
         current = eastClick.apply(current);
         assertEquals(BlockOrientation.EAST_SOUTH, current);
-        current = OrientationToolOrientations.apply(current, EnumFacing.UP, true);
-        assertEquals(BlockOrientation.EAST_DOWN, current);
+        current = OrientationToolOrientations.apply(current, EnumFacing.EAST, TOP);
+        assertEquals(EnumFacing.UP, current.getSide(RelativeSide.FRONT));
+        assertEquals(EnumFacing.SOUTH, current.getSide(RelativeSide.TOP));
+    }
+
+    @Test
+    void placementTwistTracksTheCameraOnBothVerticalFacesAndObliqueHorizontalViews() {
+        assertEquals(BlockOrientation.UP_SOUTH, ControllerOrientation.placement(EnumFacing.UP, 0, 90));
+        assertEquals(BlockOrientation.UP_WEST, ControllerOrientation.placement(EnumFacing.UP, 90, 90));
+        assertEquals(BlockOrientation.UP_NORTH, ControllerOrientation.placement(EnumFacing.UP, 180, 90));
+        assertEquals(BlockOrientation.UP_EAST, ControllerOrientation.placement(EnumFacing.UP, 270, 90));
+        assertEquals(BlockOrientation.DOWN_NORTH, ControllerOrientation.placement(EnumFacing.DOWN, 0, -90));
+        assertEquals(BlockOrientation.DOWN_EAST, ControllerOrientation.placement(EnumFacing.DOWN, 90, -90));
+        assertEquals(BlockOrientation.NORTH_UP, ControllerOrientation.placement(EnumFacing.NORTH, 0, 0));
+        assertEquals(BlockOrientation.NORTH_WEST, ControllerOrientation.placement(EnumFacing.NORTH, 90, 80));
+        assertEquals(BlockOrientation.NORTH_EAST, ControllerOrientation.placement(EnumFacing.NORTH, 90, -80));
+        assertSame(EnumFacing.WEST, ControllerOrientation.placement(EnumFacing.UP, 90, 0).getSide(RelativeSide.TOP));
     }
 }

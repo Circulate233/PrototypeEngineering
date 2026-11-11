@@ -14,6 +14,8 @@ public enum OrientationToolText implements LocalizationEnum {
     StateOn,
     StateOff,
     ToggleHint,
+    GridCenterHint,
+    GridEdgeHint,
     CherishTitle,
     CherishDescription;
 

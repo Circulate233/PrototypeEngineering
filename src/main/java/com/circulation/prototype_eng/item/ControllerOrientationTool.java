@@ -59,6 +59,10 @@ public class ControllerOrientationTool extends AEBaseItem {
         return tag != null && tag.getBoolean(NBT_ENABLED);
     }
 
+    public static boolean rotating(ItemStack stack) {
+        return !stack.isEmpty() && stack.getItem() instanceof ControllerOrientationTool && isEnabled(stack);
+    }
+
     public static void setEnabled(ItemStack stack, boolean enabled) {
         var tag = stack.getTagCompound();
         if (tag == null) {
@@ -100,20 +104,27 @@ public class ControllerOrientationTool extends AEBaseItem {
     }
 
     @Override
+    public @NotNull EnumActionResult onItemUseFirst(@NotNull EntityPlayer player, @NotNull World world, @NotNull BlockPos pos,
+                                                    @NotNull EnumFacing side, float hitX, float hitY, float hitZ, @NotNull EnumHand hand) {
+        return onItemUse(player, world, pos, hand, side, hitX, hitY, hitZ);
+    }
+
+    @Override
     public @NotNull EnumActionResult onItemUse(@NotNull EntityPlayer player, @NotNull World world, @NotNull BlockPos pos,
                                                @NotNull EnumHand hand, @NotNull EnumFacing side, float hitX, float hitY, float hitZ) {
         var stack = player.getHeldItem(hand);
-        if (!isEnabled(stack) || !(world.getTileEntity(pos) instanceof MachineControllerHost tile)) {
+        if (!isEnabled(stack) || !world.isBlockLoaded(pos, false) || !(world.getTileEntity(pos) instanceof MachineControllerHost tile)) {
             return EnumActionResult.PASS;
         }
         if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) {
             return EnumActionResult.FAIL;
         }
-        if (!world.isRemote) {
-            boolean sneaking = player.isSneaking();
+        var part = OrientationToolOrientations.part(side, hitX, hitY, hitZ);
+        if (!world.isRemote && part != OrientationToolOrientations.Part.CORNER) {
             // Read current orientation only when this relative request reaches its owner FIFO boundary.
-            tile.transformOrientation(current -> OrientationToolOrientations.apply(current, side, sneaking));
+            tile.transformOrientation(current -> OrientationToolOrientations.apply(current, side, part));
             stack.damageItem(OrientationToolConfig.settings().durabilityCostRotateEnabled(), player);
+            player.inventory.markDirty();
         }
         return EnumActionResult.SUCCESS;
     }
@@ -194,6 +205,8 @@ public class ControllerOrientationTool extends AEBaseItem {
     public void addCheckedInformation(@NotNull ItemStack stack, @Nullable World world, @NotNull List<String> tooltip, @NotNull ITooltipFlag flag) {
         tooltip.add(OrientationToolText.State.getLocal((isEnabled(stack) ? OrientationToolText.StateOn : OrientationToolText.StateOff).getLocal()));
         tooltip.add(OrientationToolText.ToggleHint.getLocal());
+        tooltip.add(OrientationToolText.GridCenterHint.getLocal());
+        tooltip.add(OrientationToolText.GridEdgeHint.getLocal());
         super.addCheckedInformation(stack, world, tooltip, flag);
     }
 

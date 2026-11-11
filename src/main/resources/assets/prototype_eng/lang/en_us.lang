@@ -105,7 +105,7 @@ orientation_tool.prototype_eng.Disabled=Controller Orientation Tool: Disabled
 orientation_tool.prototype_eng.State=Mode: %s
 orientation_tool.prototype_eng.StateOn=Enabled (can rotate controllers, higher damage, higher durability cost)
 orientation_tool.prototype_eng.StateOff=Disabled (iron-tier multi-tool: pickaxe/axe/shovel)
-orientation_tool.prototype_eng.ToggleHint=Sneak + right-click air to toggle (sneak + click controller: cycle 24 orientations)
+orientation_tool.prototype_eng.ToggleHint=Sneak + right-click air to toggle modes.
 orientation_tool.prototype_eng.CherishTitle=Cherish Your Tools
 orientation_tool.prototype_eng.CherishDescription=Hit an entity with the Controller Orientation Tool while it is disabled.
 
@@ -536,3 +536,6 @@ structure_tool.prototype_eng.BuilderToolFusion=Craft with a tool to use its ench
 structure_tool.prototype_eng.BuilderToolFusionPermanent=Fusion consumes the tool permanently. A later fusion overwrites it without returning the previous tool.
 structure_tool.prototype_eng.BuilderToolFused=Fused tool: %s
 structure_tool.prototype_eng.BuilderFluidRecovery=Dismantled fluids fill usable inventory containers; any remainder drops as an AE resource package.
+
+orientation_tool.prototype_eng.GridCenterHint=Enabled: aim at a controller for the grid. Front center: turn 90 degrees; other face center: set it as the front.
+orientation_tool.prototype_eng.GridEdgeHint=Click a side strip to turn the front toward that edge. Corner cells do nothing.

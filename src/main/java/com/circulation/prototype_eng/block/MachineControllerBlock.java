@@ -133,7 +133,8 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
     public @NotNull IBlockState getStateForPlacement(@NotNull World world, @NotNull BlockPos pos, @NotNull EnumFacing facing,
                                                      float hitX, float hitY, float hitZ, int meta, @NotNull EntityLivingBase placer, @NotNull EnumHand hand) {
         // PM's vertical placement behavior is the vanilla six-facing piston rule.
-        return state(getDefaultState(), BlockOrientation.get(EnumFacing.getDirectionFromEntityLiving(pos, placer)));
+        return state(getDefaultState(), ControllerOrientation.placement(EnumFacing.getDirectionFromEntityLiving(pos, placer),
+            placer.rotationYaw, placer.rotationPitch));
     }
 
     @Override
@@ -181,6 +182,7 @@ public abstract class MachineControllerBlock<T extends AEBaseTile & MachineContr
     public boolean onBlockActivated(@NotNull World world, @NotNull BlockPos pos, @NotNull IBlockState state,
                                     @NotNull EntityPlayer player, @NotNull EnumHand hand, @NotNull EnumFacing face, float hitX, float hitY, float hitZ) {
         if (player.isSneaking() || player.getHeldItem(hand).getItem() instanceof ControllerOrientationTool
+            || ControllerOrientationTool.rotating(player.getHeldItemOffhand())
             || getTileEntity(world, pos) == null) {
             return false;
         }

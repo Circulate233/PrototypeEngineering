@@ -105,7 +105,7 @@ orientation_tool.prototype_eng.Disabled=控制器转向工具：已关闭
 orientation_tool.prototype_eng.State=模式：%s
 orientation_tool.prototype_eng.StateOn=开启（可旋转控制器，攻击更强，耐久消耗更高）
 orientation_tool.prototype_eng.StateOff=关闭（铁制多用工具：镐/斧/铲）
-orientation_tool.prototype_eng.ToggleHint=潜行右键空气切换模式（潜行点击控制器：循环 24 向）
+orientation_tool.prototype_eng.ToggleHint=潜行右键空气切换模式。
 orientation_tool.prototype_eng.CherishTitle=爱惜工具
 orientation_tool.prototype_eng.CherishDescription=使用“关闭”的控制器转向工具攻击一次生物。
 
@@ -536,3 +536,6 @@ structure_tool.prototype_eng.BuilderToolFusion=可与工具合成，其附魔、
 structure_tool.prototype_eng.BuilderToolFusionPermanent=工具会被永久消耗，无法取回；再次合成会覆盖旧工具，旧工具也不会返还。
 structure_tool.prototype_eng.BuilderToolFused=已融合工具：%s
 structure_tool.prototype_eng.BuilderFluidRecovery=拆卸流体时优先灌入背包内可用的流体容器，剩余流体掉落为 AE 资源包。
+
+orientation_tool.prototype_eng.GridCenterHint=开启时指向控制器显示九宫格：正面中心旋转90°，其他面中心设为正面。
+orientation_tool.prototype_eng.GridEdgeHint=点击四边窄格将正面翻转至该边所指方向；四角无操作。
