@@ -4,7 +4,7 @@
 
 ## 当前检查点
 
-- 2026-11-11 总体 Goal 保持恢复/active。结构重载真实 live MapEntry 失效已修并本地提交 `85e27669`；普通 ComponentData、机器/进程 codec、完整数据事实和原生 TE/ChunkWatch dirty 同步已提交 `df783f0d`。独立复核闭合重附 replay、跨 sibling generation 撤销、新 TE session、初次 watch 和跨代 revision 五项边界，未恢复全局可变命名表。最终工作区 build（含 Spotless）1907 tests/256 suites全零，14本阶段 Java本机 MCP errorsOnly:false全级零/完整读回当前匹配，MCP build成功。CT首批机器/配方声明21Java也已构建及全级检查，仍未阶段提交；完整 CT 的 client manifest/session、结构/仓室、研究/网络和实际数据脚本用法继续。入口 [实施进度](implementation-status.md)，恢复审计/失败/最终XML/MCP/精确提交证据在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/`。原暂存及背景保持，未推送、未启动游戏。
+- 2026-11-11 总体 Goal 保持恢复/active。结构重载真实 live MapEntry 失效已修并本地提交 `85e27669`；普通 ComponentData、机器/进程 codec、完整数据事实和原生 TE/ChunkWatch dirty 同步已提交 `df783f0d`。独立复核闭合重附 replay、跨 sibling generation 撤销、新 TE session、初次 watch 和跨代 revision 五项边界，未恢复全局可变命名表。CT首批机器/配方声明、IData 桥、注册 phase及不可变名称/manifest声明域已精确提交 `3d73cde9`（21Java+Gradle2）。最终工作区 build（含 Spotless）1907 tests/256 suites全零，35本批 Java本机 MCP errorsOnly:false全级零/完整读回当前匹配，MCP build成功，CT依赖已由用户正常重新导入。完整 CT 的 client manifest/provider/session、结构/仓室、研究/网络和实际数据脚本用法继续。入口 [实施进度](implementation-status.md)，恢复审计/失败/最终XML/MCP/精确提交证据在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/`。原暂存及5项背景保持，未推送、未启动游戏。
 
 - 2026-11-10 材料仓容器tooltip按截图反馈统一AE2S：直接调用Tooltips.getEmptyingTooltip(StoreAction)显示左右键两行原生存入提示，FillAction/muted/of/TextComponentItemStack显示装填提示；优先显示操作，不再拼一行自有“倒入材料仓；Shift处理全部容器”，颜色/内嵌图标/富文本绘制与GuiMEStorage同路。仅1Java，无语言或库存行为改动；Spotless/build -x test、本机MCP全级零/全文一致及MCP build通过，未新增或运行测试、未启动游戏。源码本地提交 `cf27716`，未推送，原背景/暂存保留；入口[仓室](hatches.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-container-tooltip/`，总体Goal仍暂停。
 
@@ -38,7 +38,7 @@
 
 - 新实机反馈优先：由用户重启客户端，先复验构造器三种绑定/打开行为、右侧双击整种与左侧单格替换、完整材料网格/滚动、30秒到期及Shift＋滚轮片层循环；再核对层预览零层控制器/线框、原生图标/tooltip、最近命中和真实搭建用料。截图紫黑物品本批仅静态审查当前pick/model链，不宣称新增视觉修复；仓室掉落/拾取/重新放置及退出世界也待实机。此前新增Mixin方法不能仅F3+T应用。
 
-1. 普通数据前置已本地提交并通过当前验证；先精确收束工作区已检查的 CT 首批机器/配方声明与可选依赖，再完成其后继脚本面。保留两语言、`JeiResourceReloadTest`、依赖原背景与 `docs/INDEX.md~`；本批源码和用户实机验收分别记录。
+1. 普通数据前置与 CT 首批机器/配方声明及可选依赖均已精确本地提交并通过当前验证；继续其后继脚本面，不重复测试未变化源码。保留两语言、`JeiResourceReloadTest`、依赖原背景与 `docs/INDEX.md~`；本批源码和用户实机验收分别记录。
 2. CT 后继补客户端独立 manifest provider、准确服务器 session/局部配方替换 facade、结构/仓室配置、研究/网络定义及普通数据的实际脚本用法。名称只在声明期解析并冻结具体回调，仍复用 `644e710` 的配方历史替换和已提交普通 data API；逐项核对注册/freeze/服务器 owner 时点，不扩大通用热重载。不恢复 GUI DSL、独立 Modern，Applied-Flux 暂缓；现有视觉及真实交互仍由用户启动客户端复验。
 3. 游戏由用户自行启动，GUI/工具/真实 HEI 页面和 AE 客户端调度仍待实机复验；纯行为测试不冒充原生运行通过。
 4. 用户已确认手动清理 build/.idea。原 stage 的 before/XML/MCP 原文件未恢复，旧条目只作历史；后续证据均保存在上述 build 外 recovery 目录。
