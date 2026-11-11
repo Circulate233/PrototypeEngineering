@@ -1,0 +1,150 @@
+package com.circulation.prototype_eng.integration.crafttweaker;
+
+import com.circulation.prototype_eng.api.component.ComponentType;
+import com.circulation.prototype_eng.api.data.DataComponents;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
+import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotRestartPolicy;
+import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
+import com.circulation.prototype_eng.api.recipe.scanning.FixedIoScanConstraint;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeProcessFactory;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
+import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
+import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
+import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBindings;
+import crafttweaker.annotations.ZenRegister;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import net.minecraft.util.ResourceLocation;
+import org.jetbrains.annotations.Nullable;
+import stanhebben.zenscript.annotations.ZenClass;
+import stanhebben.zenscript.annotations.ZenMethod;
+
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+
+/** Startup machine declaration; referenced structures use the existing Java/JSON structure loader. */
+@ZenRegister
+@ZenClass("mods.prototype_eng.MachineType")
+@SuppressWarnings("unused") // Public entry points are resolved by ZenScript's registered type.
+public final class ZenMachineType {
+    private final ResourceLocation id;
+    private final MachineType.Builder builder;
+    @Nullable
+    private ComponentType<MachineInstance, RecipeScanner> scanner;
+    @Nullable
+    private RecipeProcessCodecs processCodecs;
+    private boolean data;
+    private boolean registered;
+
+    private ZenMachineType(String id, String translationKey, String structureId) {
+        this.id = new ResourceLocation(id);
+        Objects.requireNonNull(translationKey);
+        builder = MachineType.builder(this.id, () -> translationKey, new ResourceLocation(structureId));
+    }
+
+    @ZenMethod
+    public static ZenMachineType create(String id, String translationKey, String structureId) {
+        return new ZenMachineType(id, translationKey, structureId);
+    }
+
+    @ZenMethod
+    public ZenMachineType recipePool(String poolId) {
+        open();
+        builder.recipePool(new ResourceLocation(poolId));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType recipeGroup(String groupId) {
+        open();
+        builder.recipeGroup(new ResourceLocation(groupId));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType componentData() {
+        open();
+        builder.component(DataComponents.MACHINE);
+        data = true;
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType processing(ZenRecipeBindings definitions, int candidates, int probes) {
+        open();
+        if (scanner != null) throw new IllegalStateException("Recipe processing is already declared");
+        var resolver = Objects.requireNonNull(definitions).resolver();
+        var limits = new ScanLimits(candidates, probes);
+        var processFactory = DataComponents.withProcessData(RecipeProcessFactory.STANDARD);
+        var registry = RecipeRegistry.INSTANCE;
+        var descriptor = RecipeScanning.component(new ResourceLocation(id.getNamespace(), id.getPath() + "/recipe_scanner"), host ->
+            RecipeScanner.multithreaded(host, registry.snapshot().catalog(), processFactory,
+                List.of(new FixedIoScanConstraint()), List.of(), _ -> false,
+                () -> ThreadLocalRandom.current().nextLong(), List.of()).follow(registry, resolver), limits, _ -> true);
+        builder.component(MachineWorkSlots.TYPE).component(descriptor);
+        scanner = descriptor;
+        processCodecs = resolver;
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType workSlot(String name, String[] recipeGroups, boolean isCore, String restartPolicy) {
+        open();
+        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>();
+        for (var group : recipeGroups) groups.add(new ResourceLocation(group));
+        builder.workSlot(new WorkSlotDefinition(name, groups, isCore,
+            WorkSlotRestartPolicy.valueOf(restartPolicy.toUpperCase(Locale.ROOT))));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType attribute(String attributeId, double base) {
+        open();
+        builder.attribute(new ResourceLocation(attributeId), base);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType executionMode(String mode) {
+        open();
+        builder.executionMode(ExecutionMode.valueOf(mode.toUpperCase(Locale.ROOT)));
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType controllerModel(String modelId) {
+        open();
+        builder.controllerModel(new ResourceLocation(modelId));
+        return this;
+    }
+
+    @ZenMethod
+    public void register(String revision) {
+        open();
+        var type = builder.build();
+        var assembly = MachineAssembly.builder(type, revision);
+        if (data) assembly.component(DataComponents.MACHINE, DataComponents.MACHINE_CODEC);
+        if (scanner != null) {
+            assembly.workSlots(new MachineWorkSlotsNbt(revision, Objects.requireNonNull(processCodecs))).recreated(scanner);
+        } else if (!type.workSlots().isEmpty()) {
+            throw new IllegalArgumentException("Work slots require explicit recipe processing");
+        }
+        var definition = assembly.build();
+        DefinitionRegistrations.machines(event -> event.registry().register(type));
+        DefinitionRegistrations.runtime(event -> event.assembly(definition));
+        registered = true;
+    }
+
+    private void open() {
+        if (registered) throw new IllegalStateException("Machine declaration is already registered");
+    }
+}

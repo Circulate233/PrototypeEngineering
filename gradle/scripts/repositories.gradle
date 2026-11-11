@@ -45,5 +45,10 @@ repositories {
         content { includeGroup 'software.bernie.geckolib' }
     }
     mavenCentral()
+    maven {
+        name = 'CraftTweaker'
+        url = 'https://maven.blamejared.com'
+        content { includeGroup 'CraftTweaker2' }
+    }
     mavenLocal() // Must be last for caching to work
 }

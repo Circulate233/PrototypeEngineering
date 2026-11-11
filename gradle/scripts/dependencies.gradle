@@ -12,6 +12,10 @@ dependencies {
         transitive = false
     }
     modImplementation 'mezz:jei:4.35.1'
+    // Script adapters are optional; the public Java API never links CraftTweaker classes.
+    modCompileOnly 'CraftTweaker2:CraftTweaker2-API:4.1.20.718'
+    modCompileOnly 'CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.718'
+    modCompileOnly 'CraftTweaker2:ZenScript:4.1.20.718'
     // Keep the original Gecko coordinate; this repository delivers a jar whose VERSION field is 3.0.30.
     modImplementation 'software.bernie.geckolib:geckolib-forge-1.12.2:3.0.31'
     modImplementation 'curse.maven:component-model-hider-940949:4885858'
