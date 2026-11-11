@@ -1,5 +1,7 @@
 # 实施进度
 
+- 本轮本地源码提交 `1a05dd9388eaabd3f66e27d75fc25ebece83c622`，105路径；使用独立index排除原暂存测试、依赖/正式语言背景及Tree的Row可见性背景单行，候选Tree经javac。提交后同步原index仅限任务路径，原暂存patch及保护文件工作字节均一致；`exact-commit-result.json`记录核验，未推送。
+
 - 2026-11-11 本地化与严格集合审查已完成源码/验证：用户确认的addon缺pack.mcmeta根因已补，构建强制metadata=3及小写语言资源；19Java新Jar安装成功并核源/目标SHA。另修核心/World/network/render结构translated、固定英文key、native/external大小写及客户端工具名称；结构声明优先、明确机器fallback用于panel/右树。13正式＋3示例枚举527key精确EN/ZH齐全，四语言表无重复，固定literal仅在枚举。ExampleText真实Zen SDK暴露，全部11实际脚本编译，10/20执行97核心PASS、completed=true；World脚本不冒充运行。
 - primitive集合从内部字段到公开参数/返回值严格fastutil：AEKeyType容量/比例R2L、选择/次数O2I、目录/渲染路径IntList、布尔展开表O2Boolean，示例姿态FloatList；不保留boxed JDK兼容重载。其它普通JDK对象表/队列/栈也迁移并保持排序身份编码/队列次序。oversize池和清理队列使用reference linked set；保留BitSet密集操作、跨线程ConcurrentLinkedQueue、纯对象Gecko具体HashMap覆盖及owner投影/所有权转移视图。fastutil只读wrapper的entry.setValue漏洞被既有测试发现，容量/比例及预览选择改独立immutable entry并验证primitive/boxed继承桥；AEKey2LongMap及addTo/溢出事务保护保留。754main/addon Java与11脚本扫描直接boxed primitive集合/包装数组0。约束已更新development-spec，细节及例外见[专项审查](localization-collections-audit.md)。
 - 最终完整spotlessApply/build成功22s，1923tests/264suites，failures/errors/skipped全0；新增1项必要标题行为回归，既有选择测试加条目不可变断言，其余测试仅迁移真实API。28main＋47test逐文件本机MCP errorsOnly:false最终错误/警告/弱警告0；11修改run Java被排除/诊断未知，pack和两语言全级零，MCP build成功。验证与264 XML、SDK、IDE原始结果、源码指纹、Jar和精确提交/背景保护在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/localization-collections-audit/`。首次目标被客户端占用，用户本轮回复“已退出”后重新编译安装；未启动游戏/服务端/FML/Bootstrap、未开子代理/推送。实际本地化/界面/组合结构/World支付保存仍待用户启动复验，总体Goal保持暂停，背景及原暂存保留。

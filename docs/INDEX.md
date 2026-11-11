@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 本轮源码与审查记录已精确本地提交 `1a05dd9`，未推送；105路径不含原暂存测试和背景，Row背景可见性单行另行保留，候选Tree单独编译通过。提交后原暂存patch/保护文件工作字节一致，详见专项证据 `exact-commit-result.json`。
+
 - 2026-11-11 本地化/集合全量审查收尾：用户指出的测试addon缺pack.mcmeta已补，安装Jar metadata=3/两语言各94条/SHA一致；结构显式标题和机器fallback、工具客户端名称、native/external小写key及固定key枚举已修，527枚举项EN/ZH无缺。带primitive集合的字段/参数/返回值全部fastutil专用接口（AEKeyType为Reference2LongMap、选择表Object2IntMap、路径IntList），不留装箱JDK ABI重载；扫描735main＋19addon＋11脚本直接装箱集合/包装数组零。普通队列/栈迁移并保留身份/顺序，补entry.setValue不可变保护。完整build含Spotless为1923 tests/264 suites全零，11脚本实际SDK编译/97核心断言通过；75正式Java本机MCP全级零，11修改run Java被排除/未知，资源全级零及MCP build成功。示例已安装，无子代理/游戏启动/推送，原背景及暂存保留；详见 [本地化与集合审查](localization-collections-audit.md)，证据localization-collections-audit/。
 
 - 2026-11-11 补齐真实子结构/可拓展结构示例：新增12/23两个实际CT脚本，nested_structure共享pod＋marker跨左右分支复用；expandable_structure为1–4段Slice及随尾段移动的一次性金盖。run新增基于canonical结构图的搭建、真实World冻结断言和显式段数客户端预览命令，具体BOM26及22/31/40/49与操作见 [组合结构示例](../run/scripts/README-composite.md)。同时贯通重复次数滑块→view/用料/投影→工具NBT→服务端occurrence上下界预验→实际构建计划；换绑清理，重开保留。19 addon Java、11脚本SDK编译和核心97断言通过；24 tests/2 suites全零含1项必要的共享occurrence/持久段数/构建对照回归，官方7Java本机MCP全级零，run修改Java因排除不可分析，两语言全级零。示例已重编安装，未启动游戏/推送；World成型、搭建、支付、退出重进及画面仍待用户，总体Goal保持暂停。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/composite-examples/`。
