@@ -242,6 +242,12 @@ public class ClientProxy extends CommonProxy {
     }
 
     @Override
+    public @Nullable Object controllerDataConnection(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {
+        if (!controllerDisplayConnectionCurrent(tile, manager)) return null;
+        return Objects.requireNonNull(Minecraft.getMinecraft().getConnection()).getNetworkManager();
+    }
+
+    @Override
     public void receiveControllerRender(MachineControllerBlockEntity tile, @Nullable NetworkManager manager,
                                         ControllerRenderChunks.Part part, Consumer<MachineRenderSnapshot> installed) {
         if (!controllerDisplayConnectionCurrent(tile, manager)) return;

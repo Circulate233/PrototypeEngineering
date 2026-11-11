@@ -190,6 +190,10 @@ public class CommonProxy implements IGuiHandler {
         return false;
     }
 
+    public @Nullable Object controllerDataConnection(MachineControllerBlockEntity tile, @Nullable NetworkManager manager) {
+        return null;
+    }
+
     public void receiveControllerRender(MachineControllerBlockEntity tile, @Nullable NetworkManager manager,
                                         ControllerRenderChunks.Part part, Consumer<MachineRenderSnapshot> installed) {
         throw new IllegalStateException("Server proxy cannot receive client controller render state");

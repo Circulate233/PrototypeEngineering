@@ -9,6 +9,9 @@ import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import net.minecraft.nbt.CompressedStreamTools;
+import net.minecraft.nbt.NBTSizeTracker;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -34,6 +37,28 @@ public final class ControllerRenderSnapshotCodec {
     private static final int MAX_STRING_BYTES = 4096;
 
     private ControllerRenderSnapshotCodec() {
+    }
+
+    /** Same allocation gate for ordinary data carried by the native controller chunk channel. */
+    public static byte[] encodeCompound(NBTTagCompound tag) {
+        var bytes = new ByteArrayOutputStream();
+        try (var out = new DataOutputStream(new BoundedOutput(bytes))) {
+            CompressedStreamTools.write(tag, out);
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("Cannot encode controller data", failure);
+        }
+        return bytes.toByteArray();
+    }
+
+    public static NBTTagCompound decodeCompound(byte[] bytes) {
+        if (bytes.length > MAX_BYTES) throw new IllegalArgumentException("Controller data exceeds supported scale");
+        try (var in = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            var tag = CompressedStreamTools.read(in, new NBTSizeTracker(MAX_BYTES));
+            if (in.available() != 0) throw new IllegalArgumentException("Trailing controller data bytes");
+            return tag;
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("Invalid or incomplete controller data", failure);
+        }
     }
 
     public static byte[] encode(MachineRenderSnapshot snapshot) {

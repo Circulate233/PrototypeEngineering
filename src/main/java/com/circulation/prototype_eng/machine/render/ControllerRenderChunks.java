@@ -3,6 +3,8 @@ package com.circulation.prototype_eng.machine.render;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
+import com.circulation.prototype_eng.machine.data.MachineDataSnapshot;
+import com.circulation.prototype_eng.machine.data.MachineDataSnapshotCodec;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.Constants;
@@ -12,6 +14,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
 
 /** A bounded single pending payload; all native packets retain the original Display metadata. */
 public final class ControllerRenderChunks {
@@ -23,11 +27,20 @@ public final class ControllerRenderChunks {
     }
 
     public static List<Part> split(MachineRenderSnapshot snapshot) {
-        byte[] bytes = ControllerRenderSnapshotCodec.encode(snapshot);
+        return split(ControllerRenderSnapshotCodec.encode(snapshot), snapshot.display(), snapshot.catalog());
+    }
+
+    /** Independent Data sibling, sharing the exact render allocation/chunk/confirmation mechanics. */
+    public static List<Part> split(MachineDataSnapshot snapshot, ControllerDisplayData display, UUID session) {
+        if (snapshot.generation() != display.generation()) throw new IllegalArgumentException("Foreign machine data attachment");
+        return split(MachineDataSnapshotCodec.encode(snapshot), display, new MachineRenderSnapshot.CatalogToken(session, 0));
+    }
+
+    private static List<Part> split(byte[] bytes, ControllerDisplayData display, MachineRenderSnapshot.CatalogToken catalog) {
         int count = chunks(bytes.length);
         var parts = new ObjectArrayList<Part>(count);
         for (int i = 0; i < count; i++)
-            parts.add(new Part(snapshot.display(), snapshot.catalog(), bytes.length, i,
+            parts.add(new Part(display, catalog, bytes.length, i,
                 Arrays.copyOfRange(bytes, i * CHUNK_BYTES, Math.min(bytes.length, (i + 1) * CHUNK_BYTES))));
         return List.copyOf(parts);
     }
@@ -96,6 +109,19 @@ public final class ControllerRenderChunks {
         private int received;
         private boolean acceptedComplete;
         private boolean retired;
+        private long generationFloor;
+
+        /** A sibling's valid native attachment header revokes older data without borrowing its sequence clock. */
+        public void observeGeneration(long generation) {
+            if (generation <= 0) throw new IllegalArgumentException("Invalid controller attachment generation");
+            if (retired || generation <= generationFloor) return;
+            generationFloor = generation;
+            if (header != null && header.display().generation() < generationFloor) {
+                parts = null;
+                acceptedComplete = false;
+                acceptedParts = null;
+            }
+        }
 
         public @Nullable Part header() {
             return header;
@@ -114,8 +140,11 @@ public final class ControllerRenderChunks {
         }
 
         public boolean current(MachineRenderSnapshot snapshot) {
-            return !retired && acceptedComplete && header != null && header.display().equals(snapshot.display()) &&
-                header.catalog().equals(snapshot.catalog());
+            return current(snapshot.display(), snapshot.catalog());
+        }
+
+        public boolean current(ControllerDisplayData display, MachineRenderSnapshot.CatalogToken token) {
+            return !retired && display.generation() >= generationFloor && acceptedComplete && header != null && header.display().equals(display) && header.catalog().equals(token);
         }
 
         public void retire() {
@@ -128,10 +157,24 @@ public final class ControllerRenderChunks {
         }
 
         public @Nullable MachineRenderSnapshot receive(Part part) {
-            if (retired) return null;
+            return receive(part, false, ControllerRenderSnapshotCodec::decode,
+                (snapshot, frozen) -> snapshot.display().equals(frozen.display()) && snapshot.catalog().equals(frozen.catalog()));
+        }
+
+        public @Nullable MachineDataSnapshot receiveData(Part part) {
+            return receive(part, true, MachineDataSnapshotCodec::decode,
+                (snapshot, frozen) -> snapshot.generation() == frozen.display().generation() && frozen.catalog().sequence() == 0);
+        }
+
+        private <T> @Nullable T receive(Part part, boolean replaceDataSession, Function<byte[], T> decode, BiPredicate<T, Part> matches) {
+            if (retired || part.display().generation() < generationFloor) return null;
             if (withdrawnThrough != null && !part.display().follows(withdrawnThrough)) return null;
             if (header != null) {
-                if (!header.catalog().session().equals(part.catalog().session()) || !header.display().type().equals(part.display().type()))
+                // Only Data may come from a new server TE while the exact client TE stays attached.
+                // Its strictly newer generation revokes the old TE session; Render retains its session lock.
+                if (!header.display().type().equals(part.display().type()) ||
+                    !header.catalog().session().equals(part.catalog().session()) &&
+                        (!replaceDataSession || part.display().generation() <= header.display().generation()))
                     return null;
                 if (part.display().equals(header.display())) {
                     if (!part.catalog().equals(header.catalog()) || part.totalBytes() != header.totalBytes()) {
@@ -185,8 +228,8 @@ public final class ControllerRenderChunks {
             }
             var completedParts = parts;
             parts = null;
-            var snapshot = ControllerRenderSnapshotCodec.decode(complete);
-            if (!snapshot.display().equals(part.display()) || !snapshot.catalog().equals(part.catalog()))
+            var snapshot = decode.apply(complete);
+            if (!matches.test(snapshot, part))
                 throw new IllegalArgumentException("Machine render payload differs from its frozen chunk header");
             acceptedComplete = true;
             acceptedParts = completedParts;

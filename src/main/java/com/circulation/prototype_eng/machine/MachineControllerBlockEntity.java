@@ -19,8 +19,11 @@ import com.circulation.prototype_eng.api.machine.render.MachineAnimationState;
 import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.structure.StructureConfiguration;
+import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureMatch;
 import com.circulation.prototype_eng.machine.render.ControllerRenderChunks;
+import com.circulation.prototype_eng.machine.data.MachineDataSnapshot;
+import com.circulation.prototype_eng.machine.data.MachineDataSnapshots;
 import com.circulation.prototype_eng.machine.render.ControllerRenderSnapshots;
 import com.circulation.prototype_eng.machine.render.ControllerRenderSync;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
@@ -72,6 +75,22 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Nullable
     private MachineRenderSnapshot serverRender;
     private List<ControllerRenderChunks.Part> renderParts = List.of();
+    private List<ControllerRenderChunks.Part> dataParts = List.of();
+    private final UUID dataSession = UUID.randomUUID();
+    private final MachineDataSnapshots dataSnapshots = new MachineDataSnapshots();
+    @Nullable
+    private MachineDataSnapshot serverDataSnapshot;
+    @Nullable
+    private ControllerDisplayData serverDataDisplay;
+    @Nullable
+    private MachineDataSnapshot clientDataSnapshot;
+    @Nullable
+    private ControllerDisplayData clientDataDisplay;
+    private long clientDataRevision;
+    private long clientDataGeneration;
+    @Nullable
+    private Object clientDataConnection;
+    private ControllerRenderChunks.Assembler dataAssembler = new ControllerRenderChunks.Assembler();
     @Nullable
     private MachineInstance renderMachine;
     @Nullable
@@ -80,6 +99,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     private StructureMatch renderMatch;
     @Nullable
     private MachineAnimationState.Snapshot renderAnimation;
+    @Nullable
+    private StructureCatalogView renderCatalog;
+    private List<ResourceLocation> renderComponents = List.of();
     private boolean wantsLoad;
     private boolean queuedLoad;
     private boolean replacementData;
@@ -232,6 +254,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     public void onLoad() {
         super.onLoad();
+        if (world != null && world.isRemote) resetClientData();
         captureBlockConfiguration();
         attachmentPosition = pos.toImmutable();
         wantsLoad = true;
@@ -304,6 +327,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             serverDisplay = null;
             serverRender = null;
             renderParts = List.of();
+            dataParts = List.of();
+            serverDataSnapshot = null;
+            dataSnapshots.clear();
             attachmentEpoch = new Object();
         }
         UUID actor = null;
@@ -495,6 +521,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
 
     private void stop(MachineLifecycleEvent.UnloadReason reason) {
         wantsLoad = false;
+        dataParts = List.of();
+        serverDataSnapshot = null;
+        dataSnapshots.clear();
         if (controller != null) {
             placement = null;
             controller.unload(reason);
@@ -507,7 +536,10 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     protected void setRemoved() {
         try {
-            if (world != null && world.isRemote) PrototypeEngineering.proxy.releaseControllerRender(this);
+            if (world != null && world.isRemote) {
+                resetClientData();
+                PrototypeEngineering.proxy.releaseControllerRender(this);
+            }
             if (world != null && !world.isRemote) {
                 stop(MachineLifecycleEvent.UnloadReason.INVALIDATED);
             }
@@ -519,7 +551,10 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     protected void onChunkUnloaded() {
         try {
-            if (world != null && world.isRemote) PrototypeEngineering.proxy.releaseControllerRender(this);
+            if (world != null && world.isRemote) {
+                resetClientData();
+                PrototypeEngineering.proxy.releaseControllerRender(this);
+            }
             if (world != null && !world.isRemote) {
                 stop(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             }
@@ -554,6 +589,9 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             // only a new controller can consume the replacement. Never overwrite live components.
             controller.unload(MachineLifecycleEvent.UnloadReason.INVALIDATED);
             attachmentEpoch = new Object();
+            dataParts = List.of();
+            serverDataSnapshot = null;
+            dataSnapshots.clear();
             placement = null;
             updated = false;
         }
@@ -616,20 +654,33 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         if (view == null && metadata.formed())
             metadata = new ControllerDisplayData(metadata.type(), metadata.orientation(), false, metadata.generation(), metadata.sequence());
         var parts = snapshot == null ? List.<ControllerRenderChunks.Part>of() : ControllerRenderChunks.split(snapshot);
+        var ordinary = dataSnapshots.observe(loaded ? original : null, metadata.generation());
+        boolean dataChanged = ordinary != serverDataSnapshot;
+        var ordinaryParts = dataChanged ? ControllerRenderChunks.split(ordinary, metadata, dataSession) : dataParts;
+        var componentIds = new ObjectArrayList<ResourceLocation>();
+        var animationState = loaded ? original.components().get(MachineAnimationState.TYPE) : null;
+        if (loaded)
+            for (var binding : original.components().assemblyBindings()) componentIds.add(binding.type().id());
         if (epoch != attachmentEpoch || !isAttached() || machine() != original || displaySequence != previousSequence)
             return;
         displaySequence = nextSequence;
         serverDisplay = metadata;
         serverRender = snapshot;
         renderParts = parts;
+        serverDataSnapshot = ordinary;
+        dataParts = ordinaryParts;
+        if (dataChanged) serverDataDisplay = metadata;
         renderMachine = original;
         renderConfiguration = configuration;
         renderMatch = loaded ? lifecycle.structureMatch() : null;
-        renderAnimation = snapshot == null ? null : snapshot.animation();
+        renderAnimation = animationState == null ? null : animationState.snapshot();
+        renderComponents = List.copyOf(componentIds);
+        renderCatalog = view;
         markDirty();
         var state = world.getBlockState(pos);
         world.notifyBlockUpdate(pos, state, state, 3);
         ControllerRenderSync.remaining(this, parts);
+        if (dataChanged) ControllerRenderSync.remainingData(this, ordinaryParts);
     }
 
     private void observeRenderState() {
@@ -643,8 +694,12 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var state = animation == null ? null : animation.snapshot();
         var ids = new ObjectArrayList<ResourceLocation>();
         for (var binding : current.components().assemblyBindings()) ids.add(binding.type().id());
-        if (serverRender == null || current != renderMachine || configuration != renderConfiguration ||
-            lifecycle.structureMatch() != renderMatch || state != renderAnimation || !ids.equals(serverRender.components()))
+        if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
+        var ordinary = dataSnapshots.observe(current, displayGeneration);
+        var catalog = configuration == null ? MachineTypeRegistry.INSTANCE.structureCatalog() : configuration.catalog();
+        var view = catalog == null ? null : ServerStructureReloads.view(Objects.requireNonNull(world.getMinecraftServer()), catalog);
+        if (ordinary != serverDataSnapshot || serverDisplay == null || current != renderMachine || configuration != renderConfiguration ||
+            lifecycle.structureMatch() != renderMatch || state != renderAnimation || !ids.equals(renderComponents) || view != renderCatalog)
             changed();
     }
 
@@ -654,6 +709,10 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         captureBlockConfiguration();
         if (displayGeneration == 0) displayGeneration = ControllerDisplayData.newGeneration();
         serverDisplay = new ControllerDisplayData(Objects.requireNonNull(data).type(), orientation(), false, displayGeneration, displaySequence);
+        // Never traverse a running machine from chunk serialization; the joined observer replaces this cold fact.
+        serverDataSnapshot = dataSnapshots.observe(null, displayGeneration);
+        serverDataDisplay = serverDisplay;
+        dataParts = ControllerRenderChunks.split(serverDataSnapshot, serverDisplay, dataSession);
         var view = ServerStructureReloads.view(Objects.requireNonNull(world.getMinecraftServer()), MachineTypeRegistry.INSTANCE.structureCatalog());
         if (view != null) {
             serverRender = new MachineRenderSnapshot(serverDisplay, new MachineRenderSnapshot.CatalogToken(view.session(), view.sequence()),
@@ -668,6 +727,41 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         return renderParts;
     }
 
+    public List<ControllerRenderChunks.Part> serverDataParts() {
+        requireServer();
+        freezeColdDisplay();
+        return dataParts;
+    }
+
+    public @Nullable ControllerDisplayData serverDataDisplay() {
+        requireServer();
+        freezeColdDisplay();
+        return serverDataDisplay;
+    }
+
+    /** Exact watch replay holds the joined server owner; serialization never advances this clock. */
+    public @Nullable ControllerDisplayData refreshDataReplayAtBoundary() {
+        requireServer();
+        scheduler().requireOwnerBoundary();
+        if (!isAttached() || dataParts.isEmpty() || serverDataDisplay == null) return null;
+        var current = Objects.requireNonNull(serverDisplay);
+        long next = Math.incrementExact(displaySequence);
+        displaySequence = next;
+        // A watch-local replay must not replace the canonical header seen by all other viewers.
+        return new ControllerDisplayData(current.type(), current.orientation(), current.formed(), current.generation(), next);
+    }
+
+    /** Complete ordinary data only; a partial successor, unloaded tile or former connection revokes it. */
+    @SuppressWarnings("unused") // Public read-only data entry for native consumers and addons.
+    public @Nullable MachineDataSnapshot dataSnapshot() {
+        var header = dataAssembler.header();
+        if (world == null || !world.isRemote || !isAttached() ||
+            clientDataConnection != PrototypeEngineering.proxy.controllerDataConnection(this, null) ||
+            clientDataDisplay == null || header == null || !dataAssembler.current(clientDataDisplay, header.catalog()))
+            return null;
+        return clientDataSnapshot;
+    }
+
     /** Only a complete current client view is visible to later renderer consumers. */
     @SuppressWarnings("unused") // Public read-only entry for the following renderer migration stage and addons.
     public @Nullable MachineRenderSnapshot renderSnapshot() {
@@ -679,12 +773,17 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     public @NotNull NBTTagCompound getUpdateTag() {
         requireServer();
         freezeColdDisplay();
-        if (!renderParts.isEmpty()) return ControllerRenderSync.tag(this, renderParts.getFirst());
+        if (!renderParts.isEmpty()) {
+            var tag = ControllerRenderSync.tag(this, renderParts.getFirst());
+            if (!dataParts.isEmpty()) tag.setTag("Data", ControllerRenderSync.dataTag(dataParts.getFirst(), Objects.requireNonNull(serverDataDisplay)));
+            return tag;
+        }
         var tag = new NBTTagCompound();
         tag.setInteger("x", pos.getX());
         tag.setInteger("y", pos.getY());
         tag.setInteger("z", pos.getZ());
         tag.setTag("Display", Objects.requireNonNull(serverDisplay).encode());
+        if (!dataParts.isEmpty()) tag.setTag("Data", ControllerRenderSync.dataTag(dataParts.getFirst(), Objects.requireNonNull(serverDataDisplay)));
         return tag;
     }
 
@@ -706,6 +805,17 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         var payload = StrictNbt.requireCompound(tag, "Display");
         if (!requireBlock().type().id().equals(StrictNbt.requireId(payload, "Type"))) return;
         var incoming = ControllerDisplayData.decode(payload);
+        observeClientDataGeneration(incoming.generation());
+        if (tag.hasKey("Data")) {
+            var ordinary = StrictNbt.requireCompound(tag, "Data");
+            StrictNbt.requireKeys(ordinary, "Display", "Payload");
+            var metadata = ControllerDisplayData.decode(StrictNbt.requireCompound(ordinary, "Display"));
+            if (requireBlock().type().id().equals(metadata.type())) {
+                observeClientDataGeneration(metadata.generation());
+                acceptClientData(metadata, StrictNbt.requireCompound(ordinary, "Payload"), manager);
+            }
+        }
+        if (tag.hasKey("DataOnly") && StrictNbt.requireBoolean(tag, "DataOnly")) return;
         // Includes the same-tile unload/reload ABA case: an old complete Display cannot seed a fresh assembler.
         if (!incoming.follows(display)) return;
         if (tag.hasKey("Render")) {
@@ -720,6 +830,48 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     private void installClientRender(MachineRenderSnapshot snapshot) {
         if (!isAttached() || !snapshot.controller().equals(pos) || !snapshot.display().follows(display)) return;
         installClientDisplay(snapshot.display());
+    }
+
+    private void resetClientData() {
+        var pending = dataAssembler.header();
+        if (pending != null && pending.display().follows(clientDataDisplay)) clientDataDisplay = pending.display();
+        dataAssembler.retire();
+        dataAssembler = new ControllerRenderChunks.Assembler();
+        if (clientDataGeneration > 0) dataAssembler.observeGeneration(clientDataGeneration);
+        if (clientDataDisplay != null) dataAssembler.withdraw(clientDataDisplay);
+        clientDataSnapshot = null;
+        clientDataConnection = null;
+    }
+
+    private void observeClientDataGeneration(long generation) {
+        // Data revisions belong to one server TE generation, unlike watch-local transport sequences.
+        if (generation > clientDataGeneration) clientDataRevision = 0;
+        clientDataGeneration = Math.max(clientDataGeneration, generation);
+        dataAssembler.observeGeneration(clientDataGeneration);
+        if (clientDataSnapshot != null && clientDataSnapshot.generation() < clientDataGeneration) clientDataSnapshot = null;
+    }
+
+    private void acceptClientData(ControllerDisplayData incoming, NBTTagCompound tag, @Nullable NetworkManager manager) {
+        var connection = PrototypeEngineering.proxy.controllerDataConnection(this, manager);
+        if (connection == null || incoming.generation() < clientDataGeneration ||
+            clientDataDisplay != null && !incoming.follows(clientDataDisplay) && !incoming.equals(clientDataDisplay)) return;
+        if (clientDataConnection != null && clientDataConnection != connection) resetClientData();
+        clientDataConnection = connection;
+        var part = ControllerRenderChunks.Part.decode(incoming, tag);
+        if (part.catalog().sequence() != 0) throw new IllegalArgumentException("Invalid controller data transport token");
+        try {
+            var complete = dataAssembler.receiveData(part);
+            if (complete != null) {
+                if (clientDataDisplay != null && complete.generation() == clientDataDisplay.generation() && complete.revision() < clientDataRevision)
+                    throw new IllegalArgumentException("Controller data revision moved backwards");
+                clientDataDisplay = incoming;
+                clientDataRevision = complete.revision();
+                clientDataSnapshot = complete;
+            }
+        } finally {
+            var header = dataAssembler.header();
+            if (clientDataDisplay == null || header == null || !dataAssembler.current(clientDataDisplay, header.catalog())) clientDataSnapshot = null;
+        }
     }
 
     private void installClientDisplay(ControllerDisplayData incoming) {

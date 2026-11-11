@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.machine.render;
 
 import com.circulation.prototype_eng.Tags;
+import com.circulation.prototype_eng.machine.ControllerDisplayData;
 import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -13,6 +14,7 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.event.world.ChunkWatchEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
@@ -25,27 +27,56 @@ public final class ControllerRenderSync {
     }
 
     public static NBTTagCompound tag(MachineControllerBlockEntity tile, ControllerRenderChunks.Part part) {
+        return tag(tile, part, false, null);
+    }
+
+    private static NBTTagCompound tag(MachineControllerBlockEntity tile, ControllerRenderChunks.Part part, boolean ordinary,
+                                     @Nullable ControllerDisplayData dataDisplay) {
         var position = tile.getPos();
         var tag = new NBTTagCompound();
         tag.setInteger("x", position.getX());
         tag.setInteger("y", position.getY());
         tag.setInteger("z", position.getZ());
-        tag.setTag("Display", part.display().encode());
-        tag.setTag("Render", part.encode());
+        var display = ordinary ? Objects.requireNonNull(dataDisplay) : part.display();
+        tag.setTag("Display", display.encode());
+        tag.setTag(ordinary ? "Data" : "Render", ordinary ? dataTag(part, display) : part.encode());
+        if (ordinary) tag.setBoolean("DataOnly", true);
+        return tag;
+    }
+
+    /** Data's revision clock is independent of render-only metadata updates. */
+    public static NBTTagCompound dataTag(ControllerRenderChunks.Part part) {
+        return dataTag(part, part.display());
+    }
+
+    public static NBTTagCompound dataTag(ControllerRenderChunks.Part part, ControllerDisplayData display) {
+        if (display.generation() != part.display().generation() || !display.type().equals(part.display().type()))
+            throw new IllegalArgumentException("Data replay header belongs to a different attachment");
+        var tag = new NBTTagCompound();
+        tag.setTag("Display", display.encode());
+        tag.setTag("Payload", part.encode());
         return tag;
     }
 
     /** First part is delivered by the original notifyBlockUpdate/getUpdatePacket path. */
     public static void remaining(MachineControllerBlockEntity tile, List<ControllerRenderChunks.Part> parts) {
+        remaining(tile, parts, false);
+    }
+
+    public static void remainingData(MachineControllerBlockEntity tile, List<ControllerRenderChunks.Part> parts) {
+        remaining(tile, parts, true);
+    }
+
+    private static void remaining(MachineControllerBlockEntity tile, List<ControllerRenderChunks.Part> parts, boolean ordinary) {
         if (!(tile.getWorld() instanceof WorldServer world))
             throw new IllegalStateException("Render sync requires a server world");
         requireOwner(world);
-        if (parts.size() <= 1 || !attached(world, tile) || tile.serverRenderParts() != parts) return;
+        if (parts.size() <= 1 || !attached(world, tile) || currentParts(tile, ordinary) != parts) return;
         var position = tile.getPos();
         var entry = world.getPlayerChunkMap().getEntry(position.getX() >> 4, position.getZ() >> 4);
         if (entry == null) return;
         for (var player : new ObjectArrayList<>(entry.getWatchingPlayers()))
-            send(world, tile, parts, player, player.connection, 1);
+            send(world, tile, parts, player, player.connection, 1, ordinary, null);
     }
 
     @SubscribeEvent
@@ -63,23 +94,41 @@ public final class ControllerRenderSync {
         ServerTaskSchedulers.forServer(server).runAtBoundary(() -> {
             if (!loaded(world, chunk)) return;
             for (var tile : tiles) {
-                if (!attached(world, tile)) continue;
+                if (!currentWatcher(world, tile, player, connection)) continue;
                 var parts = tile.serverRenderParts();
-                send(world, tile, parts, player, connection, 0);
+                var dataParts = tile.serverDataParts();
+                var replayDisplay = tile.refreshDataReplayAtBoundary();
+                send(world, tile, parts, player, connection, 0, false, null);
+                if (replayDisplay != null) send(world, tile, dataParts, player, connection, 0, true, replayDisplay);
             }
         });
     }
 
     private static void send(WorldServer world, MachineControllerBlockEntity tile, List<ControllerRenderChunks.Part> parts,
-                             EntityPlayerMP player, NetHandlerPlayServer connection, int first) {
-        var server = Objects.requireNonNull(world.getMinecraftServer());
+                             EntityPlayerMP player, NetHandlerPlayServer connection, int first, boolean ordinary,
+                             @Nullable ControllerDisplayData replayDisplay) {
+        var canonicalDisplay = ordinary ? tile.serverDataDisplay() : null;
+        if (ordinary && canonicalDisplay == null) return;
+        var dataDisplay = replayDisplay == null ? canonicalDisplay : replayDisplay;
         for (int index = first; index < parts.size(); index++) {
             var pos = tile.getPos();
-            if (!attached(world, tile) || tile.serverRenderParts() != parts || player.getEntityWorld() != world || player.connection != connection ||
-                !connection.netManager.isChannelOpen() || server.getPlayerList().getPlayerByUUID(player.getUniqueID()) != player ||
-                !world.getPlayerChunkMap().isPlayerWatchingChunk(player, pos.getX() >> 4, pos.getZ() >> 4)) return;
-            connection.sendPacket(new SPacketUpdateTileEntity(pos, 0, tag(tile, parts.get(index))));
+            if (!currentWatcher(world, tile, player, connection) || currentParts(tile, ordinary) != parts ||
+                ordinary && tile.serverDataDisplay() != canonicalDisplay) return;
+            connection.sendPacket(new SPacketUpdateTileEntity(pos, 0, tag(tile, parts.get(index), ordinary, dataDisplay)));
         }
+    }
+
+    private static boolean currentWatcher(WorldServer world, MachineControllerBlockEntity tile,
+                                          EntityPlayerMP player, NetHandlerPlayServer connection) {
+        var server = Objects.requireNonNull(world.getMinecraftServer());
+        var position = tile.getPos();
+        return attached(world, tile) && player.getEntityWorld() == world && player.connection == connection &&
+            connection.netManager.isChannelOpen() && server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player &&
+            world.getPlayerChunkMap().isPlayerWatchingChunk(player, position.getX() >> 4, position.getZ() >> 4);
+    }
+
+    private static List<ControllerRenderChunks.Part> currentParts(MachineControllerBlockEntity tile, boolean ordinary) {
+        return ordinary ? tile.serverDataParts() : tile.serverRenderParts();
     }
 
     private static boolean attached(WorldServer world, MachineControllerBlockEntity tile) {
