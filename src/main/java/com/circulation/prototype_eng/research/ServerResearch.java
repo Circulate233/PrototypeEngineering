@@ -16,6 +16,7 @@ import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy
 import com.circulation.prototype_eng.api.research.ResearchLevelResult;
 import com.circulation.prototype_eng.api.research.ResearchPermissionContext;
 import com.circulation.prototype_eng.api.research.ResearchPermissionPolicy;
+import com.circulation.prototype_eng.api.research.ResearchServerConfiguration;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchWorld;
 import com.circulation.prototype_eng.api.research.TeamResearchStart;
@@ -131,7 +132,8 @@ public final class ServerResearch {
         var resources = NetworkResourceRegistry.INSTANCE;
         var file = new ResearchStateFile(overworld.getSaveHandler().getMapFileFromName("prototype_eng_research").toPath(),
             new ResearchWorldNbt(registry, resources, new ResourceKeyNbt()));
-        var world = new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, snapshot -> {
+        var permissions = ResearchServerConfiguration.INSTANCE.permissions();
+        var world = new ResearchWorld(registry, resources, permissions, snapshot -> {
             try {
                 file.write(snapshot);
             } catch (IOException failure) {
@@ -143,7 +145,7 @@ public final class ServerResearch {
         } catch (IOException failure) {
             throw new UncheckedIOException(failure);
         }
-        session = new Session(server, overworld, world);
+        session = new Session(server, overworld, world, permissions);
     }
 
     /**
@@ -551,7 +553,7 @@ public final class ServerResearch {
         var permission = permission(current, actor, membership);
         if (permission == null) return false;
         var authority = proof(current, captures, online);
-        if (ResearchPermissionPolicy.DEFAULT.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission)
+        if (current.permissions.can(ResearchPermissionPolicy.Action.DOWNLOAD_RESEARCH_TO_DATA_CENTER, permission)
             != ResearchPermissionPolicy.Decision.ALLOWED) return false;
         var physical = current.dataCenters.capture(intent.teamId(), intent.databaseId());
         if (physical == null || !membership.members().contains(physical.ownerId())) return false;
@@ -1404,6 +1406,7 @@ public final class ServerResearch {
         private final MinecraftServer server;
         private final WorldServer overworld;
         private final ResearchWorld world;
+        private final ResearchPermissionPolicy permissions;
         private final FtbOwnerTeamResolver resolver;
         private final ResearchStations stations;
         private final ResearchDataCenters dataCenters;
@@ -1412,10 +1415,11 @@ public final class ServerResearch {
         private final ObjectOpenHashSet<UUID> rewardCleanup = new ObjectOpenHashSet<>();
         private boolean closing;
 
-        private Session(MinecraftServer server, WorldServer overworld, ResearchWorld world) {
+        private Session(MinecraftServer server, WorldServer overworld, ResearchWorld world, ResearchPermissionPolicy permissions) {
             this.server = server;
             this.overworld = overworld;
             this.world = world;
+            this.permissions = permissions;
             resolver = new FtbOwnerTeamResolver(server);
             stations = new ResearchStations(ServerMachineIdentities.forServer(server), () -> requireThread(server), this::stationAbsent);
             dataCenters = new ResearchDataCenters(ServerMachineIdentities.forServer(server), () -> requireThread(server));

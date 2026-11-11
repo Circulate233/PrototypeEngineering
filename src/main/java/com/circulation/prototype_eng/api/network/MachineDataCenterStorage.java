@@ -89,6 +89,14 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
     }
 
     /**
+     * Default native controller storage, using the same exact physical host as its persistence barrier.
+     */
+    public static ComponentType<MachineInstance, MachineDataCenterStorage> component(ResourceLocation id, int level, int capacity,
+                                                                                     ResearchRegistry registry) {
+        return component(id, level, capacity, registry, MinecraftDataCenterPersistence::markDirty);
+    }
+
+    /**
      * The host supplies its real persistence dirty callback; declare this component before its network role.
      */
     public static ComponentType<MachineInstance, MachineDataCenterStorage> component(ResourceLocation id, int level, int capacity,

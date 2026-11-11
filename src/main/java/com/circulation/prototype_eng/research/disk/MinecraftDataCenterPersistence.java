@@ -36,6 +36,12 @@ public final class MinecraftDataCenterPersistence implements MachineDataCenterPe
         return target(owner) != null;
     }
 
+    /** The native storage attachment uses the same physical target as synchronous persistence. */
+    public static void markDirty(MachineInstance owner) {
+        Objects.requireNonNull(owner.lifecycle()).host().requireServerThread();
+        Objects.requireNonNull(target(owner), "Original Anvil database host is unavailable").tile().markDirty();
+    }
+
     private static MachineOwnership ownership(MachineInstance owner, ResourceLocation type) {
         MachineOwnership result = null;
         for (var binding : owner.components().assemblyBindings()) {

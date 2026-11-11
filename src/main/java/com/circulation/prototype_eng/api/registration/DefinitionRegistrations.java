@@ -4,6 +4,12 @@ import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
+import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
+import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
+import com.circulation.prototype_eng.api.research.ResearchServerConfigurationEvent;
+import com.circulation.prototype_eng.api.research.download.ResearchItemDownloadRegistrationEvent;
+import com.circulation.prototype_eng.api.structure.json.StructurePredicateRegistrationEvent;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.Objects;
@@ -18,6 +24,12 @@ public final class DefinitionRegistrations {
     private static final Phase<RecipeRegistrationEvent> RECIPES = new Phase<>("recipes");
     private static final Phase<RecipeDeclarationRegistrationEvent> DECLARATIONS = new Phase<>("recipe declaration manifest");
     private static final Phase<MachineRuntimeRegistrationEvent> RUNTIME = new Phase<>("machine runtime");
+    private static final Phase<NetworkResourceRegistrationEvent> RESOURCES = new Phase<>("computing resources");
+    private static final Phase<NetworkComputerComponentRegistrationEvent> COMPUTER_COMPONENTS = new Phase<>("computer components");
+    private static final Phase<ResearchServerConfigurationEvent> RESEARCH_SERVER = new Phase<>("research server configuration");
+    private static final Phase<ResearchRegistrationEvent> RESEARCH = new Phase<>("research definitions");
+    private static final Phase<ResearchItemDownloadRegistrationEvent> DOWNLOADS = new Phase<>("research item downloads");
+    private static final Phase<StructurePredicateRegistrationEvent> STRUCTURE_PREDICATES = new Phase<>("structure predicates");
 
     private DefinitionRegistrations() {
     }
@@ -53,6 +65,30 @@ public final class DefinitionRegistrations {
     public static void dispatch(RecipeDeclarationRegistrationEvent event) {
         DECLARATIONS.deliver(event);
     }
+
+    public static void resources(Consumer<NetworkResourceRegistrationEvent> declaration) { RESOURCES.add(declaration); }
+
+    public static void computerComponents(Consumer<NetworkComputerComponentRegistrationEvent> declaration) { COMPUTER_COMPONENTS.add(declaration); }
+
+    public static void research(Consumer<ResearchRegistrationEvent> declaration) { RESEARCH.add(declaration); }
+
+    public static void downloads(Consumer<ResearchItemDownloadRegistrationEvent> declaration) { DOWNLOADS.add(declaration); }
+
+    public static void structurePredicates(Consumer<StructurePredicateRegistrationEvent> declaration) { STRUCTURE_PREDICATES.add(declaration); }
+
+    public static void dispatch(NetworkResourceRegistrationEvent event) { RESOURCES.deliver(event); }
+
+    public static void dispatch(NetworkComputerComponentRegistrationEvent event) { COMPUTER_COMPONENTS.deliver(event); }
+
+    public static void dispatch(ResearchRegistrationEvent event) { RESEARCH.deliver(event); }
+
+    public static void dispatch(ResearchItemDownloadRegistrationEvent event) { DOWNLOADS.deliver(event); }
+
+    public static void dispatch(StructurePredicateRegistrationEvent event) { STRUCTURE_PREDICATES.deliver(event); }
+
+    public static void researchServer(Consumer<ResearchServerConfigurationEvent> declaration) { RESEARCH_SERVER.add(declaration); }
+
+    public static void dispatch(ResearchServerConfigurationEvent event) { RESEARCH_SERVER.deliver(event); }
 
     static final class Phase<E> {
         private final String name;

@@ -19,6 +19,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenRecipeBindings;
+import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkConfiguration;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import net.minecraft.util.ResourceLocation;
@@ -42,6 +43,8 @@ public final class ZenMachineType {
     private ComponentType<MachineInstance, RecipeScanner> scanner;
     @Nullable
     private RecipeProcessCodecs processCodecs;
+    @Nullable
+    private ZenNetworkConfiguration network;
     private boolean data;
     private boolean registered;
 
@@ -128,10 +131,20 @@ public final class ZenMachineType {
     }
 
     @ZenMethod
+    public ZenMachineType network(ZenNetworkConfiguration configuration) {
+        open();
+        if (network != null) throw new IllegalStateException("Network configuration is already declared");
+        network = Objects.requireNonNull(configuration);
+        network.configure(builder);
+        return this;
+    }
+
+    @ZenMethod
     public void register(String revision) {
         open();
         var type = builder.build();
         var assembly = MachineAssembly.builder(type, revision);
+        if (network != null) network.configure(assembly);
         if (data) assembly.component(DataComponents.MACHINE, DataComponents.MACHINE_CODEC);
         if (scanner != null) {
             assembly.workSlots(new MachineWorkSlotsNbt(revision, Objects.requireNonNull(processCodecs))).recreated(scanner);
