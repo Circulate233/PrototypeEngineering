@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.client;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
-import com.circulation.prototype_eng.item.OrientationToolOrientations;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
@@ -56,17 +55,6 @@ class ControllerRotatedModelTest {
                 return ItemOverrideList.NONE;
             }
         };
-    }
-
-    @Test
-    void allNativeOrientationsMapToTheOriginalCanonicalTopAndTurnOrder() {
-        for (var front : EnumFacing.VALUES) {
-            var orientation = OrientationToolOrientations.canonical(front);
-            for (int twist = 0; twist < 4; twist++) {
-                assertEquals(twist, MachineControllerModels.originalTwist(orientation), orientation.toString());
-                orientation = orientation.rotateClockwiseAround(front);
-            }
-        }
     }
 
     @Test

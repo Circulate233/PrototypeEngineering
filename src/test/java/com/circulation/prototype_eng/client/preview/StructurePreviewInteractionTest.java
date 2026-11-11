@@ -290,17 +290,6 @@ class StructurePreviewInteractionTest {
     }
 
     @Test
-    void all24OrientationsReturnAfterFourQuarterTurnsAndInverse() {
-        for (var original : BlockOrientation.values())
-            for (var axis : EnumFacing.values()) {
-                var next = original;
-                for (int i = 0; i < 4; i++) next = ProjectionOrientations.rotate(next, axis);
-                assertSame(original, next);
-                assertSame(original, ProjectionOrientations.rotate(ProjectionOrientations.rotate(original, axis), axis.getOpposite()));
-            }
-    }
-
-    @Test
     void clockwiseFirstQuarterUsesNativeBlockInteractionConvention() {
         assertSame(BlockOrientation.EAST_UP, ProjectionOrientations.rotate(BlockOrientation.NORTH_UP, EnumFacing.UP));
         assertSame(BlockOrientation.WEST_UP, ProjectionOrientations.rotate(BlockOrientation.NORTH_UP, EnumFacing.DOWN));

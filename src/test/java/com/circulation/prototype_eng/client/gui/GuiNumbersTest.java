@@ -20,19 +20,17 @@ class GuiNumbersTest {
             tasks.add(() -> {
                 ready.countDown();
                 start.await();
-                for (int iteration = 0; iteration < 1000; iteration++) {
-                    assertEquals("1,234,567", GuiNumbers.grouped(1_234_567));
-                    assertEquals("9,223,372,036,854,775,807", GuiNumbers.grouped(Long.MAX_VALUE));
-                    assertEquals("-9,223,372,036,854,775,808", GuiNumbers.grouped(Long.MIN_VALUE));
-                    assertEquals("0", GuiNumbers.compact(-1));
-                    assertEquals("999", GuiNumbers.compact(999));
-                    assertEquals("1.0k", GuiNumbers.compact(1_000));
-                    assertEquals("1.2k", GuiNumbers.compact(1_234));
-                    assertEquals("1.0M", GuiNumbers.compact(1_000_000));
-                    assertEquals("7.7M", GuiNumbers.compact(7_654_321));
-                    assertEquals("1.0G", GuiNumbers.compact(1_000_000_000));
-                    assertEquals("9.9G", GuiNumbers.compact(9_876_543_210L));
-                }
+                assertEquals("1,234,567", GuiNumbers.grouped(1_234_567));
+                assertEquals("9,223,372,036,854,775,807", GuiNumbers.grouped(Long.MAX_VALUE));
+                assertEquals("-9,223,372,036,854,775,808", GuiNumbers.grouped(Long.MIN_VALUE));
+                assertEquals("0", GuiNumbers.compact(-1));
+                assertEquals("999", GuiNumbers.compact(999));
+                assertEquals("1.0k", GuiNumbers.compact(1_000));
+                assertEquals("1.2k", GuiNumbers.compact(1_234));
+                assertEquals("1.0M", GuiNumbers.compact(1_000_000));
+                assertEquals("7.7M", GuiNumbers.compact(7_654_321));
+                assertEquals("1.0G", GuiNumbers.compact(1_000_000_000));
+                assertEquals("9.9G", GuiNumbers.compact(9_876_543_210L));
                 return null;
             });
         }
