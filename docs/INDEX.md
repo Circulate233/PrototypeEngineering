@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-11 CT第二阶段与原生保存修复已精确本地提交：`b08e17ef` dirty-save三Java，`b5543fdc` 客户端独立variant/准确session更新及SDK成员写入桥十Java＋Mixin配置，`b40ed52b` typed结构/仓室薄桥十Java。原自动保存早于END新work，现本tick控制器队列在实际join后标记，STOP在最终save前标记，保留comparator效果；不读NBT或提前close。最终build（含Spotless）1910 tests/257 suites全零，本阶段23Java＋配置本机MCP全级零/完整读回当前匹配，MCP build成功。真实SDK原生Mixin注入未实机，当前验证为同helper真实Compiler及descriptor/profile核对，须用户重启客户端复验。入口 [实施进度](implementation-status.md)，独立复核/原生与SDK依据/最终XML/MCP/精确提交在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/`。总体Goal active；完整custom-validator/controller-aware/facts/JSON phase、高级配方与resource/research/network等仍后继。原5背景及暂存保持，未推送、未启动游戏。
+- 2026-11-11 CT第三阶段已精确本地提交：`d1684042` controller-aware/custom结构15Java，`1c67c9b3` weighted/attribute/CUSTOM allocation/typed partial overlay配方12Java，`33e09a88` resource/research/native network及共享注册phase33Java，三路共60且无交叠。最终build含Spotless成功25s，1918 tests/261 suites全零；60Java本机MCP errorsOnly:false错误/警告/弱警告全零，完整读回及当前普通bytes匹配，MCP build成功。入口 [CT使用与验证边界](crafttweaker.md)、[实施进度](implementation-status.md)，最终manifest/三源码提交及背景保护在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/ct-third-exact/`。原5背景/暂存保持，未推送、未启动游戏。总体Goal active，完整scope独立审计继续；真实SDK注入/World sampler/FTB/原生数据库/网络和已列视觉实机验收仍由用户重启复验。
+
+- 2026-11-11 CT第二阶段与原生保存修复已精确本地提交：`b08e17ef` dirty-save三Java，`b5543fdc` 客户端独立variant/准确session更新及SDK成员写入桥十Java＋Mixin配置，`b40ed52b` typed结构/仓室薄桥十Java。原自动保存早于END新work，现本tick控制器队列在实际join后标记，STOP在最终save前标记，保留comparator效果；不读NBT或提前close。最终build（含Spotless）1910 tests/257 suites全零，本阶段23Java＋配置本机MCP全级零/完整读回当前匹配，MCP build成功。真实SDK原生Mixin注入未实机，当前验证为同helper真实Compiler及descriptor/profile核对，须用户重启客户端复验。入口 [实施进度](implementation-status.md)，独立复核/原生与SDK依据/最终XML/MCP/精确提交在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/`。当时完整custom-validator/controller-aware/facts/JSON phase、高级配方与resource/research/network为后继，现已随最新第三阶段提交。原5背景及暂存保持，未推送、未启动游戏。
 
 - 2026-11-10 材料仓容器tooltip按截图反馈统一AE2S：直接调用Tooltips.getEmptyingTooltip(StoreAction)显示左右键两行原生存入提示，FillAction/muted/of/TextComponentItemStack显示装填提示；优先显示操作，不再拼一行自有“倒入材料仓；Shift处理全部容器”，颜色/内嵌图标/富文本绘制与GuiMEStorage同路。仅1Java，无语言或库存行为改动；Spotless/build -x test、本机MCP全级零/全文一致及MCP build通过，未新增或运行测试、未启动游戏。源码本地提交 `cf27716`，未推送，原背景/暂存保留；入口[仓室](hatches.md)，证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261110/hatch-container-tooltip/`，总体Goal仍暂停。
 
@@ -38,8 +40,8 @@
 
 - 新实机反馈优先：由用户重启客户端，先复验构造器三种绑定/打开行为、右侧双击整种与左侧单格替换、完整材料网格/滚动、30秒到期及Shift＋滚轮片层循环；再核对层预览零层控制器/线框、原生图标/tooltip、最近命中和真实搭建用料。截图紫黑物品本批仅静态审查当前pick/model链，不宣称新增视觉修复；仓室掉落/拾取/重新放置及退出世界也待实机。此前新增Mixin方法不能仅F3+T应用。
 
-1. 第二阶段源码均已本地提交；从 `resumed-goal/ct-second-review.md` 与 `ct-next-scope-review.md` 进入后继。先补完整custom-validator/controller-aware上下文、detached facts与JSON validator注册phase，保留旧2arg/budget hooks、实际base/controller坐标及biomeName；当前typed gates不替代完整校验器迁移。
-2. 配方后继逐字段补核weighted random、通用attribute全部operation、CUSTOM分配、partial overlay/外部需求及PN绑定，再接resource/research/network等其余保留脚本面。已有output-only resources+chance、addition及single-source不重新列缺口。名称仍声明期冻结，沿已有Java API/历史codec及准确owner，不扩大通用热重载；GUI DSL/独立Modern不恢复，Applied-Flux暂缓。SDK注入及真实游戏/视觉交互由用户重启客户端复验，未以源码测试冒充。
+1. 三阶段CT源码已本地提交；先读 [CT使用与验证边界](crafttweaker.md) 和 `resumed-goal/ct-third-review.md`、`ct-third-exact/approval.json`。完整custom/controller-aware/facts/JSON phase、高级配方与resource/research/network本批已闭合，不继续沿用第二阶段当时的缺口清单。
+2. 总体Goal仍active；由独立完整scope审计对照当前规格及PM/PN实际职责确认余项，再决定总体完成。名称和回调沿声明时冻结对象、历史codec及准确owner；GUI DSL/独立Modern不恢复，Applied-Flux暂缓。真实SDK注入/World sampler、FTB/数据库和网络、数据保存/客户端同步及全部既列游戏/视觉验收由用户重启客户端复验，源码编译和行为测试不替代实机。
 3. 游戏由用户自行启动，GUI/工具/真实 HEI 页面和 AE 客户端调度仍待实机复验；纯行为测试不冒充原生运行通过。
 4. 用户已确认手动清理 build/.idea。原 stage 的 before/XML/MCP 原文件未恢复，旧条目只作历史；后续证据均保存在上述 build 外 recovery 目录。
 
@@ -59,6 +61,7 @@
 |---|---|
 | 已确认需求/功能范围 | [development-spec.md](development-spec.md) |
 | 实际完成度/验证证据 | [implementation-status.md](implementation-status.md) |
+| CT声明/结构SAM/配方分配/研究网络及验证边界 | [crafttweaker.md](crafttweaker.md) |
 | 旧实现及已知问题 | [migration-audit.md](migration-audit.md)、[machine-controller-migration-audit.md](machine-controller-migration-audit.md) |
 | 检查点分段执行 | [checkpoint-execution-audit.md](checkpoint-execution-audit.md) |
 | 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
