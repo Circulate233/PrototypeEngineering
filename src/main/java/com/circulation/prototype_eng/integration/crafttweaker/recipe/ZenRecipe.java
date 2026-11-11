@@ -23,8 +23,14 @@ public final class ZenRecipe {
     private final RecipeProcessNbt codec;
 
     public ZenRecipe(MachineRecipe recipe, String revision) {
-        definition = new RecipeRegistry.Definition(Objects.requireNonNull(recipe), revision);
-        codec = RecipeProcessNbt.builder(recipe, revision).component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).build();
+        this(RecipeProcessNbt.builder(Objects.requireNonNull(recipe), revision)
+            .component(DataComponents.PROCESS, DataComponents.PROCESS_CODEC).build());
+    }
+
+    /** Addons supply the complete frozen codec, including their components, overlays and validators. */
+    public ZenRecipe(RecipeProcessNbt codec) {
+        this.codec = Objects.requireNonNull(codec);
+        definition = new RecipeRegistry.Definition(codec.recipe(), codec.revision());
     }
 
     @ZenMethod

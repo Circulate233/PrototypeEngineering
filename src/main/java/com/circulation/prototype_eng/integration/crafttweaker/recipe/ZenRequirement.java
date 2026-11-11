@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.machine.attribute.AttributeModifier;
-import com.circulation.prototype_eng.api.machine.attribute.NumericAttributeModifier;
+import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.requirement.AttributeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.CheckpointRequirement;
@@ -10,6 +9,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.DynamicInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.FuzzyInputGroup;
 import com.circulation.prototype_eng.api.recipe.requirement.InputAllocation;
+import com.circulation.prototype_eng.api.recipe.requirement.RandomOutputPool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -33,6 +33,21 @@ public final class ZenRequirement {
     private final RecipeRequirement<?> value;
     private final @Nullable RecipeRequirement<ResourceRequirement> resource;
     private final @Nullable RecipeRequirement<EnergyRequirement> energy;
+
+    /** Addons retain their immutable Java payload/system; no type-name lookup occurs here. */
+    public ZenRequirement(RecipeRequirement<?> value) {
+        this(value, builtinResource(value), builtinEnergy(value));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static @Nullable RecipeRequirement<ResourceRequirement> builtinResource(RecipeRequirement<?> value) {
+        return value.type() == RecipeRequirements.RESOURCES ? (RecipeRequirement<ResourceRequirement>) value : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static @Nullable RecipeRequirement<EnergyRequirement> builtinEnergy(RecipeRequirement<?> value) {
+        return value.type() == RecipeRequirements.ENERGY ? (RecipeRequirement<EnergyRequirement>) value : null;
+    }
 
     private ZenRequirement(RecipeRequirement<?> value, @Nullable RecipeRequirement<ResourceRequirement> resource,
                            @Nullable RecipeRequirement<EnergyRequirement> energy) {
@@ -99,10 +114,30 @@ public final class ZenRequirement {
     @ZenMethod
     public static ZenRequirement attributeAddition(String id, String attribute, String modifierId, double amount,
                                                     boolean applyAtStart, boolean removeAtEnd) {
+        return attribute(id, attribute, modifierId, amount, "ADDITION", applyAtStart, removeAtEnd);
+    }
+
+    /** Operation is the Java API name: ADDITION, MULTIPLY_BASE or MULTIPLY_TOTAL. */
+    @ZenMethod
+    public static ZenRequirement attribute(String id, String attribute, String modifierId, double amount, String operation,
+                                           boolean applyAtStart, boolean removeAtEnd) {
         var value = RecipeRequirements.ATTRIBUTES.requirement(ZenRecipeSupport.id(id),
             new AttributeRequirement(ZenRecipeSupport.id(attribute),
-                new NumericAttributeModifier(modifierId, amount, AttributeModifier.Operation.ADDITION), applyAtStart, removeAtEnd));
+                ZenRecipeSupport.numericModifier(modifierId, amount, operation), applyAtStart, removeAtEnd));
         return new ZenRequirement(value, null, null);
+    }
+
+    /** Each positive-weight entry may be picked once per output loop; repeated keys remain distinct entries. */
+    @ZenMethod
+    public ZenRequirement randomOutputs(ZenResource[] candidates, int[] weights, int pickCount) {
+        if (candidates.length != weights.length) throw new IllegalArgumentException("Random output weights must match candidates");
+        var entries = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>(candidates.length);
+        for (int i = 0; i < candidates.length; i++)
+            entries.add(new WeightedSampling.Weighted<>(Objects.requireNonNull(candidates[i]).stack(), weights[i]));
+        var base = resource().payload();
+        return resources(id(), new ResourceRequirement(base.inputs(), base.inputsPerTick(), base.outputsPerTick(), base.outputs(),
+            base.voidExcessOutputs(), base.chance(), new RandomOutputPool(entries, pickCount),
+            base.fuzzyInputs(), base.dynamicInputs(), base.inputAllocation()));
     }
 
     @ZenMethod
@@ -115,9 +150,18 @@ public final class ZenRequirement {
 
     @ZenMethod
     public ZenRequirement singleInputSource() {
-        if (resource != null) return resources(id(), resource.payload().withInputAllocation(InputAllocation.SINGLE_SOURCE));
+        return withInputAllocation(InputAllocation.SINGLE_SOURCE);
+    }
+
+    @ZenMethod
+    public ZenRequirement customInputAllocation(ZenInputAllocation allocation) {
+        return withInputAllocation(Objects.requireNonNull(allocation).value());
+    }
+
+    private ZenRequirement withInputAllocation(InputAllocation allocation) {
+        if (resource != null) return resources(id(), resource.payload().withInputAllocation(allocation));
         if (energy != null) {
-            var next = RecipeRequirements.ENERGY.requirement(value.id(), energy.payload().withInputAllocation(InputAllocation.SINGLE_SOURCE));
+            var next = RecipeRequirements.ENERGY.requirement(value.id(), energy.payload().withInputAllocation(allocation));
             return new ZenRequirement(next, null, next);
         }
         throw new IllegalArgumentException("Input allocation requires a resource or energy requirement");
