@@ -309,17 +309,25 @@ public final class StructurePreviewView {
     /** Installs one server-authoritative choice snapshot without one rebuild per cell. */
     public boolean replaceAlternatives(Object expected, Map<StructureDisplay, Integer> global,
                                        Map<BlockPos, StructurePreviewSettings.CellChoice> local) {
+        return replaceSelections(expected, global, local, settings.sliceCounts());
+    }
+
+    /** One authoritative builder snapshot updates materials and repetition counts together. */
+    public boolean replaceSelections(Object expected, Map<StructureDisplay, Integer> global,
+                                     Map<BlockPos, StructurePreviewSettings.CellChoice> local, Map<StructurePreviewPath, Integer> slices) {
         if (expected != token || model() == null) return false;
+        for (var entry : slices.entrySet())
+            if (entry.getKey() == null || entry.getValue() == null || entry.getValue() < 0) return false;
         for (var entry : global.entrySet())
             if (entry.getKey() == null || !membership.contains(entry.getKey()) || entry.getValue() == null || entry.getValue() < 0 || entry.getValue() >= entry.getKey().options().size()) return false;
         for (var entry : local.entrySet()) {
             var cell = cells.get(entry.getKey());
             if (cell == null || entry.getValue() == null || !entry.getValue().display().equals(cell.display())) return false;
         }
-        if (settings.displayOptions().equals(global) && settings.cellOptions().equals(local)) return true;
+        if (settings.displayOptions().equals(global) && settings.cellOptions().equals(local) && settings.sliceCounts().equals(slices)) return true;
         alternatives.clear();
         global.forEach((display, option) -> alternatives.put(display, option.intValue()));
-        settings = new StructurePreviewSettings(settings.orientation(), settings.sliceCounts(), settings.maxOccurrences(), settings.maxCellVisits(), global, local);
+        settings = new StructurePreviewSettings(settings.orientation(), slices, settings.maxOccurrences(), settings.maxCellVisits(), global, local);
         request = null;
         restorePick = picked == null ? null : picked.position();
         forgetModel();

@@ -85,7 +85,7 @@ public final class StructureBuildTasks {
             }
             var old = TASKS.remove(player.getUniqueID());
             if (old != null) BuilderState.state(BuilderState.data(old.tool), BuilderState.State.IDLE);
-            var plan = StructureBuildPlan.expand(view, host.type().structureId(), host.orientation(), Map.of());
+            var plan = StructureBuildPlan.expand(view, host.type().structureId(), host.orientation(), BuilderState.sliceCounts(BuilderState.data(tool)));
             var rotation = StructureTransform.between(view.nodes().get(view.entries().get(host.type().structureId()).node()).orientation(), host.orientation());
             boolean dismantle = host.formed();
             var targets = new ObjectArrayList<Target>();

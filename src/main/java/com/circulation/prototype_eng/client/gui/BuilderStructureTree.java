@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.BiConsumer;
 
 /** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
 final class BuilderStructureTree {
@@ -44,7 +45,7 @@ final class BuilderStructureTree {
     private Supplier<StructurePreviewSettings> selections = () -> null;
     private StructurePreviewSettings displayedSelections;
     private final Map<String, Boolean> expanded = new Object2ObjectLinkedOpenHashMap<>();
-    private final Map<String, Integer> slices = new Object2ObjectLinkedOpenHashMap<>();
+    private BiConsumer<String, Integer> sliceChanged = (_, _) -> { };
     private final List<Hit> hits = new ObjectArrayList<>();
     private final GuiClip clip = new GuiClip();
     private List<StructureBuildPlan.Cell> cells = List.of();
@@ -78,6 +79,10 @@ final class BuilderStructureTree {
 
     void selections(Supplier<StructurePreviewSettings> current) {
         selections = Objects.requireNonNull(current);
+    }
+
+    void onSliceChanged(BiConsumer<String, Integer> listener) {
+        sliceChanged = Objects.requireNonNull(listener);
     }
 
     void openMaterials() {
@@ -152,6 +157,8 @@ final class BuilderStructureTree {
     private void refresh(StructureCatalogView current, ResourceLocation id, BlockOrientation orientation) {
         var tag = container.snapshot();
         var settings = selections.get();
+        var slices = BuilderState.sliceCounts(tag);
+        if (settings != null) settings.sliceCounts().forEach((path, count) -> slices.put(BuilderState.sliceKey(path), count));
         String next = id + tag.getCompoundTag("MaterialSelections").toString() + tag.getCompoundTag("CellMaterialSelections") + slices + orientation;
         if (current == catalog && next.equals(key) && Objects.equals(settings, displayedSelections)) return;
         displayedSelections = settings;
@@ -413,7 +420,7 @@ final class BuilderStructureTree {
     private void adjustSlider(float tx) {
         var row = slider.row();
         double fraction = Math.clamp((tx - slider.x() - slider.width() + 75) / 63d, 0, 1);
-        slices.put(row.path, Math.toIntExact(row.min + Math.round(((long) row.max - row.min) * fraction)));
+        sliceChanged.accept(row.path, Math.toIntExact(row.min + Math.round(((long) row.max - row.min) * fraction)));
     }
 
     void release(int x, int y, int button) {

@@ -38,12 +38,31 @@ import javax.annotation.Nullable;
 public final class ExamplesCommand extends CommandBase {
     @Override public String getName() { return "pe_examples"; }
     @Override public String getUsage(ICommandSender sender) {
-        return "/pe_examples kit [boundary] | build <machine> <x> <y> <z> [orientation:NORTH_UP] | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
+        return "/pe_examples kit [boundary|composite] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
     }
     @Override public int getRequiredPermissionLevel() { return 2; }
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] arguments) throws CommandException {
+        if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("composite")) {
+            var player = getCommandSenderAsPlayer(sender);
+            for (var name : List.of(CompositeStructureExamples.NESTED, CompositeStructureExamples.EXPANDABLE))
+                give(player, item(CompositeStructureExamples.id(name + "_controller")), 1);
+            for (var name : List.of("input_hatch_4", "output_hatch_4", "energy_input_hatch_4"))
+                give(player, item(new ResourceLocation("prototype_eng", name)), 2);
+            for (var block : List.of(Blocks.IRON_BLOCK, Blocks.GOLD_BLOCK, Blocks.GLASS, Blocks.QUARTZ_BLOCK,
+                Blocks.LAPIS_BLOCK, Blocks.EMERALD_BLOCK, Blocks.REDSTONE_BLOCK)) give(player, Item.getItemFromBlock(block), 64);
+            give(player, Item.getItemFromBlock(Blocks.SAND), 16);
+            player.inventoryContainer.detectAndSendChanges();
+            player.sendMessage(ExampleText.CompositeKit.text());
+            return;
+        }
+        if (arguments.length == 6 && arguments[0].equals("structure-check")) {
+            var position = parseBlockPos(sender, arguments, 1, false);
+            CompositeStructureExamples.check(sender.getEntityWorld(), position, parseInt(arguments[4], 0, 5), parseBoolean(arguments[5]));
+            sender.sendMessage(new net.minecraft.util.text.TextComponentString("PASS composite actual World, frozen match, block count and occurrence tree; inspect pe_run_tests log."));
+            return;
+        }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("boundary")) {
             EntityPlayerMP player = getCommandSenderAsPlayer(sender);
             for (var scenario : BoundaryExamples.SCENARIOS) give(player, item(VisualExamples.id(scenario.name() + "_controller")), 1);
@@ -59,10 +78,14 @@ public final class ExamplesCommand extends CommandBase {
             player.sendMessage(ExampleText.BoundaryKit.text());
             return;
         }
-        if ((arguments.length == 5 || arguments.length == 6) && arguments[0].equals("build")) {
+        if (arguments.length >= 5 && arguments.length <= 7 && arguments[0].equals("build")) {
             EntityPlayerMP player = getCommandSenderAsPlayer(sender);
-            BlockOrientation orientation = arguments.length == 6 ? orientation(arguments[5]) : BlockOrientation.NORTH_UP;
-            var blocks = NativeExamples.structure(arguments[1]);
+            BlockOrientation orientation = arguments.length >= 6 ? orientation(arguments[5]) : BlockOrientation.NORTH_UP;
+            if (arguments.length == 7 && !CompositeStructureExamples.name(arguments[1]).equals(CompositeStructureExamples.EXPANDABLE))
+                throw new WrongUsageException("Only expandable_structure accepts a repeat count");
+            int repeats = arguments.length == 7 ? parseInt(arguments[6], 1, 4) : 1;
+            var blocks = CompositeStructureExamples.placement(arguments[1], repeats);
+            if (blocks == null) blocks = NativeExamples.structure(arguments[1]);
             if (blocks == null) blocks = ExternalHatchExamples.placement(arguments[1]);
             if (blocks == null && (arguments[1].equals("core_world") || arguments[1].equals("pe_run_tests:core_world"))) blocks = CoreCases.worldPlacement();
             if (blocks == null) blocks = RunNetworkRender.placement(arguments[1]);
@@ -184,10 +207,11 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] arguments, @Nullable BlockPos targetPos) {
-        if (arguments.length == 1) return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain");
-        if (arguments.length == 2 && arguments[0].equals("kit")) return getListOfStringsMatchingLastWord(arguments, "boundary");
+        if (arguments.length == 1) return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
+        if (arguments.length == 2 && arguments[0].equals("kit")) return getListOfStringsMatchingLastWord(arguments, "boundary", "composite");
         if (arguments.length == 2 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>(List.of("press", "mixer", "sorter"));
+            names.addAll(List.of("pe_run_tests:nested_structure", "pe_run_tests:expandable_structure"));
             for (var scenario : BoundaryExamples.SCENARIOS) names.add(scenario.name());
             names.add("pe_run_tests:native_data_fixed");
             names.add("pe_run_tests:native_data_cross");
@@ -202,6 +226,8 @@ public final class ExamplesCommand extends CommandBase {
             for (var orientation : BlockOrientation.values()) names.add(orientation.name());
             return getListOfStringsMatchingLastWord(arguments, names);
         }
+        if (arguments.length == 7 && arguments[0].equals("build") && CompositeStructureExamples.name(arguments[1]).equals(CompositeStructureExamples.EXPANDABLE))
+            return getListOfStringsMatchingLastWord(arguments, "1", "2", "3", "4");
         if (arguments.length == 5 && arguments[0].equals("stock")) {
             var names = new ObjectArrayList<String>();
             for (var pool : RecipeRegistry.INSTANCE.pools()) {

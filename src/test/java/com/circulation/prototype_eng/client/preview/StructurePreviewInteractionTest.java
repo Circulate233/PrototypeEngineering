@@ -11,6 +11,9 @@ import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import com.circulation.prototype_eng.structure.reload.StructureCatalogCodec;
+import com.circulation.prototype_eng.structure.tool.BuilderState;
+import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
+import net.minecraft.nbt.NBTTagCompound;
 import com.circulation.prototype_eng.network.clientbound.StructureCatalogPacket;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
@@ -25,6 +28,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -173,6 +177,36 @@ class StructurePreviewInteractionTest {
             assertEquals(3, occurrences.stream().filter(o -> o.path().equals(right)).findFirst().orElseThrow().selectedSlices());
             assertEquals(new BlockPos(3, 0, 0), occurrences.stream().filter(o -> o.path().equals(left)).findFirst().orElseThrow().origin());
             assertEquals(new BlockPos(3, -1, 1), occurrences.stream().filter(o -> o.path().equals(left.child(0))).findFirst().orElseThrow().origin());
+        }
+    }
+
+    @Test
+    void persistedBuilderCountsDriveTheSameOccurrencesAsPreviewAndConstruction() {
+        try (var f = fixture()) {
+            var tag = new NBTTagCompound();
+            BuilderState.chooseSlice(tag, "0/0", 1);
+            BuilderState.chooseSlice(tag, "0/1", 3);
+            var copied = tag.copy();
+            var ui = f.first;
+            var old = ui.token();
+            assertTrue(ui.replaceSelections(old, Map.of(A, 1), Map.of(), BuilderState.previewSlices(copied)));
+            assertFalse(ui.replaceSelections(old, Map.of(), Map.of(), Map.of()), "A stale response cannot reset current counts");
+            ui.advance(1000);
+            var model = Objects.requireNonNull(ui.model());
+            var construction = StructureBuildPlan.expand(model.generation(), ROOT, ui.settings().orientation(), BuilderState.sliceCounts(copied));
+            assertEquals(model.cells().stream().map(StructurePreviewModel.Cell::position).collect(Collectors.toSet()),
+                construction.cells().stream().map(StructureBuildPlan.Cell::position).collect(Collectors.toSet()));
+            for (var occurrence : model.occurrences()) {
+                var path = BuilderState.sliceKey(occurrence.path());
+                var actual = construction.nodes().stream().filter(node -> node.path().equals(path)).findFirst().orElseThrow();
+                assertEquals(occurrence.selectedSlices(), actual.count());
+                assertEquals(occurrence.origin(), actual.origin());
+            }
+            assertEquals(1, ui.alternative(A));
+            assertEquals(0, f.second.alternative(A));
+            assertEquals(1, ui.settings().sliceCounts().get(StructurePreviewPath.ROOT.child(0)));
+            assertEquals(3, ui.settings().sliceCounts().get(StructurePreviewPath.ROOT.child(1)));
+            assertTrue(f.second.settings().sliceCounts().isEmpty());
         }
     }
 

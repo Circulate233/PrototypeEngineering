@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.item.ItemStack;
@@ -33,8 +34,10 @@ public final class BuilderState {
         var tag = data(stack);
         ensureIdentity(tag);
         if (!tag.getBoolean("Bound") || tag.getInteger("BoundDim") != dimension || !position(tag).equals(pos)
-            || !tag.getString("BoundMachineId").equals(machine.id().toString()) || !tag.getString("BoundStructureId").equals(machine.structureId().toString()))
+            || !tag.getString("BoundMachineId").equals(machine.id().toString()) || !tag.getString("BoundStructureId").equals(machine.structureId().toString())) {
             tag.removeTag("CellMaterialSelections");
+            tag.removeTag("SliceSelections");
+        }
         tag.setBoolean("Bound", true);
         tag.setInteger("BoundDim", dimension);
         tag.setInteger("BoundX", pos.getX());
@@ -157,6 +160,44 @@ public final class BuilderState {
             if (option >= 0) choices.put(position.toImmutable(), new StructurePreviewSettings.CellChoice(display, option));
         });
         return choices;
+    }
+
+    /** Construction keys identify occurrences, so two uses of one shared child remain independent. */
+    public static @Nullable StructurePreviewPath slicePath(String key) {
+        if (key.length() > 8192 || !key.matches("0(?:/(?:0|[1-9][0-9]{0,4}))*")) return null;
+        var path = StructurePreviewPath.ROOT;
+        var edges = key.split("/");
+        for (int index = 1; index < edges.length; index++) path = path.child(Integer.parseInt(edges[index]));
+        return path;
+    }
+
+    public static String sliceKey(StructurePreviewPath path) {
+        var edges = new ObjectArrayList<Integer>();
+        for (var cursor = path; cursor.parent() != null; cursor = cursor.parent()) edges.add(cursor.childIndex());
+        var key = new StringBuilder("0");
+        for (int index = edges.size() - 1; index >= 0; index--) key.append('/').append(edges.get(index));
+        return key.toString();
+    }
+
+    public static Map<String, Integer> sliceCounts(NBTTagCompound tag) {
+        var result = new Object2ObjectOpenHashMap<String, Integer>();
+        var saved = tag.getCompoundTag("SliceSelections");
+        for (var key : saved.getKeySet())
+            if (saved.hasKey(key, 3) && saved.getInteger(key) >= 0 && slicePath(key) != null) result.put(key, saved.getInteger(key));
+        return result;
+    }
+
+    public static Map<StructurePreviewPath, Integer> previewSlices(NBTTagCompound tag) {
+        var result = new Object2ObjectOpenHashMap<StructurePreviewPath, Integer>();
+        sliceCounts(tag).forEach((key, count) -> result.put(slicePath(key), count));
+        return result;
+    }
+
+    /** The container validates this occurrence's min/max against the current server catalog first. */
+    public static void chooseSlice(NBTTagCompound tag, String key, int count) {
+        if (slicePath(key) == null || count < 0) throw new IllegalArgumentException("Invalid slice selection");
+        if (!tag.hasKey("SliceSelections", 10)) tag.setTag("SliceSelections", new NBTTagCompound());
+        tag.getCompoundTag("SliceSelections").setInteger(key, count);
     }
 
     public enum State {

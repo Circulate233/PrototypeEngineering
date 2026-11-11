@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.structure.tool.ScannerState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
 import com.circulation.prototype_eng.structure.tool.StructureToolExport;
 import com.circulation.prototype_eng.structure.tool.StructureBuildPlan;
+import com.circulation.prototype_eng.api.structure.StructurePreviewProvider;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.item.ItemStack;
@@ -25,7 +26,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.Map;
 
 /** AE window actions are bound to the exact tool stack and world that opened the screen. */
 public final class StructureToolContainer extends AEBaseContainer {
@@ -110,7 +110,7 @@ public final class StructureToolContainer extends AEBaseContainer {
         var tag = data();
         if (builder) {
             if (action.kind.equals("task")) StructureBuildTasks.toggle(getPlayer(), slot, tool);
-            else if ((action.kind.equals("material") || action.kind.equals("cell_material"))
+            else if ((action.kind.equals("material") || action.kind.equals("cell_material") || action.kind.equals("slice"))
                 && action.key.length() <= 8192 && action.value.length() <= 8192)
                 chooseMaterial(action.kind, action.key, action.value);
         } else switch (action.kind) {
@@ -171,6 +171,7 @@ public final class StructureToolContainer extends AEBaseContainer {
             selectedOption = value;
         }
         if (selectedMaterial.isBlank() || selectedOption.isEmpty()) return;
+        if (kind.equals("slice") && (BuilderState.slicePath(selectedMaterial) == null || !selectedOption.matches("0|[1-9][0-9]{0,8}"))) return;
         var binding = data().copy();
         var anchor = BuilderState.position(binding);
         if (!binding.getBoolean("Bound") || binding.getInteger("BoundDim") != world.provider.getDimension()
@@ -190,7 +191,20 @@ public final class StructureToolContainer extends AEBaseContainer {
             if (server == null) return;
             var catalog = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
             if (catalog == null || !catalog.entries().containsKey(host.type().structureId())) return;
-            var plan = StructureBuildPlan.expand(catalog, host.type().structureId(), host.orientation(), Map.of());
+            var plan = StructureBuildPlan.expand(catalog, host.type().structureId(), host.orientation(), BuilderState.sliceCounts(current));
+            if (kind.equals("slice")) {
+                int count = Integer.parseInt(selectedOption);
+                for (var occurrence : plan.nodes()) {
+                    var node = catalog.nodes().get(occurrence.index());
+                    if (occurrence.path().equals(selectedMaterial) && node.kind() == StructurePreviewProvider.Kind.SLICE
+                        && count >= node.minCount() && count <= node.maxCount()) {
+                        BuilderState.chooseSlice(current, selectedMaterial, count);
+                        synchronize();
+                        return;
+                    }
+                }
+                return;
+            }
             if (position != null) {
                 for (var cell : plan.cells()) {
                     if (!cell.position().equals(position)) continue;

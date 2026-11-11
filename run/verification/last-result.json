@@ -1,10 +1,10 @@
 {
   "date": "2026-11-11",
-  "addonJava": 18,
+  "addonJava": 19,
   "installed": true,
-  "addonSha256": "74E0F8AFC930CF98D13920BFB26461A23F26168A7829E99007D6DC22C244658B",
+  "addonSha256": "01B093516E4680FE46BBC5082E363B73CA172ED2672213C3CB0306BAE928BB6A",
   "sdk": "4.1.20.718",
-  "scriptCompilerPassed": 9,
+  "scriptCompilerPassed": 11,
   "executedScripts": [
     "run\\scripts\\10_pe_run_core_preinit.zs",
     "run\\scripts\\20_pe_run_core_checks.zs"
@@ -12,11 +12,17 @@
   "corePass": 97,
   "coreFail": 0,
   "completed": true,
-  "ideaFiles": 19,
-  "ideaResult": "excluded/outside content roots",
-  "ideaErrors": "unknown",
-  "ideaWarnings": "unknown",
-  "ideaWeakWarnings": "unknown",
+  "focusedTests": 24,
+  "suites": 2,
+  "testsFailures": 0,
+  "testsErrors": 0,
+  "testsSkipped": 0,
+  "officialJavaIdeaFiles": 7,
+  "officialIdeaErrors": 0,
+  "officialIdeaWarnings": 0,
+  "officialIdeaWeakWarnings": 0,
+  "modifiedRunJavaIdea": "4 excluded/unknown",
+  "addonLanguagesIdea": "2 all levels clear",
   "nativeExecuted": false,
   "originalGoal": "paused",
   "sourceHashes": [
@@ -25,16 +31,20 @@
       "sha256": "26F539E0589A51BDB3C0F68CD0B62B68425D835B2B1D7CA0766FF8D494C61BC1"
     },
     {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/CompositeStructureExamples.java",
+      "sha256": "EA96F75660344319B826539466873B43BF04CD51DC73A12BFC4E9436845032C1"
+    },
+    {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/ExamplesClient.java",
-      "sha256": "F0A320691B4567F8FC92D6934FAD362E2FA2CE4592AA248747912074692F40E0"
+      "sha256": "2B376CD1A212A0E2AEB8A9EBB15E1C592C9D10C9565A6C8DA75A6E68EE8FE697"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/ExamplesCommand.java",
-      "sha256": "D1F532BD8DFA25C59D629EC49B8966FAB9183CED3D6F27A86325261F68FB76BC"
+      "sha256": "4DFC9A110B710F4F226AD7EBB439A72C91E5BAB69DE1D22BB00D28E78FFBA2FC"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/ExampleText.java",
-      "sha256": "9B5BA2416899C82DD6953BEFE09C748DB1DB3BC48094B07A5DA7BE5D563F2715"
+      "sha256": "0CBE38B4CB3460097B9FEA9C988353FD5E02F9859E80D44894A7D661FDAC92A8"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/VisualExamples.java",
@@ -130,11 +140,11 @@
     },
     {
       "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/lang/en_us.lang",
-      "sha256": "637D0276015F3D0B120231044D3DE24A64101A4E633E5882615FAB6F2A779FFF"
+      "sha256": "22D61D4ACD9EE58ACCC0EE429C1A5C5BA1ABE75E9EF9B65E3E98AAFF4838D24A"
     },
     {
       "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/lang/zh_cn.lang",
-      "sha256": "7455BA7091D35162394B377AEE7368174ED92764D009115A60FDFF84B89CF672"
+      "sha256": "6E614A2C72FD6077389349AFD90773285DAC04CB90DE27CFA0D18FDF2B78421F"
     },
     {
       "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/textures/run_tests_machine.png",
@@ -153,6 +163,10 @@
       "sha256": "FD0C7632A310ED7725D2BD030F1BD03AE0D79659D9F54DA0C24F315DEEEC0E49"
     },
     {
+      "path": "run/scripts/12_pe_run_composite_preinit.zs",
+      "sha256": "3CDB2E245144A29E022A931E446EE40C1FBBA8B429BCAD90292CFEEE1FC3A0C4"
+    },
+    {
       "path": "run/scripts/15_pe_run_network_machines.zs",
       "sha256": "1F910A12124AA034D955773FC5D05F0F7DE851CA61A6FFBB11BE3695F835D14D"
     },
@@ -169,6 +183,10 @@
       "sha256": "6A6D53EA634DFC065985BE805A01711D17CB13D4A346F3353DB4D0B081796148"
     },
     {
+      "path": "run/scripts/23_pe_run_composite_structures.zs",
+      "sha256": "9B7DD0771E4582EB38DBF5BA67C5E0DCF997C55F9602F71984FAE678EF1B13D9"
+    },
+    {
       "path": "run/scripts/30_pe_run_network.zs",
       "sha256": "41E57F0555A5345FDDDC6EC95AC933DA4A545AA71C720C2B9EB36D56635F067C"
     },
@@ -179,6 +197,10 @@
     {
       "path": "run/scripts/95_pe_run_manifest.zs",
       "sha256": "AB4CC8F4A5B9A93A1DE63C6DA3860470F2BC44B0218E568E775C4AD932F67342"
+    },
+    {
+      "path": "run/scripts/README-composite.md",
+      "sha256": "002EEECE4CA17997773B9D94298F1F8FCA3164FBEB47B7E7F6E6DC44DDB5422A"
     },
     {
       "path": "run/scripts/README-core.md",

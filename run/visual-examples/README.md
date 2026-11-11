@@ -1,6 +1,6 @@
 # PE 可视开发示例
 
-完整测试套件入口现为 [../README.md](../README.md)，包括9份实际CT脚本及18Java addon；本文保留原13台/106配方的可视操作。原生数据/仓室与网络/研究/渲染新增场景分别见 [NATIVE-CASES.md](NATIVE-CASES.md) 和 [NETWORK-RENDER-TESTS.md](NETWORK-RENDER-TESTS.md)。新增脚本机器应由用户使用 `run/start-tests.ps1` 完整启动，以加载真实CT2运行依赖；下文旧启动方式仅供原addon历史说明。
+完整测试套件入口现为 [../README.md](../README.md)，包括11份实际CT脚本及19Java addon；本文保留原13台/106配方的可视操作。真实共享/嵌套子结构和1–4段可拓展塔见 [组合结构示例](../scripts/README-composite.md)，原生数据/仓室与网络/研究/渲染分别见 [NATIVE-CASES.md](NATIVE-CASES.md) 和 [NETWORK-RENDER-TESTS.md](NETWORK-RENDER-TESTS.md)。新增脚本机器应由用户使用 `run/start-tests.ps1` 完整启动，以加载真实CT2运行依赖；下文旧启动方式仅供原addon历史说明。
 
 本目录提供独立的 `pe_visual_examples` 开发附加模组，现有 **13 台机器、106 个配方、12 个默认 JEI 配方池和 1 个独立自定义 JEI 页**。原 3 台机器、8 条配方全部保留，另加 10 类边界场景。机器使用当前 PE 的真实控制器、可放置方块结构、配方与仓室接口；源码和开发 Jar 均留在 `run` 内，PE 正式库没有加入这些玩法内容。
 

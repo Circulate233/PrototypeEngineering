@@ -9,15 +9,17 @@ C = 实际 SDK718 编译；H = 独立 JVM 中执行真实核心 API；N = 用户
 | 门 | 当前证据 |
 |---|---|
 | 当前主输出与类路径 | prepare-tests.ps1 成功；Gradle classes/真实命名 compile+runtime 导出成功13s，无游戏启动。 |
-| addon | 18 Java 全部 javac/jar 成功；build-result.json 为 installed=true，目标 run/mods/pe_visual_examples-1.0.0-dev.jar。 |
-| C | 全部9个实际脚本 compiler=passed；typed bracket 延后真实 Forge lookup，未解析原生注册物品。 |
+| addon | 19 Java 全部 javac/jar 成功；build-result.json 为 installed=true，目标 run/mods/pe_visual_examples-1.0.0-dev.jar。 |
+| C | 全部11个实际脚本 compiler=passed；typed bracket 延后真实 Forge lookup，未解析原生注册物品。 |
 | H | 实际执行10/20脚本，经 DefinitionRegistrations dispatch/freeze、准确池/codec注册和运行时resolve；97个PASS，0个FAIL，报告completed=true。 |
 | IDEA | 18 addon Java及独立验证器共19文件逐个本机MCP errorsOnly:false；全部因outside content roots/excluded拒绝分析，错误/警告/弱警告均unknown。没有修改IDE设置。 |
 | N/V | 全部待用户实机；没有自行启动Minecraft、服务端、FML或Bootstrap。 |
 
 最终原始证据：C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/run-coverage/ 下 closing-prepare.log、final-verification/script-verifier-result.json、同目录script-verifier.log和closing-idea.json。此前失败记录保留作诊断，不能混为最终结果。正式库此前1921 tests/1007Java是历史门，本次没有重跑完整主测试。
 
-九脚本依次为 preinit 10、11、15、16，普通 loader 20、21、30、40、95。它们使用同一 Bindings.scope；95统一registerPools和历史定义，再发布完整v1及准确private v2目录。H只执行10/20及对应核心注册，不冒充其余脚本原生执行。
+十一脚本依次为 preinit 10、11、12、15、16，普通 loader 20、21、23、30、40、95。它们使用同一 Bindings.scope；95统一registerPools和历史定义，再发布完整v1及准确private v2目录。H只执行10/20及对应核心注册，不冒充其余脚本原生执行。
+
+最新组合结构批次：19 addon Java已编译安装，11脚本SDK通过、核心97 PASS；24 tests/2 suites通过（含新增保存段数到预览/common构建plan的实际对照）。官方7Java本机MCP最终全级零，修改的4个run Java被排除，两语言全级零；原IDEA行保留上一批19个run文件检查历史。新机器World/运行/GUI与保存仍未执行。证据：C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/composite-examples/。
 
 ## 功能矩阵
 
@@ -45,6 +47,7 @@ C = 实际 SDK718 编译；H = 独立 JVM 中执行真实核心 API；N = 用户
 | 数据库/下载/真实编码 | paper→book、源研究扣级一次、PREPARED退出恢复原nonce；ResearchDiskEncodingEvent正式注册、实际requestItemDownload、tier/容量/源等级拒绝、准确native盘NBT与产物总量。 | C通过，N待；fixture写盘不冒充正式编码 |
 | 渲染/锚点/动画 | 四pass、真实geo/texture/animation、component及whole/per-slice；准确origin/kind/slice/path；CSV/单名/typed优先、旋转offset和Gecko真实frame。 | C通过，N/V待；CPU采样不代替GPU/Bloom |
 | 私有目录/JEI/旧配方跨版本 | 完整manifest和准确page/options/native row；已有minecraft.crafting只催化剂；运行中v1=2400t跨v2=40t保留旧codec/seed/data/END emerald1；通知失败仍已published。 | C通过，N/V待；NETWORK-RENDER-TESTS.md |
+| 共享子结构/可拓展塔 | 12/23实际脚本；26材料、两份pod和marker；1–4段22/31/40/49材料、唯一cap随末段；准确World冻结断言、移除marker/cap及0/5段负例、真正配方付款。构造器重复次数保存并传到左右/投影/服务器计划。 | C通过；24专项含保存段数几何对照，N/V仍待；scripts/README-composite.md |
 | 原13/106、GUI/两工具/169结构 | 长数量、分页、候选、真实终端样板；完整169材料不随层截断，玻璃109、单格108+1；三种绑定、候选滚动、30秒投影、Shift滚轮与朝向。 | 原声明保留、Java编译通过；N/V待，原visual-examples/README.md |
 
 ## 保留的验证边界

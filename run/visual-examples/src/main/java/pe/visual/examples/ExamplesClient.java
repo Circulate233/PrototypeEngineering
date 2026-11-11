@@ -25,6 +25,18 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.List;
 import javax.annotation.ParametersAreNonnullByDefault;
+import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewPath;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviewScreens;
+import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
+import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
+import net.minecraftforge.client.ClientCommandHandler;
+import net.minecraft.command.CommandBase;
+import net.minecraft.command.CommandException;
+import net.minecraft.command.ICommandSender;
+import net.minecraft.server.MinecraftServer;
+import java.util.Map;
 
 /** Client classes are isolated from the common registration and dedicated-server paths. */
 @SideOnly(Side.CLIENT)
@@ -34,8 +46,48 @@ public final class ExamplesClient {
 
     @SubscribeEvent
     public static void registerPage(RecipePoolJeiRegistrationEvent event) {
+        ClientCommandHandler.instance.registerCommand(new CompositePreviewCommand());
         for (var pool : event.pools()) {
             if (pool.id().equals(VisualExamples.SORTER_POOL)) event.pages().register(pool.id(), new SorterPage(pool));
+        }
+    }
+
+    /** An explicit count/orientation reaches the same production panel without changing any World block. */
+    public static final class CompositePreviewCommand extends CommandBase {
+        @Override public String getName() { return "pe_structure_example"; }
+        @Override public int getRequiredPermissionLevel() { return 0; }
+        @Override public String getUsage(ICommandSender sender) { return "/pe_structure_example <nested_structure|expandable_structure> [count:1-4] [orientation:NORTH_UP]"; }
+        @Override public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+            if (args.length < 1 || args.length > 3 || !CompositeStructureExamples.known(args[0]))
+                throw new CommandException(getUsage(sender));
+            var name = CompositeStructureExamples.name(args[0]);
+            int count = args.length >= 2 ? parseInt(args[1], 1, 4) : 1;
+            if (name.equals(CompositeStructureExamples.NESTED) && count != 1) throw new CommandException("Nested example count is 1");
+            var orientation = BlockOrientation.NORTH_UP;
+            if (args.length == 3) {
+                orientation = null;
+                for (var candidate : BlockOrientation.values()) if (candidate.name().equals(args[2])) orientation = candidate;
+                if (orientation == null) throw new CommandException("Unknown orientation %s", args[2]);
+            }
+            var type = MachineTypeRegistry.INSTANCE.get(CompositeStructureExamples.id(name));
+            if (type == null) throw new CommandException("Composite preinit script has not registered this machine");
+            var settings = new StructurePreviewSettings(orientation,
+                name.equals(CompositeStructureExamples.EXPANDABLE) ? Map.of(StructurePreviewPath.ROOT.child(0), count) : Map.of(), 65536, 1048576);
+            var mc = Minecraft.getMinecraft();
+            var player = mc.player; var world = mc.world; var connection = mc.getConnection();
+            var container = player == null ? null : player.openContainer;
+            int window = container == null ? -1 : container.windowId;
+            PreviewClientOpenQueue.INSTANCE.enqueue(() -> {
+                if (player != null && container != null && mc.player == player && mc.world == world && mc.getConnection() == connection
+                    && player.openContainer == container && container.windowId == window && mc.currentScreen == null)
+                    StructurePreviewScreens.open(type, settings);
+            });
+        }
+        @Override public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, net.minecraft.util.math.BlockPos target) {
+            if (args.length == 1) return getListOfStringsMatchingLastWord(args, CompositeStructureExamples.NESTED, CompositeStructureExamples.EXPANDABLE);
+            if (args.length == 2) return getListOfStringsMatchingLastWord(args, "1", "2", "3", "4");
+            if (args.length == 3) return getListOfStringsMatchingLastWord(args, java.util.Arrays.stream(BlockOrientation.values()).map(Enum::name).toList());
+            return List.of();
         }
     }
 

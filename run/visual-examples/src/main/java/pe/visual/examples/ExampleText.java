@@ -7,7 +7,7 @@ public enum ExampleText implements LocalizationEnum {
     Press, Mixer, Sorter, CustomPage, Input, Output, Kit, Charged, NoEnergy, Drained, NoEnergyOutput,
     Catalog, Wide, Choices, Amounts, Tick, Energy, Parallel, Cross, Structure, LongText,
     BoundaryKit, NoResourceInput, UnknownRecipe, Stocked, StockPartial,
-    UnknownMachine, BuildBlocked, Built, BuildFailed;
+    UnknownMachine, BuildBlocked, Built, BuildFailed, CompositeKit;
 
     @Override
     public String getTranslationKey() {

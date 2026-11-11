@@ -34,6 +34,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     private StructurePreviewPanel preview;
     private ResourceLocation id;
     private String appliedSelections = "";
+    private boolean selectionsPending;
     private BlockOrientation orientation;
 
     public BuilderInstrumentGui(StructureToolContainer container, InventoryPlayer player) {
@@ -47,6 +48,12 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
             if (preview != null) preview.openMaterialChoices(display);
         });
         tree.selections(() -> preview == null ? null : preview.view().settings());
+        tree.onSliceChanged((key, count) -> {
+            if (preview == null) return;
+            var path = BuilderState.slicePath(key);
+            var view = preview.view();
+            if (path != null && view.slices(view.token(), path, count)) container.action("slice", key, Integer.toString(count));
+        });
     }
 
     private void refresh() {
@@ -75,7 +82,8 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         var machineId = tag.getString("BoundMachineId");
         var machineType = machineId.isBlank() ? null : MachineTypeRegistry.INSTANCE.get(new ResourceLocation(machineId));
         if (machineType != null && !machineType.structureId().equals(id)) machineType = null;
-        var view = new StructurePreviewView(StructurePreviews.client(), id, new StructurePreviewSettings(orientation), machineType);
+        var view = new StructurePreviewView(StructurePreviews.client(), id,
+            new StructurePreviewSettings(orientation, BuilderState.previewSlices(tag), 65536, 1048576), machineType);
         view.anchor(anchor);
         view.wireframe = false;
         preview = new StructurePreviewPanel(view);
@@ -83,6 +91,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         preview.onMaterialsRequested(tree::openMaterials);
         if (oldCamera != null) preview.scene().camera().copyViewFrom(oldCamera);
         appliedSelections = "";
+        selectionsPending = false;
         preview.onAlternativeSelected((display, option) -> container.action("material", display.key(), BuilderState.optionKey(display.options().get(option))));
         preview.onCellAlternativeSelected((cell, option) -> container.action("cell_material", BuilderState.cellKey(cell.position()),
             BuilderState.cellValue(Objects.requireNonNull(cell.display()), option, view.settings().orientation())));
@@ -94,9 +103,11 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         if (model == null) return;
         var tag = container.snapshot();
         String key = tag.getCompoundTag("MaterialSelections").toString() + tag.getCompoundTag("CellMaterialSelections")
-            + model.generation().session() + model.generation().sequence();
-        if (key.equals(appliedSelections)) return;
+            + tag.getCompoundTag("SliceSelections") + model.generation().session() + model.generation().sequence();
         var view = preview.view();
+        var slices = BuilderState.previewSlices(tag);
+        if (key.equals(appliedSelections) && (!selectionsPending || !view.settings().sliceCounts().equals(slices))) return;
+        boolean rebuild = !view.settings().sliceCounts().equals(slices);
         var globals = new Object2ObjectOpenHashMap<StructureDisplay, Integer>();
         for (var line : model.bom()) {
             var display = line.display();
@@ -107,8 +118,11 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         }
         var displays = new Object2ObjectOpenHashMap<BlockPos, StructureDisplay>();
         for (var cell : model.cells()) if (cell.display() != null) displays.put(cell.position(), cell.display());
-        view.replaceAlternatives(view.token(), globals, BuilderState.cellChoices(tag, displays, view.settings().orientation()));
-        appliedSelections = key;
+        if (view.replaceSelections(view.token(), globals, BuilderState.cellChoices(tag, displays, view.settings().orientation()), slices)) {
+            appliedSelections = key;
+            // Revisit once new occurrences exist, so their persisted single-cell choices are not lost.
+            selectionsPending = rebuild;
+        }
     }
 
     @Override
