@@ -1,5 +1,15 @@
 # JEI 配方池页面
 
+## 2026-11-12 单输入多输出与动态材料布局
+
+最新规则替代下文历史记录中的固定4×4空框和最小148px：通用页每侧仍最多16组/页，但按当前配方及材料页的真实数量选择列数、行数，只画实际槽框。两侧紧凑排布后整体居中，加工箭头对齐材料区中心，说明紧接实际材料区；同池按最大材料与完整换行说明量测分类高度，只有材料溢出时预留分页控件。保留PM原背景、槽框、进度和能量纹理。
+
+`SimpleRecipePool` 自动绑定 `SingleInputRecipePage`：一个输入槽在输出分页时常驻，输出每页最多24组、六列四行，任意总输出数量通过分页可达；输入数量仍是GenericStack的long数量。自定义页和有效外部UID优先于自动选择，单输入页支持同一分类的prepareUpdate，旧wrapper仍捕获原Data，准备中的新wrapper只读取目标Data。
+
+每次翻页按实际几何撤销原生旧槽再初始化坐标，输入/输出offset随真实槽数调整；只保留一次tooltip回调，FE透明槽同步移动到当前说明位置。槽框、原生查询/书签、fallback及tooltip读取同一几何，不以渲染图标代替ingredient。完整索引与样板导入不受可见分页影响，候选轮播和原始long数量保留。参照本地MMCE `CategoryDynamicRecipe.buildRecipeComponents` 与 `RecipeLayoutPart.getMaxHorizontalCount` 的实际数量排布、箭头居中和说明量测原则，没有迁入其GUI/资源体系。
+
+行为验证与本机IDE检查结果见[实施进度](implementation-status.md)。未启动Minecraft；少量/多量、混合物品和流体、最后一页缩网格、书签/查询、完整样板导入与实际观感仍需用户重启客户端复验。
+
 ## 2026-11-12 结构候选点击与空槽
 
 结构预览左侧候选使用原生ingredient槽，但鼠标左键优先只替换当前选中的cell，右键替换该StructureDisplay对应的全部可替换同类并清理旧单格覆盖。当前材料也支持右键统一整类。原生物品tooltip附双语操作提示；R/U、书签及非左右鼠标绑定仍由HEI处理，固定BOM只读槽保留原生浏览行为。
@@ -82,7 +92,7 @@ AE2S 原导入链可以解包 GenericStack，但 PE 旧一单位查询图标及�
 
 ## 默认显示与查询边界
 
-默认页面固定两侧各4×4材料背景与中间加工箭头；每侧每页最多16组材料，说明完整换行且不单独分页。每个wrapper自持材料分页状态，按钮与原生Forge wheel bridge可遍历全部材料；页脚位置和点击/滚轮边界随池级测量高度向Y展开。每次切换配方或分页先清空全部已初始化类型/槽位；索引与样板导入使用所有分页数据。scope随每条资源/信息保存。
+默认页面按实际材料数量动态排布输入、输出和中间加工箭头；通用页每侧每页最多16组，单输入专用页一个常驻输入和最多24组输出，说明完整换行且不单独分页。每个wrapper自持材料分页和几何，按钮与原生Forge wheel bridge可遍历全部材料；页脚和点击/滚轮边界沿池级量测高度。翻页撤销旧原生槽并同步更新坐标与说明位置；索引与样板导入使用所有分页数据，scope随每条资源/信息保存。
 
 `DefaultRecipeDisplays` 只读已知准确 built-in type 的定义，展示 duration、START/TICK/END 资源、独立 FE 参数、概率/属性乘数、fuzzy 候选、dynamic 显式示例、weighted 权重/无放回/pickCount、selector 多可选材料、checkpoint 完整子生命周期/时间缩放、属性与 void 输出语义。它不执行 matcher、modifier apply、随机采样、运行阶段或未知 children 回调，多可选材料保持同槽候选关系。
 

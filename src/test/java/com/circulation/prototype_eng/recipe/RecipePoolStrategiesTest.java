@@ -24,6 +24,7 @@ import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
@@ -293,6 +294,40 @@ class RecipePoolStrategiesTest {
             assertEquals(10, pool.match(stock, 10).getFirst().maximumParallelism());
             stock.put(INPUT, 12);
         }
+    }
+
+    @Test
+    void singleInputPoolPreservesMultipleOutputsThroughFreezeInventoryMatchingAndEndPayment() {
+        var byproduct = new Key(OTHER, "byproduct");
+        var outputs = new ObjectArrayList<>(List.of(new GenericStack(OUTPUT, 3), new GenericStack(byproduct, 7)));
+        var entry = SimpleRecipePool.Entry.create(id("multiple_outputs"), 1, new GenericStack(INPUT, 5), outputs, Set.of());
+        var sink = SimpleRecipePool.Entry.create(id("no_outputs"), 1, new GenericStack(INPUT, 5), List.of(), Set.of());
+        var registry = new RecipeRegistry();
+        var pool = new SimpleRecipePool(id("multiple_output_pool"), "pool.title", List.of(entry, sink)).withExistingJeiPage("external:page");
+        registry.register(pool);
+        registry.freeze();
+        outputs.clear();
+        var frozen = Objects.requireNonNull(assertInstanceOf(SimpleRecipePool.class, registry.get(pool.id())));
+        assertEquals(2, SimpleRecipePool.Entry.of(frozen.recipes().getFirst()).outputs().size());
+        assertEquals("external:page", frozen.existingJeiPageId());
+        var source = buffer();
+        var destination = buffer();
+        source.insert(INPUT, 10, Actionable.MODULATE);
+        var matched = frozen.match(source.snapshot().available());
+        assertSame(frozen.recipes().getFirst(), matched);
+        var machine = new MachineInstance();
+        machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Port(source, destination)), List.of(), List.of()));
+        var process = new RecipeProcess(machine, Objects.requireNonNull(matched), 1);
+        assertSame(ProcessResult.SUCCESS, process.tick());
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+        assertEquals(5, source.availableAmount(INPUT));
+        assertEquals(3, destination.availableAmount(OUTPUT));
+        assertEquals(7, destination.availableAmount(byproduct));
+        var noOutput = new RecipeProcess(machine, frozen.recipes().getLast(), 2);
+        assertSame(ProcessResult.SUCCESS, noOutput.tick());
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, noOutput.state().lifecycle());
+        assertEquals(0, source.availableAmount(INPUT));
+        assertEquals(7, destination.availableAmount(byproduct));
     }
 
     @Test

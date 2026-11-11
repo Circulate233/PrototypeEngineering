@@ -32,6 +32,7 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.ParametersAreNonnullByDefault;
+import java.awt.Color;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -253,6 +254,7 @@ class JeiTestViews {
         final Int2ObjectOpenHashMap<List<T>> values = new Int2ObjectOpenHashMap<>();
         final Int2BooleanOpenHashMap roles = new Int2BooleanOpenHashMap();
         final ObjectArrayList<ITooltipCallback<T>> tooltips = new ObjectArrayList<>();
+        final Int2ObjectOpenHashMap<Slot<T>> slots = new Int2ObjectOpenHashMap<>();
 
         @Override
         public void set(IIngredients ignored40) {
@@ -266,6 +268,9 @@ class JeiTestViews {
             } else {
                 values.put(slot, ingredients);
             }
+            var previous = slots.get(slot);
+            if (previous != null) slots.put(slot, new Slot<>(previous.input, previous.x, previous.y,
+                previous.width, previous.height, ingredients == null ? List.of() : ingredients));
         }
 
         @Override
@@ -284,22 +289,31 @@ class JeiTestViews {
 
         @Override
         public Map<Integer, ? extends IGuiIngredient<T>> getGuiIngredients() {
-            return new Int2ObjectOpenHashMap<>();
+            return slots;
         }
 
         @Override
-        public void init(int slot, boolean input, int ignored43, int ignored44) {
+        public void init(int slot, boolean input, int x, int y) {
             roles.put(slot, input);
+            slots.put(slot, new Slot<>(input, x, y, 16, 16, List.of()));
         }
 
         @Override
-        public void init(int slot, boolean input, IIngredientRenderer<T> ignored45, int ignored46, int ignored47, int ignored48, int ignored49, int ignored50, int ignored51) {
+        public void init(int slot, boolean input, IIngredientRenderer<T> ignored45, int x, int y, int width, int height, int ignored50, int ignored51) {
             roles.put(slot, input);
+            slots.put(slot, new Slot<>(input, x, y, width, height, List.of()));
         }
 
         @Override
         public void setOverrideDisplayFocus(@Nullable IFocus<T> ignored52) {
         }
+    }
+
+    record Slot<T>(boolean input, int x, int y, int width, int height, List<T> ingredients) implements IGuiIngredient<T> {
+        @Override public @Nullable T getDisplayedIngredient() { return ingredients.isEmpty() ? null : ingredients.getFirst(); }
+        @Override public List<T> getAllIngredients() { return ingredients; }
+        @Override public boolean isInput() { return input; }
+        @Override public void drawHighlight(Minecraft ignored, Color ignoredColor, int ignoredX, int ignoredY) {}
     }
 
     static class Layout implements IRecipeLayout {

@@ -247,7 +247,7 @@ class ZenRecipeBridgeTest {
             import mods.prototype_eng.recipe.Pool;
             import tests.prototype_eng.Harness;
             var first = Recipe.create("combined_bridge:first", "v1", 2,
-                [Requirement.resources("combined_bridge:io", [Harness.resource()], [Harness.resource()])]);
+                [Requirement.resources("combined_bridge:io", [Harness.resource()], [Harness.resource(), Harness.resource()])]);
             var second = Recipe.create("combined_bridge:second", "v2", 3,
                 [Requirement.energy("combined_bridge:energy", 0, 0, 0, 0, false)]);
             var simple = Pool.simple("combined_bridge:simple", "combined.simple", [first]);
@@ -263,6 +263,7 @@ class ZenRecipeBridgeTest {
         var providers = Objects.requireNonNull(assertInstanceOf(CompositeRecipePool.class, combined.value())).pools();
         assertEquals(2, providers.size());
         assertInstanceOf(SimpleRecipePool.class, providers.getFirst());
+        assertEquals(2, SimpleRecipePool.Entry.of(providers.getFirst().recipes().getFirst()).outputs().size());
         assertInstanceOf(DefaultRecipePool.class, providers.getLast());
         assertEquals(List.of(first, second), combined.recipes());
         var registry = new RecipeRegistry();

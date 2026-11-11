@@ -46,10 +46,14 @@ NetworkConfiguration五角色为NETWORK_CENTER、COMPUTER、RESEARCH_STATION、D
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.MachineFactory;
 import mods.prototype_eng.recipe.Recipe;
+import mods.prototype_eng.recipe.Requirement;
+import mods.prototype_eng.recipe.Resource;
 import mods.prototype_eng.recipe.ParallelismSelection;
 import mods.prototype_eng.recipe.Pool;
 import mods.prototype_eng.jei.Options;
-var recipe = Recipe.withSelection("your_addon:recipe", "v1", 10, [], [], 4,
+var recipe = Recipe.withSelection("your_addon:recipe", "v1", 10,
+    [Requirement.resources("your_addon:io", [Resource.item(<minecraft:cobblestone>, 2)],
+        [Resource.item(<minecraft:gravel>, 1), Resource.item(<minecraft:sand>, 1)])], [], 4,
     ParallelismSelection.create(function(suggested as int) { return suggested + 1; }));
 var pool = Pool.simple("your_addon:pool", "your_addon.pool.title", [recipe])
     .jeiOptions(Options.create(true, "expanded"));
@@ -60,6 +64,8 @@ MachineType.create("your_addon:machine", "your_addon.machine.title", "your_addon
 ```
 
 `ParallelismSelection.fixed(n)`提供固定值；int SAM在candidate配置后、完整资源准入前选择最终数量，可能超过suggested，仍须支付最终数量的START/TICK/END物料、FE和网络费用。回调只能作纯计算；unknown输入改写不凭此获得固定输入预筛保证。`Pool.simple`使用实际owner输入策略及原SimpleRecipePool索引，未知输入改写按底层契约回退；Java `ZenRecipePool.of`保留准确addon pool/recipe/codec。
+
+`Pool.simple`的“单输入”指一个固定START资源条目，不限制其long数量；同一resources需求可声明任意数量固定END输出（包括空列表）。默认JEI自动选一个常驻输入槽的专用页，输出超过24组分页。TICK、概率、动态输入及额外需求仍使用通用 `Pool.create`；多输出不改变原输入索引策略。
 
 ## 渲染注册与普通data属性
 

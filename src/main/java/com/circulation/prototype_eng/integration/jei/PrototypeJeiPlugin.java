@@ -18,6 +18,7 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.block.MachineControllerBlocks;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import mcp.MethodsReturnNonnullByDefault;
@@ -374,7 +375,9 @@ public class PrototypeJeiPlugin implements IModPlugin {
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();
         var descriptions = displays.capture(RecipePoolJeiRegistry.recipesForOwnPages(pools, known));
-        pages.freeze(pools, pool -> new AutoLayoutRecipePage(pool, helper, descriptions, pages.renderOptions(pool.id())), descriptions, known);
+        pages.freeze(pools, pool -> pool instanceof SimpleRecipePool simple
+            ? new SingleInputRecipePage(simple, helper, descriptions, pages.renderOptions(pool.id()))
+            : new AutoLayoutRecipePage(pool, helper, descriptions, pages.renderOptions(pool.id())), descriptions, known);
         registrationDescriptions = descriptions;
         for (var page : pages.pages()) registration.addRecipeCategories(page);
         if (!declarationEventPosted && postDeclaration) {

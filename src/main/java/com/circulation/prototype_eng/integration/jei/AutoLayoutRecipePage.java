@@ -41,19 +41,12 @@ import java.util.function.Function;
 @MethodsReturnNonnullByDefault
 public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     private static final int WIDTH = 174;
-    private static final int MINIMUM_HEIGHT = 148;
-    private static final int INPUT_X = 4;
-    private static final int OUTPUT_X = 100;
-    private static final int RESOURCE_Y = 4;
     private static final int STRIDE = 18;
-    private static final int INFORMATION_Y = 80;
     private static final JeiVisuals.Texture EMPTY_SLOT = new JeiVisuals.Texture(JeiVisuals.texture("item_module/plaid_base"), 18, 18);
     private Data data;
     private final RecipeInformationLayout.Font font;
     private final JeiRenderOptions options;
-    private final List<JeiSlot> inputLayout;
-    private final List<JeiSlot> outputLayout;
-    private final List<JeiRecipeDecorator.Placement> decorations;
+    private final boolean singleInput;
 
     public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays displays) {
         this(pool, guiHelper, displays, JeiRenderOptions.defaults());
@@ -84,35 +77,53 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
 
     private AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
                                  JeiRenderOptions options, RecipeInformationLayout.Font font) {
+        this(pool, guiHelper, describe, options, font, false);
+    }
+
+    AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, Function<MachineRecipe, JeiRecipeDisplay> describe,
+                         JeiRenderOptions options, RecipeInformationLayout.Font font, boolean singleInput) {
         this.font = Objects.requireNonNull(font);
         Objects.requireNonNull(pool);
         Objects.requireNonNull(guiHelper);
         this.options = Objects.requireNonNull(options);
+        this.singleInput = singleInput;
         data = measure(pool, describe);
-        inputLayout = slots(INPUT_X);
-        outputLayout = slots(OUTPUT_X);
-        decorations = ObjectLists.unmodifiable(ObjectArrayList.of(
-            new JeiRecipeDecorator.Placement(78, 30, JeiVisuals.Progress.module(JeiVisuals.Module.RIGHT, JeiVisuals.Direction.RIGHT))));
     }
+
+    private int inputCapacity() { return singleInput ? 1 : RecipePanelLayout.RESOURCE_CAPACITY; }
+    private int outputCapacity() { return singleInput ? 24 : RecipePanelLayout.RESOURCE_CAPACITY; }
 
     private Data measure(RecipePool pool, Function<MachineRecipe, JeiRecipeDisplay> describe) {
         var information = new Reference2ObjectOpenHashMap<JeiRecipeDisplay, RecipeInformationLayout>();
-        int informationHeight = 0;
+        int contentBottom = 21;
+        int maximumInputs = 0;
+        int maximumOutputs = 0;
+        boolean paginated = false;
         for (var recipe : pool.recipes()) {
             var display = describe.apply(recipe);
             var measured = RecipeInformationLayout.measure(display.information(), WIDTH, font);
             information.put(display, measured);
-            informationHeight = Math.max(informationHeight, measured.height());
+            int inputs = RecipePanelLayout.maximumSlots(display, JeiRecipeDisplay.Role.INPUT, options, Integer.MAX_VALUE);
+            int outputs = RecipePanelLayout.maximumSlots(display, JeiRecipeDisplay.Role.OUTPUT, options, Integer.MAX_VALUE);
+            maximumInputs = Math.clamp(inputs, maximumInputs, inputCapacity());
+            maximumOutputs = Math.clamp(outputs, maximumOutputs, outputCapacity());
+            var geometry = geometry(Math.min(inputs, inputCapacity()), Math.min(outputs, outputCapacity()));
+            contentBottom = Math.max(contentBottom, geometry.informationY + measured.height());
+            paginated |= inputs > inputCapacity() || outputs > outputCapacity();
         }
-        int height = Math.max(MINIMUM_HEIGHT, INFORMATION_Y + informationHeight + 26);
+        int height = contentBottom + (paginated ? 26 : 6);
         var background = new JeiVisuals.NineSlice(new JeiVisuals.Texture(JeiVisuals.texture("jei_base"), 184, 220), WIDTH, height, 2, false, 0xffffffff);
-        return new Data(pool, height, height - 20, background, information);
+        return new Data(pool, height, height - 20, background, information, geometry(maximumInputs, maximumOutputs));
     }
 
     @Override
     public @Nullable PreparedUpdate prepareUpdate(RecipePool target, RecipeJeiDisplays.Snapshot displays) {
         // An existing subclass may customize geometry/wrappers and must explicitly supply this contract.
         if (getClass() != AutoLayoutRecipePage.class) return null;
+        return prepareLayoutUpdate(target, displays);
+    }
+
+    protected final PreparedUpdate prepareLayoutUpdate(RecipePool target, RecipeJeiDisplays.Snapshot displays) {
         var expected = data;
         var prepared = measure(target, displays::describe);
         return new Update(this, expected, prepared);
@@ -131,34 +142,54 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
     }
 
     private record Data(RecipePool pool, int height, int footerTop, IDrawable background,
-                        Reference2ObjectOpenHashMap<JeiRecipeDisplay, RecipeInformationLayout> information) {
+                        Reference2ObjectOpenHashMap<JeiRecipeDisplay, RecipeInformationLayout> information, Geometry maximum) {
     }
 
-    private static RecipeInformationLayout.Font minecraftFont() {
+    static RecipeInformationLayout.Font minecraftFont() {
         var renderer = Minecraft.getMinecraft().fontRenderer;
         return new RecipeInformationLayout.Font(renderer.FONT_HEIGHT,
             (text, width) -> renderer.listFormattedStringToWidth(text.local(), width));
     }
 
-    private static List<JeiSlot> slots(int x) {
+    private static List<JeiSlot> slots(int count, int columns, int x, int y) {
         var result = new ObjectArrayList<JeiSlot>();
-        for (int i = 0; i < RecipePanelLayout.RESOURCE_CAPACITY; i++)
-            result.add(new JeiSlot(x - 1 + i % RecipePanelLayout.COLUMNS * STRIDE,
-                RESOURCE_Y - 1 + i / RecipePanelLayout.COLUMNS * STRIDE, 18, 18, 1, JeiVisuals.AUTOMATIC));
+        for (int i = 0; i < count; i++)
+            result.add(new JeiSlot(x + i % columns * STRIDE, y + i / columns * STRIDE, 18, 18, 1, JeiVisuals.AUTOMATIC));
         return ObjectLists.unmodifiable(result);
     }
 
-    /** Subclasses may supply their own native bounds/skin compositions; independent pages use JeiSlot directly. */
+    private Geometry geometry(int inputCount, int outputCount) {
+        int inputColumns = columns(inputCount, singleInput ? 1 : 4);
+        int outputColumns = columns(outputCount, singleInput ? 6 : 4);
+        int inputHeight = rows(inputCount, inputColumns) * STRIDE;
+        int outputHeight = rows(outputCount, outputColumns) * STRIDE;
+        int height = Math.max(STRIDE, Math.max(inputHeight, outputHeight));
+        int width = (inputColumns + outputColumns) * STRIDE + 24;
+        int x = (WIDTH - width) / 2;
+        int arrowX = x + inputColumns * STRIDE + 3;
+        return new Geometry(slots(inputCount, inputColumns, x, 3 + (height - inputHeight) / 2),
+            slots(outputCount, outputColumns, arrowX + 21, 3 + (height - outputHeight) / 2),
+            ObjectArrayList.of(new JeiRecipeDecorator.Placement(arrowX, 3 + (height - STRIDE) / 2,
+                JeiVisuals.Progress.module(JeiVisuals.Module.RIGHT, JeiVisuals.Direction.RIGHT))), 3 + height + 6);
+    }
+
+    private static int columns(int count, int limit) {
+        return count == 0 ? 0 : Math.clamp((int) Math.ceil(Math.sqrt(count)), (count + 3) / 4, limit);
+    }
+
+    private static int rows(int count, int columns) { return count == 0 ? 0 : (count + columns - 1) / columns; }
+
+    private record Geometry(List<JeiSlot> inputs, List<JeiSlot> outputs,
+                            List<JeiRecipeDecorator.Placement> decorations, int informationY) {
+    }
+
+    /** Pool-wide maximum geometry; each wrapper uses only the slots on its current material page. */
     public List<JeiSlot> inputLayout() {
-        return inputLayout;
+        return data.maximum.inputs;
     }
 
     public List<JeiSlot> outputLayout() {
-        return outputLayout;
-    }
-
-    public List<JeiRecipeDecorator.Placement> decorations() {
-        return decorations;
+        return data.maximum.outputs;
     }
 
     public JeiRenderOptions renderOptions() {
@@ -187,19 +218,13 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         }
         if (!recipe.isCurrent()) return;
         recipe.layout = layout;
-        recipe.ingredients().initialize(layout, inputLayout(), outputLayout(), renderOptions());
-        recipe.refresh();
-        int energySlot = 0;
-        for (var paragraph : recipe.explanation.paragraphs())
-            if (paragraph.source().energy() != null)
-                JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 4, INFORMATION_Y + paragraph.y(), 18, 18);
+        recipe.refresh(true);
         layout.setRecipeId(recipe.pool().id().getNamespace(), recipe.recipe().id());
     }
 
     @Override
     public void drawExtras(Minecraft minecraft) {
-        for (var slot : inputLayout()) EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
-        for (var slot : outputLayout()) EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
+        // Slot backgrounds belong to the wrapper's actual page, not the category's maximum grid.
     }
 
     /**
@@ -210,6 +235,8 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         private final Data captured;
         private final RecipePanelLayout panels;
         private final RecipeInformationLayout explanation;
+        private final List<Geometry> geometries;
+        private Geometry geometry;
         private int panel;
         private IRecipeLayout layout;
 
@@ -223,14 +250,26 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             super(owner, captured.pool, recipe, display, ingredients);
             this.owner = owner;
             this.captured = captured;
-            panels = new RecipePanelLayout(display, owner.renderOptions(), ingredients);
+            panels = new RecipePanelLayout(display, owner.renderOptions(), ingredients, owner.inputCapacity(), owner.outputCapacity(), owner.singleInput);
+            geometries = new ObjectArrayList<>(panels.pageCount());
+            for (int i = 0; i < panels.pageCount(); i++)
+                geometries.add(owner.geometry(panels.inputGroups(i).size(), panels.outputGroups(i).size()));
+            geometry = geometries.getFirst();
             explanation = Objects.requireNonNull(captured.information.get(display), "Display was not measured for this category");
         }
 
-        private void refresh() {
+        private void refresh(boolean initialize) {
+            var previous = geometry;
+            geometry = geometries.get(panel);
             if (layout != null) {
+                if (initialize) ingredients().initialize(layout, geometry.inputs, geometry.outputs, owner.renderOptions());
+                else ingredients().reposition(layout, previous.inputs.size() + previous.outputs.size(), geometry.inputs, geometry.outputs, owner.renderOptions());
                 ingredients().showGroups(layout, panels.inputGroups(panel), panels.outputGroups(panel),
-                    owner.inputLayout().size(), owner.outputLayout().size());
+                    geometry.inputs.size(), geometry.outputs.size());
+                int energySlot = 0;
+                for (var paragraph : explanation.paragraphs())
+                    if (paragraph.source().energy() != null)
+                        JeiEnergyIngredients.slot(layout, energySlot++, paragraph.source().energy(), 4, geometry.informationY + paragraph.y(), 18, 18);
             }
         }
 
@@ -243,11 +282,13 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         public void drawInfo(Minecraft minecraft, int recipeWidth, int recipeHeight, int mouseX, int mouseY) {
             if (!isCurrent()) return;
             super.drawInfo(minecraft, recipeWidth, recipeHeight, mouseX, mouseY);
-            for (var decoration : owner.decorations()) decoration.draw(minecraft, this);
-            resources(minecraft, panels.inputGroups(panel), owner.inputLayout());
-            resources(minecraft, panels.outputGroups(panel), owner.outputLayout());
+            for (var slot : geometry.inputs) EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
+            for (var slot : geometry.outputs) EMPTY_SLOT.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
+            for (var decoration : geometry.decorations) decoration.draw(minecraft, this);
+            resources(minecraft, panels.inputGroups(panel), geometry.inputs);
+            resources(minecraft, panels.outputGroups(panel), geometry.outputs);
             for (var paragraph : explanation.paragraphs()) {
-                int y = INFORMATION_Y + paragraph.y();
+                int y = geometry.informationY + paragraph.y();
                 var energy = paragraph.source().energy();
                 if (energy != null) JeiVisuals.Energy.ONE_1.draw(minecraft, 4, y, 18, 18,
                     energy.role(), owner.renderOptions().energyLedYOffset());
@@ -280,11 +321,11 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         @Override
         public List<String> getTooltipStrings(int mouseX, int mouseY) {
             if (!isCurrent()) return ObjectArrayList.of();
-            var fallback = resourceTooltip(panels.inputGroups(panel), owner.inputLayout(), mouseX, mouseY);
+            var fallback = resourceTooltip(panels.inputGroups(panel), geometry.inputs, mouseX, mouseY);
             if (!fallback.isEmpty()) {
                 return fallback;
             }
-            fallback = resourceTooltip(panels.outputGroups(panel), owner.outputLayout(), mouseX, mouseY);
+            fallback = resourceTooltip(panels.outputGroups(panel), geometry.outputs, mouseX, mouseY);
             if (!fallback.isEmpty()) {
                 return fallback;
             }
@@ -326,7 +367,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
             } else {
                 return false;
             }
-            refresh();
+            refresh(false);
             return true;
         }
 
@@ -336,7 +377,7 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
                 return false;
             }
             panel = Math.floorMod(panel + (scrollDelta > 0 ? -1 : 1), panels.pageCount());
-            refresh();
+            refresh(false);
             return true;
         }
     }

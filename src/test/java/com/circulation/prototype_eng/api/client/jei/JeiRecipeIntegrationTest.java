@@ -5,11 +5,13 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
+import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.integration.jei.AutoLayoutRecipePage;
 import com.circulation.prototype_eng.integration.jei.RecipeInformationLayout;
 import com.circulation.prototype_eng.integration.jei.RecipePanelLayout;
+import com.circulation.prototype_eng.integration.jei.SingleInputRecipePage;
 import com.circulation.prototype_eng.localization.JeiText;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -196,11 +199,11 @@ class JeiRecipeIntegrationTest {
         page.setRecipe(layout, wrapper, indexed);
         assertEquals(16, layout.group(ITEM_INGREDIENT).values.size());
         assertEquals(16, layout.group(FLUID_INGREDIENT).values.size());
-        assertTrue(wrapper.handleMouseScroll(80, 100, -1));
+        assertTrue(wrapper.handleMouseScroll(80, page.getBackground().getHeight() - 1, -1));
         assertEquals(16, layout.group(ITEM_INGREDIENT).values.size());
         assertEquals(3, layout.group(FLUID_INGREDIENT).values.size());
         assertSame(inputStacks.get(16).what(), layout.group(ITEM_INGREDIENT).values.get(0).getFirst().what());
-        assertTrue(wrapper.handleMouseScroll(80, 100, -1));
+        assertTrue(wrapper.handleMouseScroll(80, page.getBackground().getHeight() - 1, -1));
         assertEquals(3, layout.group(ITEM_INGREDIENT).values.size());
         assertTrue(layout.group(FLUID_INGREDIENT).values.isEmpty());
         assertSame(inputStacks.get(32).what(), layout.group(ITEM_INGREDIENT).values.get(0).getFirst().what());
@@ -213,7 +216,7 @@ class JeiRecipeIntegrationTest {
         assertEquals(1, smallerLayout.group(FLUID_INGREDIENT).values.size());
         assertEquals(1, smallerLayout.group(ITEM_INGREDIENT).values.size());
         assertSame(smallerInput.what(), smallerLayout.group(FLUID_INGREDIENT).values.get(0).getFirst().what());
-        assertSame(smallerOutput.what(), smallerLayout.group(ITEM_INGREDIENT).values.get(16).getFirst().what());
+        assertSame(smallerOutput.what(), smallerLayout.group(ITEM_INGREDIENT).values.get(1).getFirst().what());
         assertEquals(3, layout.group(ITEM_INGREDIENT).values.size());
         assertTrue(layout.group(FLUID_INGREDIENT).values.isEmpty());
         assertEquals(35, indexed.getInputs(ITEM_INGREDIENT).size());
@@ -379,7 +382,7 @@ class JeiRecipeIntegrationTest {
         var page = new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), font);
         assertTrue(page.getBackground().getHeight() > 160);
         assertEquals(16, page.inputLayout().size());
-        assertEquals(16, page.outputLayout().size());
+        assertEquals(0, page.outputLayout().size());
         var display = displays.describe(large);
         var wrapper = page.createRecipe(large, display, ingredients(display));
         var layout = new JeiTestViews.Layout();
@@ -396,6 +399,59 @@ class JeiRecipeIntegrationTest {
         var smallerFont = new RecipeInformationLayout.Font(9, (_, _) -> List.of("Short translation"));
         var reloaded = new AutoLayoutRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), smallerFont);
         assertTrue(reloaded.getBackground().getHeight() < page.getBackground().getHeight());
+    }
+
+    @Test
+    void singleInputPageKeepsItsInputWhileReplacingNativeOutputSlotsAndAcceptsPreparedDefinitions() {
+        var input = stack(ITEM, "single_input", 5);
+        var outputs = new ObjectArrayList<GenericStack>();
+        for (int i = 0; i < 27; i++) outputs.add(stack(i % 2 == 0 ? ITEM : FLUID, "many_out" + i, Long.MAX_VALUE - i));
+        var entry = SimpleRecipePool.Entry.create(id("single_many"), 10, input, outputs, Set.of());
+        var pool = new SimpleRecipePool(id("single_many_pool"), "pool.title", List.of(entry));
+        var displays = displays();
+        var display = displays.describe(entry.recipe());
+        var page = new SingleInputRecipePage(pool, new JeiTestViews.Helper(), displays, JeiRenderOptions.defaults(), JeiTestViews.FONT);
+        var wrapper = page.createRecipe(entry.recipe(), display, ingredients(display));
+        var indexed = new JeiTestViews.Ingredients();
+        wrapper.getIngredients(indexed);
+        var layout = new JeiTestViews.Layout();
+        page.setRecipe(layout, wrapper, indexed);
+        assertEquals(1, page.inputLayout().size());
+        assertEquals(24, page.outputLayout().size());
+        assertEquals(25, layout.group(ITEM_INGREDIENT).getGuiIngredients().size());
+        int previousInputX = layout.group(ITEM_INGREDIENT).slots.get(0).x();
+        int oldHeight = page.getBackground().getHeight();
+        assertTrue(wrapper.handleMouseScroll(10, oldHeight - 1, -1));
+        for (var type : List.of(ITEM_INGREDIENT, FLUID_INGREDIENT)) {
+            var group = layout.group(type);
+            assertEquals(4, group.getGuiIngredients().size());
+            assertFalse(group.getGuiIngredients().containsKey(4));
+            assertEquals(1, group.tooltips.size());
+        }
+        assertNotEquals(previousInputX, layout.group(ITEM_INGREDIENT).slots.get(0).x());
+        assertSame(input.what(), layout.group(ITEM_INGREDIENT).values.get(0).getFirst().what());
+        assertSame(outputs.get(24).what(), layout.group(ITEM_INGREDIENT).values.get(1).getFirst().what());
+        assertSame(outputs.get(25).what(), layout.group(FLUID_INGREDIENT).values.get(2).getFirst().what());
+        assertEquals(27, indexed.getOutputs(ITEM_INGREDIENT).size() + indexed.getOutputs(FLUID_INGREDIENT).size());
+        assertEquals(outputs.getLast(), Objects.requireNonNull(wrapper.patternRecipe()).outputs().getLast().getFirst());
+        assertEquals(1, Objects.requireNonNull(wrapper.patternRecipe()).inputs().size());
+
+        var replacement = SimpleRecipePool.Entry.create(entry.recipe().id(), 10, input, List.of(outputs.getFirst()), Set.of());
+        var target = pool.freeze(List.of(replacement.recipe()), List.of());
+        var snapshot = displays.capture(target.recipes());
+        var prepared = Objects.requireNonNull(page.prepareUpdate(target, snapshot));
+        var nextDisplay = snapshot.describe(replacement.recipe());
+        var next = prepared.createRecipe(replacement.recipe(), nextDisplay, ingredients(nextDisplay));
+        prepared.apply();
+        assertSame(target, page.pool());
+        assertEquals(1, page.outputLayout().size());
+        var nextLayout = new JeiTestViews.Layout();
+        page.setRecipe(nextLayout, next, new JeiTestViews.Ingredients());
+        assertEquals(2, nextLayout.group(ITEM_INGREDIENT).getGuiIngredients().size());
+        assertFalse(next.handleMouseScroll(10, page.getBackground().getHeight() - 1, -1));
+        assertTrue(wrapper.handleMouseScroll(10, oldHeight - 1, 1));
+        assertEquals(25, layout.group(ITEM_INGREDIENT).getGuiIngredients().size());
+        assertThrows(IllegalStateException.class, prepared::apply);
     }
 
     @Test

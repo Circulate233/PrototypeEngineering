@@ -265,6 +265,13 @@ public class JeiRecipeIngredients {
         for (var bucket : buckets) bucket.initialize(layout, inputs, outputs, nativeRegistry, options);
     }
 
+    /** Replaces only this page's slots, retaining its single tooltip callback per native type. */
+    public void reposition(IRecipeLayout layout, int previousSlots, List<JeiSlot> inputs, List<JeiSlot> outputs, JeiRenderOptions options) {
+        for (var bucket : buckets) {
+            bucket.reposition(layout, previousSlots, inputs, outputs, nativeRegistry, options);
+        }
+    }
+
     /**
      * Every slot is explicitly cleared before filling a panel, including slots absent in this recipe.
      */
@@ -352,18 +359,8 @@ public class JeiRecipeIngredients {
 
         void initialize(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs,
                         @Nullable IIngredientRegistry registry, JeiRenderOptions options) {
+            initializeSlots(layout, inputs, outputs, registry, options);
             var group = converter.getIngredientGroup(layout);
-            for (int i = 0; i < inputs.size() + outputs.size(); i++) {
-                boolean input = i < inputs.size();
-                var slot = input ? inputs.get(i) : outputs.get(i - inputs.size());
-                if (registry == null) {
-                    group.init(i, input, slot.x() + slot.inset(), slot.y() + slot.inset());
-                } else {
-                    // HEI draws ingredients after wrapper.drawInfo; amounts must overlay in the native renderer.
-                    group.init(i, input, renderer(registry.getIngredientRenderer(converter.getIngredientType()), i, slot, options),
-                        slot.x(), slot.y(), slot.width(), slot.height(), 0, 0);
-                }
-            }
             group.addTooltipCallback((slot, _, ingredient, lines) -> {
                 var row = displayed(slot, ingredient);
                 if (row != null) {
@@ -376,6 +373,32 @@ public class JeiRecipeIngredients {
                     }
                 }
             });
+        }
+
+        void initializeSlots(IRecipeLayout layout, List<JeiSlot> inputs, List<JeiSlot> outputs,
+                             @Nullable IIngredientRegistry registry, JeiRenderOptions options) {
+            var group = converter.getIngredientGroup(layout);
+            for (int i = 0; i < inputs.size() + outputs.size(); i++) {
+                boolean input = i < inputs.size();
+                var slot = input ? inputs.get(i) : outputs.get(i - inputs.size());
+                if (registry == null) {
+                    group.init(i, input, slot.x() + slot.inset(), slot.y() + slot.inset());
+                } else {
+                    // HEI draws ingredients after wrapper.drawInfo; amounts must overlay in the native renderer.
+                    group.init(i, input, renderer(registry.getIngredientRenderer(converter.getIngredientType()), i, slot, options),
+                        slot.x(), slot.y(), slot.width(), slot.height(), 0, 0);
+                }
+            }
+        }
+
+        void reposition(IRecipeLayout layout, int previousSlots, List<JeiSlot> inputs, List<JeiSlot> outputs,
+                        @Nullable IIngredientRegistry registry, JeiRenderOptions options) {
+            var group = converter.getIngredientGroup(layout);
+            for (int i = 0; i < previousSlots; i++) {
+                group.set(i, (T) null);
+                group.getGuiIngredients().remove(i);
+            }
+            initializeSlots(layout, inputs, outputs, registry, options);
         }
 
         @Nullable

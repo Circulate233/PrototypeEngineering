@@ -31,7 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/** Single fixed START input to single fixed END output, with pool-local AEKey/long postings. */
+/** Single fixed START input to any number of fixed END outputs, with pool-local AEKey/long postings. */
 public final class SimpleRecipePool implements RecipePool {
     private final ResourceLocation id;
     private final String translationKey;
@@ -144,26 +144,31 @@ public final class SimpleRecipePool implements RecipePool {
     }
 
     /** Exact simple definition. Amounts need not be one and keys can have any registered AEKeyType. */
-    public record Entry(MachineRecipe recipe, GenericStack input, GenericStack output) {
+    public record Entry(MachineRecipe recipe, GenericStack input, List<GenericStack> outputs) {
         public Entry {
             Objects.requireNonNull(recipe);
             Objects.requireNonNull(input);
-            Objects.requireNonNull(output);
+            outputs = ResourceRequirement.canonicalStacks(outputs);
             var resource = resource(recipe);
-            if (!resource.inputs().getFirst().equals(input) || !resource.outputs().getFirst().equals(output))
+            if (!resource.inputs().getFirst().equals(input) || !resource.outputs().equals(outputs))
                 throw new IllegalArgumentException("Simple entry differs from its recipe definition: " + recipe.id());
         }
 
         public static Entry of(MachineRecipe recipe) {
             var resource = resource(recipe);
-            return new Entry(recipe, resource.inputs().getFirst(), resource.outputs().getFirst());
+            return new Entry(recipe, resource.inputs().getFirst(), resource.outputs());
         }
 
         public static Entry create(ResourceLocation id, int durationTicks, GenericStack input, GenericStack output,
                                    Set<ResourceLocation> groups) {
+            return create(id, durationTicks, input, ObjectArrayList.of(output), groups);
+        }
+
+        public static Entry create(ResourceLocation id, int durationTicks, GenericStack input, List<GenericStack> outputs,
+                                   Set<ResourceLocation> groups) {
             var recipe = new MachineRecipe(id, durationTicks, ObjectArrayList.of(RecipeRequirements.RESOURCES.requirement(id,
-                new ResourceRequirement(ObjectArrayList.of(input), ObjectArrayList.of(output)))), groups);
-            return new Entry(recipe, input, output);
+                new ResourceRequirement(ObjectArrayList.of(input), outputs))), groups);
+            return Entry.of(recipe);
         }
 
         private static ResourceRequirement resource(MachineRecipe recipe) {
@@ -171,11 +176,11 @@ public final class SimpleRecipePool implements RecipePool {
             var requirements = recipe.orderedRequirements();
             if (requirements.size() != 1 || requirements.getFirst().type() != RecipeRequirements.RESOURCES
                 || !(requirements.getFirst().payload() instanceof ResourceRequirement resource)
-                || resource.inputs().size() != 1 || resource.outputs().size() != 1
+                || resource.inputs().size() != 1
                 || !resource.inputsPerTick().isEmpty() || !resource.outputsPerTick().isEmpty()
                 || !resource.fuzzyInputs().isEmpty() || !resource.dynamicInputs().isEmpty()
                 || resource.randomOutputs() != null || resource.chance().percent() != 100 || resource.chance().attribute() != null)
-                throw new IllegalArgumentException("Simple pool needs one fixed START input and END output: " + recipe.id());
+                throw new IllegalArgumentException("Simple pool needs one fixed START input and fixed END outputs: " + recipe.id());
             return resource;
         }
     }

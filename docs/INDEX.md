@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 单输入不限输出/JEI动态布局：SimpleRecipePool.Entry改为完整outputs列表（可为空），保单输出便捷重载、原AEKey/long输入索引、freeze/CT/codec。自动选择SingleInputRecipePage，一个输入常驻、输出最多24组/页；通用页每侧最多16组，按当前真实数量动态网格，仅绘实际槽框，箭头居中、说明接在材料区后，同池按最大需要量测。翻页撤旧原生槽/同步坐标与FE，不累加tooltip；索引和样板保持完整。参考MMCE布局原则，保PM资产/自定义和外部页优先。52专项及完整1962tests/270suites全零，10Java本机MCP全级零及MCP build通过。入口[JEI](jei.md#2026-11-12-单输入多输出与动态材料布局)、[简单池](recipes.md#配方池接口与简单配方索引)；证据single-input-multi-output/。未开子代理/启动游戏/推送，原背景/暂存保留；实际GL和鼠标/样板操作待用户重启复验。
+
 - 2026-11-12 JEI候选实机反馈：嵌入侧栏使用最终原生槽坐标，复用真实ingredient、不再每帧清空重建，pick暂空不永久缓存。左键改当前cell、右键整类替换清旧local，操作提示接原生物品tooltip；R/U/书签和只读BOM浏览保留。HEI InputHandler接收已取消Forge事件且先检索ingredient，故新增client-only Pseudo入口Mixin先交现有准确draw/owner/token及release桥。Spotless/build -x test、本机6Java＋配置＋两语言全级零和MCP build通过；未新增/运行测试。入口[JEI](jei.md)，证据jei-material-input/，需用户完整重启复验新Mixin；未启动游戏/推送，原背景与暂存保留。
 
 - 2026-11-12 跨配方统一批次：按Σ原时长×最终并行/Σ并行向上取整，START改数量后首TICK前重算，封闭整机宿主成员不补入，共同速度/进度/END；TICK输入和输出均相同才合批，不同组保留到下一批。固定IO、FE及PN数值原总量沿共同时间精确分摊，尾差随批次UUID/时长/并行/路径保存，阻塞TICK/END共同补偿。原planner/lanes和owner门不变，GUI只改真实进度分母。完整Spotless/build1960tests/270suites全零，18Java本机MCP全级零及MCP build通过。入口[跨配方批次](cross-recipe-batches.md)，证据cross-recipe-batch/；新增三项真实行为回归，无静态镜像测试。未开新子代理/启动游戏/推送，原背景/暂存保留。
