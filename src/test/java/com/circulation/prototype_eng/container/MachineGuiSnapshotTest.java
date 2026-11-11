@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.container;
 
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
@@ -15,6 +16,7 @@ import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +54,8 @@ class MachineGuiSnapshotTest {
         var page = MachineGuiSnapshot.capture(machine, 2, 4);
         assertEquals(List.of("first2", "second0", "second1", "second2"), page.entries().stream().map(MachineGuiSnapshot.Entry::name).toList());
         assertEquals(25, page.entries().get(1).percent());
+        assertEquals(1, page.details().running());
+        assertEquals(10, page.details().threadLimit());
         second.tickProcesses();
         assertEquals(25, page.entries().get(1).percent());
         assertEquals(50, MachineGuiSnapshot.capture(machine, 2, 4).entries().get(1).percent());
@@ -62,6 +66,41 @@ class MachineGuiSnapshotTest {
         var shrunk = MachineGuiSnapshot.capture(machine, 6, 4);
         assertEquals(0, shrunk.offset());
         assertEquals(first.slots().size(), shrunk.entries().size());
+    }
+
+    @Test
+    void crossRecipePageContainsOnlyActualRecipesWithTheirEffectiveQuantitiesAndRoundTrips() {
+        var machine = new CrossRecipeController();
+        machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 20);
+        var host = MachineWorkSlots.crossRecipe(machine, List.of(new WorkSlotDefinition("unused", Set.of())), Set.of());
+        machine.components().put(type("cross"), host);
+        var first = new RecipeProcess(machine, new MachineRecipe(id("first"), 100, List.of()), 1);
+        first.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 3);
+        var second = new RecipeProcess(machine, new MachineRecipe(id("second"), 100, List.of()), 2);
+        second.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 5);
+        assertTrue(host.start(first));
+        var runtime = Objects.requireNonNull(host.appendRuntimeSlot(second.recipe()));
+        assertTrue(host.startIn(runtime.name(), second));
+        host.appendRuntimeSlot(second.recipe());
+        var page = MachineGuiSnapshot.capture(machine, 0, 7);
+        assertEquals(2, page.totalSlots());
+        assertEquals(List.of(id("first").toString(), id("second").toString()), page.entries().stream().map(MachineGuiSnapshot.Entry::recipe).toList());
+        assertEquals(8, page.details().usedParallelism());
+        assertEquals(3, page.entries().getFirst().parallelism());
+        assertTrue(page.details().crossRecipe());
+        var packet = Unpooled.buffer();
+        try {
+            page.writeToPacket(packet);
+            assertEquals(page, new MachineGuiSnapshot(packet));
+            assertEquals(0, packet.readableBytes());
+        } finally {
+            packet.release();
+        }
+        assertTrue(host.cancel(first));
+        var shrunk = MachineGuiSnapshot.capture(machine, 50, 7);
+        assertEquals(1, shrunk.totalSlots());
+        assertEquals(0, shrunk.offset());
+        assertEquals(id("second").toString(), shrunk.entries().getFirst().recipe());
     }
 
     @Test

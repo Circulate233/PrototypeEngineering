@@ -539,3 +539,18 @@ structure_tool.prototype_eng.BuilderFluidRecovery=Dismantled fluids fill usable 
 
 orientation_tool.prototype_eng.GridCenterHint=Enabled: aim at a controller for the grid. Front center: turn 90 degrees; other face center: set it as the front.
 orientation_tool.prototype_eng.GridEdgeHint=Click a side strip to turn the front toward that edge. Corner cells do nothing.
+
+gui.prototype_eng.machine.Structure=Structure: %s
+gui.prototype_eng.machine.Formed=Formed
+gui.prototype_eng.machine.NotFormed=Not formed
+gui.prototype_eng.machine.Inactive=Not active
+gui.prototype_eng.machine.CheckingStructure=Waiting for structure check
+gui.prototype_eng.machine.Threads=Threads: %s / %s
+gui.prototype_eng.machine.Recipes=Running recipes: %s
+gui.prototype_eng.machine.Parallelism=Parallel usage: %s / %s
+gui.prototype_eng.machine.Execution=Execution: %s
+gui.prototype_eng.machine.MainThreadMode=Main thread
+gui.prototype_eng.machine.ConcurrentMode=Concurrent
+gui.prototype_eng.machine.PlannedMode=Planned parallel
+gui.prototype_eng.machine.ThreadRow=Thread %s
+gui.prototype_eng.machine.RecipeParallelism=Recipe parallelism: %s

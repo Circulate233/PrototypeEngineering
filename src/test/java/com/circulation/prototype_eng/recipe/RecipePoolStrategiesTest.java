@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe;
 
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
@@ -9,6 +10,7 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.MultithreadController;
 import com.circulation.prototype_eng.api.machine.RecipeController;
+import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
@@ -16,11 +18,14 @@ import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
+import com.circulation.prototype_eng.api.recipe.RecipeInventoryMatch;
 import com.circulation.prototype_eng.api.recipe.SimpleRecipePool;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.overlay.ResourceRequirementPatch;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
+import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -53,6 +58,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -266,6 +272,71 @@ class RecipePoolStrategiesTest {
     }
 
     @Test
+    void inventoryMatchingKeepsCanonicalPriorityAndIndependentQuantityCeilingsWithoutMutatingStock() {
+        var entries = List.of(entry("too_large", INPUT, 13), entry("first", INPUT, 5), entry("second", INPUT, 3));
+        var simple = new SimpleRecipePool(id("inventory"), "pool.title", entries);
+        var general = new DefaultRecipePool(id("inventory_general"), "pool.title", simple.recipes());
+        var stock = new AEKey2LongMap.OpenHashMap();
+        stock.put(INPUT, 12);
+        stock.put(new Key(OTHER, "input"), 100);
+        for (RecipePool pool : List.of(simple, general)) {
+            assertSame(entries.get(1).recipe(), pool.match(stock));
+            var matches = pool.match(stock, 10);
+            assertEquals(List.of(entries.get(1).recipe(), entries.get(2).recipe()), matches.stream().map(RecipeInventoryMatch::recipe).toList());
+            assertEquals(2, matches.getFirst().maximumParallelism());
+            assertEquals(4, matches.getLast().maximumParallelism());
+            assertEquals(1, pool.match(stock, 1).getLast().maximumParallelism());
+            assertThrows(UnsupportedOperationException.class, matches::clear);
+            assertEquals(12, stock.getLong(INPUT));
+            assertNull(pool.match(new AEKey2LongMap.OpenHashMap()));
+            stock.put(INPUT, Long.MAX_VALUE);
+            assertEquals(10, pool.match(stock, 10).getFirst().maximumParallelism());
+            stock.put(INPUT, 12);
+        }
+    }
+
+    @Test
+    void stockControllersUseTheSingleRecipeInventoryCeilingInOneRealAdmissionProbe() {
+        for (int scenario = 0; scenario < 4; scenario++) {
+            RecipeController machine = scenario % 2 == 0 ? new MultithreadController() : new CrossRecipeController();
+            var input = buffer();
+            input.insert(INPUT, 10, Actionable.MODULATE);
+            machine.components().put(MachineHatches.TYPE, new MachineHatches(List.of(new Port(input, buffer())), List.of(), List.of()));
+            machine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1_000_000);
+            var definition = entry("single", INPUT, 5);
+            RecipePool pool = scenario < 2
+                ? new SimpleRecipePool(id("single_pool"), "pool.title", List.of(definition))
+                : new DefaultRecipePool(id("single_pool"), "pool.title", List.of(definition.recipe()));
+            var host = machine.createRecipeHost(List.of(new WorkSlotDefinition("main")), Set.of());
+            var scanner = machine.createRecipeScanner(host, new RecipeCatalog(List.of(pool)), () -> 7);
+            var result = scanner.scan(new ScanLimits(1, 1));
+            assertEquals(RecipeScanner.Status.ADMITTED, result.status());
+            assertEquals(1, result.probes());
+            assertEquals(2, RecipeParallelism.effective(Objects.requireNonNull(result.process())));
+            assertEquals(10, input.availableAmount(INPUT)); // Discovery and admission do not pay the first tick.
+        }
+    }
+
+    @Test
+    void inventoryCandidateStillFailsRealStartWhenEnergyIsMissing() {
+        var machine = new CrossRecipeController();
+        var input = buffer();
+        input.insert(INPUT, 10, Actionable.MODULATE);
+        install(machine, input);
+        var definition = new MachineRecipe(id("needs_energy"), 2, List.of(
+            RecipeRequirements.RESOURCES.requirement(id("resource"), new ResourceRequirement(List.of(new GenericStack(INPUT, 5)), List.of())),
+            RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(1, 0, 0, 0, false))));
+        var pool = new DefaultRecipePool(id("energy_pool"), "pool.title", List.of(definition));
+        assertSame(definition, pool.match(input.snapshot().available()));
+        var host = machine.createRecipeHost(List.of(new WorkSlotDefinition("main")), Set.of());
+        var scanner = machine.createRecipeScanner(host, new RecipeCatalog(List.of(pool)), () -> 7);
+        var result = scanner.scan(new ScanLimits(1, 5));
+        assertEquals(RecipeScanner.Status.EXHAUSTED, result.status());
+        assertNull(result.process());
+        assertEquals(10, input.availableAmount(INPUT));
+    }
+
+    @Test
     void skippedInvalidAndNullBindingsBecomingUsableDuringYieldInvalidateTheWholeOpinion() {
         for (boolean initiallyInvalid : List.of(true, false)) {
             var storage = buffer();
@@ -359,10 +430,9 @@ class RecipePoolStrategiesTest {
         }
     }
 
-    private record Port(ResourceStorage input) implements ResourceHatch {
-        @Override
-        public @Nullable ResourceStorage output() {
-            return null;
+    private record Port(ResourceStorage input, @Nullable ResourceStorage output) implements ResourceHatch {
+        private Port(ResourceStorage input) {
+            this(input, null);
         }
 
         @Override
@@ -407,7 +477,12 @@ class RecipePoolStrategiesTest {
 
         @Override
         public StorageSnapshot snapshot() {
-            return delegate.snapshot();
+            throw new AssertionError("Single-key discovery must not copy the full inventory");
+        }
+
+        @Override
+        public StorageSnapshot snapshotFor(AEKey key) {
+            return delegate.snapshotFor(key);
         }
 
         @Override

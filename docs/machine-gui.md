@@ -6,9 +6,13 @@
 
 `MachineControllerBlock.onBlockActivated` 在玩家未潜行、手持物品不是方向工具且目标为控制器 TE 时打开 GUI 0。手持方向工具的交互由物品处理。PreInit 注册 `CommonProxy` 为 Forge `IGuiHandler`；common 端按准确 TE 创建容器，客户端代理再创建对应 screen。
 
-默认界面显示机器声明的本地化标题、真实 active/formed 状态、工位进度与玩家主背包和快捷栏。工位行保留 PM 的 89×33 进度素材、工位编号、百分比、状态/阻塞或失败原因，并支持滚轮、点击及拖动滚动条；完整工位名、配方 ID 和原因可在悬停提示中查看。窗口最高七行，较小窗口按可用高度减少可见行；工位可以来自多个 `MachineWorkSlots` 组件，按组件及工位声明顺序合并展示。
+默认界面显示机器声明的本地化标题、结构成型状态与本地化结构名、运行状态、运行线程/容量或运行配方数、全机并行占用/上限和执行模式，并保留玩家主背包和快捷栏。结构名称读取服务端发布的客户端目录，未声明独立标题时使用机器标题。参考 MMCE 的 `GuiMachineController`/`GuiFactoryController` 的结构、状态、线程与并行信息；本库尚无对应事实的蓝图、红石及耗时统计不作虚构显示。
 
-进度由绝对工作刻数除以配方时长并裁剪至 0..100，零时长进程显示 100。工位没有进程时仍显示其保存的结果，因此失败/取消后的原因不会被固定 Idle 文本覆盖。机器不存在或 inactive 时同步空视图，尚未成型的 active 机器显示 Unformed。
+多线程列表按组件及声明工位顺序显示线程，包括闲置线程；跨配方列表只按相同顺序显示实际持有进程的行，每行标题为其配方、附实际进度，tooltip显示完整配方ID、原因及有效并行数。动态空槽不占显示位置，结束/取消后总行数和offset随真实列表裁剪。窗口最多七行，跨页汇总仍包含全机进程。进度素材保留 PM 的89×33区域，13×15滚动条移回背景的独立槽道（x=120），绘制、悬停和拖动命中一致，避免原先放大到38像素后覆盖行内容。
+
+进度由绝对工作刻数除以配方时长并裁剪至0..100，零时长进程显示100。多线程工位没有进程时仍显示其保存的结果，因此失败/取消后的原因不会被固定Idle文本覆盖；跨配方取消后的失败仍参加全机状态汇总。机器不存在或inactive时仍同步宿主真实formed和结构身份，不显示虚假的执行计数；active但processingAllowed为false时显示等待结构检查。
+
+默认扩展页没有任何实际内容提供者，已隐藏其tab和预留说明，只显示主页面；自定义内容继续通过既有Java容器/screen注册入口提供。主tab提示在客户端调用枚举getLocal，中文扩展页的历史英文值也已纠正，没有拼接裸翻译键。
 
 对照 PM 的 [DefaultMachineUI.kt](F:/clone/PrototypeMachinery/src/main/kotlin/client/gui/DefaultMachineUI.kt)：其七行工位列表与玩家背包是实际功能；`buildGridSlots` 的 4×4 区域新建临时 `ItemStackHandler`，`Status: Idle` 是固定文本，扩展页只含占位说明。当前默认 GUI 展示真实状态，未给这些占位内容增加机器存储或业务职责。PM 的 [DefaultMachineUIBindings.kt](F:/clone/PrototypeMachinery/src/main/kotlin/impl/ui/binding/DefaultMachineUIBindings.kt) 为旧 bindKey/脚本 GUI 服务；本项目扩展改用 Java 容器与 screen，不迁入字符串绑定运行时。
 
@@ -42,7 +46,7 @@ screen factory 的参数是 `(container, playerInventory)`。它通过声明的 
 
 ## 验证边界与后续入口
 
-`MachineGuiSnapshotTest` 覆盖跨宿主页、布局收缩 offset、快照不随活进度变化、失败原因保留、packet round-trip 及行/参数限制。实际 GUI 打开、玩家槽位操作、关闭重开和渲染仍无游戏内证据；构建与逐文件 MCP 的最终证据统一见[实施进度](implementation-status.md)。
+`MachineGuiSnapshotTest` 覆盖跨宿主页、布局收缩offset、快照不随活进度变化、失败原因保留、packet round-trip及行/参数限制；新增真实CrossRecipeController进程分页、空动态槽排除、有效并行汇总和完整详情包往返。实际GUI打开、中文按钮、滚动/拖动、结束时列表收缩、玩家槽位及渲染仍需用户重启游戏复验；构建与逐文件MCP证据见[实施进度](implementation-status.md)。
 
 完整结构预览、投影、切片、BOM、复杂模型/动画与 PN 权限继续保留待迁移。控制器宿主入口见[世界接线](controller-integration.md)，自动配方入口见[配方扫描](recipes.md#自动扫描组件声明与恢复)，资源记录见[控制器资产](controller-assets.md)。
 

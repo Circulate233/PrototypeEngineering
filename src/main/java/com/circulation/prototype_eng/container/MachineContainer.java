@@ -82,7 +82,7 @@ public final class MachineContainer extends AEBaseContainer {
                         return;
                     }
                     var machine = tile.machine();
-                    snapshot = machine == null || !machine.active() ? MachineGuiSnapshot.EMPTY
+                    snapshot = machine == null || !machine.active() ? MachineGuiSnapshot.unavailable(tile.formed(), tile.type().structureId().toString())
                         : MachineGuiSnapshot.capture(machine, requestedOffset, visibleRows);
                 } finally {
                     captureQueued = false;

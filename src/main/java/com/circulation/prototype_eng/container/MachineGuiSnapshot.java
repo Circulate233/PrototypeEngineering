@@ -2,9 +2,13 @@ package com.circulation.prototype_eng.container;
 
 import ae2.container.guisync.PacketWritable;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
+import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import io.netty.buffer.ByteBuf;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -17,7 +21,7 @@ import java.util.Objects;
  * Immutable, bounded display data. Capture only after scheduler join; never retain runtime objects.
  */
 public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset,
-                                 List<Entry> entries, WorkSlotStatus overallStatus) implements PacketWritable {
+                                 List<Entry> entries, WorkSlotStatus overallStatus, Details details) implements PacketWritable {
     public static final int MAX_ROWS = 7;
     public static final MachineGuiSnapshot EMPTY = new MachineGuiSnapshot(false, false, 0, 0, List.of());
     private static final int MAX_TEXT = 1024;
@@ -25,6 +29,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
 
     public MachineGuiSnapshot {
         Objects.requireNonNull(overallStatus);
+        Objects.requireNonNull(details);
         if (offset < 0 || offset > totalSlots || entries.size() > MAX_ROWS || entries.size() > totalSlots - offset) {
             throw new IllegalArgumentException("Invalid machine GUI page");
         }
@@ -33,12 +38,17 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
     }
 
     public MachineGuiSnapshot(boolean formed, boolean active, int totalSlots, int offset, List<Entry> entries) {
-        this(formed, active, totalSlots, offset, entries, entries.stream().map(Entry::status).reduce(WorkSlotStatus.IDLE, MachineGuiSnapshot::combine));
+        this(formed, active, totalSlots, offset, entries, entries.stream().map(Entry::status).reduce(WorkSlotStatus.IDLE, MachineGuiSnapshot::combine), Details.EMPTY);
     }
 
     @SuppressWarnings("unused") // AE2 GuiSync invokes the public ByteBuf constructor.
     public MachineGuiSnapshot(ByteBuf data) {
-        this(data.readBoolean(), data.readBoolean(), data.readInt(), data.readInt(), readEntries(new PacketBuffer(data)), readStatus(data));
+        this(data.readBoolean(), data.readBoolean(), data.readInt(), data.readInt(), readEntries(new PacketBuffer(data)), readStatus(data), readDetails(new PacketBuffer(data)));
+    }
+
+    public static MachineGuiSnapshot unavailable(boolean formed, String structure) {
+        return new MachineGuiSnapshot(formed, false, 0, 0, List.of(), WorkSlotStatus.IDLE,
+            new Details(false, false, 0, 0, 0, 0, ExecutionMode.MAIN_THREAD, structure));
     }
 
     public static MachineGuiSnapshot capture(MachineInstance machine, int requestedOffset, int rows) {
@@ -47,7 +57,11 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             throw new IllegalArgumentException("Invalid visible row count");
         }
         var hosts = new ObjectArrayList<MachineWorkSlots>();
+        boolean crossRecipe = machine instanceof CrossRecipeController;
         int total = 0;
+        int running = 0;
+        int threads = 0;
+        long usedParallelism = 0;
         var overall = WorkSlotStatus.IDLE;
         for (var binding : machine.components().orderedBindings()) {
             if (binding.component() instanceof MachineWorkSlots slots) {
@@ -56,18 +70,26 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                     throw new IllegalArgumentException("Foreign work-slot host");
                 }
                 hosts.add(slots);
-                total = Math.addExact(total, slots.slots().size());
-                for (var slot : slots.slots()) overall = combine(overall, slot.status());
+                if (!crossRecipe) threads = Math.addExact(threads, slots.capacity());
+                for (var slot : slots.slots()) {
+                    overall = combine(overall, slot.status());
+                    if (!crossRecipe || slot.process() != null) total = Math.incrementExact(total);
+                    if (slot.process() != null) {
+                        running = Math.incrementExact(running);
+                        usedParallelism = Math.addExact(usedParallelism, RecipeParallelism.effective(slot.process()));
+                    }
+                }
             }
         }
         int start = Math.clamp(requestedOffset, 0, Math.max(0, total - rows));
         var result = new ObjectArrayList<Entry>();
-        int base = 0;
+        int visibleIndex = 0;
         for (var host : hosts) {
-            int first = Math.max(0, start - base);
-            for (int i = first; i < host.slots().size() && result.size() < rows; i++) {
-                var slot = host.slots().get(i);
+            for (var slot : host.slots()) {
                 var process = slot.process();
+                if (crossRecipe && process == null) continue;
+                if (visibleIndex++ < start) continue;
+                if (result.size() == rows) break;
                 int percent = process == null ? 0 : process.recipe().durationTicks() == 0 ? 100
                     : Math.clamp((int) (process.state().progress() / process.recipe().durationTicks() * 100), 0, 100);
                 var reason = switch (slot.result()) {
@@ -80,15 +102,18 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                     case ProcessResult.Failure failure -> failure.arguments();
                     case ProcessResult.Success ignored -> List.<String>of();
                 };
-                result.add(new Entry(slot.name(), process == null ? "" : process.recipe().id().toString(), slot.status(), percent, reason, arguments));
+                result.add(new Entry(slot.name(), process == null ? "" : process.recipe().id().toString(), slot.status(), percent, reason, arguments,
+                    process == null ? 0 : RecipeParallelism.effective(process)));
             }
-            base = Math.addExact(base, host.slots().size());
             if (result.size() == rows) {
                 break;
             }
         }
         var lifecycle = machine.lifecycle();
-        return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result, overall);
+        return new MachineGuiSnapshot(lifecycle == null || lifecycle.formed(), machine.active(), total, start, result, overall,
+            new Details(crossRecipe, lifecycle == null ? machine.active() : lifecycle.processingAllowed(), running, crossRecipe ? 0 : threads,
+                usedParallelism, Math.max(0L, (long) Math.floor(machine.attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1))),
+                machine.executionMode(), machine.type() == null ? "" : Objects.requireNonNull(machine.type()).structureId().toString()));
     }
 
     private static WorkSlotStatus combine(WorkSlotStatus first, WorkSlotStatus second) {
@@ -126,7 +151,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             for (int j = 0; j < size; j++) {
                 arguments.add(packet.readString(MAX_TEXT));
             }
-            entries.add(new Entry(name, recipe, WorkSlotStatus.values()[status], percent, reason, arguments));
+            entries.add(new Entry(name, recipe, WorkSlotStatus.values()[status], percent, reason, arguments, packet.readInt()));
         }
         return entries;
     }
@@ -146,18 +171,46 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             for (var argument : entry.arguments) {
                 packet.writeString(argument);
             }
+            packet.writeInt(entry.parallelism);
         }
         packet.writeByte(overallStatus.ordinal());
+        packet.writeBoolean(details.crossRecipe).writeBoolean(details.processing).writeInt(details.running).writeInt(details.threadLimit)
+            .writeLong(details.usedParallelism).writeLong(details.parallelismLimit).writeByte(details.mode.ordinal());
+        packet.writeString(details.structure);
+    }
+
+    private static Details readDetails(PacketBuffer packet) {
+        boolean cross = packet.readBoolean(), processing = packet.readBoolean();
+        int running = packet.readInt(), threads = packet.readInt();
+        long used = packet.readLong(), limit = packet.readLong();
+        int mode = packet.readUnsignedByte();
+        if (mode >= ExecutionMode.values().length) throw new IllegalArgumentException("Invalid execution mode");
+        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.values()[mode], packet.readString(MAX_TEXT));
+    }
+
+    public record Details(boolean crossRecipe, boolean processing, int running, int threadLimit,
+                          long usedParallelism, long parallelismLimit, ExecutionMode mode, String structure) {
+        private static final Details EMPTY = new Details(false, false, 0, 0, 0, 0, ExecutionMode.MAIN_THREAD, "");
+        public Details {
+            if (running < 0 || threadLimit < 0 || usedParallelism < 0 || parallelismLimit < 0)
+                throw new IllegalArgumentException("Negative machine GUI count");
+            Objects.requireNonNull(mode);
+            structure = bounded(Objects.requireNonNull(structure));
+        }
     }
 
     public record Entry(String name, String recipe, WorkSlotStatus status, int percent, String reason,
-                        List<String> arguments) {
+                        List<String> arguments, int parallelism) {
+        public Entry(String name, String recipe, WorkSlotStatus status, int percent, String reason, List<String> arguments) {
+            this(name, recipe, status, percent, reason, arguments, recipe.isEmpty() ? 0 : 1);
+        }
+
         public Entry {
             name = bounded(name);
             recipe = bounded(recipe);
             reason = bounded(reason);
             Objects.requireNonNull(status);
-            if (percent < 0 || percent > 100) {
+            if (percent < 0 || percent > 100 || parallelism < 0) {
                 throw new IllegalArgumentException("Invalid recipe progress");
             }
             var copy = new ObjectArrayList<String>();

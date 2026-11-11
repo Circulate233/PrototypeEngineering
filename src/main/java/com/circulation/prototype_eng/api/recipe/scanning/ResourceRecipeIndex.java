@@ -6,6 +6,7 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
+import com.circulation.prototype_eng.api.recipe.RecipeInventoryMatch;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -52,9 +53,13 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     private final List<MachineRecipe> canonical;
 
     public ResourceRecipeIndex(RecipeCatalog catalog, Collection<Footprint> footprints) {
-        canonical = Objects.requireNonNull(catalog, "catalog").recipes();
+        this(Objects.requireNonNull(catalog, "catalog").recipes(), footprints);
+    }
+
+    private ResourceRecipeIndex(List<MachineRecipe> recipes, Collection<Footprint> footprints) {
+        canonical = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(recipes)));
         var ordinals = new Reference2IntOpenHashMap<MachineRecipe>();
-        for (var recipe : Objects.requireNonNull(catalog, "catalog").recipes()) {
+        for (var recipe : canonical) {
             ordinals.put(recipe, ordinals.size());
         }
         order = Reference2IntMaps.unmodifiable(ordinals);
@@ -91,15 +96,54 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
      * stay unfiltered even when the predicate returns true. TICK/END IO is not indexed.
      */
     public static ResourceRecipeIndex forFixedInputs(RecipeCatalog catalog, Predicate<MachineRecipe> stableInputs) {
-        Objects.requireNonNull(catalog, "catalog");
+        return forFixedInputs(Objects.requireNonNull(catalog, "catalog").recipes(), stableInputs);
+    }
+
+    public static ResourceRecipeIndex forFixedInputs(List<MachineRecipe> recipes, Predicate<MachineRecipe> stableInputs) {
+        Objects.requireNonNull(recipes);
         Objects.requireNonNull(stableInputs, "stableInputs");
         var footprints = new ObjectArrayList<Footprint>();
-        for (var recipe : catalog.recipes()) {
+        for (var recipe : recipes) {
             if (stableInputs.test(recipe)) {
                 footprints.add(new Footprint(recipe, fixedInputs(recipe)));
             }
         }
-        return new ResourceRecipeIndex(catalog, footprints);
+        return new ResourceRecipeIndex(recipes, footprints);
+    }
+
+    public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
+        Objects.requireNonNull(inventory);
+        if (parallelism < 1) throw new IllegalArgumentException("Nonpositive matching parallelism");
+        if (canonical.size() == 1) {
+            var recipe = canonical.getFirst();
+            int ceiling = parallelism;
+            if (indexed.contains(recipe)) {
+                for (var posting : postings.object2ObjectEntrySet()) {
+                    ceiling = Math.min(ceiling, RecipeInventoryMatch.limit(inventory.getLong(posting.getKey()), posting.getValue().getFirst().amount, parallelism));
+                    if (ceiling == 0) return ObjectLists.emptyList();
+                }
+            }
+            return ObjectLists.singleton(new RecipeInventoryMatch(recipe, ceiling));
+        }
+        var matches = new Reference2IntOpenHashMap<MachineRecipe>();
+        var ceilings = new Reference2IntOpenHashMap<MachineRecipe>();
+        var accepted = new ReferenceOpenHashSet<MachineRecipe>();
+        for (var entry : inventory.object2LongEntrySet()) {
+            var values = postings.get(entry.getKey());
+            if (values == null) continue;
+            for (var posting : values) {
+                int ceiling = RecipeInventoryMatch.limit(entry.getLongValue(), posting.amount, parallelism);
+                if (ceiling == 0) continue;
+                matches.addTo(posting.recipe, 1);
+                ceilings.put(posting.recipe, Math.min(ceilings.getOrDefault(posting.recipe, parallelism), ceiling));
+                if (matches.getInt(posting.recipe) == posting.keys) accepted.add(posting.recipe);
+            }
+        }
+        var result = new ObjectArrayList<RecipeInventoryMatch>();
+        for (var recipe : canonical)
+            if (!indexed.contains(recipe) || accepted.contains(recipe))
+                result.add(new RecipeInventoryMatch(recipe, ceilings.getOrDefault(recipe, parallelism)));
+        return ObjectLists.unmodifiable(result);
     }
 
     private static List<GenericStack> fixedInputs(MachineRecipe recipe) {
@@ -205,6 +249,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         private final ReferenceOpenHashSet<MachineRecipe> scoped = new ReferenceOpenHashSet<>();
         private final ReferenceOpenHashSet<MachineRecipe> accepted = new ReferenceOpenHashSet<>();
         private final Reference2IntOpenHashMap<MachineRecipe> matches = new Reference2IntOpenHashMap<>();
+        private final Reference2IntOpenHashMap<MachineRecipe> ceilings = new Reference2IntOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap> byContext = new Reference2ObjectOpenHashMap<>();
         private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap();
         private final ObjectArrayList<CapturedView> captures = new ObjectArrayList<>();
@@ -280,7 +325,8 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                             boolean storageValid = storage != null && storage.isValid();
                             bindings.add(new Binding(hatch, valid, storage != null, identity, context, storageValid));
                             if (!valid || storage == null || !storageValid) continue;
-                            view = new CapturedView(hatch, storage, context, identity, Objects.requireNonNull(storage.beginQuantityCapture()));
+                            view = new CapturedView(hatch, storage, context, identity, Objects.requireNonNull(postings.size() == 1
+                                ? storage.beginQuantityCapture(postings.keySet().iterator().next()) : storage.beginQuantityCapture()));
                             captures.add(view);
                         }
                         if (quantities == null) {
@@ -323,9 +369,11 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                         while (postingCursor < keyPostings.size()) {
                             if (!budget.take()) return false;
                             var posting = keyPostings.get(postingCursor++);
-                            if (scoped.contains(posting.recipe()) && availableEntry.getLongValue() >= posting.amount()
-                                && matches.addTo(posting.recipe(), 1) + 1 == posting.keys())
-                                accepted.add(posting.recipe());
+                            if (scoped.contains(posting.recipe()) && availableEntry.getLongValue() >= posting.amount()) {
+                                int bound = RecipeInventoryMatch.limit(availableEntry.getLongValue(), posting.amount(), Integer.MAX_VALUE);
+                                ceilings.put(posting.recipe(), Math.min(ceilings.getOrDefault(posting.recipe(), Integer.MAX_VALUE), bound));
+                                if (matches.addTo(posting.recipe(), 1) + 1 == posting.keys()) accepted.add(posting.recipe());
+                            }
                         }
                         availableEntry = null;
                     }
@@ -433,6 +481,12 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         public List<MachineRecipe> result() {
             if (phase != 5 || stale) throw new IllegalStateException("Resource opinion is incomplete or stale");
             return ObjectLists.unmodifiable(result);
+        }
+
+        @Override
+        public int inputParallelismLimit(MachineRecipe recipe) {
+            if (phase != 5 || stale) throw new IllegalStateException("Resource opinion is incomplete or stale");
+            return ceilings.getOrDefault(recipe, Integer.MAX_VALUE);
         }
     }
 }

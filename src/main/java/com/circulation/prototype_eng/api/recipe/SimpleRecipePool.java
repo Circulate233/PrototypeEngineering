@@ -10,6 +10,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
+import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
@@ -19,6 +20,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,6 +37,7 @@ public final class SimpleRecipePool implements RecipePool {
     private final String translationKey;
     private final List<MachineRecipe> recipes;
     private final List<MachineType> machines;
+    private final ResourceRecipeIndex inputIndex;
     private final Predicate<MachineInstance> stableInputs;
     private final @Nullable String existingJeiPageId;
     private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput = new Object2ObjectOpenHashMap<>();
@@ -76,6 +79,7 @@ public final class SimpleRecipePool implements RecipePool {
             byInput.put(key, ObjectLists.unmodifiable(values));
         });
         recipes = ObjectLists.unmodifiable(rows);
+        inputIndex = ResourceRecipeIndex.forFixedInputs(recipes, _ -> true);
         this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
         this.existingJeiPageId = existingJeiPageId;
     }
@@ -98,6 +102,11 @@ public final class SimpleRecipePool implements RecipePool {
     @Override
     public List<MachineType> machines() {
         return machines;
+    }
+
+    @Override
+    public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
+        return inputIndex.match(inventory, parallelism);
     }
 
     @Override
@@ -196,6 +205,7 @@ public final class SimpleRecipePool implements RecipePool {
         private final ObjectArrayList<Captured> captures = new ObjectArrayList<>();
         private final ObjectArrayList<Binding> bindings = new ObjectArrayList<>();
         private final ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
+        private final Reference2IntOpenHashMap<MachineRecipe> ceilings = new Reference2IntOpenHashMap<>();
         private List<ResourceHatch> hatches;
         private int hatchIndex;
         private Captured view;
@@ -238,7 +248,8 @@ public final class SimpleRecipePool implements RecipePool {
                             var context = storage == null ? null : Objects.requireNonNull(storage.context());
                             bindings.add(new Binding(hatch, true, storage != null, identity, context, validStorage));
                             if (!validStorage) continue;
-                            view = new Captured(hatch, storage, Objects.requireNonNull(context), Objects.requireNonNull(identity), Objects.requireNonNull(storage.beginQuantityCapture()));
+                            view = new Captured(hatch, storage, Objects.requireNonNull(context), Objects.requireNonNull(identity),
+                                Objects.requireNonNull(byInput.size() == 1 ? storage.beginQuantityCapture(byInput.keySet().iterator().next()) : storage.beginQuantityCapture()));
                             captures.add(view);
                         }
                         if (quantities == null) {
@@ -285,6 +296,7 @@ public final class SimpleRecipePool implements RecipePool {
                                 break;
                             }
                             result.add(entry.recipe);
+                            ceilings.put(entry.recipe, RecipeInventoryMatch.limit(total.getLongValue(), entry.input.amount(), Integer.MAX_VALUE));
                         }
                         total = null;
                     }
@@ -329,6 +341,12 @@ public final class SimpleRecipePool implements RecipePool {
         public List<MachineRecipe> result() {
             if (phase != 3 || stale) throw new IllegalStateException("Simple pool opinion is incomplete or stale");
             return ObjectLists.unmodifiable(result);
+        }
+
+        @Override
+        public int inputParallelismLimit(MachineRecipe recipe) {
+            if (phase != 3 || stale) throw new IllegalStateException("Simple pool opinion is incomplete or stale");
+            return ceilings.getOrDefault(recipe, Integer.MAX_VALUE);
         }
 
         @Override

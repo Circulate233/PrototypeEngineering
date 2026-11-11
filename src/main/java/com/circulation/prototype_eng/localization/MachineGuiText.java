@@ -9,7 +9,9 @@ import com.circulation.prototype_eng.container.MachineGuiSnapshot;
  * Machine GUI labels use the same AE2S localization contract as hatch labels.
  */
 public enum MachineGuiText implements LocalizationEnum {
-    Idle, Running, Error, ErrorWithMessage, Status, MainPage, Placeholder, ExtensionPage, ExtensionDescription;
+    Idle, Running, Error, ErrorWithMessage, Status, MainPage, Placeholder, ExtensionPage, ExtensionDescription,
+    Structure, Formed, NotFormed, Inactive, CheckingStructure, Threads, Recipes, Parallelism, Execution,
+    MainThreadMode, ConcurrentMode, PlannedMode, ThreadRow, RecipeParallelism;
 
     private final String translationKey = "gui." + Tags.MOD_ID + ".machine." + name();
 

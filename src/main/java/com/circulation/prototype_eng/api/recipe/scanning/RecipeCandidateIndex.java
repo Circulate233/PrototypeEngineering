@@ -69,6 +69,11 @@ public interface RecipeCandidateIndex {
 
         @Nullable Collection<MachineRecipe> result();
 
+        /** Canonical fixed-input ceiling only; a scanner must prove its complete linear input path before using it. */
+        default int inputParallelismLimit(MachineRecipe recipe) {
+            return Integer.MAX_VALUE;
+        }
+
         /**
          * A live capture is a search observation, never admission authority.
          */

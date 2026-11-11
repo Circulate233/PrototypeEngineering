@@ -1,6 +1,10 @@
 package com.circulation.prototype_eng.api.recipe;
 
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
+import ae2.api.stacks.AEKey2LongMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -9,13 +13,15 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
-/** General immutable pool; discovery uses the catalog's pool-local ordered fallback. */
+/** General immutable pool; stable input paths share a cached inventory index, others retain ordered fallback. */
 public final class DefaultRecipePool implements RecipePool {
     private final ResourceLocation id;
     private final String translationKey;
     private final List<MachineRecipe> recipes;
     private final List<MachineType> machines;
+    private final ResourceRecipeIndex inputIndex;
     private final @Nullable String existingJeiPageId;
 
     public DefaultRecipePool(ResourceLocation id, String translationKey, List<MachineRecipe> recipes) {
@@ -37,6 +43,7 @@ public final class DefaultRecipePool implements RecipePool {
             copy.add(recipe);
         }
         this.recipes = ObjectLists.unmodifiable(copy);
+        inputIndex = ResourceRecipeIndex.forFixedInputs(this.recipes, _ -> true);
         this.machines = ObjectLists.unmodifiable(new ObjectArrayList<>(machines));
         this.existingJeiPageId = existingJeiPageId;
     }
@@ -59,6 +66,16 @@ public final class DefaultRecipePool implements RecipePool {
     @Override
     public List<MachineType> machines() {
         return machines;
+    }
+
+    @Override
+    public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
+        return inputIndex.match(inventory, parallelism);
+    }
+
+    @Override
+    public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
+        return machine.supportsStableFixedInputLowerBounds() ? inputIndex.beginLookup(machine, groups, recipes) : null;
     }
 
     @Override

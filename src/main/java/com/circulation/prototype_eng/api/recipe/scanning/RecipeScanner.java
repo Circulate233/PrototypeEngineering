@@ -1,6 +1,8 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.machine.MultithreadController;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
@@ -508,7 +510,7 @@ public final class RecipeScanner {
     }
 
     private Search begin(MachineRecipe recipe, int parentLimit) {
-        int limit = parentLimit;
+        int limit = inputBound(recipe, parentLimit);
         for (var constraint : constraints) {
             int bound = constraint.upperBound(host.owner(), recipe, limit);
             if (bound < 0 || bound > limit) {
@@ -517,6 +519,18 @@ public final class RecipeScanner {
             limit = bound;
         }
         return new Search(recipe, parentLimit, limit, monotonicStart.test(recipe), seeds.getAsLong(), ProbabilityTuning.defaultTuning());
+    }
+
+    private int inputBound(MachineRecipe recipe, int currentLimit) {
+        var owner = host.owner();
+        // The existing stability assertion covers one START, not arbitrary quantity-dependent rewrites.
+        // Only the stock linear pipeline can turn a canonical inventory ceiling into a search bound.
+        if (discovery == null || !stablePipeline || factory != RecipeProcessFactory.STANDARD || !preparations.isEmpty()
+            || recipe.parallelismSelection() != RecipeParallelismSelection.NONE
+            || owner.getClass() != CrossRecipeController.class && owner.getClass() != MultithreadController.class
+            || owner.attributes().hasModifiers(StandardMachineAttributes.PROCESS_PARALLELISM)
+            || !owner.supportsStableFixedInputLowerBounds()) return currentLimit;
+        return Math.min(currentLimit, discovery.inputParallelismLimit(recipe));
     }
 
     private RecipeProcess candidate(MachineRecipe recipe, int amount, Search current) {
@@ -991,6 +1005,7 @@ public final class RecipeScanner {
                     phase = sameSearch ? 4 : 3;
                 }
                 if (phase == 3) {
+                    bound = inputBound(Objects.requireNonNull(recipe), bound);
                     while (boundCursor < constraints.size()) {
                         if (!budget.take()) return yielded();
                         int nextBound = constraints.get(boundCursor++).upperBound(host.owner(), recipe, bound);
@@ -1104,7 +1119,11 @@ public final class RecipeScanner {
                 if (discoveryValidation == null) discoveryValidation = discovery.beginValidation();
                 if (!discoveryValidation.advance(budget)) return yielded();
                 if (!allowed.getAsBoolean()) return null;
-                if (!discoveryValidation.current()) {
+                boolean current = discoveryValidation.current();
+                // Keep a finished proof when its last credit leaves no room for discovery work.
+                // Rebuilding it every new tick can otherwise starve a stable pass indefinitely.
+                if (current && budget.remaining() == 0) return yielded();
+                if (!current) {
                     discovery.restartLiveIndexes();
                     candidates = List.of();
                     cursor = 0;

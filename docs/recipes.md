@@ -360,6 +360,12 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 `RecipePool` 现在是公开接口，保留 `id/translationKey/recipes/machines`，默认通用实现为 `DefaultRecipePool`；`registerPool` 仍创建通用池。独立外部实现通过自己的 `freeze(recipes, machines)` 保留策略与配置，返回完整不可变 canonical 实例。注册表先校验 ID、标题、全部配方及静态机器的准确对象与顺序，再统一发布目录和反查；不会把自定义池改成通用具体类。当前注册仍是一次冻结，没有新增运行时配方重载协议。
 
+2026-11-11新增两个只读库存匹配入口：`match(AEKey2LongMap inventory)`返回首个canonical库存候选或null，`match(AEKey2LongMap inventory, int parallelism)`返回按原priority排列的不可变`List<RecipeInventoryMatch>`。每项包含准确配方对象与正int的`maximumParallelism`，表示该配方单独使用此库存时的canonical固定输入数量上界；各项不预留/分摊共享材料，也不证明FE、条件、权限和完整START可行。普通对象结果列表允许JDK接口，数量表和索引计数仍严格使用AEKey2LongMap/fastutil primitive映射。
+
+Default/Simple两种池缓存同一固定输入索引供公开库存API复用；实际多线程/跨配方扫描继续通过预算化`beginCandidates`取候选，保留同一库存匹配规则、数量上界及freshness证明，再进入原扫描/START。通用池仅在owner完整输入路径可证明稳定时启用索引，否则保持本池原顺序fallback；未知、自定义、动态需求保留候选。Simple原有按库存key/数量阈值postings的稀疏扫描保持。单配方库存API直接查必需key；池只有一个输入key时，实际扫描用`beginQuantityCapture(key)`调用`snapshotFor(key)`，不复制无关库存。别名同context同key取max、独立context饱和汇总以及完整绑定/revision复核不变。
+
+仅stock CrossRecipeController/MultithreadController、STANDARD factory、无preparation/最终数量selector/并行modifier且完整输入稳定时，scanner才以库存数量上界缩小原搜索范围。例如父并行100万、库存10且每次需5，只需一次真实admission probe即可选择2；FE/输出/机器条件仍可拒绝。未知子类或数量改写保留原完整搜索，最终selector/factory改变数量的既有效果不裁减。同配方来自多个池时上界取最宽松值；Long.MAX_VALUE饱和余额不据此给出有限数量上界。校验恰好用完本轮预算时保留已完成proof，下一tick继续扫描，避免稳定小预算反复校验而停滞；最终发布/穷尽前仍复核live事实。
+
 `beginCandidates(machine, groups)` 是实际扫描调用的公开策略入口，返回原 `RecipeCandidateIndex.Cursor`。null（包括 cursor 的 null result）只回退本池完整且组兼容的配方，empty 表示本池无候选；外部结果须是本池 canonical 子集，且不得漏掉其职责下仍可能成功的配方。目录冻结时保存成员、组与原 priority；每个 pass 只采样所选 canonical 池，不先枚举它们的全量配方。各池意见先 union、准确去重并按原 priority 排序，再经过现有 external index intersection；只访问本池 fallback 或实际返回结果，不扫描全目录造 scope。`Selection.accepts` 保留目录、机器和准确配方成员约束；预算 yield 保留游标，`restartLiveIndexes` 同时重取池策略与外部索引的 live 观察。
 
 `SimpleRecipePool.Entry.create(id, durationTicks, input, output, groups)` 提供单个固定 START 输入 → 单个固定 END 输出的明确声明。输入/输出使用 `GenericStack` 的原 AEKey 与 long 数量，数量不固定为 1。该池不接受 TICK IO、概率/属性概率、随机输出、fuzzy/dynamic、checkpoint、selector 或其他需求；这些完整能力继续使用通用池。相同 AEKey 的多条配方保留原 priority；专用索引按真实库存键访问数量阈值 postings，不枚举不存在键对应的全部配方。最后仍进入原 factory、要求/事务、共享并行、研究/计算与 START 准入，索引不消费材料或授予执行权限。

@@ -235,7 +235,8 @@ public final class MachineAttributes {
         return parent != null && parent.contains(id) ? parent.base(id) : defaultBase;
     }
 
-    private boolean hasModifiers(ResourceLocation id) {
+    /** Tests modifier presence across this effective family without evaluating modifier callbacks. */
+    public boolean hasModifiers(ResourceLocation id) {
         var state = local.get(id);
         return state != null && !state.modifiers.isEmpty()
             || (state == null || state.inheritModifiers) && parent != null && parent.hasModifiers(id);

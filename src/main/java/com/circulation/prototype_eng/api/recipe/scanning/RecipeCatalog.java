@@ -237,6 +237,7 @@ public final class RecipeCatalog {
         private Iterator<ResourceLocation> pendingGroups;
         private boolean groupAccepted;
         private Int2ObjectAVLTreeMap<MachineRecipe> chosen = new Int2ObjectAVLTreeMap<>();
+        private Reference2IntOpenHashMap<MachineRecipe> inventoryBounds = new Reference2IntOpenHashMap<>();
         private ObjectArrayList<RecipeCandidateIndex.Cursor> poolObserved = new ObjectArrayList<>();
         private Iterator<MachineRecipe> scopeIterator;
         private ObjectArrayList<MachineRecipe> orderedScope = new ObjectArrayList<>();
@@ -343,7 +344,12 @@ public final class RecipeCatalog {
                                 if (!budget.take()) return false;
                                 groupAccepted = frozenGroups.contains(pendingGroups.next());
                             }
-                            if (groupAccepted) chosen.put(priority.getInt(pendingRecipe), pendingRecipe);
+                            if (groupAccepted) {
+                                chosen.put(priority.getInt(pendingRecipe), pendingRecipe);
+                                int bound = poolLookup == null ? Integer.MAX_VALUE : poolLookup.inputParallelismLimit(pendingRecipe);
+                                if (bound < 1) throw new IllegalArgumentException("Invalid pool input ceiling");
+                                inventoryBounds.put(pendingRecipe, Math.max(inventoryBounds.getOrDefault(pendingRecipe, 0), bound));
+                            }
                             pendingRecipe = null;
                         }
                         pool = null;
@@ -475,6 +481,7 @@ public final class RecipeCatalog {
 
         /** Keep selected pools/groups, but recapture both pool strategies and external live indexes. */
         public void restartLiveIndexes() {
+            inventoryBounds = new Reference2IntOpenHashMap<>();
             if (phase < 2) return;
             poolIndex = 0;
             pool = null;
@@ -507,6 +514,12 @@ public final class RecipeCatalog {
         public List<MachineRecipe> result() {
             if (phase != 7 || !current()) throw new IllegalStateException("Candidate pass is incomplete or stale");
             return ObjectLists.unmodifiable(result);
+        }
+
+        /** A union takes the least restrictive pool ceiling; observations still require fresh validation. */
+        public int inputParallelismLimit(MachineRecipe recipe) {
+            if (phase != 7 || !current()) throw new IllegalStateException("Candidate pass is incomplete or stale");
+            return inventoryBounds.getOrDefault(recipe, Integer.MAX_VALUE);
         }
     }
 }

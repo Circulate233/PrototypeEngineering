@@ -3,10 +3,12 @@ package com.circulation.prototype_eng.client.gui;
 import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.widgets.ITooltip;
+import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
 import com.circulation.prototype_eng.container.MachineContainer;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
 import com.circulation.prototype_eng.localization.MachineGuiText;
+import com.circulation.prototype_eng.localization.StructureTitle;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.PositionedSoundRecord;
@@ -17,6 +19,7 @@ import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.ITextComponent;
+import net.minecraft.util.text.TextComponentString;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.input.Mouse;
 
@@ -25,13 +28,12 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 
-/** PM DefaultMachineUI, retaining its original two pages, coordinates and scroll handle. */
+/** Default controller status and process roster in the original PM panel geometry. */
 public final class MachineGui extends AEBaseGui<MachineContainer> {
     private static final ResourceLocation MAIN = GuiAtlas.texture("gui_controller_a");
-    private static final ResourceLocation EXTENSION = GuiAtlas.texture("gui_controller_b");
     private static final ResourceLocation PROGRESS = GuiAtlas.texture("gui_controller_states");
     private static final int LIST_X = 27, LIST_Y = 8, ROW_HEIGHT = 33, LIST_HEIGHT = 238;
-    private int page;
+    private static final int SCROLL_X = 120, SCROLL_WIDTH = 13;
     private int scrollIndex;
     private int requestedOffset = -1;
     private boolean dragging;
@@ -42,7 +44,6 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         xSize = 384;
         ySize = 256;
         widgets.add("mainPage", new PageTab(0, 0, 0), new Point(0, 0));
-        widgets.add("extensionPage", new PageTab(1, 0, 0), new Point(0, 22));
     }
 
     @Override
@@ -71,9 +72,8 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
 
     @Override
     public void drawBG(int x, int y, int mouseX, int mouseY, float partialTicks) {
-        GuiAtlas.draw(page == 0 ? MAIN : EXTENSION, x, y, 0, 0, 384, 256, 384, 256);
-        drawRect(x + 140, y + 9, x + 376, y + (page == 0 ? 165 : 248), 0x4c424242);
-        if (page != 0) return;
+        GuiAtlas.draw(MAIN, x, y, 0, 0, 384, 256, 384, 256);
+        drawRect(x + 140, y + 9, x + 376, y + 165, 0x4c424242);
         for (int row = 0; row < container.snapshot.entries().size(); row++) {
             int top = y + LIST_Y + row * ROW_HEIGHT;
             GuiAtlas.draw(PROGRESS, x + LIST_X, top, 0, 0, 89, ROW_HEIGHT, 256, 256);
@@ -85,39 +85,68 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
         GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 144, 13, 228, 10, 0xffffff, true);
-        if (page == 1) {
-            GuiLabel.draw(fontRenderer, MachineGuiText.ExtensionPage.getLocal(), 144, 33, 228, 10, 0xe0e0e0, false);
-            fontRenderer.drawSplitString(MachineGuiText.ExtensionDescription.getLocal(), 144, 48, 228, 0x9e9e9e);
-            return;
-        }
-        GuiLabel.draw(fontRenderer, MachineGuiText.Status.getLocal(summaryStatus().getLocal()), 144, 27, 228, 10, 0xe0e0e0, false);
         var snapshot = container.snapshot;
+        var details = snapshot.details();
+        var information = information();
+        for (int line = 0; line < information.size(); line++)
+            GuiLabel.draw(fontRenderer, information.get(line), 144, 27 + line * 13, 228, 10,
+                line == 0 ? snapshot.formed() ? 0x55ff55 : 0xff5555 : 0xe0e0e0, false);
         for (int row = 0; row < snapshot.entries().size(); row++) {
             var entry = snapshot.entries().get(row);
             int top = LIST_Y + row * ROW_HEIGHT;
             boolean idle = entry.recipe().isEmpty();
             boolean error = entry.status() == WorkSlotStatus.FAILED || entry.status() == WorkSlotStatus.BLOCKED;
-            fontRenderer.drawString("#" + (snapshot.offset() + row + 1), LIST_X + 4, top + 4, 0xffffff);
+            String label = details.crossRecipe() ? entry.recipe().substring(entry.recipe().indexOf(':') + 1) : MachineGuiText.ThreadRow.getLocal(entry.name());
+            fontRenderer.drawString(fontRenderer.trimStringToWidth(label, idle ? 81 : 51), LIST_X + 4, top + 4, 0xffffff);
             if (!idle) {
                 String percent = entry.percent() + "%";
                 fontRenderer.drawString(percent, LIST_X + 85 - fontRenderer.getStringWidth(percent), top + 4, error ? 0xff5555 : 0x55ff55);
             }
-            String status = idle ? MachineGuiText.Idle.getLocal() : MachineGuiText.reason(entry);
+            String status = MachineGuiText.reason(entry);
             fontRenderer.drawString(fontRenderer.trimStringToWidth(status, 81), LIST_X + 4, top + 16,
-                idle ? 0xaaaaaa : error ? 0xff5555 : 0xffffff);
+                error ? 0xff5555 : idle ? 0xaaaaaa : 0xffffff);
         }
         if (maxScroll() > 0) {
             int handleY = handleY();
-            boolean hover = new Rectangle(LIST_X + 47, handleY, 38, 15).contains(mouseX - guiLeft, mouseY - guiTop);
+            boolean hover = new Rectangle(SCROLL_X, handleY, SCROLL_WIDTH, 15).contains(mouseX - guiLeft, mouseY - guiTop);
             mc.getTextureManager().bindTexture(GuiAtlas.STATES);
             GlStateManager.color(1, 1, 1, 1);
-            Gui.drawScaledCustomSizeModalRect(LIST_X + 47, handleY, dragging ? 172 : hover ? 159 : 146, 1,
-                13, 15, 38, 15, 256, 256);
+            Gui.drawScaledCustomSizeModalRect(SCROLL_X, handleY, dragging ? 172 : hover ? 159 : 146, 1,
+                13, 15, SCROLL_WIDTH, 15, 256, 256);
         }
     }
 
     private MachineGuiText summaryStatus() {
+        if (!container.snapshot.formed()) return MachineGuiText.NotFormed;
+        if (!container.snapshot.active()) return MachineGuiText.Inactive;
+        if (!container.snapshot.details().processing()) return MachineGuiText.CheckingStructure;
         return MachineGuiText.status(container.snapshot.overallStatus());
+    }
+
+    @SuppressWarnings("resource") // ClientProxy owns the shared preview service; this screen only reads its catalog.
+    private List<String> information() {
+        var snapshot = container.snapshot;
+        var details = snapshot.details();
+        var lines = new ObjectArrayList<String>();
+        lines.add(MachineGuiText.Structure.getLocal((snapshot.formed() ? MachineGuiText.Formed : MachineGuiText.NotFormed).getLocal()));
+        if (!details.structure().isEmpty()) {
+            var catalog = StructurePreviews.client().catalogView();
+            var structure = catalog == null ? null : catalog.entries().get(new ResourceLocation(details.structure()));
+            lines.add(structure == null || structure.translationKey() == null ? Objects.requireNonNull(container.getGuiTitle()).getFormattedText()
+                : new StructureTitle(structure.translationKey()).getLocal());
+        }
+        lines.add(MachineGuiText.Status.getLocal(summaryStatus().getLocal()));
+        if (!snapshot.active()) return lines;
+        lines.add(details.crossRecipe() ? MachineGuiText.Recipes.getLocal(details.running())
+            : MachineGuiText.Threads.getLocal(details.running(), details.threadLimit()));
+        lines.add(MachineGuiText.Parallelism.getLocal(details.usedParallelism(), details.parallelismLimit()));
+        var mode = switch (details.mode()) {
+            case MAIN_THREAD -> MachineGuiText.MainThreadMode;
+            case CONCURRENT -> MachineGuiText.ConcurrentMode;
+            case PLANNED_PARALLEL -> MachineGuiText.PlannedMode;
+        };
+        lines.add(MachineGuiText.Execution.getLocal(mode.getLocal()));
+        return lines;
     }
 
     @Override
@@ -125,15 +154,18 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         super.drawScreen(mouseX, mouseY, partialTicks);
         if (isPointInRegion(144, 13, 228, 10, mouseX, mouseY)) {
             drawHoveringText(List.of(Objects.requireNonNull(container.getGuiTitle()).getFormattedText()), mouseX, mouseY);
-        } else if (page == 0 && isPointInRegion(138, 173, 72, 72, mouseX, mouseY)) {
+        } else if (isPointInRegion(144, 27, 228, 6 * 13, mouseX, mouseY)) {
+            drawHoveringText(information(), mouseX, mouseY);
+        } else if (isPointInRegion(138, 173, 72, 72, mouseX, mouseY)) {
             drawHoveringText(List.of(MachineGuiText.Placeholder.getLocal()), mouseX, mouseY);
-        } else if (page == 0 && isPointInRegion(LIST_X, LIST_Y, 89, LIST_HEIGHT, mouseX, mouseY)) {
+        } else if (isPointInRegion(LIST_X, LIST_Y, 89, LIST_HEIGHT, mouseX, mouseY)) {
             int row = (mouseY - guiTop - LIST_Y) / ROW_HEIGHT;
             if (row < container.snapshot.entries().size()) {
                 var entry = container.snapshot.entries().get(row);
                 var lines = new ObjectArrayList<String>();
                 lines.add(MachineGuiText.reason(entry));
                 if (!entry.recipe().isEmpty()) lines.add(entry.recipe());
+                if (entry.parallelism() > 0) lines.add(MachineGuiText.RecipeParallelism.getLocal(entry.parallelism()));
                 drawHoveringText(lines, mouseX, mouseY);
             }
         }
@@ -146,15 +178,14 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
     @Override
     protected void actionPerformed(@NotNull GuiButton button) throws IOException {
         if (button instanceof PageTab) {
-            page = button.id;
             dragging = false;
-            container.selectPage(page);
+            container.selectPage(0);
         } else super.actionPerformed(button);
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
-        if (page == 0 && button == 0 && maxScroll() > 0 && isPointInRegion(LIST_X + 47, handleY(), 38, 15, mouseX, mouseY)) {
+        if (button == 0 && maxScroll() > 0 && isPointInRegion(SCROLL_X, handleY(), SCROLL_WIDTH, 15, mouseX, mouseY)) {
             dragging = true;
             dragOffset = mouseY - guiTop - handleY();
             mc.getSoundHandler().playSound(PositionedSoundRecord.getMasterRecord(SoundEvents.UI_BUTTON_CLICK, 1));
@@ -185,20 +216,20 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         int wheel = Mouse.getEventDWheel();
         int mouseX = Mouse.getEventX() * width / mc.displayWidth;
         int mouseY = height - Mouse.getEventY() * height / mc.displayHeight - 1;
-        if (page == 0 && wheel != 0 && isPointInRegion(LIST_X, LIST_Y, 89, LIST_HEIGHT, mouseX, mouseY)) {
+        if (wheel != 0 && isPointInRegion(LIST_X, LIST_Y, SCROLL_X + SCROLL_WIDTH - LIST_X, LIST_HEIGHT, mouseX, mouseY)) {
             scrollIndex -= Integer.signum(wheel);
             updateView();
         }
     }
 
-    private final class PageTab extends GuiButton implements ITooltip {
+    private static final class PageTab extends GuiButton implements ITooltip {
         private PageTab(int id, int x, int y) {
             super(id, x, y, 21, 22, "");
         }
 
         @Override
         public @NotNull List<ITextComponent> getTooltipMessage() {
-            return List.of((id == 0 ? MachineGuiText.MainPage : MachineGuiText.ExtensionPage).text());
+            return List.of(new TextComponentString(MachineGuiText.MainPage.getLocal()));
         }
 
         @Override
@@ -214,7 +245,7 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
         @Override
         public void drawButton(@NotNull Minecraft minecraft, int mouseX, int mouseY, float partialTicks) {
             hovered = mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;
-            GuiAtlas.state(x, y, 185 + (page == id ? 48 : hovered ? 24 : 0), id == 0 ? 182 : 207, 21, 22);
+            GuiAtlas.state(x, y, 233, 182, 21, 22);
         }
     }
 }
