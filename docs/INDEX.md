@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-11 构造器工具融合与流体回收：动态无序合成永久消耗工具，仅保留当前档案，覆盖无返还，tooltip双语说明。按最新要求档案只用于拆卸的等级/类别及附魔掉落，不作为物品工具效果；已撤去造成AE误认扳手的中间接口，原绑定/打开交互保持。流体按真实源量填直接及一层背包容器，余量掉AE资源包保留NBT；取消事件不抽，流水不制造源。完整Spotless/build为1923tests/264suites全零，7Java/两语言本机MCP全级零及MCP build通过。入口[结构工具](structure-tools.md)，证据builder-tool-fusion/；无游戏启动/子代理/推送，背景与暂存保留，总体Goal仍暂停。
+
 - 本轮源码与审查记录已精确本地提交 `1a05dd9`，未推送；105路径不含原暂存测试和背景，Row背景可见性单行另行保留，候选Tree单独编译通过。提交后原暂存patch/保护文件工作字节一致，详见专项证据 `exact-commit-result.json`。
 
 - 2026-11-11 本地化/集合全量审查收尾：用户指出的测试addon缺pack.mcmeta已补，安装Jar metadata=3/两语言各94条/SHA一致；结构显式标题和机器fallback、工具客户端名称、native/external小写key及固定key枚举已修，527枚举项EN/ZH无缺。带primitive集合的字段/参数/返回值全部fastutil专用接口（AEKeyType为Reference2LongMap、选择表Object2IntMap、路径IntList），不留装箱JDK ABI重载；扫描735main＋19addon＋11脚本直接装箱集合/包装数组零。普通队列/栈迁移并保留身份/顺序，补entry.setValue不可变保护。完整build含Spotless为1923 tests/264 suites全零，11脚本实际SDK编译/97核心断言通过；75正式Java本机MCP全级零，11修改run Java被排除/未知，资源全级零及MCP build成功。示例已安装，无子代理/游戏启动/推送，原背景及暂存保留；详见 [本地化与集合审查](localization-collections-audit.md)，证据localization-collections-audit/。
@@ -47,6 +49,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 用户完整重启复验本轮：构造器普通/潜行右键控制器只绑定/打开，不旋转/扳手拆卸；合成和二次覆盖不返还工具，物品自身无工具效果，结构拆卸使用当前档案的等级/精准采集/时运。再验空桶、同流体部分容器、无容量/异种流体、背包满时余物、AE包数量/NBT与保护事件取消。详见[最新操作与边界](structure-tools.md)。
 
 - 用户完整启动客户端，先复验本轮metadata修复后的机器/结构中文（包含World子节点、网络、渲染与组合结构），再沿下面既有材料槽/JEI/构造器及组合结构步骤验收。原生注入、World、保存/支付与画面仍待用户；总体Goal保持暂停。后续扩展调用严格primitive fastutil API，见[专项审查](localization-collections-audit.md)。
 

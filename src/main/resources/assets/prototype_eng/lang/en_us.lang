@@ -531,3 +531,8 @@ structure_tool.prototype_eng.BuilderUsageProjectionLayer=Hold the builder and us
 structure_tool.prototype_eng.ScannerUsageExport=Select two corners, then open the GUI to adjust the range and export the structure.
 jei.prototype_eng.PatternStructureUnavailable=Wait for the complete structure preview and its selected materials to become available before importing.
 jei.prototype_eng.PatternStructureName=%s-Structure
+
+structure_tool.prototype_eng.BuilderToolFusion=Craft with a tool to use its enchantments, tool types and harvest levels only for dismantling. The builder itself gains no tool effects.
+structure_tool.prototype_eng.BuilderToolFusionPermanent=Fusion consumes the tool permanently. A later fusion overwrites it without returning the previous tool.
+structure_tool.prototype_eng.BuilderToolFused=Fused tool: %s
+structure_tool.prototype_eng.BuilderFluidRecovery=Dismantled fluids fill usable inventory containers; any remainder drops as an AE resource package.

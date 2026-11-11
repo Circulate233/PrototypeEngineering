@@ -1,5 +1,9 @@
 # 实施进度
 
+- 2026-11-11 构造器融合/拆卸：新增动态无序IRecipe，一个构造器＋一个工具永久消耗，getRemainingItems全EMPTY，不返还容器或旧工具；当前工具完整数据/附魔档案覆盖，保留绑定/材料选择，任务状态与进度复位。双语tooltip说明仅拆卸、不可取回和覆盖无返还。用户后续明确只用于拆卸并反馈AE误认扳手：确认AE以wrench harvest level>=0识别，中间物品覆盖把默认3级暴露给所有类别，现全部撤去；不复制顶层ench，不提供物品tool classes/level/speed。
+- 拆卸按准确actual state/工具类别及等级预验，保留权限、BreakEvent、removedByPlayer/onPlayerDestroy/harvestBlock与经验，明确传档案快照供精准采集/时运等使用，不借主手附魔。未融合保持3级基线，建造清障不使用档案。流体过权限/事件后按Forge真实源抽取；直接及一层modifiable背包容器在副本填充后准确消费/替换，支持堆叠空桶/部分容量，余物满时正常给出/掉落；未装入余量掉AE GenericResourcePackageItem保留NBT/数量。不可抽流水不造桶，未知handler不删，源抽成功完成目标避免邻居补水反复收集。创造不产资源。
+- 最终完整spotlessApply/build成功36s，既有1923tests/264suites失败/错误/跳过0，无新增镜像/静态测试；7Java与两语言逐文件本机MCP errorsOnly:false错误/警告/弱警告0，MCP build及源码字节/key/精确提交核对见 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/builder-tool-fusion/`。未启动客户端/服务器/FML/Bootstrap、未开子代理/推送。合成消耗、附魔掉落、容器/保护回调和控制器交互仍需完整重启复验，不以既有测试冒充新World行为已运行。原暂存/背景保留，总体Goal保持暂停。
+
 - 本轮本地源码提交 `1a05dd9388eaabd3f66e27d75fc25ebece83c622`，105路径；使用独立index排除原暂存测试、依赖/正式语言背景及Tree的Row可见性背景单行，候选Tree经javac。提交后同步原index仅限任务路径，原暂存patch及保护文件工作字节均一致；`exact-commit-result.json`记录核验，未推送。
 
 - 2026-11-11 本地化与严格集合审查已完成源码/验证：用户确认的addon缺pack.mcmeta根因已补，构建强制metadata=3及小写语言资源；19Java新Jar安装成功并核源/目标SHA。另修核心/World/network/render结构translated、固定英文key、native/external大小写及客户端工具名称；结构声明优先、明确机器fallback用于panel/右树。13正式＋3示例枚举527key精确EN/ZH齐全，四语言表无重复，固定literal仅在枚举。ExampleText真实Zen SDK暴露，全部11实际脚本编译，10/20执行97核心PASS、completed=true；World脚本不冒充运行。

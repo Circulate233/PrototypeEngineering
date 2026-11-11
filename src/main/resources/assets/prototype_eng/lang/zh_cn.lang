@@ -531,3 +531,8 @@ structure_tool.prototype_eng.BuilderUsageProjectionLayer=手持构造器时，�
 structure_tool.prototype_eng.ScannerUsageExport=选择两个角点后，打开界面调整范围并导出结构。
 jei.prototype_eng.PatternStructureUnavailable=请等待完整结构预览及所选材料就绪后再导入样板。
 jei.prototype_eng.PatternStructureName=%s-结构
+
+structure_tool.prototype_eng.BuilderToolFusion=可与工具合成，其附魔、工具类型和挖掘等级仅用于拆卸；构造器本身不获得工具效果。
+structure_tool.prototype_eng.BuilderToolFusionPermanent=工具会被永久消耗，无法取回；再次合成会覆盖旧工具，旧工具也不会返还。
+structure_tool.prototype_eng.BuilderToolFused=已融合工具：%s
+structure_tool.prototype_eng.BuilderFluidRecovery=拆卸流体时优先灌入背包内可用的流体容器，剩余流体掉落为 AE 资源包。

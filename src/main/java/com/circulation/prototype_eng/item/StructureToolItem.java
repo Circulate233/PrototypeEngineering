@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.container.StructureToolContainer;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
+import com.circulation.prototype_eng.structure.tool.BuilderMiningTool;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.client.util.ITooltipFlag;
@@ -58,6 +59,11 @@ public final class StructureToolItem extends AEBaseItem {
             lines.add(StructureToolText.BuilderUsageAir.getLocal());
             lines.add(StructureToolText.BuilderUsageProjection.getLocal());
             lines.add(StructureToolText.BuilderUsageProjectionLayer.getLocal());
+            lines.add(StructureToolText.BuilderToolFusion.getLocal());
+            lines.add(StructureToolText.BuilderToolFusionPermanent.getLocal());
+            var miningTool = BuilderMiningTool.profile(stack);
+            if (!miningTool.isEmpty()) lines.add(StructureToolText.BuilderToolFused.getLocal(miningTool.getDisplayName()));
+            lines.add(StructureToolText.BuilderFluidRecovery.getLocal());
         } else {
             lines.add(StructureToolText.ScanHint.getLocal());
             lines.add(StructureToolText.ScannerUsageExport.getLocal());

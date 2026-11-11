@@ -84,6 +84,10 @@ public enum StructureToolText implements LocalizationEnum {
     BuilderUsageAir,
     BuilderUsageProjection,
     BuilderUsageProjectionLayer,
+    BuilderToolFusion,
+    BuilderToolFusionPermanent,
+    BuilderToolFused,
+    BuilderFluidRecovery,
     ScannerUsageExport,
     BuildHint;
     private final String translationKey = "structure_tool." + Tags.MOD_ID + "." + name();

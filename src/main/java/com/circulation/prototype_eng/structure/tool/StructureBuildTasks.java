@@ -13,11 +13,14 @@ import net.minecraft.block.Block;
 import com.circulation.prototype_eng.structure.StructurePickWorld;
 import net.minecraft.init.Blocks;
 import net.minecraft.block.BlockFalling;
+import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.init.Enchantments;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
@@ -30,6 +33,8 @@ import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.FluidUtil;
+import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -151,7 +156,7 @@ public final class StructureBuildTasks {
             if (task.cursor == task.targets.size()) task.cursor = 0;
             if (task.complete[index]) continue;
             var target = task.targets.get(index);
-            if (operate(player, task.world, target)) {
+            if (operate(player, task.world, target, task.tool)) {
                 task.complete[index] = true;
                 task.done++;
             }
@@ -181,20 +186,17 @@ public final class StructureBuildTasks {
         });
     }
 
-    private static boolean operate(EntityPlayer player, World world, Target target) {
+    private static boolean operate(EntityPlayer player, World world, Target target, ItemStack tool) {
         var pos = target.position();
         if (!world.isBlockLoaded(pos) || !world.isBlockModifiable(player, pos)
-            || !player.canPlayerEdit(pos, EnumFacing.UP, ItemStack.EMPTY)) return false;
+            || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) return false;
         var current = world.getBlockState(pos);
         var desired = target.state();
         if (desired == null && world.isAirBlock(pos) || current.equals(desired)) return true;
         var payment = desired == null || player.isCreative() ? Payment.FREE : payment(player, world, pos, desired, target.tileNbt());
         if (payment == null) return false;
         if (!world.isAirBlock(pos)) {
-            if (current.getBlockHardness(world, pos) < 0 || current.getBlock().getHarvestLevel(current) > 3)
-                return false;
-            if (MinecraftForge.EVENT_BUS.post(new BlockEvent.BreakEvent(world, pos, current, player))) return false;
-            if (!world.destroyBlock(pos, !player.isCreative())) return false;
+            if (!remove(player, world, pos, current, tool, desired == null)) return false;
         }
         if (desired == null) return true;
         if (!payment.commit()) return false;
@@ -209,6 +211,44 @@ public final class StructureBuildTasks {
             return false;
         }
         world.notifyNeighborsOfStateChange(pos, desired.getBlock(), true);
+        return true;
+    }
+
+    private static boolean remove(EntityPlayer player, World world, BlockPos pos, IBlockState state, ItemStack tool, boolean dismantle) {
+        var block = state.getBlock();
+        boolean fluid = block instanceof IFluidBlock || block instanceof BlockLiquid || state.getMaterial().isLiquid();
+        if (state.getBlockHardness(world, pos) < 0) return false;
+        @SuppressWarnings("deprecation") // Forge's harvest query uses the actual state on this Minecraft version.
+        var actual = block.getActualState(state, world, pos);
+        if (!player.isCreative() && !fluid && !(dismantle ? BuilderMiningTool.canHarvest(tool, actual, player) : block.getHarvestLevel(actual) <= 3))
+            return false;
+        var harvestedWith = dismantle ? BuilderMiningTool.profile(tool) : ItemStack.EMPTY;
+        var event = new BlockEvent.BreakEvent(world, pos, state, player);
+        // The task's builder may be in the offhand or another slot. Do not use an unrelated main-hand enchantment.
+        event.setExpToDrop(player.isCreative() || fluid
+            || block.canSilkHarvest(world, pos, state, player) && EnchantmentHelper.getEnchantmentLevel(Enchantments.SILK_TOUCH, harvestedWith) > 0
+            ? 0 : block.getExpDrop(state, world, pos, EnchantmentHelper.getEnchantmentLevel(Enchantments.FORTUNE, harvestedWith)));
+        if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(state)) return false;
+        if (fluid && !player.isCreative()) {
+            var source = FluidUtil.getFluidHandler(world, pos, EnumFacing.UP);
+            if (source == null) return false;
+            var available = source.drain(Integer.MAX_VALUE, false);
+            // Flowing fluid has no independently drainable source; never manufacture a bucket from it.
+            if (available == null || available.amount <= 0) return world.setBlockToAir(pos);
+            var drained = source.drain(available, true);
+            if (drained == null || drained.amount <= 0) return false;
+            BuilderFluidRecovery.deliver(player, pos, drained);
+            // A successful source drain owns removal; a neighbor refill must not farm this target again.
+            return true;
+        }
+        var tile = world.getTileEntity(pos);
+        if (!block.removedByPlayer(state, world, pos, player, !player.isCreative())) return false;
+        block.onPlayerDestroy(world, pos, state);
+        world.playEvent(player, 2001, pos, Block.getStateId(state));
+        if (!player.isCreative()) {
+            block.harvestBlock(world, player, pos, state, tile, harvestedWith);
+            if (event.getExpToDrop() > 0) block.dropXpOnBlockBreak(world, pos, event.getExpToDrop());
+        }
         return true;
     }
 
