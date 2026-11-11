@@ -10,28 +10,13 @@ public enum GuiText implements LocalizationEnum {
     Input,
     Output,
     Energy,
-    Capacity,
     ResourceStorage,
-    ResourceInputHatch,
-    ResourceOutputHatch,
-    ResourceMixedHatch,
-    EnergyInputHatch,
-    EnergyOutputHatch,
-    EnergyMixedHatch,
     InputRate,
     OutputRate,
     AutoInput,
     AutoOutput,
     ResourceTypes,
-    ResourceStored,
-    EmptyContainer,
-    FillContainer,
-    On,
-    Off,
-    Apply,
-    FluidInputRate,
-    FluidOutputRate,
-    ClearFluids;
+    ResourceStored;
 
     private final String translationKey = "gui." + Tags.MOD_ID + "." + name();
 

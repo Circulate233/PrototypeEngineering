@@ -1,5 +1,15 @@
 # 本地化与集合审查（2026-11-11）
 
+## 无用语言条目清理（当前检查点）
+
+按用户要求，未发布工程中的无用本地化常量直接删除，不保留兼容占位。本轮核对正式/示例四份lang、正式Java编译结果的实际字段引用、源码、资源JSON及run脚本。删除7个语言枚举中的92个无用常量（GuiText15、JeiText8、MachineGuiText2、PreviewUiText17、ResearchGuiText4、StructurePreviewText32、StructureToolText14），中英各删除对应92键，以及4个未注册的无等级旧仓室名、8个无调用的旧预览BOM/罗盘/未知需求键，共各104键。
+
+当前正式语言各438条，示例各94条，两语言集合完全一致、无重复；13正式＋3示例枚举剩455键全部有翻译。77个枚举外的真实生成键逐类核对：60个六类型×十阶仓室名，由HatchBlocks/HatchGuiTitle按注册ID生成；10个BoundaryExamples场景配方池标题；4个渲染脚本pass循环标题；2个RunNetworkRender研究盘名；1个外部仓室方块名。无Java字段引用的38个保留枚举均有真实间接消费者：2个进度JSON翻译键、36个run脚本Text字段，不按“Java搜不到”误删。
+
+完整Spotless/build成功45s，既有1928tests/264suites失败/错误/跳过0，未新增静态镜像测试。7修改Java及两语言逐文件本机MCP errorsOnly:false错误/警告/弱警告0，MCP build成功。示例源码/语言无改动，不重装示例Jar；未开子代理/启动游戏/推送，原背景及暂存保留。准确删键清单、写前语言、源码/JSON/脚本引用及生成键归属、构建/测试XML/MCP原始结果、精确提交核验见 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/unused-lang/`。下方527键等为较早阶段的历史验证，不作为当前数量。
+
+## 早前完整审查
+
 本轮按用户最新要求检查正式 main 735 Java、run addon 19 Java 和 11 份实际 CT 脚本；测试调用点跟随严格 API 一起迁移。此前界面反馈和子结构/可拓展结构示例已分别提交，本轮继续修正其本地化与集合契约。没有启动子代理、Minecraft、服务端、FML 或 Bootstrap，没有推送。
 
 源码及本轮记录已本地提交 `1a05dd9`，105路径。独立index排除原背景与暂存，Tree的Row可见性背景单行未提交；精确候选单独javac通过，提交后原暂存patch及保护工作字节一致。

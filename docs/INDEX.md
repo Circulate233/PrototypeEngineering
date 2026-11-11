@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-11 无用lang清理：7枚举删除92个无调用常量，中英各删104键（含4旧无等级仓室＋8旧预览键）。正式各438、示例各94；455枚举键无缺，77真实生成键和38个JSON/脚本间接枚举逐项保留，四语言无重复/不对称。完整Spotless/build1928tests/264suites全零，7Java＋两语言本机MCP全级零及MCP build成功。入口[本地化审查](localization-collections-audit.md)，证据unused-lang/；未开子代理/启动游戏/推送，原背景/暂存保留，总体Goal暂停。
+
 - 2026-11-11 默认控制器GUI/库存匹配收尾：参考MMCE补真实成型/本地化结构名、状态、线程或配方数、long并行占用/上限和执行模式；空扩展隐藏、tab提示本地化。多线程保留声明线程，跨配方仅显示实际进程，独立13像素滚动条槽道不盖列表。RecipePool新增库存首项/库存＋并行候选组，两默认池共享缓存索引；单输入key定向捕获、stock线性路径数量上界及小预算完成proof续办，FE/权限/START仍权威。21专项与完整1928tests/264suites全零，16Java＋两语言本机MCP全级零及MCP build成功，547枚举key无缺/正式两语言无重复。入口[机器GUI](machine-gui.md)、[配方池](recipes.md#配方池接口与简单配方索引)，证据controller-gui-pool-matching/。未开子代理/启动游戏/推送，背景/原暂存保留，总体Goal暂停。
 
 - 2026-11-11 控制器视角放置/九宫格：放置正面保留六面规则，顶部/spin改读视角投影；启用转向工具命中面显示20/60/20网格，正面中心90°，非正面中心对齐，四边刚体翻转front/top，四角无请求/无耐久。主副手、普通/潜行共用，空气潜行切模式保留；旧潜行24向循环已替换。共享Part/面坐标连接点击与绘制，纯相对变换仍在owner FIFO消费。完整Spotless/build为1924tests/264suites全零，6main＋1test及两语言本机MCP全级零；入口[结构工具](structure-tools.md)，证据controller-face-grid/。未启动游戏/子代理/推送，背景与暂存保留，总体Goal暂停。

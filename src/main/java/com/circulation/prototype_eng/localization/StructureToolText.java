@@ -19,17 +19,10 @@ public enum StructureToolText implements LocalizationEnum {
     BuildInstrumentSliceSuffix,
     BuildInstrumentSubstructureLabel,
     BuildInstrumentSliceSlider,
-    BuildInstrumentMaterialsTitle,
     BuildInstrumentMaterialsTitleWithCount,
     BuildInstrumentMaterialAnyofEntry,
     BuildInstrumentMaterialEntry,
-    BuildInstrumentMaterialOptionChoose,
-    BuildInstrumentMaterialOptionSelected,
     BuildInstrumentDoubleClickReplaceAll,
-    BuildInstrumentReqAnyof,
-    BuildInstrumentReqDisplay,
-    BuildInstrumentReqNbtMarker,
-    BuildInstrumentReqNbtConstraints,
     BuildInstrumentReqUnknown,
     ScannerTooltipPreview,
     ScannerTooltipLangName,
@@ -59,7 +52,6 @@ public enum StructureToolText implements LocalizationEnum {
     ScannerTooltipPreviewRot1,
     ScannerTooltipPreviewRot2,
     ScannerTooltipPreviewRot3,
-    ScannerTooltipPreviewRotOther,
     ScannerTooltipClear,
     ScannerTooltipReset,
     ScannerTooltipExport,
@@ -69,11 +61,6 @@ public enum StructureToolText implements LocalizationEnum {
     NeedSelection,
     Exported,
     ExportFailed,
-    Unloaded,
-    Build,
-    Disassemble,
-    Pause,
-    Resume,
     Waiting,
     Complete,
     Unavailable,
@@ -88,8 +75,7 @@ public enum StructureToolText implements LocalizationEnum {
     BuilderToolFusionPermanent,
     BuilderToolFused,
     BuilderFluidRecovery,
-    ScannerUsageExport,
-    BuildHint;
+    ScannerUsageExport;
     private final String translationKey = "structure_tool." + Tags.MOD_ID + "." + name();
 
     @Override
