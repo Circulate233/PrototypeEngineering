@@ -3,8 +3,10 @@ package com.circulation.prototype_eng.scheduler;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
+import com.circulation.prototype_eng.machine.MachineControllerBlockEntity;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.research.ServerResearch;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -77,6 +79,45 @@ public final class ServerTaskSchedulers {
         session = null;
     }
 
+    /**
+     * FML serverStopping precedes native final world saving. Mark eligibility without scheduling a
+     * callback that could remain queued behind retained cleanup, and without serializing active data.
+     * The actual controller codecs still require their complete persistence boundary when saving.
+     */
+    public static void markControllerDataDirty() {
+        var current = session;
+        if (current == null) return;
+        if (!current.server.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Controller data save marking requires its server owner");
+        for (var world : current.server.worlds.clone()) {
+            if (world == null || world.getMinecraftServer() != current.server) continue;
+            for (var tile : new ObjectArrayList<>(world.loadedTileEntityList))
+                if (tile instanceof MachineControllerBlockEntity controller && controller.getWorld() == world) controller.markControllerDataDirty(false);
+        }
+    }
+
+    /** One tick's native save work only; the tile's original tick guard prevents duplicate updates. */
+    public static void queueControllerDataDirty(MinecraftServer server, MachineControllerBlockEntity controller) {
+        var current = session;
+        if (current == null || current.server != server)
+            throw new IllegalStateException("No controller data save queue for this server session");
+        if (!server.isCallingFromMinecraftThread() || controller.getWorld() == null || controller.getWorld().getMinecraftServer() != server)
+            throw new IllegalStateException("Controller data save queue requires its exact server owner");
+        current.dirtyControllers.add(controller);
+    }
+
+    private static void markTickControllerDataDirty(Session current) {
+        if (session != current || !current.server.isCallingFromMinecraftThread())
+            throw new IllegalStateException("Controller data save batch requires its exact server owner");
+        var batch = current.dirtyControllers;
+        current.dirtyControllers = new ObjectArrayList<>();
+        // Comparator callbacks may enqueue another tile. They must not append to this frozen pass.
+        for (var controller : batch) {
+            var world = controller.getWorld();
+            if (world != null && world.getMinecraftServer() == current.server) controller.markControllerDataDirty(true);
+        }
+    }
+
     @SubscribeEvent
     @SuppressWarnings("resource") // FML serverStopped owns closure of this session-wide scheduler.
     public static void onServerTick(TickEvent.ServerTickEvent event) {
@@ -96,7 +137,13 @@ public final class ServerTaskSchedulers {
                 current.scheduler.tick(current::prepareNetwork);
             } finally {
                 current.tickOpen = false;
-                network.endTick();
+                try {
+                    network.endTick();
+                } finally {
+                    // Native autosave ran before this END event and may have cleared chunk dirty.
+                    // The scheduler has physically joined this tick's accepted workers before return.
+                    markTickControllerDataDirty(current);
+                }
             }
         }
     }
@@ -109,6 +156,7 @@ public final class ServerTaskSchedulers {
         private long currentTick;
         private boolean tickOpen;
         private boolean dataCentersSynced;
+        private ObjectArrayList<MachineControllerBlockEntity> dirtyControllers = new ObjectArrayList<>();
 
         @SuppressWarnings("resource") // The FML network service owns this borrowed session runtime.
         private Session(MinecraftServer server, SchedulerConfig.Settings settings) {

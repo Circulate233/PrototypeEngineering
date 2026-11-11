@@ -274,6 +274,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         }
         updated = true;
         lastTick = now;
+        ServerTaskSchedulers.queueControllerDataDirty(Objects.requireNonNull(world.getMinecraftServer()), this);
         var machine = machine();
         if (controller == null || machine != null && Objects.requireNonNull(machine.lifecycle()).retired()) {
             if (!queuedLoad) {
@@ -290,8 +291,14 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         if (structures != null && machine != null && !Objects.requireNonNull(machine.lifecycle()).retired()) {
             structures.enqueueTick(now, observe);
         } else scheduler().runAtBoundary(observe);
-        // Components may mutate on scheduler workers; a server-side save mark covers their next pass.
-        markDirty();
+        // The queued native save mark follows this tick's actual scheduler worker join.
+    }
+
+    /** Native save eligibility only; this neither reads active components nor consumes their sync revisions. */
+    public void markControllerDataDirty(boolean afterTick) {
+        requireServer();
+        if (afterTick && (!wantsLoad || !updated || lastTick != world.getTotalWorldTime())) return;
+        if (isAttached()) markDirty();
     }
 
     /** Actual creation hook used by normal attachment and terminal cleanup. */

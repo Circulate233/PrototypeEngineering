@@ -154,9 +154,14 @@ public class CommonProxy implements IGuiHandler {
     }
 
     public void serverStopping() {
-        ServerRecipeDefinitions.stopping();
-        ServerRecipeManifests.stop();
-        ServerResearch.stop();
+        try {
+            ServerRecipeDefinitions.stopping();
+            ServerRecipeManifests.stop();
+            ServerResearch.stop();
+        } finally {
+            // The next native stopServer save uses chunk dirty, even at the autosave's same world time.
+            ServerTaskSchedulers.markControllerDataDirty();
+        }
     }
 
     public void serverStopped() {
