@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
@@ -45,10 +46,10 @@ import java.util.function.Predicate;
  */
 public final class RecipeScanner {
     private final ControllerMode mode;
-    private final boolean stablePipeline;
+    private boolean stablePipeline;
     private final MachineWorkSlots host;
     private RecipeCatalog catalog;
-    private final RecipeProcessFactory factory;
+    private RecipeProcessFactory factory;
     private final List<RecipeParallelismConstraint> constraints;
     private List<RecipeCandidateIndex> indexes;
     @Nullable
@@ -195,6 +196,20 @@ public final class RecipeScanner {
     public boolean supportsStableFixedInputLowerBounds() {
         // An unvisited scanner must not lend an old true guarantee to another scanner's new pass.
         return stablePipeline && (source == null ? catalog : source.snapshot().catalog()).supportsStableFixedInputLowerBounds();
+    }
+
+    /**
+     * Decorates the owner's exact creation pipeline before binding/scanning. The decorator must
+     * retain cooperative creation and candidate identity. An explicit lower-bound assertion can
+     * retain an existing guarantee, but cannot establish one for an unknown original factory.
+     */
+    public RecipeScanner decorateProcessFactory(UnaryOperator<RecipeProcessFactory> decorator,
+                                                boolean preservesFixedInputLowerBounds) {
+        if (started || source != null || scanning || faulted || activeAttempt != null)
+            throw new IllegalStateException("Decorate the process factory before source binding or scanning");
+        factory = Objects.requireNonNull(Objects.requireNonNull(decorator).apply(factory), "Decorated process factory");
+        stablePipeline &= preservesFixedInputLowerBounds;
+        return this;
     }
 
     /**

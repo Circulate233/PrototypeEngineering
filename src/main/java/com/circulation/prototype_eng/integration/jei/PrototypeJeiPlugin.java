@@ -374,7 +374,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
         var pages = RecipePoolJeiRegistry.INSTANCE;
         var helper = registration.getJeiHelpers().getGuiHelper();
         var descriptions = displays.capture(RecipePoolJeiRegistry.recipesForOwnPages(pools, known));
-        pages.freeze(pools, pool -> new AutoLayoutRecipePage(pool, helper, descriptions), descriptions, known);
+        pages.freeze(pools, pool -> new AutoLayoutRecipePage(pool, helper, descriptions, pages.renderOptions(pool.id())), descriptions, known);
         registrationDescriptions = descriptions;
         for (var page : pages.pages()) registration.addRecipeCategories(page);
         if (!declarationEventPosted && postDeclaration) {

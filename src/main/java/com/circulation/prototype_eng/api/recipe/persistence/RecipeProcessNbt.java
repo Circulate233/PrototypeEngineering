@@ -132,6 +132,12 @@ public final class RecipeProcessNbt {
         return revision;
     }
 
+    /** A startup process decorator may only attach components explicitly supported by this codec. */
+    public boolean supportsComponent(ComponentType<RecipeProcess, ?> type) {
+        var binding = bindings.get(Objects.requireNonNull(type).id());
+        return binding != null && binding.type() == type;
+    }
+
     public NBTTagCompound encode(RecipeProcess process) {
         process.requirePersistenceBoundary();
         if (process.recipe() != recipe) {

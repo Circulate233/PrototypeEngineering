@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
+import com.circulation.prototype_eng.api.recipe.scanning.RecipeParallelismSelection;
 import crafttweaker.annotations.ZenRegister;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
@@ -41,10 +42,17 @@ public final class ZenRecipe {
     @ZenMethod
     public static ZenRecipe withGroups(String id, String revision, int durationTicks, ZenRequirement[] requirements,
                                         String[] groups, int maxConcurrentThreads) {
+        return withSelection(id, revision, durationTicks, requirements, groups, maxConcurrentThreads,
+            new ZenParallelismSelection(RecipeParallelismSelection.NONE));
+    }
+
+    @ZenMethod
+    public static ZenRecipe withSelection(String id, String revision, int durationTicks, ZenRequirement[] requirements,
+                                          String[] groups, int maxConcurrentThreads, ZenParallelismSelection selection) {
         var ids = new ObjectArrayList<ResourceLocation>(groups.length);
         for (var group : groups) ids.add(ZenRecipeSupport.id(group));
         return new ZenRecipe(new MachineRecipe(ZenRecipeSupport.id(id), durationTicks, ZenRecipeSupport.requirements(requirements),
-            ids, maxConcurrentThreads), revision);
+            ids, maxConcurrentThreads, Objects.requireNonNull(selection).value()), revision);
     }
 
     @ZenGetter("id")

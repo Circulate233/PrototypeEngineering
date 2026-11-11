@@ -25,6 +25,8 @@ import org.jetbrains.annotations.Nullable;
 public class RecipePoolJeiRegistry {
     public static final RecipePoolJeiRegistry INSTANCE = new RecipePoolJeiRegistry();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePoolJeiPage> custom = new Object2ObjectLinkedOpenHashMap<>();
+    private final Object2ObjectLinkedOpenHashMap<ResourceLocation, JeiRenderOptions> options = new Object2ObjectLinkedOpenHashMap<>();
+    private final Object2ObjectLinkedOpenHashMap<ResourceLocation, JeiRenderOptions> clientOptions = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ObjectArrayList<ItemStack>> catalysts = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePoolJeiPage> clientCustom = new Object2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectLinkedOpenHashMap<ResourceLocation, ObjectArrayList<ItemStack>> clientCatalysts = new Object2ObjectLinkedOpenHashMap<>();
@@ -42,6 +44,7 @@ public class RecipePoolJeiRegistry {
         if (binding) throw new IllegalStateException("JEI pages are currently binding");
         if (!started) {
             clientCustom.putAll(custom);
+            clientOptions.putAll(options);
             for (var entry : catalysts.object2ObjectEntrySet()) {
                 clientCatalysts.put(entry.getKey(), new ObjectArrayList<>(entry.getValue()));
             }
@@ -51,6 +54,8 @@ public class RecipePoolJeiRegistry {
         registeredPools = null;
         externalPages = null;
         custom.clear();
+        options.clear();
+        options.putAll(clientOptions);
         custom.putAll(clientCustom);
         catalysts.clear();
         for (var entry : clientCatalysts.object2ObjectEntrySet()) {
@@ -71,6 +76,17 @@ public class RecipePoolJeiRegistry {
         if (custom.putIfAbsent(poolId, page) != null) {
             throw new IllegalArgumentException("Duplicate JEI page binding: " + poolId);
         }
+    }
+
+    /** Display parameters belong to this category generation, independently of server pool data. */
+    public void renderOptions(ResourceLocation poolId, JeiRenderOptions settings) {
+        requireRegistration();
+        if (options.putIfAbsent(Objects.requireNonNull(poolId), Objects.requireNonNull(settings)) != null)
+            throw new IllegalArgumentException("Duplicate JEI render options: " + poolId);
+    }
+
+    public JeiRenderOptions renderOptions(ResourceLocation poolId) {
+        return options.getOrDefault(Objects.requireNonNull(poolId), JeiRenderOptions.defaults());
     }
 
     /**
@@ -115,6 +131,9 @@ public class RecipePoolJeiRegistry {
                 if (!known.containsKey(id)) {
                     throw new IllegalArgumentException("Custom JEI page has unknown recipe pool: " + id);
                 }
+            }
+            for (var id : options.keySet()) {
+                if (!known.containsKey(id)) throw new IllegalArgumentException("JEI render options have unknown pool: " + id);
             }
             for (var id : catalysts.keySet()) {
                 if (!known.containsKey(id)) {

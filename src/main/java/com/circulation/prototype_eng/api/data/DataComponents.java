@@ -14,6 +14,7 @@ import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 /** Explicit ordinary data components; declarations opt in and bind the matching codec. */
 public final class DataComponents {
@@ -52,11 +53,19 @@ public final class DataComponents {
 
     /** Adds data to fresh candidates without losing the delegate's cooperative creation cursor. */
     public static RecipeProcessFactory withProcessData(RecipeProcessFactory delegate) {
+        return withProcessData(delegate, _ -> true);
+    }
+
+    /** Explicit codec support avoids adding an unsupported component to addon candidates. */
+    public static RecipeProcessFactory withProcessData(RecipeProcessFactory delegate,
+                                                       Predicate<MachineRecipe> supported) {
         Objects.requireNonNull(delegate);
+        Objects.requireNonNull(supported);
         return new RecipeProcessFactory() {
             @Override
             public RecipeProcess create(MachineInstance machine, MachineRecipe recipe, long seed, ProbabilityTuning tuning) {
-                return attach(delegate.create(machine, recipe, seed, tuning));
+                var process = delegate.create(machine, recipe, seed, tuning);
+                return supported.test(recipe) ? attach(process) : process;
             }
 
             @Override
@@ -76,7 +85,8 @@ public final class DataComponents {
 
                     @Override
                     public RecipeProcess result() {
-                        return attach(original.result());
+                        var process = original.result();
+                        return supported.test(recipe) ? attach(process) : process;
                     }
                 };
             }

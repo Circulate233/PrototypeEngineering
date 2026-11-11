@@ -140,6 +140,7 @@ public final class ZenRecipeBindings {
         }
         // Validate all version/identity conflicts before registering a callback or mutating names.
         var prepared = resolver.prepare(resolver.snapshot(), codecs);
+        for (var pool : declarations) pool.declareClient();
         var frozenPools = ObjectLists.unmodifiable(declarations);
         var frozenCurrent = ObjectLists.unmodifiable(current);
         var frozenHistory = ObjectLists.unmodifiable(history);

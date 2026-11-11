@@ -73,6 +73,10 @@ public class AutoLayoutRecipePage implements RecipePoolJeiPage {
         this(pool, guiHelper, displays::describe, JeiRenderOptions.defaults(), minecraftFont());
     }
 
+    public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays.Snapshot displays, JeiRenderOptions options) {
+        this(pool, guiHelper, displays::describe, options, minecraftFont());
+    }
+
     public AutoLayoutRecipePage(RecipePool pool, IGuiHelper guiHelper, RecipeJeiDisplays.Snapshot displays, JeiRenderOptions options,
                                 RecipeInformationLayout.Font font) {
         this(pool, guiHelper, displays::describe, options, font);
