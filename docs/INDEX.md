@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 JEI候选实机反馈：嵌入侧栏使用最终原生槽坐标，复用真实ingredient、不再每帧清空重建，pick暂空不永久缓存。左键改当前cell、右键整类替换清旧local，操作提示接原生物品tooltip；R/U/书签和只读BOM浏览保留。HEI InputHandler接收已取消Forge事件且先检索ingredient，故新增client-only Pseudo入口Mixin先交现有准确draw/owner/token及release桥。Spotless/build -x test、本机6Java＋配置＋两语言全级零和MCP build通过；未新增/运行测试。入口[JEI](jei.md)，证据jei-material-input/，需用户完整重启复验新Mixin；未启动游戏/推送，原背景与暂存保留。
+
 - 2026-11-12 跨配方统一批次：按Σ原时长×最终并行/Σ并行向上取整，START改数量后首TICK前重算，封闭整机宿主成员不补入，共同速度/进度/END；TICK输入和输出均相同才合批，不同组保留到下一批。固定IO、FE及PN数值原总量沿共同时间精确分摊，尾差随批次UUID/时长/并行/路径保存，阻塞TICK/END共同补偿。原planner/lanes和owner门不变，GUI只改真实进度分母。完整Spotless/build1960tests/270suites全零，18Java本机MCP全级零及MCP build通过。入口[跨配方批次](cross-recipe-batches.md)，证据cross-recipe-batch/；新增三项真实行为回归，无静态镜像测试。未开新子代理/启动游戏/推送，原背景/暂存保留。
 
 - 2026-11-11 默认GUI截图反馈：背景裁去原图第二页空线框；标题只显示一次，删除正文/标题/预留图案的重复tooltip，线程行只补全配方ID、有效并行及截断原因。结构仅显示formed的未成型/已成型，不读取临时processing gate显示检查中；执行模式/四策略不进入玩家正文或tooltip。同步删除10个无用枚举及中英各10键，保留作者调度配置。Spotless/build -x test及MCP build通过，两Java＋两语言本机MCP全级零。入口[机器GUI](machine-gui.md)，证据controller-gui-cleanup/；未新增或运行测试、未启动游戏/推送，原背景/暂存保留。
@@ -80,7 +82,7 @@
 
 - 材料仓手持水桶/空桶时复验AE原生左右键存入、左键装填提示的分行、深灰文案/灰色资源与内嵌图标；原Shift整批交互保留，但不再使用自有拼接说明。空光标时原资源名称、数量/容量提示保持。用户自行重启客户端观察，未以源码检查代替渲染验收。
 
-- 先由用户重启客户端从样板终端对示例boundary_structure_controller按R进入结构页，复验完整169输入/任一片层仍169、当前玻璃候选替换及“原名-结构”控制器×1输出并实际编码；步骤见run/visual-examples/README.md。当前JEI候选修改整种材料，构造器单格/整种设置独立，不用工具NBT解释结构页导入结果。忽略目录示例已编译安装，但IDE拒绝分析该目录，不能以主源码全级零冒充示例IDE结果。
+- 先由用户完整重启客户端从样板终端对示例boundary_structure_controller按R进入结构页，复验展开左栏立即显示材料、左键玻璃候选只改单格(108＋1)、右键整类(109)、原生tooltip的双语左右键说明且不误跳配方。再验完整169输入/任一片层仍169及“原名-结构”控制器×1输出并实际编码；步骤见run/visual-examples/README.md。JEI与构造器各自选择独立，不用工具NBT解释结构页导入结果。忽略目录示例已编译安装，但IDE拒绝分析该目录，不能以主源码全级零冒充示例IDE结果。
 
 - 新实机反馈优先：由用户重启客户端，先复验构造器三种绑定/打开行为、右侧双击整种与左侧单格替换、完整材料网格/滚动、30秒到期及Shift＋滚轮片层循环；再核对层预览零层控制器/线框、原生图标/tooltip、最近命中和真实搭建用料。截图紫黑物品本批仅静态审查当前pick/model链，不宣称新增视觉修复；仓室掉落/拾取/重新放置及退出世界也待实机。此前新增Mixin方法不能仅F3+T应用。
 

@@ -1,5 +1,13 @@
 # JEI 配方池页面
 
+## 2026-11-12 结构候选点击与空槽
+
+结构预览左侧候选使用原生ingredient槽，但鼠标左键优先只替换当前选中的cell，右键替换该StructureDisplay对应的全部可替换同类并清理旧单格覆盖。当前材料也支持右键统一整类。原生物品tooltip附双语操作提示；R/U、书签及非左右鼠标绑定仍由HEI处理，固定BOM只读槽保留原生浏览行为。
+
+HEI的InputHandler会以HIGHEST/receiveCanceled接收Forge鼠标事件，并先于wrapper点击检索ingredient；单纯取消Forge事件不能保证候选操作先执行。client-only、Pseudo的HeiPreviewInputMixin在其真实handleMouseEvent入口优先交给已有PreviewEmbeddedInput，按当前实际绘制/owner/token及捕获release确认输入；不对其它页面或区域消费，原drag/wheel/关闭身份门保留。
+
+嵌入式候选侧栏直接使用展开后的槽位坐标，避免滑入期间因“未完全处于clip内”而只画白框不发布材料。wrapper按实际物品/位置变化更新并复用原生GuiIngredient，不每帧清空重建；隐藏、滚动或模型/选择改变仍及时撤销旧槽。原生pick首次返回空图标不缓存为永久空值，后续帧继续取实际材料。不自行启动游戏，构建和源码检查不代替原生鼠标/GL复验；新增Mixin须完整重启，F3+T不足以应用。
+
 ## 2026-11-11 结构页原生材料槽与转移就绪
 
 结构页的候选和固定用料注册到该layout实际IGuiItemStackGroup，由HEI绘制物品、数量、高亮和tooltip，书签/配方/用途键可识别实际槽位；隐藏、滚动或选择改变时撤销旧槽。固定用料与构造器共用5列横向逐行网格和独立滚动条，保持完整用料及单格选项拆分，不因点中某方块改成1件清单。

@@ -75,6 +75,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private float collapseNow, sidebarNow = 1;
     private long frameTime = -1;
     private String pressed;
+    private int pressedButton = -1;
     private int mouseX, mouseY;
     private Rect currentClip;
     public StructurePreviewPanel(StructurePreviewView view) {
@@ -354,7 +355,9 @@ public final class StructurePreviewPanel implements AutoCloseable {
         alternativesScroll.identity(view.picked());
         alternativesCount = 0;
         clipped(9, 31, 18, 181, () -> {
-            float x = 9 - 18 * Math.max(collapseNow, sidebarNow);
+            // Native HEI ingredients draw after this clip has closed. Publish their final geometry
+            // immediately instead of withholding every item until the slide animation ends.
+            float x = 9 - 18 * (ingredientSlots == null ? Math.max(collapseNow, sidebarNow) : collapsed || selected == null ? 1 : 0);
             sprite("left_replace_preview", x, 31, 18, 181);
             if (selected == null) {
                 slot("none", ItemStack.EMPTY, x, 31, false, List.of(PreviewUiText.NoSelection.getLocal(), PreviewUiText.SelectHint.getLocal()), null);
@@ -362,7 +365,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
             }
             int choice = representative(selected);
             var stack = optionStack(selected, choice);
-            slot("selected", stack, x, 31, false, List.of(), null);
+            if (ingredientSlots != null && selected.options().size() > 1) choiceSlot("selected", stack, x, 31, selected, choice);
+            else slot("selected", stack, x, 31, false, List.of(), null);
             var candidates = new IntArrayList();
             for (int index = 0; index < selected.options().size(); index++)
                 if (index != choice && !optionStack(selected, index).isEmpty()) candidates.add(index);
@@ -371,13 +375,27 @@ public final class StructurePreviewPanel implements AutoCloseable {
             for (int index = alternativesScroll.first(candidates.size(), 9); index < candidates.size() && row <= 9; index++) {
                 int option = candidates.getInt(index);
                 var alternative = optionStack(selected, option);
-                slot("option" + option, alternative, x, 31 + row++ * 18, false, List.of(), () -> {
-                        if (view.alternative(drawnToken, selected, option))
-                            alternativeSelected.accept(selected, option);
-                    });
+                choiceSlot("option" + option, alternative, x, 31 + row++ * 18, selected, option);
             }
         });
         if (view.materialsOpen && view.model() != null) materialGrid(completeMaterials(), null, null);
+    }
+
+    private void choiceSlot(String id, ItemStack stack, float x, float y, StructureDisplay display, int option) {
+        if (ingredientSlots == null) {
+            slot(id, stack, x, y, false, List.of(), () -> {
+                if (view.alternative(drawnToken, display, option)) alternativeSelected.accept(display, option);
+            });
+            return;
+        }
+        var cell = view.picked();
+        slot(id, stack, x, y, false, List.of(PreviewUiText.ChooseCell.getLocal(), PreviewUiText.ChooseAll.getLocal()), () -> {
+            if (cell != null && view.alternativeCell(drawnToken, cell, option)) cellAlternativeSelected.accept(cell, option);
+        });
+        var action = actions.removeLast();
+        actions.add(new Action(action.id, action.bounds, action.clip, action.tooltip, action.run, () -> {
+            if (view.alternative(drawnToken, display, option)) alternativeSelected.accept(display, option);
+        }));
     }
 
     private void constructionMaterials() {
@@ -506,7 +524,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         area(id, x, y, 18, 18, tooltip, run);
         if (!stack.isEmpty() && fullyVisible) {
             displayInventory.setItemDirect(index, stack);
-            itemSlots.add(new ItemSlot(stack, nativeSlot, bounds, currentClip));
+            itemSlots.add(new ItemSlot(stack, nativeSlot, bounds, currentClip, tooltip));
             if (ingredientSlots != null) ingredientSlots.render(index, stack, (int) x, (int) y);
         }
     }
@@ -518,6 +536,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public boolean press(int x, int y, int button) {
         if (!inputCurrent()) return false;
+        if (ingredientSlots != null && button != 0 && button != 1 && !itemAt(x, y).isEmpty()) return false;
         dismissMaterialsOutside(x, y);
         for (int i = actions.size() - 1; i >= 0; i--) {
             var action = actions.get(i);
@@ -529,8 +548,11 @@ public final class StructurePreviewPanel implements AutoCloseable {
             } else if (button == 0 && action.id.equals("materialsScroll")) {
                 materialsDragging = true;
                 updateMaterialsScroll(y);
-            } else if (button == 0 && action.run != null) pressed = action.id;
-            if (button == 0 && (layerDragging || materialsDragging || action.run != null))
+            } else if ((button == 0 && action.run != null) || (button == 1 && action.rightRun != null)) {
+                pressed = action.id;
+                pressedButton = button;
+            }
+            if ((button == 0 && (layerDragging || materialsDragging || action.run != null)) || button == 1 && action.rightRun != null)
                 Minecraft.getMinecraft().getSoundHandler().playSound(PositionedSoundRecord.getMasterRecord(SoundEvents.UI_BUTTON_CLICK, 1));
             return true;
         }
@@ -583,6 +605,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
     public boolean release(int x, int y, int button) {
         if (!inputCurrent()) {
             pressed = null;
+            pressedButton = -1;
             layerDragging = false;
             materialsDragging = false;
             return false;
@@ -597,12 +620,15 @@ public final class StructurePreviewPanel implements AutoCloseable {
             updateMaterialsScroll(y);
             return true;
         }
-        if (button == 0 && pressed != null) {
+        if (button == pressedButton && pressed != null) {
             String previous = pressed;
             pressed = null;
+            pressedButton = -1;
             for (var action : actions)
-                if (previous.equals(action.id) && action.contains(x, y) && action.run != null) {
-                    action.run.run();
+                if (previous.equals(action.id) && action.contains(x, y)) {
+                    var run = button == 1 ? action.rightRun : action.run;
+                    if (run == null) break;
+                    run.run();
                     invalidateSlots();
                     break;
                 }
@@ -648,6 +674,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
         return List.of();
     }
 
+    public List<String> ingredientTooltip(int index) {
+        return inputCurrent() && index >= 0 && index < itemSlots.size() ? itemSlots.get(index).tooltip : List.of();
+    }
+
     public boolean renderItemTooltip(int screenX, int screenY, int localX, int localY) {
         if (ingredientSlots != null) return false;
         var stack = itemAt(localX, localY);
@@ -680,7 +710,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         return slot != null && displaySlots.contains(slot);
     }
 
-    private record ItemSlot(ItemStack stack, Slot slot, Rect bounds, @Nullable Rect clip) { }
+    private record ItemSlot(ItemStack stack, Slot slot, Rect bounds, @Nullable Rect clip, List<String> tooltip) { }
 
     @Override
     public void close() {
@@ -697,7 +727,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
         }
     }
 
-    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run) {
+    private record Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run, @Nullable Runnable rightRun) {
+        private Action(String id, Rect bounds, @Nullable Rect clip, List<String> tooltip, @Nullable Runnable run) {
+            this(id, bounds, clip, tooltip, run, null);
+        }
         boolean contains(int x, int y) {
             return bounds.contains(x, y) && (clip == null || clip.contains(x, y));
         }

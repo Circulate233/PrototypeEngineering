@@ -9,6 +9,8 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import mcp.MethodsReturnNonnullByDefault;
 import mezz.jei.api.ingredients.IIngredients;
 import mezz.jei.api.ingredients.VanillaTypes;
@@ -35,6 +37,8 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     private StructurePreviewPanel panel;
     private IRecipeLayout layout;
     private Object transferToken, transferMaterials;
+    private final Int2ObjectOpenHashMap<IngredientSlot> ingredientSlots = new Int2ObjectOpenHashMap<>();
+    private final IntOpenHashSet visibleIngredients = new IntOpenHashSet();
 
     public StructurePreviewJeiRecipe(MachineType machine, List<ItemStack> controllers) {
         this.machine = Objects.requireNonNull(machine);
@@ -51,16 +55,20 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     public void drawInfo(Minecraft minecraft, int width, int height, int mouseX, int mouseY) {
         if (view == null || view.previews().closed())
             view = new StructurePreviewView(StructurePreviews.client(), machine.structureId(), new StructurePreviewSettings(BlockOrientation.NORTH_UP), machine);
-        if (layout != null) layout.getItemStacks().getGuiIngredients().clear();
+        visibleIngredients.clear();
         if (panel == null || panel.closed()) {
             panel = new StructurePreviewPanel(view);
-            if (layout != null) panel.ingredientSlots((index, stack, x, y) -> {
-                var slots = layout.getItemStacks();
-                slots.init(index, true, x, y);
-                slots.set(index, stack);
-            }, () -> layout.getItemStacks().getGuiIngredients().clear());
+            if (layout != null) panel.ingredientSlots(this::showIngredient, this::clearIngredients);
         }
         panel.draw(StructurePreviewJeiCategory.WIDTH, StructurePreviewJeiCategory.HEIGHT, mouseX, mouseY, minecraft.getRenderPartialTicks(), true);
+        var previous = ingredientSlots.keySet().iterator();
+        while (previous.hasNext()) {
+            int index = previous.nextInt();
+            if (!visibleIngredients.contains(index)) {
+                if (layout != null) layout.getItemStacks().getGuiIngredients().remove(index);
+                previous.remove();
+            }
+        }
         // HEI caches its first transfer error before the async preview has been drawn.
         // Refresh that native button when either the selected generation or its ready materials change.
         var materials = panel.scene().materials();
@@ -71,6 +79,26 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
             nativeLayout.getRecipeTransferButton().init(minecraft.player.openContainer, minecraft.player);
         }
     }
+
+    private void showIngredient(int index, ItemStack stack, int x, int y) {
+        var slots = Objects.requireNonNull(layout).getItemStacks();
+        visibleIngredients.add(index);
+        var previous = ingredientSlots.get(index);
+        boolean moved = previous == null || previous.x != x || previous.y != y || !slots.getGuiIngredients().containsKey(index);
+        if (moved) slots.init(index, true, x, y);
+        if (moved || !ItemStack.areItemStacksEqual(previous.stack, stack)) {
+            slots.set(index, stack);
+            ingredientSlots.put(index, new IngredientSlot(stack.copy(), x, y));
+        }
+    }
+
+    private void clearIngredients() {
+        ingredientSlots.clear();
+        visibleIngredients.clear();
+        if (layout != null) layout.getItemStacks().getGuiIngredients().clear();
+    }
+
+    private record IngredientSlot(ItemStack stack, int x, int y) { }
 
     @Override
     public List<String> getTooltipStrings(int x, int y) {
@@ -88,12 +116,16 @@ public final class StructurePreviewJeiRecipe implements IRecipeWrapper, AutoClos
     public void retirePanel() {
         if (panel != null) panel.close();
         panel = null;
+        clearIngredients();
         transferToken = transferMaterials = null;
     }
 
     public void bindLayout(IRecipeLayout next) {
         retirePanel();
         layout = Objects.requireNonNull(next);
+        layout.getItemStacks().addTooltipCallback((index, _, _, tooltip) -> {
+            if (panel != null) tooltip.addAll(panel.ingredientTooltip(index));
+        });
     }
 
     @Nullable Pattern patternRecipe() {

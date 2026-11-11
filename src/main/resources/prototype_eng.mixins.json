@@ -28,6 +28,7 @@
     "client.GuiContainerPreviewMixin",
     "client.GuiScreenPreviewMixin",
     "client.ModRegistryRecipePoolPagesMixin",
+    "client.HeiPreviewInputMixin",
     "client.CtmHatchBloomMetadataMixin"
   ],
   "injectors": {

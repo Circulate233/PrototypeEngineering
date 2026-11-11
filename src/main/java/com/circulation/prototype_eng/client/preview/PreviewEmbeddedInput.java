@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.client.preview;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.gui.ScaledResolution;
 import net.minecraftforge.client.event.GuiScreenEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -55,53 +54,45 @@ public final class PreviewEmbeddedInput {
             if (!entry.panel.ownerCurrent() || System.currentTimeMillis() - entry.touched > 250) entry.panel.close();
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public void mouse(GuiScreenEvent.MouseInputEvent.Pre event) {
+    /** Called at HEI's actual input entry, which runs even for already-cancelled Forge events. */
+    public boolean mouse(GuiScreen screen, int x, int y) {
         int eventButton = Mouse.getEventButton();
         boolean ownedRelease = dragging.consumeRelease(eventButton, Mouse.getEventButtonState());
-        if (PreviewScreenTransitions.blocked(event.getGui())) {
+        if (PreviewScreenTransitions.blocked(screen)) {
             if (ownedRelease) dragging.clear();
-            event.setCanceled(true);
-            return;
+            return true;
         }
-        var mc = Minecraft.getMinecraft();
-        var scaled = new ScaledResolution(mc);
-        int x = Mouse.getEventX() * scaled.getScaledWidth() / mc.displayWidth;
-        int y = scaled.getScaledHeight() - Mouse.getEventY() * scaled.getScaledHeight() / mc.displayHeight - 1;
         if (ownedRelease) {
-            if (dragging.fresh(event.getGui(), System.currentTimeMillis()) && ((StructurePreviewPanel) dragging.panel).inputCurrent()) {
+            if (dragging.fresh(screen, System.currentTimeMillis()) && ((StructurePreviewPanel) dragging.panel).inputCurrent()) {
                 var panel = (StructurePreviewPanel) dragging.panel;
                 int capturedButton = dragging.button;
                 dragging.release(x, y, (localX, localY) -> panel.release(localX, localY, capturedButton));
             } else dragging.clear();
-            event.setCanceled(true);
-            return;
+            return true;
         }
-        if (dragging.fresh(event.getGui(), System.currentTimeMillis()) && ((StructurePreviewPanel) dragging.panel).inputCurrent()) {
+        if (dragging.fresh(screen, System.currentTimeMillis()) && ((StructurePreviewPanel) dragging.panel).inputCurrent()) {
             var panel = (StructurePreviewPanel) dragging.panel;
             int capturedButton = dragging.button;
             if (eventButton == -1 && Mouse.isButtonDown(capturedButton) && dragging.move(x, y, panel::drag)) {
-                event.setCanceled(true);
-                return;
+                return true;
             }
         }
         for (int index = active.size() - 1; index >= 0; index--) {
             var entry = active.get(index);
-            if (!fresh(entry) || entry.host != event.getGui()) continue;
+            if (!fresh(entry) || entry.host != screen) continue;
             int localX = x - entry.x, localY = y - entry.y;
             int wheel = Mouse.getEventDWheel();
             if (wheel != 0 && entry.panel.wheel(localX, localY, wheel)) {
-                event.setCanceled(true);
-                return;
+                return true;
             }
             if (eventButton >= 0 && Mouse.getEventButtonState() && entry.panel.press(localX, localY, eventButton)) {
                 // Preserve legitimate captured drags beyond the viewport; unrelated outside clicks still pass through.
                 if (entry.panel.scene().viewport().contains(x, y))
                     dragging.capture(entry.host, entry.panel, entry.x, entry.y, eventButton, entry.touched);
-                event.setCanceled(true);
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

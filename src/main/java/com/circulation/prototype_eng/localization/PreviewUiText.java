@@ -10,6 +10,7 @@ public enum PreviewUiText implements LocalizationEnum {
     Reset("tooltip.reset_view"), Formed("tooltip.structural_forming"), Collapse("tooltip.component_switch"), Project("tooltip.place_projection"),
     Materials("tooltip.material_panel"), Wireframe("tooltip.wireframe"), LayerPreview("tooltip.layer_preview"), SliceY("tooltip.slice_y"),
     NoSelection("no_selection.title"), SelectHint("no_selection.hint"),
+    ChooseCell("tooltip.choose_cell"), ChooseAll("tooltip.choose_all"),
     Unknown("entry_status.unknown");
 
     private final String translationKey;

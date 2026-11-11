@@ -466,7 +466,8 @@ public final class StructurePreviewScene implements AutoCloseable {
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var state = PreviewBlockStates.resolve(display.options().get(option), rotation);
         var result = state == null ? ItemStack.EMPTY : pickWorld.pick(state, position, mc.player, display.tileNbt());
-        itemChoices.put(key, result);
+        // Some native pick hooks become ready later; an empty first observation is not a stable icon.
+        if (!result.isEmpty()) itemChoices.put(key, result);
         return result.copy();
     }
 
