@@ -173,7 +173,7 @@ public final class StructurePattern {
                         var entry = iterator.next();
                         var position = add(origin, entry.getKey());
                         if (position.equals(controller)) continue;
-                        predicate = entry.getValue().beginCollectReads(plan, position);
+                        predicate = entry.getValue().beginCollectReads(plan, position, controller);
                     }
                     if (!predicate.advance(work)) return false;
                     predicate = null;
@@ -217,7 +217,7 @@ public final class StructurePattern {
                         var entry = iterator.next();
                         var position = add(origin, entry.getKey());
                         if (position.equals(controller)) continue;
-                        predicate = entry.getValue().beginMatch(snapshot, position);
+                        predicate = entry.getValue().beginMatch(snapshot, position, controller);
                     }
                     if (!predicate.advance(work)) return false;
                     var outcome = Objects.requireNonNull(predicate.result());

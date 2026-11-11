@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.structure;
 
+import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceLinkedOpenHashSet;
@@ -89,6 +90,95 @@ public final class StructurePredicates {
      */
     public static StructurePredicate at(BlockPos offset, StructurePredicate predicate) {
         return new Offset(offset, predicate);
+    }
+
+    /**
+     * Custom detached validator. The immutable read declarations are potential reads; a callback
+     * may short-circuit optional positions. Queries and callbacks obey the same purity and
+     * concurrent-use contract as {@link #test}. No callback runs while freezing or previewing.
+     */
+    public static StructurePredicate custom(Collection<StructureQuery<?>> queries, Collection<BlockPos> offsets,
+                                             Collection<BlockPos> controllerOffsets, Predicate<StructureFacts> validator) {
+        return new Custom(List.copyOf(queries), positions(offsets), positions(controllerOffsets),
+            StructureTransform.of(BlockOrientation.NORTH_UP), Objects.requireNonNull(validator));
+    }
+
+    private static List<BlockPos> positions(Collection<BlockPos> source) {
+        var positions = new ObjectArrayList<BlockPos>(source.size());
+        for (var position : source) positions.add(Objects.requireNonNull(position).toImmutable());
+        return List.copyOf(positions);
+    }
+
+    private record Custom(List<StructureQuery<?>> queries, List<BlockPos> offsets, List<BlockPos> controllerOffsets,
+                          StructureTransform rotation, Predicate<StructureFacts> validator) implements StructurePredicate.ControllerAware {
+        @Override
+        public boolean planReusable() { return true; }
+
+        @Override
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            beginCollectReads(plan, position, controller).run();
+        }
+
+        @Override
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            Objects.requireNonNull(plan);
+            return declarations(plan, Objects.requireNonNull(position).toImmutable(), Objects.requireNonNull(controller).toImmutable());
+        }
+
+        private StructureOperation<Void> declarations(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            return new StructureOperation<>() {
+                private int offsetIndex, queryIndex;
+                private boolean controllers, baseDeclared, areaDeclared;
+
+                @Override
+                public boolean advance(RecipeWorkBudget work) {
+                    if (complete()) return true;
+                    if (!baseDeclared) {
+                        if (!work.take()) return false;
+                        plan.area(StructureBounds.at(position));
+                        baseDeclared = true;
+                    }
+                    while (true) {
+                        var locations = controllers ? controllerOffsets : offsets;
+                        if (offsetIndex == locations.size()) {
+                            if (controllers) break;
+                            controllers = true;
+                            offsetIndex = 0;
+                            continue;
+                        }
+                        var origin = controllers ? controller : position;
+                        var actual = StructurePattern.add(origin, rotation.apply(locations.get(offsetIndex)));
+                        if (!areaDeclared) {
+                            if (!work.take()) return false;
+                            plan.area(StructureBounds.at(actual));
+                            areaDeclared = true;
+                        }
+                        while (queryIndex < queries.size()) {
+                            if (!work.take()) return false;
+                            plan.read(actual, queries.get(queryIndex++));
+                        }
+                        queryIndex = 0;
+                        areaDeclared = false;
+                        offsetIndex++;
+                    }
+                    finish(null);
+                    return true;
+                }
+            };
+        }
+
+        @Override
+        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+            var facts = new StructureFacts(snapshot, position, controller, rotation);
+            return facts.available() && validator.test(facts);
+        }
+
+        @Override
+        public StructurePredicate transform(StructureTransform transform) {
+            var composed = StructureTransform.of(BlockOrientation.get(transform.apply(rotation.apply(EnumFacing.NORTH)),
+                transform.apply(rotation.apply(EnumFacing.UP))));
+            return new Custom(queries, offsets, controllerOffsets, composed, validator);
+        }
     }
 
     public static StructurePredicate notAir() {
@@ -208,21 +298,21 @@ public final class StructurePredicates {
         public @Nullable StructureDisplay display() { return presentation.get(this); }
     }
 
-    private record Displayed(StructurePredicate predicate, StructureDisplay display) implements StructurePredicate {
+    private record Displayed(StructurePredicate predicate, StructureDisplay display) implements StructurePredicate.ControllerAware {
         @Override
         public boolean planReusable() { return predicate.planReusable(); }
 
         @Override
-        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) { predicate.collectReads(plan, position); }
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) { predicate.collectReads(plan, position, controller); }
 
         @Override
-        public boolean matches(StructureSnapshot snapshot, BlockPos position) { return predicate.matches(snapshot, position); }
+        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) { return predicate.matches(snapshot, position, controller); }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) { return predicate.beginCollectReads(plan, position); }
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) { return predicate.beginCollectReads(plan, position, controller); }
 
         @Override
-        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) { return predicate.beginMatch(snapshot, position); }
+        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) { return predicate.beginMatch(snapshot, position, controller); }
 
         @Override
         public StructurePredicate transform(StructureTransform rotation) { return new Displayed(predicate.transform(rotation), display); }
@@ -243,7 +333,7 @@ public final class StructurePredicates {
     }
 
     private record Composite(List<StructurePredicate> children, boolean all,
-                             boolean planReusable, StructurePredicateDisplays.Cache presentation) implements StructurePredicate {
+                             boolean planReusable, StructurePredicateDisplays.Cache presentation) implements StructurePredicate.ControllerAware {
         private Composite(List<StructurePredicate> children, boolean all, boolean planReusable) {
             this(children, all, planReusable, new StructurePredicateDisplays.Cache());
         }
@@ -251,8 +341,8 @@ public final class StructurePredicates {
         public @Nullable StructureDisplay display() { return presentation.get(this); }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
-            return visit(child -> child.beginCollectReads(plan, position));
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            return visit(child -> child.beginCollectReads(plan, position, controller));
         }
 
         private StructureOperation<Void> visit(Function<StructurePredicate, StructureOperation<Void>> factory) {
@@ -310,7 +400,7 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
             return new StructureOperation<>() {
                 private int index;
                 private boolean unavailable;
@@ -323,7 +413,7 @@ public final class StructurePredicates {
                     while (index < children.size()) {
                         if (current == null) {
                             if (!work.take()) return false;
-                            current = children.get(index).beginMatch(snapshot, position);
+                            current = children.get(index).beginMatch(snapshot, position, controller);
                         }
                         if (!current.advance(work)) return false;
                         var result = Objects.requireNonNull(current.result());
@@ -342,16 +432,16 @@ public final class StructurePredicates {
         }
 
         @Override
-        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             for (var child : children) {
-                child.collectReads(plan, position);
+                child.collectReads(plan, position, controller);
             }
         }
 
         @Override
-        public boolean matches(StructureSnapshot snapshot, BlockPos position) {
+        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
             for (var child : children) {
-                if (child.matches(snapshot, position) != all) {
+                if (child.matches(snapshot, position, controller) != all) {
                     return !all;
                 }
             }
@@ -372,7 +462,7 @@ public final class StructurePredicates {
     }
 
     private record Offset(BlockPos offset, StructurePredicate predicate,
-                          boolean planReusable) implements StructurePredicate {
+                          boolean planReusable) implements StructurePredicate.ControllerAware {
         @Override
         public @Nullable StructureDisplay display() { return offset.equals(BlockPos.ORIGIN) ? predicate.display() : null; }
 
@@ -386,7 +476,7 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
+        public StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
             return new StructureOperation<>() {
                 @Nullable
                 private StructureOperation<Void> child;
@@ -396,7 +486,7 @@ public final class StructurePredicates {
                     if (complete()) return true;
                     if (child == null) {
                         if (!work.take()) return false;
-                        child = predicate.beginCollectReads(plan, StructurePattern.add(position, offset));
+                        child = predicate.beginCollectReads(plan, StructurePattern.add(position, offset), controller);
                     }
                     if (!child.advance(work)) return false;
                     finish(null);
@@ -406,7 +496,7 @@ public final class StructurePredicates {
         }
 
         @Override
-        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+        public StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
             return new StructureOperation<>() {
                 @Nullable
                 private StructureOperation<StructurePredicateResult> child;
@@ -416,7 +506,7 @@ public final class StructurePredicates {
                     if (complete()) return true;
                     if (child == null) {
                         if (!work.take()) return false;
-                        child = predicate.beginMatch(snapshot, StructurePattern.add(position, offset));
+                        child = predicate.beginMatch(snapshot, StructurePattern.add(position, offset), controller);
                     }
                     if (!child.advance(work)) return false;
                     finish(child.result());
@@ -447,13 +537,13 @@ public final class StructurePredicates {
         }
 
         @Override
-        public void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
-            predicate.collectReads(plan, StructurePattern.add(position, offset));
+        public void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            predicate.collectReads(plan, StructurePattern.add(position, offset), controller);
         }
 
         @Override
-        public boolean matches(StructureSnapshot snapshot, BlockPos position) {
-            return predicate.matches(snapshot, StructurePattern.add(position, offset));
+        public boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+            return predicate.matches(snapshot, StructurePattern.add(position, offset), controller);
         }
 
         @Override

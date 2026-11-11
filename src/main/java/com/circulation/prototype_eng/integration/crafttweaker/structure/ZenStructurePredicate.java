@@ -1,8 +1,10 @@
 package com.circulation.prototype_eng.integration.crafttweaker.structure;
 
+import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.api.structure.StructureQueries;
+import com.circulation.prototype_eng.api.structure.StructureQuery;
 import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.block.IBlockState;
 import crafttweaker.api.data.IData;
@@ -21,6 +23,7 @@ import stanhebben.zenscript.annotations.ZenMethod;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 @ZenRegister
 @ZenClass("mods.prototype_eng.structure.Predicate")
@@ -28,6 +31,76 @@ import java.util.Objects;
 public record ZenStructurePredicate(StructurePredicate value) {
     public ZenStructurePredicate {
         Objects.requireNonNull(value);
+    }
+
+    /** The common base facts are available without additional query declarations. */
+    @ZenMethod
+    public static ZenStructurePredicate custom(ZenStructureValidator validator) {
+        return custom(new String[]{"biomeName", "biomeId", "dimension", "worldTime", "totalWorldTime",
+            "daytime", "raining", "thundering"}, new int[][]{{0, 0, 0}}, new int[0][], validator);
+    }
+
+    /** Positions are local offsets from the structure base or the actual controller, respectively. */
+    @ZenMethod
+    public static ZenStructurePredicate custom(String[] facts, int[][] offsets, int[][] controllerOffsets, ZenStructureValidator validator) {
+        return custom(facts, new ZenStructureQuery[0], offsets, controllerOffsets, validator);
+    }
+
+    /** Arbitrary observational samplers use the same query identity, copying and freshness proof. */
+    @ZenMethod
+    public static ZenStructurePredicate custom(String[] facts, ZenStructureQuery[] customFacts, int[][] offsets,
+                                               int[][] controllerOffsets, ZenStructureValidator validator) {
+        var queries = new ObjectArrayList<StructureQuery<?>>(facts.length);
+        for (var fact : facts) queries.add(query(Objects.requireNonNull(fact)));
+        for (var fact : customFacts) queries.add(Objects.requireNonNull(fact).value());
+        var callback = Objects.requireNonNull(validator);
+        return new ZenStructurePredicate(StructurePredicates.custom(queries, positions(offsets), positions(controllerOffsets),
+            captured -> callback.validate(new ZenStructureFacts(captured))));
+    }
+
+    /** JSON references this ID through the same startup registry, before predicate resolution. */
+    @ZenMethod
+    public void register(String id) {
+        var name = new ResourceLocation(id);
+        var predicate = value;
+        DefinitionRegistrations.structurePredicates(event -> event.registry().register(name, Set.of(), (_, _) -> predicate));
+    }
+
+    private static List<BlockPos> positions(int[][] offsets) {
+        var positions = new ObjectArrayList<BlockPos>(offsets.length);
+        for (var offset : offsets) {
+            if (offset == null || offset.length != 3) throw new IllegalArgumentException("Structure read offset requires exactly x, y, z");
+            positions.add(new BlockPos(offset[0], offset[1], offset[2]));
+        }
+        return positions;
+    }
+
+    private static StructureQuery<?> query(String name) {
+        return switch (name) {
+            case "biomeName" -> StructureQueries.BIOME_NAME;
+            case "biomeId" -> StructureQueries.BIOME;
+            case "biomeTemperature" -> StructureQueries.BIOME_TEMPERATURE;
+            case "biomeRainfall" -> StructureQueries.BIOME_RAINFALL;
+            case "dimension" -> StructureQueries.DIMENSION;
+            case "worldTime" -> StructureQueries.WORLD_TIME;
+            case "totalWorldTime" -> StructureQueries.TOTAL_WORLD_TIME;
+            case "daytime" -> StructureQueries.DAYTIME;
+            case "raining" -> StructureQueries.RAINING;
+            case "thundering" -> StructureQueries.THUNDERING;
+            case "skyVisible" -> StructureQueries.SKY_VISIBLE;
+            case "rainingAt" -> StructureQueries.RAINING_AT;
+            case "light" -> StructureQueries.LIGHT;
+            case "strongPower" -> StructureQueries.STRONG_POWER;
+            case "height" -> StructureQueries.HEIGHT;
+            case "notAir" -> StructureQueries.NON_AIR;
+            case "hasTileEntity" -> StructureQueries.HAS_TILE_ENTITY;
+            case "resourceHatch" -> StructureQueries.RESOURCE_HATCH;
+            case "energyInputHatch" -> StructureQueries.ENERGY_INPUT_HATCH;
+            case "energyOutputHatch" -> StructureQueries.ENERGY_OUTPUT_HATCH;
+            case "blockState" -> StructureQueries.BLOCK_STATE;
+            case "tileNbt" -> StructureQueries.TILE_NBT;
+            default -> throw new IllegalArgumentException("Unknown structure fact: " + name);
+        };
     }
 
     @ZenMethod
@@ -62,6 +135,12 @@ public record ZenStructurePredicate(StructurePredicate value) {
     @ZenMethod
     public static ZenStructurePredicate any(ZenStructurePredicate[] predicates) {
         return new ZenStructurePredicate(StructurePredicates.any(values(predicates)));
+    }
+
+    /** ZenScript reserves "any" as a type token, so scripts use this callable OR alias. */
+    @ZenMethod
+    public static ZenStructurePredicate anyOf(ZenStructurePredicate[] predicates) {
+        return any(predicates);
     }
 
     @ZenMethod

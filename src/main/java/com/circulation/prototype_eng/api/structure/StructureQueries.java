@@ -74,6 +74,7 @@ public final class StructureQueries {
      * World time used for the day cycle, rather than the world's total elapsed ticks.
      */
     public static final StructureQuery<Long> WORLD_TIME = immutable("world_time", (world, _) -> world.getWorldTime());
+    public static final StructureQuery<Long> TOTAL_WORLD_TIME = immutable("total_world_time", (world, _) -> world.getTotalWorldTime());
 
     /**
      * Preserve PM day/night gates using the actual world daytime rule, separately from day-cycle time.
@@ -82,6 +83,16 @@ public final class StructureQueries {
 
     public static final StructureQuery<Boolean> RAINING = immutable("raining", (world, _) -> world.isRaining());
     public static final StructureQuery<Boolean> THUNDERING = immutable("thundering", (world, _) -> world.isThundering());
+
+    /** Original biome display name, distinct from its registry identity. */
+    public static final StructureQuery<String> BIOME_NAME = immutable("biome_name", (world, position) -> world.getBiome(position).getBiomeName());
+    public static final StructureQuery<Float> BIOME_TEMPERATURE = immutable("biome_temperature", (world, position) -> world.getBiome(position).getTemperature(position));
+    public static final StructureQuery<Float> BIOME_RAINFALL = immutable("biome_rainfall", (world, position) -> world.getBiome(position).getRainfall());
+    public static final StructureQuery<Integer> LIGHT = immutable("light", World::getLight);
+    public static final StructureQuery<Integer> STRONG_POWER = immutable("strong_power", World::getStrongPower);
+    public static final StructureQuery<Integer> HEIGHT = immutable("height", (world, position) -> world.getHeight(position).getY());
+    public static final StructureQuery<Boolean> SKY_VISIBLE = immutable("sky_visible", World::canSeeSky);
+    public static final StructureQuery<Boolean> RAINING_AT = immutable("raining_at", World::isRainingAt);
 
     public static final StructureQuery<ResourceLocation> BIOME = immutable("biome", (world, position) -> {
         ResourceLocation name = world.getBiome(position).getRegistryName();

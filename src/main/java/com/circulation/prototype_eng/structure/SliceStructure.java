@@ -185,7 +185,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             pattern.collectReads(plan, sliceOrigin(origin, Math.toIntExact(index)), controller);
         }
         for (StructurePredicate validator : validators) {
-            validator.collectReads(plan, origin);
+            validator.collectReads(plan, origin, controller);
         }
         if (!children.isEmpty()) {
             for (long count = minCount; count <= maxCount; count++) {
@@ -227,7 +227,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
             return null;
         }
         for (StructurePredicate validator : validators) {
-            if (!validator.matches(snapshot, origin)) {
+            if (!validator.matches(snapshot, origin, controller)) {
                 return null;
             }
         }
@@ -343,7 +343,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                 while (validatorIndex < validators.size()) {
                     if (pending == null) {
                         if (!work.take()) return false;
-                        pending = validators.get(validatorIndex).beginCollectReads(plan, origin);
+                        pending = validators.get(validatorIndex).beginCollectReads(plan, origin, controller);
                     }
                     if (!pending.advance(work)) return false;
                     pending = null;
@@ -440,7 +440,7 @@ public class SliceStructure implements MachineStructure, StructurePreviewProvide
                 while (validatorIndex < validators.size()) {
                     if (validator == null) {
                         if (!work.take()) return false;
-                        validator = validators.get(validatorIndex).beginMatch(snapshot, origin);
+                        validator = validators.get(validatorIndex).beginMatch(snapshot, origin, controller);
                     }
                     if (!validator.advance(work)) return false;
                     var status = Objects.requireNonNull(validator.result());

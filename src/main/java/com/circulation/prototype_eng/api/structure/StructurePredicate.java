@@ -14,6 +14,74 @@ public interface StructurePredicate {
 
     boolean matches(StructureSnapshot snapshot, BlockPos position);
 
+    /** Legacy predicates retain their original two-argument callbacks. */
+    default void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        collectReads(plan, position);
+    }
+
+    default boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+        return matches(snapshot, position);
+    }
+
+    /** Legacy budget hooks remain authoritative unless a predicate explicitly opts into context. */
+    default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+        return beginCollectReads(plan, position);
+    }
+
+    default StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+        return beginMatch(snapshot, position);
+    }
+
+    /**
+     * Explicit opt-in to controller-aware callbacks without inspecting overrides. The old facade
+     * uses its position as controller; structure drivers always supply the actual controller.
+     * Implementations with finer budgeting override the three-argument begin hooks.
+     */
+    interface ControllerAware extends StructurePredicate {
+        @Override
+        void collectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller);
+
+        @Override
+        boolean matches(StructureSnapshot snapshot, BlockPos position, BlockPos controller);
+
+        @Override
+        default void collectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            collectReads(plan, position, position);
+        }
+
+        @Override
+        default boolean matches(StructureSnapshot snapshot, BlockPos position) {
+            return matches(snapshot, position, position);
+        }
+
+        @Override
+        default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position) {
+            return beginCollectReads(plan, position, position);
+        }
+
+        @Override
+        default StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position) {
+            return beginMatch(snapshot, position, position);
+        }
+
+        @Override
+        default StructureOperation<Void> beginCollectReads(StructureReadPlan.Builder plan, BlockPos position, BlockPos controller) {
+            return StructureOperation.call(() -> {
+                collectReads(plan, position, controller);
+                return null;
+            });
+        }
+
+        @Override
+        default StructureOperation<StructurePredicateResult> beginMatch(StructureSnapshot snapshot, BlockPos position, BlockPos controller) {
+            return StructureOperation.call(() -> {
+                long unavailable = snapshot.unavailableVisits();
+                if (matches(snapshot, position, controller)) return StructurePredicateResult.MATCHED;
+                return snapshot.unavailableVisits() == unavailable ? StructurePredicateResult.MISMATCH : StructurePredicateResult.UNAVAILABLE;
+            });
+        }
+    }
+
     /**
      * Stable presentation owned by this declaration. Unknown callbacks return null; no matcher is
      * executed to derive a representation. Directional declarations transform this data as well.

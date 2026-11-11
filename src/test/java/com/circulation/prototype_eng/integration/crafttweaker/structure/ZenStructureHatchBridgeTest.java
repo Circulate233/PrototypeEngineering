@@ -14,6 +14,12 @@ import com.circulation.prototype_eng.integration.crafttweaker.hatch.ZenHatchRepo
 import com.circulation.prototype_eng.integration.crafttweaker.hatch.ZenHatchUpdate;
 import com.circulation.prototype_eng.integration.crafttweaker.hatch.ZenResourceHatchSide;
 import com.circulation.prototype_eng.integration.crafttweaker.recipe.ZenResource;
+import crafttweaker.api.data.IData;
+import crafttweaker.zenscript.expand.ExpandAnyDict;
+import crafttweaker.zenscript.expand.ExpandBool;
+import crafttweaker.zenscript.expand.ExpandDataStringDict;
+import crafttweaker.zenscript.expand.ExpandInt;
+import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
@@ -79,7 +85,9 @@ class ZenStructureHatchBridgeTest {
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
         for (var type : List.of(ZenStructure.class, ZenStructurePattern.class, ZenStructurePredicate.class,
             ZenResource.class, ZenResourceHatchSide.class, ZenEnergyHatchSide.class, ZenHatchConfiguration.class,
-            ZenHatchUpdate.class, ZenHatchReport.class, Harness.class)) registry.registerNativeClass(type);
+            ZenHatchUpdate.class, ZenHatchReport.class, IData.class, Harness.class)) registry.registerNativeClass(type);
+        for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
+            registry.registerExpansion(expansion);
         var classes = new Object2ObjectOpenHashMap<String, byte[]>();
         var global = registry.makeGlobalEnvironment(classes);
         var parsed = new ZenParsedFile("structure_hatch.zs", "StructureHatchScript",
