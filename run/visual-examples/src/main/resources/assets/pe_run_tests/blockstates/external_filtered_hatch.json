@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "normal": { "model": "pe_run_tests:external_filtered_hatch" }
+  }
+}

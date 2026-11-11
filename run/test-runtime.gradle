@@ -1,0 +1,14 @@
+// Only applied by the run test preparation/launch scripts. Production dependency settings stay intact.
+allprojects { candidate ->
+    candidate.afterEvaluate {
+        if (candidate == rootProject) {
+            [
+                'CraftTweaker2:CraftTweaker2-API:4.1.20.718',
+                'CraftTweaker2:CraftTweaker2-MC1120-Main:1.12-4.1.20.718',
+                'CraftTweaker2:ZenScript:4.1.20.718'
+            ].each { coordinate -> candidate.dependencies.add('modRuntimeOnly', coordinate) }
+            if (candidate.findProperty('peRunBloom') == 'true')
+                candidate.dependencies.add('modRuntimeOnly', 'curse.maven:lumenized-1234162:6734060')
+        }
+    }
+}

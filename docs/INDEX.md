@@ -4,6 +4,10 @@
 
 ## 当前检查点
 
+- 2026-11-11 run 示例套件已收尾，统一入口 [run/README.md](../run/README.md) 与 [覆盖矩阵](../run/COVERAGE.md)。18 个 addon Java 编译打包并安装成功；全部9脚本实际SDK718编译、97项核心行为断言通过。补齐扫描纯计算/存储结算驱动、区分准入探测与首tick付款、固定最终5并行的不足付款拒绝，原与恢复进程END输出均通过。19个run Java（含验证器）本机MCP逐文件 errorsOnly:false 均因排除目录拒绝分析，错误/警告/弱警告未知。原生世界/FTB/保存/GUI/HEI/视觉仍待用户测试，总体Goal按用户最新指示保持暂停；未启动游戏、未推送。详细证据见实施进度。
+
+- 2026-11-11 原生复验交接补齐：[CT文档](crafttweaker.md#用户原生复验入口)现有可复制的普通loader SDK member/INDEX/IData/snapshot完整脚本，并按SDK→既有169结构/工具→运行中退出重进排序。脚本局部data不冒充owner保存/同步；现有示例未安装componentData及研究/网络/复杂渲染场景，仍须真实接入验收。仅文档补缺，未重跑build/tests或启动游戏，整体Goal仍active；写前和源码依据在 `resumed-goal/native-handoff-review/`。
+
 - 2026-11-11 CT第四阶段及全树Java门已完成本轮源码验证与精确本地提交：`8c5ba388` 渲染公共注册/普通data动画12Java，`f4b749e5` 真实owner工厂/最终并行选择/简单池与JEI选项20Java，`58fc925f` 全树诊断窄修7路径（6Java＋删除私有旧数量帮助类）。39路径无交叠；最终完整build含Spotless成功50s，1921 tests/264 suites全零。官方735main＋271test＋generated Tags共1007Java本机MCP errorsOnly:false全级零，38修改源码及Tags完整读回/当前bytes匹配，MCP build成功。入口 [CT使用与原生复验](crafttweaker.md)、[实施进度](implementation-status.md)；全树证据 `resumed-goal/full-idea-current/final/`、提交/背景保护 `resumed-goal/ct-fourth-exact/`。G1–G5及已确认代码scope已闭合，独立审计未发现其它确证代码缺口；旧待迁移条目按历史时点阅读。整体Goal仍active，等待用户SDK真实注入/World/FTB/数据库/网络/GUI/HEI及渲染验收。原5背景和暂存保持，未推送、未启动游戏。
 
 - 2026-11-11 CT第三阶段已精确本地提交：`d1684042` controller-aware/custom结构15Java，`1c67c9b3` weighted/attribute/CUSTOM allocation/typed partial overlay配方12Java，`33e09a88` resource/research/native network及共享注册phase33Java，三路共60且无交叠。最终build含Spotless成功25s，1918 tests/261 suites全零；60Java本机MCP errorsOnly:false错误/警告/弱警告全零，完整读回及当前普通bytes匹配，MCP build成功。入口 [CT使用与验证边界](crafttweaker.md)、[实施进度](implementation-status.md)，最终manifest/三源码提交及背景保护在 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/resumed-goal/ct-third-exact/`。原5背景/暂存保持，未推送、未启动游戏。总体Goal active，完整scope独立审计继续；真实SDK注入/World sampler/FTB/原生数据库/网络和已列视觉实机验收仍由用户重启复验。
@@ -43,7 +47,7 @@
 - 新实机反馈优先：由用户重启客户端，先复验构造器三种绑定/打开行为、右侧双击整种与左侧单格替换、完整材料网格/滚动、30秒到期及Shift＋滚轮片层循环；再核对层预览零层控制器/线框、原生图标/tooltip、最近命中和真实搭建用料。截图紫黑物品本批仅静态审查当前pick/model链，不宣称新增视觉修复；仓室掉落/拾取/重新放置及退出世界也待实机。此前新增Mixin方法不能仅F3+T应用。
 
 1. CT第四阶段已本地提交，G1–G5渲染/真实factory/简单池/最终并行选择/JEI选项已接实际公共消费者；先读 [CT使用与原生复验](crafttweaker.md)、`resumed-goal/ct-fourth-review.md`、`ct-fourth-exact/approval.json` 和全树 `full-idea-current/final/current-complete-summary.json`。结构custom/facts/JSON phase、高级配方、resource/research/network及此前代码scope均有后继闭合，不沿用旧缺口清单。
-2. 整体Goal仍active，当前未发现其它确证代码缺口，下一步由用户重启客户端按CT文档和既有run/visual-examples/README.md复验真实SDK注入、World sampler、FTB/数据库/五网络角色、保存/同步与GUI/工具/HEI/复杂渲染；记录实际结果后再判断整体完成。名称/回调冻结对象、历史codec与准确owner保持，GUI DSL/独立Modern不恢复，Applied-Flux暂缓。编译、Compiler行为测试和全树IDE门不替代实机。
+2. 总体Goal按用户最新指示保持暂停，等待用户测试。使用 [run统一入口](../run/README.md) 及覆盖矩阵，按顺序复验真实SDK注入、World sampler、FTB/数据库/五网络角色、保存/同步与GUI/工具/HEI/复杂渲染；记录实际结果后再判断整体完成。名称/回调冻结对象、历史codec与准确owner保持，GUI DSL/独立Modern不恢复，Applied-Flux暂缓。编译、Compiler行为测试和全树IDE门不替代实机。
 3. 游戏由用户自行启动，GUI/工具/真实 HEI 页面和 AE 客户端调度仍待实机复验；纯行为测试不冒充原生运行通过。
 4. 用户已确认手动清理 build/.idea。原 stage 的 before/XML/MCP 原文件未恢复，旧条目只作历史；后续证据均保存在上述 build 外 recovery 目录。
 

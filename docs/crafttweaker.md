@@ -96,6 +96,43 @@ RenderBindings.bindGeckoToStructure("your_addon:machine", "your_addon:shape",
 
 以下均未报告游戏通过；由用户完整重启客户端，实际结果记入后续实施状态。旧[可视示例步骤](../run/visual-examples/README.md)继续适用，忽略示例目录不在官方IDE检查scope。
 
+完整套件现已安装到run：先读 [run统一入口](../run/README.md) 与 [覆盖矩阵](../run/COVERAGE.md)。现有9脚本和18Java已通过编译，核心97断言已执行通过；真实游戏加载与下面所有原生结果仍待用户测试。完整场景按核心→World Query→原生仓室/保存→网络/研究/渲染→原有结构工具顺序。总体Goal保持暂停，等待用户结果。
+
+以下最小片段可独立排查SDK注入；已使用完整套件时直接检查20脚本的 `PASS core_sdk_*`，无需再手工部署重复片段。
+
+1. 用户在 `run/scripts/pe_native_data_check.zs` 保存下列完整脚本（目录不存在时自行创建）。使用普通 `crafttweaker` loader，无需机器、世界坐标、测试Harness或额外注册声明；保存后完整退出并重启开发客户端。`/ct syntax` 只检查语法，不能替代此次实际执行。查看这次启动的 `run/crafttweaker.log` 中 `PE_NATIVE_DATA_BEGIN` 和 `PE_NATIVE_DATA_PASS`；若缺少PASS或出现FAIL，保留包含脚本文件名、错误与堆栈的日志。无输出时先确认脚本确已被当前启动加载。
+
+```zenscript
+#loader crafttweaker
+import mods.prototype_eng.data.ComponentData;
+import crafttweaker.data.IData;
+
+print("PE_NATIVE_DATA_BEGIN");
+var data = ComponentData.from({initial: 1});
+data["count"] = 2;
+data.flag = true;
+var snapshot as IData = data.asIData();
+data["count"] = 7;
+data.flag = false;
+var currentCount as int = data["count"] as int;
+var currentFlag as bool = data.flag.asBool();
+var saved = snapshot.asMap();
+if (currentCount == 7 && !currentFlag && data.getInt("absent", 11) == 11
+    && saved["count"].asInt() == 2 && saved["flag"].asBool()
+    && saved["initial"].asInt() == 1) {
+    print("PE_NATIVE_DATA_PASS current=7,false snapshot=2,true initial=1 default=11");
+} else {
+    print("PE_NATIVE_DATA_FAIL");
+}
+```
+
+这里的动态member赋值走SDK718 `ZenTypeNative.getMember` 的真实Mixin，INDEX和IData沿同一个普通data适配器。boolean内容用 `asBool()`，snapshot通过 `asMap()`/`asInt()`读取；成功只证明本次原生脚本加载、成员/INDEX赋值、内容转换和独立snapshot。这个局部对象每次启动重新创建，没有安装到机器owner，不能用重启后再次PASS证明机器保存、客户端同步或动画已通过。本片段按现有Compiler用例及SDK718 API源码核对，本次未执行游戏脚本。
+
+2. 进入创造测试世界，按[既有示例README](../run/visual-examples/README.md)的“7×5×7实体结构与预览”执行 `build boundary_structure`、真实充电与 `stock structure_glass`，确认成型和输出玻璃×4。接着按“结构JEI样板导入”完整五步核对169材料、三片层仍169、玻璃候选整种替换和带结构后缀的控制器×1，实际编码样板；再对照构造器单格108＋1、整种109及原绑定/30秒投影/Shift滚轮交互。README已经包含准确命令、坐标和预期数量，不必重新编译未变化的示例。
+3. 按 [原生用例](../run/visual-examples/NATIVE-CASES.md) 的native_data_fixed/cross执行普通componentData、四工位、末tick nonce、客户端full-sync、checkpoint和真实退出重进；再观察卸载、拆除补回、仓室掉落与重新放置。FTB/研究/数据库/五网络角色、真实编码下载及复杂渲染/JEI绑定已在 [网络与渲染用例](../run/visual-examples/NETWORK-RENDER-TESTS.md) 提供实际机器/脚本/命令与准确预期。每项独立记录原生结果，不能因核心SDK通过就把下表整行标为通过。
+
+反馈保留这次启动时间、场景/命令/坐标、预期与实际结果，以及相关CT日志、`run/logs/latest.log`错误/堆栈和截图。当前 `latest.log` 最后更新时间仍为2026-11-10 21:17，早于本轮代码提交，不是新的验收证据。
+
 | 范围 | 待观察的结果 |
 |---|---|
 | SDK与普通data | 实际CT脚本member/INDEX/IData赋值注入成功，保存重进后值保持；动画单属性与CSV层变化只接受当前owner数据 |

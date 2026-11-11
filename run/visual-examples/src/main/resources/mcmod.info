@@ -1,0 +1,12 @@
+[
+  {
+    "modid": "pe_visual_examples",
+    "name": "PE Visual Examples",
+    "description": "Development-only machines and recipes for inspecting Prototype Engineering JEI and hatch GUIs.",
+    "version": "1.0.0-dev",
+    "mcversion": "1.12.2",
+    "authorList": ["Prototype Engineering development workspace"],
+    "requiredMods": ["prototype_eng"],
+    "dependencies": ["prototype_eng"]
+  }
+]

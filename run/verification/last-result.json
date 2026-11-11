@@ -1,0 +1,204 @@
+{
+  "date": "2026-11-11",
+  "addonJava": 18,
+  "installed": true,
+  "addonSha256": "74E0F8AFC930CF98D13920BFB26461A23F26168A7829E99007D6DC22C244658B",
+  "sdk": "4.1.20.718",
+  "scriptCompilerPassed": 9,
+  "executedScripts": [
+    "run\\scripts\\10_pe_run_core_preinit.zs",
+    "run\\scripts\\20_pe_run_core_checks.zs"
+  ],
+  "corePass": 97,
+  "coreFail": 0,
+  "completed": true,
+  "ideaFiles": 19,
+  "ideaResult": "excluded/outside content roots",
+  "ideaErrors": "unknown",
+  "ideaWarnings": "unknown",
+  "ideaWeakWarnings": "unknown",
+  "nativeExecuted": false,
+  "originalGoal": "paused",
+  "sourceHashes": [
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/BoundaryExamples.java",
+      "sha256": "26F539E0589A51BDB3C0F68CD0B62B68425D835B2B1D7CA0766FF8D494C61BC1"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/ExamplesClient.java",
+      "sha256": "F0A320691B4567F8FC92D6934FAD362E2FA2CE4592AA248747912074692F40E0"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/ExamplesCommand.java",
+      "sha256": "D1F532BD8DFA25C59D629EC49B8966FAB9183CED3D6F27A86325261F68FB76BC"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/ExampleText.java",
+      "sha256": "9B5BA2416899C82DD6953BEFE09C748DB1DB3BC48094B07A5DA7BE5D563F2715"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/VisualExamples.java",
+      "sha256": "3DA16710427BEEF7FD1404D44919E62701DEEFFBBDA41D7FC6B36B57D96BFDCB"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreCases.java",
+      "sha256": "27C8433BC95E2121419AD60347E443DE42428D556D487A002C46F3D40835375A"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreRecipeChecks.java",
+      "sha256": "B96F2A12F16A7FEA9C106161C53383274B4650CC8EE22597774CAD17917C254F"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreStructureChecks.java",
+      "sha256": "B4125C5EB0E7D655F0A1D6E99C712D8E81C5EDADDABA23F199473075023D8690"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreWorldChecks.java",
+      "sha256": "1E4C5C8BC154C4D288AFA873578E86D87F4936B41F4685F84AA72FB6CFE44E8B"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/ExternalFilteredHatch.java",
+      "sha256": "B030DD0059FE50509E864A85EA5D1FA00A2220A436D91B00AE7FB579629149A1"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/ExternalHatchClient.java",
+      "sha256": "F86EF6D96A1D7EC87E6AA089C68EBE6D5C64C1E7918F9D5DC04432EE31AFB529"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/ExternalHatchExamples.java",
+      "sha256": "8F6A4344C996BF75A4448BEAC132FD2F74401004771FA206FBFE49705756C998"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/NativeChecks.java",
+      "sha256": "016F3AAF2205D19CC803A411390C2D65CE196CE52FB42B157E0FFE650A852514"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/NativeExamples.java",
+      "sha256": "F629EC467AF133496294950E7548DE3E38DD5BC5DC2FB2283454D54546685D0F"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/NativeRunCases.java",
+      "sha256": "F8417750DB5928A4605A4BB5E69B43E95910813DCCFB8EF94EF70E2CF118B765"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/RunNetworkRender.java",
+      "sha256": "B3A7912248711B871A036E93B55E5274B00C591924E5556DF45777F3FAC3B91E"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/RunRenderClient.java",
+      "sha256": "47E75080EE82B8D8C3FB6FBC0B2101E2487F044C320CAFE97582D264A0091497"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/run/RunTestsCommand.java",
+      "sha256": "DF6D9ACC35B4F7706E821A197F50B2908362148D729BEC8A3041BF1D9C9158D2"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/mcmod.info",
+      "sha256": "F6319CE20850CCE866EF2BBFF7354F11734EF91ABEA02A2C911FF84027CCDF3F"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_run_tests/blockstates/external_filtered_hatch.json",
+      "sha256": "010B8A58C81AB9830F5C7A8D283CD8F391C10E0E97D714409DCF67C45B319D34"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_run_tests/models/block/external_filtered_hatch.json",
+      "sha256": "70E315EB8B375FE1F4AE0D714CD1B0D8799B1ED852656AD58813CC953D49BF3A"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_run_tests/models/item/external_filtered_hatch.json",
+      "sha256": "3843756A9A475CE24D80DB53E3305893381758D5DCDBB874A50F7B331F4A891C"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_run_tests/models/item/research_disk.json",
+      "sha256": "A51093EE19D98F5CAEFE8288A4A20B84B8AEE79FE3947CD8B7E6DFAA821A6AD7"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_run_tests/models/item/research_low_disk.json",
+      "sha256": "5A4FCE3BDE0A47842E5A69966A3F4D728CE819C3CC0A953B04E54DBFAE0D114A"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/animations/run_tests_machine.json",
+      "sha256": "0B1BEC99FCED85CC44C7438940ADDEC9BEC28450FE05337D58721DB844A8BCCA"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/geo/run_tests_machine.json",
+      "sha256": "A3270AA1A2A5714BA11E5FB86A11C054DD7CEDA96B993B472F7DFC364776C765"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/geo/run_tests_marker.json",
+      "sha256": "DC6FB8E6C00D2CE77750870C62F3362B3FB279127B1E30425ACE13F2BF9624DE"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/lang/en_us.lang",
+      "sha256": "637D0276015F3D0B120231044D3DE24A64101A4E633E5882615FAB6F2A779FFF"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/lang/zh_cn.lang",
+      "sha256": "7455BA7091D35162394B377AEE7368174ED92764D009115A60FDFF84B89CF672"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/textures/run_tests_machine.png",
+      "sha256": "7B2CDDB2C2C36FA61EFCAA8393BB0022E18C34F3B44CAAE99EA9B43828AA9DCC"
+    },
+    {
+      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/textures/run_tests_marker.png",
+      "sha256": "29632BF913D04CF0C3539889569370A4EB6DB387B2D67A83C7D6900A087CEBCC"
+    },
+    {
+      "path": "run/scripts/10_pe_run_core_preinit.zs",
+      "sha256": "56E40067E9267C37BD0F876CFC60FBEE30339B05669547BAC99288EB373D9BBA"
+    },
+    {
+      "path": "run/scripts/11_pe_run_core_world_preinit.zs",
+      "sha256": "FD0C7632A310ED7725D2BD030F1BD03AE0D79659D9F54DA0C24F315DEEEC0E49"
+    },
+    {
+      "path": "run/scripts/15_pe_run_network_machines.zs",
+      "sha256": "1F910A12124AA034D955773FC5D05F0F7DE851CA61A6FFBB11BE3695F835D14D"
+    },
+    {
+      "path": "run/scripts/16_pe_run_render_machines.zs",
+      "sha256": "6B43C2E2FC5D9D9E04003AC3EEA0A8D5FEB3BE828E95304970041C7CB7D38BE5"
+    },
+    {
+      "path": "run/scripts/20_pe_run_core_checks.zs",
+      "sha256": "BADEE6297C6761F6E9E905132FC6C71D602CCE98DC4CDF70D65B4B2BA630E0B8"
+    },
+    {
+      "path": "run/scripts/21_pe_run_core_world.zs",
+      "sha256": "6A6D53EA634DFC065985BE805A01711D17CB13D4A346F3353DB4D0B081796148"
+    },
+    {
+      "path": "run/scripts/30_pe_run_network.zs",
+      "sha256": "41E57F0555A5345FDDDC6EC95AC933DA4A545AA71C720C2B9EB36D56635F067C"
+    },
+    {
+      "path": "run/scripts/40_pe_run_render.zs",
+      "sha256": "1FB400F7C500056F67DA38BD339CF081E881C03EF5AD9CAACAD200CAD1C5226C"
+    },
+    {
+      "path": "run/scripts/95_pe_run_manifest.zs",
+      "sha256": "AB4CC8F4A5B9A93A1DE63C6DA3860470F2BC44B0218E568E775C4AD932F67342"
+    },
+    {
+      "path": "run/scripts/README-core.md",
+      "sha256": "C3FAA2D3580F2247BE49B9274BB9B9D94679AD0310709E483A8E767C3B143F68"
+    },
+    {
+      "path": "run/scripts/README-world-query.md",
+      "sha256": "A6009D74105F0896007EED31A98B3056AB57638FBDBA51FAF00101DD4B4C70DD"
+    },
+    {
+      "path": "run/scripts/fixtures/core_custom.json",
+      "sha256": "0D243A2DA9661D567DDECDB09AB128B63EE16A52DCE1205D08AA17D54C45436F"
+    },
+    {
+      "path": "run/scripts/fixtures/core_world.json",
+      "sha256": "C8B65305A65C9C90EBD6624469907AF8266F0317478BBAE8501386D20C93FEB6"
+    },
+    {
+      "path": "run/verification/ScriptVerifier.java",
+      "sha256": "4C71A8A8320AE3FB8D70A2F43919A90011B1D7BFF8000858D43FDDB10DAEBC6D"
+    }
+  ]
+}

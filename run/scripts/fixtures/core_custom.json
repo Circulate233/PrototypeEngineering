@@ -1,0 +1,7 @@
+{
+  "id": "pe_run_tests:core_custom_json",
+  "type": "template",
+  "offset": { "x": 5, "y": 0, "z": 0 },
+  "pattern": [],
+  "validators": [{ "id": "pe_run_tests:core_custom" }]
+}

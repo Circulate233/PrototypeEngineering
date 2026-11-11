@@ -1,0 +1,21 @@
+// Development addon export. An init script keeps the production build and IDE configuration intact.
+allprojects { candidate ->
+    candidate.afterEvaluate {
+        if (candidate == rootProject && candidate.extensions.findByName('sourceSets') != null) {
+            candidate.tasks.register('peRunExportClasspath') {
+                group = 'development'
+                description = 'Export the current named main runtime classpath for the run-only addon.'
+                dependsOn(candidate.tasks.named('classes'))
+                doLast {
+                    def target = candidate.file('run/visual-examples/runtime-classpath.txt')
+                    target.parentFile.mkdirs()
+                    def paths = (candidate.sourceSets.main.runtimeClasspath.files
+                        + candidate.sourceSets.main.compileClasspath.files).collect { it.absolutePath }.unique()
+                    if (paths.isEmpty()) throw new GradleException('Main runtime classpath is empty')
+                    target.setText(paths.join(System.lineSeparator()) + System.lineSeparator(), 'UTF-8')
+                    logger.lifecycle('Exported current named main runtime classpath to {}', target)
+                }
+            }
+        }
+    }
+}
