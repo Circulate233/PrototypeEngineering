@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.Shadow;
 @Mixin(NBTTagLongArray.class)
 public abstract class NBTTagLongArrayMixin implements NbtLongArrayAccess {
     @Shadow
-    private long[] data;
+    public long[] data;
 
     @Override
     public int prototype_eng$length() {

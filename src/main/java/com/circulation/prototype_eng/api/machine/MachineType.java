@@ -190,7 +190,7 @@ public final class MachineType {
             return this;
         }
 
-        @SuppressWarnings("unused") // Downstream declarations may supply a custom controller model.
+        @SuppressWarnings("UnusedReturnValue") // Scripts use the setter effect; Java addons may chain declarations.
         public Builder controllerModel(@Nullable ResourceLocation model) {
             controllerModel = model;
             return this;

@@ -54,6 +54,7 @@ public enum HatchTier {
         return itemsPerSlot;
     }
 
+    @SuppressWarnings("unused") // Public PM-compatible tier defaults remain available to addon storage profiles.
     public long fluidPerSlot() {
         return fluidPerSlot;
     }

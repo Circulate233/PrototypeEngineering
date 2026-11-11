@@ -75,7 +75,7 @@ public final class StrictNbt {
         return tag.getByte(key);
     }
 
-    @SuppressWarnings("unused") // External component codecs may store exact short fields.
+    @SuppressWarnings("UnusedReturnValue") // ItemStack readers validate the type; external codecs may consume the short.
     public static short requireShort(NBTTagCompound tag, String key) {
         requireTag(tag, key, Constants.NBT.TAG_SHORT);
         return tag.getShort(key);

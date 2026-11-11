@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviewScreen
 import com.circulation.prototype_eng.api.machine.MachineType;
 
 /** Capture the actual immediate HEI screen; returning to a viewer never skips its original recipe page. */
+@SuppressWarnings("unused") // Retained public HEI opening facade for existing addon callers.
 public final class StructurePreviewJeiScreens {
     private StructurePreviewJeiScreens() {
     }
