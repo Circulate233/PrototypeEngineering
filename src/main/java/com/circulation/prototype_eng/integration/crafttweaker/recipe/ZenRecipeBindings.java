@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationKey;
+import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
@@ -165,6 +166,23 @@ public final class ZenRecipeBindings {
             return;
         }
         DefinitionRegistrations.declarations(event -> event.declarations().register(key, event.snapshot()));
+        ClientRecipeManifestDeclarations.add(key, List.of(), List.of());
         manifest = key;
+    }
+
+    /**
+     * Predeclare a concrete future client variant before initial JEI binding. It keeps the initial
+     * pool membership/priority and providers; it never publishes a local or server directory.
+     */
+    @ZenMethod
+    public void declareClientVariant(String setId, String version, ZenRecipe[] replacements) {
+        var key = new RecipeDeclarationKey(ZenRecipeSupport.id(setId), version);
+        var definitions = new ObjectArrayList<RecipeRegistry.Definition>(replacements.length);
+        var codecs = new ObjectArrayList<RecipeProcessNbt>(replacements.length);
+        for (var recipe : replacements) {
+            definitions.add(Objects.requireNonNull(recipe).definition());
+            codecs.add(recipe.codec());
+        }
+        ClientRecipeManifestDeclarations.add(key, definitions, codecs);
     }
 }

@@ -2,20 +2,41 @@ package com.circulation.prototype_eng.integration.crafttweaker.recipe;
 
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKeyType;
+import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarationRegistrationEvent;
+import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
+import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationKey;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
+import com.circulation.prototype_eng.api.recipe.RecipeDefinitionManifest;
+import com.circulation.prototype_eng.api.recipe.RecipeDefinitionUpdates;
+import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
+import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
+import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayPipeline;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentData;
+import com.circulation.prototype_eng.integration.crafttweaker.ZenComponentDataMembers;
+import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
+import com.circulation.prototype_eng.network.clientbound.RecipeDefinitionManifestPacket;
+import com.circulation.prototype_eng.recipe.RecipeDefinitionManifestCodec;
+import com.circulation.prototype_eng.scheduler.TaskScheduler;
+import crafttweaker.api.data.IData;
+import crafttweaker.zenscript.expand.ExpandAnyDict;
+import crafttweaker.zenscript.expand.ExpandBool;
+import crafttweaker.zenscript.expand.ExpandDataStringDict;
+import crafttweaker.zenscript.expand.ExpandInt;
+import crafttweaker.zenscript.expand.ExpandString;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
@@ -32,6 +53,11 @@ import stanhebben.zenscript.annotations.ZenMethod;
 import stanhebben.zenscript.impl.GenericCompileEnvironment;
 import stanhebben.zenscript.impl.GenericErrorLogger;
 import stanhebben.zenscript.impl.GenericRegistry;
+import stanhebben.zenscript.compiler.IEnvironmentGlobal;
+import stanhebben.zenscript.expression.partial.IPartialExpression;
+import stanhebben.zenscript.symbols.SymbolType;
+import stanhebben.zenscript.type.ZenTypeNative;
+import stanhebben.zenscript.util.ZenPosition;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -39,6 +65,7 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -102,6 +129,8 @@ class ZenRecipeBridgeTest {
             Harness.capture(names, oldRecipe, newRecipe, target, dynamic, matcherOld, matcherNew, overlayOld, overlayNew);
             names.registerPools([pool], [oldRecipe]);
             names.declareManifest("bridge:complete", "behavior-set-v2");
+            var clientNext = Recipe.create("bridge:recipe", "v3", 12, [target, newSelection]);
+            names.declareClientVariant("bridge:complete", "behavior-set-v3", [clientNext]);
             """;
         var compiled = compile(script, "named_bindings.zs");
         assertEquals("", compiled.diagnostics());
@@ -123,6 +152,58 @@ class ZenRecipeBridgeTest {
         assertSame(captured.newRecipe().recipe(), registry.catalog().recipes().getFirst());
         assertSame(captured.oldRecipe().codec(), captured.names().resolver().snapshot().require(captured.oldRecipe().recipe()));
         assertSame(captured.oldRecipe().codec(), captured.names().resolver().snapshot().require(new ResourceLocation("bridge", "recipe"), "v1"));
+
+        var initial = registry.snapshot();
+        var local = new ClientRecipeDeclarations();
+        var providers = new RecipeJeiDisplays();
+        providers.freeze();
+        var event = new ClientRecipeDeclarationRegistrationEvent(local, initial, providers);
+        var currentKey = new RecipeDeclarationKey(new ResourceLocation("bridge", "complete"), "behavior-set-v2");
+        var nextKey = new RecipeDeclarationKey(new ResourceLocation("bridge", "complete"), "behavior-set-v3");
+        var reentered = new boolean[1];
+        var listenerFailure = new IllegalStateException("client declaration listener failed");
+        local.onRegistered(() -> {
+            if (local.get(nextKey) == null || reentered[0]) return;
+            reentered[0] = true;
+            ScriptClientRecipeDeclarationEvents.declarations(event);
+            throw listenerFailure;
+        });
+        assertSame(listenerFailure, assertThrows(IllegalStateException.class, () -> ScriptClientRecipeDeclarationEvents.declarations(event)));
+        assertTrue(reentered[0]);
+        assertSame(initial, Objects.requireNonNull(local.get(currentKey)).snapshot());
+        var nextLocal = Objects.requireNonNull(local.get(nextKey));
+        assertNotSame(initial, nextLocal.snapshot());
+        assertTrue(providers.sameProviders(nextLocal.displays()));
+        assertSame(initial, registry.snapshot(), "Display variant preparation must not install a directory");
+        assertThrows(IllegalArgumentException.class,
+            () -> captured.names().resolver().snapshot().require(new ResourceLocation("bridge", "recipe"), "v3"));
+        ScriptClientRecipeDeclarationEvents.declarations(event);
+        assertSame(nextLocal, local.get(nextKey), "Repeated binding must retain the same private snapshot");
+
+        var renderer = new AcknowledgingRenderer();
+        var client = new ClientRecipeDefinitions(local, renderer);
+        var connection = new Object();
+        client.connected(connection);
+        var peer = new RecipeRegistry();
+        var peerOld = peerRecipe("v2", 10);
+        var peerNext = peerRecipe("v3", 12);
+        peer.register(new DefaultRecipePool(new ResourceLocation("bridge", "pool"), "bridge.pool", List.of(peerOld.recipe())));
+        peer.declareRevision(peerOld.recipe(), peerOld.revision());
+        peer.freeze();
+        peer.install(peer.prepareReplacement(peer.snapshot(), List.of(peerNext.definition())));
+        assertNotSame(peer.snapshot(), nextLocal.snapshot());
+        assertNotSame(peerNext.recipe(), nextLocal.snapshot().catalog().recipes().getFirst());
+        var manifest = RecipeDefinitionManifest.capture(UUID.randomUUID(), nextKey, peer.snapshot());
+        assertTrue(client.receive(connection, RecipeDefinitionManifestPacket.part(manifest, RecipeDefinitionManifestCodec.encode(manifest), 0)));
+        assertEquals(manifest, client.applied());
+        assertSame(nextLocal, renderer.applied);
+        var unknown = RecipeDefinitionManifest.capture(manifest.serverSession(),
+            new RecipeDeclarationKey(new ResourceLocation("bridge", "unknown"), "not-local"), peer.snapshot());
+        client.disconnected(connection);
+        client.connected(connection);
+        assertTrue(client.receive(connection, RecipeDefinitionManifestPacket.part(unknown, RecipeDefinitionManifestCodec.encode(unknown), 0)));
+        assertNull(client.applied());
+        assertTrue(client.reason().startsWith("Missing local recipe declaration:"));
 
         var owner = new MachineInstance();
         var oldProcess = new RecipeProcess(owner, captured.oldRecipe().recipe(), 41);
@@ -155,20 +236,143 @@ class ZenRecipeBridgeTest {
         assertFalse(compiled.diagnostics().isEmpty());
     }
 
+    @Test
+    void realZenScriptDataOperatorsAndIDataConversionsPreserveIndependentSnapshots() throws Exception {
+        Harness.data = null;
+        Harness.dataSnapshot = null;
+        var compiled = compile("""
+            import mods.prototype_eng.data.ComponentData;
+            import tests.prototype_eng.Harness;
+            var data = ComponentData.from({initial: 1});
+            data["count"] = 2;
+            data.flag = true;
+            var snapshot = data.asIData();
+            data["count"] = 7;
+            data.flag = false;
+            Harness.captureData(data, snapshot, data["count"] as int, data.flag.asBool(), data.getInt("absent", 11));
+            """, "component_data.zs");
+        assertEquals("", compiled.diagnostics());
+        Objects.requireNonNull(compiled.module().getMain()).run();
+        assertEquals(7, Objects.requireNonNull(Harness.data).getInt("count", 0));
+        assertFalse(Harness.data.getBool("flag", true));
+        assertEquals(7, Harness.scriptCount);
+        assertFalse(Harness.scriptFlag);
+        assertEquals(11, Harness.scriptDefault);
+        var snapshot = Objects.requireNonNull(Harness.dataSnapshot).asMap();
+        assertEquals(2, snapshot.get("count").asInt());
+        assertTrue(snapshot.get("flag").asBool());
+        assertEquals(1, snapshot.get("initial").asInt());
+
+        var invalid = compile("""
+            import mods.prototype_eng.data.ComponentData;
+            ComponentData.from(5);
+            """, "invalid_data.zs");
+        assertEquals("", invalid.diagnostics());
+        assertThrows(IllegalArgumentException.class, Objects.requireNonNull(invalid.module().getMain())::run);
+    }
+
+    @Test
+    void realZenScriptUpdatesPublishWithExactSnapshotAndReportManifestFailureWithoutRollback() throws Exception {
+        var original = ZenRecipe.create("runtime_bridge:recipe", "v1", 2, new ZenRequirement[0]);
+        var registry = new RecipeRegistry();
+        registry.register(new DefaultRecipePool(new ResourceLocation("runtime_bridge", "pool"), "runtime_bridge.pool", List.of(original.recipe())));
+        registry.declareRevision(original.recipe(), original.revision());
+        var codecs = new RecipeProcessCodecs(List.of(original.codec()));
+        registry.bindProcessCodecs(codecs);
+        registry.freeze();
+        var resources = new NetworkResourceRegistry();
+        resources.freeze();
+        var research = new ResearchRegistry();
+        research.freeze(resources);
+        var extensions = new NetworkRecipeExtensions();
+        extensions.publish(registry.snapshot(), research, resources);
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1);
+             var updates = new RecipeDefinitionUpdates(registry, extensions, scheduler, UUID.randomUUID(), _ -> {
+             })) {
+            Harness.publisher = new ZenRecipeUpdates(updates);
+            Harness.results.clear();
+            var compiled = compile("""
+                import mods.prototype_eng.recipe.Recipe;
+                import tests.prototype_eng.Harness;
+                var update = Harness.publisher();
+                var next = Recipe.create("runtime_bridge:recipe", "v2", 4, []);
+                Harness.captureTask(update.replace([next], "runtime_bridge:complete", "v2").onComplete(function(result) {
+                    Harness.captureResult(result);
+                }));
+                var stale = Recipe.create("runtime_bridge:recipe", "stale", 6, []);
+                update.replace([stale], "runtime_bridge:complete", "stale").onComplete(function(result) {
+                    Harness.captureResult(result);
+                });
+                """, "live_updates.zs");
+            assertEquals("", compiled.diagnostics());
+            Objects.requireNonNull(compiled.module().getMain()).run();
+            assertTrue(Objects.requireNonNull(Harness.task).done());
+            assertFalse(Harness.task.failed());
+            assertEquals(List.of("PUBLISHED", "REJECTED_STALE"), Harness.results.stream().map(ZenRecipeUpdateResult::status).toList());
+            assertTrue(Harness.results.getFirst().published());
+            assertEquals(updates.sessionId().toString(), Harness.results.getFirst().session());
+            assertSame(original.codec(), codecs.snapshot().require(original.recipe()));
+            var first = registry.snapshot();
+            var key = new RecipeDeclarationKey(new ResourceLocation("runtime_bridge", "complete"), "v2");
+            assertSame(first, RecipeDeclarations.INSTANCE.get(key));
+
+            Harness.publisher = new ZenRecipeUpdates(updates);
+            var duplicateKey = compile("""
+                import mods.prototype_eng.recipe.Recipe;
+                import tests.prototype_eng.Harness;
+                var next = Recipe.create("runtime_bridge:recipe", "v3", 8, []);
+                Harness.publisher().replace([next], "runtime_bridge:complete", "v2").onComplete(function(result) {
+                    Harness.captureResult(result);
+                });
+                """, "duplicate_manifest.zs");
+            assertEquals("", duplicateKey.diagnostics());
+            Objects.requireNonNull(duplicateKey.module().getMain()).run();
+            var failure = Harness.results.getLast();
+            assertEquals("NOTIFICATION_FAILED", failure.status());
+            assertTrue(failure.published());
+            assertTrue(failure.failure().contains("already binds another snapshot"));
+            assertEquals("v3", registry.snapshot().revision(registry.catalog().recipes().getFirst()));
+            assertSame(first, RecipeDeclarations.INSTANCE.get(key));
+            assertFalse(scheduler.status().faulted());
+            updates.stopAccepting();
+            var refused = Harness.publisher.replace(new ZenRecipe[] {
+                ZenRecipe.create("runtime_bridge:recipe", "v4", 9, new ZenRequirement[0])
+            }, "runtime_bridge:complete", "v4").result();
+            assertEquals("REJECTED_SESSION", Objects.requireNonNull(refused).status());
+            assertFalse(refused.published());
+        }
+    }
+
     private static long effectiveEnergy(RecipeProcess process, ZenRequirement target) {
         return RecipeOverlays.getOrCreate(process).resolve(target.energy(), target.value().path(null)).payload().inputPerTick();
+    }
+
+    private static ZenRecipe peerRecipe(String revision, int duration) {
+        var target = ZenRequirement.energy("bridge:energy", 0, 0, 0, 0, false);
+        var candidate = ZenRequirement.energy("bridge:optional_energy", 0, 0, 0, 0, false);
+        var selection = ZenRequirement.selective("bridge:selection", new ZenRequirement[] {candidate},
+            new ZenSelectiveModifier[] {ZenSelectiveModifier.speedMultiplier("bridge:speed", "speed", 3)});
+        return ZenRecipe.create("bridge:recipe", revision, duration, new ZenRequirement[] {target, selection});
     }
 
     private static Compiled compile(String script, String name) throws Exception {
         var output = new ByteArrayOutputStream();
         var environment = new GenericCompileEnvironment();
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
+        // Ordinary JUnit does not apply Mixins. Register one native type using the production helper.
+        var dataType = new WritableDataType();
+        registry.getTypes().getTypeMap().put(ZenComponentData.class, dataType);
+        dataType.complete(registry.getTypes());
+        registry.getRoot().put(dataType.getName(), new SymbolType(dataType), registry.getErrorLogger());
         for (var type : List.of(ZenResource.class, ZenResourceMatcher.class, ZenMatcher.class, ZenSelectiveCallback.class,
             ZenSelectiveModifier.class, ZenSelectiveContext.class, ZenOverlayCallback.class, ZenOverlayModifier.class,
             ZenOverlayContext.class, ZenRequirement.class, ZenRecipe.class, ZenRecipePool.class, ZenRecipeBindings.class,
-            ZenComponentData.class, Harness.class)) {
+            ZenRecipeUpdates.class, ZenRecipeUpdateTask.class, ZenRecipeUpdateResult.class,
+            ZenRecipeUpdateCallback.class, IData.class, Harness.class)) {
             registry.registerNativeClass(type);
         }
+        for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))
+            registry.registerExpansion(expansion);
         var classes = new Object2ObjectOpenHashMap<String, byte[]>();
         var global = registry.makeGlobalEnvironment(classes);
         var parsed = new ZenParsedFile(name, "NamedBridgeScript_" + name.replace('.', '_'),
@@ -183,9 +387,39 @@ class ZenRecipeBridgeTest {
     private record Compiled(ZenModule module, String diagnostics) {
     }
 
+    private static final class WritableDataType extends ZenTypeNative {
+        private WritableDataType() {
+            super(ZenComponentData.class);
+        }
+
+        @Override
+        public IPartialExpression getMember(ZenPosition position, IEnvironmentGlobal environment, IPartialExpression value, String name) {
+            var member = ZenComponentDataMembers.member(this, position, environment, value, name);
+            return member == null ? super.getMember(position, environment, value, name) : member;
+        }
+    }
+
     private record Captured(ZenRecipeBindings names, ZenRecipe oldRecipe, ZenRecipe newRecipe, ZenRequirement target,
                             ZenRequirement dynamic, ZenMatcher oldMatcher, ZenMatcher newMatcher,
                             ZenOverlayModifier oldOverlay, ZenOverlayModifier newOverlay) {
+    }
+
+    /** Protocol fixture acknowledges actual provider descriptions; it is not native HEI runtime QA. */
+    private static final class AcknowledgingRenderer implements ClientRecipeDefinitions.Renderer {
+        private ClientRecipeDeclarations.Declaration applied;
+
+        @Override
+        public ClientRecipeDefinitions.ApplyResult apply(ClientRecipeDeclarations.Declaration declaration) {
+            for (var recipe : declaration.snapshot().catalog().recipes())
+                assertNotNull(declaration.displays().describe(recipe));
+            applied = declaration;
+            return new ClientRecipeDefinitions.ApplyResult(true, "Acknowledged display declaration");
+        }
+
+        @Override
+        public void withdraw(String reason) {
+            applied = null;
+        }
     }
 
     @SuppressWarnings("unused")
@@ -193,10 +427,42 @@ class ZenRecipeBridgeTest {
     public static final class Harness {
         private static Captured captured;
         private static ZenRecipeBindings earlyNames;
+        private static ZenComponentData data;
+        private static IData dataSnapshot;
+        private static int scriptCount;
+        private static boolean scriptFlag;
+        private static int scriptDefault;
+        private static ZenRecipeUpdates publisher;
+        private static ZenRecipeUpdateTask task;
+        private static final ObjectArrayList<ZenRecipeUpdateResult> results = new ObjectArrayList<>();
 
         @ZenMethod
         public static void captureEarly(ZenRecipeBindings names) {
             earlyNames = names;
+        }
+
+        @ZenMethod
+        public static void captureData(ZenComponentData value, IData snapshot, int count, boolean flag, int defaultValue) {
+            data = value;
+            dataSnapshot = snapshot;
+            scriptCount = count;
+            scriptFlag = flag;
+            scriptDefault = defaultValue;
+        }
+
+        @ZenMethod
+        public static ZenRecipeUpdates publisher() {
+            return publisher;
+        }
+
+        @ZenMethod
+        public static void captureTask(ZenRecipeUpdateTask value) {
+            task = value;
+        }
+
+        @ZenMethod
+        public static void captureResult(ZenRecipeUpdateResult result) {
+            results.add(result);
         }
 
         @ZenMethod

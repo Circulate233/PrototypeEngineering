@@ -16,7 +16,8 @@
     "ArmorPropertiesMixin",
     "ItemStackMixin",
     "EnchantmentThornsMixin",
-    "NBTTagLongArrayMixin"
+    "NBTTagLongArrayMixin",
+    "ZenComponentDataMemberMixin"
   ],
   "client": [
     "client.RenderGlobalMachineModelsMixin",
