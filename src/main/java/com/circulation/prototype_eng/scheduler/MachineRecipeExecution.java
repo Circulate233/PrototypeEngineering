@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.scheduler;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
@@ -18,6 +19,7 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import org.jetbrains.annotations.Nullable;
 
@@ -136,12 +138,22 @@ final class MachineRecipeExecution implements PlannedExecution {
                         continue;
                     }
                     var hosts = new ObjectArrayList<MachineWorkSlots>();
+                    boolean resumedWork = false;
                     for (var entry : entries) {
                         var handle = entry.handle;
                         if (handle != null && !handle.finished()) {
                             var deferred = handle.deferredRecipeWork();
                             if (deferred != null) {
-                                if (entry.candidate.policy == null) hosts.add(deferred);
+                                if (entry.workedHosts.contains(deferred)) {
+                                    handle.finishDeferredRecipeWork(deferred);
+                                    resumedWork = true;
+                                }
+                                else if (entry.candidate.policy == null) {
+                                    if (entry.candidate.machine instanceof CrossRecipeController) {
+                                        hosts.addAll(entry.candidate.machine.recipeHosts());
+                                        entry.workedHosts.addAll(entry.candidate.machine.recipeHosts());
+                                    } else hosts.add(deferred);
+                                }
                                 else if (entry.policyWork == null) entry.policyWork = new PolicyWork(entry, deferred);
                             }
                         }
@@ -152,7 +164,7 @@ final class MachineRecipeExecution implements PlannedExecution {
                             policyPending = true;
                             break;
                         }
-                        if (policyPending) continue;
+                        if (policyPending || resumedWork) continue;
                         releaseMachines();
                         break;
                     }
@@ -388,6 +400,7 @@ final class MachineRecipeExecution implements PlannedExecution {
             if (work == null) continue;
             var handle = Objects.requireNonNull(entry.handle);
             if (work.complete) {
+                entry.workedHosts.addAll(work.hosts);
                 if (work.failure != null) handle.recordFailure(work.failure);
                 if (work.stopReason != null) cancellation.cancel(work.stopReason);
                 handle.finishDeferredRecipeWork(work.host);
@@ -760,6 +773,7 @@ final class MachineRecipeExecution implements PlannedExecution {
     private static final class Entry {
         private final Candidate candidate;
         private String affinity;
+        private final ReferenceOpenHashSet<MachineWorkSlots> workedHosts = new ReferenceOpenHashSet<>();
         @Nullable
         private MachineLifecycle.ScheduledExecution handle;
         @Nullable
@@ -808,6 +822,7 @@ final class MachineRecipeExecution implements PlannedExecution {
     private final class PolicyWork {
         private final Entry entry;
         private final MachineWorkSlots host;
+        private final List<MachineWorkSlots> hosts;
         private final boolean asynchronous;
         private final PlannedTaskExecutor runner;
         @Nullable
@@ -821,10 +836,11 @@ final class MachineRecipeExecution implements PlannedExecution {
         private PolicyWork(Entry entry, MachineWorkSlots host) {
             this.entry = entry;
             this.host = host;
+            hosts = entry.candidate.machine instanceof CrossRecipeController ? List.copyOf(entry.candidate.machine.recipeHosts()) : List.of(host);
             boolean workAsync = Objects.requireNonNull(entry.candidate.policy).workAsync();
             boolean ownerRequired = false;
             if (workAsync) {
-                for (var slot : host.slots()) {
+                for (var cohortHost : hosts) for (var slot : cohortHost.slots()) {
                     var process = slot.process();
                     if (process != null && process.requiresOwnerThread()) {
                         ownerRequired = true;
@@ -837,7 +853,7 @@ final class MachineRecipeExecution implements PlannedExecution {
         }
 
         private void advance(PlannedDeadline cleanupDeadline) {
-            if (original == null) original = new PlannedRecipeCoordinator(runner, List.of(host), forwardDeadline, cancellation,
+            if (original == null) original = new PlannedRecipeCoordinator(runner, hosts, forwardDeadline, cancellation,
                 () -> !cancellation.cancelled() && entry.candidate.lifecycle.schedulingAllowed());
             try {
                 do {

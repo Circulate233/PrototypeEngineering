@@ -12,6 +12,8 @@
 
 进度由绝对工作刻数除以配方时长并裁剪至0..100，零时长进程显示100。多线程工位没有进程时仍显示其保存的结果，因此失败/取消后的原因不会被固定Idle文本覆盖；跨配方取消后的失败仍参加全机状态汇总。机器不存在或inactive时仍同步宿主真实formed和结构身份，不显示虚假的执行计数。结构状态只读宿主formed，不把周期结构检查的临时processing gate映射成跳动的“等待结构检查”；未成型时不再在运行状态处重复“未成型”。
 
+跨配方成员的进度分母使用[统一批次时长](cross-recipe-batches.md)，共同完成后一起清除运行行；保持机器标题/结构状态/实际运行数量等玩家信息，不增加批次调度或线程策略提示。
+
 默认扩展页没有任何实际内容提供者，只显示主页面；背景按主体和主tab两块绘制，裁去原图中仍然存在的第二页空线框，自定义内容继续通过既有Java容器/screen注册入口提供。主tab提示在客户端调用枚举getLocal；已退役的扩展/占位、执行策略和检查中枚举及双语条目直接删除，不保留占位翻译。
 
 对照 PM 的 [DefaultMachineUI.kt](F:/clone/PrototypeMachinery/src/main/kotlin/client/gui/DefaultMachineUI.kt)：其七行工位列表与玩家背包是实际功能；`buildGridSlots` 的 4×4 区域新建临时 `ItemStackHandler`，`Status: Idle` 是固定文本，扩展页只含占位说明。当前默认 GUI 展示真实状态，未给这些占位内容增加机器存储或业务职责。PM 的 [DefaultMachineUIBindings.kt](F:/clone/PrototypeMachinery/src/main/kotlin/impl/ui/binding/DefaultMachineUIBindings.kt) 为旧 bindKey/脚本 GUI 服务；本项目扩展改用 Java 容器与 screen，不迁入字符串绑定运行时。

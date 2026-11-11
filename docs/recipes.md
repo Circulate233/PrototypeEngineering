@@ -356,6 +356,8 @@ scanner 的同步 startIn 与 bounded beginAdmission 均把准确 `RecipeCatalog
 
 跨配方宿主按需追加 `pe_cross/<counter>` 工位，公开 slots 视图不可修改；声明工位不使用该运行时命名空间。固定布局 codec 保留 Version 1，动态布局使用 Version 2、Dynamic 与 NextSlot，先解析与验证整组后发布，计数器保持单调；append 与公开 restore（包括恢复空列表）均撤销旧 vacancy/roster 证明。降低共享额度或工位容量不驱逐已有工作。RESCAN 与 isCore 的扩展策略仍按后续阶段处理。
 
+2026-11-12跨配方运行改为[统一批次](cross-recipe-batches.md)：本轮准入后封闭全部实际宿主，按原时长×最终并行数加权得到共同时间，运行期间不补入、所有成员共同END。TICK输入和输出两侧均相同才能合批，固定IO与FE原总量按共同时间精确分摊。START后的数量改写、共同速度、阻塞整批回滚及准确批次保存沿原planner执行；上述按目录继续准入只用于空载收集本批成员。
+
 当前共同验证入口：`build/staging/controller-shared-parallel/`、`build/staging/recipe-pool-strategies/` 与 `build/staging/controller-pool-plan/review.md`。最终状态见实施进度；实际游戏 World/网络包未启动验收。
 
 ## 配方池接口与简单配方索引

@@ -42,6 +42,7 @@ import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
+import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
@@ -89,6 +90,46 @@ class ControllerExecutionPolicyTest {
                         fixture.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    void crossRecipeCohortSpansActualHostComponentsAndTicksEachHostOnlyOnce() {
+        try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 2)) {
+            var fixture = new Fixture(scheduler, ControllerExecutionPolicy.FULL_ASYNC, true);
+            try {
+                Objects.requireNonNull(fixture.machine).attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
+                var slots = new ComponentType<>(id("second_batch_host"),
+                    owner -> new MachineWorkSlots(owner, List.of(new WorkSlotDefinition("second"))), MachineWorkSlots.TYPE.systems());
+                var second = fixture.machine.components().create(slots, fixture.machine);
+                var firstRecipe = fixture.definition;
+                var secondRecipe = new MachineRecipe(id("second_batch_recipe"), 2, firstRecipe.orderedRequirements(), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+                var secondProcess = new RecipeProcess(fixture.machine, secondRecipe, 9);
+                secondProcess.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+                assertTrue(second.start(secondProcess));
+                assertEquals(20, Objects.requireNonNull(fixture.resources.input()).insert(fixture.raw, 20, Actionable.MODULATE));
+                assertEquals(10, fixture.energy.receiveEnergy(10, Actionable.MODULATE));
+                scheduler.tick();
+                var firstProcess = fixture.created.element();
+                assertEquals(2, firstProcess.durationTicks());
+                assertEquals(0, firstProcess.state().progress(), "The full FE output must block the whole TICK round");
+                assertEquals(0, secondProcess.state().progress());
+                assertEquals(20, fixture.energy.savedEnergy(), "A rejected peer round must roll back every FE share");
+                assertEquals(1, fixture.energy.extractEnergy(1, Actionable.MODULATE));
+                scheduler.tick();
+                assertEquals(1, firstProcess.state().progress());
+                assertEquals(1, secondProcess.state().progress(), "The later component cannot execute the already-driven host again");
+                assertEquals(0, Objects.requireNonNull(fixture.resources.output()).amount(fixture.product));
+                scheduler.tick();
+                assertEquals(RecipeProcess.Lifecycle.COMPLETED, firstProcess.state().lifecycle());
+                assertEquals(RecipeProcess.Lifecycle.COMPLETED, secondProcess.state().lifecycle());
+                assertEquals(6, fixture.resources.output().amount(fixture.product));
+                assertEquals(8, fixture.energy.savedEnergy());
+                assertEquals(3, fixture.observations.stream().filter(value -> value.operation.equals("post")).count(),
+                    "Skipping an already-driven later host must still resume normal/post callbacks");
+            } finally {
+                fixture.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
             }
         }
     }
@@ -187,6 +228,7 @@ class ControllerExecutionPolicyTest {
         private final EnergyBuffer energy = new EnergyBuffer(20, () -> { });
         private final MachineController controller;
         private final MachineInstance machine;
+        private final MachineRecipe definition;
 
         private Fixture(TaskScheduler scheduler, ControllerExecutionPolicy policy, boolean cross) {
             this(scheduler, policy, cross, false);
@@ -197,6 +239,7 @@ class ControllerExecutionPolicyTest {
             this.policy = policy;
             this.ownerRequired = ownerRequired;
             var observer = new RecipeRequirementType<>(id("observe"), new RecipeRequirementSystem<String>() {
+                @Override public Object crossRecipeTickIo(String payload) { return null; }
                 @Override
                 public boolean requiresOwnerThread() {
                     ownerCapabilityReads.incrementAndGet();
@@ -231,11 +274,12 @@ class ControllerExecutionPolicyTest {
                 RecipeRequirements.RESOURCES.requirement(id("resource"), new ResourceRequirement(
                     List.of(new GenericStack(raw, 2)), List.of(new GenericStack(raw, 1)), List.of(), List.of(new GenericStack(product, 3)), false)),
                 RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 3, 0, 1, false))), Set.of(), 1, selection);
+            definition = recipe;
             var pool = new ObservedPool(id("pool"), "test.pool", List.of(recipe), List.of(), this);
             var catalog = new RecipeCatalog(List.of(pool));
-            RecipeProcessFactory factory = (instance, definition, seed, tuning) -> {
+            RecipeProcessFactory factory = (instance, recipeDefinition, seed, tuning) -> {
                 record("factory");
-                var process = new RecipeProcess(instance, definition, seed, tuning);
+                var process = new RecipeProcess(instance, recipeDefinition, seed, tuning);
                 created.add(process);
                 return process;
             };

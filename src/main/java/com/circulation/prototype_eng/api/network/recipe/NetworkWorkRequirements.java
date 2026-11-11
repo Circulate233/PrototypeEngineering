@@ -61,6 +61,12 @@ public final class NetworkWorkRequirements {
         if (parallelism < 1) {
             throw new IllegalArgumentException("Work parallelism must be positive");
         }
+        return scaledResources((long) parallelism);
+    }
+
+    /** A retimed batch slice may have no work or more than int capacity; the full vector remains exact. */
+    public Object2LongMap<NetworkResourceType> scaledResources(long parallelism) {
+        if (parallelism < 0) throw new IllegalArgumentException("Work quantity must be nonnegative");
         var scaled = new Object2LongOpenHashMap<NetworkResourceType>();
         for (var entry : resources.object2LongEntrySet()) {
             scaled.put(entry.getKey(), Math.multiplyExact(entry.getLongValue(), parallelism));

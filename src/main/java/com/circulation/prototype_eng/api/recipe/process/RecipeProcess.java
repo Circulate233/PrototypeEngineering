@@ -2,6 +2,8 @@ package com.circulation.prototype_eng.api.recipe.process;
 
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -83,6 +85,34 @@ public final class RecipeProcess {
     private RecipeWorkBudget preparationWork;
     // Frozen requirement systems/structural children make this process-local capability cache stable.
     private byte ownerThreadRequirement;
+    @Nullable
+    private CrossRecipeBatch.Timing crossRecipeTiming;
+
+    public @Nullable CrossRecipeBatch.Timing crossRecipeTiming() {
+        return crossRecipeTiming;
+    }
+
+    public void crossRecipeTiming(CrossRecipeBatch.Timing timing) {
+        requirePersistenceBoundary();
+        if (crossRecipeTiming != null || state.lifecycle() != Lifecycle.NEW || isMaterialCycle())
+            throw new IllegalStateException("Only new ordinary work may join a cross-recipe batch");
+        crossRecipeTiming = Objects.requireNonNull(timing);
+    }
+
+    /** Framework-only rebase after every START committed, before any member's first TICK. */
+    public void refreshCrossRecipeTiming(CrossRecipeBatch.Timing timing) {
+        if (host != null) host.requireProcessOperation(this);
+        if (crossRecipeTiming == null || !crossRecipeTiming.batch().equals(timing.batch()) || activeSession == null
+            || activeSession.current != null || !state.started() || state.progress() != 0 || state.successfulTicks() != 0
+            || acquiredTransactions != 0)
+            throw new IllegalStateException("Cross-recipe timing can only refresh after START and before work");
+        crossRecipeTiming = Objects.requireNonNull(timing);
+    }
+
+    /** Runtime batch duration never changes the canonical recipe definition or its codec identity. */
+    public int durationTicks() {
+        return crossRecipeTiming == null ? recipe.durationTicks() : crossRecipeTiming.duration();
+    }
 
     public RecipeProcess(MachineInstance owner, MachineRecipe recipe, long seed) {
         this(owner, recipe, seed, ProbabilityTuning.defaultTuning());
@@ -183,12 +213,18 @@ public final class RecipeProcess {
      */
     public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
                                          ProbabilityTuning tuning, State state) {
+        return restored(owner, recipe, seed, tuning, state, null);
+    }
+
+    public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
+                                         ProbabilityTuning tuning, State state, @Nullable CrossRecipeBatch.Timing timing) {
         Objects.requireNonNull(state);
-        if (state.lifecycle() == Lifecycle.COMPLETED && state.progress() < recipe.durationTicks()) {
+        if (state.lifecycle() == Lifecycle.COMPLETED && state.progress() < (timing == null ? recipe.durationTicks() : timing.duration())) {
             throw new IllegalArgumentException("Completed process has insufficient work progress");
         }
         var process = new RecipeProcess(owner, recipe, seed, tuning);
         process.state = state;
+        process.crossRecipeTiming = timing;
         return process;
     }
 
@@ -559,7 +595,7 @@ public final class RecipeProcess {
     }
 
     private boolean workComplete() {
-        return materialHatches == null ? state.progress() >= recipe.durationTicks() : state.successfulTicks() >= 1;
+        return materialHatches == null ? state.progress() >= durationTicks() : state.successfulTicks() >= 1;
     }
 
     /**
@@ -1472,6 +1508,7 @@ public final class RecipeProcess {
             if (process.state.lifecycle() == Lifecycle.NEW) {
                 phase = RecipeStage.START;
             } else if (process.workComplete()) {
+                if (!CrossRecipeBatch.readyToEnd(process)) return null;
                 phase = RecipeStage.END;
             } else if (!tickAttempted) {
                 phase = RecipeStage.TICK;
@@ -1777,6 +1814,16 @@ public final class RecipeProcess {
             return phase;
         }
 
+        public RecipeProcess process() {
+            return session.process;
+        }
+
+        /** A peer rejected this round; rollback must not retry this member in the same tick. */
+        public void deferBatchRound() {
+            requireOwner();
+            session.stopped = true;
+        }
+
         /**
          * Exact local lease closure; the enclosing tick still owns its post obligation.
          */
@@ -1917,6 +1964,8 @@ public final class RecipeProcess {
         }
 
         private void captureTick(double speed) {
+            if (session.process.crossRecipeTiming != null && session.process.owner instanceof CrossRecipeController cross)
+                speed = cross.batchSpeed();
             next = new State(Lifecycle.RUNNING, before.progress() + Math.max(0, speed), nextSuccessfulTicks, ProcessResult.SUCCESS);
             tick = new Tick(before.progress(), next.progress(), before.successfulTicks(), next.successfulTicks());
         }

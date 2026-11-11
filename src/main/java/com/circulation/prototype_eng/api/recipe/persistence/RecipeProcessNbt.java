@@ -4,6 +4,8 @@ import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.component.TopologicalComponentMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.BuiltinOverlayCodecs;
@@ -18,6 +20,7 @@ import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayTypes;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlays;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.RequirementPath;
 import com.circulation.prototype_eng.api.recipe.process.RequirementAttributeState;
 import com.circulation.prototype_eng.api.recipe.process.ResourceInputLocks;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -162,6 +166,7 @@ public final class RecipeProcessNbt {
         tuning.setInteger("Threshold", process.probabilityTuning().exactSmallBinomialThreshold());
         tag.setTag("Tuning", tuning);
         tag.setTag("State", writeState(process.state()));
+        if (process.crossRecipeTiming() != null) tag.setTag("CrossBatch", writeTiming(process.crossRecipeTiming()));
         tag.setTag("Attributes", attributes.encode(process.attributes().localSnapshot()));
         var components = new NBTTagList();
         for (var saved : process.components().snapshotBindings()) {
@@ -201,10 +206,10 @@ public final class RecipeProcessNbt {
         var tag = Objects.requireNonNull(saved).copy();
         if (hatches == null) {
             StrictNbt.requireKeys(tag, "Version", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-                "Attributes", "Components", "PendingDependencies");
+                "Attributes", "Components", "PendingDependencies", "CrossBatch");
         } else {
             StrictNbt.requireKeys(tag, "Version", "MaterialCycle", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-                "Attributes", "Components", "PendingDependencies");
+                "Attributes", "Components", "PendingDependencies", "CrossBatch");
             if (!StrictNbt.requireBoolean(tag, "MaterialCycle")) {
                 throw new IllegalArgumentException("Expected a material cycle save");
             }
@@ -218,7 +223,10 @@ public final class RecipeProcessNbt {
         long seed = StrictNbt.requireLong(tag, "Seed");
         var probability = new ProbabilityTuning(StrictNbt.requireBoolean(tuning, "ExactSmallBinomial"), StrictNbt.requireInt(tuning, "Threshold"));
         var state = readState(StrictNbt.requireCompound(tag, "State"));
-        var process = hatches == null ? RecipeProcess.restored(owner, recipe, seed, probability, state)
+        var timing = tag.hasKey("CrossBatch") ? readTiming(StrictNbt.requireCompound(tag, "CrossBatch")) : null;
+        if (timing != null && (!(owner instanceof CrossRecipeController) || hatches != null))
+            throw new IllegalArgumentException("Cross-recipe batch belongs to a cross-recipe controller");
+        var process = hatches == null ? RecipeProcess.restored(owner, recipe, seed, probability, state, timing)
             : RecipeProcess.restoredMaterialCycle(owner, recipe, seed, probability, state, hatches);
         var graph = StrictNbt.requireList(tag, "Graph", Constants.NBT.TAG_LIST);
         var expected = new ObjectArrayList<>(new RecipeDefinitionIndex(process).requirements().keySet());
@@ -231,6 +239,12 @@ public final class RecipeProcessNbt {
             }
         }
         process.attributes().restoreLocal(attributes.decode(StrictNbt.requireCompound(tag, "Attributes")));
+        if (timing != null) {
+            var definitions = new RecipeDefinitionIndex(process).requirements();
+            var energyPaths = new ObjectLinkedOpenHashSet<RequirementPath>();
+            for (var definition : definitions.entrySet()) if (definition.getValue().type() == RecipeRequirements.ENERGY) energyPaths.add(definition.getKey());
+            if (!energyPaths.equals(timing.energyOffsets().keySet())) throw new IllegalArgumentException("Cross-recipe energy paths changed");
+        }
 
         var entries = readComponents(StrictNbt.requireList(tag, "Components", Constants.NBT.TAG_COMPOUND));
         var pending = readPending(StrictNbt.requireList(tag, "PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
@@ -273,6 +287,40 @@ public final class RecipeProcessNbt {
         for (var validator : validators) {
             validator.accept(process);
         }
+    }
+
+    private static NBTTagCompound writeTiming(CrossRecipeBatch.Timing timing) {
+        var tag = new NBTTagCompound();
+        tag.setLong("Most", timing.batch().getMostSignificantBits());
+        tag.setLong("Least", timing.batch().getLeastSignificantBits());
+        tag.setInteger("Duration", timing.duration());
+        tag.setInteger("Parallelism", timing.parallelism());
+        tag.setInteger("MaterialOffset", timing.materialOffset());
+        var energy = new NBTTagList();
+        for (var entry : timing.energyOffsets().entrySet()) {
+            var item = new NBTTagCompound();
+            item.setTag("Path", RequirementPathNbt.encode(entry.getKey()));
+            item.setInteger("Input", entry.getValue().input());
+            item.setInteger("Output", entry.getValue().output());
+            energy.appendTag(item);
+        }
+        tag.setTag("Energy", energy);
+        return tag;
+    }
+
+    private static CrossRecipeBatch.Timing readTiming(NBTTagCompound tag) {
+        StrictNbt.requireKeys(tag, "Most", "Least", "Duration", "Parallelism", "MaterialOffset", "Energy");
+        var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, CrossRecipeBatch.EnergyOffsets>();
+        var entries = StrictNbt.requireList(tag, "Energy", Constants.NBT.TAG_COMPOUND);
+        for (int index = 0; index < entries.tagCount(); index++) {
+            var entry = entries.getCompoundTagAt(index);
+            StrictNbt.requireKeys(entry, "Path", "Input", "Output");
+            if (offsets.putIfAbsent(RequirementPathNbt.read(entry), new CrossRecipeBatch.EnergyOffsets(
+                StrictNbt.requireInt(entry, "Input"), StrictNbt.requireInt(entry, "Output"))) != null)
+                throw new IllegalArgumentException("Duplicate batch energy path");
+        }
+        return new CrossRecipeBatch.Timing(new UUID(StrictNbt.requireLong(tag, "Most"), StrictNbt.requireLong(tag, "Least")),
+            StrictNbt.requireInt(tag, "Duration"), StrictNbt.requireInt(tag, "Parallelism"), StrictNbt.requireInt(tag, "MaterialOffset"), offsets);
     }
 
     private Map<ComponentType<RecipeProcess, ?>, SavedComponent> readComponents(NBTTagList list) {

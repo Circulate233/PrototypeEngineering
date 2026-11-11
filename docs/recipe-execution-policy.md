@@ -31,6 +31,8 @@ Java 在机器创建声明中调用 `MachineType.Builder.executionPolicy(Control
 
 跨配方控制器以“上次准入成功配方之后”为下一完整pass的轮转起点；当前pass的offset保持不变，每个实际候选仍检查一次，成功不刷新预算。不复制或旋转配方列表，按当前generation既有priority二分起点；上次配方暂不在候选中仍按其目录位置继续，定义已删除则回到起点。真实START/共享并行/每配方线程上限继续决定准入，轮转不预留共享库存。
 
+2026-11-12起，跨配方以[封闭批次](cross-recipe-batches.md)运行：空载收集相同TICK输入/输出的成员，原时长按并行加权，运行期间扫描暂停，统一完成/结算后再从轮转位置选择下一批。不同原时长不会造成短配方提前出料并反复补入。四种线程策略仍承接同一批次/事务协议。
+
 ## 多个提供者的组合配方池
 
 `CompositeRecipePool(id, titleKey, children)`组合Simple、Default、自定义及其它组合池。child顺序决定组合自身首次出现的canonical顺序；相同canonical对象只出现一次，同ID不同对象拒绝。同配方被多个child接受时数量上界取最宽松值；任一child的null意见仅回退该child，empty意见不回退。

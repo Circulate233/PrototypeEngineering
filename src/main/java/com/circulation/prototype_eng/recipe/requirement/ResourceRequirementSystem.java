@@ -7,6 +7,7 @@ import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.probability.ChanceMath;
 import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
+import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -47,7 +48,12 @@ import java.util.Objects;
 public final class ResourceRequirementSystem implements RecipeRequirementSystem<ResourceRequirement> {
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
                                                   RecipeStage stage, List<GenericStack> inputs, List<GenericStack> outputs) {
-        var payload = requirement.payload();
+        var payload = batchResources(process, requirement.payload(), stage);
+        boolean batched = payload != requirement.payload();
+        if (batched) {
+            inputs = payload.inputsPerTick();
+            outputs = payload.outputsPerTick();
+        }
         var pool = stage == RecipeStage.END ? payload.randomOutputs() : null;
         boolean randomOutputs = pool != null && pool.hasOutputs();
         boolean resolveInputs = stage == RecipeStage.START && (!payload.fuzzyInputs().isEmpty() || !payload.dynamicInputs().isEmpty());
@@ -59,7 +65,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         try {
             var hatches = process.hatches().resources();
             String id = requirement.id().toString();
-            int parallelism = RecipeParallelism.effective(process);
+            int parallelism = batched ? 1 : RecipeParallelism.effective(process);
             double chance = payload.chance().effective(process);
             String salt = "resource:" + process.requirementPath() + ":" + stage
                 + (stage == RecipeStage.TICK ? ":" + process.state().successfulTicks() : "");
@@ -278,7 +284,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     @SuppressWarnings("ReturnOfInnerClass") // The owner binding intentionally retains its captured callback scope.
     public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement,
                                           RecipeStage stage) {
-        var payload = requirement.payload();
+        var payload = batchResources(process, requirement.payload(), stage);
+        boolean batched = payload != requirement.payload();
         var inputs = switch (stage) {
             case START -> payload.inputs();
             case TICK -> payload.inputsPerTick();
@@ -363,7 +370,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 if (!attributesReady) {
                     if (!parallelCapture.advance(budget) || chanceCapture != null && !chanceCapture.advance(budget))
                         return new PreparedRequirement(this);
-                    parallels = Math.max(1, (int) Math.floor(parallelCapture.result()));
+                    parallels = batched ? 1 : Math.max(1, (int) Math.floor(parallelCapture.result()));
                     chance = payload.chance().percent() * Math.max(0, chanceCapture == null ? 1 : chanceCapture.result());
                     if (!Double.isFinite(chance))
                         throw new IllegalStateException("Resource chance multiplier overflow");
@@ -387,6 +394,21 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     @Override
     public RequirementTransaction start(RecipeProcess process, RecipeRequirement<ResourceRequirement> requirement) {
         return acquire(process, requirement, RecipeStage.START, requirement.payload().inputs(), ObjectLists.emptyList());
+    }
+
+    private static ResourceRequirement batchResources(RecipeProcess process, ResourceRequirement payload, RecipeStage stage) {
+        var timing = process.crossRecipeTiming();
+        if (timing == null || stage != RecipeStage.TICK || payload.chance().effective(process) != 100) return payload;
+        long times = timing.materialTimes(process);
+        return new ResourceRequirement(payload.inputs(), batchStacks(payload.inputsPerTick(), times), batchStacks(payload.outputsPerTick(), times),
+            payload.outputs(), payload.voidExcessOutputs(), ResourceChance.ALWAYS, payload.randomOutputs(), payload.fuzzyInputs(), payload.dynamicInputs(), payload.inputAllocation());
+    }
+
+    private static List<GenericStack> batchStacks(List<GenericStack> values, long times) {
+        if (times == 0 || values.isEmpty()) return List.of();
+        var result = new ObjectArrayList<GenericStack>(values.size());
+        for (var value : values) result.add(new GenericStack(value.what(), Math.multiplyExact(value.amount(), times)));
+        return result;
     }
 
     @Override

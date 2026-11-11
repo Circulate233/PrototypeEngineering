@@ -12,6 +12,28 @@ import java.util.function.LongSupplier;
 
 /** One search continues across different recipes, lazily creating process slots until the shared allowance is spent. */
 public class CrossRecipeController extends RecipeController {
+    private boolean batchTickClaimed;
+    private double batchSpeed = 1;
+
+    public double batchSpeed() {
+        return batchSpeed;
+    }
+
+    void batchSpeed(double speed) {
+        batchSpeed = speed;
+    }
+
+    /** Component pre phases all run before normal work; each physical machine tick grants one cohort step. */
+    public void beginBatchTick() {
+        batchTickClaimed = false;
+    }
+
+    public boolean claimBatchTick() {
+        if (batchTickClaimed) return false;
+        batchTickClaimed = true;
+        return true;
+    }
+
     public CrossRecipeController() {
     }
 

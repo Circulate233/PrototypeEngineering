@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.config.Actionable;
+import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -24,6 +25,16 @@ import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementType;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
+import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
+import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
+import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.storage.BufferedResourceHatch;
+import com.circulation.prototype_eng.testsupport.TestResources.Key;
+import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
+import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
@@ -48,6 +59,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -61,8 +73,114 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RecipeControllersTest {
     private static final ScanLimits LIMITS = new ScanLimits(32, 32);
 
+    @Test
+    void batchWeightsIncludeCommittedStartQuantitiesAndShareOneSpeedClock() {
+        var change = new RecipeRequirementType<>(id("start_quantity"), new RecipeRequirementSystem<String>() {
+            @Override public @Nullable Object crossRecipeTickIo(String payload) { return null; }
+            @Override
+            public RequirementTransaction start(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return new StartQuantity(process);
+            }
+        });
+        var shortRecipe = new MachineRecipe(id("start_quantity_short"), 2, List.of(change.requirement(id("change"), "amount")), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+        var longRecipe = new MachineRecipe(id("start_quantity_long"), 6, List.of(), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+        var owner = new CrossRecipeController();
+        allowance(owner, 2, 1);
+        var host = owner.createRecipeHost(List.of(), Set.of());
+        owner.createRecipeScanner(host, catalog(shortRecipe, longRecipe), () -> 1).scan(LIMITS);
+        var members = host.activeProcesses();
+        assertEquals(2, members.size());
+        members.getFirst().attributes().setResolvedBase(StandardMachineAttributes.PROCESS_SPEED, 0.5);
+        members.getLast().attributes().setResolvedBase(StandardMachineAttributes.PROCESS_SPEED, 2.5);
+        host.tickProcesses();
+        assertEquals(3, members.getFirst().durationTicks(), "(2*3 + 6*1)/4 includes START's final quantity");
+        assertEquals(3, members.getLast().durationTicks());
+        assertEquals(1, members.getFirst().state().progress());
+        assertEquals(1, members.getLast().state().progress());
+        host.tickProcesses();
+        assertEquals(2, members.getFirst().state().progress());
+        assertEquals(2, members.getLast().state().progress());
+        host.tickProcesses();
+        assertTrue(host.activeProcesses().isEmpty());
+        assertTrue(members.stream().allMatch(process -> process.state().lifecycle() == RecipeProcess.Lifecycle.COMPLETED));
+    }
+
+    @Test
+    void weightedCohortPreservesTickInputsOutputsAndEnergyThroughRestoreAndBlockedEnd() {
+        var type = new KeyType("cross_batch");
+        var water = new Key(type, "water");
+        var steam = new Key(type, "steam");
+        var product = new Key(type, "product");
+        var hatch = new BufferedResourceHatch(HatchMode.MIXED, 8, Reference2LongMaps.singleton(type, 1000L), () -> { });
+        var energy = new EnergyBuffer(1000, () -> { });
+        assertEquals(100, Objects.requireNonNull(hatch.input()).insert(water, 100, Actionable.MODULATE));
+        assertEquals(200, energy.receiveEnergy(200, Actionable.MODULATE));
+        var blocked = new AtomicBoolean(true);
+        var endGate = new RecipeRequirementType<>(id("batch_end_gate"), new RecipeRequirementSystem<String>() {
+            @Override public @Nullable Object crossRecipeTickIo(String payload) { return null; }
+            @Override
+            public RequirementTransaction end(RecipeProcess process, RecipeRequirement<String> requirement) {
+                return blocked.get() ? new RequirementTransaction() {
+                    @Override public ProcessResult result() { return RecipeText.StorageChanged.blocked(); }
+                    @Override public void commit() { }
+                    @Override public void rollback() { }
+                } : RequirementTransaction.SUCCESS;
+            }
+        });
+        var io = new ResourceRequirement(List.of(), List.of(new GenericStack(water, 1)), List.of(new GenericStack(steam, 2)),
+            List.of(new GenericStack(product, 1)), false);
+        var first = new MachineRecipe(id("batch_short"), 2, List.of(RecipeRequirements.RESOURCES.requirement(id("io_a"), io),
+            RecipeRequirements.ENERGY.requirement(id("fe_a"), new EnergyRequirement(1, 2, 0, 0, false))), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+        var second = new MachineRecipe(id("batch_long"), 4, List.of(RecipeRequirements.RESOURCES.requirement(id("io_b"), io),
+            RecipeRequirements.ENERGY.requirement(id("fe_b"), new EnergyRequirement(3, 4, 0, 0, false)), endGate.requirement(id("end"), "gate")),
+            Set.of(), 1, RecipeParallelismSelection.fixed(2));
+        var differentInput = new MachineRecipe(id("different_input"), 3, List.of(RecipeRequirements.RESOURCES.requirement(id("io_c"),
+            new ResourceRequirement(List.of(), List.of(new GenericStack(water, 2)), io.outputsPerTick(), io.outputs(), false))), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+        var differentOutput = new MachineRecipe(id("different_output"), 3, List.of(RecipeRequirements.RESOURCES.requirement(id("io_d"),
+            new ResourceRequirement(List.of(), io.inputsPerTick(), List.of(new GenericStack(steam, 3)), io.outputs(), false))), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+        var noTickIo = new MachineRecipe(id("no_tick_io"), 3, List.of(), Set.of(), 1, RecipeParallelismSelection.fixed(1));
+        var owner = new CrossRecipeController();
+        allowance(owner, 6, 1);
+        owner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(energy), List.of()));
+        var host = owner.createRecipeHost(List.of(), Set.of());
+        var scanner = owner.createRecipeScanner(host, catalog(first, second, differentInput, differentOutput, noTickIo), () -> 11);
+        scanner.scan(LIMITS);
+        assertEquals(List.of(first, second), host.activeProcesses().stream().map(RecipeProcess::recipe).toList());
+        host.tickProcesses();
+        assertEquals(189, energy.savedEnergy());
+        assertEquals(0, Objects.requireNonNull(hatch.output()).amount(product));
+        assertTrue(host.activeProcesses().stream().allMatch(process -> process.durationTicks() == 4));
+        assertEquals(RecipeScanner.Status.PAUSED, scanner.scan(LIMITS).status());
+        host.tickProcesses();
+        var codec = new MachineWorkSlotsNbt("cross-batch", List.of(RecipeProcessNbt.builder(first, "v1").build(), RecipeProcessNbt.builder(second, "v1").build()));
+        var saved = codec.encode(host);
+        var restoredOwner = new CrossRecipeController();
+        allowance(restoredOwner, 6, 1);
+        restoredOwner.components().put(MachineHatches.TYPE, new MachineHatches(List.of(hatch), List.of(energy), List.of()));
+        var restored = restoredOwner.createRecipeHost(List.of(), Set.of());
+        codec.restore(restored, saved);
+        restored.tickProcesses();
+        restored.tickProcesses();
+        assertEquals(157, energy.savedEnergy(), "Original FE total is (1 + 2*2)*1 + (3 + 4*4)*2 = 43");
+        assertEquals(90, Objects.requireNonNull(hatch.input()).amount(water));
+        assertEquals(20, Objects.requireNonNull(hatch.output()).amount(steam));
+        assertEquals(0, hatch.output().amount(product), "One blocked END must prevent every peer output");
+        assertEquals(2, restored.activeProcesses().size());
+        blocked.set(false);
+        restored.tickProcesses();
+        assertEquals(3, hatch.output().amount(product));
+        assertEquals(157, energy.savedEnergy(), "Retrying END cannot charge another TICK");
+        assertTrue(restored.activeProcesses().isEmpty());
+    }
+
     private static ResourceLocation id(String path) {
         return new ResourceLocation("controllers_test", path);
+    }
+
+    private record StartQuantity(RecipeProcess process) implements RequirementTransaction {
+        @Override public ProcessResult result() { return ProcessResult.SUCCESS; }
+        @Override public void commit() { process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 3); }
+        @Override public void rollback() { process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1); }
     }
 
     private static MachineRecipe recipe(String name, int quantity, int threads, Set<ResourceLocation> groups) {

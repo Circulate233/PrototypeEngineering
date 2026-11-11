@@ -13,12 +13,14 @@ import com.circulation.prototype_eng.api.storage.ResourceBatch;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.AbstractList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
@@ -100,6 +102,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     private ObjectArrayList<RecipePureComputation> prepareRound = new ObjectArrayList<>();
     private boolean prepareOwnerSelected;
     private boolean receivedWorkerExit;
+    private final ObjectOpenHashSet<UUID> rejectedCohorts = new ObjectOpenHashSet<>();
 
     public PlannedRecipeCoordinator(PlannedTaskExecutor tasks, List<MachineWorkSlots> hosts,
                                     PlannedDeadline forwardDeadline, PlannedCancellationToken cancellation,
@@ -318,6 +321,10 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                         }
                     }
                     preparationCursor++;
+                    if (!accepted) {
+                        var timing = entry.stage.process().crossRecipeTiming();
+                        if (timing != null) rejectedCohorts.add(timing.batch());
+                    }
                     if (!accepted && !bind(List.of(entry), true)) {
                         break;
                     }
@@ -325,6 +332,19 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
                 }
                 var accepted = unresolved();
                 if (accepted == null) break;
+                Entry cohortRejected = null;
+                for (var entry : accepted) {
+                    var timing = entry.stage.process().crossRecipeTiming();
+                    if (timing != null && rejectedCohorts.contains(timing.batch())) {
+                        cohortRejected = entry;
+                        break;
+                    }
+                }
+                if (cohortRejected != null) {
+                    cohortRejected.stage.deferBatchRound();
+                    if (!bind(List.of(cohortRejected), true)) break;
+                    continue;
+                }
                 if (!accepted.isEmpty()) {
                     if (!bind(accepted, false)) {
                         break;
@@ -659,6 +679,7 @@ public final class PlannedRecipeCoordinator implements PlannedExecution {
     }
 
     private void clearRound() {
+        rejectedCohorts.clear();
         round = new ObjectArrayList<>();
         acquisitionCursor = preparationCursor = 0;
         unresolvedEntries = null;

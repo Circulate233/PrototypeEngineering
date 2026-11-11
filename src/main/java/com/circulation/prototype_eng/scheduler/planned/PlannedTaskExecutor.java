@@ -24,6 +24,8 @@ import java.util.function.Supplier;
  * quiescent before retiring owners or releasing uncertain source reservations.
  */
 public final class PlannedTaskExecutor {
+    private static final PlannedTaskExecutor DIRECT = new PlannedTaskExecutor();
+    @Nullable
     private final ExecutorService workers;
     private final ExecutorService[] sourceLanes;
     private final LongSupplier nanoTime;
@@ -33,6 +35,21 @@ public final class PlannedTaskExecutor {
     private final PlannedTaskExecutor synchronousView;
     @Nullable
     private final PlannedTaskExecutor synchronousSourcesView;
+
+    /** Inline coordination uses the same batch protocol without allocating an executor or thread. */
+    private PlannedTaskExecutor() {
+        workers = null;
+        sourceLanes = new ExecutorService[0];
+        nanoTime = System::nanoTime;
+        mode = DispatchMode.SYNCHRONOUS;
+        original = this;
+        synchronousView = this;
+        synchronousSourcesView = this;
+    }
+
+    public static PlannedTaskExecutor direct() {
+        return DIRECT;
+    }
 
     public PlannedTaskExecutor(ExecutorService workers, ExecutorService[] sourceLanes) {
         this(workers, sourceLanes, System::nanoTime);
@@ -118,7 +135,7 @@ public final class PlannedTaskExecutor {
                                          Consumer<Batch<T>> beforeDispatch) {
         var dispatches = new ObjectArrayList<Dispatch<T>>(jobs.size());
         for (var job : jobs) {
-            dispatches.add(new Dispatch<>(sourceLanes[laneIndex(job.affinity())], job.job()));
+            dispatches.add(new Dispatch<>(mode == DispatchMode.SYNCHRONOUS ? null : sourceLanes[laneIndex(job.affinity())], job.job()));
         }
         return run(dispatches, deadline, Objects.requireNonNull(beforeDispatch), mode != DispatchMode.ASYNC);
     }
@@ -153,7 +170,7 @@ public final class PlannedTaskExecutor {
                             interrupted = true;
                             batch.stop(Reason.INTERRUPTED);
                         }
-                    } else entry.executor.execute(() -> batch.execute(entry));
+                    } else Objects.requireNonNull(entry.executor).execute(() -> batch.execute(entry));
                 } catch (RuntimeException | Error failure) {
                     batch.rejected(entry, failure);
                 }
@@ -562,10 +579,11 @@ public final class PlannedTaskExecutor {
         }
     }
 
-    private record Dispatch<T>(ExecutorService executor, Job<T> job) {
+    private record Dispatch<T>(@Nullable ExecutorService executor, Job<T> job) {
     }
 
     private static final class Entry<T> {
+        @Nullable
         private final ExecutorService executor;
         private final Supplier<? extends T> action;
         @Nullable
@@ -576,7 +594,7 @@ public final class PlannedTaskExecutor {
         @Nullable
         private Result<T> result;
 
-        private Entry(ExecutorService executor, Supplier<? extends T> action, @Nullable PlannedDeadline deadline) {
+        private Entry(@Nullable ExecutorService executor, Supplier<? extends T> action, @Nullable PlannedDeadline deadline) {
             this.executor = executor;
             this.action = action;
             this.deadline = deadline;

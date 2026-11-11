@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.MultithreadController;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
@@ -595,7 +596,7 @@ public final class RecipeScanner {
     }
 
     private boolean canStart(RecipeProcess process) {
-        if (workPaused()) return false;
+        if (workPaused() || mode == ControllerMode.CROSS_RECIPE && !CrossRecipeBatch.accepts(process)) return false;
         requireCandidateCodec(process.recipe());
         return RecipeScanProbes.check(process, preparations, this::checkPrepared) == ProcessResult.SUCCESS;
     }
@@ -785,7 +786,8 @@ public final class RecipeScanner {
 
     private boolean workPaused() {
         var lifecycle = host.owner().lifecycle();
-        return lifecycle != null && lifecycle.retired() || !host.owner().recipeWorkAllowed() || !generationCurrent();
+        return mode == ControllerMode.CROSS_RECIPE && CrossRecipeBatch.running(host.owner())
+            || lifecycle != null && lifecycle.retired() || !host.owner().recipeWorkAllowed() || !generationCurrent();
     }
 
     private void resetPass() {
@@ -1160,6 +1162,10 @@ public final class RecipeScanner {
                         creation = null;
                         if (!allowed.getAsBoolean()) continue;
                         requireCandidateCodec(Objects.requireNonNull(recipe));
+                        if (mode == ControllerMode.CROSS_RECIPE && !CrossRecipeBatch.accepts(process)) {
+                            nextCandidate();
+                            continue;
+                        }
                         probe = RecipeScanProbes.begin(process, preparations, constraints);
                         probes++;
                     }

@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.recipe.requirement;
 
 import com.circulation.prototype_eng.api.energy.EnergyInput;
 import com.circulation.prototype_eng.api.energy.EnergySnapshot;
+import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -34,10 +35,21 @@ import java.util.Objects;
 public final class EnergyRequirementSystem implements RecipeRequirementSystem<EnergyRequirement> {
     private static RequirementTransaction acquire(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
                                                   RecipeStage stage, long input, long output) {
+        var timing = process.crossRecipeTiming();
+        boolean batched = timing != null && timing.duration() > 0 && process.requirementPath().parent() == null;
+        if (batched) {
+            if (stage != RecipeStage.TICK) return RequirementTransaction.SUCCESS;
+            var offsets = Objects.requireNonNull(timing.energyOffsets().get(process.requirementPath()));
+            var payload = requirement.payload();
+            input = timing.portion(CrossRecipeBatch.energyTotal(payload.input(), payload.inputPerTick(),
+                process.recipe().durationTicks(), timing.parallelism()), offsets.input(), process.tickContext());
+            output = timing.portion(CrossRecipeBatch.energyTotal(payload.output(), payload.outputPerTick(),
+                process.recipe().durationTicks(), timing.parallelism()), offsets.output(), process.tickContext());
+        }
         if (input == 0 && output == 0) {
             return RequirementTransaction.SUCCESS;
         }
-        int parallelism = RecipeParallelism.effective(process);
+        int parallelism = batched ? 1 : RecipeParallelism.effective(process);
         input = RecipeParallelism.scaleCount(input, parallelism);
         output = RecipeParallelism.scaleCount(output, parallelism);
         var reservations = new ObjectArrayList<ResourceReservation>();
@@ -146,6 +158,9 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
     public RequirementPreparation prepare(RecipeProcess process, RecipeRequirement<EnergyRequirement> requirement,
                                           RecipeStage stage) {
         var payload = requirement.payload();
+        var timing = process.crossRecipeTiming();
+        boolean batched = timing != null && timing.duration() > 0 && process.requirementPath().parent() == null;
+        if (batched && stage != RecipeStage.TICK) return null;
         long input = switch (stage) {
             case START -> payload.input();
             case TICK -> payload.inputPerTick();
@@ -156,11 +171,14 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             case TICK -> payload.outputPerTick();
             case END -> payload.output();
         };
-        if (input == 0 && output == 0) {
+        if (!batched && input == 0 && output == 0) {
             return null;
         }
         var hatches = process.hatches();
         var parallelCapture = process.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+        var offsets = batched ? Objects.requireNonNull(timing.energyOffsets().get(process.requirementPath())) : null;
+        var tick = batched ? process.tickContext() : null;
+        int originalDuration = process.recipe().durationTicks();
         return new RequirementPreparation() {
             @Nullable
             private EnergyQuantities quantities;
@@ -199,6 +217,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
                 if (quantities == null) {
                     if (!parallelCapture.advance(budget)) return paused(reservations);
                     quantities = new EnergyQuantities(input, output, Math.max(1, (int) Math.floor(parallelCapture.result())));
+                    if (batched) quantities.batch = new BatchEnergy(Objects.requireNonNull(timing), Objects.requireNonNull(offsets),
+                        payload, originalDuration, Objects.requireNonNull(tick));
                     return paused(reservations);
                 }
                 if (!quantities.complete || process.hatches() != hatches) {
@@ -416,6 +436,8 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         private long input;
         private long output;
         private boolean complete;
+        @Nullable
+        private BatchEnergy batch;
 
         private EnergyQuantities(long input, long output, int parallelism) {
             this.input = input;
@@ -431,10 +453,20 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
             if (!budget.take()) {
                 return false;
             }
-            input = RecipeParallelism.scaleCount(input, parallelism);
-            output = RecipeParallelism.scaleCount(output, parallelism);
+            if (batch == null) {
+                input = RecipeParallelism.scaleCount(input, parallelism);
+                output = RecipeParallelism.scaleCount(output, parallelism);
+            } else {
+                input = batch.timing.portion(CrossRecipeBatch.energyTotal(batch.payload.input(), batch.payload.inputPerTick(),
+                    batch.originalDuration, batch.timing.parallelism()), batch.offsets.input(), batch.tick);
+                output = batch.timing.portion(CrossRecipeBatch.energyTotal(batch.payload.output(), batch.payload.outputPerTick(),
+                    batch.originalDuration, batch.timing.parallelism()), batch.offsets.output(), batch.tick);
+            }
             complete = true;
             return true;
         }
     }
+
+    private record BatchEnergy(CrossRecipeBatch.Timing timing, CrossRecipeBatch.EnergyOffsets offsets,
+                               EnergyRequirement payload, int originalDuration, RecipeProcess.Tick tick) { }
 }

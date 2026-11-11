@@ -3,6 +3,12 @@ package com.circulation.prototype_eng.api.machine.workslot;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
+import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken;
+import com.circulation.prototype_eng.scheduler.planned.PlannedRecipeCoordinator;
+import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -25,6 +31,7 @@ import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Iterator;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -55,6 +62,8 @@ public final class MachineWorkSlots {
     private TickBatch activeBatch;
     @Nullable
     private Admission activeAdmission;
+    @Nullable
+    private PlannedRecipeCoordinator synchronousCrossWork;
 
     public MachineWorkSlots(MachineInstance owner, List<WorkSlotDefinition> definitions) {
         this(owner, definitions, Set.of());
@@ -337,7 +346,7 @@ public final class MachineWorkSlots {
         requireBoundary();
         validateUnattached(process);
         var slot = requireSlot(name);
-        if (workPaused() || slot.process() != null || activeCount() >= capacity() || !accepts(slot, process)
+        if (!CrossRecipeBatch.accepts(process) || workPaused() || slot.process() != null || activeCount() >= capacity() || !accepts(slot, process)
             || owner.recipeThreadCount(process.recipe().id()) >= process.recipe().maxConcurrentThreads()) {
             return false;
         }
@@ -506,7 +515,19 @@ public final class MachineWorkSlots {
      * One synchronous executor invocation per occupied slot; expected failures do not stop other slots.
      */
     public void tickProcesses() {
-        requireBoundary();
+        if (synchronousCrossWork == null) requireBoundary();
+        if (owner instanceof CrossRecipeController && executor == RecipeExecutor.DEFAULT) {
+            var deadline = PlannedDeadline.after(Duration.ofSeconds(5));
+            if (synchronousCrossWork == null)
+                synchronousCrossWork = new PlannedRecipeCoordinator(PlannedTaskExecutor.direct(), owner.recipeHosts(), deadline,
+                    new PlannedCancellationToken(), () -> !workPaused());
+            do {
+                synchronousCrossWork.advance(deadline);
+                synchronousCrossWork.awaitExit();
+            } while (!synchronousCrossWork.finished() && synchronousCrossWork.workYielded());
+            if (synchronousCrossWork.finished()) synchronousCrossWork = null;
+            return;
+        }
         executing = true;
         try {
             for (var slot : slots) {
@@ -562,6 +583,7 @@ public final class MachineWorkSlots {
 
     private TickBatch captureTickBatch() {
         requireBoundary();
+        CrossRecipeBatch.prepare(owner);
         if (executor != RecipeExecutor.DEFAULT) {
             throw new IllegalStateException("Custom synchronous recipe executor does not provide staged execution");
         }
@@ -743,6 +765,18 @@ public final class MachineWorkSlots {
                 throw new IllegalArgumentException("Duplicate, incompatible or foreign process in restored work slots");
             }
         }
+        if (owner instanceof CrossRecipeController) {
+            CrossRecipeBatch.Timing timing = null;
+            boolean untimed = false;
+            for (var process : processes) {
+                var candidate = process.crossRecipeTiming();
+                if (candidate == null) untimed = true;
+                else if (timing != null && (!timing.batch().equals(candidate.batch()) || timing.duration() != candidate.duration()))
+                    throw new IllegalArgumentException("Restored cross-recipe slots contain different batches");
+                else timing = candidate;
+            }
+            if (timing != null && untimed) throw new IllegalArgumentException("Restored cross-recipe batch contains untimed work");
+        }
         // Every operation after validation is local assignment under the same exclusive owner.
         owner.recordRecipeHostLayoutChange(this);
         for (var old : previousProcesses) {
@@ -904,7 +938,12 @@ public final class MachineWorkSlots {
             executing = true;
             var stages = new ObjectArrayList<RecipeProcess.Stage>();
             try {
+                var checked = new ReferenceOpenHashSet<MachineInstance>();
                 for (var batch : batches) {
+                    if (checked.add(batch.host.owner)) {
+                        CrossRecipeBatch.validateTickIo(batch.host.owner);
+                        CrossRecipeBatch.prepareRound(batch.host.owner);
+                    }
                     controlledBatch = batch;
                     stages.addAll(batch.nextRound());
                 }
@@ -1436,7 +1475,7 @@ public final class MachineWorkSlots {
                 }
                 if (!budget.take()) return false;
                 validateUnattached(process);
-                if (!accepted || selection != null && !selection.accepts(owner, process.recipe())
+                if (!accepted || !CrossRecipeBatch.accepts(process) || selection != null && !selection.accepts(owner, process.recipe())
                     || slot.process() != null || workPaused()) return finish(false);
                 validateUnattached(process);
                 // Owner permission is also an extension callback. The scanner's authorization must

@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 跨配方统一批次：按Σ原时长×最终并行/Σ并行向上取整，START改数量后首TICK前重算，封闭整机宿主成员不补入，共同速度/进度/END；TICK输入和输出均相同才合批，不同组保留到下一批。固定IO、FE及PN数值原总量沿共同时间精确分摊，尾差随批次UUID/时长/并行/路径保存，阻塞TICK/END共同补偿。原planner/lanes和owner门不变，GUI只改真实进度分母。完整Spotless/build1960tests/270suites全零，18Java本机MCP全级零及MCP build通过。入口[跨配方批次](cross-recipe-batches.md)，证据cross-recipe-batch/；新增三项真实行为回归，无静态镜像测试。未开新子代理/启动游戏/推送，原背景/暂存保留。
+
 - 2026-11-11 默认GUI截图反馈：背景裁去原图第二页空线框；标题只显示一次，删除正文/标题/预留图案的重复tooltip，线程行只补全配方ID、有效并行及截断原因。结构仅显示formed的未成型/已成型，不读取临时processing gate显示检查中；执行模式/四策略不进入玩家正文或tooltip。同步删除10个无用枚举及中英各10键，保留作者调度配置。Spotless/build -x test及MCP build通过，两Java＋两语言本机MCP全级零。入口[机器GUI](machine-gui.md)，证据controller-gui-cleanup/；未新增或运行测试、未启动游戏/推送，原背景/暂存保留。
 
 - 2026-11-11 异步配方策略/组合池：按用户默认FULL_ASYNC，另有ASYNC_SCAN/ASYNC_WORK/SYNCHRONOUS，Java/CT/保存/GUI接通；候选worker批量并发＋main复核准入，stock空库存不建Process。多线程优先上次真实完成ID，失败同预算回发现，单项PP上界避免百万线性probe；跨配方下一pass无复制轮转。实际多池Selection组合缓存16/worker冷编译，保child策略/全局priority/宽松bound/freshness，纯库存beginMatch与CT Pool.combine保准确codec。work fixedlane/原coordinator，shared affinity串行、独立组重叠，明确owner-only PN账本保main/纯kernel并发；独占claim真实退出归还及中断/异常回归。完整Spotless/build1957tests/270suites全零，459枚举key无缺，45Java＋两语言本机MCP全级零、MCP build通过。入口[配方执行策略](recipe-execution-policy.md)，证据async-recipe-policy/及各专项。原背景/暂存保留，未启动游戏/推送，总体Goal暂停。
@@ -59,6 +61,8 @@
 - 后继 Java 工作为局部配方/命名matcher及modifier定义替换，再接CraftTweaker；纯结构计划和安全仓室重配置已完成本批。`definition_replacement_audit` 正把既有独立方案收束为实际scanner/codec/JEI和远端本地声明边界，入口 `build/staging/definition-replacement/`。Applied-Flux继续暂缓。
 
 ## 下一步
+
+- 用户重启复验跨配方不同原时长但相同TICK输入/输出的统一批次：短配方不提前出料，运行时不补入，全部完成后一起结算；更换逐TICK材料量或输出后应留到其它批次。复验FE/材料总量、缺电/输出堵塞共同暂停、退出重进后的时间和尾差。源码/事务/真实executor验证入口[批次说明](cross-recipe-batches.md)，未自行启动游戏。
 
 - 用户重启复验本轮配方线程策略：新控制器默认FULL_ASYNC，事件需主线程的声明选择ASYNC_SCAN或SYNCHRONOUS；作者Java/CT四策略配置、旧Mode存档恢复、混合池来源/JEI与主线程准入、运行完成后的每工位优先重试及跨配方轮转均可观察。策略不展示在玩家GUI。PN permit/预算保持owner，外部requiresOwnerThread声明要覆盖结构children。单元/Compiler/真实Executor证据不代替World/自定义事件实际线程安全，具体入口[策略说明](recipe-execution-policy.md)。
 

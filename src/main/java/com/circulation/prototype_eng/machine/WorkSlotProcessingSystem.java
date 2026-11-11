@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.machine;
 
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.component.MachineSystem;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import net.minecraft.util.ResourceLocation;
@@ -18,6 +19,11 @@ public final class WorkSlotProcessingSystem implements MachineSystem<MachineWork
     }
 
     @Override
+    public void onPreTick(MachineInstance machine, MachineWorkSlots component) {
+        if (machine instanceof CrossRecipeController cross) cross.beginBatchTick();
+    }
+
+    @Override
     public void onTick(MachineInstance machine, MachineWorkSlots component) {
         if (component.owner() != machine) {
             throw new IllegalArgumentException("Work slots installed on a foreign machine");
@@ -29,6 +35,7 @@ public final class WorkSlotProcessingSystem implements MachineSystem<MachineWork
         if (lifecycle != null && lifecycle.deferRecipeWork(component)) {
             return;
         }
+        if (machine instanceof CrossRecipeController cross && !cross.claimBatchTick()) return;
         component.tickProcesses();
     }
 }

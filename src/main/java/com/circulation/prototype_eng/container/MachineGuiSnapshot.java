@@ -92,8 +92,8 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
                 if (crossRecipe && process == null) continue;
                 if (visibleIndex++ < start) continue;
                 if (result.size() == rows) break;
-                int percent = process == null ? 0 : process.recipe().durationTicks() == 0 ? 100
-                    : Math.clamp((int) (process.state().progress() / process.recipe().durationTicks() * 100), 0, 100);
+                int percent = process == null ? 0 : process.durationTicks() == 0 ? 100
+                    : Math.clamp((int) (process.state().progress() / process.durationTicks() * 100), 0, 100);
                 var reason = switch (slot.result()) {
                     case ProcessResult.Blocked blocked -> blocked.reason();
                     case ProcessResult.Failure failure -> failure.reason();

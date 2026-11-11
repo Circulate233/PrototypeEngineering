@@ -26,6 +26,21 @@ public interface RecipeRequirementSystem<C> {
     }
 
     /**
+     * Immutable equality key for opaque TICK IO when grouping cross-recipe work. The default keeps
+     * different payloads apart. Return null only when this system has no TICK IO; equal nonnull
+     * keys must describe identical per-parallel inputs and outputs. Opaque IO retains its original
+     * duration unless crossRecipeRetimesTickIo explicitly declares that this system apportions its own transactions.
+     */
+    default @Nullable Object crossRecipeTickIo(C payload) {
+        return payload;
+    }
+
+    /** True only when this system meters its own TICK transaction against the captured batch timeline. */
+    default boolean crossRecipeRetimesTickIo(C payload) {
+        return false;
+    }
+
+    /**
      * Optional pure preparation at this requirement's actual arrival, after preceding modifiers and
      * overlays. Capture has no effects; only the returned computation runs on a worker. Opaque legacy
      * callbacks retain their owner execution. Null selects the ordinary start/tick/end callback.

@@ -23,6 +23,17 @@ public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<Ne
         return true;
     }
 
+    @Override
+    public Object crossRecipeTickIo(NetworkRecipeWork.Binding payload) {
+        // Combined declarations are recreated per process; numeric equality, not binding identity, defines tick IO.
+        return payload.requirements().resources();
+    }
+
+    @Override
+    public boolean crossRecipeRetimesTickIo(NetworkRecipeWork.Binding payload) {
+        return true;
+    }
+
     private static RequirementTransaction acquire(RecipeProcess process, NetworkRecipeWork.Binding binding,
                                                   boolean occupying, boolean checkCapacity) {
         var device = process.owner().components().get(binding.device());
@@ -39,9 +50,10 @@ public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<Ne
         if (!checkCapacity) {
             return new WorkTransaction(permit, null);
         }
-        int parallelism = RecipeParallelism.effective(process);
+        long parallelism = process.crossRecipeTiming() != null && process.captureTickContext() != null
+            ? process.crossRecipeTiming().materialTimes(process) : RecipeParallelism.effective(process);
         for (long amount : binding.requirements().resources().values()) {
-            if (amount > Long.MAX_VALUE / parallelism) {
+            if (parallelism != 0 && amount > Long.MAX_VALUE / parallelism) {
                 return rejected(RecipeText.NetworkCapacityMissing.blocked());
             }
         }
