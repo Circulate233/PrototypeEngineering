@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 共享仓室边界核实：内置仓室复用同一物理StorageContext；库存按context去别名，资源/FE按共享锁/revision/预留结算，调度已有shared-affinity传递串行。新增真实双控制器共仓/重复别名/四策略流程验证：两台均选2并行、仅一台足额执行，另一台不付款不推进；第一台失去结构后共享仓室仍可用，补料后第二台继续。49专项/7suites及Spotless/build通过，修改test本机MCP全级零、MCP build通过；本轮未改运行语义。注意库存建议并非全局配额，准入未长期持有物料，仍可超额选中后等待，不承诺公平分摊；设计建议与源码依据见[共享仓室](storage-redesign.md#共享仓室的并发与并行边界2026-11-12)。证据shared-hatch-audit/；未开子代理/启动游戏/推送，原背景与暂存保留。
+
 - 2026-11-12 单输入不限输出/JEI动态布局：SimpleRecipePool.Entry改为完整outputs列表（可为空），保单输出便捷重载、原AEKey/long输入索引、freeze/CT/codec。自动选择SingleInputRecipePage，一个输入常驻、输出最多24组/页；通用页每侧最多16组，按当前真实数量动态网格，仅绘实际槽框，箭头居中、说明接在材料区后，同池按最大需要量测。翻页撤旧原生槽/同步坐标与FE，不累加tooltip；索引和样板保持完整。参考MMCE布局原则，保PM资产/自定义和外部页优先。52专项及完整1962tests/270suites全零，10Java本机MCP全级零及MCP build通过。入口[JEI](jei.md#2026-11-12-单输入多输出与动态材料布局)、[简单池](recipes.md#配方池接口与简单配方索引)；证据single-input-multi-output/。未开子代理/启动游戏/推送，原背景/暂存保留；实际GL和鼠标/样板操作待用户重启复验。
 
 - 2026-11-12 JEI候选实机反馈：嵌入侧栏使用最终原生槽坐标，复用真实ingredient、不再每帧清空重建，pick暂空不永久缓存。左键改当前cell、右键整类替换清旧local，操作提示接原生物品tooltip；R/U/书签和只读BOM浏览保留。HEI InputHandler接收已取消Forge事件且先检索ingredient，故新增client-only Pseudo入口Mixin先交现有准确draw/owner/token及release桥。Spotless/build -x test、本机6Java＋配置＋两语言全级零和MCP build通过；未新增/运行测试。入口[JEI](jei.md)，证据jei-material-input/，需用户完整重启复验新Mixin；未启动游戏/推送，原背景与暂存保留。

@@ -21,6 +21,7 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipePool;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.RecipeParallelism;
 import com.circulation.prototype_eng.api.recipe.requirement.EnergyRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirementSystem;
@@ -166,6 +167,58 @@ class ControllerExecutionPolicyTest {
     }
 
     @Test
+    void sharedHatchAndEnergyPermitOnlyAffordableWorkAndSurviveTheOtherControllerUnforming() {
+        for (var policy : ControllerExecutionPolicy.values()) {
+            try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 2)) {
+                var first = new Fixture(scheduler, policy, false);
+                var second = new Fixture(scheduler, policy, true);
+                try {
+                    var firstMachine = Objects.requireNonNull(first.machine);
+                    var secondMachine = Objects.requireNonNull(second.machine);
+                    first.selectedParallelism = second.selectedParallelism = 2;
+                    firstMachine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
+                    secondMachine.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 2);
+                    var sharedInput = Objects.requireNonNull(first.resources.input());
+                    var sharedOutput = Objects.requireNonNull(first.resources.output());
+                    Objects.requireNonNull(secondMachine.lifecycle()).form(
+                        new MachineHatches(List.of(first.resources, first.resources), List.of(first.energy, first.energy), List.of(first.energy)));
+                    scheduler.tick();
+                    var completed = first.created.element();
+                    var waiting = second.created.element();
+                    assertEquals(2, RecipeParallelism.effective(completed));
+                    assertEquals(2, RecipeParallelism.effective(waiting), "The advisory parallelism is not a global inventory allocation");
+                    assertEquals(RecipeProcess.Lifecycle.COMPLETED, completed.state().lifecycle());
+                    assertFalse(waiting.state().started(), "Discovery/probe must not spend inventory; the second real START must reject");
+                    assertEquals(0, waiting.state().progress());
+                    assertEquals(0, sharedInput.amount(first.raw));
+                    assertEquals(6, sharedOutput.amount(first.product));
+                    assertEquals(2, first.energy.savedEnergy());
+                    if (policy.workAsync()) {
+                        var firstCallback = first.observations.stream().filter(value -> value.operation.equals("normal")).findFirst().orElseThrow();
+                        var secondCallback = second.observations.stream().filter(value -> value.operation.equals("normal")).findFirst().orElseThrow();
+                        assertSame(firstCallback.thread, secondCallback.thread, "Shared physical hatch aliases must share callback execution");
+                    }
+                    Objects.requireNonNull(firstMachine.lifecycle()).invalidateStructure();
+                    assertTrue(first.resources.isValid(), "Unforming one consumer must not retire the shared hatch");
+                    assertEquals(6, sharedInput.insert(first.raw, 6, Actionable.MODULATE));
+                    assertEquals(8, first.energy.receiveEnergy(8, Actionable.MODULATE));
+                    scheduler.tick();
+                    assertEquals(RecipeProcess.Lifecycle.COMPLETED, waiting.state().lifecycle());
+                    assertEquals(0, sharedInput.amount(first.raw));
+                    assertEquals(12, sharedOutput.amount(first.product));
+                    assertEquals(2, first.energy.savedEnergy());
+                    assertEquals(6, Objects.requireNonNull(second.resources.input()).amount(second.raw));
+                    firstMachine.requirePersistenceBoundary();
+                    secondMachine.requirePersistenceBoundary();
+                } finally {
+                    second.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+                    first.controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+                }
+            }
+        }
+    }
+
+    @Test
     void oneDiscoveryFailureConsumesOnlyItsOwnReceiptAndReleasesEveryMachine() {
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 2)) {
             var first = new Fixture(scheduler, ControllerExecutionPolicy.FULL_ASYNC, false);
@@ -221,6 +274,7 @@ class ControllerExecutionPolicyTest {
         private final AtomicInteger callbacks = new AtomicInteger();
         private final AtomicInteger ownerCapabilityReads = new AtomicInteger();
         private Runnable onDiscovery = () -> { };
+        private int selectedParallelism = 1;
         private final Key raw = new Key(KEYS, "raw");
         private final Key product = new Key(KEYS, "product");
         private final BufferedResourceHatch resources = new BufferedResourceHatch(HatchMode.MIXED, 2,
@@ -266,7 +320,7 @@ class ControllerExecutionPolicyTest {
             });
             RecipeParallelismSelection selection = process -> {
                 record("select");
-                process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+                process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, selectedParallelism);
             };
             RecipeRequirement<?> observed = observer.requirement(id("observed"), "state");
             if (ownerRequired) observed = RecipeRequirements.SELECTIVE.requirement(id("nested"), new SelectiveRequirement(List.of(observed)));

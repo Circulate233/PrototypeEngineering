@@ -17,6 +17,8 @@ Java 在机器创建声明中调用 `MachineType.Builder.executionPolicy(Control
 
 选择同步工作时，原coordinator使用`PlannedTaskExecutor.synchronous()`，prepare和source都在caller执行；异步工作时，coordinator在稳定source lane上创建并原线程续办，`synchronousSources()`保留纯prepare worker并发、source在当前lane执行，避免同lane嵌套等待。取消、deadline、UNKNOWN补偿、post和实际退出证明仍由原coordinator持有。普通组件和生命周期使用一次性独占worker claim，主线程在真实退出后收回，不能在等待期间保存/卸载或重入dispatch；共享affinity key的控制器保持传递分组、组内稳定顺序串行，独立组可并发。
 
+共享仓室的安全基础是物理StorageContext的预留/版本/事务，分组串行用于减少冲突；只读扫描仍可并发。当前准入没有长期保留物料，多个控制器可能按同一时点库存选中较高并行，实际阶段不足的一方等待且不推进，不把扫描建议当成共享库存配额。四策略的真实共仓验证及全局准入分配的设计边界见[共享仓室](storage-redesign.md#共享仓室的并发与并行边界2026-11-12)。
+
 ## 异步发现与主线程准入
 
 主线程捕获本次canonical池选择、工位范围及目录generation；多池选择只复制provider引用，不在此处枚举全量配方。`beginScan(limits, true)`交付`discoveryWork()`给一个独占worker，推进原`CandidatePass`和池索引。worker读取输入存储的独立数量捕获、计算候选及数量上界；池/index扩展仍须遵守纯发现合同，不能运行START、扣料或写机器/世界。库不因选择异步而允许纯发现回调发布副作用。
