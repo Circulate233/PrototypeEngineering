@@ -1,12 +1,12 @@
 {
-  "date": "2026-11-11",
-  "scope": "localization and strict fastutil collection APIs",
-  "addonJava": 19,
+  "date": "2026-11-12",
+  "scope": "run ME assembly examples and registry-derived connected-texture gallery",
+  "addonJava": 21,
   "installed": true,
-  "addonSha256": "F7C29A1A1616FBD61A0B0495BB61591D8A6EA9112710AD7EF2D13E1688C786F2",
+  "addonSha256": "7426fec4ceff75aa2efee4c5d976c063869b8e6a99251c8874dd4e3e08e4f862",
   "packFormat": 3,
   "sdk": "4.1.20.718",
-  "scriptCompilerPassed": 11,
+  "scriptCompilerPassed": 13,
   "executedScripts": [
     "run\\scripts\\10_pe_run_core_preinit.zs",
     "run\\scripts\\20_pe_run_core_checks.zs"
@@ -14,456 +14,104 @@
   "corePass": 97,
   "coreFail": 0,
   "completed": true,
-  "fullTests": 1923,
-  "suites": 264,
-  "testsFailures": 0,
-  "testsErrors": 0,
-  "testsSkipped": 0,
-  "officialJavaIdeaFiles": 75,
-  "officialIdeaErrors": 0,
-  "officialIdeaWarnings": 0,
-  "officialIdeaWeakWarnings": 0,
-  "modifiedRunJavaIdea": "11 excluded/unknown",
-  "addonResourcesIdea": "pack.mcmeta and 2 languages all levels clear",
-  "fixedLocalizationEnumKeys": 527,
-  "missingEnumKeys": 0,
-  "primitiveCollectionApi": "fastutil specialized fields, parameters and results; no boxed JDK compatibility overloads",
-  "directBoxedPrimitiveCollections": 0,
+  "mainIdeaBuild": {
+    "isSuccess": true,
+    "problems": []
+  },
+  "modifiedRunJavaIdea": "6 files excluded/unknown; errorsOnly:false requested; no IDE settings modified",
+  "newZsAndLocaleIdea": "2 scripts and 2 locales all levels clear",
+  "newDocumentationIdea": "README-me-assemblies plus run/README and verification/README all clear; existing COVERAGE 2 and original visual README 6 table weak warnings retained",
   "nativeExecuted": false,
-  "originalGoal": "paused",
-  "evidence": "C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261111/localization-collections-audit",
+  "gameStarted": false,
+  "newMeMachines": 6,
+  "newMePools": 5,
+  "newMeRecipes": 9,
+  "ctmGallery": "All registered prototype_eng blocks plus Java/ZS parallel examples; 27 blocks per type; eight columns; source list read at native startup",
+  "evidence": "C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/run-me-examples",
   "sourceHashes": [
     {
-      "path": "run/scripts/10_pe_run_core_preinit.zs",
-      "sha256": "0FD0C8507C2F2809BF2A460D8154602A27E8341344E201D228E757D49A9F0913"
-    },
-    {
-      "path": "run/scripts/11_pe_run_core_world_preinit.zs",
-      "sha256": "B81C60EBDE7A57CC050EFCFD9B6B0DBF6E6A69D71078A27B238C47187056AB1C"
-    },
-    {
-      "path": "run/scripts/12_pe_run_composite_preinit.zs",
-      "sha256": "B781E03037984A5C02F7CF4BAD1D090DDF15654ABA511310F63A4D452989DDE2"
-    },
-    {
-      "path": "run/scripts/15_pe_run_network_machines.zs",
-      "sha256": "6C6B9C9CF1E9D0139CDB9CFA9BF12DE2AF38F5B26835F32F0CD84345F1C41693"
-    },
-    {
-      "path": "run/scripts/16_pe_run_render_machines.zs",
-      "sha256": "BA0EB679D9D089635183FC1437E80741AB15324CD205E9A05AF5B12429670A9A"
-    },
-    {
-      "path": "run/scripts/20_pe_run_core_checks.zs",
-      "sha256": "2A00AFEBF16AD09ACD72312EC48BA827C6BB8C04051774B407AEAE57C02635F7"
-    },
-    {
-      "path": "run/scripts/21_pe_run_core_world.zs",
-      "sha256": "1566E6D988DC477A2BB4F2E2003A1973E119F907AFAA63664E3F1E623EED188A"
-    },
-    {
-      "path": "run/scripts/23_pe_run_composite_structures.zs",
-      "sha256": "E5AAF8289542D304358B8BF43624D80D08C4331AC9E0B0E87E87D0C4ADF194C0"
-    },
-    {
-      "path": "run/scripts/30_pe_run_network.zs",
-      "sha256": "CCC95C60F340511177718DAECC80399DE42EFAC932CAD57387D778E9E0ED22BB"
-    },
-    {
-      "path": "run/scripts/40_pe_run_render.zs",
-      "sha256": "78583F0DB3A217797CC0B4306166007CC1CA350FC58E9A525D77D28DF11E906A"
-    },
-    {
-      "path": "run/scripts/95_pe_run_manifest.zs",
-      "sha256": "AB4CC8F4A5B9A93A1DE63C6DA3860470F2BC44B0218E568E775C4AD932F67342"
-    },
-    {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/BoundaryExamples.java",
-      "sha256": "26F539E0589A51BDB3C0F68CD0B62B68425D835B2B1D7CA0766FF8D494C61BC1"
+      "sha256": "26f539e0589a51bdb3c0f68cd0b62b68425d835b2b1d7ca0766ff8d494c61bc1"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/CompositeStructureExamples.java",
-      "sha256": "DB636E5B6C4F7C4A1DDB8A4C2921EB9278CBB99BC121137E01FA957293391CB2"
+      "sha256": "db636e5b6c4f7c4a1ddb8a4c2921eb9278cbb99bc121137e01fa957293391cb2"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/CtmGalleryExamples.java",
+      "sha256": "bd6a57cdb236bea53bc2d6a61d142d827bdf2b853f357662dac480363068fc51"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/ExamplesClient.java",
-      "sha256": "FDE3AE33AAE7077F5D1278EFFE9AD602C243719E4DFCB6FF5C3A7C0B1AF10AE0"
+      "sha256": "96d04392ce43b2f4e49d3e2575eaf517bbad431b9a7e216fe2356ce388fde50b"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/ExamplesCommand.java",
-      "sha256": "4DFC9A110B710F4F226AD7EBB439A72C91E5BAB69DE1D22BB00D28E78FFBA2FC"
+      "sha256": "ece7b1abc0e267be41a9e106bafe6835d112e03074ba54da54983f5a54482756"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/ExampleText.java",
-      "sha256": "E1577A57F89705AC887D883A9D18AD3F13E88F537AD19CFED2F19499F30D8FD8"
+      "sha256": "7216d8aeb58a430c45e31a6c9e68d907aadc1e87070e85aa8b0c6c46545d5ce9"
+    },
+    {
+      "path": "run/visual-examples/src/main/java/pe/visual/examples/MeAssemblyExamples.java",
+      "sha256": "34dfe17c8879ffd1d03bd262a12153d3d97759da04d513f5fef8d26c3273fb54"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreCases.java",
-      "sha256": "8F03B7419B91FEFCCEC0C555BE26745D11444E6BC95932C00B5AA8B9968C5529"
+      "sha256": "8f03b7419b91fefccec0c555be26745d11444e6bc95932c00b5aa8b9968c5529"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreRecipeChecks.java",
-      "sha256": "A28D2A10C77E77E30E84793F227D495135B31BCB1D1B33590998D653467F55D2"
+      "sha256": "a28d2a10c77e77e30e84793f227d495135b31bcb1d1b33590998d653467f55d2"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreStructureChecks.java",
-      "sha256": "B4125C5EB0E7D655F0A1D6E99C712D8E81C5EDADDABA23F199473075023D8690"
+      "sha256": "b4125c5eb0e7d655f0a1d6e99c712d8e81c5edaddaba23f199473075023d8690"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/CoreWorldChecks.java",
-      "sha256": "1E4C5C8BC154C4D288AFA873578E86D87F4936B41F4685F84AA72FB6CFE44E8B"
+      "sha256": "1e4c5c8bc154c4d288afa873578e86d87f4936b41f4685f84aa72fb6cfe44e8b"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/ExternalFilteredHatch.java",
-      "sha256": "A290F39D604748A26F524CA460F7C200888FAB7C05DEB430A55B5A914F9BD365"
+      "sha256": "a290f39d604748a26f524ca460f7c200888fab7c05deb430a55b5a914f9bd365"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/ExternalHatchClient.java",
-      "sha256": "F86EF6D96A1D7EC87E6AA089C68EBE6D5C64C1E7918F9D5DC04432EE31AFB529"
+      "sha256": "f86ef6d96a1d7ec87e6aa089c68ebe6d5c64c1e7918f9d5dc04432ee31afb529"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/ExternalHatchExamples.java",
-      "sha256": "287729D70FB2272C6DFA0E0BAA53D1330B5B73E12F92EC4C6B0B0A3704990CC8"
+      "sha256": "287729d70fb2272c6dfa0e0baa53d1330b5b73e12f92ec4c6b0b0a3704990cc8"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/NativeChecks.java",
-      "sha256": "016F3AAF2205D19CC803A411390C2D65CE196CE52FB42B157E0FFE650A852514"
+      "sha256": "016f3aaf2205d19cc803a411390c2d65ce196ce52fb42b157e0ffe650a852514"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/NativeExamples.java",
-      "sha256": "512A16502EDCBB1E50FFE57EF4D890EF65E6D49526EFA1B09A113D4C76C824B8"
+      "sha256": "512a16502edcbb1e50ffe57ef4d890ef65e6d49526efa1b09a113d4c76c824b8"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/NativeRunCases.java",
-      "sha256": "F8417750DB5928A4605A4BB5E69B43E95910813DCCFB8EF94EF70E2CF118B765"
+      "sha256": "f8417750db5928a4605a4bb5e69b43e95910813dccfb8ef94ef70e2cf118b765"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/RunNetworkRender.java",
-      "sha256": "B3A7912248711B871A036E93B55E5274B00C591924E5556DF45777F3FAC3B91E"
+      "sha256": "b3a7912248711b871a036e93b55e5274b00c591924e5556df45777f3fac3b91e"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/RunRenderClient.java",
-      "sha256": "DE6538968529D26F9044ACA7D9CCD6DC24A197EE35D6900AE8552C711A27F6E8"
+      "sha256": "7b04bd1aef66acd844dd2a96b1ca6ffe0d15e1a1daab4e48a813432d7c9c6f3a"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/run/RunTestsCommand.java",
-      "sha256": "DF6D9ACC35B4F7706E821A197F50B2908362148D729BEC8A3041BF1D9C9158D2"
+      "sha256": "7a9a334823c35893e5c6f75f9ed1a529ec19418d5b9e99f7d68da7c9f095b73d"
     },
     {
       "path": "run/visual-examples/src/main/java/pe/visual/examples/VisualExamples.java",
-      "sha256": "42200F2C4FEFDA386B0B8C860E4CD8CA09BD55EDC5152278742EE8F67ADE2074"
-    },
-    {
-      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/lang/en_us.lang",
-      "sha256": "1C653323BAEB1AF5008F755932B8953F6F7ADBFED04888BCC880862D8D7C284A"
-    },
-    {
-      "path": "run/visual-examples/src/main/resources/assets/pe_visual_examples/lang/zh_cn.lang",
-      "sha256": "A6F2CB263B2CE5BEF630407C1F607B8BB7DBBF74E89E27BE8F16A52142678361"
-    },
-    {
-      "path": "run/visual-examples/src/main/resources/pack.mcmeta",
-      "sha256": "B145A2FFC60C4B5704CF038DE0A7426936C68F0EE89C581EDC314D0811563D5E"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/client/structure/StructurePreviewSettings.java",
-      "sha256": "72E83941AA530CFFB38AC092581A233706964ECE29F71983C5B6E8C7FEFC135A"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/machine/render/MachineRenderSnapshot.java",
-      "sha256": "BDF092A992A6AD637224ABABFD432C51E435829AEEDFE3590FF1C79DED40E9BE"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/storage/ResourceHatchConfiguration.java",
-      "sha256": "3F8113432C4C3C503F1A4584DD9399EC1E0DB61828B3BDC2B83963ACC079064A"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/structure/StructureCatalogView.java",
-      "sha256": "E59F6BA9892DCAF08B10C637BEBC04B7046830BD5A5387CC6A276CD56AA63043"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/structure/StructureDisplay.java",
-      "sha256": "928F385F488F770478C663C09F06D8C2051C0A5C78E14F91C694E457408703F9"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/structure/StructureMatch.java",
-      "sha256": "823D0D781295380645327FC677EF6724098558C56E3C3B3C87B1CAD1421BF48B"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/api/structure/StructurePredicateDisplays.java",
-      "sha256": "42414744BF7DE5C58CA28BE5FF8455831351D6DFB43E66857B13FD6CA6C56929"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/gui/BuilderInstrumentGui.java",
-      "sha256": "51A1EA49AF8FAAF5CCD6BB5B1E6650A5A6258673F4B0C297723798903564371D"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/gui/BuilderStructureTree.java",
-      "sha256": "3085E7104B5AF42EB702124350AC8BE128BA4B0DBA79390B7513919BC950EE6C"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/gui/ScannerInstrumentGui.java",
-      "sha256": "21DBECF2FF43730DCB72D3782082D7A4742339F86B62320761C140E134914D69"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/preview/PreviewMachineAnchors.java",
-      "sha256": "D8E34D33A1E78DC0A0981AD65F6FF368422C82AAD63C8B3432D92FDDD1F0B807"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/preview/StructurePreviewExpansion.java",
-      "sha256": "76990BD4883935AD7F78376B2D6F1EB6AB90816656DC6E18659AEBAB23C73485"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/preview/StructurePreviewPanel.java",
-      "sha256": "2975D4C28A6DB2916007BB874ABD37BE64E5A82EAA8FA04A16ADB667C782D337"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/preview/StructurePreviewView.java",
-      "sha256": "22DE10670C2E1D04E299426F1FD027314BFC5167F7C725764039E4D18B0CAD86"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/render/DirectVertexBufferPool.java",
-      "sha256": "F4280C1662A04B9DEABE59BA4D0A062DD14CFFEFE5825182BB8847472BCCBF4D"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/render/gecko/GeckoBakerMath.java",
-      "sha256": "5B0B83510EAD067C1A1DE63AD65B6FEC9912F6EF412319B2A98DFD5DDB833932"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/render/ModelBufferPool.java",
-      "sha256": "5847DFBE99409B09635E91895F1D0A42A890AD6F4979573B85160D3974A2B051"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/render/ReusableModelVboUploader.java",
-      "sha256": "4AAE54DEF25908F2F3961F69ABE28A50C0166330CFAAE36EF177AF272FD72019"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/client/render/StructureRenderAnchors.java",
-      "sha256": "B37B68C89E07FB8876D6DC88BA284C6B5064D8E5798A5981E0CE177BA4A277F7"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/item/ControllerOrientationTool.java",
-      "sha256": "A061993E0855F36D595D44C254A1EFA73BB9777D413B6EFC7FAF227FAD12FC99"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/item/StructureToolItem.java",
-      "sha256": "7C99C2DDFF685C2154E2945AADB06826277C8B54BA5F2955E07131FF01001BBB"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/recipe/RecipeStageExecutor.java",
-      "sha256": "9633B403F2CAF610C64A6C898D01062584B766F8B959A42373CDAAF0BD6396EA"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/storage/BufferedResourceHatch.java",
-      "sha256": "55775B9DC7D766E7CA684A35F87306A08117C900FD73DEFD0039EB358E103DA9"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/storage/HatchConfigurationSnapshot.java",
-      "sha256": "0233F702EA8EB9EFBC6A0FF6A70891FD562BC7CEC32B1A436D300E36185E2F5B"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/storage/SlottedResourceBuffer.java",
-      "sha256": "C5AEB6A4E9379661A1256D4EFCA7FE3A6374986188F6F4D509D5765944613BB9"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/structure/reload/StructureCatalogCodec.java",
-      "sha256": "E514D38C4E35708F41BD9661BB62D271B82426F8C182CD7591160406BD1A2692"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/structure/tool/BuilderState.java",
-      "sha256": "73D6A72FF602AB1308F984D7765530DD5570BCCAEE3E9DC9FE96F891300C8917"
-    },
-    {
-      "path": "src/main/java/com/circulation/prototype_eng/structure/tool/StructureBuildPlan.java",
-      "sha256": "95DBE164D98B919FB1853E051F563940399B8F1BF8EF3D831308C9B25D7988B9"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/api/research/manual/ManualResearchTest.java",
-      "sha256": "6E9C915AB22B32678DDC2FEA7EB447B3653D0F8AE2B659FA350F543998E7ABB0"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/api/research/station/ResearchStationWorkTest.java",
-      "sha256": "A881431F70BE06A33D4F24184B7CF3BECB5EFEB245F5DAE090A02185E2DE6216"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/api/research/station/StationFixtures.java",
-      "sha256": "42E4A5074574AE7BAFEFB8543E1E16DF84D5A3815ADA8D4A53D83D8A8E94D482"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/gui/HatchItemTooltipTest.java",
-      "sha256": "C9A50F0A30A042F215D2BE5FA3DACE2F8C013E3EFDF2884B024325E475F2FEF3"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/preview/PreviewBlockModelsTest.java",
-      "sha256": "E9CEBF2F05B207E858FD23A3EB9C719435CB13B38C092FCDE65E35569C06A7D8"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/preview/PreviewMachineAnchorsTest.java",
-      "sha256": "573B1AFC1855503C6944720DB344FA3EB9ED6439D06220EAEE1826557DE9FD08"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/preview/StructurePreviewExpansionTest.java",
-      "sha256": "B0C778B7EC9A9704CF41D2E5239790583395BB644576370AC5602C7FAA6454B9"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/preview/StructurePreviewInteractionTest.java",
-      "sha256": "F7E90B7B17AE59DD6B2D209FFDCFCF7FE29B6FF96EBFE48B3224A9438A2F8DA6"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/preview/StructureProjectionStateTest.java",
-      "sha256": "E3B6FC825EEC85820A60FE07191A931318589F96F776DD87083EAF8297872FC0"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/client/render/BModelFixtures.java",
-      "sha256": "43B04AB247FDB5FE5E71153463269961158AED6B711661A502C25797FE313797"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/container/ResourceHatchWindowTest.java",
-      "sha256": "53697F8A5966A77D43F5439C12B25F9521609121408DCA174FCEF3F046F033BA"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/integration/crafttweaker/recipe/ZenAdvancedRecipeBridgeTest.java",
-      "sha256": "B71A50173AD625C3A4CB2E8CEEF514089E5984B527B513760C71D8CD921AE148"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/machine/MachineWorkSlotBatchTest.java",
-      "sha256": "F111EA1C3CB72DDD1CDF80C6301C3DC87FC0AC52CDBA302831729220D4459F0A"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/machine/render/ControllerRenderChunksTest.java",
-      "sha256": "9C063B57193524E96688D243CF9423F9729B51ACD7CA57CA8898C272BF984186"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/network/NetworkComputerComponentsTest.java",
-      "sha256": "83BF3D6C7350AFAB9C5AA812A7DF05041804C151B1A5A1A23EF993894DAD007E"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/network/NetworkControllerParallelismTest.java",
-      "sha256": "6550E4FF60A9F7509B2F5F1916D05561449D8B947718F9B5E05CC18B404B7DD0"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/network/NetworkRecipeWorkTest.java",
-      "sha256": "049A6DB6D0F9E299772CAA1FE4CD46E93CC5B2759850685CCF4BA184260F0B90"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/DynamicInputCandidatesTest.java",
-      "sha256": "959419B1228D3B492356B0846EFF6F28FF09E55DFEE34D6F259FC7304D63F39B"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/InputAllocationTest.java",
-      "sha256": "66B5BFF62529346E9C8D7C8140772348A41B3C5EB539052BCAB83B6E816A5339"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/OverlayModifierTest.java",
-      "sha256": "1BC49C7CFA69B527986B2ACF6981DC3414E8553328B6F49E6C54E00FC3283B68"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/ProcessAbortEffectsTest.java",
-      "sha256": "DD4F50B4FF802AEB63229A14D2EBCAAF5B4B7CF84D18654F0C76DDE14FAC2D93"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/RecipePoolLiveScannerTest.java",
-      "sha256": "89C46A216C62CC009F257B45995E116727F5F2F7035A20A69A9BB8D5C62F38E3"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/RecipeScannerGenerationTest.java",
-      "sha256": "ED7072B31868B30AD858EA590F24E22F23774D132319EAD27191735BAC674583"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/RecipeScannerTest.java",
-      "sha256": "27C09443D1C648AECD80F5E3715263EFF9C7454DDEF238CC2A2E06DFFFAA5859"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/requirement/PureRecipePreparationTest.java",
-      "sha256": "04792BB1FB2EC1AE863EA826A31E4690E8929D30AE2545D3CE1F695678CA34C0"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/ResearchMaterialCycleTest.java",
-      "sha256": "8FE858F3FE3C4C61FF7FE9F03A01C4364DA57E2406995EB6EE016A79A92C58B5"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/ResearchMaterialPersistenceTest.java",
-      "sha256": "54EAE5E9753DBAEA3D12B29EDCBD5DA363CD7A09BD31F38FFD81BB3949853C6B"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/recipe/SelectiveRequirementTest.java",
-      "sha256": "78AB22BB6613522F1842FBEDE02A915695EE30FA14BE49A1DCE839F19AE85303"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/scheduler/MachineSchedulerTest.java",
-      "sha256": "F6E14D42AFA31EC71D8A093C6DBE40D71440A97ABB8D848A0DE97D9EE013CC52"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/scheduler/NetworkRecipeExecutionTest.java",
-      "sha256": "8B64B36594CCEE5B6357C101B6204F8225CE31B93570F943390B44726397171F"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/scheduler/PlannedMachineSchedulerTest.java",
-      "sha256": "C4996675B7C450EFFB5E9B63C0E1DE2273FBF56DEEB27087EF7959B89F177BF3"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/scheduler/SchedulerReconfigurationTest.java",
-      "sha256": "1F1BA888C1A4DD6091A23E72398B72812DF6DC607B0DA283C8F6C076B2C2160C"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/scheduler/SchedulerThreadStrategyTest.java",
-      "sha256": "D0B16A0FF67EAA989958C80BA15FD60CD471062F4FDF94A23E4C265D468B711F"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/HatchAutoTransferTest.java",
-      "sha256": "9BAA8DF945F693205F8D8D861D6ECE3C43D9F9C04D6EA2886B1E18915C9DD2C8"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/HatchConfigurationRequestTest.java",
-      "sha256": "E9C489B03F2144DEB6D3DA40C500C5D953E254F0BA18C290A4A3DAE692B86922"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/HatchConfigurationSyncTest.java",
-      "sha256": "AA9700ABDC80204D23C76B1D427842C7BF10D0E9E5C6B685273BF23039FCB05B"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/HatchDestructionTest.java",
-      "sha256": "0D095EAC57DBB66C55985243BA274745DB8B94A1F70738759D6540A0AD847DDA"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/HatchItemProfilesTest.java",
-      "sha256": "6A24EE01BD560EBC5BEF37C4119F9FDF496A2E80573CD06F2CD117EF1BA2B339"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/HatchReconfigurationTest.java",
-      "sha256": "322C8A37833F9FC5CE286E971336495AB251C6835DDEBFEB50E4A69D8A33541F"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/NativeTransferReservationTest.java",
-      "sha256": "49261C0DBBD6349CD3B28E574A4198C6EC05DC0A0B8BDB80A5FECCE9F73F83C6"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/ResourceCapacityRatiosTest.java",
-      "sha256": "57BBA178803307B58814E74E13EE552E29A1258EA97972819D79E695B9764914"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/ResourceHatchPersistenceTest.java",
-      "sha256": "D889A9722DF3F702F3F08BAD6AAE8D08DB7441E265AB702EF8E025617255D7E5"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/storage/StorageFenceBudgetTest.java",
-      "sha256": "2B0635C59DE76A2DB080B1B09F895795FF0A1BB26805C74C7004CAD7ECDEC8F0"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/structure/reload/StructureCatalogSyncTest.java",
-      "sha256": "590FDA8EB7B87E4A172CC9611186733264C0A14C1EDFC90488C24B61402C10DB"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/structure/StructureIntrinsicDisplayTest.java",
-      "sha256": "ED67E31BC5A5AC846E91FABC32CF86E3FD5467317074E1AFA9CE2AED824F905D"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/structure/StructureRefreshTest.java",
-      "sha256": "2FAE4DAC1FCAE87B1AD0BC543B727C6A49A14284DFAA31B6E0373760F533FCB2"
-    },
-    {
-      "path": "src/test/java/com/circulation/prototype_eng/structure/tool/StructureBuildPlanTest.java",
-      "sha256": "E31346EF7AC85F9B022E2AB5446E79EC37E077643949487E464F51E566A82514"
+      "sha256": "a53066ea7063cab3f177d464f3663c2ca3c54a50c8d0cf4c58738f21e9a00d74"
     }
   ]
 }

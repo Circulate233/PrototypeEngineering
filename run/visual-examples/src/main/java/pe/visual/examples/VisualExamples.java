@@ -88,6 +88,7 @@ public final class VisualExamples {
         BoundaryExamples.declareMachines(event);
         NativeExamples.declareMachines(event);
         ExternalHatchExamples.declareMachines(event);
+        CtmGalleryExamples.declareMachines(event);
     }
 
     private static MachineType machine(String name, ExampleText text, ResourceLocation pool,
@@ -161,6 +162,7 @@ public final class VisualExamples {
         BoundaryExamples.registerRuntime(event);
         NativeExamples.registerRuntime(event);
         ExternalHatchExamples.registerRuntime(event);
+        CtmGalleryExamples.registerRuntime(event);
     }
     private static void install(MachineRuntimeRegistrationEvent event, String name, ResourceLocation poolId,
                                 ComponentType<MachineInstance, RecipeScanner> scan, boolean energy) {
@@ -220,6 +222,7 @@ public final class VisualExamples {
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new ExamplesCommand());
         event.registerServerCommand(new RunTestsCommand());
+        event.registerServerCommand(new MeAssemblyExamples.Command());
         RunNetworkRender.registerUserCommands(event.getServer());
     }
 }

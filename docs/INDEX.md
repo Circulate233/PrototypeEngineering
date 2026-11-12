@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 run示例补齐：新增6台ME机器/5池/9配方，以及从实际注册表生成的连接纹理全方块结构；每种正式PE方块27格，附Java/ZS并行组件。`/pe_examples build ctm_gallery 0 80 0` 搭建，`/pe_me_examples gallery-check/gallery-list` 核对覆盖及展台坐标；ME材料包/真实加工样板/颜色和标记命令已接入。21个addon Java编译安装、13脚本SDK编译和97核心断言通过，MCP主工程构建成功；6个修改run Java被IDEA排除，诊断为unknown，未修改IDE设置。入口[ME与连接纹理示例](../run/scripts/README-me-assemblies.md)、[run入口](../run/README.md)，详细证据见[实施进度](implementation-status.md)。下一步用户完整重启客户端验证真实ME/PAT和CTM/Bloom；未启动游戏/推送，原背景与暂存保留。
+
 - 2026-11-12 排序与集合容量：ResourceLocation直接参与排序，清单校验及同步/预算化要求排序一致；动态候选复用namespace/path字符游标。全仓构造清单含1758正式源码入口，360余处按来源数量、槽数、解码长度或常见6项预分配；31个有序AE数量表改用可指定容量、实现AEKey2LongMap的fastutil实现。独立提交源码完整1961测试通过；包含并发功能的工作树1976项有4项失败，撤去本轮改动对照全部复现。修改Java本机IDEA全级检查及MCP构建、定向Spotless通过；原暂存及并发功能保留。入口[分配规则](allocation-performance.md)、[实施进度](implementation-status.md)，证据collection-capacity/；未启动游戏/开子代理/推送。
 
 - 2026-11-12 枚举缓存完成：22个重复读取的本库枚举公开 VALUES，序号解码/遍历及示例统一复用；外部优先原生缓存，无公共缓存的4类集中到 ExternalEnumValues。必须复用 VALUES，禁止修改共享数组。57Java本机IDEA全级零、MCP指定文件build、编译及独立改动Spotless通过，run示例javac通过。全量24项失败在撤去本轮改动的隔离对照中全部复现，详见[实施进度](implementation-status.md)及 enum-values/test-comparison.json；最新MCP构建受另一对话尚缺的 MePatternAssemblyBlockEntity 阻塞；并发新样板容器的3处枚举调用待该组源码完成后复查；并发仓室内容与用户暂存保留，未启动游戏/推送。

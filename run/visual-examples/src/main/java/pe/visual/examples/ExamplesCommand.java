@@ -38,12 +38,16 @@ import javax.annotation.Nullable;
 public final class ExamplesCommand extends CommandBase {
     @Override public String getName() { return "pe_examples"; }
     @Override public String getUsage(ICommandSender sender) {
-        return "/pe_examples kit [boundary|composite] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
+        return "/pe_examples kit [boundary|composite|me] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
     }
     @Override public int getRequiredPermissionLevel() { return 2; }
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] arguments) throws CommandException {
+        if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("me")) {
+            MeAssemblyExamples.giveKit(getCommandSenderAsPlayer(sender));
+            return;
+        }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("composite")) {
             var player = getCommandSenderAsPlayer(sender);
             for (var name : List.of(CompositeStructureExamples.NESTED, CompositeStructureExamples.EXPANDABLE))
@@ -89,6 +93,8 @@ public final class ExamplesCommand extends CommandBase {
             if (blocks == null) blocks = ExternalHatchExamples.placement(arguments[1]);
             if (blocks == null && (arguments[1].equals("core_world") || arguments[1].equals("pe_run_tests:core_world"))) blocks = CoreCases.worldPlacement();
             if (blocks == null) blocks = RunNetworkRender.placement(arguments[1]);
+            if (blocks == null) blocks = MeAssemblyExamples.placement(arguments[1]);
+            if (blocks == null) blocks = CtmGalleryExamples.placement(arguments[1]);
             if (blocks == null) blocks = BoundaryExamples.structure(arguments[1]);
             if (blocks == null) { sender.sendMessage(ExampleText.UnknownMachine.text(arguments[1])); return; }
             var rotated = new it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap<BlockPos, net.minecraft.block.Block>();
@@ -113,6 +119,7 @@ public final class ExamplesCommand extends CommandBase {
                     return;
                 }
                 placed++;
+                if (world.getTileEntity(position) instanceof ae2.block.IOwnerAwareTile owned) owned.setOwner(player);
                 if (world.getTileEntity(position) instanceof MachineControllerHost host) {
                     host.placedBy(player);
                     if (orientation != BlockOrientation.NORTH_UP) host.transformOrientation(_ -> orientation);
@@ -147,6 +154,9 @@ public final class ExamplesCommand extends CommandBase {
             var position = parseBlockPos(sender, arguments, 1, false);
             var world = sender.getEntityWorld();
             if (!world.isBlockLoaded(position)) { sender.sendMessage(ExampleText.NoResourceInput.text()); return; }
+            if (world.getTileEntity(position) instanceof com.circulation.prototype_eng.storage.MeResourceHatchBlockEntity
+                || world.getTileEntity(position) instanceof com.circulation.prototype_eng.storage.MePatternAssemblyBlockEntity)
+                throw new CommandException("ME assembly inputs must enter through the ME network; configure marker targets or submit crafting patterns");
             var hatch = HatchCapabilities.findResource(world.getTileEntity(position), null);
             var input = hatch == null ? null : hatch.input();
             if (input == null) { sender.sendMessage(ExampleText.NoResourceInput.text()); return; }
@@ -208,9 +218,11 @@ public final class ExamplesCommand extends CommandBase {
     @Override
     public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] arguments, @Nullable BlockPos targetPos) {
         if (arguments.length == 1) return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
-        if (arguments.length == 2 && arguments[0].equals("kit")) return getListOfStringsMatchingLastWord(arguments, "boundary", "composite");
+        if (arguments.length == 2 && arguments[0].equals("kit")) return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me");
         if (arguments.length == 2 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>(List.of("press", "mixer", "sorter"));
+            names.add(CtmGalleryExamples.TYPE.toString());
+            for (var name : MeAssemblyExamples.NAMES) names.add(MeAssemblyExamples.id(name).toString());
             names.addAll(List.of("pe_run_tests:nested_structure", "pe_run_tests:expandable_structure"));
             for (var scenario : BoundaryExamples.SCENARIOS) names.add(scenario.name());
             names.add("pe_run_tests:native_data_fixed");

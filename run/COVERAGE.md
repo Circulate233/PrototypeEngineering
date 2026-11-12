@@ -1,10 +1,17 @@
 # run 覆盖与证据清单
 
-2026-11-11 阶段收尾。统一操作入口：[README.md](README.md)。本次处理示例与脚本，总体 Goal 按用户要求保持暂停。
+2026-11-12 ME总成与全PE方块连接纹理示例已加入，统一入口：[README.md](README.md)，操作坐标见[ME与连接纹理专题](scripts/README-me-assemblies.md)。本次单独处理用户示例要求，总体Goal按此前要求保持暂停。
 
 C = 实际 SDK718 编译；H = 独立 JVM 中执行真实核心 API；N = 用户原生游戏运行；V = 用户实际客户端画面/点击。C/H 通过不能升级为 N/V。准备数据、给物品、注册内容与 PRECONDITION 均不算行为 PASS。
 
-## 最终验证
+## 2026-11-12 本批验证
+
+- 21个addon Java完整javac/jar通过并安装到现有开发addon；真实SDK718编译13脚本通过，执行10/20核心脚本及97项行为断言，0失败。
+- 本批新增13/24两脚本：6机器、5池、9配方；原生加工样板从注册配方生成。全PE方块检验场按实际注册表建立，每种27格，包含Java/ZS扩展并行组件，使用同一份实际结构布局搭建和检查。
+- 本机IDEA MCP逐文件 `errorsOnly:false` 检查run Java受到既有排除目录限制，不能记为零诊断；未修改IDE设置。语言/Markdown实际诊断与编译、安装SHA证据记入 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/run-me-examples/`。
+- 新ME/连接纹理世界命令没有被执行。所有ME网络/PAT、样板合成、实际World、CTM/Bloom显示和退出重进仍为N/V待验；没有启动Minecraft/FML。
+
+## 2026-11-11 历史验证
 
 | 门 | 当前证据 |
 |---|---|

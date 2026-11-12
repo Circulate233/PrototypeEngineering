@@ -78,7 +78,7 @@ public final class ScriptVerifier {
         for (var type : List.of(
             IItemStack.class, ILiquidStack.class, IWorld.class, IBlockPos.class,
             crafttweaker.api.player.IPlayer.class, crafttweaker.api.server.IServer.class,
-            ZenMachineType.class, ZenMachineFactory.class, ZenMachineComponent.class,
+            ZenMachineType.class, ZenMachineFactory.class, ZenMachineComponent.class, ZenParallelController.class,
             ZenResource.class, ZenResourceMatcher.class, ZenMatcher.class, ZenRequirement.class,
             ZenRecipe.class, ZenRecipePool.class, ZenRecipeBindings.class,
             ZenSelectiveModifier.class, ZenSelectiveContext.class, ZenSelectiveCallback.class,
