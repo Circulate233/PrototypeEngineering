@@ -323,9 +323,9 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
 
     @Override
     public boolean handleAeMouseWheelInput() {
-        if (colorSelector.expanded()) return true;
         int delta = Mouse.getEventDWheel();
         if (delta == 0) return false;
+        if (colorSelector.expanded()) return true;
         int x = Mouse.getEventX() * width / mc.displayWidth, y = height - Mouse.getEventY() * height / mc.displayHeight - 1;
         for (int kind = 0; kind < 3; kind++) {
             if (isPointInRegion(MePatternAssemblyContainer.left(kind), MePatternAssemblyContainer.top(kind), 68,

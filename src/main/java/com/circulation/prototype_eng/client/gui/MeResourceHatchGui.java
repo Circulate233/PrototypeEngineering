@@ -220,9 +220,9 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
 
     @Override
     public boolean handleAeMouseWheelInput() {
-        if (colorSelector.expanded()) return true;
         int delta = Mouse.getEventDWheel();
         if (delta == 0) return false;
+        if (colorSelector.expanded()) return true;
         int x = Mouse.getEventX() * width / mc.displayWidth;
         int y = height - Mouse.getEventY() * height / mc.displayHeight - 1;
         var slot = findSlot(x, y);

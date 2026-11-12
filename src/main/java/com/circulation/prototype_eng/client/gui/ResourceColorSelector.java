@@ -4,11 +4,13 @@ import ae2.api.util.AEColor;
 import ae2.client.Point;
 import ae2.client.gui.ICompositeWidget;
 import ae2.client.gui.Tooltip;
+import com.circulation.prototype_eng.localization.IsolationGroupText;
 import com.circulation.prototype_eng.localization.MeAssemblyText;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.renderer.GlStateManager;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 
 import java.awt.Rectangle;
 import java.util.Objects;
@@ -135,7 +137,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
     public @Nullable Tooltip getTooltip(int mouseX, int mouseY) {
         if (!getBounds().contains(mouseX, mouseY)) return null;
         AEColor hovered = expanded ? colorAt(mouseX, mouseY) : selected.get();
-        return hovered == null ? null : new Tooltip(MeAssemblyText.ColorChannel.text(hovered.text()));
+        return hovered == null ? null : new Tooltip(MeAssemblyText.ColorChannel.text(IsolationGroupText.of(hovered).text()));
     }
 
     private @Nullable AEColor colorAt(int x, int y) {
@@ -153,18 +155,43 @@ public final class ResourceColorSelector implements ICompositeWidget {
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (expanded) return;
         boolean hovered = getBounds().contains(mouse.x(), mouse.y());
-        drawButton(position.x(), position.y(), hovered, selected.get());
+        drawOverlay(position.x(), position.y(), hovered, false);
     }
 
     @Override
     public void drawAbsoluteLayer(Rectangle bounds, Point mouse) {
         if (!expanded) return;
-        enableFrameBlend();
-        GuiAtlas.draw(GuiAtlas.texture("color_palette"), bounds.x + position.x(), bounds.y + position.y(),
-            0, 0, 56, 57, 56, 57);
-        int x = bounds.x + position.x(), y = bounds.y + position.y() + 57;
         boolean hovered = colorAt(mouse.x() - bounds.x, mouse.y() - bounds.y) == AEColor.TRANSPARENT;
-        drawButton(x, y, hovered, AEColor.TRANSPARENT);
+        drawOverlay(bounds.x + position.x(), bounds.y + position.y(), hovered, true);
+    }
+
+    private void drawOverlay(int x, int y, boolean hovered, boolean palette) {
+        boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean depthMask = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        boolean lighting = GL11.glIsEnabled(GL11.GL_LIGHTING);
+        boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
+        int sourceRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB), destinationRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB);
+        int sourceAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA), destinationAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA);
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
+        GlStateManager.disableLighting();
+        try {
+            if (palette) {
+                enableFrameBlend();
+                GuiAtlas.draw(GuiAtlas.texture("color_palette"), x, y, 0, 0, 56, 57, 56, 57);
+            }
+            drawButton(x, palette ? y + 57 : y, hovered, palette ? AEColor.TRANSPARENT : selected.get());
+        } finally {
+            if (depth) GlStateManager.enableDepth();
+            else GlStateManager.disableDepth();
+            GlStateManager.depthMask(depthMask);
+            if (lighting) GlStateManager.enableLighting();
+            else GlStateManager.disableLighting();
+            GlStateManager.tryBlendFuncSeparate(sourceRgb, destinationRgb, sourceAlpha, destinationAlpha);
+            if (blend) GlStateManager.enableBlend();
+            else GlStateManager.disableBlend();
+            GlStateManager.color(1, 1, 1, 1);
+        }
     }
 
     private void drawSwatch(int x, int y, AEColor color) {
@@ -196,7 +223,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
     }
 
     public enum Style {
-        HATCH(14, 14, 3, 8, 2, 5),
+        HATCH(14, 14, 2, 9, 3, 6),
         ME(17, 18, 4, 9, 3, 6);
 
         public static final Style[] VALUES = values();

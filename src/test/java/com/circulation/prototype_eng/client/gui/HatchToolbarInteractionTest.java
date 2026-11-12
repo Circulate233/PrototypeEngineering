@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.client.gui;
 
 import ae2.api.util.AEColor;
 import ae2.client.Point;
+import ae2.client.gui.WidgetContainer;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +47,48 @@ class HatchToolbarInteractionTest {
     @Test
     void colorPaletteOpensAndChoosesOnReleaseAndCancelsDraggedSelection() {
         for (var style : ResourceColorSelector.Style.VALUES) checkPaletteInteraction(style);
+    }
+
+    @Test
+    void nativeWidgetDispatchChoosesEveryIsolationGroupAndConsumesOutsideClicks() {
+        var palette = new AEColor[]{AEColor.RED, AEColor.BROWN, AEColor.ORANGE, AEColor.YELLOW,
+            AEColor.LIME, AEColor.GREEN, AEColor.CYAN, AEColor.LIGHT_BLUE, AEColor.BLUE, AEColor.PURPLE,
+            AEColor.MAGENTA, AEColor.PINK, AEColor.WHITE, AEColor.LIGHT_GRAY, AEColor.GRAY, AEColor.BLACK};
+        for (var style : ResourceColorSelector.Style.VALUES) {
+            var choices = new ObjectArrayList<AEColor>();
+            var colors = new ResourceColorSelector(() -> AEColor.TRANSPARENT, choices::add, style);
+            colors.setPosition(new Point(1, 13));
+            var widgets = new WidgetContainer();
+            widgets.add("inputScroll", new HatchScrollbar(false, true));
+            widgets.add("outputScroll", new HatchScrollbar(false, true));
+            widgets.add("resourceColor", colors);
+            var button = new Point(6, 18);
+            for (int cell = 0; cell < palette.length; cell++) {
+                assertTrue(widgets.onMouseDown(button, 0));
+                assertTrue(widgets.onMouseUp(button, 0));
+                assertTrue(colors.expanded());
+                var swatch = new Point(6 + cell % 4 * 13, 18 + cell / 4 * 13);
+                assertTrue(widgets.blocksMouseInteraction(swatch));
+                assertTrue(widgets.onMouseDown(swatch, 0));
+                assertTrue(widgets.onMouseUp(swatch, 0));
+                assertFalse(colors.expanded());
+                assertEquals(palette[cell], choices.getLast());
+                assertFalse(widgets.onMouseUp(swatch, 0));
+            }
+            widgets.onMouseDown(button, 0);
+            widgets.onMouseUp(button, 0);
+            var uncolored = new Point(6, 75);
+            assertTrue(widgets.onMouseDown(uncolored, 0));
+            assertTrue(widgets.onMouseUp(uncolored, 0));
+            assertEquals(AEColor.TRANSPARENT, choices.getLast());
+            widgets.onMouseDown(button, 0);
+            widgets.onMouseUp(button, 0);
+            var outside = new Point(200, 200);
+            assertTrue(widgets.onMouseDown(outside, 0));
+            assertTrue(widgets.onMouseUp(outside, 0));
+            assertFalse(colors.expanded());
+            assertEquals(17, choices.size());
+        }
     }
 
     private static void checkPaletteInteraction(ResourceColorSelector.Style style) {

@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 隔离组选择器截图反馈：ME资源仓/样板总成的handleAeMouseWheelInput在delta=0前因expanded返回true，AE AppEngClient每个MouseInputEvent.Pre都调用该入口并取消true，导致点击/松开永不到达palette。本轮先检查真实滚轮再拦截展开面板；普通/ME面板与按钮局部禁depth写入/测试和lighting，保存恢复depth、mask、blend函数/开关，修槽物品遮挡及透明帧白像素。普通9×9中心从(2,2)铺满，悬停/按下跟随0/1/2px；ME原9×9不改，原PNG保持。中英提示改隔离组/Isolation group，各17名字独立本地化，中文“隔离组：红/无色”。4项交互（含原生WidgetContainer全部17选择）、定向Spotless、5Java本机IDEA全级零及MCP构建通过。入口[隔离组控件](block-registration.md#颜色与样板隔离)，证据isolation-palette/见[实施进度](implementation-status.md)。boundary_cross审查确认cross_1–4显式fixed(1)，整机4并行和每配方线程上限1为不同约束，未改示例。下一步用户重启复验选择/穿透及全部hover/pressed效果，未启动游戏或推送，背景及原暂存保留。
+
 - 2026-11-12 CPU工作中退出重进后无法发放样板：确认为本仓库`MePatternAssemblyBlockEntity.entry`仅用对象身份匹配；AE2S 1.1.1读档会独立解码任务样板，原生提供者按定义相等识别。本轮保留原实例槽优先，补完整AEItemKey定义匹配，合并判断/倍数预检/实际push共用修复；8项既有存储与恢复回归、定向Spotless、本机IDEA错误/警告/弱警告全零及MCP构建通过。入口[样板总成](block-registration.md#样板总成)，证据pattern-cpu-reload/见[实施进度](implementation-status.md)。下一步用户在CPU尚有待发放工作时退出重进，确认继续供料；未启动游戏或推送，背景及原暂存保留。
 
 - 2026-11-12 仓室基底CTM/按钮透明与玻璃光照：64仓室/123基底与机械壳双向连接，native邻接/转角/遮挡，原图与324叠加面不变；epoch懒缓存避开CTM同LOWEST事件排序。颜色小框0/1/2px色块位移、ME大框固定，修局部透明混合白条。六玻璃补非fullCube与neighbor brightness，保留零opacity和碰撞箱。7专项、完整工作树1981 tests/278 suites及独立候选1979 tests/277 suites全通过，Spotless与MCP build成功；GUI/玻璃Java本机IDEA全级零，3个CTM Java仍有IDE未同步compileOnly的解析诊断，实际javac/Gradle通过。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据hatch-casing-ctm/、color-button-press/、decorative-glass-light/见[实施进度](implementation-status.md)。未启动游戏/附加JVM/推送，真实atlas/GL仍由用户复验。
