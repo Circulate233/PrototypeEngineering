@@ -10,6 +10,7 @@ import ae2.client.gui.me.common.StackSizeRenderer;
 import ae2.core.localization.GuiText;
 import ae2.util.Platform;
 import com.circulation.prototype_eng.localization.JeiText;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
@@ -166,6 +167,15 @@ public class JeiRecipeIngredients {
 
     /** Same layer order for a key without an exact native query converter. */
     public static void renderFallback(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource, JeiRenderOptions options) {
+        int lighting = GuiItemLighting.capture();
+        try {
+            renderFallbackContents(minecraft, slot, resource, options);
+        } finally {
+            GuiItemLighting.restore(lighting);
+        }
+    }
+
+    private static void renderFallbackContents(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource, JeiRenderOptions options) {
         slot.skin().background(minecraft, slot, resource);
         GlStateManager.pushMatrix();
         try {
@@ -421,6 +431,15 @@ public class JeiRecipeIngredients {
             return new IIngredientRenderer<>() {
                 @Override
                 public void render(Minecraft minecraft, int x, int y, @Nullable T ingredient) {
+                    int lighting = GuiItemLighting.capture();
+                    try {
+                        renderContents(minecraft, x, y, ingredient);
+                    } finally {
+                        GuiItemLighting.restore(lighting);
+                    }
+                }
+
+                private void renderContents(Minecraft minecraft, int x, int y, @Nullable T ingredient) {
                     if (ingredient != null) {
                         var row = displayed(index, ingredient);
                         // Native coordinates include the category origin, while skin slots are category-relative.

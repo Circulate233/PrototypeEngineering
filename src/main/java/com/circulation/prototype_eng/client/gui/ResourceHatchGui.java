@@ -17,7 +17,6 @@ import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.ResourceHatchContainer;
 import com.circulation.prototype_eng.localization.GuiText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.ClickType;
@@ -39,6 +38,7 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
     private final ResourceLocation background;
     private final HatchScrollbar inputScrollbar;
     private final HatchScrollbar outputScrollbar;
+    private ResourceColorSelector colorSelector;
     private long gestureRevision;
     private long lastShiftRevision, lastShiftTime;
     private int lastShiftSlot = -1;
@@ -63,14 +63,14 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         widgets.add("inputScrollbar", inputScrollbar);
         widgets.add("outputScrollbar", outputScrollbar);
         if (container.hasColorGrouping()) {
-            var colors = new ResourceColorSelector(() -> container.color, container::setResourceColor);
-            colors.setPosition(new Point(1, 50));
-            widgets.add("resourceColor", colors);
+            colorSelector = new ResourceColorSelector(() -> container.color, container::setResourceColor);
+            colorSelector.setPosition(new Point(1, 50));
+            widgets.add("resourceColor", colorSelector);
         }
-        widgets.add("autoInput", new HatchToggleButton(100, 0, 0, true,
-            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput()), new Point(4, 13));
-        widgets.add("autoOutput", new HatchToggleButton(101, 0, 0, false,
-            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput()), new Point(4, 31));
+        widgets.add("autoInput", new HatchToggleButton(true,
+            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput(), container::toggleInput, new Point(1, 12)));
+        widgets.add("autoOutput", new HatchToggleButton(false,
+            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput(), container::toggleOutput, new Point(1, 31)));
     }
 
     @Override
@@ -81,13 +81,6 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         outputScrollbar.configure(container.outputLeft, container.resourceTop, container.columns, container.visibleRows,
             container.mode().hasOutput() ? container.outputRows() : 0);
         updateResourceSlots();
-    }
-
-    @Override
-    protected void actionPerformed(GuiButton button) throws IOException {
-        if (button.id == 100) container.toggleInput();
-        else if (button.id == 101) container.toggleOutput();
-        else super.actionPerformed(button);
     }
 
     @Override
@@ -153,7 +146,11 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
     @Override
     protected void drawSlot(@NotNull Slot slot) {
         if (!container.isResourceSlot(slot.slotNumber)) {
-            super.drawSlot(slot);
+            try {
+                super.drawSlot(slot);
+            } finally {
+                restoreStateForVanillaItemRender();
+            }
             return;
         }
         beginClip(container.isInputSlot(slot.slotNumber) ? 26 : container.outputLeft);
@@ -161,6 +158,7 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
             super.drawSlot(slot);
         } finally {
             GL11.glPopAttrib();
+            restoreStateForVanillaItemRender();
         }
     }
 
@@ -178,7 +176,7 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
         if (container.mode().hasInput())
             GuiAtlas.inset(26, container.resourceTop, container.columns * 18, container.visibleRows * 18);
         if (container.mode().hasOutput())
@@ -207,6 +205,7 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
 
     @Override
     protected void renderHoveredToolTip(int mouseX, int mouseY) {
+        if (colorSelector != null && colorSelector.blocksTooltips(mouseX - guiLeft, mouseY - guiTop)) return;
         var slot = findSlot(mouseX, mouseY);
         if (slot == null || !container.isResourceSlot(slot.slotNumber) || !(slot instanceof AppEngSlot resource)) {
             super.renderHoveredToolTip(mouseX, mouseY);
@@ -247,6 +246,11 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
+        if (colorSelector != null && colorSelector.expanded()) {
+            pressedResource = -1;
+            super.mouseClicked(mouseX, mouseY, button);
+            return;
+        }
         gestureRevision = container.presentation.gestureRevision();
         var slot = findSlot(mouseX, mouseY);
         if ((button == 0 || button == 1) && slot instanceof AppEngSlot resource && container.isResourceSlot(slot.slotNumber)) {

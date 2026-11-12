@@ -3,28 +3,103 @@
     "inventory": {
       "model": "prototype_eng:item/parallel_controller_elite"
     },
-    "facing=north": {
+    "facing=north,spin=0": {
       "model": "prototype_eng:parallel_controller_elite"
     },
-    "facing=south": {
+    "facing=north,spin=3": {
+      "model": "prototype_eng:parallel_controller_elite"
+    },
+    "facing=north,spin=2": {
+      "model": "prototype_eng:parallel_controller_elite"
+    },
+    "facing=north,spin=1": {
+      "model": "prototype_eng:parallel_controller_elite"
+    },
+    "facing=south,spin=0": {
       "model": "prototype_eng:parallel_controller_elite",
       "y": 180
     },
-    "facing=east": {
+    "facing=south,spin=3": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 180
+    },
+    "facing=south,spin=2": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 180
+    },
+    "facing=south,spin=1": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 180
+    },
+    "facing=east,spin=0": {
       "model": "prototype_eng:parallel_controller_elite",
       "y": 90
     },
-    "facing=west": {
+    "facing=east,spin=3": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 90
+    },
+    "facing=east,spin=2": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 90
+    },
+    "facing=east,spin=1": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 90
+    },
+    "facing=west,spin=0": {
       "model": "prototype_eng:parallel_controller_elite",
       "y": 270
     },
-    "facing=up": {
+    "facing=west,spin=3": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 270
+    },
+    "facing=west,spin=2": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 270
+    },
+    "facing=west,spin=1": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "y": 270
+    },
+    "facing=up,spin=0": {
       "model": "prototype_eng:parallel_controller_elite",
       "x": 270
     },
-    "facing=down": {
+    "facing=up,spin=3": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "x": 270,
+      "y": 90
+    },
+    "facing=up,spin=2": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "x": 270,
+      "y": 180
+    },
+    "facing=up,spin=1": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "x": 270,
+      "y": 270
+    },
+    "facing=down,spin=2": {
       "model": "prototype_eng:parallel_controller_elite",
       "x": 90
+    },
+    "facing=down,spin=1": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "x": 90,
+      "y": 270
+    },
+    "facing=down,spin=0": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "x": 90,
+      "y": 180
+    },
+    "facing=down,spin=3": {
+      "model": "prototype_eng:parallel_controller_elite",
+      "x": 90,
+      "y": 90
     }
   }
 }

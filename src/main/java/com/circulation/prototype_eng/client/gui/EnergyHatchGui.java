@@ -5,7 +5,6 @@ import ae2.client.gui.AEBaseGui;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.EnergyHatchContainer;
 import com.circulation.prototype_eng.localization.GuiText;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -32,10 +31,10 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         fieldWidth = mixed ? 97 : 120;
         String file = mixed ? "gui_energy_io_hatch_" : "gui_energy_hatch_";
         background = GuiAtlas.texture("gui_energy_hatch/" + file + container.tier().level());
-        widgets.add("autoInput", new HatchToggleButton(100, 0, 0, true,
-            () -> container.autoInput, container.mode().hasInput()), new Point(4, 13));
-        widgets.add("autoOutput", new HatchToggleButton(101, 0, 0, false,
-            () -> container.autoOutput, container.mode().hasOutput()), new Point(4, 31));
+        widgets.add("autoInput", new HatchToggleButton(true,
+            () -> container.autoInput, container.mode().hasInput(), container::toggleInput, new Point(1, 12)));
+        widgets.add("autoOutput", new HatchToggleButton(false,
+            () -> container.autoOutput, container.mode().hasOutput(), container::toggleOutput, new Point(1, 31)));
     }
 
     private static long rate(GuiTextField field) {
@@ -101,13 +100,6 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
     }
 
     @Override
-    protected void actionPerformed(GuiButton button) throws IOException {
-        if (button.id == 100) container.toggleInput();
-        else if (button.id == 101) container.toggleOutput();
-        else super.actionPerformed(button);
-    }
-
-    @Override
     public void updateScreen() {
         super.updateScreen();
         inputRate.updateCursorCounter();
@@ -140,7 +132,7 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, fieldWidth + 9, 10, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, fieldWidth + 9, 10, 0x404040, false);
         drawEnergyAmount(25, container.energy, container.capacity);
         if (mixed) drawEnergyAmount(38, container.outputEnergy, container.outputCapacity);
         // Fields store screen coordinates; draw them before AE draws button/slot tooltips.

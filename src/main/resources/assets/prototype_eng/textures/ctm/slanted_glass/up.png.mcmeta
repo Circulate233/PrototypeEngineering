@@ -1,0 +1,12 @@
+{
+  "ctm": {
+    "ctm_version": 1,
+    "type": "prototype_eng:optifine_full",
+    "layer": "TRANSLUCENT",
+    "textures": [
+      "prototype_eng:ctm/slanted_glass/up_full_0",
+      "prototype_eng:ctm/slanted_glass/up_full_1",
+      "prototype_eng:ctm/slanted_glass/up_full_2"
+    ]
+  }
+}

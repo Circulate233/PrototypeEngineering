@@ -173,19 +173,23 @@ public final class MePatternAssemblyBlockEntity extends AEBaseTile implements II
         requireOwner();
         if (expectedRevision != patternRevision || factor <= 1 || !storage().idle()) return false;
         var replacements = new ObjectArrayList<ItemStack>(patterns.size());
+        boolean changed = false;
         for (var stack : patterns) {
             var next = PatternModifierLogic.modifyAmounts(stack, world, factor, divide);
-            if (ItemStack.areItemStacksEqual(stack, next)) return false;
+            changed |= !ItemStack.areItemStacksEqual(stack, next);
             replacements.add(next);
         }
-        if (replacements.isEmpty()) return false;
+        if (!changed) return false;
         // Inventory iteration skips empty slots, so retain original slot ownership in the second pass.
         int replacement = 0;
         batchingPatterns = true;
         try {
             for (int slot = 0; slot < patterns.size(); slot++)
-                if (!patterns.getStackInSlot(slot).isEmpty())
-                    patterns.setItemDirect(slot, replacements.get(replacement++));
+                if (!patterns.getStackInSlot(slot).isEmpty()) {
+                    var next = replacements.get(replacement++);
+                    if (!ItemStack.areItemStacksEqual(patterns.getStackInSlot(slot), next))
+                        patterns.setItemDirect(slot, next);
+                }
         } finally {
             batchingPatterns = false;
         }

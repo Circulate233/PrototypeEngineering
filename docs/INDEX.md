@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 GUI/模型截图反馈修复：催化剂一次release一次结算、物品真实ItemStack取放；模式左键松开循环/右键AE选择器，乘除逐槽跳过不可改项。统一17×18工具条/居中标题/限宽分行，新增独立disabled滚动条；AEKey/JEI/预览局部恢复light0/1及光照状态。30个CTM面接本模块47状态类型，恢复90张原sheet、独立16px基础面；并行控制器沿机械控制器placement/full/24向及原模型。34专项、完整工作树1976 tests/277 suites及独立候选1974 tests/276 suites全零，Spotless通过。20个Java本机IDEA全级零；新CTM2Java受IDE尚未导入新增compileOnly影响，诊断非零，实际Gradle编译/native邻域及资源验证通过。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据gui-model-feedback/见[实施进度](implementation-status.md)。需用户完整重启复验原生GUI、光照、CTM/透明面和放置方向；未启动游戏/推送，按精确增量保留背景及原暂存。
+
 - 2026-11-12 其余Mixin逐项审查：删除MinecraftPreviewGuiMixin、GuiScreenPreviewMixin及PreviewScreenGuard/retired/blocked全局界面接管；预览只管理本身AE子页打开/关闭/返回，tooltip由自有GUI或Forge公开接口绘制。保留10项（2通用+8客户端），逐项实际消费者及理由见[Mixin审查](mixins.md)。原24项导航测试保留4项真实返回键/客户端队列行为，撤去20项旧守卫模拟流程。完整1970 tests/274 suites、Spotless、JAR/reobf、MCP build通过；7个修改Java及其余9个Mixin本机IDEA全级零，产物无删除类。证据remaining-mixin-audit/；未启动游戏/开子代理/推送，原暂存及其它对话保留。
 
 - 2026-11-12 奖励交付移除全局保护：删除11个玩家/库存/护甲/掉落物/漏斗/网络Mixin及全局交互事件，取消光标专用存档和重生库存搬运；奖励发放器直接创建并注册RewardItemEntity，仅该实体持有待确认物品，确认后恢复普通掉落物行为。下载COMMITTED恢复只核对原扣料记录，不冻结玩家或要求库存永久等于after。1990项/274 suites与Spotless通过，18Java本机IDEA全级零，MCP build及独立JAR检查通过（2通用+10客户端Mixin，无11个旧class）。入口[奖励交付](research-rewards.md)、[下载](research-downloads.md)，证据reward-local-delivery/。其余Mixin按用户补充继续审查；未启动游戏/开子代理/推送，其他对话和原暂存保留。

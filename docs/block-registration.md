@@ -80,7 +80,9 @@ ME仓不暴露Forge物品/流体自动化能力，玩家不能把物品写入真
 
 ## 样板总成
 
-按原布局保留每页36个样板槽、可配置页数、翻页、批量×/÷2、3、5、8，修改前预检所有样板并保留AE2S配方类型UID。输入、催化剂及输出均为无槽数/总容量上限的key→long缓存；催化剂合并同种资源并支持手动存取。默认、阻挡、配方阻挡、样板隔离、合成锁定五模式按用户确认的顺序循环，输入退回按钮仅把实际ME接受的数量从本地移走。
+按原布局保留每页36个样板槽、可配置页数、翻页、批量×/÷2、3、5、8。乘除逐槽处理：无效、溢出或不能整除的样板保持原样，继续处理其他槽；只有实际修改时更新版本，并保留AE2S配方类型UID。输入、催化剂及输出均为无槽数/总容量上限的key→long缓存；催化剂普通物品按原生ItemStack取放，空手左键最多一组、右键半量且不超过一组，Shift向背包转移；非物品通过容器取放，不自动封成AE资源包。已有资源包仍可解包存入。
+
+资源槽在匹配的鼠标松开时仅发送一次服务器操作，避免自定义点击后继承松键再次存回。五模式左键松开循环、右键松开打开AE原生GridSelectionPopup选择器；按钮按下图保持原模式，松开才变更。退回按钮仅把实际ME接受的数量从本地移走。颜色与自动IO共用PM17×18框，开启状态独立LED，不以常驻按下图表示；标题框内居中，自有帮助显式分行和限宽。滚动条使用hatch_scrollbars图集：交互图为PM原像素，禁用图独立灰色且无握柄，资源12×15、样板7×12。
 
 真实节点提供 `ICraftingProvider` 并由节点宿主实现 `PatternContainer`
 ，接入样板管理终端、编辑和合并推送。CPU传入的材料已经按批次数缩放，接收前对完整key与long数量预检；失败不能留下部分材料。加工样板提供者不额外伪装成
@@ -92,6 +94,8 @@ PAT 远程管理复用 AE2S 1.1.1 的 `PatternContainerGuiReturnContext`。仅�
 
 五阶沿MMCE：普通4、强化16、精英64、超级256、终极512，默认上限可在配置文件修改。各阶使用单独生成的染色PNG；原始单纹理保留为外部Java/ZS注册的默认模型，不使用动态染色。
 
+放置复用机械控制器的`ControllerOrientation.placement`，使用full orientation；五阶与外部默认类型均有24向状态，水平spin复用既有ControllerRotatedModel。模型元素、UV和display沿原作者文件，不重新拼造立方体。
+
 `ParallelController` 暴露不可变selected/maximum/revision/valid快照，结构组件自动发现；GUI可选0以禁用贡献。机器内部
 `PROCESS_PARALLELISM` 加各控制器选定贡献，受 `MAX_PROCESS_PARALLELISM`
 裁剪（默认整数上限），在扫描/共享并行准入时捕获并复核。已有运行进程不因调整控制器被改写。类型注册、Java/ZS参数和示例见根目录 [api.md](../api.md)
@@ -100,5 +104,6 @@ PAT 远程管理复用 AE2S 1.1.1 的 `PatternContainerGuiReturnContext`。仅�
 ## 验证范围
 
 静态资源检查、实际库存/扫描/事务行为测试、IDEA MCP全级诊断及构建证据集中在 [实施进度](implementation-status.md)
-。未自行启动Minecraft；原生模型、透明面、CTM/Bloom、AE连接及实际GUI操作需用户运行客户端复验。来源的 `ctm:optifine_full_3tile`
-不受当前CTM原生类型支持，对应PNG保留但不激活不合法元数据；基础面纹理正常引用，不能宣称全部连接纹理效果已在游戏验证。
+。来源的`ctm:optifine_full_3tile`未被当前CTM识别，且有失效proxy及旧namespace。现由本模块注册`prototype_eng:optifine_full`，沿CTM原生TextureContextCTM进行邻接/遮挡/状态判断，将47种有效邻域映射到原作者三张sheet。30个面接独立16×16基础面和三张连接图，恢复90张源sheet；库存/关闭CTM时使用独立基础面，不把32/64px分图作为整张方块面。
+
+未自行启动Minecraft；原生模型、透明面、CTM/Bloom、AE连接及实际GUI操作需用户运行客户端复验。native CTMLogic、Submap和原始图片的256邻域/47图块行为已验证，真实texture atlas及Quad重烘仍须客户端；编译和图片检查不代替实机视觉结果。

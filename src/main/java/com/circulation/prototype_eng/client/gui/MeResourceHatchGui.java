@@ -28,8 +28,8 @@ import java.util.Objects;
 /** Original PM universal-ME artwork with native generic-key slots and AE's long amount editor. */
 public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer> {
     private final ResourceLocation background;
-    private final Scrollbar inputScroll = new Scrollbar(Scrollbar.SMALL);
-    private final Scrollbar outputScroll = new Scrollbar(Scrollbar.SMALL);
+    private final Scrollbar inputScroll = new Scrollbar(HatchGuiSprites.resourceScrollStyle());
+    private final Scrollbar outputScroll = new Scrollbar(HatchGuiSprites.resourceScrollStyle());
     private final ResourceColorSelector colorSelector;
 
     public MeResourceHatchGui(MeResourceHatchContainer container, InventoryPlayer player) {
@@ -104,7 +104,11 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
     @Override
     protected void drawSlot(@NotNull Slot slot) {
         if (!container.isResourceSlot(slot.slotNumber)) {
-            super.drawSlot(slot);
+            try {
+                super.drawSlot(slot);
+            } finally {
+                restoreStateForVanillaItemRender();
+            }
             return;
         }
         clip(container.isInputSlot(slot.slotNumber));
@@ -112,6 +116,7 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
             super.drawSlot(slot);
         } finally {
             GL11.glPopAttrib();
+            restoreStateForVanillaItemRender();
         }
     }
 
@@ -151,7 +156,7 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 27, 9, 140, 9, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 30, 9, 136, 9, 0x404040, false);
     }
 
     @Override
@@ -177,14 +182,15 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
                 .text(key.formatAmount(resource.getGenericDisplayAmount(), AmountFormat.FULL)));
         } else if (container.isMarkSlot(slot.slotNumber)) lines.add(MeAssemblyText.EmptyMark.text());
         lines.add((container.isMarkSlot(slot.slotNumber) ? MeAssemblyText.MarkUsage : MeAssemblyText.ReadOnlyBuffer).text());
-        if (key == null) drawTooltipWithHeader(mouseX, mouseY, lines);
-        else drawKeyTooltipWithImages(mouseX, mouseY, key, lines);
+        var wrapped = HatchTooltips.wrap(fontRenderer, lines, Math.min(280, width - 24));
+        if (key == null) drawTooltipWithHeader(mouseX, mouseY, wrapped);
+        else drawKeyTooltipWithImages(mouseX, mouseY, key, wrapped);
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         if (colorSelector.expanded()) {
-            colorSelector.onMouseDown(new Point(mouseX - guiLeft, mouseY - guiTop), button);
+            super.mouseClicked(mouseX, mouseY, button);
             return;
         }
         var slot = findSlot(mouseX, mouseY);

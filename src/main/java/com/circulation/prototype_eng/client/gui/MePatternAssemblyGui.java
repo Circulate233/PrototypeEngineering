@@ -1,18 +1,27 @@
 package com.circulation.prototype_eng.client.gui;
 
 import ae2.api.client.AEKeyRendering;
+import ae2.api.behaviors.ContainerItemStrategies;
+import ae2.api.config.Actionable;
+import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AmountFormat;
 import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
-import ae2.client.gui.widgets.ITooltip;
+import ae2.client.gui.ICompositeWidget;
+import ae2.client.gui.Icon;
+import ae2.client.gui.Tooltip;
+import ae2.client.gui.widgets.GridSelectionPopup;
 import ae2.client.gui.widgets.Scrollbar;
 import ae2.container.slot.AppEngSlot;
+import ae2.core.localization.ButtonToolTips;
+import ae2.core.localization.Tooltips;
+import ae2.text.TextComponentItemStack;
 import com.circulation.prototype_eng.container.MePatternAssemblyContainer;
 import com.circulation.prototype_eng.localization.MeAssemblyText;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.audio.PositionedSoundRecord;
+import net.minecraft.init.SoundEvents;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.ClickType;
 import net.minecraft.inventory.Slot;
@@ -37,6 +46,9 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
     private static final ResourceLocation MODES = GuiAtlas.texture("io_mode");
     private final ResourceColorSelector colorSelector;
     private final Scrollbar[] scrollbars = new Scrollbar[3];
+    private int pressedSlot = -1, pressedButton = -1;
+    private long pressedRevision, pressedPatternRevision;
+    private int pressedPage;
 
     public MePatternAssemblyGui(MePatternAssemblyContainer container, InventoryPlayer player) {
         super(container, player);
@@ -46,8 +58,7 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         colorSelector.setPosition(new Point(1, 43));
         widgets.add("patternColor", colorSelector);
         for (int kind = 0; kind < 3; kind++) {
-            int textureTop = kind == 0 ? 143 : kind == 1 ? 130 : 156;
-            var scrollbar = new Scrollbar(Scrollbar.Style.sheet(SLOTS, SLOTS, 0, textureTop, 0, textureTop, 7, 12, 256, 256));
+            var scrollbar = new Scrollbar(HatchGuiSprites.patternScrollStyle(kind));
             scrollbar.setCaptureMouseWheel(false);
             scrollbar.setPosition(new Point(kind == 2 ? 327 : 86, MePatternAssemblyContainer.top(kind) + 1));
             scrollbar.setHeight(MePatternAssemblyContainer.height(kind) - 2);
@@ -71,11 +82,17 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
 
     private void button(String name, int id, int x, int y, int width, int height, ResourceLocation atlas,
                         IntSupplier spriteY, Supplier<ITextComponent> tooltip, boolean pageButton) {
-        widgets.add(name, new SourceButton(id, width, height, atlas, spriteY, tooltip, pageButton), new Point(x, y));
+        var button = new SourceButton(id, width, height, atlas, spriteY, tooltip, pageButton);
+        button.setPosition(new Point(x, y));
+        widgets.add(name, button);
     }
 
     private MeAssemblyText modeText() {
-        return switch (container.snapshot.mode()) {
+        return modeText(container.snapshot.mode());
+    }
+
+    private static MeAssemblyText modeText(int mode) {
+        return switch (mode) {
             case 1 -> MeAssemblyText.ModeBlocking;
             case 2 -> MeAssemblyText.ModeRecipeBlocking;
             case 3 -> MeAssemblyText.ModePatternIsolation;
@@ -84,17 +101,26 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         };
     }
 
-    @Override
-    protected void actionPerformed(@NotNull GuiButton button) throws IOException {
-        if (button.id == 0) container.action(2, 0);
-        else if (button.id == 1) container.action(1, 0);
-        else if (button.id == 2) container.action(0, container.snapshot.page() - 1);
-        else if (button.id == 3) container.action(0, container.snapshot.page() + 1);
-        else if (button.id >= 10 && button.id <= 17) {
-            int[] factors = {8, 5, 3, 2, 2, 3, 5, 8};
-            int index = button.id - 10;
-            container.action(index < 4 ? 4 : 3, factors[index]);
-        } else super.actionPerformed(button);
+    private void activateButton(SourceButton button, int mouseButton) {
+        if (mouseButton == 1 && button.id == 1) {
+            var entries = new ObjectArrayList<GridSelectionPopup.Entry<Integer>>(5);
+            Icon[] icons = {Icon.BLOCKING_MODE_NO, Icon.BLOCKING_MODE_YES, Icon.BLOCKING_MODE_STRONG,
+                Icon.PATTERN_PROVIDER_INSERTION_EMPTY_ONLY, Icon.LOCKED};
+            for (int mode = 0; mode < icons.length; mode++)
+                entries.add(GridSelectionPopup.Entry.icon(mode, icons[mode], List.of(modeText(mode).text())));
+            openSelectionPopup(new GridSelectionPopup<>(button.position.x() + button.width + 2, button.position.y(),
+                entries, container.snapshot.mode(), mode -> container.action(5, mode)));
+        } else if (mouseButton == 0 || mouseButton == 1) {
+            if (button.id == 0) container.action(2, 0);
+            else if (button.id == 1) container.action(1, 0);
+            else if (button.id == 2) container.action(0, container.snapshot.page() - 1);
+            else if (button.id == 3) container.action(0, container.snapshot.page() + 1);
+            else if (button.id >= 10 && button.id <= 17) {
+                int[] factors = {8, 5, 3, 2, 2, 3, 5, 8};
+                int index = button.id - 10;
+                container.action(index < 4 ? 4 : 3, factors[index]);
+            }
+        }
     }
 
     @Override
@@ -135,7 +161,7 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 27, 9, 142, 9, 0x404040, false);
+        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 30, 9, 136, 9, 0x404040, false);
         GuiAtlas.draw(SLOTS, 192, 15, 188, 0, 68, 8, 256, 256);
         int pages = container.snapshot.pages();
         int enabledWidth = Math.min(68, 11 + Math.max(0, Math.min(20, pages) - 1) * 3);
@@ -155,15 +181,13 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
 
     @Override
     protected void drawSlot(@NotNull Slot slot) {
-        if (!container.isResourceSlot(slot.slotNumber)) {
-            super.drawSlot(slot);
-            return;
-        }
-        clip(container.kind(slot.slotNumber));
+        boolean clipped = container.isResourceSlot(slot.slotNumber);
+        if (clipped) clip(container.kind(slot.slotNumber));
         try {
             super.drawSlot(slot);
         } finally {
-            GL11.glPopAttrib();
+            if (clipped) GL11.glPopAttrib();
+            restoreStateForVanillaItemRender();
         }
     }
 
@@ -209,8 +233,22 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
             return;
         }
         int kind = container.kind(slot.slotNumber);
-        var lines = new ObjectArrayList<ITextComponent>();
+        var carried = getCarriedItem();
+        var emptying = kind == 1 ? ContainerItemStrategies.getEmptyingAction(carried) : null;
+        if (emptying != null) {
+            drawTooltipWithHeader(mouseX, mouseY, Tooltips.getEmptyingTooltip(ButtonToolTips.StoreAction, carried, emptying));
+            return;
+        }
         var key = resource.getGenericDisplayKey();
+        if (kind == 1 && key != null && !(key instanceof AEItemKey) && !carried.isEmpty()) {
+            var context = ContainerItemStrategies.findCarriedContextForKey(key, playerInventory.player, container);
+            if (context != null && context.insert(key, resource.getGenericDisplayAmount(), Actionable.SIMULATE) > 0) {
+                drawTooltipWithHeader(mouseX, mouseY, List.of(Tooltips.muted(ButtonToolTips.FillAction.text(
+                    Tooltips.getMouseButtonText(0), Tooltips.of(TextComponentItemStack.of(carried))))));
+                return;
+            }
+        }
+        var lines = new ObjectArrayList<ITextComponent>();
         if (key != null) {
             if (AEKeyRendering.get(key.getType()) == null) lines.add(key.getDisplayName());
             else lines.addAll(AEKeyRendering.getTooltip(key));
@@ -218,14 +256,16 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         }
         lines.add((kind == 0 ? MeAssemblyText.InputBuffer : kind == 1 ? MeAssemblyText.CatalystBuffer : MeAssemblyText.OutputBuffer).text());
         lines.add((kind == 1 ? MeAssemblyText.CatalystUsage : MeAssemblyText.ReadOnlyBuffer).text());
-        if (key == null) drawTooltipWithHeader(mouseX, mouseY, lines);
-        else drawKeyTooltipWithImages(mouseX, mouseY, key, lines);
+        var wrapped = HatchTooltips.wrap(fontRenderer, lines, Math.min(280, width - 24));
+        if (key == null) drawTooltipWithHeader(mouseX, mouseY, wrapped);
+        else drawKeyTooltipWithImages(mouseX, mouseY, key, wrapped);
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
-        if (colorSelector.expanded()) {
-            colorSelector.onMouseDown(new Point(mouseX - guiLeft, mouseY - guiTop), button);
+        if (handleSelectionPopupMouseClicked(mouseX, mouseY)) return;
+        if (widgets.blocksMouseInteraction(new Point(mouseX - guiLeft, mouseY - guiTop))) {
+            super.mouseClicked(mouseX, mouseY, button);
             return;
         }
         if (button == 0 && isPointInRegion(192, 15, 68, 8, mouseX, mouseY)) {
@@ -238,11 +278,32 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         }
         var slot = findSlot(mouseX, mouseY);
         if (slot != null && (container.isPatternSlot(slot.slotNumber) || container.isResourceSlot(slot.slotNumber))) {
-            if (button <= 1) container.click(slot.slotNumber, button, isShiftKeyDown() ? ClickType.QUICK_MOVE : ClickType.PICKUP);
-            else if (button == 2 && container.isPatternSlot(slot.slotNumber)) container.click(slot.slotNumber, button, ClickType.CLONE);
+            if (button == 0 || button == 1) {
+                pressedSlot = slot.slotNumber;
+                pressedButton = button;
+                pressedRevision = container.snapshot.revision();
+                pressedPatternRevision = container.snapshot.patternRevision();
+                pressedPage = container.snapshot.page();
+            } else if (button == 2 && container.isPatternSlot(slot.slotNumber))
+                container.click(slot.slotNumber, button, ClickType.CLONE);
             return;
         }
         super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    protected void mouseReleased(int mouseX, int mouseY, int button) {
+        if (pressedSlot < 0) {
+            super.mouseReleased(mouseX, mouseY, button);
+            return;
+        }
+        int index = pressedSlot;
+        pressedSlot = -1;
+        var slot = findSlot(mouseX, mouseY);
+        if (button != pressedButton || slot == null || slot.slotNumber != index || !slot.isEnabled()
+            || pressedRevision != container.snapshot.revision() || pressedPatternRevision != container.snapshot.patternRevision()
+            || pressedPage != container.snapshot.page()) return;
+        container.click(index, button, isShiftKeyDown() ? ClickType.QUICK_MOVE : ClickType.PICKUP);
     }
 
     @Override
@@ -254,6 +315,7 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
 
     @Override
     protected void mouseClickMove(int x, int y, int button, long elapsed) {
+        if (pressedSlot >= 0) return;
         var slot = findSlot(x, y);
         if (slot == null || !container.isPatternSlot(slot.slotNumber) && !container.isResourceSlot(slot.slotNumber))
             super.mouseClickMove(x, y, button, elapsed);
@@ -275,16 +337,21 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         return super.handleAeMouseWheelInput();
     }
 
-    private static final class SourceButton extends GuiButton implements ITooltip {
+    private final class SourceButton implements ICompositeWidget {
+        private final int id, width, height;
         private final ResourceLocation atlas;
         private final IntSupplier spriteY;
         private final Supplier<ITextComponent> tooltip;
         private final boolean pageButton;
-        private boolean pressed;
+        private Point position = new Point(0, 0);
+        private int pressed = -1;
+        private int pressedSpriteY;
 
         private SourceButton(int id, int width, int height, ResourceLocation atlas, IntSupplier spriteY,
                              Supplier<ITextComponent> tooltip, boolean pageButton) {
-            super(id, 0, 0, width, height, "");
+            this.id = id;
+            this.width = width;
+            this.height = height;
             this.atlas = atlas;
             this.spriteY = spriteY;
             this.tooltip = tooltip;
@@ -292,39 +359,53 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         }
 
         @Override
-        public void drawButton(@NotNull Minecraft minecraft, int mouseX, int mouseY, float partialTicks) {
-            if (!visible) return;
-            hovered = mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;
+        public void setPosition(Point position) { this.position = position; }
+
+        @Override
+        public void setSize(int width, int height) { }
+
+        @Override
+        public Rectangle getBounds() { return new Rectangle(position.x(), position.y(), width, height); }
+
+        @Override
+        public boolean blocksMouseInteraction(int x, int y) { return pressed >= 0 || getBounds().contains(x, y); }
+
+        @Override
+        public boolean wantsAllMouseUpEvents() { return pressed >= 0; }
+
+        @Override
+        public void drawForegroundLayer(Rectangle bounds, Point mouse) {
+            boolean hovered = hitTest(mouse);
             int step = atlas.equals(MODES) ? 18 : pageButton ? 12 : 14;
-            int u = (pressed ? 2 : hovered ? 1 : 0) * step;
-            GuiAtlas.draw(atlas, x, y, u, spriteY.getAsInt(), width, height, 256, 256);
+            int u = (pressed >= 0 && hovered ? 2 : hovered ? 1 : 0) * step;
+            GuiAtlas.draw(atlas, position.x(), position.y(), u, pressed >= 0 ? pressedSpriteY : spriteY.getAsInt(), width, height, 256, 256);
         }
 
         @Override
-        public boolean mousePressed(@NotNull Minecraft minecraft, int mouseX, int mouseY) {
-            pressed = super.mousePressed(minecraft, mouseX, mouseY);
-            return pressed;
+        public boolean onMouseDown(Point mouse, int button) {
+            if (!hitTest(mouse) || button != 0 && button != 1) return false;
+            pressed = button;
+            pressedSpriteY = spriteY.getAsInt();
+            return true;
         }
 
         @Override
-        public void mouseReleased(int mouseX, int mouseY) {
-            pressed = false;
-            super.mouseReleased(mouseX, mouseY);
+        public boolean onMouseUp(Point mouse, int button) {
+            if (pressed < 0) return false;
+            int originalButton = pressed;
+            pressed = -1;
+            if (button == originalButton && hitTest(mouse)) {
+                mc.getSoundHandler().playSound(PositionedSoundRecord.getMasterRecord(SoundEvents.UI_BUTTON_CLICK, 1));
+                activateButton(this, button);
+            }
+            return true;
         }
 
         @Override
-        public @NotNull List<ITextComponent> getTooltipMessage() {
-            return List.of(tooltip.get());
-        }
-
-        @Override
-        public Rectangle getTooltipArea() {
-            return new Rectangle(x, y, width, height);
-        }
-
-        @Override
-        public boolean isTooltipAreaVisible() {
-            return visible;
+        public @Nullable Tooltip getTooltip(int x, int y) {
+            return getBounds().contains(x, y)
+                ? new Tooltip(HatchTooltips.wrap(fontRenderer, List.of(tooltip.get()), Math.min(280, MePatternAssemblyGui.this.width - 24)))
+                : null;
         }
     }
 }

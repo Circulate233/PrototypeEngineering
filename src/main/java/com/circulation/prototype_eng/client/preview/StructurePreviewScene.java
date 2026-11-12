@@ -30,6 +30,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.Tessellator;
@@ -215,6 +216,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         camera.frame(System.currentTimeMillis(), view.autoRotate);
         hovered = pointerEnabled ? pick(viewport.x() + pointerX, viewport.y() + pointerY) : null;
         var before = PreviewBlockModels.State.capture(colors);
+        int lighting = GuiItemLighting.capture();
         var oldViewport = new int[4];
         nativeViewport.clear();
         GL11.glGetInteger(GL11.GL_VIEWPORT, nativeViewport);
@@ -310,6 +312,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                 GlStateManager.matrixMode(oldMatrix);
                 GlStateManager.depthFunc(oldDepthFunc);
                 before.restore();
+                GuiItemLighting.restore(lighting);
             }
         }
     }

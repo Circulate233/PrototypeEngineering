@@ -194,7 +194,7 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
 
     private void receiveAction(long[] values) {
         if (!canEdit() || values == null || values.length != 4 || values[0] != tile.patternRevision()
-            || values[1] != page || values[2] < 0 || values[2] > 4) return;
+            || values[1] != page || values[2] < 0 || values[2] > 5) return;
         boolean changed = switch ((int) values[2]) {
             case 0 -> {
                 page = Math.floorMod(values[3], tile.patternPages());
@@ -204,6 +204,8 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
             case 2 -> tile.returnInputsToMe(values[0]);
             case 3, 4 -> (values[3] == 2 || values[3] == 3 || values[3] == 5 || values[3] == 8)
                 && tile.modifyPatterns(values[0], (int) values[3], values[2] == 4);
+            case 5 -> values[3] >= 0 && values[3] < MePatternAssemblyBlockEntity.Mode.VALUES.length
+                && tile.setMode(values[0], MePatternAssemblyBlockEntity.Mode.VALUES[(int) values[3]]);
             default -> false;
         };
         if (changed) capture();
@@ -260,7 +262,7 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
             }
             if (button == 1 && emptying != null) {
                 emptyCatalystContainer(buffer, false);
-            } else if (selected != null && !(selected.what() instanceof AEItemKey) && !carried.isEmpty()
+            } else if (button == 0 && selected != null && !(selected.what() instanceof AEItemKey) && !carried.isEmpty()
                 && ContainerItemStrategies.findCarriedContextForKey(selected.what(), getPlayer(), this) != null) {
                 fillCatalystContainer(buffer, selected.what(), false);
             } else if (!carried.isEmpty() && !GenericStack.isWrapped(carried)) {
@@ -272,13 +274,12 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
                     setCarried(carried);
                     return amount;
                 });
-            } else if (carried.isEmpty() && selected != null) {
-                long requested = button == 1 ? selected.amount() / 2 + selected.amount() % 2 : selected.amount();
-                long offered = buffer.extract(selected.what(), requested, Actionable.SIMULATE);
-                if (offered > 0) transfer(buffer, selected.what(), offered, false, amount -> {
-                    var next = GenericResourcePackageItem.wrap(selected.what(), amount);
-                    if (next.isEmpty()) return 0;
-                    setCarried(next);
+            } else if (carried.isEmpty() && selected != null && selected.what() instanceof AEItemKey key) {
+                long requested = Math.min(key.getMaxStackSize(),
+                    button == 1 ? selected.amount() / 2 + selected.amount() % 2 : selected.amount());
+                long offered = buffer.extract(key, requested, Actionable.SIMULATE);
+                if (offered > 0) transfer(buffer, key, offered, false, amount -> {
+                    setCarried(key.toStack((int) amount));
                     return amount;
                 });
             }
@@ -433,7 +434,30 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
         var source = slot.getStack();
         if (source.isEmpty()) return ItemStack.EMPTY;
         if (isPatternSlot(index)) mergeItemStack(source, DISPLAY_END, inventorySlots.size(), true);
-        else mergeItemStack(source, 0, 36, false);
+        else if (PatternDetailsHelper.isEncodedPattern(source)) mergeItemStack(source, 0, 36, false);
+        else {
+            var buffer = tile.catalystStorage();
+            var context = buffer.context();
+            if (!context.tryOrdinaryLock()) return ItemStack.EMPTY;
+            try {
+                var packaged = GenericResourcePackageItem.unwrap(source);
+                AEKey key = packaged == null ? AEItemKey.of(source) : packaged.what();
+                long offered = packaged == null ? source.getCount() : packaged.amount();
+                if (key == null || offered <= 0 || GenericStack.isWrapped(source) && packaged == null) return ItemStack.EMPTY;
+                long accepted = buffer.insert(key, offered, Actionable.SIMULATE);
+                if (accepted > 0) transfer(buffer, key, accepted, true, amount -> {
+                    if (packaged != null) {
+                        long remaining = offered - amount;
+                        var next = remaining == 0 ? ItemStack.EMPTY : GenericResourcePackageItem.wrap(key, remaining);
+                        if (remaining > 0 && next.isEmpty()) return 0;
+                        slot.putStack(next);
+                    } else source.shrink((int) amount);
+                    return amount;
+                });
+            } finally {
+                context.unlock();
+            }
+        }
         slot.onSlotChanged();
         return ItemStack.EMPTY;
     }

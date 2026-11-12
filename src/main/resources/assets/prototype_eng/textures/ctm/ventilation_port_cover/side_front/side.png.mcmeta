@@ -1,0 +1,12 @@
+{
+  "ctm": {
+    "ctm_version": 1,
+    "type": "prototype_eng:optifine_full",
+    "layer": "SOLID",
+    "textures": [
+      "prototype_eng:ctm/ventilation_port_cover/side_front/side_full_0",
+      "prototype_eng:ctm/ventilation_port_cover/side_front/side_full_1",
+      "prototype_eng:ctm/ventilation_port_cover/side_front/side_full_2"
+    ]
+  }
+}

@@ -20,6 +20,7 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Container;
@@ -498,6 +499,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         var bounds = new Rect(x, y, 18, 18);
         boolean fullyVisible = currentClip == null || x >= currentClip.x && y >= currentClip.y
             && x + 18 <= currentClip.x + currentClip.width && y + 18 <= currentClip.y + currentClip.height;
+        int lighting = GuiItemLighting.capture();
         GlStateManager.pushMatrix();
         try {
             GlStateManager.translate(x, y, 0);
@@ -522,6 +524,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             }
         } finally {
             GlStateManager.popMatrix();
+            GuiItemLighting.restore(lighting);
         }
         area(id, x, y, 18, 18, tooltip, run);
         if (!stack.isEmpty() && fullyVisible) {

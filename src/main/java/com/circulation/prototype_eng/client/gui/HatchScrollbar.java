@@ -146,15 +146,7 @@ final class HatchScrollbar implements ICompositeWidget {
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (!isVisible()) return;
         int x = position.x(), y = position.y() + thumbY(), width = thin ? 7 : 12;
-        var state = thumbState(mouse);
-        int sprite = switch (state) {
-            case DISABLED, NORMAL -> 0;
-            case HOVER -> 1;
-            case PRESSED -> 2;
-        };
         Gui.drawRect(x, position.y(), x + width, position.y() + grid.height, 0x3f000000);
-        GuiAtlas.state(x, y, thin ? 161 + sprite * 8 : 146 + sprite * 13, thin ? 17 : 1, width, thumbHeight());
-        // PM supplies three interactive sprites; retain its normal artwork and dim unavailable thumbs.
-        if (state == ThumbState.DISABLED) Gui.drawRect(x, y, x + width, y + thumbHeight(), 0x66000000);
+        HatchGuiSprites.scrollbar(x, y, thin, thumbState(mouse));
     }
 }

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.block;
 
+import ae2.api.orientation.BlockOrientation;
+import ae2.api.orientation.RelativeSide;
 import ae2.block.AEBaseBlockItem;
 import ae2.block.AEBaseTileBlock;
 import ae2.api.orientation.IOrientationStrategy;
@@ -8,12 +10,14 @@ import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.machine.ParallelControllerType;
 import com.circulation.prototype_eng.localization.ParallelControllerText;
 import com.circulation.prototype_eng.parallel.ParallelControllerBlockEntity;
+import com.circulation.prototype_eng.machine.ControllerOrientation;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
@@ -41,6 +45,8 @@ public class ParallelControllerBlock extends AEBaseTileBlock<ParallelControllerB
         setResistance(10);
         setHarvestLevel("pickaxe", 1);
         setSoundType(SoundType.METAL);
+        setDefaultState(getOrientationStrategy().setOrientation(blockState.getBaseState(), EnumFacing.NORTH,
+            BlockOrientation.NORTH_UP.getSpin()));
     }
 
     public ParallelControllerType type() {
@@ -53,7 +59,16 @@ public class ParallelControllerBlock extends AEBaseTileBlock<ParallelControllerB
 
     @Override
     public IOrientationStrategy getOrientationStrategy() {
-        return OrientationStrategies.facing();
+        return OrientationStrategies.full();
+    }
+
+    @Override
+    public @NotNull IBlockState getStateForPlacement(@NotNull World world, @NotNull BlockPos pos, @NotNull EnumFacing facing,
+                                                     float hitX, float hitY, float hitZ, int meta, @NotNull EntityLivingBase placer,
+                                                     @NotNull EnumHand hand) {
+        var orientation = ControllerOrientation.placement(EnumFacing.getDirectionFromEntityLiving(pos, placer),
+            placer.rotationYaw, placer.rotationPitch);
+        return getOrientationStrategy().setOrientation(getDefaultState(), orientation.getSide(RelativeSide.FRONT), orientation.getSpin());
     }
 
     @Override

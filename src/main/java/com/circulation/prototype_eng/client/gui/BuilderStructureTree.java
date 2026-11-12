@@ -28,6 +28,7 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
+import com.circulation.prototype_eng.client.render.GuiItemLighting;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -343,6 +344,7 @@ final class BuilderStructureTree {
         }
         if (row.display != null) {
             var icon = stack(row.option, row.display.tileNbt());
+            int lighting = GuiItemLighting.capture();
             GlStateManager.pushMatrix();
             try {
                 GlStateManager.translate(x + 2, y + 1, 0);
@@ -352,6 +354,7 @@ final class BuilderStructureTree {
                 RenderHelper.disableStandardItemLighting();
             } finally {
                 GlStateManager.popMatrix();
+                GuiItemLighting.restore(lighting);
             }
         }
         GlStateManager.enableTexture2D();

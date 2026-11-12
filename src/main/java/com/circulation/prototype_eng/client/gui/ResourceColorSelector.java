@@ -22,6 +22,9 @@ public final class ResourceColorSelector implements ICompositeWidget {
     private final Consumer<AEColor> choose;
     private Point position = new Point(1, 13);
     private boolean expanded;
+    private int pressedButton = -1;
+    private boolean pressedExpanded;
+    private @Nullable AEColor pressedColor;
 
     public ResourceColorSelector(Supplier<AEColor> selected, Consumer<AEColor> choose) {
         this.selected = Objects.requireNonNull(selected);
@@ -34,6 +37,8 @@ public final class ResourceColorSelector implements ICompositeWidget {
 
     public void collapse() {
         expanded = false;
+        pressedButton = -1;
+        pressedColor = null;
     }
 
     @Override
@@ -58,16 +63,42 @@ public final class ResourceColorSelector implements ICompositeWidget {
     @Override
     public boolean onMouseDown(Point mouse, int button) {
         if (expanded) {
-            var hovered = colorAt(mouse.x(), mouse.y());
-            expanded = false;
-            if (button == 0 && hovered != null) choose.accept(hovered);
+            pressedButton = button;
+            pressedExpanded = true;
+            pressedColor = colorAt(mouse.x(), mouse.y());
             return true;
         }
-        if (button == 0 && getBounds().contains(mouse.x(), mouse.y())) {
-            expanded = true;
+        if ((button == 0 || button == 1) && getBounds().contains(mouse.x(), mouse.y())) {
+            pressedButton = button;
+            pressedExpanded = false;
             return true;
         }
         return false;
+    }
+
+    @Override
+    public boolean wantsAllMouseUpEvents() {
+        return true;
+    }
+
+    @Override
+    public boolean onMouseUp(Point mouse, int button) {
+        if (pressedButton < 0) return false;
+        int original = pressedButton;
+        pressedButton = -1;
+        if (button != original) {
+            pressedColor = null;
+            return true;
+        }
+        if (pressedExpanded) {
+            var hovered = colorAt(mouse.x(), mouse.y());
+            if (button == 0 && pressedColor != null && pressedColor == hovered) choose.accept(pressedColor);
+            expanded = false;
+        } else if (getBounds().contains(mouse.x(), mouse.y())) {
+            expanded = true;
+        }
+        pressedColor = null;
+        return true;
     }
 
     @Override
@@ -112,8 +143,8 @@ public final class ResourceColorSelector implements ICompositeWidget {
     @Override
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (expanded) return;
-        int u = getBounds().contains(mouse.x(), mouse.y()) ? 18 : 0;
-        GuiAtlas.draw(GuiAtlas.texture("io_mode"), position.x(), position.y(), u, 0, 17, 18, 256, 256);
+        boolean hovered = getBounds().contains(mouse.x(), mouse.y());
+        HatchGuiSprites.button(position.x(), position.y(), 0, true, hovered, pressedButton >= 0 && hovered);
         drawSwatch(position.x() + 4, position.y() + 4, selected.get());
     }
 
@@ -123,8 +154,8 @@ public final class ResourceColorSelector implements ICompositeWidget {
         GuiAtlas.draw(GuiAtlas.texture("color_palette"), bounds.x + position.x(), bounds.y + position.y(),
             0, 0, 56, 57, 56, 57);
         int x = bounds.x + position.x(), y = bounds.y + position.y() + 57;
-        int u = colorAt(mouse.x(), mouse.y()) == AEColor.TRANSPARENT ? 18 : 0;
-        GuiAtlas.draw(GuiAtlas.texture("io_mode"), x, y, u, 0, 17, 18, 256, 256);
+        boolean hovered = colorAt(mouse.x(), mouse.y()) == AEColor.TRANSPARENT;
+        HatchGuiSprites.button(x, y, 0, true, hovered, pressedButton >= 0 && hovered);
         drawSwatch(x + 4, y + 4, AEColor.TRANSPARENT);
     }
 
