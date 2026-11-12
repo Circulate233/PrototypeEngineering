@@ -1,0 +1,10 @@
+{
+  "ctm": {
+    "ctm_version": 1,
+    "type": "prototype_eng:casing",
+    "layer": "CUTOUT",
+    "textures": [
+      "prototype_eng:ctm/hatch_casing/material_hatch/base/lv2_top"
+    ]
+  }
+}

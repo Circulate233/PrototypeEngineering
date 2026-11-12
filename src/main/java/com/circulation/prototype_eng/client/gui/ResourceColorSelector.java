@@ -6,7 +6,9 @@ import ae2.client.gui.ICompositeWidget;
 import ae2.client.gui.Tooltip;
 import com.circulation.prototype_eng.localization.MeAssemblyText;
 import net.minecraft.client.gui.Gui;
+import net.minecraft.client.renderer.GlStateManager;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.opengl.GL11;
 
 import java.awt.Rectangle;
 import java.util.Objects;
@@ -151,19 +153,18 @@ public final class ResourceColorSelector implements ICompositeWidget {
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (expanded) return;
         boolean hovered = getBounds().contains(mouse.x(), mouse.y());
-        drawButton(position.x(), position.y(), hovered);
-        drawSwatch(position.x() + style.swatchOffset, position.y() + style.swatchOffset, selected.get());
+        drawButton(position.x(), position.y(), hovered, selected.get());
     }
 
     @Override
     public void drawAbsoluteLayer(Rectangle bounds, Point mouse) {
         if (!expanded) return;
+        enableFrameBlend();
         GuiAtlas.draw(GuiAtlas.texture("color_palette"), bounds.x + position.x(), bounds.y + position.y(),
             0, 0, 56, 57, 56, 57);
         int x = bounds.x + position.x(), y = bounds.y + position.y() + 57;
-        boolean hovered = colorAt(mouse.x(), mouse.y()) == AEColor.TRANSPARENT;
-        drawButton(x, y, hovered);
-        drawSwatch(x + style.swatchOffset, y + style.swatchOffset, AEColor.TRANSPARENT);
+        boolean hovered = colorAt(mouse.x() - bounds.x, mouse.y() - bounds.y) == AEColor.TRANSPARENT;
+        drawButton(x, y, hovered, AEColor.TRANSPARENT);
     }
 
     private void drawSwatch(int x, int y, AEColor color) {
@@ -173,12 +174,25 @@ public final class ResourceColorSelector implements ICompositeWidget {
             Gui.drawRect(x, y, x + style.darkWidth, y + size, 0xff000000 | color.blackVariant);
             Gui.drawRect(x + style.lightOffset, y, x + size, y + size, 0xff000000 | color.whiteVariant);
         }
+        GlStateManager.color(1, 1, 1, 1);
+        // Gui.drawRect disables blending; keep AE's blended widget state for the next frame.
+        GlStateManager.enableBlend();
     }
 
-    private void drawButton(int x, int y, boolean hovered) {
+    private void drawButton(int x, int y, boolean hovered, AEColor color) {
         boolean pressed = pressedButton >= 0 && hovered;
+        enableFrameBlend();
         if (style == Style.ME) HatchGuiSprites.meColorButton(x, y, hovered, pressed);
         else HatchGuiSprites.hatchColorButton(x, y, hovered, pressed);
+        // The original physical-hatch face moves down one/two pixels; the ME inset stays fixed.
+        int faceOffset = style == Style.HATCH ? pressed ? 2 : hovered ? 1 : 0 : 0;
+        drawSwatch(x + style.swatchOffset, y + style.swatchOffset + faceOffset, color);
+    }
+
+    private static void enableFrameBlend() {
+        // Match AE2Button: transparent pixels in the PM frames must preserve the panel below.
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
     }
 
     public enum Style {

@@ -1,7 +1,7 @@
 {
   "ctm": {
     "ctm_version": 1,
-    "type": "CTM",
+    "type": "prototype_eng:casing",
     "layer": "SOLID",
     "textures": [
       "prototype_eng:blocks/block_casing_top-ctm"

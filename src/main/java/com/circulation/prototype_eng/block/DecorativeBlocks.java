@@ -85,7 +85,9 @@ public final class DecorativeBlocks {
             setResistance(glassBlock ? 1.5F : 6.0F);
             if (glassBlock) {
                 setOpaque();
+                setFullSize();
                 setLightOpacity(0);
+                useNeighborBrightness = true;
             }
             else setHarvestLevel("pickaxe", 0);
         }

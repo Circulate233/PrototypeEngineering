@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 仓室基底CTM/按钮透明与玻璃光照：64仓室/123基底与机械壳双向连接，native邻接/转角/遮挡，原图与324叠加面不变；epoch懒缓存避开CTM同LOWEST事件排序。颜色小框0/1/2px色块位移、ME大框固定，修局部透明混合白条。六玻璃补非fullCube与neighbor brightness，保留零opacity和碰撞箱。7专项、完整工作树1981 tests/278 suites及独立候选1979 tests/277 suites全通过，Spotless与MCP build成功；GUI/玻璃Java本机IDEA全级零，3个CTM Java仍有IDE未同步compileOnly的解析诊断，实际javac/Gradle通过。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据hatch-casing-ctm/、color-button-press/、decorative-glass-light/见[实施进度](implementation-status.md)。未启动游戏/附加JVM/推送，真实atlas/GL仍由用户复验。
+
 - 2026-11-12 颜色按钮样式拆分：普通仓室显式HATCH（states原14×14）；ME输入/输出/接口及样板总成显式ME（io_mode原17×18），分别恢复默认位置、色块和点击/无色选择范围，不再共享小框尺寸。现有3项交互测试覆盖两种样式并通过，Spotless通过；6Java本机IDEA errorsOnly:false全级零，纹理文件未改。入口[方块与GUI](block-registration.md)，证据color-selector-styles/见[实施进度](implementation-status.md)。机械外壳基底跨仓室连接需求同步处理中。
 
 - 2026-11-12 GUI二次纠正与分层渲染：恢复自动IO原14×14图/位置，只改颜色小框与20张材料仓挂耳；逐图清除x20旧竖线，白名单外像素不变。ME共用普通HatchScrollbar，内轨x175/y25与98、相同像素平滑/按轨拖动。真实LightUtil定位CTM发光BLOCK格式无normal、HEI快路径转ITEM补零且忽略shade，PE方块物品经公开marker改走原生Forge逐面渲染，保留模型/纹理。9专项、完整工作树1978 tests/277 suites及独立候选1976 tests/276 suites全部通过，Spotless通过，14Java本机IDEA全级零、MCP build成功。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据gui-model-correction/见[实施进度](implementation-status.md)。本轮未启动游戏/附加JVM/推送；实际GL及此前库存反向现象留实机复验，不宣称全局光照已修复。
