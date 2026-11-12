@@ -1,11 +1,10 @@
 package com.circulation.prototype_eng.block;
 
-import ae2.block.AEBaseBlockItem;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 /** Preserves the definition's complete LocalizationEnum key for external names. */
-public final class ParallelControllerItem extends AEBaseBlockItem {
+public final class ParallelControllerItem extends PrototypeBlockItem {
     private final ParallelControllerBlock controller;
 
     public ParallelControllerItem(ParallelControllerBlock controller) {

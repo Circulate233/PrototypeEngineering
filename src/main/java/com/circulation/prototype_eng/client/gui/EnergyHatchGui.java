@@ -32,9 +32,9 @@ public final class EnergyHatchGui extends AEBaseGui<EnergyHatchContainer> {
         String file = mixed ? "gui_energy_io_hatch_" : "gui_energy_hatch_";
         background = GuiAtlas.texture("gui_energy_hatch/" + file + container.tier().level());
         widgets.add("autoInput", new HatchToggleButton(true,
-            () -> container.autoInput, container.mode().hasInput(), container::toggleInput, new Point(1, 12)));
+            () -> container.autoInput, container.mode().hasInput(), container::toggleInput, new Point(4, 13)));
         widgets.add("autoOutput", new HatchToggleButton(false,
-            () -> container.autoOutput, container.mode().hasOutput(), container::toggleOutput, new Point(1, 31)));
+            () -> container.autoOutput, container.mode().hasOutput(), container::toggleOutput, new Point(4, 31)));
     }
 
     private static long rate(GuiTextField field) {

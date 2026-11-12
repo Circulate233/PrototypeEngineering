@@ -1,13 +1,12 @@
 package com.circulation.prototype_eng.block;
 
-import ae2.block.AEBaseBlockItem;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 /**
  * Uses the machine's localization contract without manufacturing another translation key.
  */
-public class MachineControllerItem extends AEBaseBlockItem {
+public class MachineControllerItem extends PrototypeBlockItem {
     private final MachineControllerBlock<?> controller;
 
     public MachineControllerItem(MachineControllerBlock<?> controller) {

@@ -58,7 +58,7 @@ public abstract class HatchBlock<T extends AEBaseTile> extends AEBaseTileBlock<T
      * Override to customize the registered item while retaining AE2S block item behavior.
      */
     public AEBaseBlockItem createItem() {
-        return new AEBaseBlockItem(this);
+        return new PrototypeBlockItem(this);
     }
 
     @Override

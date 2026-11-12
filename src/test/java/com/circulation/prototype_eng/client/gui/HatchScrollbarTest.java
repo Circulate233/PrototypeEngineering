@@ -10,6 +10,39 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HatchScrollbarTest {
     @Test
+    void meMarkedInputUsesContinuousPixelsAndItsMeasuredTrackWithoutDroppingTheLastPartialRow() {
+        var input = new HatchScrollbar(false, true);
+        input.configure(26, 24, 8, 68, 36, 3, 175, 25, 67);
+        assertEquals(175, input.getBounds().x);
+        assertEquals(25, input.getBounds().y);
+        assertEquals(12, input.getBounds().width);
+        assertEquals(67, input.getBounds().height);
+        assertTrue(input.onMouseDown(new Point(180, 90), 0));
+        assertEquals(40, input.scroll());
+        assertEquals(1, input.scroll() / 36);
+        assertEquals(4, input.scroll() % 36);
+        assertTrue(input.onMouseDrag(new Point(180, 25), 0));
+        assertEquals(0, input.scroll());
+        input.onMouseUp(new Point(180, 25), 0);
+        assertEquals(HatchScrollbar.ThumbState.HOVER, input.thumbState(new Point(180, 26)));
+    }
+
+    @Test
+    void meOutputSharesTheSameTrackDraggingButItsOwnPixelRange() {
+        var output = new HatchScrollbar(false, true);
+        output.configure(26, 98, 8, 68, 18, 5, 175, 98, 67);
+        assertTrue(output.onMouseDown(new Point(180, 163), 0));
+        assertEquals(22, output.scroll());
+        assertEquals(1, output.scroll() / 18);
+        assertEquals(4, output.scroll() % 18);
+        output.onMouseUp(new Point(180, 163), 0);
+        output.configure(26, 98, 8, 68, 18, 3, 175, 98, 67);
+        assertFalse(output.isScrollable());
+        assertEquals(0, output.scroll());
+        assertEquals(HatchScrollbar.ThumbState.DISABLED, output.thumbState(new Point(180, 99)));
+    }
+
+    @Test
     void draggingCanReachTheLastIntSlotWithoutPixelOverflow() {
         var bar = new HatchScrollbar(true, true);
         int rows = ResourceHatchWindow.rows(Integer.MAX_VALUE, 4);

@@ -39,6 +39,12 @@
 | `ventilation_port_horizontal_cover` | 横向通风口盖 | Horizontal Ventilation Port Cover |
 | `ventilation_port_vertical_cover`   | 纵向通风口盖 | Vertical Ventilation Port Cover   |
 
+## 背包与HEI逐层物品渲染
+
+CTM发光纹理extra.light=15经Quad.rebake转为带UV1的BLOCK格式，BLOCK无NORMAL；HEI批量快路径直接LightUtil.renderQuadColor转回ITEM，缺失法线被填0且没有执行Forge的逐面shade/光照处理。底壳仍为带正常法线的ITEM，因而可出现仅叠加层发暗。真实native LightUtil验证覆盖ITEM法线0x00810000、BLOCK无normal及转回ITEM零法线；不是几何法线生成错误。
+
+本库方块物品统一继承PrototypeBlockItem（仍是AEBaseBlockItem），通过JEI公开ISlowRenderItem进入原生ItemStackRenderer→Forge.renderLitItem，遵守逐层shade及UV1，保持原模型/贴图。JEI不存在时FML Optional.Interface剥离空marker；不增加全局渲染Mixin。此证据定位HEI发光覆盖层的差异，最终GL显示与此前库存侧反向现象仍需实机复验，不将路径统一冒充全部画面已验收。
+
 ## ME 美术准备
 
 来源独立的 `block_casing_plain_side.png` 已作为素面外壳侧面注册，顶部及底部沿用机械外壳。来源框架控制器外皮保留为 `prototype_eng:block_controller_frame`，可由 Java/ZS 选择模型，不另加未确认的控制器功能。`ventilation_port_tiled_cover` 仅为空目录，`block_factory_controller` 为来源缺失模型引用，`fluxnetwork_link` 仅有语言条目，均未据此臆造正式功能方块。
@@ -82,7 +88,7 @@ ME仓不暴露Forge物品/流体自动化能力，玩家不能把物品写入真
 
 按原布局保留每页36个样板槽、可配置页数、翻页、批量×/÷2、3、5、8。乘除逐槽处理：无效、溢出或不能整除的样板保持原样，继续处理其他槽；只有实际修改时更新版本，并保留AE2S配方类型UID。输入、催化剂及输出均为无槽数/总容量上限的key→long缓存；催化剂普通物品按原生ItemStack取放，空手左键最多一组、右键半量且不超过一组，Shift向背包转移；非物品通过容器取放，不自动封成AE资源包。已有资源包仍可解包存入。
 
-资源槽在匹配的鼠标松开时仅发送一次服务器操作，避免自定义点击后继承松键再次存回。五模式左键松开循环、右键松开打开AE原生GridSelectionPopup选择器；按钮按下图保持原模式，松开才变更。退回按钮仅把实际ME接受的数量从本地移走。颜色与自动IO共用PM17×18框，开启状态独立LED，不以常驻按下图表示；标题框内居中，自有帮助显式分行和限宽。滚动条使用hatch_scrollbars图集：交互图为PM原像素，禁用图独立灰色且无握柄，资源12×15、样板7×12。
+资源槽在匹配的鼠标松开时仅发送一次服务器操作，避免自定义点击后继承松键再次存回。五模式左键松开循环、右键松开打开AE原生GridSelectionPopup选择器；按钮按下图保持原模式，松开才变更。退回按钮仅把实际ME接受的数量从本地移走。自动IO保留原states.png的14×14图、位置(4,13)/(4,31)及原状态；只将颜色按钮改为同款14×14空框，材料仓背景仅延伸颜色挂耳[0,49,21,71)，原自动IO区域不变，不添加LED。标题框内居中，自有帮助显式分行和限宽。ME与普通仓共用HatchScrollbar，30px滚轮步长/180–360ms平滑、按轨定位及拖动相同；ME内轨x175、单仓y25/高70，接口y25与98/高67，按实际68/72px视口计算范围。启用图复用PM原像素，禁用图直接用AE原big/small sprites；样板7×12启用切片从源slot图裁取，删除旧hatch_scrollbars自造图集。
 
 真实节点提供 `ICraftingProvider` 并由节点宿主实现 `PatternContainer`
 ，接入样板管理终端、编辑和合并推送。CPU传入的材料已经按批次数缩放，接收前对完整key与long数量预检；失败不能留下部分材料。加工样板提供者不额外伪装成

@@ -6,7 +6,6 @@ import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.me.items.GuiSetProcessingPatternAmount;
 import ae2.client.gui.widgets.NumberEntryButtonConfig;
-import ae2.client.gui.widgets.Scrollbar;
 import ae2.container.slot.AppEngSlot;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.container.MeResourceHatchContainer;
@@ -28,8 +27,8 @@ import java.util.Objects;
 /** Original PM universal-ME artwork with native generic-key slots and AE's long amount editor. */
 public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer> {
     private final ResourceLocation background;
-    private final Scrollbar inputScroll = new Scrollbar(HatchGuiSprites.resourceScrollStyle());
-    private final Scrollbar outputScroll = new Scrollbar(HatchGuiSprites.resourceScrollStyle());
+    private final HatchScrollbar inputScroll;
+    private final HatchScrollbar outputScroll;
     private final ResourceColorSelector colorSelector;
 
     public MeResourceHatchGui(MeResourceHatchContainer container, InventoryPlayer player) {
@@ -37,8 +36,8 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
         xSize = 195;
         ySize = container.guiHeight;
         background = GuiAtlas.texture("gui_bus/" + (container.mode() == HatchMode.MIXED ? "gui_resource_io_bus" : "gui_resource_bus"));
-        inputScroll.setCaptureMouseWheel(false);
-        outputScroll.setCaptureMouseWheel(false);
+        inputScroll = new HatchScrollbar(false, container.mode().hasInput());
+        outputScroll = new HatchScrollbar(false, container.mode().hasOutput());
         widgets.add("meInputScroll", inputScroll);
         widgets.add("meOutputScroll", outputScroll);
         colorSelector = new ResourceColorSelector(() -> container.color, container::setColor);
@@ -48,10 +47,6 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
     @Override
     public void initGui() {
         super.initGui();
-        inputScroll.setPosition(new Point(178, 25));
-        inputScroll.setHeight(container.inputHeight - 2);
-        outputScroll.setPosition(new Point(178, container.outputTop + 1));
-        outputScroll.setHeight(container.outputHeight - 2);
         updateSlots();
     }
 
@@ -62,26 +57,34 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
     }
 
     private void updateSlots() {
-        inputScroll.setVisible(container.mode().hasInput());
-        outputScroll.setVisible(container.mode().hasOutput());
-        inputScroll.setRange(0, Math.max(0, MeResourceHatchContainer.rows(container.snapshot.inputTotal())
-            - Math.max(1, container.inputHeight / 36)), 1);
-        outputScroll.setRange(0, Math.max(0, MeResourceHatchContainer.rows(container.snapshot.outputTotal())
-            - Math.max(1, container.outputHeight / 18)), 1);
-        container.requestView(inputScroll.getCurrentScroll(), outputScroll.getCurrentScroll());
+        boolean mixed = container.mode() == HatchMode.MIXED;
+        int trackHeight = mixed ? 67 : 70;
+        inputScroll.configure(26, 24, MeResourceHatchContainer.COLUMNS, container.inputHeight, 36,
+            MeResourceHatchContainer.rows(container.snapshot.inputTotal()), 175, 25, trackHeight);
+        outputScroll.configure(26, container.outputTop, MeResourceHatchContainer.COLUMNS, container.outputHeight, 18,
+            MeResourceHatchContainer.rows(container.snapshot.outputTotal()), 175, mixed ? 98 : 25, trackHeight);
+        var mouse = new Point(Mouse.getX() * width / mc.displayWidth - guiLeft,
+            height - Mouse.getY() * height / mc.displayHeight - 1 - guiTop);
+        inputScroll.frame(mouse);
+        outputScroll.frame(mouse);
+        container.requestView((int) (inputScroll.scroll() / 36), (int) (outputScroll.scroll() / 18));
         for (var slot : container.inventorySlots) {
             if (!container.isResourceSlot(slot.slotNumber) || !(slot instanceof AppEngSlot resource)) continue;
             boolean input = container.isInputSlot(slot.slotNumber);
             int cell = container.cell(slot.slotNumber);
             int top = input ? 24 : container.outputTop;
             int height = input ? container.inputHeight : container.outputHeight;
-            int y = top + cell / MeResourceHatchContainer.COLUMNS * (input ? 36 : 18)
+            int first = input ? container.snapshot.inputFirst() : container.snapshot.outputFirst();
+            int rowHeight = input ? 36 : 18;
+            long scroll = input ? inputScroll.scroll() : outputScroll.scroll();
+            long y = top + (first / MeResourceHatchContainer.COLUMNS + (long) cell / MeResourceHatchContainer.COLUMNS) * rowHeight - scroll
                 + (input && !container.isMarkSlot(slot.slotNumber) ? 18 : 0) + 1;
             boolean present = cell < (input ? container.snapshot.inputs().size() : container.snapshot.outputs().size());
+            boolean visible = present && y < top + height && y + 16 > top;
             resource.setSlotEnabled(present);
-            resource.setActive(present && y < top + height && y + 16 > top);
-            slot.xPos = MeResourceHatchContainer.GRID_LEFT + cell % MeResourceHatchContainer.COLUMNS * 18 + 1;
-            slot.yPos = y;
+            resource.setActive(visible);
+            slot.xPos = visible ? MeResourceHatchContainer.GRID_LEFT + cell % MeResourceHatchContainer.COLUMNS * 18 + 1 : -9999;
+            slot.yPos = visible ? (int) y : -9999;
         }
     }
 

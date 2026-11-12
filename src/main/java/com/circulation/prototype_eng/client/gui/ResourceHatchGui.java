@@ -64,13 +64,13 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         widgets.add("outputScrollbar", outputScrollbar);
         if (container.hasColorGrouping()) {
             colorSelector = new ResourceColorSelector(() -> container.color, container::setResourceColor);
-            colorSelector.setPosition(new Point(1, 50));
+            colorSelector.setPosition(new Point(4, 50));
             widgets.add("resourceColor", colorSelector);
         }
         widgets.add("autoInput", new HatchToggleButton(true,
-            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput(), container::toggleInput, new Point(1, 12)));
+            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput(), container::toggleInput, new Point(4, 13)));
         widgets.add("autoOutput", new HatchToggleButton(false,
-            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput(), container::toggleOutput, new Point(1, 31)));
+            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput(), container::toggleOutput, new Point(4, 31)));
     }
 
     @Override

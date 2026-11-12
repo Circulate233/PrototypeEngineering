@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 GUI二次纠正与分层渲染：恢复自动IO原14×14图/位置，只改颜色小框与20张材料仓挂耳；逐图清除x20旧竖线，白名单外像素不变。ME共用普通HatchScrollbar，内轨x175/y25与98、相同像素平滑/按轨拖动。真实LightUtil定位CTM发光BLOCK格式无normal、HEI快路径转ITEM补零且忽略shade，PE方块物品经公开marker改走原生Forge逐面渲染，保留模型/纹理。9专项、完整工作树1978 tests/277 suites及独立候选1976 tests/276 suites全部通过，Spotless通过，14Java本机IDEA全级零、MCP build成功。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据gui-model-correction/见[实施进度](implementation-status.md)。本轮未启动游戏/附加JVM/推送；实际GL及此前库存反向现象留实机复验，不宣称全局光照已修复。
+
 - 2026-11-12 GUI/模型截图反馈修复：催化剂一次release一次结算、物品真实ItemStack取放；模式左键松开循环/右键AE选择器，乘除逐槽跳过不可改项。统一17×18工具条/居中标题/限宽分行，新增独立disabled滚动条；AEKey/JEI/预览局部恢复light0/1及光照状态。30个CTM面接本模块47状态类型，恢复90张原sheet、独立16px基础面；并行控制器沿机械控制器placement/full/24向及原模型。34专项、完整工作树1976 tests/277 suites及独立候选1974 tests/276 suites全零，Spotless通过。20个Java本机IDEA全级零；新CTM2Java受IDE尚未导入新增compileOnly影响，诊断非零，实际Gradle编译/native邻域及资源验证通过。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据gui-model-feedback/见[实施进度](implementation-status.md)。需用户完整重启复验原生GUI、光照、CTM/透明面和放置方向；未启动游戏/推送，按精确增量保留背景及原暂存。
 
 - 2026-11-12 其余Mixin逐项审查：删除MinecraftPreviewGuiMixin、GuiScreenPreviewMixin及PreviewScreenGuard/retired/blocked全局界面接管；预览只管理本身AE子页打开/关闭/返回，tooltip由自有GUI或Forge公开接口绘制。保留10项（2通用+8客户端），逐项实际消费者及理由见[Mixin审查](mixins.md)。原24项导航测试保留4项真实返回键/客户端队列行为，撤去20项旧守卫模拟流程。完整1970 tests/274 suites、Spotless、JAR/reobf、MCP build通过；7个修改Java及其余9个Mixin本机IDEA全级零，产物无删除类。证据remaining-mixin-audit/；未启动游戏/开子代理/推送，原暂存及其它对话保留。

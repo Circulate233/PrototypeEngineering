@@ -20,7 +20,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
         AEColor.MAGENTA, AEColor.PINK, AEColor.WHITE, AEColor.LIGHT_GRAY, AEColor.GRAY, AEColor.BLACK};
     private final Supplier<AEColor> selected;
     private final Consumer<AEColor> choose;
-    private Point position = new Point(1, 13);
+    private Point position = new Point(4, 13);
     private boolean expanded;
     private int pressedButton = -1;
     private boolean pressedExpanded;
@@ -52,7 +52,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
 
     @Override
     public Rectangle getBounds() {
-        return new Rectangle(position.x(), position.y(), expanded ? 56 : 17, expanded ? 75 : 18);
+        return new Rectangle(position.x(), position.y(), expanded ? 56 : 14, expanded ? 71 : 14);
     }
 
     @Override
@@ -134,7 +134,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
 
     private @Nullable AEColor colorAt(int x, int y) {
         int relativeX = x - position.x() - 4, relativeY = y - position.y() - 4;
-        if (relativeX >= 0 && relativeX < 9 && relativeY >= 57 && relativeY < 66) return AEColor.TRANSPARENT;
+        if (relativeX >= -1 && relativeX < 7 && relativeY >= 56 && relativeY < 64) return AEColor.TRANSPARENT;
         if (relativeX < 0 || relativeY < 0 || relativeX >= 52 || relativeY >= 52
             || relativeX % 13 >= 9 || relativeY % 13 >= 9) return null;
         return COLORS[relativeY / 13 * 4 + relativeX / 13];
@@ -144,8 +144,8 @@ public final class ResourceColorSelector implements ICompositeWidget {
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (expanded) return;
         boolean hovered = getBounds().contains(mouse.x(), mouse.y());
-        HatchGuiSprites.button(position.x(), position.y(), 0, true, hovered, pressedButton >= 0 && hovered);
-        drawSwatch(position.x() + 4, position.y() + 4, selected.get());
+        HatchGuiSprites.colorButton(position.x(), position.y(), hovered, pressedButton >= 0 && hovered);
+        drawSwatch(position.x() + 3, position.y() + 3, selected.get());
     }
 
     @Override
@@ -155,15 +155,15 @@ public final class ResourceColorSelector implements ICompositeWidget {
             0, 0, 56, 57, 56, 57);
         int x = bounds.x + position.x(), y = bounds.y + position.y() + 57;
         boolean hovered = colorAt(mouse.x(), mouse.y()) == AEColor.TRANSPARENT;
-        HatchGuiSprites.button(x, y, 0, true, hovered, pressedButton >= 0 && hovered);
-        drawSwatch(x + 4, y + 4, AEColor.TRANSPARENT);
+        HatchGuiSprites.colorButton(x, y, hovered, pressedButton >= 0 && hovered);
+        drawSwatch(x + 3, y + 3, AEColor.TRANSPARENT);
     }
 
     private static void drawSwatch(int x, int y, AEColor color) {
-        Gui.drawRect(x, y, x + 9, y + 9, 0xff000000 | color.mediumVariant);
+        Gui.drawRect(x, y, x + 8, y + 8, 0xff000000 | color.mediumVariant);
         if (color == AEColor.TRANSPARENT) {
-            Gui.drawRect(x, y, x + 3, y + 9, 0xff000000 | color.blackVariant);
-            Gui.drawRect(x + 6, y, x + 9, y + 9, 0xff000000 | color.whiteVariant);
+            Gui.drawRect(x, y, x + 2, y + 8, 0xff000000 | color.blackVariant);
+            Gui.drawRect(x + 5, y, x + 8, y + 8, 0xff000000 | color.whiteVariant);
         }
     }
 }

@@ -52,7 +52,7 @@ class HatchToolbarInteractionTest {
         assertFalse(colors.expanded());
         assertTrue(colors.onMouseUp(button, 0));
         assertTrue(colors.expanded());
-        var red = new Point(6, 18);
+        var red = new Point(9, 18);
         assertTrue(colors.onMouseDown(red, 0));
         assertTrue(choices.isEmpty());
         assertTrue(colors.onMouseUp(red, 0));
@@ -62,7 +62,7 @@ class HatchToolbarInteractionTest {
         colors.onMouseUp(button, 1);
         assertTrue(colors.expanded());
         colors.onMouseDown(red, 0);
-        colors.onMouseUp(new Point(19, 18), 0);
+        colors.onMouseUp(new Point(22, 18), 0);
         assertEquals(1, choices.size());
         assertFalse(colors.expanded());
         colors.onMouseDown(button, 0);

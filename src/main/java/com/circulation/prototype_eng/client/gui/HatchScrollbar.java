@@ -16,6 +16,8 @@ final class HatchScrollbar implements ICompositeWidget {
     private int dragOffset;
     private long animationStart, animationDuration;
     private boolean dragging;
+    private int trackHeight;
+    private boolean shadeTrack = true;
 
     HatchScrollbar(boolean thin, boolean present) {
         this.thin = thin;
@@ -23,9 +25,18 @@ final class HatchScrollbar implements ICompositeWidget {
     }
 
     void configure(int left, int top, int columns, int visibleRows, int totalRows) {
-        grid = new Rectangle(left, top, columns * 18, visibleRows * 18);
-        setPosition(new Point(left + grid.width + (thin ? 3 : 5), top));
-        maximum = present ? Math.max(0, (totalRows - (long) visibleRows) * 18) : 0;
+        configure(left, top, columns, visibleRows * 18, 18, totalRows,
+            left + columns * 18 + (thin ? 3 : 5), top, visibleRows * 18);
+        shadeTrack = true;
+    }
+
+    void configure(int left, int top, int columns, int viewportHeight, int rowHeight, int totalRows,
+                   int trackLeft, int trackTop, int trackHeight) {
+        grid = new Rectangle(left, top, columns * 18, viewportHeight);
+        setPosition(new Point(trackLeft, trackTop));
+        this.trackHeight = trackHeight;
+        shadeTrack = false;
+        maximum = present ? Math.max(0, totalRows * (long) rowHeight - viewportHeight) : 0;
         scroll = Math.clamp(scroll, 0, maximum);
         target = Math.clamp(target, 0, maximum);
         start = Math.clamp(start, 0, maximum);
@@ -44,13 +55,13 @@ final class HatchScrollbar implements ICompositeWidget {
     }
 
     private int thumbY() {
-        return maximum == 0 ? 0 : (int) (scroll * (grid.height - thumbHeight()) / maximum);
+        return maximum == 0 ? 0 : (int) (scroll * (trackHeight - thumbHeight()) / maximum);
     }
 
     void frame(Point mouse) {
         if (dragging) {
             scroll = Math.clamp((long) ((mouse.y() - position.y() - dragOffset)
-                * (double) maximum / Math.max(1, grid.height - thumbHeight())), 0, maximum);
+                * (double) maximum / Math.max(1, trackHeight - thumbHeight())), 0, maximum);
             target = scroll;
             animationDuration = 0;
         } else if (animationDuration > 0) {
@@ -80,12 +91,12 @@ final class HatchScrollbar implements ICompositeWidget {
 
     @Override
     public void setSize(int width, int height) {
-        grid.height = height;
+        trackHeight = height;
     }
 
     @Override
     public Rectangle getBounds() {
-        return new Rectangle(position.x(), position.y(), thin ? 7 : 12, grid.height);
+        return new Rectangle(position.x(), position.y(), thin ? 7 : 12, trackHeight);
     }
 
     @Override
@@ -146,7 +157,7 @@ final class HatchScrollbar implements ICompositeWidget {
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (!isVisible()) return;
         int x = position.x(), y = position.y() + thumbY(), width = thin ? 7 : 12;
-        Gui.drawRect(x, position.y(), x + width, position.y() + grid.height, 0x3f000000);
+        if (shadeTrack) Gui.drawRect(x, position.y(), x + width, position.y() + trackHeight, 0x3f000000);
         HatchGuiSprites.scrollbar(x, y, thin, thumbState(mouse));
     }
 }

@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.block;
 import ae2.api.orientation.IOrientationStrategy;
 import ae2.api.orientation.OrientationStrategies;
 import ae2.block.AEBaseBlock;
-import ae2.block.AEBaseBlockItem;
 import com.circulation.prototype_eng.Tags;
 import net.minecraft.block.Block;
 import net.minecraft.block.SoundType;
@@ -68,7 +67,7 @@ public final class DecorativeBlocks {
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
         for (var block : BLOCKS) {
-            event.getRegistry().register(new AEBaseBlockItem(block).setRegistryName(Objects.requireNonNull(block.getRegistryName())));
+            event.getRegistry().register(new PrototypeBlockItem(block).setRegistryName(Objects.requireNonNull(block.getRegistryName())));
         }
     }
 
