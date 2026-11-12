@@ -135,7 +135,7 @@ public final class StructureProjectionState {
         if (previews.closed() || currentWorld != world || intent == null || intent != previews.projection()
             || model == null || !previews.current(model)) return List.of();
         int visits = Math.min(intent.options().renderVisitsPerFrame(), model.cells().size());
-        var samples = new ObjectArrayList<Sample>();
+        var samples = new ObjectArrayList<Sample>(visits);
         for (int i = 0; i < visits; i++) {
             var cell = model.cells().get(renderCursor);
             var status = statuses[renderCursor] == null ? Status.UNKNOWN : statuses[renderCursor];

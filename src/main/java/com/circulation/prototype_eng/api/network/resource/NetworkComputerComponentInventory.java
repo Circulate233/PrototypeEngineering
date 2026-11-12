@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.network.resource;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
@@ -39,8 +41,8 @@ public final class NetworkComputerComponentInventory {
                                                             Collection<? extends SlottedResourceStorage> sources) {
         Objects.requireNonNull(registry).requireReady();
         Objects.requireNonNull(computer);
-        var storages = new ObjectArrayList<SlottedResourceStorage>();
-        var seen = new ReferenceOpenHashSet<StorageContext>();
+        var storages = new ObjectArrayList<SlottedResourceStorage>(sources.size());
+        var seen = new ReferenceOpenHashSet<StorageContext>(sources.size());
         for (var storage : Objects.requireNonNull(sources)) {
             var context = Objects.requireNonNull(Objects.requireNonNull(storage).context());
             if (seen.add(context)) {
@@ -50,7 +52,7 @@ public final class NetworkComputerComponentInventory {
         storages.sort(Comparator.comparingLong(storage -> storage.context().order()));
         var contexts = new ObjectArrayList<StorageContext>(storages.size());
         storages.forEach(storage -> contexts.add(storage.context()));
-        var installed = new AEKey2LongMap.LinkdOpenHashMap();
+        var installed = new AEKeyLinkedOpenHashMap(6);
         var revisions = new LongArrayList(storages.size());
         boolean capturedValid = true;
         StorageContext.lockAll(contexts);

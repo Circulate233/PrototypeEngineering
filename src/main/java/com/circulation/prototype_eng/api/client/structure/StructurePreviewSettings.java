@@ -32,7 +32,7 @@ public record StructurePreviewSettings(BlockOrientation orientation, Object2IntM
         var counts = new Object2IntOpenHashMap<StructurePreviewPath>();
         for (var entry : sliceCounts.object2IntEntrySet()) counts.put(Objects.requireNonNull(entry.getKey()), entry.getIntValue());
         sliceCounts = Object2IntMaps.unmodifiable(new FrozenChoices<>(counts));
-        var options = new Object2IntOpenHashMap<StructureDisplay>();
+        var options = new Object2IntOpenHashMap<StructureDisplay>(displayOptions.size());
         for (var entry : displayOptions.object2IntEntrySet()) {
             var display = Objects.requireNonNull(entry.getKey());
             int selected = entry.getIntValue();

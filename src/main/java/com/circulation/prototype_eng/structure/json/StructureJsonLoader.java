@@ -89,7 +89,7 @@ public final class StructureJsonLoader {
      * Stable source ordering also supports Java callers supplying detached JSON text.
      */
     public static StructureJsonLoader readSources(Map<String, String> sources) {
-        var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>();
+        var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>(sources.size());
         var orderedSources = new ObjectArrayList<>(sources.keySet());
         orderedSources.sort(Comparator.naturalOrder());
         for (var source : orderedSources) {
@@ -182,11 +182,11 @@ public final class StructureJsonLoader {
 
     private static StructureDefinition build(Data data, List<MachineStructure> children,
                                              StructurePredicateRegistry factories, StructureBlockResolver blocks) {
-        var pattern = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>();
-        var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>();
+        var pattern = new Object2ObjectLinkedOpenHashMap<BlockPos, StructurePredicate>(data.pattern.size());
+        var displays = new Object2ObjectLinkedOpenHashMap<BlockPos, StructureDisplay>(data.pattern.size());
         for (var cell : data.pattern) {
-            var parts = new ObjectArrayList<StructurePredicate>();
-            var alternatives = new ObjectArrayList<StructurePredicate>();
+            var parts = new ObjectArrayList<StructurePredicate>(cell.options.size());
+            var alternatives = new ObjectArrayList<StructurePredicate>(cell.options.size());
             for (var option : cell.options) {
                 try {
                     alternatives.add(Objects.requireNonNull(blocks.resolveState(option.id, option.meta, option.nbt, option.properties)));
@@ -210,7 +210,7 @@ public final class StructureJsonLoader {
     }
 
     private static StructureDisplay display(Display data, String defaultKey, StructureBlockResolver blocks) {
-        var choices = new ObjectLinkedOpenHashSet<StructureDisplay.BlockOption>();
+        var choices = new ObjectLinkedOpenHashSet<StructureDisplay.BlockOption>(data.blocks.size());
         for (var option : data.blocks) {
             try {
                 choices.add(Objects.requireNonNull(blocks.displayState(option.id, option.meta, option.nbt, option.properties)));
@@ -242,7 +242,7 @@ public final class StructureJsonLoader {
     public StructureCatalog resolve(StructureCatalog javaDefinitions, StructurePredicateRegistry factories, StructureBlockResolver blocks) {
         Objects.requireNonNull(factories);
         Objects.requireNonNull(blocks);
-        var pending = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>();
+        var pending = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Data>(definitions.size());
         var resolved = new Object2ObjectLinkedOpenHashMap<>(javaDefinitions.definitions());
         for (var definition : definitions) {
             if (resolved.containsKey(definition.id))

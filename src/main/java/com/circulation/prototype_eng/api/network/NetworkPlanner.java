@@ -43,8 +43,8 @@ public final class NetworkPlanner {
         var deviceCopy = new ObjectArrayList<>(devices);
         var contributionCopy = new ObjectArrayList<>(contributions);
         var owners = new ObjectLinkedOpenHashSet<UUID>();
-        var deviceIds = new ObjectOpenHashSet<UUID>();
-        var participantIds = new ObjectOpenHashSet<UUID>();
+        var deviceIds = new ObjectOpenHashSet<UUID>(deviceCopy.size());
+        var participantIds = new ObjectOpenHashSet<UUID>(contributionCopy.size());
         for (var device : deviceCopy) {
             Objects.requireNonNull(device);
             if (!deviceIds.add(device.identity().machineId())) {
@@ -63,7 +63,7 @@ public final class NetworkPlanner {
             owners.add(contribution.ownerId());
             checkResources(resources, contribution.resourcesPerTick());
         }
-        var resolved = new Object2ObjectOpenHashMap<UUID, OwnerTeamResolution>();
+        var resolved = new Object2ObjectOpenHashMap<UUID, OwnerTeamResolution>(owners.size());
         var teams = new Object2ObjectOpenHashMap<String, OwnerTeamResolution>();
         for (var owner : owners) {
             var result = Objects.requireNonNull(resolver.resolve(owner), "Owner resolver result");

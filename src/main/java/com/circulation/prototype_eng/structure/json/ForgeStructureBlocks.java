@@ -60,9 +60,9 @@ public final class ForgeStructureBlocks implements StructureBlockResolver {
         var existing = regexBlocks.get(expression);
         if (existing != null) return existing;
         var regex = Pattern.compile(expression);
-        var result = new ObjectArrayList<Block>();
+        var result = new ObjectArrayList<Block>(6);
         var ids = new ObjectArrayList<>(Block.REGISTRY.getKeys());
-        ids.sort(Comparator.comparing(ResourceLocation::toString));
+        ids.sort(Comparator.naturalOrder());
         for (var id : ids) {
             if (regex.matcher(id.toString()).matches()) {
                 var block = Block.REGISTRY.getObject(id);

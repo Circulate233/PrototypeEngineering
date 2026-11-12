@@ -29,12 +29,12 @@ public final class ComponentType<E, C> {
                          Collection<? extends ComponentType<E, ?>> dependencies) {
         this.id = Objects.requireNonNull(id);
         this.factory = Objects.requireNonNull(factory);
-        var systemCopy = new ObjectArrayList<ComponentSystem<E, C>>();
+        var systemCopy = new ObjectArrayList<ComponentSystem<E, C>>(systems.size());
         for (var system : systems) {
             systemCopy.add(Objects.requireNonNull(system));
         }
         this.systems = ObjectLists.unmodifiable(systemCopy);
-        var dependencyCopy = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>();
+        var dependencyCopy = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>(dependencies.size());
         for (var dependency : dependencies) {
             dependencyCopy.add(Objects.requireNonNull(dependency));
         }

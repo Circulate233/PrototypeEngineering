@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 
 import ae2.api.config.Actionable;
@@ -66,7 +68,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
 
     private static @Nullable List<GenericStack> pack(List<GenericStack> contents, @Nullable ResourceHatchConfiguration.Side side) {
         if (side == null) return List.of();
-        var totals = new AEKey2LongMap.LinkdOpenHashMap();
+        var totals = new AEKeyLinkedOpenHashMap(contents.size());
         for (var stack : contents) {
             if (stack == null) continue;
             if (Long.MAX_VALUE - totals.getLong(stack.what()) < stack.amount())
@@ -82,9 +84,9 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
             if (slots > side.slots() - needed) return null;
             needed += slots;
         }
-        var remaining = new AEKey2LongMap.LinkdOpenHashMap();
+        var remaining = new AEKeyLinkedOpenHashMap(totals.size());
         remaining.putAll(totals);
-        var packed = new ObjectArrayList<GenericStack>();
+        var packed = new ObjectArrayList<GenericStack>(side.slots());
         packed.size(side.slots());
         // Expansion and compatible capacity changes preserve exact positions and same-key distribution.
         for (int slot = 0; slot < Math.min(contents.size(), packed.size()); slot++) {
@@ -150,7 +152,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     }
 
     private static List<GenericStack> readSide(NBTTagCompound tag, String name, @Nullable SlottedResourceStorage storage) {
-        var result = new ObjectArrayList<GenericStack>();
+        var result = new ObjectArrayList<GenericStack>(6);
         if (storage == null) {
             if (tag.hasKey(name) && StrictNbt.requireList(tag, name, 10).tagCount() != 0)
                 throw new IllegalArgumentException("Saved contents on absent hatch side " + name);
@@ -286,7 +288,7 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
     /** Eject each independent side once; unresolved tokens deliver their final balance later. */
     public List<GenericStack> removeForDrops(Consumer<List<GenericStack>> deferredDrops) {
         Objects.requireNonNull(deferredDrops);
-        var drops = new ObjectArrayList<GenericStack>();
+        var drops = new ObjectArrayList<GenericStack>(6);
         locked(() -> {
             if (input != null) drops.addAll(input.removeForDrops(deferredDrops));
             if (output != null) drops.addAll(output.removeForDrops(deferredDrops));

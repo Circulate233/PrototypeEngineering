@@ -121,7 +121,7 @@ public class RecipePoolJeiRegistry {
         Objects.requireNonNull(defaultFactory);
         binding = true;
         try {
-            var known = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
+            var known = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
             for (var pool : pools) {
                 if (known.putIfAbsent(Objects.requireNonNull(pool).id(), pool) != null) {
                     throw new IllegalArgumentException("Duplicate frozen recipe pool: " + pool.id());

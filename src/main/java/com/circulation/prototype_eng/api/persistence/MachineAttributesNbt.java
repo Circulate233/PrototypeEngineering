@@ -27,7 +27,7 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
     public NBTTagCompound encode(Map<ResourceLocation, MachineAttributes.LocalAttribute> value) {
         Objects.requireNonNull(value, "value");
         var entries = new NBTTagList();
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(value.size());
         for (var entry : value.entrySet()) {
             var id = StrictNbt.requireId(Objects.requireNonNull(entry.getKey(), "attribute ID").toString());
             if (!ids.add(id)) {
@@ -61,7 +61,7 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
             throw new IllegalArgumentException("Unsupported local attribute NBT version");
         }
         var entries = StrictNbt.requireList(tag, "Attributes", Constants.NBT.TAG_COMPOUND);
-        var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAttributes.LocalAttribute>();
+        var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAttributes.LocalAttribute>(entries.tagCount());
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "Id", "Base", "Modifiers", "InheritModifiers");
@@ -69,7 +69,7 @@ public final class MachineAttributesNbt implements NbtCodec<Map<ResourceLocation
             Double base = entry.hasKey("Base") ? StrictNbt.requireDouble(entry, "Base") : null;
             boolean inheritModifiers = StrictNbt.requireBoolean(entry, "InheritModifiers");
             var modifierList = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
-            var localModifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>();
+            var localModifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>(modifierList.tagCount());
             for (int modifierIndex = 0; modifierIndex < modifierList.tagCount(); modifierIndex++) {
                 var modifier = modifiers.decode(modifierList.getCompoundTagAt(modifierIndex));
                 if (localModifiers.putIfAbsent(modifier.id(), modifier) != null) {

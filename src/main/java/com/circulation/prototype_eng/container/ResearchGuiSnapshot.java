@@ -50,7 +50,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         Decision.MISSING_ACTOR_TEAM, Decision.MISSING_ACTOR_TEAM, Tab.RESEARCH, 0, 0, ObjectList.of(), null, 0, 0, ObjectList.of());
     private static final int MAX_ID_LENGTH = 256;
     private static final int VERSION = 2;
-    private static final Comparator<ResourceLocation> ID_ORDER = Comparator.comparing(ResourceLocation::toString);
+    private static final Comparator<ResourceLocation> ID_ORDER = Comparator.naturalOrder();
 
     public ResearchGuiSnapshot {
         Objects.requireNonNull(teamStatus);
@@ -69,7 +69,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         if (!initialized && (total != 0 || detailTotal != 0 || selected != null || savePending)) {
             throw new IllegalArgumentException("Uninitialized research page contains display state");
         }
-        var identities = new ObjectOpenHashSet<Selection>();
+        var identities = new ObjectOpenHashSet<Selection>(rows.size());
         boolean found = false;
         for (var row : rows) {
             var identity = row.selection();

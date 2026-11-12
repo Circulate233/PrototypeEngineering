@@ -82,7 +82,7 @@ public final class TopologicalComponentMap<K, C> {
     /** Prepare the original declaration/pending merge without granting the new node authority. */
     @Nullable
     PreparedNode<K, C> prepareAdd(K key, C component, Collection<? extends K> dependencies, RecipeWorkBudget work) {
-        var merged = new ObjectLinkedOpenHashSet<K>();
+        var merged = new ObjectLinkedOpenHashSet<K>(dependencies.size());
         for (var dependency : dependencies) {
             if (!work.take()) return null;
             merged.add(Objects.requireNonNull(dependency));
@@ -161,7 +161,7 @@ public final class TopologicalComponentMap<K, C> {
     }
 
     public void addFirst(K key, C component) {
-        var roots = new ObjectArrayList<K>();
+        var roots = new ObjectArrayList<K>(nodes.size());
         for (var node : nodes.values()) {
             if (!node.key().equals(key) && !hasInstalledDependency(node)) {
                 roots.add(node.key());
@@ -209,7 +209,7 @@ public final class TopologicalComponentMap<K, C> {
     }
 
     Map<K, Set<K>> pendingDependencies() {
-        var result = new Object2ObjectLinkedOpenHashMap<K, Set<K>>();
+        var result = new Object2ObjectLinkedOpenHashMap<K, Set<K>>(pending.size());
         pending.forEach((key, dependencies) -> result.put(key, ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(dependencies))));
         return Collections.unmodifiableMap(result);
     }
@@ -228,8 +228,8 @@ public final class TopologicalComponentMap<K, C> {
             if (!work.take()) return null;
             return cached;
         }
-        var indegrees = new Object2IntOpenHashMap<K>();
-        var dependents = new Object2ObjectOpenHashMap<K, ObjectArrayList<K>>();
+        var indegrees = new Object2IntOpenHashMap<K>(nodes.size());
+        var dependents = new Object2ObjectOpenHashMap<K, ObjectArrayList<K>>(nodes.size());
         for (var node : nodes.values()) {
             if (!work.take()) return null;
             int degree = 0;
@@ -266,7 +266,7 @@ public final class TopologicalComponentMap<K, C> {
             }
         }
         if (ordered.size() != nodes.size()) {
-            var remaining = new ObjectLinkedOpenHashSet<K>();
+            var remaining = new ObjectLinkedOpenHashSet<K>(nodes.size());
             for (var key : nodes.keySet()) {
                 if (!work.take()) return null;
                 remaining.add(key);
@@ -310,7 +310,7 @@ public final class TopologicalComponentMap<K, C> {
             Objects.requireNonNull(key);
             Objects.requireNonNull(component);
             if (!(dependencies instanceof FrozenDependencies<?>)) {
-                var copy = new ObjectLinkedOpenHashSet<K>();
+                var copy = new ObjectLinkedOpenHashSet<K>(dependencies.size());
                 for (K dependency : dependencies) {
                     copy.add(Objects.requireNonNull(dependency));
                 }

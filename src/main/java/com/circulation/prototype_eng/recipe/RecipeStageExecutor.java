@@ -1718,8 +1718,8 @@ public final class RecipeStageExecutor {
         }
 
         private ObjectArrayList<StorageContext> orderedContexts() {
-            var unique = new ReferenceOpenHashSet<StorageContext>();
-            var contexts = new ObjectArrayList<StorageContext>();
+            var unique = new ReferenceOpenHashSet<StorageContext>(sources.size());
+            var contexts = new ObjectArrayList<StorageContext>(sources.size());
             for (var observation : sources) {
                 var context = observation.context();
                 if (unique.add(context)) {

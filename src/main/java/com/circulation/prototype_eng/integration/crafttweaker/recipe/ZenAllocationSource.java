@@ -42,7 +42,7 @@ public final class ZenAllocationSource {
 
     @ZenGetter("resources")
     public ZenResource[] resources() {
-        var resources = new ObjectArrayList<ZenResource>();
+        var resources = new ObjectArrayList<ZenResource>(source.resources().size());
         for (var entry : source.resources().object2LongEntrySet()) {
             if (entry.getLongValue() > 0) resources.add(new ZenResource(entry.getKey(), entry.getLongValue()));
         }

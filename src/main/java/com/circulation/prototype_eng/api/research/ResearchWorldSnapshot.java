@@ -48,7 +48,7 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
         downloads = frozenList(downloads);
         downloadReceipts = frozenList(downloadReceipts);
         diskImports = frozenList(diskImports);
-        var playerIds = new ObjectOpenHashSet<UUID>();
+        var playerIds = new ObjectOpenHashSet<UUID>(players.size());
         for (var player : players) {
             if (!playerIds.add(player.playerUuid())) {
                 throw new IllegalArgumentException("Duplicate research world player");
@@ -60,7 +60,7 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                 }
             }
         }
-        var teamIds = new ObjectOpenHashSet<String>();
+        var teamIds = new ObjectOpenHashSet<String>(teams.size());
         var sessionIds = new ObjectOpenHashSet<UUID>();
         var operations = new ObjectOpenHashSet<UUID>();
         for (var team : teams) {
@@ -104,7 +104,7 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                 }
             }
         }
-        var nonces = new ObjectOpenHashSet<RequestNonce>();
+        var nonces = new ObjectOpenHashSet<RequestNonce>(downloads.size());
         for (var operation : downloads) {
             if (operation.createdAt() > serverTime || !operations.add(operation.id())
                 || !nonces.add(new RequestNonce(operation.intent().playerId(), operation.intent().nonce()))) {
@@ -124,8 +124,8 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                 throw new IllegalArgumentException("Terminal download lost its original team source");
             for (var member : receipt.sources().members()) requirePlayer(playerIds, member);
         }
-        var diskNonces = new ObjectOpenHashSet<RequestNonce>();
-        var diskPlayers = new ObjectOpenHashSet<UUID>();
+        var diskNonces = new ObjectOpenHashSet<RequestNonce>(diskImports.size());
+        var diskPlayers = new ObjectOpenHashSet<UUID>(diskImports.size());
         for (var operation : diskImports) {
             if (operation.createdAt() > serverTime || !operations.add(operation.id())
                 || !diskNonces.add(new RequestNonce(operation.intent().playerId(), operation.intent().nonce()))
@@ -192,8 +192,8 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
             if (!teamId.equals(research.teamId()) || !teamId.equals(queue.teamId())) {
                 throw new IllegalArgumentException("Research team sources have different owners");
             }
-            var queueIds = new LongOpenHashSet();
-            var queueKeys = new ObjectOpenHashSet<TeamResearchQueue.Key>();
+            var queueIds = new LongOpenHashSet(queue.entries().size());
+            var queueKeys = new ObjectOpenHashSet<TeamResearchQueue.Key>(queue.entries().size());
             for (var entry : queue.entries()) {
                 if (!queueIds.add(entry.key().queueEntryId()) || !queueKeys.add(entry.key())) {
                     throw new IllegalArgumentException("Duplicate saved queue entry key");
@@ -204,8 +204,8 @@ public record ResearchWorldSnapshot(long serverTime, ObjectList<PlayerResearchSt
                 || segment.key().queueEntryId() >= queue.nextEntryId())) {
                 throw new IllegalArgumentException("Station materials lost their exact allocated queue head");
             }
-            var sessionIds = new ObjectOpenHashSet<UUID>();
-            var sessionEntries = new LongOpenHashSet();
+            var sessionIds = new ObjectOpenHashSet<UUID>(manualSessions.size());
+            var sessionEntries = new LongOpenHashSet(manualSessions.size());
             for (var session : manualSessions) {
                 if (!teamId.equals(session.teamId()) || !sessionIds.add(session.id())
                     || !sessionEntries.add(session.queueKey().queueEntryId())) {

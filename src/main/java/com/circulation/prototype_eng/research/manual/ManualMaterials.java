@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.research.manual;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
@@ -46,8 +48,8 @@ public final class ManualMaterials {
      */
     public static ManualMaterials from(List<RecipeRequirement<?>> requirements) {
         Objects.requireNonNull(requirements);
-        var materials = new ObjectArrayList<Material>();
-        var requirementIds = new ObjectOpenHashSet<ResourceLocation>();
+        var materials = new ObjectArrayList<Material>(requirements.size());
+        var requirementIds = new ObjectOpenHashSet<ResourceLocation>(requirements.size());
         for (var requirement : requirements) {
             Objects.requireNonNull(requirement);
             if (!requirementIds.add(requirement.id())) {
@@ -80,7 +82,7 @@ public final class ManualMaterials {
         var increments = new Object2LongLinkedOpenHashMap<ManualMaterialKey>();
         var expectedWork = new Object2LongLinkedOpenHashMap<>(currentWork);
         expectedWork.defaultReturnValue(0);
-        var quantities = new AEKey2LongMap.LinkdOpenHashMap();
+        var quantities = new AEKeyLinkedOpenHashMap(6);
         boolean completesResearch = true;
         for (var material : materials) {
             long completed = expectedWork.getLong(material.id());
@@ -156,7 +158,7 @@ public final class ManualMaterials {
             copy.putAll(Objects.requireNonNull(source));
             copy.defaultReturnValue(0);
             values = copy;
-            var snapshot = new ObjectLinkedOpenHashSet<Object2LongMap.Entry<K>>();
+            var snapshot = new ObjectLinkedOpenHashSet<Object2LongMap.Entry<K>>(copy.size());
             for (var entry : copy.object2LongEntrySet()) {
                 snapshot.add(new BasicEntry<>(entry.getKey(), entry.getLongValue()));
             }
@@ -186,7 +188,7 @@ public final class ManualMaterials {
 
     private static final class FrozenQuantities extends FrozenLongMap<AEKey> implements AEKey2LongMap {
         private FrozenQuantities(AEKey2LongMap source) {
-            super(source, new AEKey2LongMap.LinkdOpenHashMap());
+            super(source, new AEKeyLinkedOpenHashMap(6));
         }
 
         @Override

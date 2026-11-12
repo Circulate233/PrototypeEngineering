@@ -129,7 +129,7 @@ public final class PlayerResearchState {
         if (raised) levels.put(id, targetLevel);
         var claims = new Object2ObjectLinkedOpenHashMap<RewardClaim.Key, RewardClaim>();
         for (var claim : state.rewardClaims()) claims.put(claim.key(), claim);
-        var unique = new IntOpenHashSet();
+        var unique = new IntOpenHashSet(rewardEligibilityLevels.size());
         boolean eligibility = false;
         for (int level : rewardEligibilityLevels) {
             if (level < 1 || level > targetLevel || !unique.add(level))
@@ -399,7 +399,7 @@ public final class PlayerResearchState {
                            ObjectList<RewardClaim> rewardClaims) {
         public Snapshot {
             Objects.requireNonNull(playerUuid, "playerUuid");
-            var levels = new Object2IntOpenHashMap<ResourceLocation>();
+            var levels = new Object2IntOpenHashMap<ResourceLocation>(completedLevels.size());
             for (var entry : Objects.requireNonNull(completedLevels, "completedLevels").object2IntEntrySet()) {
                 if (entry.getKey() == null || entry.getIntValue() < 1)
                     throw new IllegalArgumentException("Invalid completed level");
@@ -407,8 +407,8 @@ public final class PlayerResearchState {
             }
             levels.defaultReturnValue(0);
             completedLevels = ResearchSnapshots.levels(levels);
-            var claims = new ObjectArrayList<RewardClaim>();
-            var keys = new ObjectOpenHashSet<RewardClaim.Key>();
+            var claims = new ObjectArrayList<RewardClaim>(rewardClaims.size());
+            var keys = new ObjectOpenHashSet<RewardClaim.Key>(rewardClaims.size());
             for (var claim : Objects.requireNonNull(rewardClaims, "rewardClaims")) {
                 if (!Objects.requireNonNull(claim, "claim").key().playerUuid().equals(playerUuid) || !keys.add(claim.key())) {
                     throw new IllegalArgumentException("Invalid or duplicate player reward claim");

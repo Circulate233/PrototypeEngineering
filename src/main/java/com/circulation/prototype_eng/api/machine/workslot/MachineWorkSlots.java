@@ -90,7 +90,7 @@ public final class MachineWorkSlots {
         dynamicGroups = ObjectSets.unmodifiable(new ObjectLinkedOpenHashSet<>(defaultGroups));
         var declared = !dynamicRoster && definitions.isEmpty() ? List.of(new WorkSlotDefinition("main", defaultGroups)) : definitions;
         declaredSlotCount = declared.size();
-        var workSlots = new ObjectArrayList<WorkSlot>();
+        var workSlots = new ObjectArrayList<WorkSlot>(declared.size());
         for (var definition : declared) {
             var slot = new WorkSlot(Objects.requireNonNull(definition));
             if (dynamicRoster && slot.name().startsWith("pe_cross/"))
@@ -121,8 +121,8 @@ public final class MachineWorkSlots {
      */
     public static TickGroup prepareTickGroup(List<MachineWorkSlots> hosts) {
         var ordered = new ObjectArrayList<>(Objects.requireNonNull(hosts));
-        var unique = new ReferenceOpenHashSet<MachineWorkSlots>();
-        var batches = new ObjectArrayList<TickBatch>();
+        var unique = new ReferenceOpenHashSet<MachineWorkSlots>(ordered.size());
+        var batches = new ObjectArrayList<TickBatch>(ordered.size());
         for (var host : ordered) {
             Objects.requireNonNull(host);
             if (!unique.add(host)) {
@@ -322,7 +322,7 @@ public final class MachineWorkSlots {
     }
 
     public List<RecipeProcess> activeProcesses() {
-        var processes = new ObjectArrayList<RecipeProcess>();
+        var processes = new ObjectArrayList<RecipeProcess>(slots.size());
         for (var slot : slots) {
             if (slot.process() != null) {
                 processes.add(slot.process());
@@ -587,7 +587,7 @@ public final class MachineWorkSlots {
         if (executor != RecipeExecutor.DEFAULT) {
             throw new IllegalStateException("Custom synchronous recipe executor does not provide staged execution");
         }
-        var entries = new ObjectArrayList<TickBatch.Entry>();
+        var entries = new ObjectArrayList<TickBatch.Entry>(slots.size());
         for (var slot : slots) {
             var process = slot.process();
             if (process == null) {
@@ -675,7 +675,7 @@ public final class MachineWorkSlots {
 
     public List<SlotSnapshot> snapshot() {
         requireBoundary();
-        var snapshot = new ObjectArrayList<SlotSnapshot>();
+        var snapshot = new ObjectArrayList<SlotSnapshot>(slots.size());
         for (var slot : slots) {
             var process = slot.process();
             if (process != null) {
@@ -734,7 +734,7 @@ public final class MachineWorkSlots {
         }
         var processes = new ReferenceOpenHashSet<RecipeProcess>();
         var previousProcesses = new ReferenceOpenHashSet<RecipeProcess>();
-        var names = new ObjectOpenHashSet<String>();
+        var names = new ObjectOpenHashSet<String>(replacement.size());
         long restoredNext = nextRuntimeSlot;
         for (var old : previous) {
             if (old.process() != null) {

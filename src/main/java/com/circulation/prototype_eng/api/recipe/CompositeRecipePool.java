@@ -46,10 +46,10 @@ public final class CompositeRecipePool implements RecipePool {
         this.id = Objects.requireNonNull(id);
         if (translationKey == null || translationKey.isBlank()) throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
-        var providers = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
+        var providers = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
         var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
         var order = new Reference2IntOpenHashMap<MachineRecipe>();
-        var membership = new ObjectArrayList<Members>();
+        var membership = new ObjectArrayList<Members>(pools.size());
         for (var pool : Objects.requireNonNull(pools)) {
             Objects.requireNonNull(pool);
             var previousPool = providers.putIfAbsent(Objects.requireNonNull(pool.id()), pool);
@@ -57,8 +57,8 @@ public final class CompositeRecipePool implements RecipePool {
                 if (previousPool != pool) throw new IllegalArgumentException("Different child pools share ID: " + pool.id());
                 continue;
             }
-            var childRecipes = new ObjectArrayList<MachineRecipe>();
-            var identities = new ReferenceOpenHashSet<MachineRecipe>();
+            var childRecipes = new ObjectArrayList<MachineRecipe>(pool.recipes().size());
+            var identities = new ReferenceOpenHashSet<MachineRecipe>(pool.recipes().size());
             int previousOrder = -1, minimumOrder = Integer.MAX_VALUE;
             boolean monotonic = true;
             for (var recipe : Objects.requireNonNull(pool.recipes())) {
@@ -172,7 +172,7 @@ public final class CompositeRecipePool implements RecipePool {
         Objects.requireNonNull(recipes);
         Objects.requireNonNull(machines);
         if (recipes.size() != this.recipes.size()) throw new IllegalArgumentException("Composite recipes must belong to a child pool");
-        var replacements = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
+        var replacements = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>(recipes.size());
         for (int index = 0; index < recipes.size(); index++) {
             var recipe = Objects.requireNonNull(recipes.get(index));
             if (!this.recipes.get(index).id().equals(recipe.id()) || replacements.putIfAbsent(recipe.id(), recipe) != null)

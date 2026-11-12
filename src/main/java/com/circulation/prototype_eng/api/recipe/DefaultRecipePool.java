@@ -34,8 +34,8 @@ public final class DefaultRecipePool implements RecipePool {
         if (translationKey == null || translationKey.isBlank())
             throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
-        var copy = new ObjectArrayList<MachineRecipe>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(recipes.size());
+        var copy = new ObjectArrayList<MachineRecipe>(recipes.size());
         for (var recipe : recipes) {
             Objects.requireNonNull(recipe);
             if (!ids.add(recipe.id()))

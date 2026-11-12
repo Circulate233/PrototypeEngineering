@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
@@ -60,7 +62,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         if (inputs.isEmpty() && outputs.isEmpty() && !randomOutputs && !resolveInputs) {
             return RequirementTransaction.SUCCESS;
         }
-        var reservations = new ObjectArrayList<ResourceReservation>();
+        var reservations = new ObjectArrayList<ResourceReservation>(6);
         ResourceInputResolver.Selection selection = null;
         try {
             var hatches = process.hatches().resources();
@@ -80,11 +82,11 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                 inputs = selection.inputs();
             }
             var consumed = payload.inputAllocation() == InputAllocation.SPLITTABLE
-                ? scaled(inputs, times) : new AEKey2LongMap.LinkdOpenHashMap();
+                ? scaled(inputs, times) : new AEKeyLinkedOpenHashMap(6);
             var produced = scaled(outputs, times);
             AEKey2LongMap random = null;
             if (randomOutputs) {
-                random = new AEKey2LongMap.LinkdOpenHashMap();
+                random = new AEKeyLinkedOpenHashMap(6);
                 randomOutputs(process, Objects.requireNonNull(pool), salt, times, random);
                 merge(produced, random);
             }
@@ -136,7 +138,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                                            long times, InputAllocation allocation, RecipeStage stage,
                                            AEKey2LongMap outputs, boolean needsInput,
                                            boolean needsOutput, boolean voidExcess, String id) {
-        var checks = new ObjectArrayList<ResourceReservation>();
+        var checks = new ObjectArrayList<ResourceReservation>(6);
         ProcessResult result;
         try {
             result = allocation == InputAllocation.SPLITTABLE
@@ -156,7 +158,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     private static ProcessResult reserveAllocated(List<ResourceHatch> hatches, List<GenericStack> inputs,
                                                   long times, InputAllocation allocation, RecipeStage stage,
                                                   String id, List<ResourceReservation> reservations) {
-        var cursor = new ReservationCursor(hatches, new AEKey2LongMap.LinkdOpenHashMap(), true,
+        var cursor = new ReservationCursor(hatches, new AEKeyLinkedOpenHashMap(6), true,
             !inputs.isEmpty(), false, id);
         cursor.allocate(inputs, times, allocation, stage);
         if (!cursor.advance(new RecipeWorkBudget(Long.MAX_VALUE), reservations))
@@ -165,7 +167,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
     }
 
     private static AEKey2LongMap scaled(List<GenericStack> stacks, long times) {
-        var amounts = new AEKey2LongMap.LinkdOpenHashMap();
+        var amounts = new AEKeyLinkedOpenHashMap(stacks.size());
         if (times == 0) {
             return amounts;
         }
@@ -191,7 +193,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
         if (pool.pickCount() >= pool.candidates().size()) {
             // Every positive-weight entry is certain; avoid one sampling/allocation pass per parallel.
-            var stacks = new ObjectArrayList<GenericStack>();
+            var stacks = new ObjectArrayList<GenericStack>(pool.candidates().size());
             for (var candidate : pool.candidates()) {
                 stacks.add(candidate.value());
             }
@@ -224,8 +226,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         if (!needsStorage) {
             return ProcessResult.SUCCESS;
         }
-        var storages = new ObjectArrayList<ResourceStorage>();
-        var visited = new ReferenceOpenHashSet<StorageContext>();
+        var storages = new ObjectArrayList<ResourceStorage>(hatches.size());
+        var visited = new ReferenceOpenHashSet<StorageContext>(hatches.size());
         for (var hatch : hatches) {
             if (!hatch.isValid()) {
                 continue;
@@ -434,8 +436,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         private final boolean needsOutput;
         private final RecipeStage stage;
         private final SourceCapture current;
-        private final AEKey2LongMap available = new AEKey2LongMap.LinkdOpenHashMap();
-        private final AEKey2LongMap rawInputs = new AEKey2LongMap.LinkdOpenHashMap();
+        private final AEKey2LongMap available = new AEKeyLinkedOpenHashMap(6);
+        private final AEKey2LongMap rawInputs = new AEKeyLinkedOpenHashMap(6);
         private AEKey2LongMap consumed;
         private AEKey2LongMap checkedInputs;
         private ObjectArrayList<ResourceReservation> checks = new ObjectArrayList<>();
@@ -548,7 +550,7 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
         }
 
         private RequirementTransaction advance(RecipeWorkBudget budget, RequirementPreparation binding) {
-            var owned = new ObjectArrayList<ResourceReservation>();
+            var owned = new ObjectArrayList<ResourceReservation>(6);
             try {
                 while (true) {
                     if (phase == 0) {
@@ -607,8 +609,8 @@ public final class ResourceRequirementSystem implements RecipeRequirementSystem<
                             }
                             if (entries == null) {
                                 entries = rawInputs.object2LongEntrySet().iterator();
-                                consumed = new AEKey2LongMap.LinkdOpenHashMap();
-                                checkedInputs = new AEKey2LongMap.LinkdOpenHashMap();
+                                consumed = new AEKeyLinkedOpenHashMap(6);
+                                checkedInputs = new AEKeyLinkedOpenHashMap(6);
                             }
                             while (entries.hasNext()) {
                                 if (!budget.take()) {

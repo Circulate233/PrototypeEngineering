@@ -280,7 +280,7 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         private final ObjectSet<Object2LongMap.Entry<ManualMaterialKey>> entries;
 
         private FrozenWork(Object2LongMap<ManualMaterialKey> source) {
-            var copy = new ObjectOpenHashSet<Object2LongMap.Entry<ManualMaterialKey>>();
+            var copy = new ObjectOpenHashSet<Object2LongMap.Entry<ManualMaterialKey>>(source.size());
             for (var entry : Objects.requireNonNull(source).object2LongEntrySet()) {
                 var key = Objects.requireNonNull(entry.getKey());
                 if (entry.getLongValue() < 0 || values.containsKey(key)) {
@@ -320,7 +320,7 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
         private FrozenBaselines(Object2IntMap<UUID> source) {
             values.defaultReturnValue(-1);
             defaultReturnValue(-1);
-            var copy = new ObjectOpenHashSet<Object2IntMap.Entry<UUID>>();
+            var copy = new ObjectOpenHashSet<Object2IntMap.Entry<UUID>>(source.size());
             for (var entry : Objects.requireNonNull(source).object2IntEntrySet()) {
                 var key = Objects.requireNonNull(entry.getKey());
                 if (entry.getIntValue() < 0 || values.containsKey(key)) {

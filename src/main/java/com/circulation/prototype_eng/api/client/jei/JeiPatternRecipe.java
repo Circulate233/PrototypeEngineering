@@ -14,7 +14,7 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
     }
 
     private static List<List<GenericStack>> copy(List<List<GenericStack>> groups) {
-        var result = new ObjectArrayList<List<GenericStack>>();
+        var result = new ObjectArrayList<List<GenericStack>>(groups.size());
         for (var group : groups) {
             if (group.isEmpty()) throw new IllegalArgumentException("Empty pattern candidate group");
             for (var stack : group)
@@ -30,9 +30,9 @@ public record JeiPatternRecipe(List<List<GenericStack>> inputs, List<List<Generi
     }
 
     private static List<List<GenericStack>> stacks(List<List<JeiRecipeDisplay.Resource>> groups, long durationTicks) {
-        var result = new ObjectArrayList<List<GenericStack>>();
+        var result = new ObjectArrayList<List<GenericStack>>(groups.size());
         for (var group : groups) {
-            var candidates = new ObjectArrayList<GenericStack>();
+            var candidates = new ObjectArrayList<GenericStack>(group.size());
             for (var row : group) {
                 boolean perTick = false;
                 for (var detail : row.details()) if (perTick(detail)) {

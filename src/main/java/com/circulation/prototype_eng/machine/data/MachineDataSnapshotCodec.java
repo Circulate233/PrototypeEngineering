@@ -48,13 +48,13 @@ public final class MachineDataSnapshotCodec {
         var tag = ControllerRenderSnapshotCodec.decodeCompound(bytes);
         StrictNbt.requireKeys(tag, "Version", "Generation", "Revision", "ComponentRevision", "Data", "Hosts");
         if (StrictNbt.requireInt(tag, "Version") != 1) throw new IllegalArgumentException("Unknown machine data schema");
-        var hosts = new ObjectArrayList<MachineDataSnapshot.Host>();
         var entries = StrictNbt.requireList(tag, "Hosts", Constants.NBT.TAG_COMPOUND);
+        var hosts = new ObjectArrayList<MachineDataSnapshot.Host>(entries.tagCount());
         for (int h = 0; h < entries.tagCount(); h++) {
             var entry = entries.getCompoundTagAt(h);
             StrictNbt.requireKeys(entry, "Identity", "Slots");
-            var slots = new ObjectArrayList<MachineDataSnapshot.Slot>();
             var items = StrictNbt.requireList(entry, "Slots", Constants.NBT.TAG_COMPOUND);
+            var slots = new ObjectArrayList<MachineDataSnapshot.Slot>(items.tagCount());
             for (int s = 0; s < items.tagCount(); s++) {
                 var item = items.getCompoundTagAt(s);
                 StrictNbt.requireKeys(item, "Name", "Process");

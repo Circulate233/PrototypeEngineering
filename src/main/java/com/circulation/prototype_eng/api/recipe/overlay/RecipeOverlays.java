@@ -136,8 +136,8 @@ public final class RecipeOverlays {
         requireStable();
         beginEdit();
         try {
-            var replacement = new Object2ObjectOpenHashMap<RequirementPath, Binding<?>>();
-            var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>();
+            var replacement = new Object2ObjectOpenHashMap<RequirementPath, Binding<?>>(snapshot.size());
+            var orders = new Object2ObjectOpenHashMap<RequirementPath, LongOpenHashSet>(snapshot.size());
             for (var layer : snapshot) {
                 restoreLayer(replacement, orders, Objects.requireNonNull(layer));
             }

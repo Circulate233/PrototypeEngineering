@@ -58,7 +58,7 @@ public final class ResearchDiskNbtCodec {
         if (entries.tagCount() < 1 || entries.tagCount() > ResearchDiskData.MAX_ENTRIES) {
             throw new IllegalArgumentException("Invalid research disk entry count");
         }
-        var levels = new Object2IntOpenHashMap<ResourceLocation>();
+        var levels = new Object2IntOpenHashMap<ResourceLocation>(entries.tagCount());
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "researchId", "level");

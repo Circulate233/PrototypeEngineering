@@ -204,7 +204,7 @@ public final class MachineAttributes {
      */
     public void restoreLocal(Map<ResourceLocation, LocalAttribute> snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
-        var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalState>();
+        var replacement = new Object2ObjectLinkedOpenHashMap<ResourceLocation, LocalState>(snapshot.size());
         for (var entry : snapshot.entrySet()) {
             var id = Objects.requireNonNull(entry.getKey(), "attribute ID");
             var saved = Objects.requireNonNull(entry.getValue(), "local attribute");
@@ -290,7 +290,7 @@ public final class MachineAttributes {
                 throw new IllegalArgumentException("Blocking inherited modifiers requires a resolved base");
             }
             Objects.requireNonNull(modifiers, "modifiers");
-            var copy = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>();
+            var copy = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>(modifiers.size());
             for (var entry : modifiers.entrySet()) {
                 var modifier = entry.getValue();
                 validateModifier(modifier);

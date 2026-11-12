@@ -31,7 +31,7 @@ public final class HatchConfig {
     }
 
     private static List<Defaults> defaults() {
-        var result = new ObjectArrayList<Defaults>();
+        var result = new ObjectArrayList<Defaults>(HatchTier.VALUES.length);
         for (var tier : HatchTier.VALUES) result.add(new Defaults(
             tier.slotsPerSide(HatchMode.INPUT), tier.slotsPerSide(HatchMode.MIXED), tier.itemsPerSlot(),
             tier.energyCapacity(), tier.energyTransfer()));
@@ -43,7 +43,7 @@ public final class HatchConfig {
         var config = new Configuration(new File(directory, Tags.MOD_ID + "/hatches.cfg"));
         config.load();
         var before = state;
-        var next = new ObjectArrayList<Defaults>();
+        var next = new ObjectArrayList<Defaults>(HatchTier.VALUES.length);
         for (var tier : HatchTier.VALUES) {
             var old = before.defaults.get(tier.ordinal());
             String category = "tier" + tier.level();
@@ -98,7 +98,7 @@ public final class HatchConfig {
     }
 
     public static synchronized HatchConfigurationSnapshot snapshot(UUID session) {
-        var profiles = new ObjectArrayList<HatchConfiguration>();
+        var profiles = new ObjectArrayList<HatchConfiguration>(HatchTier.VALUES.length * HatchMode.VALUES.length * 2);
         for (var tier : HatchTier.VALUES)
             for (var mode : HatchMode.VALUES) {
                 profiles.add(resourceConfiguration(tier, mode));

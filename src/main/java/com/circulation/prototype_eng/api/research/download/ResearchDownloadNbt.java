@@ -108,7 +108,7 @@ public final class ResearchDownloadNbt {
 
     private ObjectList<ItemDeliveryFragment> decodeFragments(NBTTagCompound tag) {
         var tags = StrictNbt.requireList(tag, "Fragments", Constants.NBT.TAG_COMPOUND);
-        var values = new ObjectArrayList<ItemDeliveryFragment>();
+        var values = new ObjectArrayList<ItemDeliveryFragment>(tags.tagCount());
         for (int index = 0; index < tags.tagCount(); index++)
             values.add(fragments.decode(tags.getCompoundTagAt(index)));
         return values;

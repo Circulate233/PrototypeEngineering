@@ -134,7 +134,7 @@ public final class ResearchDownloadSources {
             }
             if (definition.researchTierForLevel(downloadLevel) > database.level())
                 return evaluation(Status.DATA_CENTER_LEVEL_TOO_LOW);
-            var changes = new ObjectArrayList<MemberChange>();
+            var changes = new ObjectArrayList<MemberChange>(members.size());
             for (var member : members) {
                 var source = player(players, member);
                 int before;
@@ -168,7 +168,7 @@ public final class ResearchDownloadSources {
         Objects.requireNonNull(operationId);
         Objects.requireNonNull(players);
         requireTeam(plan.teamId(), team);
-        var acquired = new ObjectArrayList<PlayerResearchState>();
+        var acquired = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
         try {
             if (plan.policy() == ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM) {
                 for (var change : plan.memberChanges()) {
@@ -214,7 +214,7 @@ public final class ResearchDownloadSources {
         if (plan.policy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY) {
             return team.releaseSource(plan.researchId(), operationId) ? Status.READY : Status.SOURCE_BUSY;
         }
-        var originalSources = new ObjectArrayList<PlayerResearchState>();
+        var originalSources = new ObjectArrayList<PlayerResearchState>(plan.memberChanges().size());
         for (var change : plan.memberChanges()) {
             var source = player(players, change.memberId());
             if (source == null) return Status.SOURCE_CHANGED;
@@ -548,12 +548,12 @@ public final class ResearchDownloadSources {
             StrictNbt.requireKeys(tag, "Version", "Policy", "Research", "DownloadLevel", "Cost", "Team", "TeamBefore", "TeamAfter", "Members", "Changes");
             if (StrictNbt.requireInt(tag, "Version") != 1)
                 throw new IllegalArgumentException("Unknown download source plan version");
-            var members = new ObjectArrayList<UUID>();
             var memberTags = StrictNbt.requireList(tag, "Members", Constants.NBT.TAG_STRING);
+            var members = new ObjectArrayList<UUID>(memberTags.tagCount());
             for (int index = 0; index < memberTags.tagCount(); index++)
                 members.add(uuid(memberTags.getStringTagAt(index)));
-            var changes = new ObjectArrayList<MemberChange>();
             var changeTags = StrictNbt.requireList(tag, "Changes", Constants.NBT.TAG_COMPOUND);
+            var changes = new ObjectArrayList<MemberChange>(changeTags.tagCount());
             for (int index = 0; index < changeTags.tagCount(); index++) {
                 var saved = changeTags.getCompoundTagAt(index);
                 StrictNbt.requireKeys(saved, "Member", "Before", "After");

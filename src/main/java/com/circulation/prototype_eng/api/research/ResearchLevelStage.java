@@ -54,8 +54,8 @@ public final class ResearchLevelStage {
         resourceFormula.validateRange(firstLevel, lastLevel);
         prerequisites = ResearchSnapshots.levels(builder.prerequisites);
         mutexRules = ObjectLists.unmodifiable(new ObjectArrayList<>(builder.mutexRules));
-        var materials = new ObjectArrayList<RecipeRequirement<?>>();
-        var materialIds = new ObjectOpenHashSet<ResourceLocation>();
+        var materials = new ObjectArrayList<RecipeRequirement<?>>(builder.materialRequirements.size());
+        var materialIds = new ObjectOpenHashSet<ResourceLocation>(builder.materialRequirements.size());
         for (var requirement : builder.materialRequirements) {
             if (!materialIds.add(requirement.id())) {
                 throw new IllegalArgumentException("Duplicate research material requirement " + requirement.id());
@@ -66,9 +66,9 @@ public final class ResearchLevelStage {
         materialRevision = builder.materialRevision;
         materialConfiguration = builder.materialConfiguration;
         validateManualMaterials();
-        var rewards = new Int2ObjectOpenHashMap<ObjectList<RewardGroup>>();
+        var rewards = new Int2ObjectOpenHashMap<ObjectList<RewardGroup>>(builder.rewardsByLevel.size());
         for (var entry : builder.rewardsByLevel.int2ObjectEntrySet()) {
-            var ids = new ObjectOpenHashSet<ResourceLocation>();
+            var ids = new ObjectOpenHashSet<ResourceLocation>(entry.getValue().size());
             for (var reward : entry.getValue()) {
                 if (!ids.add(reward.id())) {
                     throw new IllegalArgumentException("Duplicate research reward group " + reward.id());

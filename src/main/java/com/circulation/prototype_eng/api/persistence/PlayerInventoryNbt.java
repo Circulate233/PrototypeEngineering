@@ -100,7 +100,7 @@ public final class PlayerInventoryNbt {
         if (selected < 0 || selected >= 9) throw new IllegalArgumentException("Invalid selected inventory slot");
         var list = StrictNbt.requireList(image, "inventory", Constants.NBT.TAG_COMPOUND);
         if (list.tagCount() > 41) throw new IllegalArgumentException("Too many inventory proof slots");
-        var occupied = new IntOpenHashSet();
+        var occupied = new IntOpenHashSet(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var stack = list.getCompoundTagAt(index);
             int slot = Byte.toUnsignedInt(StrictNbt.requireByte(stack, "Slot"));

@@ -64,7 +64,7 @@ public final class ResourceInputLocks implements ProcessAbortListener {
      * Restore only at an exclusive lifecycle boundary with no acquired requirement transactions.
      */
     public void restore(Map<Key, AEKey> snapshot) {
-        var restored = new Object2ObjectLinkedOpenHashMap<Key, AEKey>();
+        var restored = new Object2ObjectLinkedOpenHashMap<Key, AEKey>(snapshot.size());
         for (var entry : snapshot.entrySet()) {
             restored.put(Objects.requireNonNull(entry.getKey()), Objects.requireNonNull(entry.getValue()));
         }

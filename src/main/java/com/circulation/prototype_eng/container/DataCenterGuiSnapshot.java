@@ -39,7 +39,7 @@ public record DataCenterGuiSnapshot(boolean initialized, boolean savePending, St
         Objects.requireNonNull(viewPermission);
         Objects.requireNonNull(downloadPermission);
         var copy = new ObjectArrayList<>(Objects.requireNonNull(rows));
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(copy.size());
         boolean selectedPresent = false;
         for (var row : copy) {
             Objects.requireNonNull(row);

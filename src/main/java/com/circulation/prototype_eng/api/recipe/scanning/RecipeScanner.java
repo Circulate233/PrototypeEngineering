@@ -198,7 +198,7 @@ public final class RecipeScanner {
     }
 
     private static <T> List<T> immutable(List<T> values) {
-        var result = new ObjectArrayList<T>();
+        var result = new ObjectArrayList<T>(values.size());
         for (var value : values) {
             result.add(Objects.requireNonNull(value));
         }
@@ -398,8 +398,8 @@ public final class RecipeScanner {
 
     @SuppressWarnings("StatementWithEmptyBody") // Explicit synchronous callers drain the retained pool capture.
     private Result advancePass(ScanLimits limits) {
-        var running = new ObjectOpenHashSet<ResourceLocation>();
         var active = host.activeProcesses();
+        var running = new ObjectOpenHashSet<ResourceLocation>(active.size());
         for (var process : active) {
             running.add(process.recipe().id());
         }

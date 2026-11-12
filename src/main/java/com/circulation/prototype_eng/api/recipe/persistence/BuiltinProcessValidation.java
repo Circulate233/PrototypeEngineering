@@ -108,7 +108,7 @@ public final class BuiltinProcessValidation {
     }
 
     private static void validateAbortReceipts(RecipeProcess process, RecipeDefinitionIndex index, List<SelectiveState.AbortReceipt> receipts) {
-        var paths = new ObjectOpenHashSet<RequirementPath>();
+        var paths = new ObjectOpenHashSet<RequirementPath>(6);
         var modifiers = new ObjectOpenHashSet<SelectiveState.ModifierReference>();
         var layers = new ObjectOpenHashSet<SelectiveState.OverlayReference>();
         var attributes = process.attributes().localSnapshot();

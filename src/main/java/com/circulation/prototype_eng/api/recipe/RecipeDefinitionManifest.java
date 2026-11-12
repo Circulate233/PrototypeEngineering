@@ -22,8 +22,8 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
         var revisions = new Object2ObjectOpenHashMap<ResourceLocation, String>();
         for (int p = 0; p < pools.size(); p++) {
             var pool = pools.get(p);
-            var id = pool.id().toString();
-            if (p > 0 && pools.get(p - 1).id().toString().compareTo(id) >= 0)
+            var id = pool.id();
+            if (p > 0 && pools.get(p - 1).id().compareTo(id) >= 0)
                 throw new IllegalArgumentException("Recipe manifest pools must be uniquely sorted");
             for (var member : pool.members()) {
                 var revision = revisions.putIfAbsent(member.recipeId(), member.revision());
@@ -41,9 +41,9 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
      * No codec is required for display declarations, but every current member needs a real revision.
      */
     public static List<Pool> describe(RecipeRegistry.Snapshot snapshot) {
-        var pools = new ObjectArrayList<Pool>();
+        var pools = new ObjectArrayList<Pool>(snapshot.orderedPools().size());
         for (var pool : Objects.requireNonNull(snapshot).orderedPools()) {
-            var members = new ObjectArrayList<RecipeDefinitionRevision>();
+            var members = new ObjectArrayList<RecipeDefinitionRevision>(pool.recipes().size());
             for (var recipe : pool.recipes()) {
                 var revision = snapshot.revision(recipe);
                 if (revision == null)
@@ -82,7 +82,7 @@ public record RecipeDefinitionManifest(UUID serverSession, long generation, Reci
         public Pool {
             Objects.requireNonNull(id);
             members = List.copyOf(members);
-            var ids = new ObjectOpenHashSet<ResourceLocation>();
+            var ids = new ObjectOpenHashSet<ResourceLocation>(members.size());
             for (var member : members)
                 if (!ids.add(member.recipeId()))
                     throw new IllegalArgumentException("Duplicate recipe manifest member: " + member.recipeId());

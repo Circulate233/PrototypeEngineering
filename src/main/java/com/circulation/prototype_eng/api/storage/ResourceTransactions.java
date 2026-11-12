@@ -72,8 +72,8 @@ public final class ResourceTransactions {
         Objects.requireNonNull(rollback);
         // External participants may call back into the owner of the supplied list.
         var participants = new ObjectArrayList<ResourceReservation>(reservations);
-        var tokens = new ReferenceOpenHashSet<ResourceReservation>();
-        var domains = new ReferenceOpenHashSet<StorageContext>();
+        var tokens = new ReferenceOpenHashSet<ResourceReservation>(participants.size());
+        var domains = new ReferenceOpenHashSet<StorageContext>(participants.size());
         for (var reservation : participants) {
             Objects.requireNonNull(reservation);
             if (!tokens.add(reservation)) {

@@ -130,8 +130,8 @@ public final class NetworkRuntime implements AutoCloseable {
         captureRevoked = false;
         preparing = true;
         try {
-            var captures = new Reference2ObjectOpenHashMap<Registration, Capture>();
-            var devices = new ObjectArrayList<NetworkDeviceSnapshot>();
+            var captures = new Reference2ObjectOpenHashMap<Registration, Capture>(registrations.size());
+            var devices = new ObjectArrayList<NetworkDeviceSnapshot>(registrations.size());
             for (var registration : registrations.values()) {
                 if (!registration.identity.unique()) {
                     continue;
@@ -171,7 +171,7 @@ public final class NetworkRuntime implements AutoCloseable {
                     additions.put(entry.getKey(), new NetworkTeamBudget(tick, resources, entry.getValue().resourcesPerTick(), ownerCheck));
                 }
             }
-            var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>();
+            var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>(captures.size());
             for (var registration : captures.keySet()) {
                 states.put(registration, Objects.requireNonNull(plan.workStates().get(registration.identity.identity().machineId())));
             }

@@ -35,7 +35,7 @@ public final class ResearchSnapshots {
         private FrozenLevels(Object2IntMap<ResourceLocation> source) {
             values = new Object2IntOpenHashMap<>(source);
             values.defaultReturnValue(0);
-            var snapshot = new ObjectOpenHashSet<Object2IntMap.Entry<ResourceLocation>>();
+            var snapshot = new ObjectOpenHashSet<Object2IntMap.Entry<ResourceLocation>>(source.size());
             for (var entry : source.object2IntEntrySet()) {
                 snapshot.add(new BasicEntry<>(entry.getKey(), entry.getIntValue()));
             }
@@ -69,7 +69,7 @@ public final class ResearchSnapshots {
 
         private FrozenSparse(Int2ObjectMap<V> source) {
             values = new Int2ObjectOpenHashMap<>(source);
-            var snapshot = new ObjectOpenHashSet<Int2ObjectMap.Entry<V>>();
+            var snapshot = new ObjectOpenHashSet<Int2ObjectMap.Entry<V>>(source.size());
             for (var entry : source.int2ObjectEntrySet()) {
                 snapshot.add(new BasicEntry<>(entry.getIntKey(), entry.getValue()));
             }

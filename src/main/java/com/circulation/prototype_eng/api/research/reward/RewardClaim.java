@@ -35,8 +35,8 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
             || (claimedAtWorldTime.isPresent() && claimedAtWorldTime.getAsLong() < claimingAtWorldTime.getAsLong())) {
             throw new IllegalArgumentException("Invalid reward claim state");
         }
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
-        var fragments = new ObjectOpenHashSet<UUID>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(children.size());
+        var fragments = new ObjectOpenHashSet<UUID>(children.size());
         for (var child : children) {
             Objects.requireNonNull(child, "child");
             var parent = child.key();
@@ -151,7 +151,7 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
             Objects.requireNonNull(key, "key");
             Objects.requireNonNull(kind, "kind");
             Objects.requireNonNull(status, "status");
-            var copy = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>();
+            var copy = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>(fragments.size());
             for (var entry : Objects.requireNonNull(fragments, "fragments").object2ObjectEntrySet()) {
                 var fragment = Objects.requireNonNull(entry.getValue(), "fragment");
                 if (!fragment.id().equals(entry.getKey()) || !fragment.parent().equals(key)

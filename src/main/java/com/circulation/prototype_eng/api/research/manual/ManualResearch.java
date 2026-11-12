@@ -157,8 +157,8 @@ public final class ManualResearch {
             if (!sessions.isEmpty()) {
                 throw new IllegalStateException("Manual sessions have already been installed");
             }
-            var restored = new Long2ObjectLinkedOpenHashMap<ManualResearchSession>();
-            var ids = new ObjectOpenHashSet<UUID>();
+            var restored = new Long2ObjectLinkedOpenHashMap<ManualResearchSession>(saved.size());
+            var ids = new ObjectOpenHashSet<UUID>(saved.size());
             for (var original : saved) {
                 var session = Objects.requireNonNull(original).restored();
                 validateSession(session);
@@ -608,7 +608,7 @@ public final class ManualResearch {
             return null;
         }
         boolean teamOwned = queue.registry().require(session.queueKey().researchId()).deliveryPolicy() == ResearchDownloadDeliveryPolicy.ITEM_ONLY;
-        var baselines = new Object2IntOpenHashMap<UUID>();
+        var baselines = new Object2IntOpenHashMap<UUID>(context.members().size());
         for (var member : context.members()) {
             var player = requirePlayer(member);
             if (player.busy()) {
@@ -705,7 +705,7 @@ public final class ManualResearch {
         if (pendingCheckpoint != null) {
             throw new IllegalStateException("A previous world checkpoint still requires recovery");
         }
-        var snapshots = new ObjectArrayList<PlayerResearchState.Snapshot>();
+        var snapshots = new ObjectArrayList<PlayerResearchState.Snapshot>(affectedPlayers.size());
         for (var id : affectedPlayers) {
             snapshots.add(requirePlayer(id).snapshot());
         }

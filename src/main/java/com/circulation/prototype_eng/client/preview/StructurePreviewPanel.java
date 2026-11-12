@@ -368,7 +368,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
             var stack = optionStack(selected, choice);
             if (ingredientSlots != null && selected.options().size() > 1) choiceSlot("selected", stack, x, 31, selected, choice);
             else slot("selected", stack, x, 31, false, List.of(), null);
-            var candidates = new IntArrayList();
+            var candidates = new IntArrayList(selected.options().size());
             for (int index = 0; index < selected.options().size(); index++)
                 if (index != choice && !optionStack(selected, index).isEmpty()) candidates.add(index);
             alternativesCount = candidates.size();

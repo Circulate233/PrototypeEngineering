@@ -56,12 +56,12 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
     /** Mirrors AE's selected-key merge and candidate intersection, with a preflight instead of losing overflow. */
     static @Nullable List<PatternRecipeTransferSlot> plan(List<List<GenericStack>> groups,
                                                           Function<List<GenericStack>, GenericStack> select, boolean merge) {
-        var result = new ObjectArrayList<PatternRecipeTransferSlot>();
-        var byKey = new Object2ObjectOpenHashMap<AEKey, PatternRecipeTransferSlot>();
+        var result = new ObjectArrayList<PatternRecipeTransferSlot>(groups.size());
+        var byKey = new Object2ObjectOpenHashMap<AEKey, PatternRecipeTransferSlot>(groups.size());
         for (var candidates : groups) {
             var selected = select.apply(candidates);
             if (selected == null || !candidates.contains(selected)) return null;
-            var keys = new ObjectArrayList<AEKey>();
+            var keys = new ObjectArrayList<AEKey>(candidates.size());
             for (var candidate : candidates) if (!keys.contains(candidate.what())) keys.add(candidate.what());
             var prior = merge ? byKey.get(selected.what()) : null;
             if (prior == null) {
@@ -84,7 +84,7 @@ final class PatternRecipeTransfer<C extends ContainerPatternEncodingTerm> implem
     }
 
     private static List<InventoryActionPacket> packets(ContainerPatternEncodingTerm container, FakeSlot[] targets, List<PatternRecipeTransferSlot> values) {
-        var packets = new ObjectArrayList<InventoryActionPacket>();
+        var packets = new ObjectArrayList<InventoryActionPacket>(targets.length);
         for (int i = 0; i < targets.length; i++) {
             var stack = i < values.size() ? GenericStack.wrapInItemStack(values.get(i).getStack()) : ItemStack.EMPTY;
             packets.add(new InventoryActionPacket(container.windowId, InventoryAction.SET_FILTER, targets[i].slotNumber, stack));

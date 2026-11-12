@@ -38,21 +38,21 @@ public final class TeamResearchView {
         if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
             throw new IllegalArgumentException("Research team id must be canonical non-blank text");
         }
-        var memberCopy = new ObjectOpenHashSet<UUID>();
+        var memberCopy = new ObjectOpenHashSet<UUID>(members.size());
         for (var member : Objects.requireNonNull(members)) {
             if (!memberCopy.add(Objects.requireNonNull(member))) {
                 throw new IllegalArgumentException("Duplicate research team member " + member);
             }
         }
         this.members = ObjectSets.unmodifiable(memberCopy);
-        var blacklistCopy = new ObjectOpenHashSet<ResourceLocation>();
+        var blacklistCopy = new ObjectOpenHashSet<ResourceLocation>(blacklist.size());
         for (var id : Objects.requireNonNull(blacklist)) {
             registry.require(Objects.requireNonNull(id));
             blacklistCopy.add(id);
         }
         this.blacklist = ObjectSets.unmodifiable(blacklistCopy);
         this.sharedLevels = immutableLevels(sharedLevels);
-        var targets = new Object2IntOpenHashMap<ResourceLocation>();
+        var targets = new Object2IntOpenHashMap<ResourceLocation>(startableResearchTargets.size());
         for (var entry : Objects.requireNonNull(startableResearchTargets).object2IntEntrySet()) {
             var id = Objects.requireNonNull(entry.getKey());
             var definition = registry.require(id);
@@ -104,7 +104,7 @@ public final class TeamResearchView {
     }
 
     private Object2IntMap<ResourceLocation> immutableLevels(Object2IntMap<ResourceLocation> source) {
-        var copy = new Object2IntOpenHashMap<ResourceLocation>();
+        var copy = new Object2IntOpenHashMap<ResourceLocation>(source.size());
         for (var entry : Objects.requireNonNull(source).object2IntEntrySet()) {
             var id = Objects.requireNonNull(entry.getKey());
             var definition = registry.require(id);

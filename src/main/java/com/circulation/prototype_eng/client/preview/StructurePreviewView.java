@@ -489,7 +489,7 @@ public final class StructurePreviewView {
     }
 
     private ObjectArrayList<Material> filteredRows(List<Material> rows) {
-        var result = new ObjectArrayList<Material>();
+        var result = new ObjectArrayList<Material>(rows.size());
         var query = search.trim().toLowerCase(Locale.ROOT);
         for (var row : rows) {
             var display = row.display();

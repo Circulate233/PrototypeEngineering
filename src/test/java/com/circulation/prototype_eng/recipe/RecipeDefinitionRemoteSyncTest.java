@@ -44,8 +44,8 @@ class RecipeDefinitionRemoteSyncTest {
         var first = new MachineRecipe(id("z_first"), 2, List.of());
         var second = new MachineRecipe(id("a_second"), 3, List.of());
         var registry = new RecipeRegistry();
-        registry.register(new DefaultRecipePool(id("b_pool"), "pool.b", List.of(second)));
-        registry.register(new DefaultRecipePool(id("a_pool"), "pool.a", reverse ? List.of(second, first) : List.of(first, second)));
+        registry.register(new DefaultRecipePool(new ResourceLocation("alpha.beta", "b_pool"), "pool.b", List.of(second)));
+        registry.register(new DefaultRecipePool(new ResourceLocation("alpha", "a_pool"), "pool.a", reverse ? List.of(second, first) : List.of(first, second)));
         registry.declareRevision(first, revision);
         registry.declareRevision(second, revision);
         registry.freeze();
@@ -92,7 +92,7 @@ class RecipeDefinitionRemoteSyncTest {
         var outgoing = RecipeDefinitionManifest.capture(UUID.randomUUID(), key("display-v4"), server);
         var decoded = RecipeDefinitionManifestCodec.decode(RecipeDefinitionManifestCodec.encode(outgoing));
         assertEquals(outgoing, decoded);
-        assertEquals(List.of(id("a_pool"), id("b_pool")), decoded.pools().stream().map(RecipeDefinitionManifest.Pool::id).toList());
+        assertEquals(List.of(new ResourceLocation("alpha", "a_pool"), new ResourceLocation("alpha.beta", "b_pool")), decoded.pools().stream().map(RecipeDefinitionManifest.Pool::id).toList());
         assertEquals(List.of(id("z_first"), id("a_second")), decoded.pools().getFirst().members().stream().map(RecipeDefinitionRevision::recipeId).toList());
         assertTrue(decoded.matches(client));
         assertFalse(decoded.matches(snapshot("behavior-v3", false)));

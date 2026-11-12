@@ -159,7 +159,7 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
         private final ObjectSet<Object2LongMap.Entry<T>> entries;
 
         private FrozenCounts(Object2LongMap<T> source) {
-            var snapshot = new ObjectOpenHashSet<Object2LongMap.Entry<T>>();
+            var snapshot = new ObjectOpenHashSet<Object2LongMap.Entry<T>>(source.size());
             for (var entry : Objects.requireNonNull(source).object2LongEntrySet()) {
                 Objects.requireNonNull(entry.getKey());
                 if (entry.getLongValue() < 0) throw new IllegalArgumentException("Negative research view progress");

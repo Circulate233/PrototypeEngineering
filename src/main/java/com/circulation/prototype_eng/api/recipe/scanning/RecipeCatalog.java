@@ -47,16 +47,16 @@ public final class RecipeCatalog {
     private final Reference2ObjectLinkedOpenHashMap<MachineRecipe, ResourceRecipeIndex> retryIndexes = new Reference2ObjectLinkedOpenHashMap<>();
 
     public RecipeCatalog(Collection<? extends RecipePool> pools) {
-        var knownPools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
+        var knownPools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(pools.size());
         var canonical = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineRecipe>();
         for (var pool : Objects.requireNonNull(pools, "pools")) {
             Objects.requireNonNull(pool, "pool");
             if (knownPools.putIfAbsent(Objects.requireNonNull(pool.id()), pool) != null)
                 throw new IllegalArgumentException("Duplicate catalog pool: " + pool.id());
-            var poolRecipes = new ObjectArrayList<MachineRecipe>();
-            var membership = new ReferenceOpenHashSet<MachineRecipe>();
+            var poolRecipes = new ObjectArrayList<MachineRecipe>(pool.recipes().size());
+            var membership = new ReferenceOpenHashSet<MachineRecipe>(pool.recipes().size());
             var groups = new Object2ObjectOpenHashMap<ResourceLocation, ObjectArrayList<MachineRecipe>>();
-            var ids = new ObjectLinkedOpenHashSet<ResourceLocation>();
+            var ids = new ObjectLinkedOpenHashSet<ResourceLocation>(pool.recipes().size());
             for (var recipe : Objects.requireNonNull(pool.recipes(), "pool recipes")) {
                 Objects.requireNonNull(recipe, "pool recipe");
                 if (!ids.add(recipe.id()))
@@ -67,11 +67,11 @@ public final class RecipeCatalog {
                 if (previous == null) priority.put(recipe, priority.size());
                 poolRecipes.add(recipe);
                 membership.add(recipe);
-                owners.computeIfAbsent(recipe, _ -> new ObjectArrayList<>()).add(pool);
+                owners.computeIfAbsent(recipe, _ -> new ObjectArrayList<>(2)).add(pool);
                 for (var group : recipe.recipeGroups())
-                    groups.computeIfAbsent(group, _ -> new ObjectArrayList<>()).add(recipe);
+                    groups.computeIfAbsent(group, _ -> new ObjectArrayList<>(6)).add(recipe);
             }
-            var frozenGroups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>();
+            var frozenGroups = new Object2ObjectOpenHashMap<ResourceLocation, List<MachineRecipe>>(groups.size());
             groups.forEach((group, rows) -> frozenGroups.put(group, ObjectLists.unmodifiable(rows)));
             members.put(pool, new PoolMembers(ObjectLists.unmodifiable(poolRecipes), membership,
                 Object2ObjectMaps.unmodifiable(frozenGroups)));

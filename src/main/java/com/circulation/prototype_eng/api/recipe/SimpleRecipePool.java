@@ -64,9 +64,9 @@ public final class SimpleRecipePool implements RecipePool {
             throw new IllegalArgumentException("Pool title is required");
         this.translationKey = translationKey;
         this.stableInputs = Objects.requireNonNull(stableInputs);
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
-        var rows = new ObjectArrayList<MachineRecipe>();
-        var postings = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Entry>>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(entries.size());
+        var rows = new ObjectArrayList<MachineRecipe>(entries.size());
+        var postings = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Entry>>(entries.size());
         for (var entry : entries) {
             Objects.requireNonNull(entry);
             if (!ids.add(entry.recipe.id()))
@@ -133,7 +133,7 @@ public final class SimpleRecipePool implements RecipePool {
 
     @Override
     public SimpleRecipePool freeze(List<MachineRecipe> recipes, List<MachineType> machines) {
-        var entries = new ObjectArrayList<Entry>();
+        var entries = new ObjectArrayList<Entry>(recipes.size());
         for (var recipe : recipes) entries.add(Entry.of(recipe));
         return new SimpleRecipePool(id, translationKey, entries, machines, stableInputs, existingJeiPageId);
     }
@@ -211,7 +211,7 @@ public final class SimpleRecipePool implements RecipePool {
     private final class Lookup implements RecipeCandidateIndex.Cursor {
         private final MachineInstance machine;
         private final Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap> byContext = new Reference2ObjectOpenHashMap<>();
-        private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap();
+        private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap(6);
         private final ObjectArrayList<Captured> captures = new ObjectArrayList<>();
         private final ObjectArrayList<Binding> bindings = new ObjectArrayList<>();
         private final ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
@@ -277,7 +277,7 @@ public final class SimpleRecipePool implements RecipePool {
                             long amount = entry.getLongValue();
                             if (amount < 0) throw new IllegalStateException("Negative input availability");
                             if (!byInput.containsKey(key)) continue;
-                            var maxima = byContext.computeIfAbsent(view.context, _ -> new AEKey2LongMap.OpenHashMap());
+                            var maxima = byContext.computeIfAbsent(view.context, _ -> new AEKey2LongMap.OpenHashMap(6));
                             long previous = maxima.getLong(key);
                             if (amount > previous) {
                                 maxima.addTo(key, amount - previous);

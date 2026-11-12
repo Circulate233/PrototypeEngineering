@@ -22,7 +22,7 @@ public record RewardGroup(ResourceLocation id, @Nullable LocalizationEnum title,
         Objects.requireNonNull(id, "id");
         var copy = new ObjectArrayList<>(Objects.requireNonNull(children, "children"));
         if (copy.isEmpty()) throw new IllegalArgumentException("Reward group must have children");
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(copy.size());
         for (var child : copy) {
             if (!ids.add(Objects.requireNonNull(child, "child").id())) {
                 throw new IllegalArgumentException("Duplicate reward child: " + child.id());

@@ -117,7 +117,7 @@ public final class StructureComponents implements AffinityKeyProvider {
 
     @Override
     public Set<?> affinityKeys() {
-        var keys = new ObjectLinkedOpenHashSet<>();
+        var keys = new ObjectLinkedOpenHashSet<>(bindings.size());
         for (var binding : bindings) {
             if (binding.entry().component() instanceof AffinityKeyProvider provider) {
                 for (var key : Objects.requireNonNull(provider.affinityKeys())) {

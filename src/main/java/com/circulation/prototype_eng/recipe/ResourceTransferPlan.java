@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
-import ae2.api.stacks.AEKey2LongMap;
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.GenericStack;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -25,7 +26,7 @@ public record ResourceTransferPlan(ResourceLocation id, List<GenericStack> input
     }
 
     private static List<GenericStack> normalize(List<GenericStack> stacks) {
-        var amounts = new AEKey2LongMap.LinkdOpenHashMap();
+        var amounts = new AEKeyLinkedOpenHashMap(stacks.size());
         for (GenericStack stack : stacks) {
             Objects.requireNonNull(stack, "resource stack");
             Objects.requireNonNull(stack.what(), "resource key");

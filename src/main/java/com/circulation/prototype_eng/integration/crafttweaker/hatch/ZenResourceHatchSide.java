@@ -37,7 +37,7 @@ public record ZenResourceHatchSide(ResourceHatchConfiguration.Side value) {
     public static ZenResourceHatchSide itemEquivalentWithRatios(int slots, long capacity, ZenResource[] representatives, long[] ratios) {
         if (representatives.length != ratios.length) throw new IllegalArgumentException("Resource types and ratios must have equal lengths");
         var types = new ObjectArrayList<AEKeyType>(representatives.length);
-        var overrides = new Reference2LongOpenHashMap<AEKeyType>();
+        var overrides = new Reference2LongOpenHashMap<AEKeyType>(2);
         for (int i = 0; i < representatives.length; i++) {
             var type = Objects.requireNonNull(representatives[i]).key().getType();
             types.add(type);
@@ -49,7 +49,7 @@ public record ZenResourceHatchSide(ResourceHatchConfiguration.Side value) {
 
     @ZenMethod
     public static ZenResourceHatchSide nativeCapacities(int slots, ZenResource[] capacities) {
-        var values = new Reference2LongOpenHashMap<AEKeyType>();
+        var values = new Reference2LongOpenHashMap<AEKeyType>(capacities.length);
         for (var resource : capacities) {
             var type = Objects.requireNonNull(resource).key().getType();
             if (values.containsKey(type)) throw new IllegalArgumentException("Duplicate resource type: " + type.getId());

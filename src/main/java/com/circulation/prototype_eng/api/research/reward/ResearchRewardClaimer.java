@@ -23,8 +23,8 @@ import java.util.function.BooleanSupplier;
  */
 public final class ResearchRewardClaimer {
     private static ObjectList<RewardClaim.Child> createChildren(Request request, RewardGroup group) {
-        var children = new ObjectArrayList<RewardClaim.Child>();
-        var fragmentIds = new ObjectOpenHashSet<UUID>();
+        var children = new ObjectArrayList<RewardClaim.Child>(group.children().size());
+        var fragmentIds = new ObjectOpenHashSet<UUID>(group.children().size());
         for (var definition : group.children()) {
             if (!request.current().getAsBoolean()) return null;
             var key = new RewardEventKey(request.playerState().playerUuid(), request.definition().id(), request.level(), group.id(), definition.id());

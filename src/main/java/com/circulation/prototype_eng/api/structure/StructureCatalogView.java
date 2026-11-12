@@ -36,7 +36,7 @@ public final class StructureCatalogView {
             throw new IllegalArgumentException("Invalid catalog view bounds");
         this.sequence = sequence;
         this.nodes = List.copyOf(nodes);
-        var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Entry>();
+        var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Entry>(entries.size());
         entries.forEach((id, entry) -> {
             Objects.requireNonNull(id);
             Objects.requireNonNull(entry);
@@ -51,18 +51,18 @@ public final class StructureCatalogView {
     public static StructureCatalogView capture(StructureCatalog catalog, UUID session, long sequence) {
         var indexes = new Reference2IntOpenHashMap<MachineStructure>();
         indexes.defaultReturnValue(-1);
-        var shapes = new ObjectArrayList<MachineStructure>();
-        var entries = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Entry>();
+        var shapes = new ObjectArrayList<MachineStructure>(catalog.definitions().size());
+        var entries = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Entry>(catalog.definitions().size());
         for (var definition : catalog.definitions().values()) {
             int index = index(definition.shape(), indexes, shapes);
             entries.put(definition.id(), new Entry(index, definition.translationKey(), definition.displays()));
         }
-        var nodes = new ObjectArrayList<Node>();
+        var nodes = new ObjectArrayList<Node>(shapes.size());
         for (int cursor = 0; cursor < shapes.size(); cursor++) {
             var shape = shapes.get(cursor);
             var geometry = shape instanceof StructurePreviewProvider provider ? Objects.requireNonNull(provider.previewGeometry())
                 : new StructurePreviewProvider.Geometry(StructurePreviewProvider.Kind.OPAQUE, BlockPos.ORIGIN, 0, 0, BlockPos.ORIGIN, List.of(), List.of());
-            var children = new IntArrayList();
+            var children = new IntArrayList(geometry.children().size());
             for (var child : geometry.children()) children.add(index(child, indexes, shapes));
             nodes.add(new Node(shape.id(), shape.orientation(), shape.hideWorldBlocks(), geometry.kind(), geometry.offset(),
                 geometry.minCount(), geometry.maxCount(), geometry.sliceOffset(), geometry.cells(), children, shape.displays()));

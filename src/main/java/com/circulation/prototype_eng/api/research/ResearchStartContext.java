@@ -25,7 +25,7 @@ public record ResearchStartContext(ResourceLocation researchId, int targetLevel,
         if (targetLevel < 1 || networkCenterLevel < 0 || teamId != null && (teamId.isBlank() || !teamId.equals(teamId.trim()))) {
             throw new IllegalArgumentException("Invalid research start identity, target or center level");
         }
-        var levels = new Object2IntOpenHashMap<ResourceLocation>();
+        var levels = new Object2IntOpenHashMap<ResourceLocation>(teamSharedResearchLevels.size());
         for (var entry : Objects.requireNonNull(teamSharedResearchLevels).object2IntEntrySet()) {
             if (entry.getIntValue() < 0) {
                 throw new IllegalArgumentException("Negative shared research level");
@@ -33,8 +33,8 @@ public record ResearchStartContext(ResourceLocation researchId, int targetLevel,
             levels.put(Objects.requireNonNull(entry.getKey()), entry.getIntValue());
         }
         teamSharedResearchLevels = ResearchSnapshots.levels(levels);
-        var amounts = new Object2LongOpenHashMap<NetworkResourceType>();
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        var amounts = new Object2LongOpenHashMap<NetworkResourceType>(availableResources.size());
+        var ids = new ObjectOpenHashSet<ResourceLocation>(availableResources.size());
         for (var entry : Objects.requireNonNull(availableResources).object2LongEntrySet()) {
             var type = Objects.requireNonNull(entry.getKey());
             if (entry.getLongValue() < 0 || !ids.add(type.id())) {

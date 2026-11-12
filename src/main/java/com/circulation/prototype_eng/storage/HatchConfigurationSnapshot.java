@@ -47,7 +47,7 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         out.writeInt(side.slots());
         out.writeInt(side.capacities().size());
         var entries = new ObjectArrayList<>(side.capacities().reference2LongEntrySet());
-        entries.sort(Comparator.comparing(entry -> entry.getKey().getId().toString()));
+        entries.sort(Comparator.comparing(entry -> entry.getKey().getId()));
         for (var entry : entries) {
             out.writeUTF(entry.getKey().getId().toString());
             out.writeLong(entry.getLongValue());
@@ -67,7 +67,7 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
             if (in.readInt() != 1) throw new IllegalArgumentException("Unknown hatch snapshot format");
             var session = new UUID(in.readLong(), in.readLong());
             long revision = in.readLong();
-            var profiles = new ObjectArrayList<HatchConfiguration>();
+            var profiles = new ObjectArrayList<HatchConfiguration>(HatchTier.VALUES.length * HatchMode.VALUES.length * 2);
             for (var ignored : HatchTier.VALUES) {
                 for (var mode : HatchMode.VALUES) {
                     profiles.add(new ResourceHatchConfiguration(mode.hasInput() ? readSide(in) : null, mode.hasOutput() ? readSide(in) : null));
@@ -87,7 +87,7 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         int count = in.readInt();
         if (count <= 0 || count > in.available() / 10)
             throw new IllegalArgumentException("Invalid hatch snapshot type count");
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        var capacities = new Reference2LongArrayMap<AEKeyType>(count);
         for (int index = 0; index < count; index++) {
             var type = AEKeyTypes.get(new ResourceLocation(in.readUTF()));
             if (type == null) throw new IllegalArgumentException("Unknown hatch snapshot type");
@@ -97,7 +97,7 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         ResourceHatchConfiguration.CapacityBasis basis = null;
         if (in.readBoolean()) {
             long itemEquivalent = in.readLong();
-            var ratios = new Reference2LongArrayMap<AEKeyType>();
+            var ratios = new Reference2LongArrayMap<AEKeyType>(count);
             for (var type : capacities.keySet()) ratios.put(type, in.readLong());
             basis = new ResourceHatchConfiguration.CapacityBasis(itemEquivalent, ratios);
         }

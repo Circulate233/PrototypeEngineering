@@ -11,7 +11,7 @@ import java.util.function.BiFunction;
 /** Measures the complete explanation with the same font and wrapping used for drawing. */
 public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
     public static RecipeInformationLayout measure(List<JeiRecipeDisplay.Text> information, int width, Font font) {
-        var paragraphs = new ObjectArrayList<Paragraph>();
+        var paragraphs = new ObjectArrayList<Paragraph>(information.size());
         int y = 0;
         for (var source : information) {
             int x = source.energy() == null ? 4 : 26;

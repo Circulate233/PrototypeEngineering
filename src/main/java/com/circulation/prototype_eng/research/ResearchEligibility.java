@@ -82,7 +82,7 @@ public final class ResearchEligibility {
                                                 Object2IntMap<ResourceLocation> teamOwnedResearch,
                                                 Set<ResourceLocation> blacklistedResearchIds) {
         requireTeamId(teamId);
-        var members = new ObjectOpenHashSet<UUID>();
+        var members = new ObjectOpenHashSet<UUID>(currentMembers.size());
         for (var member : Objects.requireNonNull(currentMembers)) {
             if (!members.add(Objects.requireNonNull(member))) {
                 throw new IllegalArgumentException("Duplicate research team member " + member);
@@ -95,12 +95,12 @@ public final class ResearchEligibility {
                 throw new IllegalArgumentException("Research state identity differs from player table key " + player);
             }
         }
-        var blacklist = new ObjectOpenHashSet<ResourceLocation>();
+        var blacklist = new ObjectOpenHashSet<ResourceLocation>(blacklistedResearchIds.size());
         for (var id : Objects.requireNonNull(blacklistedResearchIds)) {
             registry.require(Objects.requireNonNull(id));
             blacklist.add(id);
         }
-        var raw = new Object2IntOpenHashMap<ResourceLocation>();
+        var raw = new Object2IntOpenHashMap<ResourceLocation>(members.size());
         for (var member : members) {
             var state = playerStates.get(member);
             if (state == null) {

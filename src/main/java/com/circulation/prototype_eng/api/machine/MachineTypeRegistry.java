@@ -33,7 +33,7 @@ public final class MachineTypeRegistry {
 
     private static Map<ResourceLocation, MachineStructure> validateStructures(Map<ResourceLocation, ? extends MachineStructure> definitions) {
         Objects.requireNonNull(definitions, "structure definitions");
-        var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>();
+        var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>(definitions.size());
         for (var entry : definitions.entrySet()) {
             var key = Objects.requireNonNull(entry.getKey(), "structure key");
             var definition = Objects.requireNonNull(entry.getValue(), "structure definition");
@@ -61,7 +61,7 @@ public final class MachineTypeRegistry {
                 throw new IllegalStateException("Machine declarations are already frozen");
             }
             Objects.requireNonNull(batch, "machine batch");
-            var additions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>();
+            var additions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>(batch.size());
             for (var type : batch) {
                 Objects.requireNonNull(type, "machine type");
                 if (declarations.containsKey(type.id()) || additions.putIfAbsent(type.id(), type) != null) {
@@ -151,7 +151,7 @@ public final class MachineTypeRegistry {
         if (runtime != null) throw new IllegalStateException("Machine structures are already resolved");
         var resolvedStructures = resolveStructureReferences(catalog);
         Objects.requireNonNull(assemblyDefinitions, "machine assemblies");
-        var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>();
+        var checked = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>(assemblyDefinitions.size());
         for (var assembly : assemblyDefinitions) {
             Objects.requireNonNull(assembly, "machine assembly");
             var type = assembly.type();
@@ -160,7 +160,7 @@ public final class MachineTypeRegistry {
                 throw new IllegalArgumentException("Duplicate machine assembly ID: " + type.id());
             }
         }
-        var resolvedAssemblies = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>();
+        var resolvedAssemblies = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineAssembly>(types.size());
         for (var type : types) {
             var assembly = checked.get(type.id());
             if (assembly == null) {
@@ -177,7 +177,7 @@ public final class MachineTypeRegistry {
             if (!entry.getKey().equals(Objects.requireNonNull(entry.getValue().id())))
                 throw new IllegalArgumentException("Structure key does not match its ID: " + entry.getKey());
         }
-        var resolved = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>();
+        var resolved = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineStructure>(types.size());
         for (var type : types) {
             var definition = catalog.get(type.structureId());
             if (definition == null) {

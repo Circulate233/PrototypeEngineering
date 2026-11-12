@@ -170,10 +170,10 @@ public final class ZenRequirement {
     /** Combines resource declarations; names and matchers are captured before the recipe is constructed. */
     @ZenMethod
     public static ZenRequirement combineResources(String id, ZenRequirement[] requirements) {
-        var inputs = new ObjectArrayList<GenericStack>();
-        var ticksIn = new ObjectArrayList<GenericStack>();
-        var ticksOut = new ObjectArrayList<GenericStack>();
-        var outputs = new ObjectArrayList<GenericStack>();
+        var inputs = new ObjectArrayList<GenericStack>(6);
+        var ticksIn = new ObjectArrayList<GenericStack>(6);
+        var ticksOut = new ObjectArrayList<GenericStack>(6);
+        var outputs = new ObjectArrayList<GenericStack>(6);
         var fuzzy = new ObjectArrayList<FuzzyInputGroup>();
         var dynamic = new ObjectArrayList<DynamicInputGroup>();
         for (var requirement : requirements) {

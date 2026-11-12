@@ -100,7 +100,7 @@ public final class ResearchRegistry {
         // must not reenter registration/freeze or be replayed after a partial callback failure.
         materialBindingStarted = true;
         for (var definition : definitions.values()) {
-            var stages = new Int2ObjectOpenHashMap<RecipeProcessNbt>();
+            var stages = new Int2ObjectOpenHashMap<RecipeProcessNbt>(definition.stages().size());
             for (var stage : definition.stages()) {
                 if (stage.researchTier() == 0) {
                     continue;
@@ -111,7 +111,7 @@ public final class ResearchRegistry {
             materials.put(definition.id(), stages);
         }
         var orderedById = new ObjectArrayList<>(definitions.values());
-        orderedById.sort(Comparator.comparing(definition -> definition.id().toString()));
+        orderedById.sort(Comparator.comparing(ResearchDefinition::id));
         frozen = new Frozen(definitions, ObjectLists.unmodifiable(new ObjectArrayList<>(definitions.values())),
             ObjectLists.unmodifiable(orderedById), materials);
         registrations.clear();

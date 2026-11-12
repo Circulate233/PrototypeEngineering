@@ -305,7 +305,7 @@ public final class ResearchDataCenter implements DataCenterStorage {
     public record State(DataCenterResearchSnapshot contents, Map<UUID, ResearchDiskCommit> receipts) {
         public State {
             Objects.requireNonNull(contents);
-            var stable = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>();
+            var stable = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>(receipts.size());
             for (var entry : Objects.requireNonNull(receipts).entrySet()) {
                 var commit = Objects.requireNonNull(entry.getValue());
                 if (!Objects.requireNonNull(entry.getKey()).equals(commit.operationId())

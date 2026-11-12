@@ -48,7 +48,7 @@ public final class ResourceTransferRun {
      */
     @Nullable
     public static ResourceTransferPlan findPlan(List<ResourceTransferPlan> plans, List<? extends ResourceHatch> hatches) {
-        var visited = new ReferenceOpenHashSet<>();
+        var visited = new ReferenceOpenHashSet<>(plans.size());
         for (ResourceTransferPlan recipe : plans) {
             boolean matches = true;
             for (GenericStack required : recipe.inputs()) {

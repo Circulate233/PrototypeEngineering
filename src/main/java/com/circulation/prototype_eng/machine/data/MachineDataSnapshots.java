@@ -47,7 +47,7 @@ public final class MachineDataSnapshots {
                     hostId = nextIdentity = Math.incrementExact(nextIdentity);
                     hosts.put(host, hostId);
                 }
-                var slots = new ObjectArrayList<MachineDataSnapshot.Slot>();
+                var slots = new ObjectArrayList<MachineDataSnapshot.Slot>(host.slots().size());
                 for (var slot : host.slots()) {
                     var process = slot.process();
                     MachineDataSnapshot.Process fact = null;

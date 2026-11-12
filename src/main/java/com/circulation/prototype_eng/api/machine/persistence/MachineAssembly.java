@@ -391,7 +391,7 @@ public final class MachineAssembly {
     }
 
     private Map<ComponentType<MachineInstance, ?>, SavedComponent> readComponents(NBTTagList list) {
-        var entries = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, SavedComponent>();
+        var entries = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, SavedComponent>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "Type", "Dependencies", "Data");
@@ -410,7 +410,7 @@ public final class MachineAssembly {
 
     private Map<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>> readPending(
         NBTTagList list, Map<ComponentType<MachineInstance, ?>, SavedComponent> components) {
-        var pending = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>>();
+        var pending = new Object2ObjectLinkedOpenHashMap<ComponentType<MachineInstance, ?>, Set<ComponentType<MachineInstance, ?>>>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "Type", "Dependencies");
@@ -433,8 +433,8 @@ public final class MachineAssembly {
     }
 
     private Set<ComponentType<MachineInstance, ?>> readTypes(NBTTagCompound entry) {
-        var result = new ObjectLinkedOpenHashSet<ComponentType<MachineInstance, ?>>();
         var saved = StrictNbt.requireList(entry, "Dependencies", Constants.NBT.TAG_STRING);
+        var result = new ObjectLinkedOpenHashSet<ComponentType<MachineInstance, ?>>(saved.tagCount());
         for (int index = 0; index < saved.tagCount(); index++) {
             var id = StrictNbt.requireId(saved.getStringTagAt(index));
             var descriptor = id.equals(MachineHatches.TYPE.id()) ? MachineHatches.TYPE

@@ -99,7 +99,7 @@ public final class CrossRecipeBatch {
         var timings = new ObjectArrayList<Timing>(members.size());
         for (var process : members) {
             int count = RecipeParallelism.effective(process);
-            var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, EnergyOffsets>();
+            var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, EnergyOffsets>(6);
             int[] energyOffsets = {inputOffset, outputOffset};
             for (var requirement : process.orderedRequirements())
                 energyOffsets(requirement, null, count, process.recipe().durationTicks(), duration, offsets, energyOffsets);
@@ -186,8 +186,8 @@ public final class CrossRecipeBatch {
     }
 
     private static Signature signature(RecipeProcess process) {
-        var inputs = new AEKey2LongMap.OpenHashMap();
-        var outputs = new AEKey2LongMap.OpenHashMap();
+        var inputs = new AEKey2LongMap.OpenHashMap(6);
+        var outputs = new AEKey2LongMap.OpenHashMap(6);
         var policies = new ObjectOpenHashSet<TickPolicy>();
         var opaque = new Object2IntOpenHashMap<OpaqueTick>();
         for (var requirement : process.orderedRequirements()) signature(process, requirement, null, null, inputs, outputs, policies, opaque);

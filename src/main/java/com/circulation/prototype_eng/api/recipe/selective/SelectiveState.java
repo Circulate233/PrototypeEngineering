@@ -94,7 +94,7 @@ public final class SelectiveState implements ProcessAbortListener {
     }
 
     public Map<RequirementPath, SelectionSnapshot> snapshot() {
-        var snapshot = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectionSnapshot>();
+        var snapshot = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectionSnapshot>(6);
         selections.forEach((path, selection) -> snapshot.put(path, selection.snapshot()));
         return Collections.unmodifiableMap(snapshot);
     }
@@ -110,7 +110,7 @@ public final class SelectiveState implements ProcessAbortListener {
         if (existingOverlays != null) {
             existingOverlays.snapshot();
         }
-        var restored = new Object2ObjectLinkedOpenHashMap<RequirementPath, Selection>();
+        var restored = new Object2ObjectLinkedOpenHashMap<RequirementPath, Selection>(6);
         var attributes = process.attributes().localSnapshot();
         var claimedModifiers = new ObjectOpenHashSet<ModifierReference>();
         var claimedOverlays = new ObjectOpenHashSet<OverlayReference>();
@@ -177,7 +177,7 @@ public final class SelectiveState implements ProcessAbortListener {
             throw new IllegalStateException("Receipt restore requires an empty selective component");
         }
         var restored = new ObjectArrayList<AbortReceipt>();
-        var paths = new ObjectOpenHashSet<RequirementPath>();
+        var paths = new ObjectOpenHashSet<RequirementPath>(6);
         var modifiers = new ObjectOpenHashSet<ModifierReference>();
         var overlays = new ObjectOpenHashSet<OverlayReference>();
         var local = process.attributes().localSnapshot();
@@ -324,7 +324,7 @@ public final class SelectiveState implements ProcessAbortListener {
         }
 
         public List<ModifierReference> modifiers() {
-            var installed = new ObjectArrayList<ModifierReference>();
+            var installed = new ObjectArrayList<ModifierReference>(modifiers.size());
             for (var modifier : modifiers.values()) {
                 if (modifier.installed) {
                     installed.add(modifier.reference);
@@ -351,7 +351,7 @@ public final class SelectiveState implements ProcessAbortListener {
                     throw new IllegalStateException("Owned local modifier changed before snapshot");
                 }
             }
-            var overlayReferences = new ObjectArrayList<OverlayReference>();
+            var overlayReferences = new ObjectArrayList<OverlayReference>(ownedOverlays.size());
             for (var owned : ownedOverlays.values()) {
                 Objects.requireNonNull(owned.claim, "owned overlay claim").validate();
                 overlayReferences.add(owned.reference);

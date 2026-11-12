@@ -49,7 +49,7 @@ public final class NetworkRecipeExtensions {
     public void publish(RecipeCatalog catalog, ResearchRegistry research, NetworkResourceRegistry resources) {
         beginPublication(research, resources);
         var recipes = new ObjectArrayList<>(Objects.requireNonNull(catalog).recipes());
-        recipes.sort(Comparator.comparing(recipe -> recipe.id().toString()));
+        recipes.sort(Comparator.comparing(MachineRecipe::id));
         publishInitial(recipes);
     }
 
@@ -61,7 +61,7 @@ public final class NetworkRecipeExtensions {
         var recipes = new ObjectArrayList<MachineRecipe>();
         for (var recipe : catalog.catalog().recipes()) if (identities.add(recipe)) recipes.add(recipe);
         for (var definition : catalog.historicalDefinitions()) if (identities.add(definition.recipe())) recipes.add(definition.recipe());
-        recipes.sort(Comparator.comparing((MachineRecipe recipe) -> recipe.id().toString())
+        recipes.sort(Comparator.comparing(MachineRecipe::id)
             .thenComparing(recipe -> Objects.requireNonNullElse(catalog.revision(recipe), "")));
         publishInitial(recipes);
     }
@@ -83,7 +83,7 @@ public final class NetworkRecipeExtensions {
     }
 
     private void publishInitial(List<MachineRecipe> recipes) {
-        var completed = new Reference2ObjectOpenHashMap<MachineRecipe, NetworkWorkRequirements>();
+        var completed = new Reference2ObjectOpenHashMap<MachineRecipe, NetworkWorkRequirements>(recipes.size());
         for (var recipe : recipes) completed.put(recipe, configure(recipe));
         synchronized (this) {
             frozen = new Snapshot(this, completed);
@@ -124,13 +124,13 @@ public final class NetworkRecipeExtensions {
         var binding = publicationBinding;
         if (binding != null) binding.publication.requireOwnerBoundary();
         if (!isCurrent(expected)) throw new IllegalArgumentException("Foreign or stale network recipe snapshot");
-        var unique = new ReferenceOpenHashSet<MachineRecipe>();
-        var additions = new ObjectArrayList<MachineRecipe>();
+        var unique = new ReferenceOpenHashSet<MachineRecipe>(declaredRecipes.size());
+        var additions = new ObjectArrayList<MachineRecipe>(declaredRecipes.size());
         for (var recipe : Objects.requireNonNull(declaredRecipes, "declared recipes")) {
             Objects.requireNonNull(recipe);
             if (!expected.requirements.containsKey(recipe) && unique.add(recipe)) additions.add(recipe);
         }
-        additions.sort(Comparator.comparing(recipe -> recipe.id().toString()));
+        additions.sort(Comparator.comparing(MachineRecipe::id));
         var next = expected;
         if (!additions.isEmpty()) {
             var union = new Reference2ObjectOpenHashMap<>(expected.requirements);

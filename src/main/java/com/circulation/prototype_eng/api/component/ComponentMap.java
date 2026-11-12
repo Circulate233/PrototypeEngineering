@@ -43,7 +43,7 @@ public final class ComponentMap<E> {
      * declaring a dependency never implicitly creates a component.
      */
     public static <E> void validateTypes(Collection<? extends ComponentType<E, ?>> declarations) {
-        var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<E, ?>, Set<ComponentType<E, ?>>>();
+        var dependencies = new Object2ObjectLinkedOpenHashMap<ComponentType<E, ?>, Set<ComponentType<E, ?>>>(declarations.size());
         for (var type : declarations) {
             Objects.requireNonNull(type);
             if (dependencies.putIfAbsent(type, type.dependencies()) != null) {
@@ -184,8 +184,8 @@ public final class ComponentMap<E> {
     /** The caller has admitted every map write and holds its owner until the whole group installs. */
     public void installPuts(List<PreparedPut> prepared) {
         var candidates = new ObjectArrayList<TopologicalComponentMap.PreparedNode<ComponentType<E, ?>, Binding<E, ?>>>();
-        var unique = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>();
-        var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>();
+        var unique = new ObjectLinkedOpenHashSet<ComponentType<E, ?>>(prepared.size());
+        var identities = new Object2ObjectOpenHashMap<ResourceLocation, ComponentType<E, ?>>(prepared.size());
         for (var put : prepared) {
             if (put.owner != this || !unique.add(put.type))
                 throw new IllegalArgumentException("Foreign or duplicate prepared component insertion");

@@ -28,7 +28,7 @@ public final class RecipeDefinitionIndex {
     }
 
     private RecipeDefinitionIndex(List<RecipeRequirement<?>> roots) {
-        var entries = new Object2ObjectLinkedOpenHashMap<RequirementPath, RecipeRequirement<?>>();
+        var entries = new Object2ObjectLinkedOpenHashMap<RequirementPath, RecipeRequirement<?>>(6);
         var visiting = new ReferenceOpenHashSet<RecipeRequirement<?>>();
         for (var root : roots) {
             add(root, root.path(null), visiting, entries);

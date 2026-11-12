@@ -476,8 +476,8 @@ public class JeiRecipeIngredients {
 
         private void fill(IGuiIngredientGroup<T> group, List<List<JeiRecipeDisplay.Resource>> rows, int offset) {
             for (int i = 0; i < rows.size(); i++) {
-                var values = new ObjectArrayList<T>();
-                var shown = new ObjectArrayList<JeiRecipeDisplay.Resource>();
+                var values = new ObjectArrayList<T>(rows.get(i).size());
+                var shown = new ObjectArrayList<JeiRecipeDisplay.Resource>(rows.get(i).size());
                 for (var row : rows.get(i)) {
                     var ingredient = entries.get(row);
                     if (ingredient != null) {

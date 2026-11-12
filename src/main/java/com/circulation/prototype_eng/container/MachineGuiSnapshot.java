@@ -90,7 +90,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             }
         }
         int start = Math.clamp(requestedOffset, 0, Math.max(0, total - rows));
-        var result = new ObjectArrayList<Entry>();
+        var result = new ObjectArrayList<Entry>(Math.min(rows, total - start));
         int visibleIndex = 0;
         for (var host : hosts) {
             for (var slot : host.slots()) {
@@ -231,7 +231,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             if (percent < 0 || percent > 100 || parallelism < 0) {
                 throw new IllegalArgumentException("Invalid recipe progress");
             }
-            var copy = new ObjectArrayList<String>();
+            var copy = new ObjectArrayList<String>(Math.min(MAX_ARGUMENTS, arguments.size()));
             for (int i = 0; i < Math.min(MAX_ARGUMENTS, arguments.size()); i++) {
                 copy.add(bounded(arguments.get(i)));
             }

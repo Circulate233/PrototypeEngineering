@@ -40,8 +40,8 @@ public final class NetworkTeamBudget implements AutoCloseable {
             throw new IllegalStateException("Computing resource registry is not ready");
         }
         Objects.requireNonNull(capacity, "Network budget capacity");
-        var numeric = new Object2LongOpenHashMap<NetworkResourceType>();
-        var logical = new Object2LongOpenHashMap<NetworkResourceType>();
+        var numeric = new Object2LongOpenHashMap<NetworkResourceType>(capacity.size());
+        var logical = new Object2LongOpenHashMap<NetworkResourceType>(capacity.size());
         for (var entry : capacity.object2LongEntrySet()) {
             var type = registry.canonical(entry.getKey());
             long amount = entry.getLongValue();
@@ -154,7 +154,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
         Objects.requireNonNull(operation, "Network budget operation");
         Objects.requireNonNull(required, "Network operation requirements");
         Objects.requireNonNull(authorized, "Network operation authorization");
-        var quantities = new Object2LongOpenHashMap<NetworkResourceType>();
+        var quantities = new Object2LongOpenHashMap<NetworkResourceType>(required.size());
         for (var entry : required.object2LongEntrySet()) {
             var type = registry.canonical(entry.getKey());
             long amount = entry.getLongValue();

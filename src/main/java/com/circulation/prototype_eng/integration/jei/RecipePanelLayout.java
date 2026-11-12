@@ -43,8 +43,8 @@ public class RecipePanelLayout {
         this.inputCapacity = inputCapacity;
         this.outputCapacity = outputCapacity;
         this.repeatInput = repeatInput;
-        var inputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>();
-        var outputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>();
+        var inputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>(6);
+        var outputRows = new ObjectArrayList<JeiRecipeDisplay.Resource>(6);
         for (var resource : display.resources()) {
             (resource.role() == JeiRecipeDisplay.Role.INPUT ? inputRows : outputRows).add(resource);
         }
@@ -58,14 +58,14 @@ public class RecipePanelLayout {
 
     private static List<List<JeiRecipeDisplay.Resource>> groups(List<JeiRecipeDisplay.Resource> rows,
                                                                 JeiRenderOptions options, @Nullable JeiRecipeIngredients ingredients) {
-        var grouped = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>>();
+        var grouped = new Reference2ObjectOpenHashMap<JeiRecipeDisplay.CandidateGroup, ObjectArrayList<JeiRecipeDisplay.Resource>>(rows.size());
         if (options.candidates() == JeiRenderOptions.CandidateMode.ALTERNATIVES && ingredients != null) {
             for (var row : rows) {
                 if (row.candidates() != null)
                     grouped.computeIfAbsent(row.candidates(), _ -> new ObjectArrayList<>()).add(row);
             }
         }
-        var result = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>();
+        var result = new ObjectArrayList<List<JeiRecipeDisplay.Resource>>(rows.size());
         for (var row : rows) {
             var group = row.candidates();
             var candidates = grouped.get(group);

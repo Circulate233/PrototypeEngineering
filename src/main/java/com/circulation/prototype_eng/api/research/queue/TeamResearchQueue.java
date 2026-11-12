@@ -73,7 +73,7 @@ public final class TeamResearchQueue {
     }
 
     private static ObjectSet<UUID> stations(Collection<UUID> stationIds) {
-        var copy = new ObjectOpenHashSet<UUID>();
+        var copy = new ObjectOpenHashSet<UUID>(stationIds.size());
         for (var id : Objects.requireNonNull(stationIds)) {
             if (!copy.add(Objects.requireNonNull(id))) {
                 throw new IllegalArgumentException("Duplicate research station");
@@ -201,7 +201,7 @@ public final class TeamResearchQueue {
         }
         var demand = stage.resourceDemandForLevel(head.key().targetLevel());
         var ceiling = new Object2LongOpenHashMap<>(progress);
-        var grants = new Object2LongOpenHashMap<NetworkResourceType>();
+        var grants = new Object2LongOpenHashMap<NetworkResourceType>(demand.size());
         boolean complete = true;
         for (var entry : demand.object2LongEntrySet()) {
             var type = entry.getKey();
@@ -304,8 +304,8 @@ public final class TeamResearchQueue {
         if (!teamId.equals(saved.teamId())) {
             throw new IllegalArgumentException("Research queue team differs from snapshot");
         }
-        var ids = new LongOpenHashSet();
-        var targets = new ObjectOpenHashSet<Target>();
+        var ids = new LongOpenHashSet(saved.entries().size());
+        var targets = new ObjectOpenHashSet<Target>(saved.entries().size());
         for (var entry : saved.entries()) {
             var key = entry.key();
             var definition = registry.require(key.researchId());

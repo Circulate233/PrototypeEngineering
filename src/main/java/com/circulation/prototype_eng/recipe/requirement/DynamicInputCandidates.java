@@ -11,6 +11,7 @@ import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.nbt.NBTTagString;
+import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.ByteArrayOutputStream;
@@ -28,7 +29,7 @@ import java.util.Objects;
  * Stable dynamic alternatives from all available source keys, without storage or world access.
  */
 public final class DynamicInputCandidates {
-    private static final Comparator<String> RESOURCE_ID_ORDER = Comparator.nullsFirst(Comparator.naturalOrder());
+    private static final Comparator<ResourceLocation> RESOURCE_ID_ORDER = Comparator.nullsFirst(Comparator.naturalOrder());
 
     private DynamicInputCandidates() {
     }
@@ -51,8 +52,8 @@ public final class DynamicInputCandidates {
         var ordered = new ObjectArrayList<StableKey>(matches.size());
         for (var key : matches) {
             var resourceId = key.getId();
-            ordered.add(new StableKey(key, key.getType().getId().toString(),
-                resourceId == null ? null : resourceId.toString(), canonical(key.toTag())));
+            ordered.add(new StableKey(key, key.getType().getId(),
+                resourceId, canonical(key.toTag())));
         }
         ordered.sort(DynamicInputCandidates::compare);
         for (int index = 1; index < ordered.size(); index++) {
@@ -212,8 +213,8 @@ public final class DynamicInputCandidates {
                 if (!budget.take()) {
                     return false;
                 }
-                matches.add(new StableKey(key, key.getType().getId().toString(),
-                    resourceId == null ? null : resourceId.toString(), encoding == null ? new byte[0] : encoding.result()));
+                matches.add(new StableKey(key, key.getType().getId(),
+                    resourceId, encoding == null ? new byte[0] : encoding.result()));
                 encoding = null;
                 encodingKey = null;
             }
@@ -287,7 +288,7 @@ public final class DynamicInputCandidates {
     private static class KeyComparison implements PureMergeSort.Comparison {
         private final StableKey first;
         private final StableKey second;
-        private PureMergeSort.StringComparison text;
+        private int textIndex;
         private int phase;
         private int cursor;
         private int result;
@@ -295,26 +296,37 @@ public final class DynamicInputCandidates {
         private KeyComparison(StableKey first, StableKey second) {
             this.first = first;
             this.second = second;
-            text = new PureMergeSort.StringComparison(first.typeId(), second.typeId());
         }
 
         @Override
         public boolean advance(RecipeWorkBudget budget) {
-            while (phase < 2) {
-                if (!text.advance(budget)) {
-                    return false;
+            while (phase < 4) {
+                var firstId = phase < 2 ? first.typeId() : first.resourceId();
+                var secondId = phase < 2 ? second.typeId() : second.resourceId();
+                if (firstId == null || secondId == null) {
+                    result = firstId == null && secondId == null ? 0 : firstId == null ? -1 : 1;
+                } else {
+                    String left = (phase & 1) == 0 ? firstId.getNamespace() : firstId.getPath();
+                    String right = (phase & 1) == 0 ? secondId.getNamespace() : secondId.getPath();
+                    while (textIndex < left.length() && textIndex < right.length()) {
+                        if (!budget.take()) return false;
+                        result = left.charAt(textIndex) - right.charAt(textIndex);
+                        textIndex++;
+                        if (result != 0) {
+                            phase = 5;
+                            return true;
+                        }
+                    }
+                    result = left.length() - right.length();
                 }
-                result = text.result();
                 if (result != 0) {
-                    phase = 3;
+                    phase = 5;
                     return true;
                 }
                 phase++;
-                if (phase == 1) {
-                    text = new PureMergeSort.StringComparison(first.resourceId(), second.resourceId());
-                }
+                textIndex = 0;
             }
-            if (phase == 3) {
+            if (phase == 5) {
                 return true;
             }
             while (cursor < first.tag().length && cursor < second.tag().length) {
@@ -324,12 +336,12 @@ public final class DynamicInputCandidates {
                 result = Byte.toUnsignedInt(first.tag()[cursor]) - Byte.toUnsignedInt(second.tag()[cursor]);
                 cursor++;
                 if (result != 0) {
-                    phase = 3;
+                    phase = 5;
                     return true;
                 }
             }
             result = first.tag().length - second.tag().length;
-            phase = 3;
+            phase = 5;
             return true;
         }
 
@@ -339,6 +351,6 @@ public final class DynamicInputCandidates {
         }
     }
 
-    private record StableKey(AEKey key, String typeId, @Nullable String resourceId, byte[] tag) {
+    private record StableKey(AEKey key, ResourceLocation typeId, @Nullable ResourceLocation resourceId, byte[] tag) {
     }
 }

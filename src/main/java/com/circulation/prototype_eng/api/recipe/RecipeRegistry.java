@@ -116,7 +116,7 @@ public final class RecipeRegistry {
             throw new IllegalStateException("Recipe registry already frozen");
         }
         var users = new Object2ObjectLinkedOpenHashMap<ResourceLocation, ObjectArrayList<MachineType>>();
-        var machineIds = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>();
+        var machineIds = new Object2ObjectLinkedOpenHashMap<ResourceLocation, MachineType>(machines.size());
         for (var machine : Objects.requireNonNull(machines, "machine declarations")) {
             Objects.requireNonNull(machine, "machine declaration");
             if (machineIds.putIfAbsent(machine.id(), machine) != null) {
@@ -129,7 +129,7 @@ public final class RecipeRegistry {
                 users.computeIfAbsent(poolId, _ -> new ObjectArrayList<>()).add(machine);
             }
         }
-        var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
+        var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(registrations.size());
         for (var entry : registrations.object2ObjectEntrySet()) {
             var registration = entry.getValue();
             var recipes = ObjectLists.unmodifiable(new ObjectArrayList<>(registration.recipes.values()));
@@ -144,7 +144,7 @@ public final class RecipeRegistry {
             pools.put(entry.getKey(), pool);
         }
         var ordered = new ObjectArrayList<>(pools.values());
-        ordered.sort(Comparator.comparing(pool -> pool.id().toString()));
+        ordered.sort(Comparator.comparing(RecipePool::id));
         var frozenPools = ObjectLists.unmodifiable(ordered);
         var catalog = new RecipeCatalog(frozenPools);
         var revisions = new Reference2ObjectOpenHashMap<MachineRecipe, String>();
@@ -213,7 +213,7 @@ public final class RecipeRegistry {
         var publisher = publication;
         if (!isCurrent(expected)) throw new IllegalArgumentException("Foreign or stale recipe snapshot");
         if (publisher != null && !publisher.live()) throw new IllegalStateException("Recipe publication is closed");
-        var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Definition>();
+        var definitions = new Object2ObjectLinkedOpenHashMap<ResourceLocation, Definition>(replacements.size());
         var revisions = new Reference2ObjectOpenHashMap<>(expected.revisions);
         var history = new Object2ObjectLinkedOpenHashMap<>(expected.history);
         for (var definition : Objects.requireNonNull(replacements, "replacements")) {
@@ -225,8 +225,8 @@ public final class RecipeRegistry {
             addRevision(revisions, history, recipe, definition.revision());
         }
         if (definitions.isEmpty()) throw new IllegalArgumentException("A replacement batch must not be empty");
-        var bindings = new ObjectArrayList<RecipeProcessNbt>();
-        var supplied = new Reference2ObjectOpenHashMap<MachineRecipe, RecipeProcessNbt>();
+        var bindings = new ObjectArrayList<RecipeProcessNbt>(codecs.size());
+        var supplied = new Reference2ObjectOpenHashMap<MachineRecipe, RecipeProcessNbt>(codecs.size());
         for (var codec : Objects.requireNonNull(codecs, "replacement codecs")) {
             Objects.requireNonNull(codec, "replacement codec");
             var definition = definitions.get(codec.recipe().id());
@@ -251,7 +251,7 @@ public final class RecipeRegistry {
             // The expected resolver is retained even when this batch adds no codec.
             codecPreparation = processCodecs.prepare(currentCodecs, bindings);
         }
-        var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>();
+        var pools = new Object2ObjectLinkedOpenHashMap<ResourceLocation, RecipePool>(expected.orderedPools.size());
         for (var old : expected.orderedPools) {
             boolean changed = false;
             var recipes = new ObjectArrayList<MachineRecipe>(old.recipes().size());

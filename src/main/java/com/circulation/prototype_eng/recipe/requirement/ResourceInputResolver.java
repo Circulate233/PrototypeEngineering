@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
@@ -36,8 +38,8 @@ final class ResourceInputResolver {
         var pending = new ObjectArrayList<Choice>();
         var inputs = new ObjectArrayList<>(requirement.payload().inputs());
         var selected = new Selection(inputs, locks, pending);
-        var seen = new ReferenceOpenHashSet<StorageContext>();
-        var available = new AEKey2LongMap.LinkdOpenHashMap();
+        var seen = new ReferenceOpenHashSet<StorageContext>(hatches.size());
+        var available = new AEKeyLinkedOpenHashMap(6);
         for (var hatch : hatches) {
             if (!hatch.isValid()) {
                 continue;
@@ -129,7 +131,7 @@ final class ResourceInputResolver {
         private final long times;
         private final AEKey2LongMap available;
         private final AEKey2LongMap fixed;
-        private final AEKey2LongMap planned = new AEKey2LongMap.LinkdOpenHashMap();
+        private final AEKey2LongMap planned = new AEKeyLinkedOpenHashMap(6);
         private final List<List<AEKey>> dynamic;
         private final Selection selection;
         private final RequirementPath path;

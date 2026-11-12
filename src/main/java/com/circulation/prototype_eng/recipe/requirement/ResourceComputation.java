@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.recipe.requirement;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
@@ -36,12 +38,12 @@ class ResourceComputation implements RecipePureComputation {
     private final List<AEKey2LongMap> sourceAmounts;
     private final int hatchCount;
     private final RecipeProcess.Tick tick;
-    private final AEKey2LongMap available = new AEKey2LongMap.LinkdOpenHashMap();
-    private final AEKey2LongMap consumed = new AEKey2LongMap.LinkdOpenHashMap();
-    private final AEKey2LongMap produced = new AEKey2LongMap.LinkdOpenHashMap();
-    private final AEKey2LongMap checkedInputs = new AEKey2LongMap.LinkdOpenHashMap();
-    private final AEKey2LongMap checkedOutputs = new AEKey2LongMap.LinkdOpenHashMap();
-    private final AEKey2LongMap randomOutputs = new AEKey2LongMap.LinkdOpenHashMap();
+    private final AEKey2LongMap available = new AEKeyLinkedOpenHashMap(6);
+    private final AEKey2LongMap consumed = new AEKeyLinkedOpenHashMap(6);
+    private final AEKey2LongMap produced = new AEKeyLinkedOpenHashMap(6);
+    private final AEKey2LongMap checkedInputs = new AEKeyLinkedOpenHashMap(6);
+    private final AEKey2LongMap checkedOutputs = new AEKeyLinkedOpenHashMap(6);
+    private final AEKey2LongMap randomOutputs = new AEKeyLinkedOpenHashMap(6);
     private final ObjectArrayList<List<AEKey>> dynamic = new ObjectArrayList<>();
     @Nullable
     private BinomialSampler.Cursor chanceDraw;

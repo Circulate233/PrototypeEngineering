@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 排序与集合容量：ResourceLocation直接参与排序，清单校验及同步/预算化要求排序一致；动态候选复用namespace/path字符游标。全仓构造清单含1758正式源码入口，360余处按来源数量、槽数、解码长度或常见6项预分配；31个有序AE数量表改用可指定容量、实现AEKey2LongMap的fastutil实现。独立提交源码完整1961测试通过；包含并发功能的工作树1976项有4项失败，撤去本轮改动对照全部复现。修改Java本机IDEA全级检查及MCP构建、定向Spotless通过；原暂存及并发功能保留。入口[分配规则](allocation-performance.md)、[实施进度](implementation-status.md)，证据collection-capacity/；未启动游戏/开子代理/推送。
+
 - 2026-11-12 枚举缓存完成：22个重复读取的本库枚举公开 VALUES，序号解码/遍历及示例统一复用；外部优先原生缓存，无公共缓存的4类集中到 ExternalEnumValues。必须复用 VALUES，禁止修改共享数组。57Java本机IDEA全级零、MCP指定文件build、编译及独立改动Spotless通过，run示例javac通过。全量24项失败在撤去本轮改动的隔离对照中全部复现，详见[实施进度](implementation-status.md)及 enum-values/test-comparison.json；最新MCP构建受另一对话尚缺的 MePatternAssemblyBlockEntity 阻塞；并发新样板容器的3处枚举调用待该组源码完成后复查；并发仓室内容与用户暂存保留，未启动游戏/推送。
 
 - 2026-11-12 [Java/ZS API 文档](../api.md)与[ZS 使用参考](../api-zs-reference.md)保留在仓库根目录，按用户提供的 AE2S 示例改写为功能说明、参数解释和使用示例，Java/ZS各分调用与扩展部分。文中3段Java、7段ZS均通过实际编译器，两文档本机IDEA全级零；示例脚本未执行。22个API文档链接及代码围栏检查通过；文档已本地提交`2877f19`供用户核对，后补研究builder参数和资源包操作说明；记录见[实施进度](implementation-status.md)。

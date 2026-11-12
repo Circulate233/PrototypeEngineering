@@ -46,7 +46,7 @@ public final class ResearchItemDownloadRegistry {
         if (!Objects.requireNonNull(research, "Research registry").isFrozen()) {
             throw new IllegalStateException("Research must freeze before item download events");
         }
-        var events = new Object2ObjectOpenHashMap<AEItemKey, ResearchItemDownloadEvent>();
+        var events = new Object2ObjectOpenHashMap<AEItemKey, ResearchItemDownloadEvent>(registrations.size());
         for (var entry : registrations.object2ObjectEntrySet()) {
             events.put(DownloadValidation.key(entry.getKey().toStack()), entry.getValue());
         }

@@ -73,7 +73,7 @@ public final class ResearchDiskCommitNbt {
     private static NBTTagList encodeLevels(Object2IntMap<ResourceLocation> levels) {
         var list = new NBTTagList();
         var ids = new ObjectArrayList<>(levels.keySet());
-        ids.sort(Comparator.comparing(ResourceLocation::toString));
+        ids.sort(Comparator.naturalOrder());
         for (var id : ids) {
             var entry = new NBTTagCompound();
             entry.setString("Id", id.toString());
@@ -85,7 +85,7 @@ public final class ResearchDiskCommitNbt {
 
     private static Object2IntMap<ResourceLocation> decodeLevels(NBTTagCompound tag, String key) {
         var list = StrictNbt.requireList(tag, key, Constants.NBT.TAG_COMPOUND);
-        var result = new Object2IntOpenHashMap<ResourceLocation>();
+        var result = new Object2IntOpenHashMap<ResourceLocation>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "Id", "Level");

@@ -54,7 +54,7 @@ final class RecipeOverlayNbt implements NbtCodec<List<RecipeOverlays.LayerSnapsh
     public List<RecipeOverlays.LayerSnapshot<?, ?>> decode(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Layers");
         var list = StrictNbt.requireList(tag, "Layers", Constants.NBT.TAG_COMPOUND);
-        var layers = new ObjectArrayList<RecipeOverlays.LayerSnapshot<?, ?>>();
+        var layers = new ObjectArrayList<RecipeOverlays.LayerSnapshot<?, ?>>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
             StrictNbt.requireKeys(entry, "Path", "Layer", "Order", "Type", "Data");

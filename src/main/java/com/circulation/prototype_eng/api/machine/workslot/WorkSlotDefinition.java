@@ -19,7 +19,7 @@ public record WorkSlotDefinition(String name, Set<ResourceLocation> allowedRecip
         }
         Objects.requireNonNull(allowedRecipeGroups, "allowedRecipeGroups");
         Objects.requireNonNull(restartPolicy, "restartPolicy");
-        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>();
+        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>(allowedRecipeGroups.size());
         for (var group : allowedRecipeGroups) {
             groups.add(Objects.requireNonNull(group, "recipe group"));
         }

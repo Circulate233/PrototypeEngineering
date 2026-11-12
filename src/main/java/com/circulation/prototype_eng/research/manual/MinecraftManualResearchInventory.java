@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.research.manual;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
@@ -286,7 +288,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         if (quantities.isEmpty()) {
             throw new IllegalArgumentException("Manual material quantities must not be empty");
         }
-        var remaining = new AEKey2LongMap.LinkdOpenHashMap();
+        var remaining = new AEKeyLinkedOpenHashMap(quantities.size());
         for (var entry : quantities.object2LongEntrySet()) {
             if (!(entry.getKey() instanceof AEItemKey) || entry.getLongValue() <= 0) {
                 throw new IllegalArgumentException("Manual materials require positive AEItemKey quantities");
@@ -388,7 +390,7 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
         if (list.tagCount() > MAX_RECEIPTS) {
             throw new IllegalArgumentException("Too many saved material receipts");
         }
-        var sessions = new ObjectOpenHashSet<UUID>();
+        var sessions = new ObjectOpenHashSet<UUID>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var receipt = ManualResearchMaterialReceiptNbt.decode(list.getCompoundTagAt(index));
             requirePlayer(receipt);

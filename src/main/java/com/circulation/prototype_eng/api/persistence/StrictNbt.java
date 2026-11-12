@@ -22,7 +22,7 @@ public final class StrictNbt {
     public static void requireKeys(NBTTagCompound tag, String... allowed) {
         Objects.requireNonNull(tag, "tag");
         Objects.requireNonNull(allowed, "allowed");
-        var keys = new ObjectOpenHashSet<String>();
+        var keys = new ObjectOpenHashSet<String>(allowed.length);
         for (var key : allowed) {
             keys.add(Objects.requireNonNull(key, "allowed key"));
         }

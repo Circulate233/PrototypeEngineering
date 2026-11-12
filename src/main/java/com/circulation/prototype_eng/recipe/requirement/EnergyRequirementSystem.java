@@ -52,7 +52,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
         int parallelism = batched ? 1 : RecipeParallelism.effective(process);
         input = RecipeParallelism.scaleCount(input, parallelism);
         output = RecipeParallelism.scaleCount(output, parallelism);
-        var reservations = new ObjectArrayList<ResourceReservation>();
+        var reservations = new ObjectArrayList<ResourceReservation>(6);
         try {
             var hatches = process.hatches();
             String id = requirement.id().toString();
@@ -210,7 +210,7 @@ public final class EnergyRequirementSystem implements RecipeRequirementSystem<En
 
             @Override
             public RequirementTransaction acquire() {
-                var reservations = new ObjectArrayList<ResourceReservation>();
+                var reservations = new ObjectArrayList<ResourceReservation>(6);
                 var budget = process.preparationBudget();
                 if (!parallelCapture.current())
                     return ReservedRequirement.frozen(RecipeText.StorageChanged.blocked(), reservations);

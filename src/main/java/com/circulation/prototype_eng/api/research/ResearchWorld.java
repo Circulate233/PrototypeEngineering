@@ -154,7 +154,7 @@ public final class ResearchWorld {
                 return null;
             }
         }
-        var memberships = new Object2ObjectOpenHashMap<String, ObjectSet<UUID>>();
+        var memberships = new Object2ObjectOpenHashMap<String, ObjectSet<UUID>>(captures.size());
         for (var entry : captures.entrySet()) {
             var resolution = Objects.requireNonNull(entry.getValue());
             if (!resolution.ownerId().equals(entry.getKey())) {
@@ -322,7 +322,7 @@ public final class ResearchWorld {
             var team = teamId == null ? null : teams.get(teamId);
             if (team != null && (team.queue.busy() || team.research.busy() || team.manual.checkpointPending()))
                 return null;
-            var memberSources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+            var memberSources = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>((membership.accepted() ? membership.members().size() : 0));
             if (membership.accepted()) {
                 for (var member : membership.members()) {
                     var source = players.get(member);
@@ -450,8 +450,8 @@ public final class ResearchWorld {
         executing = true;
         try {
             if (!current.getAsBoolean()) return null;
-            var sources = new ObjectArrayList<CloudSource>();
-            var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+            var sources = new ObjectArrayList<CloudSource>(membership.members().size());
+            var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>(membership.members().size());
             for (var member : membership.members()) {
                 var source = players.get(member);
                 if (source != null && source.busy()) return null;
@@ -527,13 +527,13 @@ public final class ResearchWorld {
             if (!players.isEmpty() || !teams.isEmpty()) {
                 throw new IllegalStateException("Research world has already been initialized");
             }
-            var restoredPlayers = new Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState>();
+            var restoredPlayers = new Object2ObjectLinkedOpenHashMap<UUID, PlayerResearchState>(saved.players().size());
             for (var snapshot : saved.players()) {
                 var state = new PlayerResearchState(snapshot.playerUuid());
                 state.restore(snapshot);
                 restoredPlayers.put(snapshot.playerUuid(), state);
             }
-            var restoredTeams = new Object2ObjectLinkedOpenHashMap<String, TeamProgress>();
+            var restoredTeams = new Object2ObjectLinkedOpenHashMap<String, TeamProgress>(saved.teams().size());
             for (var snapshot : saved.teams()) {
                 var team = new TeamProgress(snapshot.teamId(), TeamResearchQueue.restore(registry, resources, snapshot.queue()), restoredPlayers);
                 team.research.restore(snapshot.research());
@@ -1290,7 +1290,7 @@ public final class ResearchWorld {
             if (team.queue.busy() || team.research.busy() || membersBusy(team.knownMembers)) {
                 return new TeamResearchStart.Result(TeamResearchStart.Status.QUEUE_BUSY, null, null);
             }
-            var capturedSources = new ObjectArrayList<PlayerResearchState.Snapshot>();
+            var capturedSources = new ObjectArrayList<PlayerResearchState.Snapshot>(team.knownMembers.size());
             for (var member : team.knownMembers) {
                 capturedSources.add(players.get(member).snapshot());
             }
@@ -1757,7 +1757,7 @@ public final class ResearchWorld {
     }
 
     private TeamResearchView structural(TeamProgress team, boolean disappeared) {
-        var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
+        var members = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>(team.knownMembers.size());
         for (var id : team.knownMembers) {
             members.put(id, Objects.requireNonNull(players.get(id)));
         }
@@ -1854,7 +1854,7 @@ public final class ResearchWorld {
     }
 
     private ResearchWorldSnapshot snapshotState(@Nullable PlayerResearchState.RewardSession reward) {
-        var playerSnapshots = new ObjectArrayList<PlayerResearchState.Snapshot>();
+        var playerSnapshots = new ObjectArrayList<PlayerResearchState.Snapshot>(players.size());
         for (var player : players.values()) {
             if (activePlayerLevel != null && activePlayerLevel.owns(player)) {
                 playerSnapshots.add(activePlayerLevel.snapshot());
@@ -1873,7 +1873,7 @@ public final class ResearchWorld {
             }
             playerSnapshots.add(player.snapshot());
         }
-        var teamSnapshots = new ObjectArrayList<ResearchWorldSnapshot.Team>();
+        var teamSnapshots = new ObjectArrayList<ResearchWorldSnapshot.Team>(teams.size());
         for (var team : teams.values()) {
             boolean changedLevel = activeTeamLevel != null && activeTeamLevel.owns(team.research);
             boolean downloaded = activeDownload != null && activeDownload.owns(team.research);

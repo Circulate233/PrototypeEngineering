@@ -33,7 +33,7 @@ public record ResearchDownloadReceipt(UUID operationId, ResearchDownloadOperatio
             throw new IllegalArgumentException("Aborted download has output effects");
         if (outcome == Outcome.COMPLETED) {
             var parent = new DownloadOutputKey(intent.playerId(), operationId);
-            var ids = new ObjectOpenHashSet<UUID>();
+            var ids = new ObjectOpenHashSet<UUID>(fragments.size());
             long remaining = amount;
             for (var fragment : fragments) {
                 if (fragment.status() != ItemDeliveryFragment.Status.CONFIRMED || !parent.equals(fragment.parent())

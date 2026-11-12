@@ -70,8 +70,8 @@ public final class ResearchStations {
             throw new IllegalArgumentException("A material segment requires physical stations");
         }
         int dimension = saved.getFirst().location().dimension();
-        var ids = new ObjectLinkedOpenHashSet<UUID>();
-        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>();
+        var ids = new ObjectLinkedOpenHashSet<UUID>(saved.size());
+        var locations = new ObjectLinkedOpenHashSet<MachineIdentity>(saved.size());
         for (var site : saved) {
             if (!ids.add(site.identity().machineId()) || !locations.add(site.location()) || site.location().dimension() != dimension) {
                 throw new IllegalArgumentException("Saved stations must be distinct and in one dimension");

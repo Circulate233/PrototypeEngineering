@@ -42,8 +42,8 @@ public final class MachineControllerBlocks {
                 throw new IllegalArgumentException("Controller factory has no machine declaration: " + type);
             }
         }
-        var generated = new ObjectArrayList<MachineControllerBlock<?>>();
-        var names = new ObjectOpenHashSet<ResourceLocation>();
+        var generated = new ObjectArrayList<MachineControllerBlock<?>>(registry.types().size());
+        var names = new ObjectOpenHashSet<ResourceLocation>(registry.types().size());
         for (var type : registry.types()) {
             var factory = factories.get(type.id());
             var block = factory == null ? new BasicMachineControllerBlock(type)
@@ -64,7 +64,7 @@ public final class MachineControllerBlocks {
 
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
-        var generated = new ObjectArrayList<Item>();
+        var generated = new ObjectArrayList<Item>(blocks.size());
         for (var block : blocks) {
             var item = Objects.requireNonNull(block.createItem(), "Controller item factory returned null");
             if (item.getBlock() != block) {

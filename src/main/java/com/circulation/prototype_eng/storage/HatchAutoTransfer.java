@@ -1,11 +1,12 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.AECapabilities;
 import ae2.api.config.Actionable;
 import ae2.api.networking.security.IActionSource;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEKey;
-import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import ae2.api.stacks.KeyCounter;
@@ -142,7 +143,7 @@ public final class HatchAutoTransfer {
 
     private static List<StorageContext> peerContexts(@Nullable TileEntity neighbor, EnumFacing face,
                                                     @Nullable ResourceHatch resource) {
-        var contexts = new ObjectArrayList<StorageContext>();
+        var contexts = new ObjectArrayList<StorageContext>(4);
         if (resource != null) {
             var input = resource.input();
             var output = resource.output();
@@ -166,7 +167,7 @@ public final class HatchAutoTransfer {
             inputOrder = nextInputOrder;
             outputOrder = nextOutputOrder;
         }
-        var contexts = new ObjectArrayList<StorageContext>();
+        var contexts = new ObjectArrayList<StorageContext>(4);
         if (hatch.input() != null) addContext(contexts, hatch.input().context());
         if (hatch.output() != null) addContext(contexts, hatch.output().context());
         if (!includePeer(contexts, peer.contexts()) || !tryLocks(contexts)) return;
@@ -241,7 +242,7 @@ public final class HatchAutoTransfer {
         if (enumeratedThisTick || tick < source.nextEnumeration) return;
         var reported = KeyCounter.checked();
         storage.getAvailableStacks(reported);
-        var fresh = new AEKey2LongMap.LinkdOpenHashMap();
+        var fresh = new AEKeyLinkedOpenHashMap(reported.size());
         reported.forEach((key, amount) -> {
             if (amount > 0) fresh.addTo(key, amount);
         });
@@ -295,7 +296,7 @@ public final class HatchAutoTransfer {
 
     static void energy(@Nullable EnergyBuffer input, @Nullable EnergyBuffer output, IEnergyStorage remote,
                        List<StorageContext> peerContexts, boolean inputEnabled, boolean outputEnabled, BooleanSupplier current) {
-        var contexts = new ObjectArrayList<StorageContext>();
+        var contexts = new ObjectArrayList<StorageContext>(4);
         if (input != null) addContext(contexts, input.context());
         if (output != null) addContext(contexts, output.context());
         if (!includePeer(contexts, peerContexts) || !tryLocks(contexts)) return;
@@ -388,7 +389,7 @@ public final class HatchAutoTransfer {
     }
 
     private static final class SourceCursor {
-        private final AEKey2LongMap.LinkdOpenHashMap queued = new AEKey2LongMap.LinkdOpenHashMap();
+        private final AEKeyLinkedOpenHashMap queued = new AEKeyLinkedOpenHashMap(6);
         private int slot;
         private long nextEnumeration;
     }

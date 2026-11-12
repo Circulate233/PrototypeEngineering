@@ -62,7 +62,7 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
 
     public static Object2LongMap<ManualMaterialKey> decodeWork(NBTTagList list) {
         StrictNbt.requireListElements(list, Constants.NBT.TAG_COMPOUND);
-        var amounts = new Object2LongOpenHashMap<ManualMaterialKey>();
+        var amounts = new Object2LongOpenHashMap<ManualMaterialKey>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var tag = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(tag, "Requirement", "Input", "Amount");
@@ -92,7 +92,7 @@ public final class ManualResearchSessionNbt implements NbtCodec<ManualResearchSe
     private static ManualResearchSession.CompletionIntent decodeCompletion(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "WorldTime", "Baselines");
         var saved = StrictNbt.requireList(tag, "Baselines", Constants.NBT.TAG_COMPOUND);
-        var baselines = new Object2IntOpenHashMap<UUID>();
+        var baselines = new Object2IntOpenHashMap<UUID>(saved.tagCount());
         for (int index = 0; index < saved.tagCount(); index++) {
             var baseline = saved.getCompoundTagAt(index);
             StrictNbt.requireKeys(baseline, "Player", "Level");

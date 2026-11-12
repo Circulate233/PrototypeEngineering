@@ -26,7 +26,7 @@ public final class WeightedSampling {
         if (count <= 0) {
             return ObjectLists.emptyList();
         }
-        var pool = new ObjectArrayList<Weighted<T>>();
+        var pool = new ObjectArrayList<Weighted<T>>(candidates.size());
         long total = 0;
         for (var candidate : candidates) {
             Objects.requireNonNull(candidate, "candidate");

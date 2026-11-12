@@ -74,7 +74,7 @@ public final class SelectiveRequirementSystem implements RecipeRequirementSystem
     }
 
     private static CapturedTransaction capture(RequirementTransaction child) {
-        var reservations = new ObjectArrayList<ResourceReservation>();
+        var reservations = new ObjectArrayList<ResourceReservation>(6);
         try {
             reservations.addAll(Objects.requireNonNull(child.reservations(), "selected child reservations"));
             var result = Objects.requireNonNull(child.result(), "selected child result");

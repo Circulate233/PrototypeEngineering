@@ -57,7 +57,7 @@ public final class ResearchResourceFormula {
         if (stageFirstLevel < 1 || level < stageFirstLevel) {
             throw new IllegalArgumentException("Research formula level precedes its positive stage start");
         }
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        var result = new Object2LongOpenHashMap<NetworkResourceType>(baseDemands.size());
         long offset = (long) level - stageFirstLevel;
         for (var entry : baseDemands.object2LongEntrySet()) {
             result.put(entry.getKey(), exact(entry.getKey(), entry.getLongValue(), demandSlopes.getLong(entry.getKey()), offset));

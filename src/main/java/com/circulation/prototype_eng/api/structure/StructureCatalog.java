@@ -22,7 +22,7 @@ public final class StructureCatalog {
     private final Reference2ObjectOpenHashMap<MachineStructure, MachineStructure[]> transformed = new Reference2ObjectOpenHashMap<>();
 
     public StructureCatalog(Collection<StructureDefinition> definitions) {
-        var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureDefinition>();
+        var copy = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureDefinition>(definitions.size());
         for (var definition : definitions) {
             Objects.requireNonNull(definition);
             var id = Objects.requireNonNull(definition.id());

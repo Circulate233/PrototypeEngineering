@@ -8,6 +8,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -59,14 +60,14 @@ public final class MachineRecipe {
         if (maxConcurrentThreads < 1) throw new IllegalArgumentException("Recipe thread limit must be positive");
         this.maxConcurrentThreads = maxConcurrentThreads;
         this.parallelismSelection = Objects.requireNonNull(parallelismSelection);
-        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>();
+        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>(recipeGroups.size());
         for (var group : recipeGroups) {
             groups.add(Objects.requireNonNull(group));
         }
         this.recipeGroups = ObjectSets.unmodifiable(groups);
-        var typesById = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>();
-        var requirementIds = new ObjectOpenHashSet<ResourceLocation>();
-        var sorted = new ObjectArrayList<RecipeRequirement<?>>();
+        var typesById = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>(requirements.size());
+        var requirementIds = new ObjectOpenHashSet<ResourceLocation>(requirements.size());
+        var sorted = new ObjectArrayList<RecipeRequirement<?>>(requirements.size());
         for (var requirement : requirements) {
             Objects.requireNonNull(requirement);
             var previousType = typesById.putIfAbsent(requirement.type().id(), requirement.type());
@@ -78,14 +79,13 @@ public final class MachineRecipe {
             }
             sorted.add(requirement);
         }
-        // Stable sort keeps declaration order inside each type, as in PM's executeStage.
-        sorted.sort(Comparator.comparing(requirement -> requirement.type().id().toString()));
+        sorted.sort(Comparator.comparing(requirement -> requirement.type().id()));
         orderedRequirements = ObjectLists.unmodifiable(sorted);
-        var grouped = new Object2ObjectLinkedOpenHashMap<RecipeRequirementType<?>, List<RecipeRequirement<?>>>();
+        var grouped = new Object2ObjectLinkedOpenHashMap<RecipeRequirementType<?>, ObjectList<RecipeRequirement<?>>>(typesById.size());
         for (var requirement : sorted) {
-            grouped.computeIfAbsent(requirement.type(), ignored -> new ObjectArrayList<>()).add(requirement);
+            grouped.computeIfAbsent(requirement.type(), ignored -> new ObjectArrayList<>(6)).add(requirement);
         }
-        grouped.replaceAll((_, list) -> ObjectLists.unmodifiable(new ObjectArrayList<>(list)));
+        grouped.replaceAll((_, list) -> ObjectLists.unmodifiable(list));
         this.requirements = Object2ObjectMaps.unmodifiable(grouped);
     }
 

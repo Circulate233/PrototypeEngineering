@@ -105,8 +105,8 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         StrictNbt.requireKeys(key, "Research", "Level", "EntryId");
         var queueKey = new TeamResearchQueue.Key(StrictNbt.requireId(key, "Research"), StrictNbt.requireInt(key, "Level"),
             StrictNbt.requireLong(key, "EntryId"));
-        var sites = new ObjectArrayList<ResearchStations.Site>();
         var savedSites = StrictNbt.requireList(segment, "Sites", Constants.NBT.TAG_COMPOUND);
+        var sites = new ObjectArrayList<ResearchStations.Site>(savedSites.tagCount());
         for (int index = 0; index < savedSites.tagCount(); index++) {
             var site = savedSites.getCompoundTagAt(index);
             StrictNbt.requireKeys(site, "Identity", "Location", "ControllerBlock");
@@ -158,22 +158,22 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
         if (StrictNbt.requireInt(tag, "Version") != 5) {
             throw new IllegalArgumentException("Unknown research world version");
         }
-        var playerList = new ObjectArrayList<PlayerResearchState.Snapshot>();
         var savedPlayers = StrictNbt.requireList(tag, "Players", Constants.NBT.TAG_COMPOUND);
+        var playerList = new ObjectArrayList<PlayerResearchState.Snapshot>(savedPlayers.tagCount());
         for (int index = 0; index < savedPlayers.tagCount(); index++) {
             playerList.add(players.decode(savedPlayers.getCompoundTagAt(index)));
         }
-        var teamList = new ObjectArrayList<ResearchWorldSnapshot.Team>();
         var savedTeams = StrictNbt.requireList(tag, "Teams", Constants.NBT.TAG_COMPOUND);
+        var teamList = new ObjectArrayList<ResearchWorldSnapshot.Team>(savedTeams.tagCount());
         for (int index = 0; index < savedTeams.tagCount(); index++) {
             teamList.add(decodeTeam(savedTeams.getCompoundTagAt(index)));
         }
-        var operationList = new ObjectArrayList<ResearchDownloadOperation>();
         var savedOperations = StrictNbt.requireList(tag, "Downloads", Constants.NBT.TAG_COMPOUND);
+        var operationList = new ObjectArrayList<ResearchDownloadOperation>(savedOperations.tagCount());
         for (int index = 0; index < savedOperations.tagCount(); index++)
             operationList.add(downloads.decodeOperation(savedOperations.getCompoundTagAt(index)));
-        var receiptList = new ObjectArrayList<ResearchDownloadReceipt>();
         var savedReceipts = StrictNbt.requireList(tag, "DownloadReceipts", Constants.NBT.TAG_COMPOUND);
+        var receiptList = new ObjectArrayList<ResearchDownloadReceipt>(savedReceipts.tagCount());
         for (int index = 0; index < savedReceipts.tagCount(); index++)
             receiptList.add(downloads.decodeReceipt(savedReceipts.getCompoundTagAt(index)));
         var diskList = new ObjectArrayList<ResearchDiskOperation>();

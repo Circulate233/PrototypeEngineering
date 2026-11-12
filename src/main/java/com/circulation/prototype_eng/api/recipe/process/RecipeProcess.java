@@ -185,13 +185,13 @@ public final class RecipeProcess {
         if (supplied == null) {
             return roots;
         }
-        supplied.sort(Comparator.comparing(root -> root.type().id().toString()));
+        supplied.sort(Comparator.comparing(root -> root.type().id()));
         return ObjectLists.unmodifiable(supplied);
     }
 
     private static List<RecipeRequirement<?>> canonicalRequirements(List<RecipeRequirement<?>> roots) {
-        var types = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>();
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        var types = new Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>>(roots.size());
+        var ids = new ObjectOpenHashSet<ResourceLocation>(roots.size());
         for (var root : roots) {
             Objects.requireNonNull(root, "Machine recipe requirement root");
             if (root != root.definition()) {
@@ -901,7 +901,7 @@ public final class RecipeProcess {
         private final ObjectArrayList<RecipeRequirement<?>> roots = new ObjectArrayList<>();
         private final Object2ObjectOpenHashMap<ResourceLocation, RecipeRequirementType<?>> types = new Object2ObjectOpenHashMap<>();
         private final ObjectOpenHashSet<ResourceLocation> ids = new ObjectOpenHashSet<>();
-        private final Object2ObjectRBTreeMap<String, ObjectArrayList<RecipeRequirement<?>>> orderedTypes = new Object2ObjectRBTreeMap<>();
+        private final Object2ObjectRBTreeMap<ResourceLocation, ObjectArrayList<RecipeRequirement<?>>> orderedTypes = new Object2ObjectRBTreeMap<>();
         private final ObjectArrayList<RecipeRequirement<?>> sorted = new ObjectArrayList<>();
         private int declaredCursor;
         private List<ComponentMap.SavedBinding<MachineInstance, ?>> assembly;
@@ -967,7 +967,7 @@ public final class RecipeProcess {
                     if (!ids.add(root.id()))
                         throw new IllegalArgumentException("Duplicate machine recipe requirement " + root.id());
                     if (provider)
-                        orderedTypes.computeIfAbsent(root.type().id().toString(), _ -> new ObjectArrayList<>()).add(root);
+                        orderedTypes.computeIfAbsent(root.type().id(), _ -> new ObjectArrayList<>()).add(root);
                 }
                 buckets = orderedTypes.values().iterator();
                 phase = 3;
@@ -1768,7 +1768,7 @@ public final class RecipeProcess {
                 throw new IllegalArgumentException("Recipe round is empty");
             }
             var unique = new ReferenceOpenHashSet<Stage>();
-            var reservations = new ObjectArrayList<ResourceReservation>();
+            var reservations = new ObjectArrayList<ResourceReservation>(6);
             var transactions = new ObjectArrayList<ReversibleTransaction>();
             for (var stage : round) {
                 stage.requireAcquired();

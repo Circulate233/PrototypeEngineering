@@ -49,7 +49,7 @@ public record ResearchDownloadOperation(UUID id, Intent intent, ResearchDownload
             if (fragments.isEmpty())
                 throw new IllegalArgumentException("Download delivery requires a complete output plan");
             var key = new DownloadOutputKey(intent.playerId(), id);
-            var seen = new ObjectOpenHashSet<UUID>();
+            var seen = new ObjectOpenHashSet<UUID>(fragments.size());
             long remaining = amount;
             for (var fragment : fragments) {
                 if (!fragment.parent().equals(key) || !seen.add(fragment.id()) || fragment.count() > remaining

@@ -137,7 +137,7 @@ final class MachineRecipeExecution implements PlannedExecution {
                     if (!forwardAllowed()) {
                         continue;
                     }
-                    var hosts = new ObjectArrayList<MachineWorkSlots>();
+                    var hosts = new ObjectArrayList<MachineWorkSlots>(entries.size());
                     boolean resumedWork = false;
                     for (var entry : entries) {
                         var handle = entry.handle;
@@ -249,7 +249,7 @@ final class MachineRecipeExecution implements PlannedExecution {
 
     private void advanceCursors() {
         var delegated = workerClaims;
-        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>();
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(entries.size());
         Throwable failure = null;
         try {
             for (var entry : entries) {
@@ -370,7 +370,7 @@ final class MachineRecipeExecution implements PlannedExecution {
 
     private boolean settlePolicyWork(PlannedDeadline cleanupDeadline) {
         var delegated = workerClaims;
-        var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>();
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.SourceJob<Boolean>>(entries.size());
         Throwable failure = null;
         try {
             for (var entry : entries) {
@@ -414,8 +414,8 @@ final class MachineRecipeExecution implements PlannedExecution {
      * No successor normal/work-slot callback runs while any exact scan handle still owns work.
      */
     private boolean settleScans(PlannedDeadline cleanupDeadline) {
-        var discoveries = new ObjectArrayList<ScanWork>();
-        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>();
+        var discoveries = new ObjectArrayList<ScanWork>(entries.size());
+        var jobs = new ObjectArrayList<PlannedTaskExecutor.Job<Boolean>>(entries.size());
         while (true) {
             boolean settled = true;
             for (var entry : entries) {

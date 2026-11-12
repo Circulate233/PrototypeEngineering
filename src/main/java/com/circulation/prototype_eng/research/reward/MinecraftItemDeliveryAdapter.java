@@ -218,7 +218,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     @Override
     public Scan scan(ObjectList<ItemDeliveryFragment> fragments) {
         requireOwner();
-        var expected = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>();
+        var expected = new Object2ObjectLinkedOpenHashMap<UUID, ItemDeliveryFragment>(fragments.size());
         for (var fragment : fragments) {
             validate(fragment);
             if (fragment.status() != ItemDeliveryFragment.Status.DELIVERING || expected.putIfAbsent(fragment.id(), fragment) != null) {

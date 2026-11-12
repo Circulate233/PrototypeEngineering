@@ -119,7 +119,7 @@ public record ZenStructurePredicate(StructurePredicate value) {
     public static ZenStructurePredicate nbt(IData expected) {
         var tag = NBTConverter.from(Objects.requireNonNull(expected));
         if (!(tag instanceof NBTTagCompound compound)) throw new IllegalArgumentException("Structure NBT requires a map");
-        var fields = new Object2ObjectLinkedOpenHashMap<String, String>();
+        var fields = new Object2ObjectLinkedOpenHashMap<String, String>(compound.getSize());
         for (var key : compound.getKeySet()) {
             var field = compound.getTag(key);
             fields.put(key, field instanceof NBTTagString string ? string.getString() : field.toString());

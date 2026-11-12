@@ -63,12 +63,12 @@ public final class RecipeDefinitionManifestCodec {
             var session = new UUID(input.readLong(), input.readLong());
             long generation = input.readLong();
             var key = new RecipeDeclarationKey(id(input), string(input));
-            var pools = new ObjectArrayList<RecipeDefinitionManifest.Pool>();
             int poolCount = count(input);
+            var pools = new ObjectArrayList<RecipeDefinitionManifest.Pool>(poolCount);
             for (int p = 0; p < poolCount; p++) {
                 var poolId = id(input);
-                var members = new ObjectArrayList<RecipeDefinitionRevision>();
                 int memberCount = count(input);
+                var members = new ObjectArrayList<RecipeDefinitionRevision>(memberCount);
                 for (int r = 0; r < memberCount; r++)
                     members.add(new RecipeDefinitionRevision(id(input), string(input)));
                 pools.add(new RecipeDefinitionManifest.Pool(poolId, members));

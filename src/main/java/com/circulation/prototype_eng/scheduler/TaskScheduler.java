@@ -627,13 +627,13 @@ public final class TaskScheduler implements AutoCloseable {
                 batch = pending;
                 pending = new ObjectArrayList<>();
             }
-            var main = new ObjectArrayList<Registration>();
+            var main = new ObjectArrayList<Registration>(registered.size());
             for (Registration registration : registered.values()) {
                 if (requireScheduledMode(registration.task) == ExecutionMode.MAIN_THREAD) {
                     main.add(registration);
                 }
             }
-            var executed = new ReferenceOpenHashSet<ScheduledTask>();
+            var executed = new ReferenceOpenHashSet<ScheduledTask>(batch.size());
             state = State.MAIN;
             for (Submission submission : batch) {
                 if (submission.mode == ExecutionMode.MAIN_THREAD) {
@@ -664,7 +664,7 @@ public final class TaskScheduler implements AutoCloseable {
             current.mainStart = 0;
             state = State.CAPTURING_CONCURRENT;
             prepare.run();
-            var concurrent = new ObjectArrayList<Snapshot>();
+            var concurrent = new ObjectArrayList<Snapshot>(registered.size());
             for (Registration registration : registered.values()) {
                 ScheduledTask task = registration.task;
                 ExecutionMode mode = requireScheduledMode(task);
@@ -1091,7 +1091,7 @@ public final class TaskScheduler implements AutoCloseable {
     }
 
     private boolean stopExecutors(Failures failures) {
-        var executors = new ObjectArrayList<ExecutorService>();
+        var executors = new ObjectArrayList<ExecutorService>(lanes == null ? 1 : lanes.length + 1);
         if (workers != null) {
             executors.add(workers);
         }

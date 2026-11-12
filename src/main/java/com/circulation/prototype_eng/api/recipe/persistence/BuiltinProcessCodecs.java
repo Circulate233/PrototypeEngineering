@@ -27,7 +27,7 @@ final class BuiltinProcessCodecs {
 
     static ProcessComponentCodec<RecipeOverlays> overlays(List<RecipeOverlayNbt.Binding<?, ?>> bindings) {
         var frozen = ObjectLists.unmodifiable(new ObjectArrayList<>(bindings));
-        var ids = new ObjectOpenHashSet<ResourceLocation>();
+        var ids = new ObjectOpenHashSet<ResourceLocation>(frozen.size());
         for (var binding : frozen) {
             if (!ids.add(binding.type().id())) {
                 throw new IllegalArgumentException("Duplicate overlay codec: " + binding.type().id());
@@ -69,7 +69,7 @@ final class BuiltinProcessCodecs {
             public void restore(RecipeProcess process, ResourceInputLocks component, NBTTagCompound data) {
                 StrictNbt.requireKeys(data, "Choices");
                 var list = StrictNbt.requireList(data, "Choices", Constants.NBT.TAG_COMPOUND);
-                var choices = new Object2ObjectLinkedOpenHashMap<ResourceInputLocks.Key, AEKey>();
+                var choices = new Object2ObjectLinkedOpenHashMap<ResourceInputLocks.Key, AEKey>(6);
                 for (int i = 0; i < list.tagCount(); i++) {
                     var entry = list.getCompoundTagAt(i);
                     StrictNbt.requireKeys(entry, "Path", "Stage", "Kind", "Group", "Key");
@@ -116,8 +116,8 @@ final class BuiltinProcessCodecs {
     }
 
     private static List<RequirementAttributeState.Reference> attributeReferences(NBTTagCompound data, String name) {
-        var result = new ObjectArrayList<RequirementAttributeState.Reference>();
         var list = StrictNbt.requireList(data, name, Constants.NBT.TAG_COMPOUND);
+        var result = new ObjectArrayList<RequirementAttributeState.Reference>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var tag = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(tag, "Path", "Attribute");
@@ -195,20 +195,20 @@ final class BuiltinProcessCodecs {
                 var index = new RecipeDefinitionIndex(process);
                 StrictNbt.requireKeys(data, "Selections", "AbortReceipts");
                 var list = StrictNbt.requireList(data, "Selections", Constants.NBT.TAG_COMPOUND);
-                var selections = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectiveState.SelectionSnapshot>();
+                var selections = new Object2ObjectLinkedOpenHashMap<RequirementPath, SelectiveState.SelectionSnapshot>(6);
                 for (int i = 0; i < list.tagCount(); i++) {
                     var entry = list.getCompoundTagAt(i);
                     StrictNbt.requireKeys(entry, "Path", "Index", "Committed", "Completed", "Modifiers", "Overlays");
-                    var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>();
                     var savedModifiers = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
+                    var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>(savedModifiers.tagCount());
                     for (int j = 0; j < savedModifiers.tagCount(); j++) {
                         var modifier = savedModifiers.getCompoundTagAt(j);
                         StrictNbt.requireKeys(modifier, "Attribute", "Id");
                         modifiers.add(new SelectiveState.ModifierReference(StrictNbt.requireId(modifier, "Attribute"),
                             StrictNbt.requireString(modifier, "Id")));
                     }
-                    var overlays = new ObjectArrayList<SelectiveState.OverlayReference>();
                     var savedOverlays = StrictNbt.requireList(entry, "Overlays", Constants.NBT.TAG_COMPOUND);
+                    var overlays = new ObjectArrayList<SelectiveState.OverlayReference>(savedOverlays.tagCount());
                     for (int j = 0; j < savedOverlays.tagCount(); j++) {
                         var overlay = savedOverlays.getCompoundTagAt(j);
                         StrictNbt.requireKeys(overlay, "Path", "Layer");
@@ -221,20 +221,20 @@ final class BuiltinProcessCodecs {
                         throw new IllegalArgumentException("Duplicate saved selection");
                     }
                 }
-                var receipts = new ObjectArrayList<SelectiveState.AbortReceipt>();
                 var savedReceipts = StrictNbt.requireList(data, "AbortReceipts", Constants.NBT.TAG_COMPOUND);
+                var receipts = new ObjectArrayList<SelectiveState.AbortReceipt>(savedReceipts.tagCount());
                 for (int i = 0; i < savedReceipts.tagCount(); i++) {
                     var entry = savedReceipts.getCompoundTagAt(i);
                     StrictNbt.requireKeys(entry, "Path", "Modifiers", "Overlays");
-                    var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>();
                     var savedModifiers = StrictNbt.requireList(entry, "Modifiers", Constants.NBT.TAG_COMPOUND);
+                    var modifiers = new ObjectArrayList<SelectiveState.ModifierReference>(savedModifiers.tagCount());
                     for (int j = 0; j < savedModifiers.tagCount(); j++) {
                         var modifier = savedModifiers.getCompoundTagAt(j);
                         StrictNbt.requireKeys(modifier, "Attribute", "Id");
                         modifiers.add(new SelectiveState.ModifierReference(StrictNbt.requireId(modifier, "Attribute"), StrictNbt.requireString(modifier, "Id")));
                     }
-                    var overlays = new ObjectArrayList<SelectiveState.OverlayReference>();
                     var savedOverlays = StrictNbt.requireList(entry, "Overlays", Constants.NBT.TAG_COMPOUND);
+                    var overlays = new ObjectArrayList<SelectiveState.OverlayReference>(savedOverlays.tagCount());
                     for (int j = 0; j < savedOverlays.tagCount(); j++) {
                         var overlay = savedOverlays.getCompoundTagAt(j);
                         StrictNbt.requireKeys(overlay, "Path", "Layer");

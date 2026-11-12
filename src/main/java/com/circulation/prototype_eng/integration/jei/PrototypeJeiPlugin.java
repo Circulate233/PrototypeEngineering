@@ -246,7 +246,7 @@ public class PrototypeJeiPlugin implements IModPlugin {
     static @Nullable List<RecipePoolJeiPage.PreparedUpdate> prepareStaticPages(List<RecipePoolJeiPage> pages,
                             RecipeRegistry.Snapshot snapshot, RecipeJeiDisplays.Snapshot descriptions,
                             @Nullable RecipeJeiDisplays.Snapshot measured, boolean currentProviders) {
-        var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>();
+        var updates = new ObjectArrayList<RecipePoolJeiPage.PreparedUpdate>(pages.size());
         for (var page : pages) {
             var pool = snapshot.pools().get(page.pool().id());
             if (pool == null) return null;

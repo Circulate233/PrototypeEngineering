@@ -38,8 +38,8 @@ public final class RecipeScanProbes {
         requireBoundary(process);
         Objects.requireNonNull(check, "check");
         var ordered = new ObjectArrayList<>(Objects.requireNonNull(preparations, "preparations"));
-        var transactions = new ObjectArrayList<RequirementTransaction>();
-        var reservations = new ObjectArrayList<ResourceReservation>();
+        var transactions = new ObjectArrayList<RequirementTransaction>(ordered.size());
+        var reservations = new ObjectArrayList<ResourceReservation>(6);
         ProcessResult result = ProcessResult.SUCCESS;
         try {
             for (var preparation : ordered) {

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
@@ -61,13 +63,13 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
     private ResourceRecipeIndex(List<MachineRecipe> recipes, Collection<Footprint> footprints) {
         canonical = ObjectLists.unmodifiable(new ObjectArrayList<>(Objects.requireNonNull(recipes)));
-        var ordinals = new Reference2IntOpenHashMap<MachineRecipe>();
+        var ordinals = new Reference2IntOpenHashMap<MachineRecipe>(canonical.size());
         for (var recipe : canonical) {
             ordinals.put(recipe, ordinals.size());
         }
         order = Reference2IntMaps.unmodifiable(ordinals);
-        var declared = new ReferenceOpenHashSet<MachineRecipe>();
-        var filtered = new ReferenceOpenHashSet<MachineRecipe>();
+        var declared = new ReferenceOpenHashSet<MachineRecipe>(footprints.size());
+        var filtered = new ReferenceOpenHashSet<MachineRecipe>(footprints.size());
         var mutable = new Object2ObjectOpenHashMap<AEKey, ObjectArrayList<Posting>>();
         for (var footprint : Objects.requireNonNull(footprints, "footprints")) {
             Objects.requireNonNull(footprint, "footprint");
@@ -85,10 +87,10 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
             }
         }
         indexed = ReferenceSets.unmodifiable(filtered);
-        var retained = new ObjectArrayList<MachineRecipe>();
+        var retained = new ObjectArrayList<MachineRecipe>(canonical.size() - filtered.size());
         for (var recipe : canonical) if (!filtered.contains(recipe)) retained.add(recipe);
         unfiltered = ObjectLists.unmodifiable(retained);
-        var frozen = new Object2ObjectOpenHashMap<AEKey, List<Posting>>();
+        var frozen = new Object2ObjectOpenHashMap<AEKey, List<Posting>>(mutable.size());
         mutable.forEach((key, values) -> frozen.put(key, ObjectLists.unmodifiable(values)));
         postings = Object2ObjectMaps.unmodifiable(frozen);
     }
@@ -108,7 +110,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     public static ResourceRecipeIndex forFixedInputs(List<MachineRecipe> recipes, Predicate<MachineRecipe> stableInputs) {
         Objects.requireNonNull(recipes);
         Objects.requireNonNull(stableInputs, "stableInputs");
-        var footprints = new ObjectArrayList<Footprint>();
+        var footprints = new ObjectArrayList<Footprint>(recipes.size());
         for (var recipe : recipes) {
             if (stableInputs.test(recipe)) {
                 footprints.add(new Footprint(recipe, fixedInputs(recipe)));
@@ -120,7 +122,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     public List<RecipeInventoryMatch> match(AEKey2LongMap inventory, int parallelism) {
         var lookup = new InventoryLookup(inventory, parallelism, Set.of());
         lookup.advance(new RecipeWorkBudget(Long.MAX_VALUE));
-        var result = new ObjectArrayList<RecipeInventoryMatch>();
+        var result = new ObjectArrayList<RecipeInventoryMatch>(lookup.result().size());
         for (var recipe : lookup.result()) result.add(new RecipeInventoryMatch(recipe, lookup.inputParallelismLimit(recipe)));
         return ObjectLists.unmodifiable(result);
     }
@@ -255,7 +257,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     }
 
     private static List<GenericStack> fixedInputs(MachineRecipe recipe) {
-        var inputs = new ObjectArrayList<GenericStack>();
+        var inputs = new ObjectArrayList<GenericStack>(6);
         for (var requirement : recipe.orderedRequirements()) {
             if (requirement.type() == RecipeRequirements.ENERGY) {
                 continue;
@@ -327,7 +329,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
     public record Footprint(MachineRecipe recipe, List<GenericStack> inputs) {
         public Footprint {
             Objects.requireNonNull(recipe, "recipe");
-            var amounts = new AEKey2LongMap.LinkdOpenHashMap();
+            var amounts = new AEKeyLinkedOpenHashMap(inputs.size());
             for (var input : Objects.requireNonNull(inputs, "inputs")) {
                 Objects.requireNonNull(input, "input");
                 var key = Objects.requireNonNull(input.what(), "input key");
@@ -359,7 +361,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         private final Reference2IntOpenHashMap<MachineRecipe> matches = new Reference2IntOpenHashMap<>();
         private final Reference2IntOpenHashMap<MachineRecipe> ceilings = new Reference2IntOpenHashMap<>();
         private final Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap> byContext = new Reference2ObjectOpenHashMap<>();
-        private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap();
+        private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap(6);
         private final ObjectArrayList<CapturedView> captures = new ObjectArrayList<>();
         private final ObjectArrayList<Binding> bindings = new ObjectArrayList<>();
         private final ObjectArrayList<MachineRecipe> result = new ObjectArrayList<>();
@@ -452,7 +454,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                             long amount = entry.getLongValue();
                             if (amount < 0) throw new IllegalStateException("Negative input availability");
                             if (!postings.containsKey(key)) continue;
-                            var maxima = byContext.computeIfAbsent(view.context, _ -> new AEKey2LongMap.OpenHashMap());
+                            var maxima = byContext.computeIfAbsent(view.context, _ -> new AEKey2LongMap.OpenHashMap(6));
                             long previous = maxima.getLong(key);
                             if (amount > previous) {
                                 long delta = amount - previous;

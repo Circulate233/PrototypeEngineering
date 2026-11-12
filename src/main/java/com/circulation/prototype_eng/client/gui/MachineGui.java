@@ -133,7 +133,7 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
             int row = (mouseY - guiTop - LIST_Y) / ROW_HEIGHT;
             if (row < container.snapshot.entries().size()) {
                 var entry = container.snapshot.entries().get(row);
-                var lines = new ObjectArrayList<String>();
+                var lines = new ObjectArrayList<String>(3);
                 String reason = MachineGuiText.reason(entry);
                 if (fontRenderer.getStringWidth(reason) > 81) lines.add(reason);
                 if (!entry.recipe().isEmpty()) lines.add(entry.recipe());

@@ -38,7 +38,7 @@ public final class DataCenterStorageNbt {
         tag.setInteger("Capacity", snapshot.capacity());
         var list = new NBTTagList();
         var ids = new ObjectArrayList<>(snapshot.storedResearch().keySet());
-        ids.sort(Comparator.comparing(ResourceLocation::toString));
+        ids.sort(Comparator.naturalOrder());
         for (var id : ids) {
             var entry = new NBTTagCompound();
             entry.setString("Id", id.toString());
@@ -48,7 +48,7 @@ public final class DataCenterStorageNbt {
         tag.setTag("Research", list);
         var receipts = new NBTTagList();
         var operations = new ObjectArrayList<>(state.receipts().keySet());
-        operations.sort(Comparator.comparing(UUID::toString));
+        operations.sort(Comparator.naturalOrder());
         for (var operation : operations)
             receipts.appendTag(ResearchDiskCommitNbt.encode(state.receipts().get(operation)));
         tag.setTag("DiskReceipts", receipts);
@@ -68,7 +68,7 @@ public final class DataCenterStorageNbt {
         int level = StrictNbt.requireInt(tag, "Level");
         int capacity = StrictNbt.requireInt(tag, "Capacity");
         var list = StrictNbt.requireList(tag, "Research", Constants.NBT.TAG_COMPOUND);
-        var levels = new Object2IntOpenHashMap<ResourceLocation>();
+        var levels = new Object2IntOpenHashMap<ResourceLocation>(list.tagCount());
         for (int index = 0; index < list.tagCount(); index++) {
             var entry = list.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "Id", "Level");
@@ -79,8 +79,8 @@ public final class DataCenterStorageNbt {
             levels.put(researchId, StrictNbt.requireInt(entry, "Level"));
         }
         var snapshot = new DataCenterResearchSnapshot(id, level, capacity, 0, levels);
-        var receipts = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>();
         var savedReceipts = StrictNbt.requireList(tag, "DiskReceipts", Constants.NBT.TAG_COMPOUND);
+        var receipts = new Object2ObjectOpenHashMap<UUID, ResearchDiskCommit>(savedReceipts.tagCount());
         for (int index = 0; index < savedReceipts.tagCount(); index++) {
             var receipt = ResearchDiskCommitNbt.decode(savedReceipts.getCompoundTagAt(index), registry);
             if (receipts.putIfAbsent(receipt.operationId(), receipt) != null)

@@ -193,7 +193,7 @@ public final class TeamOwnedResearch {
             if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
                 throw new IllegalArgumentException("Invalid stable team id");
             }
-            var copy = new Object2IntOpenHashMap<ResourceLocation>();
+            var copy = new Object2IntOpenHashMap<ResourceLocation>(levels.size());
             for (var entry : Objects.requireNonNull(levels).object2IntEntrySet()) {
                 if (entry.getKey() == null || entry.getIntValue() < 1) {
                     throw new IllegalArgumentException("Invalid saved team research");

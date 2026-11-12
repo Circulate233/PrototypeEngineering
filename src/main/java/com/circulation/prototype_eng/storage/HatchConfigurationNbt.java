@@ -46,14 +46,14 @@ public final class HatchConfigurationNbt {
 
     public static ResourceHatchConfiguration.Side resourceSide(NBTTagCompound tag) {
         var limits = StrictNbt.requireCompound(tag, "Capacities");
-        var capacities = new Reference2LongArrayMap<AEKeyType>();
+        var capacities = new Reference2LongArrayMap<AEKeyType>(limits.getSize());
         for (var id : limits.getKeySet()) {
             var type = AEKeyTypes.get(new ResourceLocation(id));
             if (type == null) throw new IllegalArgumentException("Unknown saved resource type " + id);
             capacities.put(type, StrictNbt.requireLong(limits, id));
         }
         if (tag.hasKey("ItemEquivalent") || tag.hasKey("CapacityRatios")) {
-            var ratios = new Reference2LongArrayMap<AEKeyType>();
+            var ratios = new Reference2LongArrayMap<AEKeyType>(2);
             var savedRatios = StrictNbt.requireCompound(tag, "CapacityRatios");
             for (var id : savedRatios.getKeySet()) {
                 var type = AEKeyTypes.get(new ResourceLocation(id));

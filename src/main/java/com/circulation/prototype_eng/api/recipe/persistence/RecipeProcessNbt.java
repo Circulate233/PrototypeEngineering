@@ -247,7 +247,7 @@ public final class RecipeProcessNbt {
         process.attributes().restoreLocal(attributes.decode(StrictNbt.requireCompound(tag, "Attributes")));
         if (timing != null) {
             var definitions = new RecipeDefinitionIndex(process).requirements();
-            var energyPaths = new ObjectLinkedOpenHashSet<RequirementPath>();
+            var energyPaths = new ObjectLinkedOpenHashSet<RequirementPath>(6);
             for (var definition : definitions.entrySet()) if (definition.getValue().type() == RecipeRequirements.ENERGY) energyPaths.add(definition.getKey());
             if (!energyPaths.equals(timing.energyOffsets().keySet())) throw new IllegalArgumentException("Cross-recipe energy paths changed");
         }
@@ -316,7 +316,7 @@ public final class RecipeProcessNbt {
 
     private static CrossRecipeBatch.Timing readTiming(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Most", "Least", "Duration", "Parallelism", "MaterialOffset", "Energy");
-        var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, CrossRecipeBatch.EnergyOffsets>();
+        var offsets = new Object2ObjectLinkedOpenHashMap<RequirementPath, CrossRecipeBatch.EnergyOffsets>(6);
         var entries = StrictNbt.requireList(tag, "Energy", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < entries.tagCount(); index++) {
             var entry = entries.getCompoundTagAt(index);
@@ -330,7 +330,7 @@ public final class RecipeProcessNbt {
     }
 
     private Map<ComponentType<RecipeProcess, ?>, SavedComponent> readComponents(NBTTagList list) {
-        var entries = new Object2ObjectLinkedOpenHashMap<ComponentType<RecipeProcess, ?>, SavedComponent>();
+        var entries = new Object2ObjectLinkedOpenHashMap<ComponentType<RecipeProcess, ?>, SavedComponent>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
             StrictNbt.requireKeys(entry, "Type", "Dependencies", "Data");
@@ -345,7 +345,7 @@ public final class RecipeProcessNbt {
 
     private Map<ComponentType<RecipeProcess, ?>, Set<ComponentType<RecipeProcess, ?>>> readPending(NBTTagList list,
                                                                                                    Map<ComponentType<RecipeProcess, ?>, SavedComponent> entries) {
-        var pending = new Object2ObjectLinkedOpenHashMap<ComponentType<RecipeProcess, ?>, Set<ComponentType<RecipeProcess, ?>>>();
+        var pending = new Object2ObjectLinkedOpenHashMap<ComponentType<RecipeProcess, ?>, Set<ComponentType<RecipeProcess, ?>>>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             var entry = list.getCompoundTagAt(i);
             StrictNbt.requireKeys(entry, "Type", "Dependencies");
@@ -368,8 +368,8 @@ public final class RecipeProcessNbt {
     }
 
     private Set<ComponentType<RecipeProcess, ?>> readTypes(NBTTagCompound tag) {
-        var result = new ObjectLinkedOpenHashSet<ComponentType<RecipeProcess, ?>>();
         var list = StrictNbt.requireList(tag, "Dependencies", Constants.NBT.TAG_STRING);
+        var result = new ObjectLinkedOpenHashSet<ComponentType<RecipeProcess, ?>>(list.tagCount());
         for (int i = 0; i < list.tagCount(); i++) {
             if (!result.add(require(StrictNbt.requireId(list.getStringTagAt(i))).type())) {
                 throw new IllegalArgumentException("Duplicate component dependency");

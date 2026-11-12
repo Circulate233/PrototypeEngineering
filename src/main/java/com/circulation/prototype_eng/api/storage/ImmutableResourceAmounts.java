@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.storage;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import it.unimi.dsi.fastutil.objects.AbstractObject2LongMap;
@@ -18,7 +20,7 @@ import java.util.function.ObjLongConsumer;
 
 /** Owned AEKey quantities whose entry views cannot mutate the captured values. */
 public final class ImmutableResourceAmounts extends Object2LongMaps.UnmodifiableMap<AEKey> implements AEKey2LongMap {
-    private static final ImmutableResourceAmounts EMPTY = new ImmutableResourceAmounts(new AEKey2LongMap.LinkdOpenHashMap());
+    private static final ImmutableResourceAmounts EMPTY = new ImmutableResourceAmounts(new AEKeyLinkedOpenHashMap(0));
     private final AEKey2LongMap owned;
     private final ObjectSet<Object2LongMap.Entry<AEKey>> immutableEntries;
 
@@ -86,7 +88,7 @@ public final class ImmutableResourceAmounts extends Object2LongMaps.Unmodifiable
     /** Incremental owner-side copying; build transfers ownership in O(1) and closes this builder. */
     public static final class Builder {
         @Nullable
-        private AEKey2LongMap values = new AEKey2LongMap.LinkdOpenHashMap();
+        private AEKey2LongMap values = new AEKeyLinkedOpenHashMap(6);
 
         private Builder() {
         }

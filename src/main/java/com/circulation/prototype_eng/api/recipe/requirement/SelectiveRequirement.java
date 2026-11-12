@@ -15,8 +15,8 @@ import java.util.Objects;
  */
 public record SelectiveRequirement(List<RecipeRequirement<?>> candidates, List<SelectiveModifierDescriptor> modifiers) {
     public SelectiveRequirement {
-        var candidateCopy = new ObjectArrayList<RecipeRequirement<?>>();
-        var candidateIds = new ObjectOpenHashSet<RequirementPath>();
+        var candidateCopy = new ObjectArrayList<RecipeRequirement<?>>(candidates.size());
+        var candidateIds = new ObjectOpenHashSet<RequirementPath>(candidates.size());
         for (var candidate : candidates) {
             Objects.requireNonNull(candidate);
             if (!candidateIds.add(candidate.path(null))) {
@@ -24,8 +24,8 @@ public record SelectiveRequirement(List<RecipeRequirement<?>> candidates, List<S
             }
             candidateCopy.add(candidate);
         }
-        var modifierCopy = new ObjectArrayList<SelectiveModifierDescriptor>();
-        var modifierIds = new ObjectOpenHashSet<ResourceLocation>();
+        var modifierCopy = new ObjectArrayList<SelectiveModifierDescriptor>(modifiers.size());
+        var modifierIds = new ObjectOpenHashSet<ResourceLocation>(modifiers.size());
         for (var modifier : modifiers) {
             Objects.requireNonNull(modifier);
             if (!modifierIds.add(modifier.id())) {

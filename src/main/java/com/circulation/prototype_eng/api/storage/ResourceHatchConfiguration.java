@@ -79,8 +79,8 @@ public record ResourceHatchConfiguration(@Nullable Side input, @Nullable Side ou
             for (var entry : ratios.reference2LongEntrySet())
                 if (entry.getLongValue() <= 0)
                     throw new IllegalArgumentException("Resource capacity ratio must be positive: " + entry.getKey().getId());
-            var capacities = new Reference2LongArrayMap<AEKeyType>();
-            var effectiveRatios = new Reference2LongArrayMap<AEKeyType>();
+            var capacities = new Reference2LongArrayMap<AEKeyType>(2);
+            var effectiveRatios = new Reference2LongArrayMap<AEKeyType>(2);
             for (var type : types) {
                 Objects.requireNonNull(type);
                 long ratio = ratios.containsKey(type) ? ratios.getLong(type) : type.getAmountPerUnit();
@@ -101,7 +101,7 @@ public record ResourceHatchConfiguration(@Nullable Side input, @Nullable Side ou
 
     /** AE key types are registry identities; public and owned values both remain primitive longs. */
     private static Reference2LongMap<AEKeyType> amountSnapshot(Reference2LongMap<AEKeyType> values) {
-        var copy = new Reference2LongArrayMap<AEKeyType>();
+        var copy = new Reference2LongArrayMap<AEKeyType>(2);
         for (var entry : values.reference2LongEntrySet()) copy.put(Objects.requireNonNull(entry.getKey()), entry.getLongValue());
         return Reference2LongMaps.unmodifiable(new FrozenAmounts(copy));
     }

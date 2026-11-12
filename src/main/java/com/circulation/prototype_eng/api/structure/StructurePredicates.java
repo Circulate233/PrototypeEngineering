@@ -193,7 +193,7 @@ public final class StructurePredicates {
      * Block regex expansion belongs to definition loading; matching uses this frozen membership.
      */
     public static StructurePredicate blocks(Collection<Block> blocks) {
-        var accepted = new ReferenceLinkedOpenHashSet<Block>();
+        var accepted = new ReferenceLinkedOpenHashSet<Block>(blocks.size());
         for (var block : blocks) {
             accepted.add(Objects.requireNonNull(block));
         }

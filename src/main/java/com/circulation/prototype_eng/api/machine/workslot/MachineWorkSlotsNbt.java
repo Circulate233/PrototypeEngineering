@@ -53,8 +53,8 @@ public final class MachineWorkSlotsNbt {
     }
 
     private static WorkSlotDefinition readDefinition(NBTTagCompound entry) {
-        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>();
         var savedGroups = StrictNbt.requireList(entry, "Groups", Constants.NBT.TAG_STRING);
+        var groups = new ObjectLinkedOpenHashSet<ResourceLocation>(savedGroups.tagCount());
         for (int i = 0; i < savedGroups.tagCount(); i++) {
             if (!groups.add(StrictNbt.requireId(savedGroups.getStringTagAt(i)))) {
                 throw new IllegalArgumentException("Duplicate work-slot recipe group");
@@ -113,8 +113,8 @@ public final class MachineWorkSlotsNbt {
         if (!host.dynamicRoster() && slots.tagCount() != old.size()) {
             throw new IllegalArgumentException("Work slot layout size changed");
         }
-        var decoded = new ObjectArrayList<MachineWorkSlots.SlotSnapshot>();
-        var names = new ObjectLinkedOpenHashSet<String>();
+        var decoded = new ObjectArrayList<MachineWorkSlots.SlotSnapshot>(slots.tagCount());
+        var names = new ObjectLinkedOpenHashSet<String>(slots.tagCount());
         for (int i = 0; i < slots.tagCount(); i++) {
             var entry = slots.getCompoundTagAt(i);
             StrictNbt.requireKeys(entry, "Name", "Groups", "Core", "RestartPolicy", "Result", "Process");

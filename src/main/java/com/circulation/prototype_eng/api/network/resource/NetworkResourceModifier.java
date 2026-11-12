@@ -51,7 +51,7 @@ public final class NetworkResourceModifier {
         Object2LongMap<NetworkResourceType> source, boolean nonNegative,
         Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType> metadata) {
         Objects.requireNonNull(source, "Computing resource vector");
-        var copy = new Object2LongOpenHashMap<NetworkResourceType>();
+        var copy = new Object2LongOpenHashMap<NetworkResourceType>(source.size());
         copy.defaultReturnValue(0L);
         for (var entry : source.object2LongEntrySet()) {
             requireConsistentType(entry.getKey(), metadata);
@@ -101,7 +101,7 @@ public final class NetworkResourceModifier {
         for (var type : multiplierPpm.keySet()) {
             requireConsistentType(type, metadata);
         }
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+        var result = new Object2LongOpenHashMap<NetworkResourceType>(metadata.size());
         result.defaultReturnValue(0L);
         for (var type : metadata.values()) {
             long adjustedBase = Math.addExact(quantities.getLong(type), flat.getLong(type));
@@ -138,7 +138,7 @@ public final class NetworkResourceModifier {
 
         private FrozenResources(Object2LongOpenHashMap<NetworkResourceType> quantities) {
             this.quantities = quantities;
-            var entries = new ObjectOpenHashSet<Object2LongMap.Entry<NetworkResourceType>>();
+            var entries = new ObjectOpenHashSet<Object2LongMap.Entry<NetworkResourceType>>(quantities.size());
             boolean nonNegative = true;
             for (var entry : quantities.object2LongEntrySet()) {
                 entries.add(new BasicEntry<>(entry.getKey(), entry.getLongValue()));

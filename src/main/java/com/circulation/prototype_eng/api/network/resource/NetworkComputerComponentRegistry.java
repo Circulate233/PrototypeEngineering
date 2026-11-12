@@ -69,7 +69,7 @@ public final class NetworkComputerComponentRegistry {
         }
         var capture = Objects.requireNonNull(provider.apply(computer), "Computer component supply capture");
         var supplied = capture.resourcesPerItem();
-        var validated = new Object2LongOpenHashMap<NetworkResourceType>();
+        var validated = new Object2LongOpenHashMap<NetworkResourceType>(supplied.size());
         for (var entry : supplied.object2LongEntrySet()) {
             var type = current.resources.canonical(entry.getKey());
             long amount = entry.getLongValue();

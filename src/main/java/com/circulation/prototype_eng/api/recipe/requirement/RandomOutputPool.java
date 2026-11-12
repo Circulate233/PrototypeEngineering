@@ -16,7 +16,7 @@ public record RandomOutputPool(List<WeightedSampling.Weighted<GenericStack>> can
         if (pickCount < 0) {
             throw new IllegalArgumentException("Negative random output pick count");
         }
-        var copy = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>();
+        var copy = new ObjectArrayList<WeightedSampling.Weighted<GenericStack>>(candidates.size());
         for (var candidate : candidates) {
             Objects.requireNonNull(candidate);
             var stack = Objects.requireNonNull(candidate.value());

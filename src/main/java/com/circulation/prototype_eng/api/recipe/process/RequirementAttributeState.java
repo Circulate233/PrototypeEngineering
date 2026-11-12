@@ -103,7 +103,7 @@ public final class RequirementAttributeState implements ProcessAbortListener {
         if (owner != process) {
             throw new IllegalArgumentException("Attribute state belongs to another process");
         }
-        var installations = new ObjectArrayList<Installation>();
+        var installations = new ObjectArrayList<Installation>(owned.size());
         owned.forEach((reference, modifier) -> installations.add(new Installation(reference, modifier)));
         Throwable failure = null;
         for (int index = installations.size() - 1; index >= 0; index--) {
@@ -140,8 +140,8 @@ public final class RequirementAttributeState implements ProcessAbortListener {
         if (!owned.isEmpty() || !aborted.isEmpty()) {
             throw new IllegalStateException("Attribute restore requires fresh state");
         }
-        var restored = new Object2ObjectLinkedOpenHashMap<Reference, AttributeModifier>();
-        var receipts = new ObjectLinkedOpenHashSet<Reference>();
+        var restored = new Object2ObjectLinkedOpenHashMap<Reference, AttributeModifier>(snapshot.owned().size());
+        var receipts = new ObjectLinkedOpenHashSet<Reference>(snapshot.aborted().size());
         for (var reference : snapshot.owned()) {
             var modifier = process.attributes().localModifier(reference.attribute(), reference.modifierId());
             if (!(modifier instanceof RenamedAttributeModifier) || restored.putIfAbsent(reference, modifier) != null) {

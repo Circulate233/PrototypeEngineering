@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.preview;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import com.circulation.prototype_eng.util.ExternalEnumValues;
 
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -511,7 +513,7 @@ public final class StructurePreviewScene implements AutoCloseable {
         }
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
-        AEKey2LongMap totals = new AEKey2LongMap.LinkdOpenHashMap();
+        AEKey2LongMap totals = new AEKeyLinkedOpenHashMap(6);
         // The native pick context contains every layer, even while the GUI renders only one of them.
         try (var picks = new StructurePickWorld(mc.world, position -> {
             var state = currentAccess.represented(position);

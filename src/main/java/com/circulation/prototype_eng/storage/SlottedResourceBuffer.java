@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.storage;
 
+import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
+
 import it.unimi.dsi.fastutil.objects.Reference2LongMap;
 
 import ae2.api.config.Actionable;
@@ -42,7 +44,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final long[] amounts;
     private final long[] reservedExtract;
     private final long[] reservedInsert;
-    private final AEKey2LongMap totals = new AEKey2LongMap.LinkdOpenHashMap();
+    private final AEKey2LongMap totals = new AEKeyLinkedOpenHashMap(6);
     private final AEKey2LongMap extractHolds;
     // Includes pending output and the capacity retained to refund applied input.
     private final AEKey2LongMap insertHolds;
@@ -530,7 +532,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         if (stacks.size() != keys.length) {
             throw new IllegalArgumentException("Saved slot count differs from storage");
         }
-        var nextTotals = new AEKey2LongMap.LinkdOpenHashMap();
+        var nextTotals = new AEKeyLinkedOpenHashMap(6);
         AEKey[] nextKeys = new AEKey[keys.length];
         long[] nextAmounts = new long[keys.length];
         for (int slot = 0; slot < keys.length; slot++) {

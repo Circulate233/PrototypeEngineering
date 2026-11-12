@@ -15,7 +15,7 @@ public record MachineDataSnapshot(long generation, long revision, @Nullable Comp
     public MachineDataSnapshot {
         if (generation <= 0 || revision < 0) throw new IllegalArgumentException("Invalid machine data identity/revision");
         hosts = List.copyOf(hosts);
-        var hostIds = new LongOpenHashSet();
+        var hostIds = new LongOpenHashSet(hosts.size());
         var processIds = new LongOpenHashSet();
         for (var host : hosts) {
             if (!hostIds.add(host.identity())) throw new IllegalArgumentException("Duplicate data host identity");

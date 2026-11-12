@@ -60,7 +60,7 @@ public class ModelAssets implements IResourceManager, AutoCloseable {
     /** Select/open exact sources on owner; CPU bytes, JSON parsing and image decoding remain on workers. */
     public void select(List<ResourceLocation> locations) throws IOException {
         client.requireOwner();
-        Map<ResourceLocation, Source> captured = new Object2ObjectOpenHashMap<>();
+        Map<ResourceLocation, Source> captured = new Object2ObjectOpenHashMap<>(locations.size());
         try {
             for (var location : locations) {
                 synchronized (this) {
