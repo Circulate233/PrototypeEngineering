@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-12 [Java/ZS API 文档](../api.md)与[ZS 使用参考](../api-zs-reference.md)保留在仓库根目录，按用户提供的 AE2S 示例改写为功能说明、参数解释和使用示例，Java/ZS各分调用与扩展部分。文中3段Java、7段ZS均通过实际编译器，两文档本机IDEA全级零；示例脚本未执行。22个API文档链接及代码围栏检查通过；文档完成本地提交供用户核对，记录见[实施进度](implementation-status.md)。新增资源包需求由单个子代理处理，覆盖输入/输出/混合仓；验证尚未结束。
+- 2026-11-12 [Java/ZS API 文档](../api.md)与[ZS 使用参考](../api-zs-reference.md)保留在仓库根目录，按用户提供的 AE2S 示例改写为功能说明、参数解释和使用示例，Java/ZS各分调用与扩展部分。文中3段Java、7段ZS均通过实际编译器，两文档本机IDEA全级零；示例脚本未执行。22个API文档链接及代码围栏检查通过；文档已本地提交`2877f19`供用户核对，后补研究builder参数和资源包操作说明；记录见[实施进度](implementation-status.md)。
+
+- 2026-11-12 AE资源包插入：输入/输出/混合仓GUI均按完整AEKey和long数量解包，普通点击、数字键/双击和Shift快移接通；部分接受保留余量包，mixed快移在input完全拒绝后才尝试output，不占预留容量。34项定向测试、Spotless、build -x test及MCP build通过，4Java本机全级零。需求由用户明确授权的单个子代理实现，主线程复核后精确本地提交，不推送；尚未启动客户端验证原生包ItemStack与GUI。入口[仓室](hatches.md#AE-资源包插入)，证据与限制见[实施进度](implementation-status.md)。
 
 - 2026-11-12 测试精简：清点277个测试Java/1963项，针对静态数学及重复覆盖候选核对实际断言；删除方向旋转的抽象恒等式测试及已被四边形渲染测试覆盖的twist映射测试，保留用户可见方向约定和真实交互/渲染测试；GUI数字格式的8×1000重复断言缩为8线程各执行一次完整边界检查。没有按名称批量删掉事务、并发、持久化等独立行为覆盖。完整 `build --rerun-tasks`：1961 tests/270 suites，失败/错误/跳过0，Spotless通过；三修改Java IDEA `errorsOnly:false` 全级零，MCP build成功。详见[实施进度](implementation-status.md)；背景和暂存保护记录不变，未开子代理/推送/启动游戏。
 

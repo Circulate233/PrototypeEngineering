@@ -6,6 +6,7 @@ import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import ae2.api.stacks.GenericStack;
+import ae2.items.misc.GenericResourcePackageItem;
 import ae2.container.AEBaseContainer;
 import ae2.container.SlotSemantics;
 import ae2.container.guisync.GuiSync;
@@ -22,6 +23,7 @@ import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.localization.HatchGuiTitle;
 import com.circulation.prototype_eng.storage.HatchGuiInventory;
+import com.circulation.prototype_eng.storage.HatchPackageTransfer;
 import com.circulation.prototype_eng.storage.HatchSlotActions;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
 import net.minecraft.entity.player.EntityPlayer;
@@ -117,6 +119,7 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     }
 
     private static ItemStack clickItem(SlottedResourceStorage inventory, int slot, ItemStack carried, boolean input, boolean right) {
+        if (GenericResourcePackageItem.isPackage(carried)) return insertPackage(inventory, slot, carried);
         var stored = storedKey(inventory, slot);
         if (stored != null && !(stored instanceof AEItemKey) || GenericStack.isWrapped(carried)) {
             return carried;
@@ -221,9 +224,14 @@ public final class ResourceHatchContainer extends AEBaseContainer {
             var slot = new AppEngSlot(display, i, left + (i % columns) * 18 + 1, resourceTop + (i / columns) * 18 + 1) {
                 @Override
                 public boolean isItemValid(ItemStack stack) {
-                    var key = AEItemKey.of(stack);
                     int logical = snapshot.side(input).logicalSlot(getSlotIndex());
-                    return input && logical >= 0 && !GenericStack.isWrapped(stack) && key != null
+                    if (logical < 0) return false;
+                    if (GenericResourcePackageItem.isPackage(stack)) {
+                        var packaged = GenericResourcePackageItem.unwrap(stack);
+                        return packaged != null && (isClientSide() || inv.isAllowedIn(logical, packaged.what()));
+                    }
+                    var key = AEItemKey.of(stack);
+                    return input && !GenericStack.isWrapped(stack) && key != null
                         && (isClientSide() || inv.isAllowedIn(logical, key));
                 }
 
@@ -445,37 +453,57 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     }
 
     private void doubleClickResource(SlottedResourceStorage inventory, int slot, boolean input, int button) {
-        ResourceHatchBulkTransfer.doubleClick(inventory, slot, input, button, new BulkPlayerSlots(),
-            new ResourceHatchBulkTransfer.HeldContainers() {
-                @Override
-                public boolean isItem(AEKey key) {
-                    return key instanceof AEItemKey;
-                }
+        if (GenericResourcePackageItem.isPackage(getCarried())) {
+            setCarried(insertPackage(inventory, slot, getCarried()));
+        } else {
+            ResourceHatchBulkTransfer.doubleClick(inventory, slot, input, button, new BulkPlayerSlots(),
+                new ResourceHatchBulkTransfer.HeldContainers() {
+                    @Override
+                    public boolean isItem(AEKey key) {
+                        return key instanceof AEItemKey;
+                    }
 
-                @Override
-                public boolean canInsertCursor() {
-                    return !GenericStack.isWrapped(getCarried());
-                }
+                    @Override
+                    public boolean canInsertCursor() {
+                        return !GenericStack.isWrapped(getCarried());
+                    }
 
-                @Override
-                public boolean tryEmpty() {
-                    if (ContainerItemStrategies.getEmptyingAction(getCarried()) == null) return false;
-                    transferContainerItem(inventory, slot, InventoryAction.EMPTY_ENTIRE_ITEM, false);
-                    return true;
-                }
+                    @Override
+                    public boolean tryEmpty() {
+                        if (ContainerItemStrategies.getEmptyingAction(getCarried()) == null) return false;
+                        transferContainerItem(inventory, slot, InventoryAction.EMPTY_ENTIRE_ITEM, false);
+                        return true;
+                    }
 
-                @Override
-                public boolean tryFill(GenericStack selected) {
-                    var context = ContainerItemStrategies.findCarriedContextForKey(selected.what(), getPlayer(), ResourceHatchContainer.this);
-                    if (context == null || context.insert(selected.what(), selected.amount(), Actionable.SIMULATE) <= 0)
-                        return false;
-                    transferContainerItem(inventory, slot, InventoryAction.FILL_ENTIRE_ITEM, true);
-                    return true;
-                }
-            });
+                    @Override
+                    public boolean tryFill(GenericStack selected) {
+                        var context = ContainerItemStrategies.findCarriedContextForKey(selected.what(), getPlayer(), ResourceHatchContainer.this);
+                        if (context == null || context.insert(selected.what(), selected.amount(), Actionable.SIMULATE) <= 0)
+                            return false;
+                        transferContainerItem(inventory, slot, InventoryAction.FILL_ENTIRE_ITEM, true);
+                        return true;
+                    }
+                });
+        }
         getPlayerInventory().markDirty();
         if (getPlayer() instanceof EntityPlayerMP player)
             player.connection.sendPacket(new SPacketSetSlot(-2, 40, player.inventory.getStackInSlot(40).copy()));
+    }
+
+    private static ItemStack insertPackage(SlottedResourceStorage inventory, int slot, ItemStack packageStack) {
+        GenericStack packaged = GenericResourcePackageItem.unwrap(packageStack);
+        if (packaged == null) return packageStack;
+        GenericStack remainder = HatchSlotActions.insertPackage(inventory, slot, packaged);
+        if (remainder == packaged) return packageStack;
+        return remainder == null ? ItemStack.EMPTY : GenericResourcePackageItem.wrap(remainder.what(), remainder.amount());
+    }
+
+    private ItemStack insertPackageFromPlayer(ItemStack packageStack) {
+        GenericStack packaged = GenericResourcePackageItem.unwrap(packageStack);
+        if (packaged == null) return packageStack;
+        GenericStack remainder = HatchPackageTransfer.insert(hatch.input(), hatch.output(), packaged);
+        if (remainder == packaged) return packageStack;
+        return remainder == null ? ItemStack.EMPTY : GenericResourcePackageItem.wrap(remainder.what(), remainder.amount());
     }
 
     private void transferResourceItems(SlottedResourceStorage inventory, int slot) {
@@ -509,12 +537,21 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     public @NotNull ItemStack transferStackInSlot(EntityPlayer player, int index) {
         if (isClientSide() || !canInteractWith(player) || index < resourceSlots || index >= inventorySlots.size())
             return ItemStack.EMPTY;
+        Slot source = inventorySlots.get(index);
+        ItemStack stack = source.getStack();
+        if (GenericResourcePackageItem.isPackage(stack)) {
+            ItemStack remaining = insertPackageFromPlayer(stack);
+            if (remaining != stack) {
+                source.putStack(remaining);
+                source.onSlotChanged();
+                player.inventory.markDirty();
+            }
+            return ItemStack.EMPTY;
+        }
         SlottedResourceStorage input = hatch.input();
         if (input == null) return ItemStack.EMPTY;
         input.context().lock();
         try {
-            Slot source = inventorySlots.get(index);
-            ItemStack stack = source.getStack();
             AEItemKey key = AEItemKey.of(stack);
             if (key != null && !GenericStack.isWrapped(stack)) {
                 // The storage owns full-side target selection, including slots outside the window.

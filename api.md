@@ -179,6 +179,8 @@ var recipe = new MachineRecipe(
 
 普通搬运可以调用 `ResourceStorage.insert/extract`，传 `Actionable.SIMULATE` 先计算可处理数量，传 `MODULATE` 实际修改。配方执行使用需求系统的快照和预留，以保证多个需求或多台机器共享仓室时不会重复占用。
 
+内置输入仓、输出仓和混合仓都支持在 GUI 插入 AE 资源包，按包内资源的真实种类和数量存储。未能存入的数量保留在资源包中，已经预留的空间不可占用。这个手动解包操作不改变机器和自动化的输入、输出方向，操作规则见[仓室指南](docs/hatches.md#AE-资源包插入)。
+
 `ResourceHatchConfiguration.Side.fromItemEquivalent(...)` 以槽数和单槽物品等价值配置容量；流体默认每 1000 mB 对应一个物品单位。需要直接给每类资源设置原生容量时，向构造器传 `Reference2LongMap<AEKeyType>`。混合仓输入和输出分别配置。
 
 `HatchConfigurationUpdates.configureDefaults(...)` 设置启动时的默认容量。运行中修改用 `request(server, targets)`，返回完成报告的 future。报告还包含各仓室的状态，忙碌或缩容后装不下的仓室可能暂缓应用。必须异步处理结果，禁止在服务器主线程阻塞等待。

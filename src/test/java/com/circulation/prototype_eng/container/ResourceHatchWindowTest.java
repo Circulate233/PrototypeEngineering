@@ -11,7 +11,9 @@ import ae2.api.stacks.AEKeyType;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
+import com.circulation.prototype_eng.api.storage.ReservationResult;
 import com.circulation.prototype_eng.storage.HatchGuiInventory;
+import com.circulation.prototype_eng.storage.HatchPackageTransfer;
 import com.circulation.prototype_eng.storage.HatchSlotActions;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
@@ -23,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -153,6 +156,65 @@ class ResourceHatchWindowTest {
         assertEquals(1, input.getAmount(40_000));
         assertEquals(40_001, window.capture().input().usedSlots());
         assertEquals(72, window.capture().input().entries().size());
+    }
+
+    @Test
+    void packagedResourcesUseTheSelectedSideTypeCapacityAndExistingInsertionHolds() {
+        var input = buffer(1, Reference2LongMaps.singleton(FIRST, 10L));
+        var output = buffer(1, Reference2LongMaps.singleton(SECOND, 20L));
+        var held = input.reserveInsert(input.snapshot(), ITEM, 6);
+        assertEquals(ReservationResult.Status.ACCEPTED, held.status());
+
+        var inputPackage = new GenericStack(ITEM, 8);
+        var inputRemainder = HatchPackageTransfer.insert(input, output, inputPackage);
+        assertEquals(new GenericStack(ITEM, 4), inputRemainder);
+        assertEquals(4, input.getAmount(0));
+        assertEquals(0, output.getAmount(0));
+
+        var window = new ResourceHatchWindow(hatch(input, output), 4, 3);
+        var outputPackage = new GenericStack(FLUID, 30);
+        GenericStack[] carried = {outputPackage};
+        long revision = window.capture().revision();
+        assertTrue(window.interact(revision, false, 0,
+            storage -> carried[0] = HatchSlotActions.insertPackage(storage, 0, carried[0])));
+        assertEquals(new GenericStack(FLUID, 10), carried[0]);
+        assertEquals(20, output.getAmount(0));
+
+        assertEquals(outputPackage,
+            HatchPackageTransfer.insert(null, output, outputPackage));
+        assertEquals(20, output.getAmount(0));
+        assertEquals(outputPackage, HatchSlotActions.insertPackage(output, 0, outputPackage));
+        var occupied = buffer(1, new Reference2LongArrayMap<>(new AEKeyType[]{FIRST, SECOND}, new long[]{20L, 20L}));
+        occupied.insert(0, FLUID, 7, Actionable.MODULATE);
+        assertEquals(inputPackage, HatchSlotActions.insertPackage(occupied, 0, inputPackage));
+        assertEquals(new GenericStack(FLUID, 7), occupied.getStack(0));
+        var unsupported = new GenericStack(FLUID, 3);
+        assertEquals(unsupported, HatchPackageTransfer.insert(input, null, unsupported));
+        assertEquals(4, input.getAmount(0));
+        input.context().lock();
+        try {
+            Objects.requireNonNull(held.reservation()).rollback();
+        } finally {
+            input.context().unlock();
+        }
+        assertEquals(4, input.getAmount(0));
+    }
+
+    @Test
+    void packageQuickMoveRetainsLongQuantitiesAndRoutesInputOutputAndAsymmetricMixedHatches() {
+        long largeAmount = 3_500_000_000L;
+        for (int mode = 0; mode < 3; mode++) {
+            var input = mode == 1 ? null : buffer(2, Reference2LongMaps.singleton(FIRST, 1_800_000_000L));
+            var output = mode == 0 ? null : buffer(2, Reference2LongMaps.singleton(SECOND, 1_800_000_000L));
+            var resource = mode == 0 ? ITEM : FLUID;
+            var packaged = new GenericStack(resource, largeAmount);
+            assertNull(HatchPackageTransfer.insert(input, output, packaged));
+            var target = resource == ITEM ? input : output;
+            assertEquals(largeAmount, Objects.requireNonNull(target).amount(resource));
+            assertEquals(new GenericStack(resource, 1_800_000_000L), target.getStack(0));
+            assertEquals(new GenericStack(resource, 1_700_000_000L), target.getStack(1));
+            if (mode == 2) assertEquals(0, Objects.requireNonNull(input).amount(ITEM));
+        }
     }
 
     @Test

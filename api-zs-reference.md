@@ -205,9 +205,11 @@ var enoughLight = Predicate.custom([], [light], [[0, 0, 0]], [], function(facts 
 
 ## 研究与奖励
 
-`ResearchFormula.constant(...)` 为每个等级指定固定需求，`affine(...)` 按当前等级与阶段首级的差值计算需求，并限制每次工作授予量。
+`ResearchFormula.create()` 创建资源公式，随后调用 `.constant(type, demand, segmentLimit)` 给各等级设置相同需求，或 `.affine(type, base, slope, segmentLimit)` 按 `base + slope × (当前等级 - 阶段首级)` 计算需求。type 必须是数值计算资源，segmentLimit 限制一次工作分段授予量，逻辑线程数不能作为累计研究进度。
 
 `ResearchStage.create(first, last, tier, formula)` 创建连续等级段。随后用 `prerequisite(...)` 和 `mutex(...)` 添加研究前置及互斥项，用 `material(requirement)` 指定研究站材料配方，用 `reward(level, reward)` 在指定等级添加可领取奖励。各 stage 合并后必须无重叠且完整覆盖 `1..maxLevel`。
+
+first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表示研究站阶数。`prerequisite(id, minimumLevel)` 要求前置研究达到指定等级，`mutex(id, minimumLevel)` 则在对应研究达到该等级时阻止这一阶段。奖励方法的 level 是研究的实际等级，必须位于本段范围内。
 
 `Research.create(id, maxLevel, specialOnly, deliveryPolicy, itemDownloadLevelCost, stages, condition)` 组装整项研究。maxLevel 是最大等级，specialOnly 限制普通研究入口，deliveryPolicy 选择 `DATABASE_AND_ITEM` 或 `ITEM_ONLY`，itemDownloadLevelCost 是每次下载扣除的研究等级，stages 是等级段数组，condition 是入队资格函数。配置完毕调用 `register()` 提交定义。
 
@@ -217,7 +219,7 @@ var enoughLight = Predicate.custom([], [light], [[0, 0, 0]], [], function(facts 
 
 `ResearchServer.permissions(callback)` 设置服务端权限回调。回调的 action 和返回值使用 Java 对应枚举的字符串名称；不添加特例时调用 `context.standardDecision(action)`。在启动阶段注册，否则研究服务可能已完成初始化。
 
-`ResearchReward.item(...)` 创建物品奖励，`event(...)` 接入脚本交付函数。事件结果为 `APPLIED`、`ALREADY_APPLIED` 或 `RETRY_LATER`。使用玩家、研究、等级、奖励组和 child ID 组成的事件身份去重；保存确认失败可能导致回调重试，不能再次发放已经完成的奖励。
+`ResearchReward.create(groupId)` 创建可领取的奖励组，链式 `.item(childId, resource)` 添加物品奖励，`.event(childId, callback)` 添加自定义交付函数。childId 在组内必须唯一且保持稳定。事件结果为 `APPLIED`、`ALREADY_APPLIED` 或 `RETRY_LATER`，分别表示本次已交付、此前已交付和稍后重试。使用玩家、研究、等级、奖励组和 child ID 组成的事件身份去重；保存确认失败可能导致回调重试，不能再次发放已经完成的奖励。
 
 `ResearchDownloads.register(material, callback)` 将一种消耗材料与输出函数配对。输出函数只返回有效 `IItemStack`，材料、研究等级和物品交付均由研究流程处理。
 

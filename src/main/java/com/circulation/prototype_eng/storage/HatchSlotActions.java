@@ -38,6 +38,25 @@ public final class HatchSlotActions {
         }
     }
 
+    /** Inserts the resource represented by an AE package and returns its uninserted amount. */
+    @Nullable
+    public static GenericStack insertPackage(SlottedResourceStorage inventory, int slot, GenericStack packaged) {
+        if (slot < -1) throw new IllegalArgumentException("Invalid resource hatch slot");
+        if (packaged.amount() <= 0) return packaged;
+        inventory.context().lock();
+        try {
+            if (!inventory.isValid() || !inventory.isSupportedType(packaged.what().getType())) return packaged;
+            if (slot >= 0 && !inventory.isAllowedIn(slot, packaged.what())) return packaged;
+            long inserted = slot >= 0
+                ? inventory.insert(slot, packaged.what(), packaged.amount(), Actionable.MODULATE)
+                : inventory.insert(packaged.what(), packaged.amount(), Actionable.MODULATE);
+            if (inserted <= 0) return packaged;
+            return inserted == packaged.amount() ? null : new GenericStack(packaged.what(), packaged.amount() - inserted);
+        } finally {
+            inventory.context().unlock();
+        }
+    }
+
     @Nullable
     public static GenericStack click(SlottedResourceStorage inventory, int slot, @Nullable GenericStack carried,
                                      long cursorLimit, boolean acceptsInput, boolean rightClick) {

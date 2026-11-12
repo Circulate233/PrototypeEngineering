@@ -1,5 +1,13 @@
 # 仓室核心与扩展接入
 
+## AE 资源包插入
+
+输入仓、输出仓和混合仓都接受手动插入 AE 资源包。手持资源包点击资源槽时，将包内的完整 AEKey 和 long 数量存到该槽；部分接受时把剩余量写回资源包，完全接受后清除空包。类型不支持、槽位不允许或容量不足而完全拒绝时保留原包。
+
+背包 Shift 快移会在对应仓室的全部槽位中寻找空间，不受当前显示页限制。混合仓优先尝试输入侧；输入侧完全拒绝时再尝试输出侧，部分存入输入后剩余量保留在包内。点击输出侧则直接把资源放入输出侧。操作沿原服务器窗口和存储版本检查，遵守库存和容量预留。
+
+普通物品与管道仍遵守原方向：手动普通物品放入输入、从输出取出；资源包允许在输出侧解包，自动化不能借此向输出写入。显示用 GenericStack 包装栈不属于可插入的 AE 资源包。
+
 2026-11-10 容器操作tooltip按AE2S原生文案及效果统一：ResourceHatchGui直接复用GuiMEStorage的Tooltips.getEmptyingTooltip(StoreAction)，左右键分别显示存入手持物品、存入所含资源，两行使用AE深灰操作/灰色对象及内嵌物品图标。可装填容器使用FillAction配合Tooltips.muted/of、TextComponentItemStack；操作提示优先，沿原生drawTooltipWithHeader绘制，不追加原自有“倒入材料仓；Shift处理全部容器”单行。空光标的资源信息和真实点击/Shift传输行为保持。仅1Java，未改语言文件，源码提交 `cf27716`；验证与真实渲染边界见[实施进度](implementation-status.md)。
 
 2026-11-10 破坏掉落按用户新要求改为AE原生路径：资源仓的 `addAdditionalDrops` 接住输入/输出/交互三种方向的全部材料，经AEKey掉落；大数量物品及流体等非物品资源沿AE资源包，原long数量不裁剪。仓室物品的BlockEntityTag只保存profile、槽位/容量、自动IO和限额等配置，两侧库存列表为空，重新放置不会再恢复已掉出的材料。普通世界存档仍保存真实库存，独立FE仓原有保存行为保持。
@@ -10,9 +18,9 @@
 
 2026-11-10 仓室模型反馈已落实窄修：普通外壳保持原光照，彩色发光面单独关闭方向漫反射并后绘制；CUTOUT 处理透明像素。CTM 缺少原生 BLOOM 枚举时，仅自有标记元数据回退 CUTOUT 并保留 light=15；安装 Lumenized 时保留原 BLOOM 层。方块/物品继续同源，不改贴图、动画、外壳 AO 或实体存储。原因、可选组合和证据见 [仓室美术来源](assets.md)。
 
-资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 契约和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。独立 FE 已接入同批预留/补偿；完整调度及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。
+资源仓后端已替换为本库的独立 `ResourceStorage` / `SlottedResourceStorage` 接口和 `SlottedResourceBuffer` 实现。AEKey、AEKeyType 和 GenericStack 继续表示资源身份、类型及数量；MEStorage、GenericInternalInventory 和 GUI 库存只承担适配职责，不拥有另一份服务器余额。独立 FE 已接入同批预留/补偿；完整调度及持久化事务边界仍按[存储重构约束](storage-redesign.md)继续实现。
 
-当前已接入独立资源/FE 存储、公开发现契约、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现。完整构建、逻辑用例与 IDEA MCP 零诊断证据见[实施进度](implementation-status.md)，游戏内验收仍待补齐。
+当前已接入独立资源/FE 存储、公开发现接口、方块实体、资源/能源各三方向十阶的 60 种方块及物品、能力适配、Java 容器和 GUI。资源独立滚动、能源设置与纵向条已实现。完整构建、逻辑用例与 IDEA MCP 零诊断证据见[实施进度](implementation-status.md)，游戏内验收仍待补齐。
 
 ## 资源仓室
 
@@ -34,7 +42,7 @@
 
 ## 独立 FE
 
-`api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量契约。外部实现可以只提供需要的职责。`EnergyBuffer` 用 long 余额与输入/输出 holds 保存数量，在共享 StorageContext 锁下访问；模拟不修改余额或通知。EnergySnapshot 包含 context、revision、未预留余额/空间及 maxReceive/maxExtract；reserveExtractEnergy/reserveReceiveEnergy 取得精确令牌，与资源和业务需求共同应用、完成或补偿。真实 planned lane 和生命周期集成仍须后续完成。
+`api.energy.EnergyInput` 表达机器取能职责，`EnergyOutput` 表达机器交付能量的职责，`EnergyHatch` 同时实现两者并提供容量接口。外部实现可以只提供需要的职责。`EnergyBuffer` 用 long 余额与输入/输出 holds 保存数量，在共享 StorageContext 锁下访问；模拟不修改余额或通知。EnergySnapshot 包含 context、revision、未预留余额/空间及 maxReceive/maxExtract；reserveExtractEnergy/reserveReceiveEnergy 取得精确令牌，与资源和业务需求共同应用、完成或补偿。真实 planned lane 和生命周期集成仍须后续完成。
 
 默认能源输入仓允许外部充入、机器消耗；输出仓允许机器产出、外部抽取。能源交互仓按用户最新要求分别创建输入/输出EnergyBuffer与StorageContext，每侧沿用该阶容量和原操作限额；机器的EnergyInput/EnergyOutput capability分别返回对应余额，不能相互借用。ForgeEnergyPort(input, output)接收只访问输入，抽取只访问输出；Forge单表查询提供两侧信息性汇总并饱和到Integer.MAX_VALUE，操作仍返回实际数量。旧ForgeEnergyPort(storage, mode)构造保留供明确共享单缓存的外部适配使用。
 
@@ -52,7 +60,7 @@ AE 的 final `createNewTileEntity` 通过真实 `Class<T>` 的 public 无参构�
 
 原 `ResourceHatch` / `EnergyInput` / `EnergyOutput` 仍用于能力发现、结构捕获和机器配方消费。需要共享槽位适配器的外部实现可实现 `SlottedResourceHatch`，其双侧返回 `SlottedResourceStorage`；`HatchInventoryPort` 和 `HatchFluidHandler` 接受该接口，不再要求 `BufferedResourceHatch`。默认容器通过 `ResourceHatchGuiHost` / `EnergyHatchGuiHost` 取得准确 AEBaseTile、模式、等级和真实存储；FE 用户设置独立为 `EnergyHatchSettings`。这些 GUI 职责是可选接入能力，不成为所有机器侧仓室的额外要求。
 
-外部 TileEntity 可以在 `getCapability` 中暴露 `api.HatchCapabilities.RESOURCE`、`ENERGY_INPUT` 或 `ENERGY_OUTPUT`，不需要继承内置 TileEntity。机器通过 `findResource` / `findEnergyInput` / `findEnergyOutput` 获取仍有效的契约；接口实例与存档均由宿主管理，能力注册不提供脱离宿主的默认实例或通用 NBT 格式。能力入口已经声明，外部宿主参与完整机器运行的验收仍待后续集成。
+外部 TileEntity 可以在 `getCapability` 中暴露 `api.HatchCapabilities.RESOURCE`、`ENERGY_INPUT` 或 `ENERGY_OUTPUT`，不需要继承内置 TileEntity。机器通过 `findResource` / `findEnergyInput` / `findEnergyOutput` 获取仍有效的接口实例；接口实例与存档均由宿主管理，能力注册不提供脱离宿主的默认实例或通用 NBT 格式。能力入口已经声明，外部宿主参与完整机器运行的验收仍待后续集成。
 
 外部资源仓后端实现本库 `ResourceStorage`，有槽位时可实现 `SlottedResourceStorage`，不需要实现或继承 MEStorage / GenericStackInv。实现必须提供一致的 context、快照、预留、实际转移数量、补偿及失效行为；不能通过另一个入口绕过预留。`inputStorageIdentity()` / `outputStorageIdentity()` 默认返回对应存储的 context，适配别名必须共享同一底层 context。机器据此避免把同一份库存的多个视图重复预算；输入与输出独立时身份也必须独立。
 
@@ -60,7 +68,7 @@ AE 的 final `createNewTileEntity` 通过真实 `Class<T>` 的 public 无参构�
 
 资源方块 ID 为 `prototype_eng:input_hatch_<等级>`、`output_hatch_<等级>`、`mixed_hatch_<等级>`；能源方块为 `energy_input_hatch_<等级>`、`energy_output_hatch_<等级>`、`energy_mixed_hatch_<等级>`。等级为 1–10，共 60 个方块及对应物品，目前放在红石创造物品栏。默认等级参数沿用 PM 并可配置，合成配方与正式玩法由使用方定义。
 
-`ResourceHatchBlockEntity` 暴露公开资源仓契约及指向同一核心的 AE2 MEStorage / GenericInternalInventory 视图；物品及其他已注册资源能力通过 AE2 的 GenericInternalInventoryAdapters 接入。`HatchInventoryPort` 保留每个槽位的方向，外部不得从输入取出或向输出写入。输出槽的 getStack/getAmount 只展示未预留数量，完全预留时按空槽处理。直接 setStack 以真实已提交内容作条件替换，方向反转、越容量和非法替换立即失败，预留争用明确拒绝；正常传输使用 insert/extract 的实际数量返回值。通知批处理按 context 顺序加锁，不建立另一份余额。
+`ResourceHatchBlockEntity` 暴露公开资源仓接口及指向同一核心的 AE2 MEStorage / GenericInternalInventory 视图；物品及其他已注册资源能力通过 AE2 的 GenericInternalInventoryAdapters 接入。`HatchInventoryPort` 保留每个槽位的方向，外部不得从输入取出或向输出写入。输出槽的 getStack/getAmount 只展示未预留数量，完全预留时按空槽处理。直接 setStack 以真实已提交内容作条件替换，方向反转、越容量和非法替换立即失败，预留争用明确拒绝；正常传输使用 insert/extract 的实际数量返回值。通知批处理按 context 顺序加锁，不建立另一份余额。
 
 流体 fill 与 drain 分别交给输入、输出视图。AE2 的 GenericStackFluidStorage 在无指定 key 的 drain 中选中第一个流体槽后直接返回；把混合仓所有槽直接交给同一个适配器，会让输入流体遮住另一种输出流体。这里使用两个方向视图，并由输出视图过滤完全预留的槽位，避免已被预留的首槽遮住后面的可抽资源。一次 fill/drain 及每侧属性查询在该侧 context 锁内完成，不跨持两侧锁，也没有复制余额。
 
@@ -72,7 +80,7 @@ PM `FluidHatchBlockEntity` 与混合 `FluidIOHatchBlockEntity` 的真实每次 f
 
 PM 单侧/混合流体 GUI 原有清空效果已恢复为资源 GUI 的“清空流体”：服务器检查原玩家、openContainer、准确有效实体、当前存储身份、距离、服务器线程和方块操作权限后，分别在两侧 context 锁内按 AEKeyType.fluids() 抽取可用数量。物品、其它 key、设置、槽位布局不清除，也不产生退款物品。被输入预留或待结算输出持有的数量保留，已应用输入的退款容量和输出的补偿权不受破坏；没有复制旧 storage.clear() 绕过当前事务合同。公开 `HatchSlotActions.clearAvailable(storage, type)` 提供同一受预留保护的存储行为，调用方仍须授权其 owner/玩家动作。
 
-清空先使用现有 `StorageContext.tryOrdinaryLock` 的非阻塞普通动作入口；当前正在保留的 StorageFence、fence scope 或繁忙物理锁直接拒绝本次动作，不让 GUI 等待自己拥有的 pending 事务，也不跨入它的源 scope。未锁定成功前不读真实内容。该新增边界已落盘，新增 retained-fence 用例及最新逐文件检查随主线最终验证，不能用前一轮通过结果替代。
+清空先使用现有 `StorageContext.tryOrdinaryLock` 的非阻塞普通动作入口；当前正在保留的 StorageFence、fence scope 或繁忙物理锁直接拒绝本次动作，不让 GUI 等待自己拥有的 pending 事务，也不跨入它的源 scope。未锁定成功前不读真实内容。该新增边界已实现，新增 retained-fence 用例及最新逐文件检查随主线最终验证，不能用前一轮通过结果替代。
 
 ## Java 界面
 
@@ -80,11 +88,11 @@ ResourceHatchGui 和 EnergyHatchGui 直接继承 AEBaseGui，复用 AE2 背景�
 
 `localization.GuiText` 实现 AE2S 的 `LocalizationEnum`，客户端标签调用 `getLocal()`，容器标题使用 `text(...)` 组件。GUI 不拼接翻译键，也不直接传裸翻译键调用翻译函数。
 
-资源输入/输出区域各有独立的 AE2 ScrollBar，最多显示 5 行并随分辨率压缩；默认布局读取各侧实际槽数，允许外部非对称槽位仓室。滚动保留原始槽位索引，隐藏槽禁用，避免界面位置变化造成操作对象混淆。网格后保留流体限额/清空区域，限额可 Enter 或“应用”提交。能源界面为 176×214，使用 PM 原 16×66 纵向能量条，支持输入/输出限额与自动标志设置、Enter 提交及完整 long 数值 tooltip；纹理等级从容器的公开宿主契约读取，不强转内置实体。实际 GUI 交互与不同分辨率显示尚待游戏内验证。
+资源输入/输出区域各有独立的 AE2 ScrollBar，最多显示 5 行并随分辨率压缩；默认布局读取各侧实际槽数，允许外部非对称槽位仓室。滚动保留原始槽位索引，隐藏槽禁用，避免界面位置变化造成操作对象混淆。网格后保留流体限额/清空区域，限额可 Enter 或“应用”提交。能源界面为 176×214，使用 PM 原 16×66 纵向能量条，支持输入/输出限额与自动标志设置、Enter 提交及完整 long 数值 tooltip；纹理等级从容器的公开宿主接口读取，不强转内置实体。实际 GUI 交互与不同分辨率显示尚待游戏内验证。
 
 AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv，不能直接接收 GenericInternalInventory。这里使用薄适配器 `HatchGuiInventory` 实现 InternalInventory 和 GenericStackDisplayInventory：服务端直接读取 SlottedResourceStorage 的已提交内容，客户端只缓存收到的同步 ItemStack。它不持有服务器余额，服务端 setItemDirect 明确拒绝，所有玩家写入由容器授权动作完成。GUI 显示完整已提交量，自动化视图则只显示可转移量，两者用途不同。
 
-资源容器及 `HatchSlotActions` 在真实 SlottedResourceStorage 上处理物品转移。输入可以放入和手动取回，输出只可取出；混合仓界面分组显示两侧。支持普通点击、右键拆分/单个放入、Shift 转移、数字键和丢弃；大缓存按原生物品堆叠上限取入玩家库存。点击及交换使用共享锁和 tryReplaceSlot，Shift 的抽取、背包合并及余量回退处于同一侧锁范围，防止并行操作抢走回退容量。收集物品时依次访问两侧，不持有输入锁再进入输出。资源槽不参与原版拖拽分配，防止显示包装栈进入玩家物品栏；玩家库存仍保留原版拖拽。
+资源容器及 `HatchSlotActions` 在真实 SlottedResourceStorage 上处理物品转移。普通物品可以放入输入侧并手动取回，输出侧普通物品只可取出；AE资源包允许在两侧手动解包，混合仓界面分组显示两侧。支持普通点击、右键拆分/单个放入、Shift 转移、数字键和丢弃；大缓存按原生物品堆叠上限取入玩家库存。点击及交换使用共享锁和 tryReplaceSlot，Shift 的抽取、背包合并及余量回退处于同一侧锁范围，防止并行操作抢走回退容量。收集物品时依次访问两侧，不持有输入锁再进入输出。资源槽不参与原版拖拽分配，防止显示包装栈进入玩家物品栏；玩家库存仍保留原版拖拽。
 
 手持可被 AE2 策略识别的流体等资源容器：右键输入槽倒入，左键资源槽装出，配合 Shift 请求整容器操作。ResourceHatchContainer 自行路由四种装入/倒出动作，复用 AEBaseContainer 的 held-item 转移策略；模拟、实际转移和失败回退处于同一侧 context 锁内。服务端仍禁止向输出槽发送 EMPTY_ITEM/EMPTY_ENTIRE_ITEM 写入，禁止 AE2 通用 SwapSlotsPacket 直接移动资源显示包装栈；数字键交换走实际数量路径。客户端限制不作为库存权限依据。
 
@@ -95,17 +103,17 @@ AE2S 的 ConfigGuiInventory 构造参数和 delegate 固定为 GenericStackInv�
 `config/prototype_eng/hatches.cfg` 在初始化时读取，按 `tier1`–`tier10` 配置槽数、混合仓每侧槽数、物品/流体每槽容量、能源容量与操作限额；槽数允许 1–81。十阶槽数/物品容量源自 PM `ItemHatchConfig` / `ItemIOHatchConfig`，流体每槽容量源自 `FluidHatchConfig`，能源源自 `EnergyHatchConfig`。
 
 | 等级 | 输入/输出槽数 | 混合仓每侧槽数 | 物品每槽 | 流体每槽（mB） | 能源容量（FE） | 能源每次操作限额（FE） |
-|---|---:|---:|---:|---:|---:|---:|
-| 1 | 1 | 1 | 64 | 16,000 | 128,000 | 32 |
-| 2 | 2 | 1 | 128 | 32,000 | 512,000 | 128 |
-| 3 | 4 | 2 | 128 | 64,000 | 2,000,000 | 512 |
-| 4 | 9 | 4 | 256 | 128,000 | 8,000,000 | 2,048 |
-| 5 | 16 | 8 | 512 | 256,000 | 32,000,000 | 8,192 |
-| 6 | 25 | 12 | 1,024 | 512,000 | 128,000,000 | 32,768 |
-| 7 | 36 | 18 | 2,048 | 1,024,000 | 512,000,000 | 131,072 |
-| 8 | 49 | 24 | 4,096 | 2,048,000 | 2,000,000,000 | 524,288 |
-| 9 | 64 | 32 | 8,192 | 4,096,000 | 8,000,000,000 | 2,097,152 |
-| 10 | 81 | 40 | 16,384 | 8,192,000 | 32,000,000,000 | 8,388,608 |
+| ---- | ------------: | -------------: | -------: | -------------: | -------------: | ---------------------: |
+| 1    |             1 |              1 |       64 |         16,000 |        128,000 |                     32 |
+| 2    |             2 |              1 |      128 |         32,000 |        512,000 |                    128 |
+| 3    |             4 |              2 |      128 |         64,000 |      2,000,000 |                    512 |
+| 4    |             9 |              4 |      256 |        128,000 |      8,000,000 |                  2,048 |
+| 5    |            16 |              8 |      512 |        256,000 |     32,000,000 |                  8,192 |
+| 6    |            25 |             12 |    1,024 |        512,000 |    128,000,000 |                 32,768 |
+| 7    |            36 |             18 |    2,048 |      1,024,000 |    512,000,000 |                131,072 |
+| 8    |            49 |             24 |    4,096 |      2,048,000 |  2,000,000,000 |                524,288 |
+| 9    |            64 |             32 |    8,192 |      4,096,000 |  8,000,000,000 |              2,097,152 |
+| 10   |            81 |             40 |   16,384 |      8,192,000 | 32,000,000,000 |              8,388,608 |
 
 多类型资源共用物品仓槽位布局，不另建流体专用槽位等级。其他已注册 AEKeyType 优先采用 AE2 GenericSlotCapacities 值，否则取 64 个该类型单位。这些是通用组件默认参数，可由使用方配置，库不新增正式科技路线。
 
