@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 CPU工作中退出重进后无法发放样板：确认为本仓库`MePatternAssemblyBlockEntity.entry`仅用对象身份匹配；AE2S 1.1.1读档会独立解码任务样板，原生提供者按定义相等识别。本轮保留原实例槽优先，补完整AEItemKey定义匹配，合并判断/倍数预检/实际push共用修复；8项既有存储与恢复回归、定向Spotless、本机IDEA错误/警告/弱警告全零及MCP构建通过。入口[样板总成](block-registration.md#样板总成)，证据pattern-cpu-reload/见[实施进度](implementation-status.md)。下一步用户在CPU尚有待发放工作时退出重进，确认继续供料；未启动游戏或推送，背景及原暂存保留。
+
 - 2026-11-12 仓室基底CTM/按钮透明与玻璃光照：64仓室/123基底与机械壳双向连接，native邻接/转角/遮挡，原图与324叠加面不变；epoch懒缓存避开CTM同LOWEST事件排序。颜色小框0/1/2px色块位移、ME大框固定，修局部透明混合白条。六玻璃补非fullCube与neighbor brightness，保留零opacity和碰撞箱。7专项、完整工作树1981 tests/278 suites及独立候选1979 tests/277 suites全通过，Spotless与MCP build成功；GUI/玻璃Java本机IDEA全级零，3个CTM Java仍有IDE未同步compileOnly的解析诊断，实际javac/Gradle通过。入口[方块与GUI](block-registration.md)、[实机步骤](../run/scripts/README-me-assemblies.md)，证据hatch-casing-ctm/、color-button-press/、decorative-glass-light/见[实施进度](implementation-status.md)。未启动游戏/附加JVM/推送，真实atlas/GL仍由用户复验。
 
 - 2026-11-12 颜色按钮样式拆分：普通仓室显式HATCH（states原14×14）；ME输入/输出/接口及样板总成显式ME（io_mode原17×18），分别恢复默认位置、色块和点击/无色选择范围，不再共享小框尺寸。现有3项交互测试覆盖两种样式并通过，Spotless通过；6Java本机IDEA errorsOnly:false全级零，纹理文件未改。入口[方块与GUI](block-registration.md)，证据color-selector-styles/见[实施进度](implementation-status.md)。机械外壳基底跨仓室连接需求同步处理中。

@@ -265,6 +265,8 @@ public final class MePatternAssemblyBlockEntity extends AEBaseTile implements II
 
     private @Nullable PatternEntry entry(IPatternDetails details) {
         for (var entry : entries) if (entry.details == details) return entry;
+        // CPU reload decodes its own details; match the saved definition after preserving live slot identity.
+        for (var entry : entries) if (entry.details.getDefinition().equals(details.getDefinition())) return entry;
         return null;
     }
 
