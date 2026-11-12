@@ -193,7 +193,7 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `me_input_assembly`、`me_output_assembly`、`me_interface` 和 `me_pattern_assembly` 是通用 ME 资源组件，不按物品、流体或气体拆分。输入总成与接口的标记表示期望保有量，由 ME 补足；输入槽数在 `me_assemblies.cfg` 的 `resources.inputSlots` 配置，默认 18。输出按真实 `AEKey` 缓存动态显示，每种资源支持到 `Long.MAX_VALUE`，不设种类上限。ME 资源总成只通过 ME 和机器事务转移实际缓存。
 
-所有资源仓室默认使用 AE2 福鲁伊克斯透明色（无色），并以无色输入形成独立库存；任一有色输入组也能通用读取这份库存，但不会读取其他不同颜色库存。无色输入不参与样板槽隔离。有色样板总成在隔离模式下按槽拆分输入，催化剂共享给该总成的各样板槽。FE 仓室不分组。扫描器分别匹配各色库存；已运行进程保留选中的组。样板每页固定 36 槽，页数由 `patterns.pages` 配置；五种工作模式及实际 GUI 操作见[方块与 ME 总成](docs/block-registration.md)。
+所有资源仓室默认使用 AE2 福鲁伊克斯透明色（无色），并以无色输入形成独立库存；任一有色输入组也能通用读取这份库存，但不会读取其他不同颜色库存。开启样板槽隔离后，不再使用总成颜色：每个槽单独扫描，只接入自身输入、该总成共享催化剂及其他未分区无色库存，不与其他槽或有色普通仓拼料。未开启样板隔离时才按总成颜色分组。FE 仓室不分组；已运行进程保留选中的组。样板每页固定 36 槽，页数由 `patterns.pages` 配置；五种工作模式及实际 GUI 操作见[方块与 ME 总成](docs/block-registration.md)。
 
 `ResourceHatchConfiguration.Side.fromItemEquivalent(...)` 以槽数和单槽物品等价值配置容量；流体默认每 1000 mB 对应一个物品单位。需要直接给每类资源设置原生容量时，向构造器传 `Reference2LongMap<AEKeyType>`。混合仓输入和输出分别配置。
 
@@ -274,7 +274,7 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 同一物理余额必须返回同一个 `StorageContext` 和一致的存储 identity，包括资源和 FE 适配器。这样库才能去除重复来源并协调共享仓室。禁止为同一库存创建多个互不关联的 context；否则并行判断会把一份库存计算多次。输入输出确实独立的混合仓应分别提供 context。
 
-`ResourceHatch.inputGroup()` 返回 `ResourceInputGroup(color, partition)`；默认 `AEColor.TRANSPARENT`（无色）、空分区。无色库存独立于有色库存，作为通用输入参与每个有色组；无色的 partition 统一为空，因此样板槽也不隔离。有色组之间仍互相隔离，有色样板按槽分区。可配置仓室实现 `ResourceHatchGrouping` 的颜色读写接口。`inputPartitions()` 可暴露多个稳定的物理视图；每个视图仍须保留原存储 context 和 identity。需要向同一总成各分区提供催化剂时，视图返回 `sharedInput() == true`，并使用该总成稳定分区前缀。外部实现改变颜色或分区成员后，旧捕获会失效，不能悄悄把原进程转到另一组。
+`ResourceHatch.inputGroup()` 返回 `ResourceInputGroup(color, partition)`；默认 `AEColor.TRANSPARENT`（无色）、空分区。只有无色且空分区的库存是通用库存。非空 partition 表示独立库存，其颜色规范为透明色并保留完整分区标识，不受总成颜色影响，也不向其他组暴露为通用输入。可配置仓室实现 `ResourceHatchGrouping` 的颜色读写接口。`inputPartitions()` 可暴露多个稳定的物理视图；每个视图仍须保留原存储 context 和 identity。需要向同一总成各分区提供催化剂时，视图返回 `sharedInput() == true`，并使用该总成稳定分区前缀；隔离槽可共同读取未分区无色库存。外部实现改变分区成员后，旧捕获会失效；隔离进程按稳定分区恢复，不因总成染色改变归属。
 
 实现 `ResourceRecipeObserver` 可接收真实供料后的 `inputsCommitted(process, stage, amounts)`，以及进程装入、退出与阶段成功结算通知。`amounts` 只包含该 observer 实际提供且完整阶段已提交的输入；探测和回滚不通知，回调在存储锁外执行。回调应只更新同步状态，不能从工作线程访问世界。需要跨存档关联时使用 `RecipeProcess.identity()` 的 UUID，codec 会保存它；配方 ID 或随机种子不能替代进程身份。
 

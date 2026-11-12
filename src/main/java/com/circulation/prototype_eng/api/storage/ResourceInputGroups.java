@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Colored inputs remain isolated; every group can also use the same physical uncolored storage. */
+/** Colors and explicit slot partitions stay separate while sharing unpartitioned uncolored storage. */
 public final class ResourceInputGroups {
     private ResourceInputGroups() {}
 
@@ -41,10 +41,10 @@ public final class ResourceInputGroups {
         groups.forEach((group, members) -> {
             for (var hatch : expanded) {
                 var other = hatch.inputGroup();
-                boolean generic = other.color() == AEColor.TRANSPARENT;
+                boolean generic = other.partition().isEmpty() && other.color() == AEColor.TRANSPARENT;
                 boolean input = other.equals(group) || generic || hatch.sharedInput() && other.color() == group.color()
                     && group.partition().startsWith(other.partition());
-                boolean output = (generic || other.color() == group.color()) && hatch.output() != null;
+                boolean output = (generic || other.partition().isEmpty() && other.color() == group.color()) && hatch.output() != null;
                 if (input || output) members.add(new GroupView(hatch, other, input));
             }
         });

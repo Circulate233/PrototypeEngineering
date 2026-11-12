@@ -14,6 +14,7 @@ import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
+import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -37,6 +38,7 @@ import java.util.Objects;
 import static com.circulation.prototype_eng.storage.MePatternAssemblyBlockEntity.Mode;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,6 +47,7 @@ class MePatternAssemblyStorageTest {
     private static final KeyType TYPE = new KeyType("pattern_assembly");
     private static final Key MATERIAL = new Key(TYPE, "material");
     private static final Key CATALYST = new Key(TYPE, "catalyst");
+    private static final Key AUXILIARY = new Key(TYPE, "auxiliary");
     private static final Key PRODUCT = new Key(TYPE, "product");
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt(id -> id.equals(TYPE.getId()) ? TYPE : null);
 
@@ -105,36 +108,86 @@ class MePatternAssemblyStorageTest {
     }
 
     @Test
-    void uncoloredPatternInputsCombineAndPersistButRecoloringRestoresSlotIsolation() {
-        AEColor[] color = {AEColor.TRANSPARENT};
-        var storage = new MePatternAssemblyStorage(2, () -> color[0], () -> {}, KEYS);
-        storage.bindIdentity("uncolored_isolation");
+    void isolatedPatternSlotsIgnoreAssemblyColorAndReadOnlyTheirCatalystAndUncoloredExternalInventory() {
+        for (var color : new AEColor[]{AEColor.TRANSPARENT, AEColor.RED, AEColor.BLUE}) {
+            var storage = new MePatternAssemblyStorage(2, () -> color, () -> {}, KEYS);
+            storage.bindIdentity("independent_" + color.name());
+            assertTrue(storage.setMode(Mode.PATTERN_ISOLATION));
+            assertTrue(storage.push(0, amounts(MATERIAL, 2)));
+            assertTrue(storage.push(1, amounts(MATERIAL, 2)));
+            var other = new MePatternAssemblyStorage(2, () -> AEColor.BLUE, () -> {}, KEYS);
+            other.bindIdentity("other");
+            assertTrue(other.setMode(Mode.PATTERN_ISOLATION));
+            other.catalyst().insert(CATALYST, 100, Actionable.MODULATE);
+            var uncolored = new PlainHatch();
+            uncolored.input.insert(MATERIAL, 1, Actionable.MODULATE);
+            uncolored.input.insert(AUXILIARY, 2, Actionable.MODULATE);
+            var colored = new PlainHatch(color == AEColor.TRANSPARENT ? AEColor.RED : color);
+            colored.input.insert(MATERIAL, 100, Actionable.MODULATE);
+            var fixture = new Fixture(storage, other, uncolored, uncolored, colored);
+            var supported = recipe("independent_slot", 1,
+                List.of(new GenericStack(MATERIAL, 3), new GenericStack(CATALYST, 1), new GenericStack(AUXILIARY, 1)));
+            assertEquals(RecipeScanner.Status.EXHAUSTED, scan(fixture, supported).status(), "Another assembly's catalyst must remain isolated");
+            storage.catalyst().insert(CATALYST, 1, Actionable.MODULATE);
+            var split = recipe("split_slots", 1,
+                List.of(new GenericStack(MATERIAL, 4), new GenericStack(CATALYST, 1), new GenericStack(AUXILIARY, 1)));
+            assertEquals(RecipeScanner.Status.EXHAUSTED, scan(fixture, split).status(), "Neither another slot nor a same-color ordinary hatch may contribute");
+            var admitted = scan(fixture, supported);
+            assertEquals(RecipeScanner.Status.ADMITTED, admitted.status());
+            var process = Objects.requireNonNull(admitted.process());
+            assertEquals(new ResourceInputGroup(AEColor.TRANSPARENT, "independent_" + color.name() + "/pattern/0"), process.selectedInputGroup());
+            process.tick();
+            assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+            assertEquals(0, Objects.requireNonNull(storage.inputPartitions().get(0).input()).amount(MATERIAL));
+            assertEquals(2, Objects.requireNonNull(storage.inputPartitions().get(1).input()).amount(MATERIAL));
+            assertEquals(0, storage.catalyst().amount(CATALYST));
+            assertEquals(100, other.catalyst().amount(CATALYST));
+            assertEquals(100, colored.input.amount(MATERIAL));
+            assertEquals(0, uncolored.input.amount(MATERIAL));
+            assertEquals(1, uncolored.input.amount(AUXILIARY));
+            assertEquals(2, storage.output().amount(PRODUCT));
+            assertEquals(0, other.output().amount(PRODUCT));
+        }
+    }
+
+    @Test
+    void isolatedProcessRestoresItsSlotAcrossColorChangesAndNeverBorrowsTheNextSlot() {
+        var storage = storage();
+        storage.bindIdentity("restore_isolation");
         assertTrue(storage.setMode(Mode.PATTERN_ISOLATION));
         assertTrue(storage.push(0, amounts(MATERIAL, 2)));
-        assertTrue(storage.push(1, amounts(MATERIAL, 2)));
+        assertTrue(storage.push(1, amounts(MATERIAL, 10)));
         storage.catalyst().insert(CATALYST, 1, Actionable.MODULATE);
-        var recipe = recipe("uncolored_isolation", 1, List.of(new GenericStack(MATERIAL, 4), new GenericStack(CATALYST, 1)));
+        var io = new ResourceRequirement(List.of(new GenericStack(MATERIAL, 1), new GenericStack(CATALYST, 1)),
+            List.of(new GenericStack(MATERIAL, 1)), List.of(), List.of(new GenericStack(PRODUCT, 2)), false);
+        var recipe = new MachineRecipe(id("restore_isolated_slot"), 2,
+            List.of(RecipeRequirements.RESOURCES.requirement(id("restore_isolated_slot_io"), io)));
         var fixture = new Fixture(storage);
-        color[0] = AEColor.RED;
-        assertEquals(RecipeScanner.Status.EXHAUSTED, scan(fixture, recipe).status());
-        color[0] = AEColor.TRANSPARENT;
-        var savedStorage = new NBTTagCompound();
-        storage.save(savedStorage);
-        var restored = MePatternAssemblyStorage.load(savedStorage, 2, () -> color[0], () -> {}, KEYS);
-        var restoredFixture = new Fixture(restored);
-        var admitted = scan(restoredFixture, recipe);
+        var admitted = scan(fixture, recipe);
         assertEquals(RecipeScanner.Status.ADMITTED, admitted.status());
         var process = Objects.requireNonNull(admitted.process());
-        assertEquals(ResourceInputGroup.TRANSPARENT, process.selectedInputGroup());
-        var codec = RecipeProcessNbt.builder(recipe, "uncolored-group-1").resources(KEYS).build();
+        process.tick();
+        var group = Objects.requireNonNull(process.selectedInputGroup());
+        assertEquals(new ResourceInputGroup(AEColor.TRANSPARENT, "restore_isolation/pattern/0"), group);
+        var codec = RecipeProcessNbt.builder(recipe, "isolated-slot-1").resources(KEYS).build();
         var saved = codec.encode(process);
-        assertTrue(restoredFixture.host.detach(process));
+        var savedStorage = new NBTTagCompound();
+        storage.save(savedStorage);
+        var restored = MePatternAssemblyStorage.load(savedStorage, 2, () -> AEColor.BLUE, () -> {}, KEYS);
+        restored.bindIdentity("restore_isolation");
+        var restoredFixture = new Fixture(restored);
+        saved.getCompoundTag("InputGroup").setString("Color", AEColor.RED.name());
         var loadedProcess = codec.decode(restoredFixture.machine, saved);
+        assertEquals(group, loadedProcess.selectedInputGroup());
         assertTrue(restoredFixture.host.start(loadedProcess));
+        assertInstanceOf(ProcessResult.Blocked.class, loadedProcess.tick());
+        assertEquals(10, Objects.requireNonNull(restored.inputPartitions().get(1).input()).amount(MATERIAL));
+        assertTrue(restored.push(0, amounts(MATERIAL, 1)));
         loadedProcess.tick();
         assertEquals(RecipeProcess.Lifecycle.COMPLETED, loadedProcess.state().lifecycle());
         assertEquals(0, restored.catalyst().amount(CATALYST));
-        for (var partition : restored.inputPartitions()) assertEquals(0, Objects.requireNonNull(partition.input()).amount(MATERIAL));
+        assertEquals(0, Objects.requireNonNull(restored.inputPartitions().get(0).input()).amount(MATERIAL));
+        assertEquals(10, Objects.requireNonNull(restored.inputPartitions().get(1).input()).amount(MATERIAL));
         assertEquals(2, restored.output().amount(PRODUCT));
     }
 
@@ -288,6 +341,17 @@ class MePatternAssemblyStorageTest {
 
     private static final class PlainHatch implements ResourceHatch {
         private final UnboundedResourceBuffer input = new UnboundedResourceBuffer(() -> {});
+        private final AEColor color;
+
+        private PlainHatch() {
+            this(AEColor.TRANSPARENT);
+        }
+
+        private PlainHatch(AEColor color) {
+            this.color = color;
+        }
+
+        @Override public ResourceInputGroup inputGroup() { return new ResourceInputGroup(color); }
         @Override public ResourceStorage input() { return input; }
         @Override public ResourceStorage output() { return null; }
         @Override public boolean isValid() { return true; }

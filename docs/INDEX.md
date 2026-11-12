@@ -4,7 +4,7 @@
 
 ## 当前检查点
 
-- 2026-11-12 无色通用库存：普通资源仓、ME资源总成和样板总成默认福鲁伊克斯色（`AEColor.TRANSPARENT`）；无色独立成组并供所有有色组读取，不参与颜色/样板槽隔离，有色组和有色样板仍隔离。GUI可设回无色，已有保存颜色保留。3项真实分组/预留/样板恢复回归及完整build共1990 tests/274 suites全零、Spotless通过；14个正式/测试Java本机IDEA全级零、MCP指定文件构建成功。run示例命令支持TRANSPARENT，21个addon Java重新编译并安装；该run文件仍被IDEA排除，诊断未知。入口[颜色规则](block-registration.md#颜色与样板隔离)、[示例验证](../run/scripts/README-me-assemblies.md)，详见[实施进度](implementation-status.md)。下一步用户重启验证福鲁伊克斯按钮、红/蓝＋无色供料及有色/无色样板隔离差异；未启动游戏/推送，背景和原暂存保留。
+- 2026-11-12 样板槽隔离修正：开启后每槽以总成身份/槽号独立扫描，脱离总成颜色；只共享本总成催化剂和外部未分区无色库存，不能拼别槽、借其他总成催化剂或有色普通仓。普通无色默认值和未隔离模式颜色分组保持。显式partition保留并规范为透明色，恢复兼容原有色槽标识且不切换槽位。红/蓝/无色真实供料与存档恢复用例及完整build共1991 tests/274 suites全零、Spotless通过；3个修改Java本机IDEA全级零，MCP指定文件构建成功。入口[颜色规则](block-registration.md#颜色与样板隔离)、[样板验证](../run/scripts/README-me-assemblies.md)，证据见[实施进度](implementation-status.md)。下一步用户重启验证三种颜色均逐槽隔离、催化剂和无色供料；未启动游戏/推送，背景和原暂存保留。
 
 - 2026-11-12 run示例补齐：新增6台ME机器/5池/9配方，以及从实际注册表生成的连接纹理全方块结构；每种正式PE方块27格，附Java/ZS并行组件。`/pe_examples build ctm_gallery 0 80 0` 搭建，`/pe_me_examples gallery-check/gallery-list` 核对覆盖及展台坐标；ME材料包/真实加工样板/颜色和标记命令已接入。21个addon Java编译安装、13脚本SDK编译和97核心断言通过，MCP主工程构建成功；6个修改run Java被IDEA排除，诊断为unknown，未修改IDE设置。入口[ME与连接纹理示例](../run/scripts/README-me-assemblies.md)、[run入口](../run/README.md)，详细证据见[实施进度](implementation-status.md)。下一步用户完整重启客户端验证真实ME/PAT和CTM/Bloom；未启动游戏/推送，原背景与暂存保留。
 
