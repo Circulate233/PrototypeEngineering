@@ -25,6 +25,7 @@ import net.minecraft.init.SoundEvents;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraft.inventory.Slot;
+import net.minecraftforge.fml.client.config.GuiUtils;
 import ae2.util.inv.AppEngInternalInventory;
 import ae2.container.slot.AppEngSlot;
 import org.jetbrains.annotations.Nullable;
@@ -683,7 +684,18 @@ public final class StructurePreviewPanel implements AutoCloseable {
         if (ingredientSlots != null) return false;
         var stack = itemAt(localX, localY);
         if (stack.isEmpty()) return false;
-        ((PreviewNativeGui) host).prototype_eng$renderItemTooltip(stack, screenX, screenY);
+        if (host instanceof PreviewNativeGui nativeGui) nativeGui.prototype_eng$renderItemTooltip(stack, screenX, screenY);
+        else {
+            var mc = Minecraft.getMinecraft();
+            var font = stack.getItem().getFontRenderer(stack);
+            GuiUtils.preItemToolTip(stack);
+            try {
+                GuiUtils.drawHoveringText(host.getItemToolTip(stack), screenX, screenY,
+                    host.width, host.height, -1, font == null ? mc.fontRenderer : font);
+            } finally {
+                GuiUtils.postItemToolTip();
+            }
+        }
         return true;
     }
 

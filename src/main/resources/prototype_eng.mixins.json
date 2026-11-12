@@ -13,9 +13,7 @@
     "client.TileEntityRendererDispatcherMachineMixin",
     "client.SimpleReloadableResourceManagerAccessor",
     "client.FallbackResourceManagerAccessor",
-    "client.MinecraftPreviewGuiMixin",
     "client.GuiContainerPreviewMixin",
-    "client.GuiScreenPreviewMixin",
     "client.ModRegistryRecipePoolPagesMixin",
     "client.HeiPreviewInputMixin",
     "client.CtmHatchBloomMetadataMixin"

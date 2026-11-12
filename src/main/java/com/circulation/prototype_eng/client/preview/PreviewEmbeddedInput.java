@@ -10,7 +10,6 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.input.Keyboard;
 
-import java.util.function.BiPredicate;
 
 /** HEI's wrapper API has no drag/key callbacks: forward only inside the actually drawn preview. */
 public final class PreviewEmbeddedInput {
@@ -73,10 +72,6 @@ public final class PreviewEmbeddedInput {
     public boolean mouse(GuiScreen screen, int x, int y) {
         int eventButton = Mouse.getEventButton();
         boolean ownedRelease = dragging.consumeRelease(eventButton, Mouse.getEventButtonState());
-        if (PreviewScreenTransitions.blocked(screen)) {
-            if (ownedRelease) dragging.clear();
-            return true;
-        }
         if (ownedRelease) {
             if (dragging.fresh(screen, System.currentTimeMillis()) && ((StructurePreviewPanel) dragging.panel).inputCurrent()) {
                 var panel = (StructurePreviewPanel) dragging.panel;
@@ -112,10 +107,6 @@ public final class PreviewEmbeddedInput {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public void key(GuiScreenEvent.KeyboardInputEvent.Pre event) {
-        if (PreviewScreenTransitions.blocked(event.getGui())) {
-            event.setCanceled(true);
-            return;
-        }
         if (Keyboard.getEventKeyState() && Keyboard.getEventKey() == Keyboard.KEY_ESCAPE)
             for (var entry : active)
                 if (entry.host == event.getGui() && fresh(entry) && entry.panel.dismissMaterials()) {
@@ -129,6 +120,11 @@ public final class PreviewEmbeddedInput {
 
     /** Pure captured-input state; native panel freshness is checked by the caller before delivery. */
     static final class Drag {
+        @FunctionalInterface
+        interface PointerAction {
+            boolean test(int x, int y);
+        }
+
         private Object host, panel;
         private int x, y, button = -1;
         private int ownedRelease = -1;
@@ -155,11 +151,11 @@ public final class PreviewEmbeddedInput {
             return panel != null && host == currentHost && now - touched <= 250;
         }
 
-        boolean move(int screenX, int screenY, BiPredicate<Integer, Integer> deliver) {
+        boolean move(int screenX, int screenY, PointerAction deliver) {
             return deliver.test(screenX - x, screenY - y);
         }
 
-        void release(int screenX, int screenY, BiPredicate<Integer, Integer> deliver) {
+        void release(int screenX, int screenY, PointerAction deliver) {
             try {
                 deliver.test(screenX - x, screenY - y);
             } finally {

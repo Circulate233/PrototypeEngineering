@@ -7,8 +7,10 @@ import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
+import com.circulation.prototype_eng.client.preview.PreviewNativeGui;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
 import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
 import net.minecraft.inventory.ClickType;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.input.Keyboard;
@@ -30,13 +32,18 @@ import java.util.Objects;
 
 /** Original PM builder panel: preview at (4,2), clipped tree and task controls. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
-public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer> {
+public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer> implements PreviewNativeGui {
     private final BuilderStructureTree tree;
     private StructurePreviewPanel preview;
     private ResourceLocation id;
     private String appliedSelections = "";
     private boolean selectionsPending;
     private BlockOrientation orientation;
+
+    @Override
+    public void prototype_eng$renderItemTooltip(ItemStack stack, int x, int y) {
+        renderToolTip(stack, x, y);
+    }
 
     public BuilderInstrumentGui(StructureToolContainer container, InventoryPlayer player) {
         super(container, player);

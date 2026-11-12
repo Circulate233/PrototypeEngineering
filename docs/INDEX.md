@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 其余Mixin逐项审查：删除MinecraftPreviewGuiMixin、GuiScreenPreviewMixin及PreviewScreenGuard/retired/blocked全局界面接管；预览只管理本身AE子页打开/关闭/返回，tooltip由自有GUI或Forge公开接口绘制。保留10项（2通用+8客户端），逐项实际消费者及理由见[Mixin审查](mixins.md)。原24项导航测试保留4项真实返回键/客户端队列行为，撤去20项旧守卫模拟流程。完整1970 tests/274 suites、Spotless、JAR/reobf、MCP build通过；7个修改Java及其余9个Mixin本机IDEA全级零，产物无删除类。证据remaining-mixin-audit/；未启动游戏/开子代理/推送，原暂存及其它对话保留。
+
 - 2026-11-12 奖励交付移除全局保护：删除11个玩家/库存/护甲/掉落物/漏斗/网络Mixin及全局交互事件，取消光标专用存档和重生库存搬运；奖励发放器直接创建并注册RewardItemEntity，仅该实体持有待确认物品，确认后恢复普通掉落物行为。下载COMMITTED恢复只核对原扣料记录，不冻结玩家或要求库存永久等于after。1990项/274 suites与Spotless通过，18Java本机IDEA全级零，MCP build及独立JAR检查通过（2通用+10客户端Mixin，无11个旧class）。入口[奖励交付](research-rewards.md)、[下载](research-downloads.md)，证据reward-local-delivery/。其余Mixin按用户补充继续审查；未启动游戏/开子代理/推送，其他对话和原暂存保留。
 
 - 2026-11-12 JEI重复皮肤入口移除：按用户要求直接删除`JeiVisuals.Fluid`与`FluidSkin`，不保留弃用枚举、尺寸别名或转发兼容层；资源槽直接使用`JeiSlot`与通用AEKey皮肤。全仓正式/测试/示例/ZS无旧入口引用，build -x test含Spotless通过，Java本机IDEA全级零、MCP定向构建成功；JAR及两套开发输出无旧内部类。本轮只删除声明并同步说明，验证证据见[实施进度](implementation-status.md)，入口[JEI外观](jei.md)。

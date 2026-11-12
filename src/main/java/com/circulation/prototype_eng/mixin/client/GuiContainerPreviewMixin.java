@@ -27,7 +27,7 @@ public abstract class GuiContainerPreviewMixin implements PreviewNativeGui.Slots
 
     @Redirect(method = "initGui", at = @At(value = "FIELD", target = "Lnet/minecraft/client/entity/EntityPlayerSP;openContainer:Lnet/minecraft/inventory/Container;", opcode = Opcodes.PUTFIELD), require = 1, allow = 1)
     private void prototype_eng$keepOriginalWindow(EntityPlayerSP player, Container local) {
-        if (!((Object) this instanceof StructurePreviewGui<?>) && PreviewScreenTransitions.binding((GuiContainer) (Object) this, local))
+        if (!((Object) this instanceof StructurePreviewGui<?>))
             player.openContainer = local;
     }
 

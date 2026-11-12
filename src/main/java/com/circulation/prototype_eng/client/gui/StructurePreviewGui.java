@@ -7,6 +7,7 @@ import ae2.client.gui.widgets.SimpleIconButton;
 import ae2.container.AEBaseContainer;
 import ae2.core.localization.GuiText;
 import com.circulation.prototype_eng.client.preview.PreviewBackRequest;
+import com.circulation.prototype_eng.client.preview.PreviewNativeGui;
 import com.circulation.prototype_eng.client.preview.PreviewScreenTransitions;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.StructurePreviewView;
@@ -16,6 +17,7 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.ClickType;
 import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
@@ -25,7 +27,7 @@ import java.util.Collection;
 import java.util.List;
 
 /** A preview sub-screen retains its parent's container type and original window. */
-public final class StructurePreviewGui<C extends AEBaseContainer> extends AEBaseGui<C> {
+public final class StructurePreviewGui<C extends AEBaseContainer> extends AEBaseGui<C> implements PreviewNativeGui {
     private final StructurePreviewView view;
     private final PreviewScreenTransitions.Session navigation;
     private final PreviewBackRequest backRequest = new PreviewBackRequest(StructurePreviewGui::buttonsReleased, this::back);
@@ -57,16 +59,17 @@ public final class StructurePreviewGui<C extends AEBaseContainer> extends AEBase
 
     @Override
     public void initGui() {
-        if (!navigation.initCurrent(this)) {
+        if (!navigation.viewerCurrent(this)) {
             releasePreview();
             return;
         }
         super.initGui();
-        if (!navigation.initCurrent(this)) {
+        if (!navigation.viewerCurrent(this)) {
             releasePreview();
             return;
         }
         if (panel == null || panel.closed()) panel = new StructurePreviewPanel(view);
+        navigation.suspendNativeSlots(this);
     }
 
     @Override
@@ -211,7 +214,8 @@ public final class StructurePreviewGui<C extends AEBaseContainer> extends AEBase
         if (panel != null) panel.close();
     }
 
-    public void suspendNativeSlots() {
-        navigation.suspendNativeSlots(this);
+    @Override
+    public void prototype_eng$renderItemTooltip(ItemStack stack, int x, int y) {
+        renderToolTip(stack, x, y);
     }
 }
