@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.recipe.scanning;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.ParallelControllers;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.MultithreadController;
@@ -17,6 +18,8 @@ import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipePureComputation;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ResourceBatch;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.localization.RecipeText;
 import com.circulation.prototype_eng.recipe.RecipeStageExecutor;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -76,6 +79,8 @@ public final class RecipeScanner {
     private final Object2ObjectOpenHashMap<String, PassState> threadStates = new Object2ObjectOpenHashMap<>();
     private List<MachineRecipe> candidates = List.of();
     private int cursor;
+    private @Nullable ResourceInputGroups.Capture inputGroups;
+    private int inputGroupIndex;
     private boolean preferredAttempted;
     private boolean preferredActive;
     @Nullable
@@ -398,6 +403,7 @@ public final class RecipeScanner {
 
     @SuppressWarnings("StatementWithEmptyBody") // Explicit synchronous callers drain the retained pool capture.
     private Result advancePass(ScanLimits limits) {
+        ensureInputGroups();
         var active = host.activeProcesses();
         var running = new ObjectOpenHashSet<ResourceLocation>(active.size());
         for (var process : active) {
@@ -466,7 +472,7 @@ public final class RecipeScanner {
                 continue;
             }
             int parentLimit = mode == ControllerMode.LEGACY
-                ? Math.max(1, (int) Math.floor(host.owner().attributes().value(StandardMachineAttributes.PROCESS_PARALLELISM, 1)))
+                ? Math.max(1, ParallelControllers.limit(host.owner()))
                 : (int) Math.min(Integer.MAX_VALUE, Objects.requireNonNull(candidateBasis).available());
             if (search == null || search.parentLimit != parentLimit) {
                 search = begin(recipe, parentLimit);
@@ -589,6 +595,8 @@ public final class RecipeScanner {
             throw new IllegalArgumentException("Recipe factory changed candidate identity, policy or lifecycle");
         }
         process.requirePersistenceBoundary();
+        ensureInputGroups();
+        process.selectInputGroup(Objects.requireNonNull(inputGroups).groups().get(inputGroupIndex));
         // amount includes the machine baseline, but NOT this process's local modifier operations.
         process.attributes().setResolvedBase(StandardMachineAttributes.PROCESS_PARALLELISM, amount);
         recipe.parallelismSelection().select(process);
@@ -710,6 +718,8 @@ public final class RecipeScanner {
             var state = threadStates.computeIfAbsent(selectedThread, _ -> new PassState());
             state.candidates = candidates;
             state.cursor = cursor;
+            state.inputGroups = inputGroups;
+            state.inputGroupIndex = inputGroupIndex;
             state.preferredAttempted = preferredAttempted;
             state.preferredActive = preferredActive;
             state.preferredRecipe = preferredRecipe;
@@ -725,6 +735,8 @@ public final class RecipeScanner {
         var state = threadStates.computeIfAbsent(thread, _ -> new PassState());
         candidates = state.candidates;
         cursor = state.cursor;
+        inputGroups = state.inputGroups;
+        inputGroupIndex = state.inputGroupIndex;
         preferredAttempted = state.preferredAttempted;
         preferredActive = state.preferredActive;
         preferredRecipe = state.preferredRecipe;
@@ -780,8 +792,20 @@ public final class RecipeScanner {
     }
 
     private void next() {
-        cursor++;
+        ensureInputGroups();
+        if (++inputGroupIndex >= Objects.requireNonNull(inputGroups).groups().size()) {
+            inputGroupIndex = 0;
+            cursor++;
+        }
         search = null;
+    }
+
+    private void ensureInputGroups() {
+        var current = MachineHatches.get(host.owner());
+        if (inputGroups == null || !inputGroups.current(current)) {
+            inputGroups = current.inputGroups();
+            inputGroupIndex = 0;
+        }
     }
 
     private boolean workPaused() {
@@ -791,6 +815,8 @@ public final class RecipeScanner {
     }
 
     private void resetPass() {
+        inputGroups = null;
+        inputGroupIndex = 0;
         selection = null;
         selectionCapture = null;
         discovery = null;
@@ -814,6 +840,8 @@ public final class RecipeScanner {
     private static final class PassState {
         private List<MachineRecipe> candidates = List.of();
         private int cursor;
+        private @Nullable ResourceInputGroups.Capture inputGroups;
+        private int inputGroupIndex;
         private boolean preferredAttempted;
         private boolean preferredActive;
         @Nullable
@@ -905,7 +933,7 @@ public final class RecipeScanner {
         private MachineRecipe recipe;
         private int parentLimit;
         @Nullable
-        private MachineAttributes.ValueCapture parentValue;
+        private ParallelControllers.LimitCapture parentValue;
         private int bound;
         private int boundCursor;
         private int amount;
@@ -967,6 +995,7 @@ public final class RecipeScanner {
         }
 
         private Result advanceBody(RecipeWorkBudget budget, BooleanSupplier allowed) {
+            ensureInputGroups();
             while (true) {
                 if (!allowed.getAsBoolean()) {
                     stopping = true;
@@ -1090,12 +1119,12 @@ public final class RecipeScanner {
                     }
                     if (mode == ControllerMode.LEGACY) {
                         if (parentValue == null)
-                            parentValue = host.owner().attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+                            parentValue = ParallelControllers.beginLimitCapture(host.owner());
                         if (!parentValue.advance(budget)) {
                             if (!parentValue.current()) parentValue = null;
                             return yielded();
                         }
-                        parentLimit = Math.max(1, (int) Math.floor(parentValue.result()));
+                        parentLimit = Math.max(1, parentValue.result());
                         parentValue = null;
                     } else {
                         if (sharedCapture == null)

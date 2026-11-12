@@ -173,6 +173,16 @@ var recipe = new MachineRecipe(
 
 通过 `event.definition(new StructureDefinition(shape, titleKey, displays))` 提交结构。明确方块条件能自动提供预览材料；自定义布尔条件需要通过 `withDisplay(...)` 或显式 displays 提供代表材料，否则匹配可以成功，预览和构造器仍无法知道该放什么。
 
+### 并行控制器
+
+内置五种并行控制器分别为 `parallel_controller_normal`、`reinforced`、`elite`、`super`、`ultimate`（后四项同样带 `parallel_controller_` 前缀），默认最大贡献为 4、16、64、256、512。配置文件 `config/prototype_eng/parallel_controllers.cfg` 的各等级 `maxParallelism` 控制最大值；右键 GUI 修改该方块当前贡献，范围为 0 到该级最大值。五级使用预先生成的独立纹理，未使用运行时着色。
+
+结构内的并行贡献相加：`PROCESS_PARALLELISM + Σ控制器当前贡献`，再受 `StandardMachineAttributes.MAX_PROCESS_PARALLELISM`（`prototype_eng:max_process_parallelism`）限制；未声明最大值时为 `Integer.MAX_VALUE`。多线程与跨配方控制器用同一额度扣除当前占用，降低设置不取消已运行进程。新的扫描/准入会重新核对控制器版本和结构归属。没有控制器且没有声明新上限时保持原并行数。
+
+Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 `ParallelControllerType(id, displayName, maximum, model)`；`displayName` 为 `LocalizationEnum`，`maximum` 必须为正数，`model` 为 blockstate/model 入口，可为 null。省略模型时使用保留的 PM 原始单套 `prototype_eng:parallelization_controller`。注册后库创建方块、物品与默认实体，重复 ID 或注册关闭后再登记会失败。
+
+独立实现可以实现 `ParallelController`，通过 `snapshot()` 返回包含 `selected`、`maximum`、`revision`、`valid` 的不可变快照。设置或有效性改变时推进 revision；工作线程只能读取快照。宿主实现 `StructureComponentProvider`，返回 `new Entry<>(ParallelControllers.TYPE, "parallel", controller)` 后即可参与同一真实结构发现与并行汇总，不要求继承默认实体。若要复用右键配置界面，还需实现 `ParallelControllerGuiHost` 的宿主、名称与服务端设置职责。
+
 ### 仓室读写与容量
 
 `ResourceHatch` 暴露输入和输出 `ResourceStorage`，`EnergyInput`、`EnergyOutput` 提供独立 FE 接口。结构匹配后发现的仓室保存在机器的 `MachineHatches` 组件中。
@@ -180,6 +190,10 @@ var recipe = new MachineRecipe(
 普通搬运可以调用 `ResourceStorage.insert/extract`，传 `Actionable.SIMULATE` 先计算可处理数量，传 `MODULATE` 实际修改。配方执行使用需求系统的快照和预留，以保证多个需求或多台机器共享仓室时不会重复占用。
 
 内置输入仓、输出仓和混合仓都支持在 GUI 插入 AE 资源包，按包内资源的真实种类和数量存储。未能存入的数量保留在资源包中，已经预留的空间不可占用。这个手动解包操作不改变机器和自动化的输入、输出方向，操作规则见[仓室指南](docs/hatches.md#AE-资源包插入)。
+
+`me_input_assembly`、`me_output_assembly`、`me_interface` 和 `me_pattern_assembly` 是通用 ME 资源组件，不按物品、流体或气体拆分。输入总成与接口的标记表示期望保有量，由 ME 补足；输入槽数在 `me_assemblies.cfg` 的 `resources.inputSlots` 配置，默认 18。输出按真实 `AEKey` 缓存动态显示，每种资源支持到 `Long.MAX_VALUE`，不设种类上限。ME 资源总成只通过 ME 和机器事务转移实际缓存。
+
+所有资源仓室按颜色形成独立输入库存，FE 仓室不分组。扫描器分别匹配各色库存；同一配方不能跨色拼料，已运行进程保留选中的组。样板隔离模式再按样板槽拆分输入，催化剂共享给该总成的各样板槽。样板每页固定 36 槽，页数由 `patterns.pages` 配置；五种工作模式及实际 GUI 操作见[方块与 ME 总成](docs/block-registration.md)。
 
 `ResourceHatchConfiguration.Side.fromItemEquivalent(...)` 以槽数和单槽物品等价值配置容量；流体默认每 1000 mB 对应一个物品单位。需要直接给每类资源设置原生容量时，向构造器传 `Reference2LongMap<AEKeyType>`。混合仓输入和输出分别配置。
 
@@ -259,6 +273,12 @@ var recipe = new MachineRecipe(
 `ResourceStorage` 实现需要支持普通读写、数量快照、revision 和预留。`reserveExtract/reserveInsert` 在成功时返回资源令牌，在库存不足、快照过期或存储无效时返回明确拒绝结果；令牌负责占用、提交和回滚。
 
 同一物理余额必须返回同一个 `StorageContext` 和一致的存储 identity，包括资源和 FE 适配器。这样库才能去除重复来源并协调共享仓室。禁止为同一库存创建多个互不关联的 context；否则并行判断会把一份库存计算多次。输入输出确实独立的混合仓应分别提供 context。
+
+`ResourceHatch.inputGroup()` 返回 `ResourceInputGroup(color, partition)`；默认红色、空分区。可配置仓室实现 `ResourceHatchGrouping` 的颜色读写接口。`inputPartitions()` 可暴露多个稳定的物理视图；每个视图仍须保留原存储 context 和 identity。需要向同一总成各分区提供催化剂时，视图返回 `sharedInput() == true`，并使用该总成稳定分区前缀。外部实现改变颜色或分区成员后，旧捕获会失效，不能悄悄把原进程转到另一组。
+
+实现 `ResourceRecipeObserver` 可接收真实供料后的 `inputsCommitted(process, stage, amounts)`，以及进程装入、退出与阶段成功结算通知。`amounts` 只包含该 observer 实际提供且完整阶段已提交的输入；探测和回滚不通知，回调在存储锁外执行。回调应只更新同步状态，不能从工作线程访问世界。需要跨存档关联时使用 `RecipeProcess.identity()` 的 UUID，codec 会保存它；配方 ID 或随机种子不能替代进程身份。
+
+回调内可读 `process.committedInputs(stage)` 获取同一成功阶段跨所有来源的完整实际输入；它先于来源回调发布，新阶段、探测或回滚后不会沿用旧表，不写入存档。单种类跨来源总量超出 long 时返回 null，保持原事务成功语义；同一 observer 的来源合计超 long 时会分块通知，每块仍为精确正额，调用方不能假设一阶段只有一次回调。样板总成先用自身正额回执证明归属，再使用完整实际输入比例匹配正在运行的配方。
 
 ### 研究、网络和客户端扩展
 
@@ -354,6 +374,18 @@ shape.register();
 `template` 的 `x/y/z` 移动整个节点，pattern 中的坐标再相对此节点计算。`validators` 放整体检查，`children` 放子结构。`slice` 在 pattern 后接 `minCount/maxCount` 和 `stepX/Y/Z`；上例的 `1, 4, 0, 1, 0` 表示沿 Y 正方向重复 1 至 4 次。顶盖是切片的 child，只在最后一段连接一次。
 
 `.translated(key)` 返回设置了名称的新结构，必须保留该返回值。每个需要进入目录的定义调用 `register()`。结构中复用的 child 必须保留原对象，不能另建同 ID 的结构代替。
+
+### 声明并行控制器
+
+在 `#loader preinit` 脚本中使用 `mods.prototype_eng.ParallelController.create(id, translationKey, maximum)` 创建额外的物理并行控制器，可调用 `model(modelId)` 指定自有模型，再 `register()`。不调用 `model` 时使用原始单套模型，不自动染成内置五级颜色。
+
+```zenscript
+#loader preinit
+import mods.prototype_eng.ParallelController;
+ParallelController.create("example:parallel_module", "tile.example.parallel_module.name", 32).register();
+```
+
+机器仍通过 `MachineType.attribute("prototype_eng:process_parallelism", internal)` 设置内部贡献，通过 `attribute("prototype_eng:max_process_parallelism", cap)` 设置包含控制器后的整机上限。无需添加一个有镜像数据的扫描器组件。
 
 ### 仓室、研究、网络和显示
 

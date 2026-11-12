@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube",
+  "textures": {
+    "particle": "prototype_eng:ctm/ventilation_port_vertical_cover/side_front/side",
+    "north": "prototype_eng:ctm/ventilation_port_vertical_cover/side_front/side",
+    "south": "prototype_eng:ctm/ventilation_port_vertical_cover/side_back/side",
+    "down": "prototype_eng:blocks/block_casing_down",
+    "up": "prototype_eng:blocks/block_casing_top",
+    "west": "prototype_eng:blocks/block_casing_side",
+    "east": "prototype_eng:blocks/block_casing_side"
+  }
+}

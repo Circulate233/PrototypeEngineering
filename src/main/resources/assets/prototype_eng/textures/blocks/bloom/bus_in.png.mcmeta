@@ -1,0 +1,11 @@
+{
+  "ctm": {
+    "ctm_version": 1,
+    "layer": "BLOOM",
+    "gregtech": true,
+    "extra": {
+      "light": 15
+    },
+    "prototype_eng_bloom": true
+  }
+}

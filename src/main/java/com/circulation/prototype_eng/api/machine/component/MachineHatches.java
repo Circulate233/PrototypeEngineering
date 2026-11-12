@@ -7,6 +7,7 @@ import com.circulation.prototype_eng.api.energy.EnergyOutput;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
 import com.circulation.prototype_eng.api.structure.StructureOperation;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -29,6 +30,7 @@ public final class MachineHatches {
     private final List<ResourceHatch> resources;
     private final List<EnergyInput> energyInputs;
     private final List<EnergyOutput> energyOutputs;
+    private volatile ResourceInputGroups.Capture inputGroups;
 
     private MachineHatches(List<ResourceHatch> resources, List<EnergyInput> inputs, List<EnergyOutput> outputs) {
         this.resources = Collections.unmodifiableList(resources);
@@ -92,6 +94,15 @@ public final class MachineHatches {
 
     public List<ResourceHatch> resources() {
         return resources;
+    }
+
+    /** Reuse immutable partitions until a physical color/partition membership changes. */
+    public ResourceInputGroups.Capture inputGroups() {
+        var captured = inputGroups;
+        if (captured != null && captured.current(this)) return captured;
+        captured = ResourceInputGroups.capture(this);
+        inputGroups = captured;
+        return captured;
     }
 
     public List<EnergyInput> energyInputs() {

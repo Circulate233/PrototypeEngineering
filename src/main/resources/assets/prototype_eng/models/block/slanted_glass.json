@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube",
+  "textures": {
+    "particle": "prototype_eng:ctm/slanted_glass/side",
+    "down": "prototype_eng:ctm/slanted_glass/down",
+    "up": "prototype_eng:ctm/slanted_glass/up",
+    "north": "prototype_eng:ctm/slanted_glass/side",
+    "east": "prototype_eng:ctm/slanted_glass/side",
+    "south": "prototype_eng:ctm/slanted_glass/side",
+    "west": "prototype_eng:ctm/slanted_glass/side"
+  }
+}

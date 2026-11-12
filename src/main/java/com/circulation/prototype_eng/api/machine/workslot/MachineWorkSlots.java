@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.api.machine.workslot;
 import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.ParallelControllers;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedDeadline;
@@ -226,7 +227,7 @@ public final class MachineWorkSlots {
         return new UsageCapture() {
             private final long rosterRevision = owner.recipeRosterRevision();
             private final MachineAttributes.FamilyCapture family = owner.attributes().familyCapture();
-            private final MachineAttributes.ValueCapture proof = owner.attributes().beginValueCapture(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
+            private final ParallelControllers.LimitCapture proof = ParallelControllers.beginLimitCapture(owner);
             @Nullable
             private SharedUsage result;
             private int hostCursor;
@@ -274,7 +275,7 @@ public final class MachineWorkSlots {
                 }
                 if (!proof.advance(work)) return false;
                 if (!work.take()) return false;
-                result = new SharedUsage(used, Math.max(0L, (long) Math.floor(proof.result())), threads);
+                result = new SharedUsage(used, proof.result(), threads);
                 return true;
             }
 

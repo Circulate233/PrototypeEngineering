@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.storage;
 
 import ae2.api.AECapabilities;
+import ae2.api.util.AEColor;
+import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import ae2.api.behaviors.GenericInternalInventoryAdapters;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.GenericStack;
@@ -42,7 +45,7 @@ import java.lang.invoke.VarHandle;
 import java.util.Objects;
 import java.util.List;
 
-public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
+public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatchGrouping, ResourceHatchGuiHost, FluidHatchSettings, ResourceHatchSettings, ReconfigurableHatch {
     private static final VarHandle STORAGE_DIRTY;
 
     static {
@@ -69,6 +72,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private String allocationLocation;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
+    private volatile AEColor resourceColor = AEColor.RED;
     private boolean autoInput;
     private boolean autoOutput;
     private volatile long maxFluidInputRate;
@@ -154,6 +158,22 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     }
 
     @Override
+    public AEColor resourceColor() {
+        return resourceColor;
+    }
+
+    @Override
+    public void setResourceColor(AEColor color) {
+        if (color == null || color == AEColor.TRANSPARENT)
+            throw new IllegalArgumentException("A resource group needs a dye color");
+        if (world != null && (!world.isRemote && !Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread()))
+            throw new IllegalStateException("Resource group changes require the server owner");
+        resourceColor = color;
+        if (hatch != null) hatch.setInputGroup(new ResourceInputGroup(color));
+        markDirty();
+    }
+
+    @Override
     public boolean canBeRotated() {
         return false;
     }
@@ -173,6 +193,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
             }
         }
         bindSourceIdentities();
+        hatch.setInputGroup(new ResourceInputGroup(resourceColor));
         return hatch;
     }
 
@@ -268,6 +289,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
                 var nextPort = new HatchInventoryPort(candidate, true, true);
                 var nextFluids = new HatchFluidHandler(candidate, this);
                 return () -> {
+                    candidate.setInputGroup(new ResourceInputGroup(resourceColor));
                     hatch = candidate;
                     effective = target;
                     port = nextPort;
@@ -387,6 +409,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     @Override
     public void saveAdditional(@NotNull NBTTagCompound tag) {
         super.saveAdditional(tag);
+        tag.setString("ResourceColor", resourceColor.name());
         tag.setString("Mode", mode.name());
         tag.setInteger("Tier", tier.level());
         tag.setTag("EffectiveProfile", HatchConfigurationNbt.resource(effectiveConfiguration()));
@@ -442,6 +465,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     public void loadTag(@NotNull NBTTagCompound tag) {
         if (hasTransferReservation())
             throw new IllegalStateException("Cannot reload resource hatch with an unresolved external transfer");
+        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.RED;
+        if (nextColor == AEColor.TRANSPARENT) throw new IllegalArgumentException("Invalid resource group color");
         boolean modern = tag.hasKey("EffectiveProfile");
         var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(StrictNbt.requireString(tag, "Mode")) : mode;
         var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(StrictNbt.requireInt(tag, "Tier")) : tier;
@@ -478,6 +503,8 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
         mode = nextMode;
         tier = nextTier;
         effective = profile;
+        resourceColor = nextColor;
+        candidate.setInputGroup(new ResourceInputGroup(nextColor));
         hatch = candidate;
         port = nextPort;
         fluids = nextFluids;

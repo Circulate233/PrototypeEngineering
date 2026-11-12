@@ -24,7 +24,7 @@ PNG 原样复制，JSON 仅将资源命名空间改为 `prototype_eng`，默认 
 
 默认 blockstate 保留 PM 原 48 个世界变体与 1 个 inventory 变体。水平朝向分别使用原 north 0°、south 180°、east 90°、west 270°映射，各 spin 共用同一旋转；上下朝向保留原 x/y 旋转表，formed 的两种取值均使用原模型。这里保持原默认视觉效果，未为水平 spin 增加新几何旋转。
 
-外壳元数据的 `connect_to` 随命名空间迁移为 `prototype_eng:block_casing`。当前没有注册外壳方块；该连接目标留待原外壳功能迁移。CTM 连接效果及各环境的实际模型加载仍待游戏内验证，本阶段只静态检查资源引用和复制内容，不启动游戏或添加外壳玩法。
+外壳元数据的 `connect_to` 随命名空间迁移为 `prototype_eng:block_casing`。2026-11-12已由DecorativeBlocks注册同ID外壳方块，连接目标已闭合；完整补齐范围见[方块注册](block-registration.md)。CTM 连接效果及各环境的实际模型加载仍待游戏内验证，本阶段只静态检查资源引用和复制内容，不启动游戏或添加外壳玩法。
 
 ## 工位 GUI 素材
 

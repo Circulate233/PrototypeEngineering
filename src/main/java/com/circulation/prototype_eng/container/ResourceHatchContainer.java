@@ -4,6 +4,8 @@ import com.circulation.prototype_eng.util.ExternalEnumValues;
 
 import ae2.api.behaviors.ContainerItemStrategies;
 import ae2.api.config.Actionable;
+import ae2.api.util.AEColor;
+import com.circulation.prototype_eng.api.storage.ResourceHatchGrouping;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
@@ -62,6 +64,8 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     private final ResourceHatchSettings settings;
     @Nullable
     private final FluidHatchSettings fluidSettings;
+    @GuiSync(3)
+    public AEColor color = AEColor.RED;
     @GuiSync(2)
     public ResourceHatchWindowSnapshot snapshot = ResourceHatchWindowSnapshot.EMPTY;
     @GuiSync(0)
@@ -102,6 +106,11 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         addPlayerInventorySlots(27, playerTop);
         setGuiTitle(HatchGuiTitle.of(false, tile.mode(), tile.tier()).text());
         syncSettings();
+        registerClientAction("resourceColor", Integer.class, ordinal -> {
+            if (canChangeSettings() && tile instanceof ResourceHatchGrouping grouping
+                && ordinal >= 0 && ordinal < AEColor.VALID_COLORS.length)
+                grouping.setResourceColor(AEColor.VALID_COLORS[ordinal]);
+        });
         registerClientAction(VIEW, long[].class, 96, values -> {
             if (!canUseServerWindow() || values == null || values.length != 3
                 || values[1] < 0 || values[1] > Integer.MAX_VALUE || values[2] < 0 || values[2] > Integer.MAX_VALUE)
@@ -195,7 +204,16 @@ public final class ResourceHatchContainer extends AEBaseContainer {
             && player.world.isBlockModifiable(player, tile.blockEntity().getPos());
     }
 
+    public boolean hasColorGrouping() {
+        return tile instanceof ResourceHatchGrouping;
+    }
+
+    public void setResourceColor(AEColor next) {
+        if (next != AEColor.TRANSPARENT) sendClientAction("resourceColor", next.ordinal());
+    }
+
     private void syncSettings() {
+        if (tile instanceof ResourceHatchGrouping grouping) color = grouping.resourceColor();
         if (settings != null) {
             autoInput = settings.autoInput();
             autoOutput = settings.autoOutput();

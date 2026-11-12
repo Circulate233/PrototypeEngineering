@@ -195,6 +195,30 @@ var enoughLight = Predicate.custom([], [light], [[0, 0, 0]], [], function(facts 
 
 若 JSON 结构要引用脚本谓词，调用 `predicate.register(id)` 在结构谓词注册阶段声明它。该注册只把 predicate 加到可查找表，不会自动把 predicate 应用到结构；JSON 再通过该 ID 引用它。
 
+## 声明并行控制器
+
+`mods.prototype_eng.ParallelController` 必须在 `#loader preinit` 阶段创建并注册。
+
+| 方法                                  | 参数与行为                                                                                       |
+|---------------------------------------|--------------------------------------------------------------------------------------------------|
+| `create(id, translationKey, maximum)` | 创建定义；ID 唯一，语言键取对应中英文件，maximum 为正 int。                                      |
+| `model(modelId)`                      | 选择完整的模型入口并返回当前定义；省略时用 `prototype_eng:parallelization_controller` 原始模型。 |
+| `register()`                          | 注册额外方块/物品/默认实体；之后不能继续修改或重复注册。                                         |
+
+```zenscript
+#loader preinit
+import mods.prototype_eng.ParallelController;
+ParallelController.create("example:parallel_module", "tile.example.parallel_module.name", 32)
+    .register();
+```
+
+内置五级默认最大贡献为 4、16、64、256、512，分别为普通、强化、精英、超级、终极；文件
+`config/prototype_eng/parallel_controllers.cfg` 可修改。右键 GUI 选择 0 到最大值的当前贡献。
+
+机器 `attribute("prototype_eng:process_parallelism", internal)` 是内部贡献；结构中的控制器当前贡献相加后，受
+`attribute("prototype_eng:max_process_parallelism", cap)` 限制。未声明 cap 时为 `Integer.MAX_VALUE`
+。多线程和跨配方工作共用此整机额度，已运行进程不因降低额度被取消。
+
 ## 配置仓室
 
 `ResourceSide.itemEquivalent(slots, capacity)` 按槽数和单槽物品等价值设置资源容量。流体默认以 1000 mB 折算一个物品单位。带代表资源和比例的重载用于自定义资源类型。`nativeCapacities(slots, resources)` 直接按每种 AEKeyType 的原生单位设置上限，同一种 AEKeyType 不能重复。

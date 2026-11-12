@@ -2,12 +2,29 @@ package com.circulation.prototype_eng.api.storage;
 
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
+
 /**
  * Machine-side resource access. Input and output have independent contents.
  * Storage is independently synchronized; host discovery still belongs to the server thread.
  * Implementations share the physical balance's StorageContext across all adapter aliases.
  */
 public interface ResourceHatch {
+    /** Default red preserves cooperation between existing unconfigured resource hatches. */
+    default ResourceInputGroup inputGroup() {
+        return ResourceInputGroup.RED;
+    }
+
+    /** A pattern provider exposes independently isolated views without aggregating their balances. */
+    default List<? extends ResourceHatch> inputPartitions() {
+        return List.of(this);
+    }
+
+    /** Shared catalyst views join every isolated input partition of the same color. */
+    default boolean sharedInput() {
+        return false;
+    }
+
     /**
      * Materials the machine can consume, or null if this hatch has no input.
      */

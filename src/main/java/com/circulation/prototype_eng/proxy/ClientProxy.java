@@ -1,6 +1,12 @@
 package com.circulation.prototype_eng.proxy;
 
 import ae2.container.AEBaseContainer;
+import com.circulation.prototype_eng.container.MeResourceHatchContainer;
+import com.circulation.prototype_eng.container.MePatternAssemblyContainer;
+import com.circulation.prototype_eng.client.gui.MePatternAssemblyGui;
+import com.circulation.prototype_eng.container.ParallelControllerContainer;
+import com.circulation.prototype_eng.client.gui.MeResourceHatchGui;
+import com.circulation.prototype_eng.client.gui.ParallelControllerGui;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.client.gui.MachineScreenRegistry;
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
@@ -480,6 +486,9 @@ public class ClientProxy extends CommonProxy {
                 ? new BuilderInstrumentGui(tool, player.inventory)
                 : new ScannerInstrumentGui(tool, player.inventory);
             case ResearchContainer research -> new ResearchGui(research, player.inventory);
+            case MePatternAssemblyContainer pattern -> new MePatternAssemblyGui(pattern, player.inventory);
+            case MeResourceHatchContainer me -> new MeResourceHatchGui(me, player.inventory);
+            case ParallelControllerContainer parallel -> new ParallelControllerGui(parallel, player.inventory);
             case ResourceHatchContainer resource -> new ResourceHatchGui(resource, player.inventory);
             case EnergyHatchContainer energy -> new EnergyHatchGui(energy, player.inventory);
             case AEBaseContainer container when container.getTarget() instanceof MachineControllerHost machine ->

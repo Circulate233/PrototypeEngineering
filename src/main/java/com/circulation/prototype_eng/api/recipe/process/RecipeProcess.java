@@ -7,6 +7,13 @@ import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroups;
+import com.circulation.prototype_eng.api.storage.ResourceRecipeObserver;
+import com.circulation.prototype_eng.api.storage.ResourceInputReceipts;
+import ae2.api.stacks.AEKey;
+import ae2.api.stacks.AEKey2LongMap;
+import com.circulation.prototype_eng.api.storage.ImmutableResourceAmounts;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.probability.ProbabilityTuning;
@@ -43,7 +50,9 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.Random;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -57,9 +66,15 @@ public final class RecipeProcess {
     private final MachineRecipe recipe;
     private final List<RecipeRequirement<?>> orderedRequirements;
     private final long seed;
+    private UUID identity = UUID.randomUUID();
     private final ProbabilityTuning probabilityTuning;
     @Nullable
     private final MachineHatches materialHatches;
+    private @Nullable ResourceInputGroup selectedInputGroup;
+    private @Nullable MachineHatches groupedHatches;
+    private @Nullable ResourceInputGroups.Capture groupCapture;
+    private final ObjectArrayList<ResourceRecipeObserver> resourceObservers = new ObjectArrayList<>();
+    private final ReferenceOpenHashSet<Object> resourceObserverIdentities = new ReferenceOpenHashSet<>();
     private final ComponentMap<RecipeProcess> components = new ComponentMap<>();
     private final MachineAttributes attributes;
     private final Object2ObjectOpenHashMap<PureFactPath, RecipePureComputation> pureFacts =
@@ -218,11 +233,17 @@ public final class RecipeProcess {
 
     public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
                                          ProbabilityTuning tuning, State state, @Nullable CrossRecipeBatch.Timing timing) {
+        return restored(owner, recipe, seed, tuning, state, timing, UUID.randomUUID());
+    }
+
+    public static RecipeProcess restored(MachineInstance owner, MachineRecipe recipe, long seed,
+                                         ProbabilityTuning tuning, State state, @Nullable CrossRecipeBatch.Timing timing, UUID identity) {
         Objects.requireNonNull(state);
         if (state.lifecycle() == Lifecycle.COMPLETED && state.progress() < (timing == null ? recipe.durationTicks() : timing.duration())) {
             throw new IllegalArgumentException("Completed process has insufficient work progress");
         }
         var process = new RecipeProcess(owner, recipe, seed, tuning);
+        process.identity = Objects.requireNonNull(identity);
         process.state = state;
         process.crossRecipeTiming = timing;
         return process;
@@ -236,6 +257,11 @@ public final class RecipeProcess {
      */
     public static RecipeProcess restoredMaterialCycle(MachineInstance owner, MachineRecipe recipe, long seed,
                                                       ProbabilityTuning tuning, State state, MachineHatches hatches) {
+        return restoredMaterialCycle(owner, recipe, seed, tuning, state, hatches, UUID.randomUUID());
+    }
+
+    public static RecipeProcess restoredMaterialCycle(MachineInstance owner, MachineRecipe recipe, long seed,
+                                                      ProbabilityTuning tuning, State state, MachineHatches hatches, UUID identity) {
         Objects.requireNonNull(state);
         if (recipe.durationTicks() != 1 || state.successfulTicks() > 1
             || state.successfulTicks() == 0 && state.progress() != 0
@@ -243,6 +269,7 @@ public final class RecipeProcess {
             throw new IllegalArgumentException("Invalid material cycle definition or confirmed state");
         }
         var process = new RecipeProcess(owner, recipe, seed, tuning, Objects.requireNonNull(hatches));
+        process.identity = Objects.requireNonNull(identity);
         process.state = state;
         return process;
     }
@@ -316,6 +343,7 @@ public final class RecipeProcess {
         }
         owner.recordRecipeOccupant(this);
         host = newHost;
+        notifyResourceObservers(observer -> observer.attached(this));
     }
 
     public void detachFrom(MachineWorkSlots previousHost) {
@@ -325,17 +353,108 @@ public final class RecipeProcess {
         }
         host = null;
         owner.releaseRecipeOccupant(this);
+        notifyResourceObservers(observer -> observer.detached(this));
     }
 
     public MachineRecipe recipe() {
         return recipe;
     }
 
+    /** Stable lifecycle identity for exact source receipts, retained by the process codec. */
+    public UUID identity() {
+        return identity;
+    }
+
     /**
      * Ordinary processes observe current machine bindings; material cycles retain their capture.
      */
     public MachineHatches hatches() {
-        return materialHatches == null ? MachineHatches.get(owner) : materialHatches;
+        if (materialHatches == null && selectedInputGroup != null) {
+            var root = MachineHatches.get(owner);
+            var current = root.inputGroups();
+            if (groupCapture != current) {
+                groupCapture = current;
+                var matched = current.find(selectedInputGroup);
+                groupedHatches = matched == null
+                    ? new MachineHatches(List.of(), root.energyInputs(), root.energyOutputs()) : matched.hatches();
+            }
+        }
+        var source = materialHatches != null ? materialHatches : groupedHatches != null ? groupedHatches : MachineHatches.get(owner);
+        if (receiptHatchSource != source) {
+            receiptHatchSource = source;
+            receiptHatches = ResourceInputReceipts.bind(source, this);
+        }
+        return Objects.requireNonNull(receiptHatches);
+    }
+
+    private @Nullable MachineHatches receiptHatchSource;
+    private @Nullable MachineHatches receiptHatches;
+    private @Nullable RecipeStage committedInputStage;
+    private @Nullable AEKey2LongMap committedInputAmounts;
+
+    /**
+     * Actual immutable input totals across every source in the most recently successful stage.
+     * Published before source inputsCommitted callbacks; empty means that stage consumed no inputs.
+     * Null means no matching successful current stage, or a key's sum across sources exceeded long.
+     * Overflow never rejects an otherwise valid transaction. Starting a stage/probe clears older data;
+     * these transient facts are not canonical recipe estimates and are not persisted.
+     */
+    public @Nullable AEKey2LongMap committedInputs(RecipeStage stage) {
+        return committedInputStage == Objects.requireNonNull(stage) ? committedInputAmounts : null;
+    }
+
+    private void clearCommittedInputs() {
+        committedInputStage = null;
+        committedInputAmounts = null;
+    }
+
+    /** Native input-view hook; receipt allocation precedes transfer of the native token's ownership. */
+    public @Nullable ResourceInputReceipts.Receipt prepareResourceInputReceipt(@Nullable ResourceRecipeObserver observer, AEKey key, long amount) {
+        if (amount <= 0 || probing || activeProbe != null || activeSession == null || activeSession.current == null) return null;
+        var stage = activeSession.current;
+        if (stage.inputReceipts == null) stage.inputReceipts = new ResourceInputReceipts.Ledger();
+        return stage.inputReceipts.prepare(observer, key, amount);
+    }
+
+    private void notifyResourceObservers(Consumer<ResourceRecipeObserver> callback) {
+        for (var hatch : hatches().resources()) {
+            if (hatch instanceof ResourceRecipeObserver observer && resourceObserverIdentities.add(observer.observerIdentity()))
+                resourceObservers.add(observer);
+        }
+        Throwable failure = null;
+        for (var observer : resourceObservers) {
+            try {
+                callback.accept(observer);
+            } catch (RuntimeException | Error observed) {
+                if (failure == null) failure = observed;
+                else if (failure != observed) failure.addSuppressed(observed);
+            }
+        }
+        if (failure instanceof Error error) throw error;
+        if (failure instanceof RuntimeException exception) throw exception;
+    }
+
+    public @Nullable ResourceInputGroup selectedInputGroup() {
+        return selectedInputGroup;
+    }
+
+    /** Select once before probes/admission; the accepted process never changes inventory groups. */
+    public void selectInputGroup(ResourceInputGroups.Group group) {
+        Objects.requireNonNull(group);
+        if (materialHatches != null || host != null || acquiredTransactions != 0 || state.started())
+            throw new IllegalStateException("Input group selection requires a fresh ordinary process");
+        if (selectedInputGroup != null && !selectedInputGroup.equals(group.id()))
+            throw new IllegalStateException("A process input group cannot change");
+        selectedInputGroup = group.id();
+        groupedHatches = group.hatches();
+        groupCapture = MachineHatches.get(owner).inputGroups();
+    }
+
+    /** Save recovery keeps the exact color/partition; a missing source never falls back to another. */
+    public void restoreInputGroup(ResourceInputGroup group) {
+        if (materialHatches != null || selectedInputGroup != null)
+            throw new IllegalStateException("Input group already restored");
+        selectedInputGroup = Objects.requireNonNull(group);
     }
 
     /**
@@ -487,6 +606,7 @@ public final class RecipeProcess {
         if (host != null || state.lifecycle() != Lifecycle.NEW) {
             throw new IllegalArgumentException("Probe context requires an unattached NEW process");
         }
+        clearCommittedInputs();
         probing = true;
         try {
             return action.get();
@@ -504,6 +624,7 @@ public final class RecipeProcess {
         if (host != null || state.lifecycle() != Lifecycle.NEW || expected.process() != this) {
             throw new IllegalArgumentException("Probe requires its unattached NEW process");
         }
+        clearCommittedInputs();
         activeProbe = expected;
     }
 
@@ -841,6 +962,7 @@ public final class RecipeProcess {
         if (state.lifecycle().isTerminal() || workPaused()) {
             return null;
         }
+        clearCommittedInputs();
         var session = new TickSession(this);
         activeSession = session;
         session.executing = true;
@@ -1516,6 +1638,7 @@ public final class RecipeProcess {
                 return null;
             }
             process.stageVersion = Math.incrementExact(process.stageVersion);
+            process.clearCommittedInputs();
             current = new Stage(this, phase, process.stageVersion);
             if (phase == RecipeStage.TICK) {
                 tickAttempted = true;
@@ -1616,6 +1739,7 @@ public final class RecipeProcess {
         private final State before;
         private final long nextSuccessfulTicks;
         private final RecipeStageExecutor.Acquisition acquisition;
+        private @Nullable ResourceInputReceipts.Ledger inputReceipts;
         private State next;
         @Nullable
         private Tick tick;
@@ -2290,6 +2414,25 @@ public final class RecipeProcess {
             ProcessResult result = acquisition.result();
             if (!committed && result == ProcessResult.SUCCESS) {
                 result = RecipeText.StorageChanged.blocked();
+            }
+            if (committed && result == ProcessResult.SUCCESS) {
+                Throwable observed = null;
+                try {
+                    var publication = inputReceipts == null ? null : inputReceipts.complete();
+                    process.committedInputAmounts = publication == null ? ImmutableResourceAmounts.empty() : publication.amounts();
+                    process.committedInputStage = phase;
+                    if (publication != null) publication.publish(process, phase);
+                } catch (RuntimeException | Error failure) {
+                    observed = failure;
+                }
+                try {
+                    process.notifyResourceObservers(observer -> observer.stageCommitted(process, phase));
+                } catch (RuntimeException | Error failure) {
+                    if (observed == null) observed = failure;
+                    else if (observed != failure) observed.addSuppressed(failure);
+                }
+                if (observed instanceof Error error) throw error;
+                if (observed instanceof RuntimeException failure) throw failure;
             }
             if (process.state.lifecycle().isTerminal()) {
                 process.clearPureFacts();

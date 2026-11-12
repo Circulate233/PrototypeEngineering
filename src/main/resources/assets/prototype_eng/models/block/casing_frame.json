@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube",
+  "textures": {
+    "particle": "prototype_eng:blocks/modify_block/casing_frame/side",
+    "down": "prototype_eng:blocks/modify_block/casing_frame/down",
+    "up": "prototype_eng:blocks/modify_block/casing_frame/up",
+    "north": "prototype_eng:blocks/modify_block/casing_frame/side",
+    "east": "prototype_eng:blocks/modify_block/casing_frame/side",
+    "south": "prototype_eng:blocks/modify_block/casing_frame/side",
+    "west": "prototype_eng:blocks/modify_block/casing_frame/side"
+  }
+}

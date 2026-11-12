@@ -11,6 +11,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeWorkBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCandidateIndex;
 import com.circulation.prototype_eng.api.recipe.scanning.ResourceRecipeIndex;
+import com.circulation.prototype_eng.api.recipe.scanning.GroupedResourceLookup;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
@@ -41,6 +42,7 @@ public final class SimpleRecipePool implements RecipePool {
     private final Predicate<MachineInstance> stableInputs;
     private final @Nullable String existingJeiPageId;
     private final Object2ObjectOpenHashMap<AEKey, List<Entry>> byInput = new Object2ObjectOpenHashMap<>();
+    private final Reference2IntOpenHashMap<MachineRecipe> priority = new Reference2IntOpenHashMap<>();
 
     /** Uses the actual owner's scanner/input policy; unknown factories/providers retain every candidate. */
     public SimpleRecipePool(ResourceLocation id, String translationKey, List<Entry> entries) {
@@ -71,6 +73,7 @@ public final class SimpleRecipePool implements RecipePool {
             Objects.requireNonNull(entry);
             if (!ids.add(entry.recipe.id()))
                 throw new IllegalArgumentException("Duplicate simple recipe: " + entry.recipe.id());
+            priority.put(entry.recipe, rows.size());
             rows.add(entry.recipe);
             postings.computeIfAbsent(entry.input.what(), _ -> new ObjectArrayList<>()).add(entry);
         }
@@ -140,7 +143,8 @@ public final class SimpleRecipePool implements RecipePool {
 
     @Override
     public @Nullable RecipeCandidateIndex.Cursor beginCandidates(MachineInstance machine, Set<ResourceLocation> groups) {
-        return stableInputs.test(Objects.requireNonNull(machine)) ? new Lookup(machine) : null;
+        return stableInputs.test(Objects.requireNonNull(machine))
+            ? new GroupedResourceLookup(machine, priority::getInt, group -> new Lookup(machine, group.hatches().resources())) : null;
     }
 
     /** Exact simple definition. Amounts need not be one and keys can have any registered AEKeyType. */
@@ -210,6 +214,8 @@ public final class SimpleRecipePool implements RecipePool {
     /** Visits present storage keys and their postings; absent-key recipes are never enumerated. */
     private final class Lookup implements RecipeCandidateIndex.Cursor {
         private final MachineInstance machine;
+        private final MachineHatches sourceBindings;
+        private final List<ResourceHatch> selectedHatches;
         private final Reference2ObjectOpenHashMap<StorageContext, AEKey2LongMap> byContext = new Reference2ObjectOpenHashMap<>();
         private final AEKey2LongMap available = new AEKey2LongMap.SaturatingOpenHashMap(6);
         private final ObjectArrayList<Captured> captures = new ObjectArrayList<>();
@@ -229,8 +235,10 @@ public final class SimpleRecipePool implements RecipePool {
         private int phase;
         private boolean stale;
 
-        Lookup(MachineInstance machine) {
+        Lookup(MachineInstance machine, List<ResourceHatch> selectedHatches) {
             this.machine = machine;
+            this.sourceBindings = MachineHatches.get(machine);
+            this.selectedHatches = selectedHatches;
         }
 
         @Override
@@ -242,7 +250,7 @@ public final class SimpleRecipePool implements RecipePool {
                 if (phase == 0) {
                     if (hatches == null) {
                         if (!budget.take()) return false;
-                        hatches = MachineHatches.get(machine).resources();
+                        hatches = selectedHatches;
                     }
                     while (view != null || hatchIndex < hatches.size()) {
                         if (view == null) {
@@ -316,7 +324,7 @@ public final class SimpleRecipePool implements RecipePool {
                     if (!bindingsChecked) {
                         if (!budget.take()) return false;
                         bindingsChecked = true;
-                        if (MachineHatches.get(machine).resources() != hatches) {
+                        if (MachineHatches.get(machine) != sourceBindings) {
                             stale = true;
                             return false;
                         }
@@ -341,7 +349,7 @@ public final class SimpleRecipePool implements RecipePool {
         public boolean current() {
             if (stale) return false;
             if (phase != 3) return true;
-            if (!stableInputs.test(machine) || MachineHatches.get(machine).resources() != hatches) return false;
+            if (!stableInputs.test(machine) || MachineHatches.get(machine) != sourceBindings) return false;
             for (var binding : bindings) if (!binding.current()) return false;
             for (var capture : captures) if (!capture.current()) return false;
             return true;
@@ -381,7 +389,7 @@ public final class SimpleRecipePool implements RecipePool {
                     if (!ownerChecked) {
                         if (!budget.take()) return false;
                         ownerChecked = true;
-                        if (!stableInputs.test(machine) || hatches != null && MachineHatches.get(machine).resources() != hatches) {
+                        if (!stableInputs.test(machine) || hatches != null && MachineHatches.get(machine) != sourceBindings) {
                             stale = true;
                             complete = true;
                             return true;

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "normal": {
+      "model": "prototype_eng:block_control_circuit_1"
+    }
+  }
+}

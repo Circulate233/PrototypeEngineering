@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube",
+  "textures": {
+    "particle": "prototype_eng:blocks/modify_block/cartesian_glass/side",
+    "down": "prototype_eng:blocks/modify_block/cartesian_glass/down",
+    "up": "prototype_eng:blocks/modify_block/cartesian_glass/up",
+    "north": "prototype_eng:blocks/modify_block/cartesian_glass/side",
+    "east": "prototype_eng:blocks/modify_block/cartesian_glass/side",
+    "south": "prototype_eng:blocks/modify_block/cartesian_glass/side",
+    "west": "prototype_eng:blocks/modify_block/cartesian_glass/side"
+  }
+}

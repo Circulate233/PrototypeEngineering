@@ -1,0 +1,13 @@
+{
+  "parent": "block/cube",
+  "credit": "Made with WI_8614_ice X:@wi8614ice @wi8614art QQ:1463599076",
+  "textures": {
+    "particle": "prototype_eng:blocks/block_casing_plain_side",
+    "down": "prototype_eng:blocks/block_casing_down",
+    "up": "prototype_eng:blocks/block_casing_top",
+    "north": "prototype_eng:blocks/block_casing_plain_side",
+    "east": "prototype_eng:blocks/block_casing_plain_side",
+    "south": "prototype_eng:blocks/block_casing_plain_side",
+    "west": "prototype_eng:blocks/block_casing_plain_side"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "inventory": {
+      "model": "prototype_eng:item/parallel_controller_normal"
+    },
+    "facing=north": {
+      "model": "prototype_eng:parallel_controller_normal"
+    },
+    "facing=south": {
+      "model": "prototype_eng:parallel_controller_normal",
+      "y": 180
+    },
+    "facing=east": {
+      "model": "prototype_eng:parallel_controller_normal",
+      "y": 90
+    },
+    "facing=west": {
+      "model": "prototype_eng:parallel_controller_normal",
+      "y": 270
+    },
+    "facing=up": {
+      "model": "prototype_eng:parallel_controller_normal",
+      "x": 270
+    },
+    "facing=down": {
+      "model": "prototype_eng:parallel_controller_normal",
+      "x": 90
+    }
+  }
+}

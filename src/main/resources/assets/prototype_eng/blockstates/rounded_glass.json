@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "normal": { "model": "prototype_eng:rounded_glass" },
+    "inventory": { "model": "prototype_eng:item/rounded_glass" }
+  }
+}

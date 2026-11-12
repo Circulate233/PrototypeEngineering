@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "normal": {
+      "model": "prototype_eng:me_output_assembly"
+    }
+  }
+}

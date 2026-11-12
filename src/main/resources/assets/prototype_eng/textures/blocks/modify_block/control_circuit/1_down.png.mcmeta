@@ -1,0 +1,17 @@
+{
+  "ctm": {
+    "ctm_version": 1,
+    "type": "CTM",
+    "layer": "SOLID",
+    "textures": [
+      "prototype_eng:blocks/modify_block/control_circuit/1_down-ctm"
+    ],
+    "extra": {
+      "connect_to": [
+        {
+          "block": "prototype_eng:block_control_circuit_1"
+        }
+      ]
+    }
+  }
+}

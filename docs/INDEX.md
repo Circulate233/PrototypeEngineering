@@ -8,6 +8,8 @@
 
 - 2026-11-12 枚举缓存完成：22个重复读取的本库枚举公开 VALUES，序号解码/遍历及示例统一复用；外部优先原生缓存，无公共缓存的4类集中到 ExternalEnumValues。必须复用 VALUES，禁止修改共享数组。57Java本机IDEA全级零、MCP指定文件build、编译及独立改动Spotless通过，run示例javac通过。全量24项失败在撤去本轮改动的隔离对照中全部复现，详见[实施进度](implementation-status.md)及 enum-values/test-comparison.json；最新MCP构建受另一对话尚缺的 MePatternAssemblyBlockEntity 阻塞；并发新样板容器的3处枚举调用待该组源码完成后复查；并发仓室内容与用户暂存保留，未启动游戏/推送。
 
+- 2026-11-12 方块/ME总成已完成源码与全量验证：15个AE装饰方块（含素面外壳）、4个通用ME总成及5阶独立染色并行控制器，共24项；物品/气体/流体专仓继续弃用。ME目标补足、无限输出、36槽可配置样板页、五模式、AE2S合并输入/PAT远程返回与全资源仓颜色隔离已接通。真实供料回执/持久化UUID用于锁归属，恢复后按原颜色/分区重新绑定当前结构。完整build含Spotless为1987 tests/274 suites全零；65Java本机MCP全级零，提交候选独立验证及最终MCP构建见[实施进度](implementation-status.md)。入口[方块与ME总成](block-registration.md)、[Java/ZS API](../api.md)，证据`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/me-assemblies/`及同级me-gui/decorative-blocks/parallel-controller。下一步为用户客户端复验GUI、ME网络、CTM/Bloom；未启动游戏或推送，保留背景与原暂存。
+
 - 2026-11-12 [Java/ZS API 文档](../api.md)与[ZS 使用参考](../api-zs-reference.md)保留在仓库根目录，按用户提供的 AE2S 示例改写为功能说明、参数解释和使用示例，Java/ZS各分调用与扩展部分。文中3段Java、7段ZS均通过实际编译器，两文档本机IDEA全级零；示例脚本未执行。22个API文档链接及代码围栏检查通过；文档已本地提交`2877f19`供用户核对，后补研究builder参数和资源包操作说明；记录见[实施进度](implementation-status.md)。
 
 - 2026-11-12 AE资源包插入：输入/输出/混合仓GUI均按完整AEKey和long数量解包，普通点击、数字键/双击和Shift快移接通；部分接受保留余量包，mixed快移在input完全拒绝后才尝试output，不占预留容量。34项定向测试、Spotless、build -x test及MCP build通过，4Java本机全级零。需求由用户明确授权的单个子代理实现，主线程复核后精确本地提交，不推送；尚未启动客户端验证原生包ItemStack与GUI。入口[仓室](hatches.md#AE-资源包插入)，证据与限制见[实施进度](implementation-status.md)。

@@ -354,6 +354,9 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
      */
     public final class QuantityLookup implements RecipeCandidateIndex.Cursor {
         private final MachineInstance machine;
+        private final MachineHatches sourceBindings;
+        private final List<ResourceHatch> selectedHatches;
+        private final @Nullable GroupedResourceLookup grouped;
         private final Set<ResourceLocation> groups;
         private final List<MachineRecipe> scope;
         private final ReferenceOpenHashSet<MachineRecipe> scoped = new ReferenceOpenHashSet<>();
@@ -386,14 +389,24 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
         private boolean stale;
 
         private QuantityLookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope) {
+            this(machine, groups, scope, null);
+        }
+
+        private QuantityLookup(MachineInstance machine, Set<ResourceLocation> groups, List<MachineRecipe> scope,
+                               @Nullable List<ResourceHatch> selectedHatches) {
             this.machine = Objects.requireNonNull(machine, "machine");
             this.groups = Objects.requireNonNull(groups, "groups");
             this.scope = Objects.requireNonNull(scope, "scope");
+            this.sourceBindings = MachineHatches.get(machine);
+            this.selectedHatches = selectedHatches == null ? List.of() : selectedHatches;
+            grouped = selectedHatches == null ? new GroupedResourceLookup(machine, order::getInt,
+                group -> new QuantityLookup(machine, groups, scope, group.hatches().resources())) : null;
         }
 
         @Override
         public boolean advance(RecipeWorkBudget budget) {
             Objects.requireNonNull(budget);
+            if (grouped != null) return grouped.advance(budget);
             if (phase == 5) return true;
             if (stale) return false;
             while (true) {
@@ -422,7 +435,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                 if (phase == 1) {
                     if (hatches == null) {
                         if (!budget.take()) return false;
-                        hatches = MachineHatches.get(machine).resources();
+                        hatches = selectedHatches;
                     }
                     while (view != null || hatchCursor < hatches.size()) {
                         if (view == null) {
@@ -501,7 +514,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                     if (!bindingsChecked && hatches != null) {
                         if (!budget.take()) return false;
                         bindingsChecked = true;
-                        if (MachineHatches.get(machine).resources() != hatches) {
+                        if (MachineHatches.get(machine) != sourceBindings) {
                             stale = true;
                             return false;
                         }
@@ -528,12 +541,14 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
         @Override
         public boolean current() {
+            if (grouped != null) return grouped.current();
             return !stale;
         }
 
         @Override
         @SuppressWarnings("ReturnOfInnerClass") // Validation retains this lookup's exact quantity observations.
         public RecipeCandidateIndex.Validation beginValidation() {
+            if (grouped != null) return grouped.beginValidation();
             return new RecipeCandidateIndex.Validation() {
                 private final int captureCount = captures.size() - (view != null && quantities == null ? 1 : 0);
                 private final int bindingCount = bindings.size();
@@ -553,7 +568,7 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
                     if (!ownerChecked) {
                         if (!budget.take()) return false;
                         ownerChecked = true;
-                        if (hatches != null && MachineHatches.get(machine).resources() != hatches) {
+                        if (hatches != null && MachineHatches.get(machine) != sourceBindings) {
                             stale = true;
                             complete = true;
                             return true;
@@ -589,12 +604,14 @@ public final class ResourceRecipeIndex implements RecipeCandidateIndex {
 
         @Override
         public List<MachineRecipe> result() {
+            if (grouped != null) return grouped.result();
             if (phase != 5 || stale) throw new IllegalStateException("Resource opinion is incomplete or stale");
             return ObjectLists.unmodifiable(result);
         }
 
         @Override
         public int inputParallelismLimit(MachineRecipe recipe) {
+            if (grouped != null) return grouped.inputParallelismLimit(recipe);
             if (phase != 5 || stale) throw new IllegalStateException("Resource opinion is incomplete or stale");
             return ceilings.getOrDefault(recipe, Integer.MAX_VALUE);
         }

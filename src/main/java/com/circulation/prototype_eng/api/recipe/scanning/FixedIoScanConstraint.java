@@ -109,7 +109,7 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
         if (!checkTick && !checkEnd) {
             return ProcessResult.SUCCESS;
         }
-        var hatches = MachineHatches.get(process.owner());
+        var hatches = process.hatches();
         boolean sharedResources = resources.mayFreeOutput(ticks) && sharedResourceContext(hatches);
         boolean sharedEnergy = energy.mayFreeOutput(ticks) && sharedEnergyContext(hatches);
         if (checkTick && !resources.freesTickOutput(sharedResources) && !energy.freesTickOutput(sharedEnergy)) {
@@ -216,7 +216,7 @@ public final class FixedIoScanConstraint implements RecipeParallelismConstraint 
                     phase = 8;
                     return true;
                 }
-                hatches = MachineHatches.get(process.owner());
+                hatches = process.hatches();
                 phase = 2;
             }
             if (phase == 2) {

@@ -7,6 +7,8 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.CrossRecipeBatch;
 import com.circulation.prototype_eng.api.machine.CrossRecipeController;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
+import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.persistence.AttributeModifierNbt;
 import com.circulation.prototype_eng.api.persistence.BuiltinOverlayCodecs;
 import com.circulation.prototype_eng.api.persistence.MachineAttributesNbt;
@@ -157,8 +159,15 @@ public final class RecipeProcessNbt {
         var index = new RecipeDefinitionIndex(process);
         var tag = new NBTTagCompound();
         tag.setInteger("Version", 2);
+        tag.setString("Identity", process.identity().toString());
         if (process.isMaterialCycle()) {
             tag.setBoolean("MaterialCycle", true);
+        }
+        if (process.selectedInputGroup() != null) {
+            var group = new NBTTagCompound();
+            group.setString("Color", process.selectedInputGroup().color().name());
+            group.setString("Partition", process.selectedInputGroup().partition());
+            tag.setTag("InputGroup", group);
         }
         tag.setString("Recipe", recipe.id().toString());
         tag.setString("Revision", revision);
@@ -212,10 +221,10 @@ public final class RecipeProcessNbt {
         var tag = Objects.requireNonNull(saved).copy();
         if (hatches == null) {
             StrictNbt.requireKeys(tag, "Version", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-                "Attributes", "Components", "PendingDependencies", "CrossBatch");
+                "Attributes", "Components", "PendingDependencies", "CrossBatch", "InputGroup", "Identity");
         } else {
             StrictNbt.requireKeys(tag, "Version", "MaterialCycle", "Recipe", "Revision", "Duration", "Graph", "Seed", "Tuning", "State",
-                "Attributes", "Components", "PendingDependencies", "CrossBatch");
+                "Attributes", "Components", "PendingDependencies", "CrossBatch", "InputGroup", "Identity");
             if (!StrictNbt.requireBoolean(tag, "MaterialCycle")) {
                 throw new IllegalArgumentException("Expected a material cycle save");
             }
@@ -232,8 +241,9 @@ public final class RecipeProcessNbt {
         var timing = tag.hasKey("CrossBatch") ? readTiming(StrictNbt.requireCompound(tag, "CrossBatch")) : null;
         if (timing != null && (!(owner instanceof CrossRecipeController) || hatches != null))
             throw new IllegalArgumentException("Cross-recipe batch belongs to a cross-recipe controller");
-        var process = hatches == null ? RecipeProcess.restored(owner, recipe, seed, probability, state, timing)
-            : RecipeProcess.restoredMaterialCycle(owner, recipe, seed, probability, state, hatches);
+        var identity = tag.hasKey("Identity") ? UUID.fromString(StrictNbt.requireString(tag, "Identity")) : UUID.randomUUID();
+        var process = hatches == null ? RecipeProcess.restored(owner, recipe, seed, probability, state, timing, identity)
+            : RecipeProcess.restoredMaterialCycle(owner, recipe, seed, probability, state, hatches, identity);
         var graph = StrictNbt.requireList(tag, "Graph", Constants.NBT.TAG_LIST);
         var expected = new ObjectArrayList<>(new RecipeDefinitionIndex(process).requirements().keySet());
         if (graph.tagCount() != expected.size()) {
@@ -252,6 +262,12 @@ public final class RecipeProcessNbt {
             if (!energyPaths.equals(timing.energyOffsets().keySet())) throw new IllegalArgumentException("Cross-recipe energy paths changed");
         }
 
+        if (tag.hasKey("InputGroup")) {
+            var group = StrictNbt.requireCompound(tag, "InputGroup");
+            StrictNbt.requireKeys(group, "Color", "Partition");
+            process.restoreInputGroup(new ResourceInputGroup(AEColor.valueOf(StrictNbt.requireString(group, "Color")),
+                StrictNbt.requireString(group, "Partition")));
+        }
         var entries = readComponents(StrictNbt.requireList(tag, "Components", Constants.NBT.TAG_COMPOUND));
         var pending = readPending(StrictNbt.requireList(tag, "PendingDependencies", Constants.NBT.TAG_COMPOUND), entries);
         var restoreOrder = new TopologicalComponentMap<ComponentType<RecipeProcess, ?>, SavedComponent>();

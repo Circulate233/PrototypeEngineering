@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "prototype_eng:ventilation_port_vertical_cover"
+    },
+    "facing=east": {
+      "model": "prototype_eng:ventilation_port_vertical_cover",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "prototype_eng:ventilation_port_vertical_cover",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "prototype_eng:ventilation_port_vertical_cover",
+      "y": 270
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "normal": { "model": "prototype_eng:cartesian_glass" },
+    "inventory": { "model": "prototype_eng:item/cartesian_glass" }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "normal": { "model": "prototype_eng:block_casing" },
+    "inventory": { "model": "prototype_eng:item/block_casing" }
+  }
+}

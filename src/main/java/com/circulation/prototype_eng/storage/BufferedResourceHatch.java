@@ -15,6 +15,7 @@ import ae2.api.storage.MEStorage;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import com.circulation.prototype_eng.api.storage.HatchReconfigurationStatus;
 import com.circulation.prototype_eng.api.storage.ResourceHatchConfiguration;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
@@ -39,6 +40,7 @@ import java.util.function.Consumer;
  */
 public final class BufferedResourceHatch implements SlottedResourceHatch {
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
+    private volatile ResourceInputGroup inputGroup = ResourceInputGroup.RED;
     private final SlottedResourceBuffer input;
     private final SlottedResourceBuffer output;
     private final MEStorage automation = new AutomationPort();
@@ -60,6 +62,15 @@ public final class BufferedResourceHatch implements SlottedResourceHatch {
         output = out == null ? null : new SlottedResourceBuffer(out.slots(), out.capacities(), onChanged);
         contexts = input != null && output != null ? List.of(input.context(), output.context())
             : input != null ? List.of(input.context()) : output != null ? List.of(output.context()) : List.of();
+    }
+
+    @Override
+    public ResourceInputGroup inputGroup() {
+        return inputGroup;
+    }
+
+    public void setInputGroup(ResourceInputGroup group) {
+        inputGroup = Objects.requireNonNull(group);
     }
 
     boolean hasTransferReservation() {

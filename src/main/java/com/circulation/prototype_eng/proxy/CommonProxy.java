@@ -1,6 +1,14 @@
 package com.circulation.prototype_eng.proxy;
 
 import com.circulation.prototype_eng.HatchConfig;
+import com.circulation.prototype_eng.MeAssemblyConfig;
+import com.circulation.prototype_eng.ParallelControllerConfig;
+import com.circulation.prototype_eng.storage.MeResourceHatchBlockEntity;
+import com.circulation.prototype_eng.storage.MePatternAssemblyBlockEntity;
+import com.circulation.prototype_eng.container.MePatternAssemblyContainer;
+import com.circulation.prototype_eng.container.MeResourceHatchContainer;
+import com.circulation.prototype_eng.container.ParallelControllerContainer;
+import com.circulation.prototype_eng.api.gui.ParallelControllerGuiHost;
 import com.circulation.prototype_eng.OrientationToolConfig;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
@@ -87,6 +95,8 @@ public class CommonProxy implements IGuiHandler {
 
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
+        MeAssemblyConfig.load(event.getModConfigurationDirectory());
+        ParallelControllerConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
         OrientationToolConfig.load(event.getModConfigurationDirectory());
         structureDirectory = event.getModConfigurationDirectory().toPath().resolve(Tags.MOD_ID).resolve("structures");
@@ -228,6 +238,15 @@ public class CommonProxy implements IGuiHandler {
         if (id == ResearchGuiAccess.GUI_ID) {
             return new ResearchContainer(player.inventory);
         }
+        if (id == 3 && world.isBlockLoaded(new BlockPos(x, y, z))
+            && world.getTileEntity(new BlockPos(x, y, z)) instanceof MeResourceHatchBlockEntity me)
+            return new MeResourceHatchContainer(player.inventory, me);
+        if (id == 4 && world.isBlockLoaded(new BlockPos(x, y, z))
+            && world.getTileEntity(new BlockPos(x, y, z)) instanceof MePatternAssemblyBlockEntity pattern)
+            return new MePatternAssemblyContainer(player.inventory, pattern);
+        if (id == 5 && world.isBlockLoaded(new BlockPos(x, y, z))
+            && world.getTileEntity(new BlockPos(x, y, z)) instanceof ParallelControllerGuiHost parallel)
+            return new ParallelControllerContainer(player.inventory, parallel);
         if (id != 0 || !world.isBlockLoaded(new BlockPos(x, y, z))) {
             return null;
         }

@@ -1,0 +1,24 @@
+{
+  "animation": {
+    "interpolate": true,
+    "frametime": 25
+  },
+  "ctm": {
+    "ctm_version": 1,
+    "type": "CTM",
+    "layer": "BLOOM",
+    "gregtech": true,
+    "textures": [
+      "prototype_eng:blocks/bloom/modify_block/control_circuit/1-ctm"
+    ],
+    "extra": {
+      "light": 15,
+      "connect_to": [
+        {
+          "block": "prototype_eng:block_control_circuit_1"
+        }
+      ]
+    },
+    "prototype_eng_bloom": true
+  }
+}

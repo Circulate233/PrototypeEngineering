@@ -364,6 +364,16 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         }
     }
 
+    /** Physical hosts must not replace an invalidated buffer while old tokens still own refunds. */
+    boolean hasReservations() {
+        context.lock();
+        try {
+            return activeReservations != 0;
+        } finally {
+            context.unlock();
+        }
+    }
+
     @Override
     @SuppressWarnings("ReturnOfInnerClass") // Returns the retained cursor bound to its exact original owner.
     public ReservationCapture beginReserveExtract(StorageSnapshot snapshot, AEKey key, long amount) {

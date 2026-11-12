@@ -142,6 +142,7 @@ class RecipeProcessPersistenceTest {
         assertEquals(MATERIAL, choices.values().iterator().next());
         var first = codec.decode(env.machine, codec.encode(original));
         assertNotSame(original, first);
+        assertEquals(original.identity(), first.identity());
         assertEquals(original.state(), first.state());
         assertEquals(choices, Objects.requireNonNull(first.components().get(ResourceInputLocks.TYPE)).snapshot());
         env.input.insert(ALTERNATE, 7, Actionable.MODULATE);
@@ -153,6 +154,7 @@ class RecipeProcessPersistenceTest {
         assertEquals(3, env.input.amount(MATERIAL));
         assertEquals(11, env.energy.storedEnergy());
         var second = codec.decode(env.machine, codec.encode(first));
+        assertEquals(original.identity(), second.identity());
         assertInstanceOf(ProcessResult.Blocked.class, second.tick());
         assertEquals(2, second.state().successfulTicks());
         assertEquals(2, second.state().progress());
