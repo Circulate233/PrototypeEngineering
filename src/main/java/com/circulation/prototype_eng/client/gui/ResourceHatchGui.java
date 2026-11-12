@@ -63,7 +63,8 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         widgets.add("inputScrollbar", inputScrollbar);
         widgets.add("outputScrollbar", outputScrollbar);
         if (container.hasColorGrouping()) {
-            colorSelector = new ResourceColorSelector(() -> container.color, container::setResourceColor);
+            colorSelector = new ResourceColorSelector(() -> container.color, container::setResourceColor,
+                ResourceColorSelector.Style.HATCH);
             colorSelector.setPosition(new Point(4, 50));
             widgets.add("resourceColor", colorSelector);
         }

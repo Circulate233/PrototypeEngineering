@@ -45,8 +45,13 @@ class HatchToolbarInteractionTest {
 
     @Test
     void colorPaletteOpensAndChoosesOnReleaseAndCancelsDraggedSelection() {
+        for (var style : ResourceColorSelector.Style.VALUES) checkPaletteInteraction(style);
+    }
+
+    private static void checkPaletteInteraction(ResourceColorSelector.Style style) {
         var choices = new ObjectArrayList<AEColor>();
-        var colors = new ResourceColorSelector(() -> AEColor.TRANSPARENT, choices::add);
+        var colors = new ResourceColorSelector(() -> AEColor.TRANSPARENT, choices::add, style);
+        colors.setPosition(new Point(4, 13));
         var button = new Point(8, 20);
         assertTrue(colors.onMouseDown(button, 0));
         assertFalse(colors.expanded());

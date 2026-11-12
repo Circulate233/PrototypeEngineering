@@ -1,5 +1,7 @@
 # 实施进度
 
+- 2026-11-12 颜色按钮样式拆分：上一轮共享小框使ME样板按钮未覆盖原17×18纹理，用户截图指出边框残留。ResourceColorSelector新增显式Style.HATCH/ME：普通仓14×14、8px色块、默认(4,13)；ME17×18、9px色块、默认(1,13)，样板显式(1,43)。绘制分别调用states空框与io_mode空框；折叠/展开边界和下方无色选项跟随样式，原release/取消/颜色逻辑共用。没有修改任何PNG或自动IO按钮。现有HatchToolbarInteractionTest的颜色手势遍历两样式，3项全部通过，Spotless通过；5正式Java及1测试Java本机IDEA errorsOnly:false错误/警告/弱警告均0。证据C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/color-selector-styles/含截图、接手前文件、实际源图切片合成预览和检查。未启动游戏、未推送；当前追加的机械外壳基底连接需求继续独立处理。
+
 - 2026-11-12 GUI二次纠正与分层渲染：用户明确仅改仓组颜色和附近背景，上轮擅自换自动IO图、17×18框及LED已撤回；自动IO恢复states.png原14×14、(4,13)/(4,31)与原状态，保留matching release。颜色独立14×14空框，20张材料背景延伸挂耳，仅[0,49,21,71)变化，y<48自动IO像素全同。首版白名单右界20遗漏x20旧主边，用户截图后再次由GUI子代理逐张修复；before2完整保留，20图4×接缝对照确认孤立竖线消失且底角/主边连续。
 - ME滑块二次纠正：前版x178越出实际内轨，接口下轨y99多1；现内轨x175，单仓y25/高70，接口y25与98/高67。MeResourceHatchGui共享普通HatchScrollbar，30px滚轮/180–360ms平滑、按轨即定位及拖动一致；按68/72px真实viewport而非截整行计算max，窗口overscan配合first全局行减pixelScroll绘制。原生AE disabled直接用源sprite；样板3张7×12启用图裁自原slot像素，移除无消费者自造hatch_scrollbars图集。
 - 分层发暗根因：用户进一步确认仅特定覆盖层暗、底壳正常。73模型/160元素/912 native FaceBakery quad（330 nonDiffuse）顶点白色、六面法线单位轴，翻转shade不改vertexData。CTM extra.light=15在无Optifine时将ITEM转含UV1的BLOCK，无NORMAL；真实LightUtil探针证实BLOCK→ITEM normal=0x0、color=0xffffffff，基底ITEM保留0x00810000。HEI快路径忽略shade/UV1逐层处理，原生Forge.renderLitItem会处理，不能用全模型light0/1污染替代该原因。新增PrototypeBlockItem继承AEBaseBlockItem并实现公开ISlowRenderItem，本库仓室/装饰/机械与并行Item注册统一native path；Optional.Interface无JEI剥空marker，公共构造不含客户端类型。不改原几何/纹理/shade，不加全局渲染Mixin。

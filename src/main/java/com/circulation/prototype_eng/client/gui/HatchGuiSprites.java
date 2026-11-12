@@ -8,6 +8,7 @@ import net.minecraft.util.ResourceLocation;
 
 /** Original PM controls with native AE disabled-scrollbar artwork. */
 public final class HatchGuiSprites {
+    private static final ResourceLocation ME_MODES = GuiAtlas.texture("io_mode");
     private static final ResourceLocation DISABLED_BIG = new ResourceLocation("ae2", "textures/guis/sprites/big_scroller_disabled.png");
     private static final ResourceLocation DISABLED_SMALL = new ResourceLocation("ae2", "textures/guis/sprites/small_scroller_disabled.png");
     private static final Scrollbar.Style[] PATTERN_SCROLLS = {
@@ -46,7 +47,12 @@ public final class HatchGuiSprites {
             thin ? 7 : 12, thin ? 12 : 15);
     }
 
-    static void colorButton(int x, int y, boolean hovered, boolean pressed) {
+    static void hatchColorButton(int x, int y, boolean hovered, boolean pressed) {
         GuiAtlas.state(x, y, pressed ? 213 : hovered ? 199 : 185, 52, 14, 14);
+    }
+
+    static void meColorButton(int x, int y, boolean hovered, boolean pressed) {
+        GuiAtlas.draw(ME_MODES, x, y, pressed ? 36 : hovered ? 18 : 0, 0,
+            17, 18, 256, 256);
     }
 }

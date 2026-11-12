@@ -13,22 +13,25 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Shared source-artwork palette for physical resource hatch color groups. */
+/** Shared palette behavior with separate physical-hatch and ME source-artwork frames. */
 public final class ResourceColorSelector implements ICompositeWidget {
     private static final AEColor[] COLORS = {AEColor.RED, AEColor.BROWN, AEColor.ORANGE, AEColor.YELLOW,
         AEColor.LIME, AEColor.GREEN, AEColor.CYAN, AEColor.LIGHT_BLUE, AEColor.BLUE, AEColor.PURPLE,
         AEColor.MAGENTA, AEColor.PINK, AEColor.WHITE, AEColor.LIGHT_GRAY, AEColor.GRAY, AEColor.BLACK};
     private final Supplier<AEColor> selected;
     private final Consumer<AEColor> choose;
-    private Point position = new Point(4, 13);
+    private final Style style;
+    private Point position;
     private boolean expanded;
     private int pressedButton = -1;
     private boolean pressedExpanded;
     private @Nullable AEColor pressedColor;
 
-    public ResourceColorSelector(Supplier<AEColor> selected, Consumer<AEColor> choose) {
+    public ResourceColorSelector(Supplier<AEColor> selected, Consumer<AEColor> choose, Style style) {
         this.selected = Objects.requireNonNull(selected);
         this.choose = Objects.requireNonNull(choose);
+        this.style = Objects.requireNonNull(style);
+        position = new Point(style == Style.ME ? 1 : 4, 13);
     }
 
     public boolean expanded() {
@@ -52,7 +55,8 @@ public final class ResourceColorSelector implements ICompositeWidget {
 
     @Override
     public Rectangle getBounds() {
-        return new Rectangle(position.x(), position.y(), expanded ? 56 : 14, expanded ? 71 : 14);
+        return new Rectangle(position.x(), position.y(), expanded ? 56 : style.width,
+            expanded ? 57 + style.height : style.height);
     }
 
     @Override
@@ -133,8 +137,11 @@ public final class ResourceColorSelector implements ICompositeWidget {
     }
 
     private @Nullable AEColor colorAt(int x, int y) {
+        int swatchX = x - position.x() - style.swatchOffset;
+        int swatchY = y - position.y() - 57 - style.swatchOffset;
+        if (swatchX >= 0 && swatchX < style.swatchSize && swatchY >= 0 && swatchY < style.swatchSize)
+            return AEColor.TRANSPARENT;
         int relativeX = x - position.x() - 4, relativeY = y - position.y() - 4;
-        if (relativeX >= -1 && relativeX < 7 && relativeY >= 56 && relativeY < 64) return AEColor.TRANSPARENT;
         if (relativeX < 0 || relativeY < 0 || relativeX >= 52 || relativeY >= 52
             || relativeX % 13 >= 9 || relativeY % 13 >= 9) return null;
         return COLORS[relativeY / 13 * 4 + relativeX / 13];
@@ -144,8 +151,8 @@ public final class ResourceColorSelector implements ICompositeWidget {
     public void drawForegroundLayer(Rectangle bounds, Point mouse) {
         if (expanded) return;
         boolean hovered = getBounds().contains(mouse.x(), mouse.y());
-        HatchGuiSprites.colorButton(position.x(), position.y(), hovered, pressedButton >= 0 && hovered);
-        drawSwatch(position.x() + 3, position.y() + 3, selected.get());
+        drawButton(position.x(), position.y(), hovered);
+        drawSwatch(position.x() + style.swatchOffset, position.y() + style.swatchOffset, selected.get());
     }
 
     @Override
@@ -155,15 +162,39 @@ public final class ResourceColorSelector implements ICompositeWidget {
             0, 0, 56, 57, 56, 57);
         int x = bounds.x + position.x(), y = bounds.y + position.y() + 57;
         boolean hovered = colorAt(mouse.x(), mouse.y()) == AEColor.TRANSPARENT;
-        HatchGuiSprites.colorButton(x, y, hovered, pressedButton >= 0 && hovered);
-        drawSwatch(x + 3, y + 3, AEColor.TRANSPARENT);
+        drawButton(x, y, hovered);
+        drawSwatch(x + style.swatchOffset, y + style.swatchOffset, AEColor.TRANSPARENT);
     }
 
-    private static void drawSwatch(int x, int y, AEColor color) {
-        Gui.drawRect(x, y, x + 8, y + 8, 0xff000000 | color.mediumVariant);
+    private void drawSwatch(int x, int y, AEColor color) {
+        int size = style.swatchSize;
+        Gui.drawRect(x, y, x + size, y + size, 0xff000000 | color.mediumVariant);
         if (color == AEColor.TRANSPARENT) {
-            Gui.drawRect(x, y, x + 2, y + 8, 0xff000000 | color.blackVariant);
-            Gui.drawRect(x + 5, y, x + 8, y + 8, 0xff000000 | color.whiteVariant);
+            Gui.drawRect(x, y, x + style.darkWidth, y + size, 0xff000000 | color.blackVariant);
+            Gui.drawRect(x + style.lightOffset, y, x + size, y + size, 0xff000000 | color.whiteVariant);
+        }
+    }
+
+    private void drawButton(int x, int y, boolean hovered) {
+        boolean pressed = pressedButton >= 0 && hovered;
+        if (style == Style.ME) HatchGuiSprites.meColorButton(x, y, hovered, pressed);
+        else HatchGuiSprites.hatchColorButton(x, y, hovered, pressed);
+    }
+
+    public enum Style {
+        HATCH(14, 14, 3, 8, 2, 5),
+        ME(17, 18, 4, 9, 3, 6);
+
+        public static final Style[] VALUES = values();
+        private final int width, height, swatchOffset, swatchSize, darkWidth, lightOffset;
+
+        Style(int width, int height, int swatchOffset, int swatchSize, int darkWidth, int lightOffset) {
+            this.width = width;
+            this.height = height;
+            this.swatchOffset = swatchOffset;
+            this.swatchSize = swatchSize;
+            this.darkWidth = darkWidth;
+            this.lightOffset = lightOffset;
         }
     }
 }

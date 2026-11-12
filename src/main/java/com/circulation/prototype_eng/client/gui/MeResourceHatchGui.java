@@ -40,7 +40,7 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
         outputScroll = new HatchScrollbar(false, container.mode().hasOutput());
         widgets.add("meInputScroll", inputScroll);
         widgets.add("meOutputScroll", outputScroll);
-        colorSelector = new ResourceColorSelector(() -> container.color, container::setColor);
+        colorSelector = new ResourceColorSelector(() -> container.color, container::setColor, ResourceColorSelector.Style.ME);
         widgets.add("resourceColor", colorSelector);
     }
 

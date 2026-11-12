@@ -54,7 +54,7 @@ public final class MePatternAssemblyGui extends AEBaseGui<MePatternAssemblyConta
         super(container, player);
         xSize = 342;
         ySize = 196;
-        colorSelector = new ResourceColorSelector(() -> container.color, container::setColor);
+        colorSelector = new ResourceColorSelector(() -> container.color, container::setColor, ResourceColorSelector.Style.ME);
         colorSelector.setPosition(new Point(1, 43));
         widgets.add("patternColor", colorSelector);
         for (int kind = 0; kind < 3; kind++) {
