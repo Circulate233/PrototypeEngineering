@@ -4,7 +4,9 @@
 
 ## 当前检查点
 
-- 2026-11-12 未使用纹理清理：以模型/元数据、实际Java/ZS调用及动态GUI/公开JEI枚举为消费者，740PNG删除305、保留435；JEI191→62，删除流体/气体槽68、旧能源尺寸40、连接箭头15及plaid覆盖6。旧Fluid/FluidSkin入口只保留尺寸兼容，统一走AUTOMATIC通用AEKey皮肤。另删无引用CTM导出图100、旧GUI69、旧方块纹理6及扳手发光备用1；实际模型/CTM/Bloom和GUI状态资源保留。完整build含Spotless与1994 tests/275 suites全零、本机Java MCP全级零及指定文件build成功；JAR和两套开发输出均无305项残留。入口[JEI外观](jei.md#原生装饰皮肤和候选布局2026-11-09-续作)，证据见[实施进度](implementation-status.md)。下一步用户重启复验通用资源槽和装饰/结构GUI；未启动游戏/推送，背景及原暂存独立保留。
+- 2026-11-12 JEI重复皮肤入口移除：按用户要求直接删除`JeiVisuals.Fluid`与`FluidSkin`，不保留弃用枚举、尺寸别名或转发兼容层；资源槽直接使用`JeiSlot`与通用AEKey皮肤。全仓正式/测试/示例/ZS无旧入口引用，build -x test含Spotless通过，Java本机IDEA全级零、MCP定向构建成功；JAR及两套开发输出无旧内部类。本轮只删除声明并同步说明，验证证据见[实施进度](implementation-status.md)，入口[JEI外观](jei.md)。
+
+- 2026-11-12 未使用纹理清理：以模型/元数据、实际Java/ZS调用及动态GUI/公开JEI枚举为消费者，740PNG删除305、保留435；JEI191→62，删除流体/气体槽68、旧能源尺寸40、连接箭头15及plaid覆盖6。资源槽统一使用通用AEKey皮肤，重复的Fluid/FluidSkin入口已删除。另删无引用CTM导出图100、旧GUI69、旧方块纹理6及扳手发光备用1；实际模型/CTM/Bloom和GUI状态资源保留。完整build含Spotless与1994 tests/275 suites全零、本机Java MCP全级零及指定文件build成功；JAR和两套开发输出均无305项残留。入口[JEI外观](jei.md#原生装饰皮肤和候选布局2026-11-09-续作)，证据见[实施进度](implementation-status.md)。下一步用户重启复验通用资源槽和装饰/结构GUI；未启动游戏/推送，背景及原暂存独立保留。
 
 - 2026-11-12 装箱回调检查：材料单格/整类选择和构建树分段改用fastutil `ObjectIntBiConsumer`，JEI换行宽度直接接收int，快照测试改用`BooleanSupplier`。编译器AST覆盖1078份main/test Java，只保留统一任务执行器所需的`StructureWork`布尔Supplier；规则与原因见[分配检查](allocation-performance.md)。相关50项测试、Spotless和MCP build通过，3个修改生产Java、2个直接调用方及1个测试Java的IDEA全级诊断均0；字节码确认调用参数为int。证据primitive-callbacks/。本轮仅本地提交，其他对话同文件修改和原暂存保留。
 

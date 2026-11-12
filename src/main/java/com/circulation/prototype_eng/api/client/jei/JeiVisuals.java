@@ -102,24 +102,6 @@ public final class JeiVisuals {
         }
     }
 
-    /** Legacy layout sizes retained for callers; their skin is the same generic AEKey skin. */
-    public enum Fluid {
-        PLAID(18, 18), HALF_1(9, 18), HALF_2(9, 36), HALF_3(9, 54), HALF_4(9, 72),
-        ONE_1(18, 18), ONE_2(18, 36), ONE_3(18, 54), ONE_4(18, 72),
-        ONE_HALF_1(27, 18), ONE_HALF_2(27, 36), ONE_HALF_3(27, 54), ONE_HALF_4(27, 72),
-        TWO_1(36, 18), TWO_2(36, 36), TWO_3(36, 54), TWO_4(36, 72);
-        private final int width, height;
-
-        Fluid(int width, int height) {
-            this.width = width;
-            this.height = height;
-        }
-
-        public JeiSlot slot(int x, int y) {
-            return new JeiSlot(x, y, width, height, 1, new FluidSkin(this));
-        }
-    }
-
     public enum Energy {
         DEFAULT("default_in", 22, 72), ONE_1("1_1", 18, 18), ONE_2("1_2", 18, 36), ONE_3("1_3", 18, 54), ONE_4("1_4", 18, 72),
         TWO_1("2_1", 36, 18), TWO_2("2_2", 36, 36), TWO_3("2_3", 36, 54), TWO_4("2_4", 36, 72);
@@ -356,23 +338,6 @@ public final class JeiVisuals {
         public void foreground(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) {
             if (plaid.top != null)
                 plaid.top.draw(minecraft, slot.x() - slot.width(), slot.y() - slot.height(), slot.width() * 3, slot.height() * 3);
-        }
-    }
-
-    /** Compatibility skin: no fluid/gas-specific texture or rendering branch. */
-    public record FluidSkin(Fluid fluid) implements JeiSlot.Skin {
-        public FluidSkin {
-            Objects.requireNonNull(fluid);
-        }
-
-        @Override
-        public void background(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) {
-            AUTOMATIC.background(minecraft, slot, resource);
-        }
-
-        @Override
-        public void foreground(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) {
-            AUTOMATIC.foreground(minecraft, slot, resource);
         }
     }
 }

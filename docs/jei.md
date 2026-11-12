@@ -142,7 +142,7 @@ PrototypeJeiPlugin注册实际StructurePreviewJeiCategory/Recipe；静态canonic
 
 沿 PM 真正的消费者补充公开 `JeiRecipeDecorator`、`JeiSlot.Skin`、`JeiVisuals` 与 `JeiRenderOptions`。独立自定义页可直接组合九宫背景、模块进度、native Arrow/Cycle、耗时模板、通用资源槽 plaid 与独立 FE mask/LED；默认 `AutoLayoutRecipePage` 实际使用同一入口。布局选项在页面注册时捕获，默认修改只影响以后创建的页面；默认页的 `inputLayout` / `outputLayout` / `decorations` / `renderOptions` 可由子类选择，独立页不要求继承默认实现。Arrow/Cycle 用原生 Java 几何绘制，保留 shape/direction 独立、四方向、BL↑/TL→/TR↓/BR← 循环裁剪与离散进度；不宣称恢复 MUI 的原 PNG 像素。耗时默认和 `{seconds}` 模板都固定两位小数。
 
-最初迁入191张PM PNG；2026-11-12按实际纹理消费者清理129张，现保留62张：通用资源槽1、plaid背景/覆盖18、能源背景/填充/LED21、模块进度21、页面背景1。流体/气体专用槽68张、未声明能源尺寸40张、未使用连接箭头15张及plaid覆盖6张已移除。`JeiVisuals.Fluid`的旧尺寸和`FluidSkin`调用签名保留，绘制统一委托`AUTOMATIC`通用AEKey槽，不再构建或读取fluid/gas纹理路径。仍被公开枚举支持的外观即使默认页当前不选用也保留。当前`mezz.jei.api.gui.IDrawable`是JEI原生接口，未新增MUI依赖、资源命名空间或GUI/Widget/Drawable基类。
+最初迁入191张PM PNG；2026-11-12按实际纹理消费者清理129张，现保留62张：通用资源槽1、plaid背景/覆盖18、能源背景/填充/LED21、模块进度21、页面背景1。流体/气体专用槽68张、未声明能源尺寸40张、未使用连接箭头15张及plaid覆盖6张已移除。重复的`JeiVisuals.Fluid`尺寸枚举及`FluidSkin`兼容皮肤已彻底删除；资源槽直接使用`JeiSlot`和通用AEKey皮肤，不保留弃用别名或转发包装。仍被公开枚举支持的外观即使默认页当前不选用也保留。当前`mezz.jei.api.gui.IDrawable`是JEI原生接口，未新增MUI依赖、资源命名空间或GUI/Widget/Drawable基类。
 
 原生 JEI 的 `RecipeLayout.drawRecipe` 在 wrapper 之后绘制 ingredient，因此 skin background → ingredient → skin foreground → chance → long amount 都在实际 ingredient renderer 内消费，category-relative slot 转为当前 native absolute 坐标。当前默认页所有非物品均使用 GenericStack 包装和 AEKeyRendering；原生流体渲染分支仅供显式自定义桥接使用，默认页不使用它。
 
