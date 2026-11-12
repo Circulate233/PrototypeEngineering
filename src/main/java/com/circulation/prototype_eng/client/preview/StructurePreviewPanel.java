@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.client.preview;
 
 import it.unimi.dsi.fastutil.objects.ObjectLists;
+import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
 import com.circulation.prototype_eng.api.client.structure.StructureProjectionOptions;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
@@ -31,7 +32,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 /** PM's implemented 184x220 preview UI, shared unchanged by the standalone and JEI hosts. */
@@ -62,13 +62,13 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private ItemStack builderTool = ItemStack.EMPTY;
     private Supplier<NBTTagCompound> builderBinding = NBTTagCompound::new;
     private Runnable materialsRequested = () -> { };
-    private BiConsumer<StructurePreviewModel.Cell, Integer> cellAlternativeSelected = (_, _) -> { };
+    private ObjectIntBiConsumer<StructurePreviewModel.Cell> cellAlternativeSelected = (_, _) -> { };
     private StructureDisplay constructionChoice;
     private BlockPos constructionCell;
     private StructurePreviewModel.Cell lastConstructionPick;
     private Object constructionMaterialsToken;
     private List<ConstructionMaterial> constructionMaterials = List.of();
-    private BiConsumer<StructureDisplay, Integer> alternativeSelected = (_, _) -> {
+    private ObjectIntBiConsumer<StructureDisplay> alternativeSelected = (_, _) -> {
     };
     private GuiScreen host;
     private Object drawnToken;
@@ -122,7 +122,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
 
     public void onMaterialsRequested(Runnable listener) { materialsRequested = Objects.requireNonNull(listener); }
 
-    public void onCellAlternativeSelected(BiConsumer<StructurePreviewModel.Cell, Integer> listener) {
+    public void onCellAlternativeSelected(ObjectIntBiConsumer<StructurePreviewModel.Cell> listener) {
         cellAlternativeSelected = Objects.requireNonNull(listener);
     }
 
@@ -136,7 +136,7 @@ public final class StructurePreviewPanel implements AutoCloseable {
         view.materialsOpen = true;
     }
 
-    public void onAlternativeSelected(BiConsumer<StructureDisplay, Integer> listener) {
+    public void onAlternativeSelected(ObjectIntBiConsumer<StructureDisplay> listener) {
         alternativeSelected = Objects.requireNonNull(listener);
     }
 

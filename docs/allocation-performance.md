@@ -2,6 +2,10 @@
 
 ## 2026-11-12 规则与范围
 
+回调的字段、参数和调用点必须直接使用原始类型签名；对象加int的消费者使用fastutil的`ObjectIntBiConsumer<T>`，禁止声明为`BiConsumer<T, Integer>`再在执行时拆箱，也不保留装箱兼容重载。JDK已有的`BooleanSupplier`、`ToIntFunction`等原始类型接口可以直接使用。没有对应接口的双参数返回值回调应声明具名函数接口，例如文本换行的`TextWrapper.apply(Text, int)`，禁止为此建立临时Pair或捕获另一个函数；否则会引入装箱、拆箱或额外对象分配。
+
+本次编译器AST检查覆盖1078个main/test Java文件，材料单格/整类选择和构建树分段回调已改为`ObjectIntBiConsumer`，JEI换行宽度改为原始int，结构快照测试夹具改为`BooleanSupplier`。结构任务的`Supplier<Boolean>`保留：其同一action对象交给`PlannedTaskExecutor.Job<Boolean>`，结果按`Result<Boolean>`区分成功、失败及取消；布尔值使用单例。禁止仅为改变字段类型再按任务创建适配lambda，这会增加实际分配。剩余嵌套`Result<Boolean>`属于任务结果对象，纯对象回调继续使用JDK接口。
+
 必须直接比较 ResourceLocation、UUID 等已有自然顺序的标识，禁止为了排序在比较器里反复调用 toString()；依赖排序结果的清单校验与预算排序必须使用相同规则。带完整路径编码要求的 RequirementPath 和规范化文件路径单独保留其顺序。
 
 集合初始化必须优先使用已知的来源数量、解析后长度、固定槽数或实际参与者数量。逐项累计的配方输入、输出和资源数量表通常以6作为起始容量，超过后正常扩容；禁止把6作为材料数量限制。可选列表可能为空时保留延迟分配，禁止为了估算容量提前读取不存在的JSON字段、未接受的队伍信息，或重复构建来源列表。无可靠数量依据的长期注册表、缓存和特殊语义集合不机械套用同一容量。

@@ -13,6 +13,7 @@ import it.unimi.dsi.fastutil.objects.Object2LongLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
 import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
 import ae2.core.localization.LocalizationEnum;
 import net.minecraft.block.Block;
@@ -37,7 +38,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
-import java.util.function.BiConsumer;
 
 /** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
 final class BuilderStructureTree {
@@ -48,7 +48,7 @@ final class BuilderStructureTree {
     private StructurePreviewSettings displayedSelections;
     private final Object2BooleanOpenHashMap<String> expanded = new Object2BooleanOpenHashMap<>();
     private Supplier<LocalizationEnum> machineTitle = () -> null;
-    private BiConsumer<String, Integer> sliceChanged = (_, _) -> { };
+    private ObjectIntBiConsumer<String> sliceChanged = (_, _) -> { };
     private final List<Hit> hits = new ObjectArrayList<>();
     private final GuiClip clip = new GuiClip();
     private List<StructureBuildPlan.Cell> cells = List.of();
@@ -84,7 +84,7 @@ final class BuilderStructureTree {
         selections = Objects.requireNonNull(current);
     }
 
-    void onSliceChanged(BiConsumer<String, Integer> listener) {
+    void onSliceChanged(ObjectIntBiConsumer<String> listener) {
         sliceChanged = Objects.requireNonNull(listener);
     }
 

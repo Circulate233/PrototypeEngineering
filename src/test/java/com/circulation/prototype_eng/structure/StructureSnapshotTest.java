@@ -25,6 +25,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -379,11 +380,11 @@ class StructureSnapshotTest {
 
     private static final class FakeSource implements StructureReadSource {
         private final Thread serverThread = Thread.currentThread();
-        private final Object2ObjectOpenHashMap<StructureBounds, Supplier<Boolean>> areas = new Object2ObjectOpenHashMap<>();
+        private final Object2ObjectOpenHashMap<StructureBounds, BooleanSupplier> areas = new Object2ObjectOpenHashMap<>();
         private final Object2ObjectOpenHashMap<StructureReadPlan.Read<?>, Supplier<?>> values = new Object2ObjectOpenHashMap<>();
         private final Object2IntOpenHashMap<StructureReadPlan.Read<?>> readCounts = new Object2IntOpenHashMap<>();
 
-        private void area(StructureBounds bounds, Supplier<Boolean> value) {
+        private void area(StructureBounds bounds, BooleanSupplier value) {
             areas.put(bounds, value);
         }
 
@@ -410,7 +411,7 @@ class StructureSnapshotTest {
         public boolean isAreaLoaded(StructureBounds bounds) {
             requireServerThread();
             var value = areas.get(bounds);
-            return value == null || value.get();
+            return value == null || value.getAsBoolean();
         }
 
         @Override

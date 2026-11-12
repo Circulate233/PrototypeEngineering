@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BiFunction;
 
 /** Measures the complete explanation with the same font and wrapping used for drawing. */
 public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
@@ -23,7 +22,12 @@ public record RecipeInformationLayout(List<Paragraph> paragraphs, int height) {
         return new RecipeInformationLayout(ObjectLists.unmodifiable(paragraphs), Math.max(0, y - 3));
     }
 
-    public record Font(int lineHeight, BiFunction<JeiRecipeDisplay.Text, Integer, List<String>> wrap) {
+    @FunctionalInterface
+    public interface TextWrapper {
+        List<String> apply(JeiRecipeDisplay.Text text, int width);
+    }
+
+    public record Font(int lineHeight, TextWrapper wrap) {
         public Font {
             if (lineHeight <= 0) throw new IllegalArgumentException("Non-positive font height");
             Objects.requireNonNull(wrap);

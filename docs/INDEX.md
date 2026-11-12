@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 装箱回调检查：材料单格/整类选择和构建树分段改用fastutil `ObjectIntBiConsumer`，JEI换行宽度直接接收int，快照测试改用`BooleanSupplier`。编译器AST覆盖1078份main/test Java，只保留统一任务执行器所需的`StructureWork`布尔Supplier；规则与原因见[分配检查](allocation-performance.md)。相关50项测试、Spotless和MCP build通过，3个修改生产Java、2个直接调用方及1个测试Java的IDEA全级诊断均0；字节码确认调用参数为int。证据primitive-callbacks/。本轮仅本地提交，其他对话同文件修改和原暂存保留。
+
 - 2026-11-12 ME仓室GUI纹理返工：截图指出首版擦除框宽度套用错误，造成mix图右边框缺损和半列升级栏、资源图自动IO按钮残片。10张新增图均从原始`prototypemachinery/textures/gui`或`导出/gui`逐文件恢复后重做；资源图、mix图、样板图分别按原分辨率独立擦除，白名单外像素与原始纹理一致。5张sprite/palette atlas全部像素按原图恢复；item命名输入/接口图改为`gui_resource_bus.png`/`gui_resource_io_bus.png`并更新GUI引用。Gradle build -x test含Spotless及最终MCP定向构建通过，GUI引用Java本机MCP全级零；中途并行预览编译错误已由其负责线程修复，未代改其源码。10张资源及JAR显示一致，旧item资源名无残留。逐图对比与像素清单见`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，入口[纹理规则](block-registration.md)。需用户重启检查真实纹理上传和GUI绘制；未启动Minecraft/推送，本轮目标外既有背景及暂存保持。
 
 - 2026-11-12 结构预览子界面类型修正：`StructurePreviewGui<C extends AEBaseContainer>`直接继承`AEBaseGui<C>`，父界面构造器接收`AEBaseGui<C>`；独立入口明确返回`StructurePreviewGui<StructurePreviewContainer>`。导航和Mixin只使用有界通配符，不再固定AEBaseContainer或使用原始类型。既有24项导航回归及Spotless通过，4Java本机IDEA全级零、MCP构建成功。入口[结构GUI](structures.md)，证据preview-subscreen-types/。下一步用户复验父页返回和槽位恢复；未开子代理、启动游戏或推送，其他对话改动及暂存独立保留。
