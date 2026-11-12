@@ -184,7 +184,7 @@ class CheckpointRequirementTest {
 
     @Test
     void everyBlockedChildStageStopsLaterStagesAndReleasesAllTokensBeforeRetry() {
-        for (var rejecting : RecipeStage.values()) {
+        for (var rejecting : RecipeStage.VALUES) {
             var child = new Child();
             child.rejectionStage = rejecting;
             child.reject = true;

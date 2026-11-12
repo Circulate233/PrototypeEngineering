@@ -267,15 +267,15 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         if (packet.readUnsignedByte() != VERSION)
             throw new IllegalArgumentException("Unsupported research GUI packet version");
         boolean initialized = readBoolean(packet), savePending = readBoolean(packet);
-        var teamStatus = readEnum(packet, ResearchPlayerView.TeamStatus.values());
-        var personal = readEnum(packet, Decision.values());
-        var team = readEnum(packet, Decision.values());
-        var queue = readEnum(packet, Decision.values());
-        var start = readEnum(packet, Decision.values());
-        var blacklist = readEnum(packet, Decision.values());
-        var forget = readEnum(packet, Decision.values());
-        var admin = readEnum(packet, Decision.values());
-        var tab = readEnum(packet, Tab.values());
+        var teamStatus = readEnum(packet, ResearchPlayerView.TeamStatus.VALUES);
+        var personal = readEnum(packet, Decision.VALUES);
+        var team = readEnum(packet, Decision.VALUES);
+        var queue = readEnum(packet, Decision.VALUES);
+        var start = readEnum(packet, Decision.VALUES);
+        var blacklist = readEnum(packet, Decision.VALUES);
+        var forget = readEnum(packet, Decision.VALUES);
+        var admin = readEnum(packet, Decision.VALUES);
+        var tab = readEnum(packet, Tab.VALUES);
         int total = packet.readInt(), offset = packet.readInt(), count = packet.readUnsignedByte();
         if (count > MAX_ROWS) throw new IllegalArgumentException("Too many research GUI rows");
         var rows = new ObjectArrayList<Entry>(count);
@@ -284,10 +284,10 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
             int personalLevel = packet.readInt(), sharedLevel = packet.readInt(), target = packet.readInt(), tier = packet.readInt();
             boolean blacklisted = readBoolean(packet);
             long entryId = packet.readLong();
-            var manual = readNullableEnum(packet, ManualResearchSession.Status.values());
-            var pause = readNullableEnum(packet, ManualResearchSession.PauseReason.values());
+            var manual = readNullableEnum(packet, ManualResearchSession.Status.VALUES);
+            var pause = readNullableEnum(packet, ManualResearchSession.PauseReason.VALUES);
             var contributor = readBoolean(packet) ? packet.readUniqueId() : null;
-            var claim = readNullableEnum(packet, RewardClaim.Status.values());
+            var claim = readNullableEnum(packet, RewardClaim.Status.VALUES);
             var selectedGroup = readBoolean(packet) ? readId(packet) : null;
             rows.add(new Entry(id, personalLevel, sharedLevel, target, tier, blacklisted, entryId, manual, pause, contributor, claim, selectedGroup));
         }
@@ -296,7 +296,7 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         if (detailCount > MAX_DETAILS) throw new IllegalArgumentException("Too many research GUI details");
         var details = new ObjectArrayList<Detail>(detailCount);
         for (int i = 0; i < detailCount; i++)
-            details.add(new Detail(readEnum(packet, Kind.values()), readId(packet), packet.readInt(), packet.readLong(), packet.readLong()));
+            details.add(new Detail(readEnum(packet, Kind.VALUES), readId(packet), packet.readInt(), packet.readLong(), packet.readLong()));
         if (packet.isReadable()) throw new IllegalArgumentException("Trailing research GUI packet data");
         return new ResearchGuiSnapshot(initialized, savePending, teamStatus, personal, team, queue, start, blacklist, tab,
             total, offset, rows, selected, detailTotal, detailOffset, details, forget, admin);
@@ -394,9 +394,19 @@ public record ResearchGuiSnapshot(boolean initialized, boolean savePending, Rese
         }
     }
 
-    public enum Tab {RESEARCH, QUEUE, REWARDS}
+    public enum Tab {
+        RESEARCH, QUEUE, REWARDS;
 
-    public enum Kind {NUMERIC, MATERIAL, REWARD_CHOICE}
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Tab[] VALUES = values();
+    }
+
+    public enum Kind {
+        NUMERIC, MATERIAL, REWARD_CHOICE;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Kind[] VALUES = values();
+    }
 
     public record Selection(ResourceLocation researchId, int level, long entryId) {
         public Selection {

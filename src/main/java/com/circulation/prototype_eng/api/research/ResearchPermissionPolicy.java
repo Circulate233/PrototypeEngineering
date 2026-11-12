@@ -51,6 +51,9 @@ public interface ResearchPermissionPolicy {
 
     enum Decision {
         ALLOWED, NOT_TEAM_MEMBER, NOT_TEAM_LEADER, NOT_SERVER_OPERATOR,
-        MISSING_ACTOR_TEAM, MISSING_TARGET_TEAM, TARGET_TEAM_MISMATCH, TARGET_PLAYER_MISMATCH
+        MISSING_ACTOR_TEAM, MISSING_TARGET_TEAM, TARGET_TEAM_MISMATCH, TARGET_PLAYER_MISMATCH;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Decision[] VALUES = values();
     }
 }

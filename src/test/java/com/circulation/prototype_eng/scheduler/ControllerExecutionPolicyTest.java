@@ -81,7 +81,7 @@ class ControllerExecutionPolicyTest {
     void allFourPoliciesKeepDiscoveryAdmissionWorkAndSnapshotOnTheirSelectedThreads() {
         Thread owner = Thread.currentThread();
         try (var scheduler = new TaskScheduler(owner, 2, 2)) {
-            for (var policy : ControllerExecutionPolicy.values()) {
+            for (var policy : ControllerExecutionPolicy.VALUES) {
                 for (boolean cross : new boolean[]{false, true}) {
                     var fixture = new Fixture(scheduler, policy, cross);
                     try {
@@ -168,7 +168,7 @@ class ControllerExecutionPolicyTest {
 
     @Test
     void sharedHatchAndEnergyPermitOnlyAffordableWorkAndSurviveTheOtherControllerUnforming() {
-        for (var policy : ControllerExecutionPolicy.values()) {
+        for (var policy : ControllerExecutionPolicy.VALUES) {
             try (var scheduler = new TaskScheduler(Thread.currentThread(), 2, 2)) {
                 var first = new Fixture(scheduler, policy, false);
                 var second = new Fixture(scheduler, policy, true);

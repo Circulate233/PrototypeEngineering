@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.orientation.BlockOrientation;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
@@ -56,7 +58,7 @@ public final class StructureCatalog {
     }
 
     synchronized MachineStructure rememberTransform(MachineStructure definition, BlockOrientation orientation, MachineStructure result) {
-        var orientations = transformed.computeIfAbsent(definition, _ -> new MachineStructure[BlockOrientation.values().length]);
+        var orientations = transformed.computeIfAbsent(definition, _ -> new MachineStructure[ExternalEnumValues.BLOCK_ORIENTATIONS.length]);
         int index = orientation.ordinal();
         if (orientations[index] == null) orientations[index] = result;
         return orientations[index];

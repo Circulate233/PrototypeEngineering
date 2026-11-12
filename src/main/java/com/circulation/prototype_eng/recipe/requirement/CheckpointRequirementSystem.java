@@ -17,8 +17,6 @@ import java.util.List;
  * child only after the preceding effects are staged, and never relinquishes outer compensation.
  */
 public final class CheckpointRequirementSystem implements RecipeRequirementSystem<CheckpointRequirement> {
-    private static final RecipeStage[] CHILD_STAGES = RecipeStage.values();
-
     private static RequirementTransaction acquireLifecycle(RecipeProcess process, RecipeRequirement<?> requirement,
                                                            RecipeProcess.Tick tick) {
         return new Lifecycle(process, requirement, tick);
@@ -108,10 +106,10 @@ public final class CheckpointRequirementSystem implements RecipeRequirementSyste
             if (terminal != Resolution.REVERSIBLE) {
                 throw new IllegalStateException("Checkpoint is already terminal");
             }
-            if (cursor == CHILD_STAGES.length) {
+            if (cursor == RecipeStage.VALUES.length) {
                 return null;
             }
-            var stage = CHILD_STAGES[cursor++];
+            var stage = RecipeStage.VALUES[cursor++];
             return stage == RecipeStage.TICK
                 ? process.withTickContext(tick, () -> child.acquire(process, stage))
                 : child.acquire(process, stage);

@@ -170,6 +170,9 @@ public final class ScannerState {
         NAME("langName"), ID("structureId"), EXPANDED("expanded"), QUANTITY("expandedQuantity"),
         SPACING("expandedSpacing"), SUBSTRUCTURE("substructure"), NBT("includeTileNbt"), MIRROR("allowMirror"),
         X("originEditX"), Y("originEditY"), Z("originEditZ"), PREVIEW_MIRROR("previewMirror");
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Field[] VALUES = values();
         public final String key;
 
         Field(String key) {

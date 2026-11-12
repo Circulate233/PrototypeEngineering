@@ -130,7 +130,7 @@ public final class ControllerRenderSnapshotCodec {
                 var origin = position(in);
                 int repetitions = in.readInt();
                 int kind = in.readUnsignedByte();
-                if (kind >= StructurePreviewProvider.Kind.values().length)
+                if (kind >= StructurePreviewProvider.Kind.VALUES.length)
                     throw new IllegalArgumentException("Unknown accepted shape kind");
                 var step = position(in);
                 boolean hide = bool(in);
@@ -140,7 +140,7 @@ public final class ControllerRenderSnapshotCodec {
                 for (int b = 0; b < blocks; b++) covered.add(position(in));
                 positions.addAll(covered);
                 occurrences.add(new MachineRenderSnapshot.Occurrence(parent, edge, nodeId, origin, repetitions,
-                    StructurePreviewProvider.Kind.values()[kind], step, hide, covered));
+                    StructurePreviewProvider.Kind.VALUES[kind], step, hide, covered));
             }
             int ids = count(in, MachineRenderSnapshot.MAX_OCCURRENCES, 5);
             var components = new ObjectArrayList<ResourceLocation>(ids);

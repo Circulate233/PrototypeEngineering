@@ -24,6 +24,9 @@ public enum RecipeText implements LocalizationEnum {
     Cancelled,
     ControllerBroken;
 
+    /** Shared declaration order; callers must not modify this array. */
+    public static final RecipeText[] VALUES = values();
+
     private final String translationKey = "recipe." + Tags.MOD_ID + "." + name();
 
     @Override

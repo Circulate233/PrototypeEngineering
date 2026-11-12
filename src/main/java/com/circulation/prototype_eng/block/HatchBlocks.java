@@ -25,8 +25,8 @@ public final class HatchBlocks {
     private static HatchBlock<?>[] createBlocks() {
         var blocks = new HatchBlock<?>[60];
         int index = 0;
-        for (var tier : HatchTier.values()) {
-            for (var mode : HatchMode.values()) {
+        for (var tier : HatchTier.VALUES) {
+            for (var mode : HatchMode.VALUES) {
                 blocks[index++] = new ResourceHatchBlock(mode, tier);
                 blocks[index++] = new EnergyHatchBlock(mode, tier);
             }

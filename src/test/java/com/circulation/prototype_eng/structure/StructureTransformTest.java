@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
@@ -54,7 +56,7 @@ class StructureTransformTest {
     @Test
     void everyOrientationUsesItsFrontTopAndRightHandedAxesForPositionsAndDirections() {
         BlockPos offset = new BlockPos(7, -11, 19);
-        for (BlockOrientation orientation : BlockOrientation.values()) {
+        for (BlockOrientation orientation : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             StructureTransform transform = StructureTransform.of(orientation);
             assertEquals(expected(orientation, offset), transform.apply(offset), orientation.name());
             assertEquals(offset, transform.inverse().apply(transform.apply(offset)), orientation.name());
@@ -72,9 +74,9 @@ class StructureTransformTest {
     @Test
     void changingBetweenEveryPairOfOrientationsMatchesTheirBaseTransforms() {
         BlockPos local = new BlockPos(13, -17, 23);
-        for (BlockOrientation from : BlockOrientation.values()) {
+        for (BlockOrientation from : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             StructureTransform source = StructureTransform.of(from);
-            for (BlockOrientation to : BlockOrientation.values()) {
+            for (BlockOrientation to : ExternalEnumValues.BLOCK_ORIENTATIONS) {
                 StructureTransform target = StructureTransform.of(to);
                 StructureTransform change = StructureTransform.between(from, to);
                 String context = from + " -> " + to;
@@ -92,7 +94,7 @@ class StructureTransformTest {
 
     @Test
     void extremeCoordinatesMoveExactlyOrRejectUnrepresentableNegationOnEveryAxis() {
-        for (BlockOrientation orientation : BlockOrientation.values()) {
+        for (BlockOrientation orientation : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             StructureTransform transform = StructureTransform.of(orientation);
             for (EnumFacing axis : new EnumFacing[]{EnumFacing.EAST, EnumFacing.UP, EnumFacing.SOUTH}) {
                 BlockPos maximum = scaled(axis, Integer.MAX_VALUE);

@@ -1,9 +1,10 @@
 package com.circulation.prototype_eng.machine;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.util.Mirror;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.Rotation;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,7 @@ class ControllerDataTest {
 
     @Test
     void fullOrientationTransformsSurviveNbtAndComposeForVerticalAndHorizontalControllers() {
-        for (var original : BlockOrientation.values()) {
+        for (var original : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             var rotated = original;
             for (int turn = 0; turn < 4; turn++) {
                 var next = ControllerOrientation.rotate(rotated, Rotation.CLOCKWISE_90);
@@ -52,7 +53,7 @@ class ControllerDataTest {
                 rotated = ControllerData.decode(new ControllerData(TYPE, next, null).encode()).orientation();
             }
             assertSame(original, rotated);
-            for (var mirror : Mirror.values()) {
+            for (var mirror : ExternalEnumValues.MIRRORS) {
                 var mirrored = ControllerOrientation.mirror(original, mirror);
                 assertSame(original, ControllerOrientation.mirror(mirrored, mirror));
                 assertNotEquals(mirrored.getSide(RelativeSide.FRONT).getAxis(), mirrored.getSide(RelativeSide.TOP).getAxis());

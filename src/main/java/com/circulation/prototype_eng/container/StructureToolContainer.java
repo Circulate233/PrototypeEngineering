@@ -115,7 +115,7 @@ public final class StructureToolContainer extends AEBaseContainer {
                 chooseMaterial(action.kind, action.key, action.value);
         } else switch (action.kind) {
             case "edit" -> {
-                for (var field : ScannerState.Field.values())
+                for (var field : ScannerState.Field.VALUES)
                     if (field.name().equals(action.key) && !ScannerState.edit(tag, field, action.value)) return;
             }
             case "clear" -> ScannerState.clear(tag);

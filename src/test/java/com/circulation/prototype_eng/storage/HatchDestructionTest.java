@@ -56,7 +56,7 @@ class HatchDestructionTest {
 
     @Test
     void allThreeDirectionsEjectEveryResourceOnceAndRetireOldViews() {
-        for (var mode : HatchMode.values()) {
+        for (var mode : HatchMode.VALUES) {
             var hatch = hatch(mode);
             var expected = new ObjectArrayList<GenericStack>();
             var first = mode.hasInput() ? input(hatch) : output(hatch);

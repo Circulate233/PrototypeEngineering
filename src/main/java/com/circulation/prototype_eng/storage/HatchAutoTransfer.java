@@ -38,9 +38,8 @@ import java.util.function.LongUnaryOperator;
 public final class HatchAutoTransfer {
     private static final int PROBES = 4;
     private static final int ENUMERATION_INTERVAL = 20;
-    private static final EnumFacing[] DIRECTIONS = EnumFacing.values();
     private static final IActionSource SOURCE = IActionSource.empty();
-    private final ResourceCursor[] cursors = new ResourceCursor[DIRECTIONS.length];
+    private final ResourceCursor[] cursors = new ResourceCursor[EnumFacing.VALUES.length];
     private long tick;
     private long inputOrder = -1, outputOrder = -1;
     private int firstFace;
@@ -55,9 +54,9 @@ public final class HatchAutoTransfer {
         if (!host.autoInput() && !host.autoOutput()) return;
         var hatch = host.storage();
         beginTick();
-        for (int offset = 0; offset < DIRECTIONS.length; offset++) {
-            int faceIndex = (firstFace + offset) % DIRECTIONS.length;
-            var direction = DIRECTIONS[faceIndex];
+        for (int offset = 0; offset < EnumFacing.VALUES.length; offset++) {
+            int faceIndex = (firstFace + offset) % EnumFacing.VALUES.length;
+            var direction = EnumFacing.VALUES[faceIndex];
             var position = host.getPos().offset(direction);
             if (!world.isBlockLoaded(position, false)) {
                 cursors[faceIndex].clear();
@@ -89,7 +88,7 @@ public final class HatchAutoTransfer {
         if (!host.autoInput() && !host.autoOutput()) return;
         var input = host.inputStorage();
         var output = host.outputStorage();
-        for (var direction : DIRECTIONS) {
+        for (var direction : EnumFacing.VALUES) {
             var position = host.getPos().offset(direction);
             if (!world.isBlockLoaded(position, false)) continue;
             var neighbor = world.getTileEntity(position);
@@ -114,7 +113,7 @@ public final class HatchAutoTransfer {
 
     void beginTick() {
         tick++;
-        firstFace = (firstFace + 1) % DIRECTIONS.length;
+        firstFace = (firstFace + 1) % EnumFacing.VALUES.length;
         enumeratedThisTick = false;
     }
 

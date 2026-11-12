@@ -40,7 +40,7 @@ class ResourceCapacityRatiosTest {
 
     @Test
     void everyTierScalesItemsFluidsAndCustomTypesFromOneItemEquivalentCapacity() {
-        for (var tier : HatchTier.values()) {
+        for (var tier : HatchTier.VALUES) {
             var profile = HatchConfig.resourceConfiguration(tier, HatchMode.MIXED);
             var side = Objects.requireNonNull(profile.input());
             assertEquals(tier.itemsPerSlot(), side.capacities().getLong(AEKeyType.items()));

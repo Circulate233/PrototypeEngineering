@@ -183,9 +183,9 @@ public final class ResearchContainer extends AEBaseContainer {
     }
 
     private void acceptView(@Nullable View view) {
-        if (!current() || view == null || view.tab < 0 || view.tab >= Tab.values().length || view.offset < 0
+        if (!current() || view == null || view.tab < 0 || view.tab >= Tab.VALUES.length || view.offset < 0
             || view.detailOffset < 0 || view.research == null || view.level < 0 || view.entryId < 0) return;
-        var tab = Tab.values()[view.tab];
+        var tab = Tab.VALUES[view.tab];
         Selection selection = null;
         if (!view.research.isEmpty()) {
             if (tab != snapshot.tab()) return;

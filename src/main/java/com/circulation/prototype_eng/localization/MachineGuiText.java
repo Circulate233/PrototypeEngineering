@@ -26,7 +26,7 @@ public enum MachineGuiText implements LocalizationEnum {
             return status(entry.status()).getLocal();
         }
         String reason = entry.arguments().isEmpty() ? entry.reason() : entry.reason() + ": " + String.join(", ", entry.arguments());
-        for (var text : RecipeText.values()) {
+        for (var text : RecipeText.VALUES) {
             if (text.getTranslationKey().equals(entry.reason())) {
                 reason = text.getLocal(entry.arguments().toArray());
                 break;

@@ -21,7 +21,6 @@ import java.util.function.BooleanSupplier;
  */
 final class PreviewBlockQuadCursor {
     private static final BlockRenderLayer[] LAYERS = {BlockRenderLayer.SOLID, BlockRenderLayer.CUTOUT_MIPPED, BlockRenderLayer.CUTOUT, BlockRenderLayer.TRANSLUCENT};
-    private static final EnumFacing[] FACES = EnumFacing.values();
     private final Thread owner = Thread.currentThread();
     private final StructurePreviewModel model;
     private final StructurePreviewModel.Cell cell;
@@ -105,7 +104,7 @@ final class PreviewBlockQuadCursor {
                     baked = null;
                     return false;
                 }
-                var direction = face == 0 ? null : FACES[face - 1];
+                var direction = face == 0 ? null : EnumFacing.VALUES[face - 1];
                 if (direction != null && access != null && access.visible(cell.position().offset(direction))
                     && !state.shouldSideBeRendered(access, cell.position(), direction)) {
                     face++;

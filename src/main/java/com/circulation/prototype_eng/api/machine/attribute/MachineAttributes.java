@@ -24,8 +24,6 @@ import java.util.Objects;
  * be finite; negative values are allowed so each consumer can apply its own domain rules.
  */
 public final class MachineAttributes {
-    private static final AttributeModifier.Operation[] OPERATION_ORDER = AttributeModifier.Operation.values();
-
     private final @Nullable MachineAttributes parent;
     private final double defaultBase;
     private final AttributeEpoch epoch;
@@ -85,7 +83,7 @@ public final class MachineAttributes {
         double current = base;
         var modifiers = new Object2ObjectLinkedOpenHashMap<String, AttributeModifier>();
         collectModifiers(id, modifiers);
-        for (var operation : OPERATION_ORDER) {
+        for (var operation : AttributeModifier.Operation.VALUES) {
             for (var modifier : modifiers.values()) {
                 if (modifier.operation() == operation) {
                     current = modifier.apply(base, current);
@@ -395,12 +393,12 @@ public final class MachineAttributes {
                 result = base;
                 phase = 2;
             }
-            while (phase == 2 && operation < OPERATION_ORDER.length) {
+            while (phase == 2 && operation < AttributeModifier.Operation.VALUES.length) {
                 if (applying == null) applying = modifiers.values().iterator();
                 while (applying.hasNext()) {
                     if (!budget.take()) return false;
                     var modifier = applying.next();
-                    if (modifier.operation() == OPERATION_ORDER[operation]) {
+                    if (modifier.operation() == AttributeModifier.Operation.VALUES[operation]) {
                         result = modifier.apply(base, result);
                         if (!Double.isFinite(result))
                             throw new IllegalStateException("Nonfinite attribute result for " + id + " from " + modifier.id());

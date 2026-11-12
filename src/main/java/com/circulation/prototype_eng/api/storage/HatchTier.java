@@ -15,7 +15,8 @@ public enum HatchTier {
     LV9(9, 64, 32, 8_192, 4_096_000, 8_000_000_000L, 2_097_152),
     LV10(10, 81, 40, 16_384, 8_192_000, 32_000_000_000L, 8_388_608);
 
-    private static final HatchTier[] TIERS = values();
+    /** Shared declaration order; callers must not modify this array. */
+    public static final HatchTier[] VALUES = values();
     private final int level;
     private final int slots;
     private final int mixedSlotsPerSide;
@@ -36,10 +37,10 @@ public enum HatchTier {
     }
 
     public static HatchTier of(int level) {
-        if (level < 1 || level > TIERS.length) {
+        if (level < 1 || level > VALUES.length) {
             throw new IllegalArgumentException("Hatch tier must be 1-10: " + level);
         }
-        return TIERS[level - 1];
+        return VALUES[level - 1];
     }
 
     public int level() {

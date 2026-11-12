@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.client;
 
-import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.orientation.RelativeSide;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -101,7 +102,7 @@ class ControllerRotatedModelTest {
                 return ItemOverrideList.NONE;
             }
         };
-        for (var orientation : BlockOrientation.values()) {
+        for (var orientation : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             var front = orientation.getSide(RelativeSide.FRONT);
             if (front.getAxis().isVertical()) continue;
             var top = orientation.getSide(RelativeSide.TOP);

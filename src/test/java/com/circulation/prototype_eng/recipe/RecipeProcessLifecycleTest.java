@@ -236,7 +236,7 @@ class RecipeProcessLifecycleTest {
 
     @Test
     void postCompletionNotificationFaultNeverReplaysAnyCommittedStage() {
-        for (var failingStage : RecipeStage.values()) {
+        for (var failingStage : RecipeStage.VALUES) {
             boolean[] armed = {false};
             var failure = new IllegalStateException("notification at " + failingStage);
             var energy = new EnergyBuffer(100, () -> {

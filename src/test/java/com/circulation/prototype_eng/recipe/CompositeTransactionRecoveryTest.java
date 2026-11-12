@@ -93,7 +93,7 @@ class CompositeTransactionRecoveryTest {
         tick.failBefore = false;
         tick.proof = true;
         assertTrue(process.withTickContext(new RecipeProcess.Tick(70, 71, 40, 41), batch::resolveBusiness));
-        for (var stage : RecipeStage.values()) {
+        for (var stage : RecipeStage.VALUES) {
             assertEquals(1, effects.at(stage).commits);
             assertEquals(stage == RecipeStage.TICK ? 2 : 1, effects.at(stage).completions);
         }
@@ -121,7 +121,7 @@ class CompositeTransactionRecoveryTest {
             }));
             process.requireQuiescent();
             assertTrue(batch.resolveBusiness());
-            for (var stage : RecipeStage.values()) {
+            for (var stage : RecipeStage.VALUES) {
                 assertEquals(complete ? 1 : 0, effects.at(stage).completions);
                 assertEquals(complete ? 0 : 1, effects.at(stage).rollbacks);
             }

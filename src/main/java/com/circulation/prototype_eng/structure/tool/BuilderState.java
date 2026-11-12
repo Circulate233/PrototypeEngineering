@@ -72,7 +72,7 @@ public final class BuilderState {
 
     public static State state(NBTTagCompound tag) {
         int state = tag.getCompoundTag("Task").getInteger("State");
-        return state >= 0 && state < State.values().length ? State.values()[state] : State.IDLE;
+        return state >= 0 && state < State.VALUES.length ? State.VALUES[state] : State.IDLE;
     }
 
     public static void state(NBTTagCompound tag, State state) {
@@ -206,6 +206,9 @@ public final class BuilderState {
 
     public enum State {
         IDLE, BUILDING, PAUSED_BUILDING, DISASSEMBLING, PAUSED_DISASSEMBLING;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final State[] VALUES = values();
 
         public boolean paused() {
             return this == PAUSED_BUILDING || this == PAUSED_DISASSEMBLING;

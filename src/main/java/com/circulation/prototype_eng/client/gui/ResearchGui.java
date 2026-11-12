@@ -178,7 +178,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
         right = columnWidth + 16;
         for (int i = 0; i < tabs.length; i++)
             tabs[i] = button(i, 8 + i * (xSize - 16) / tabs.length, 24,
-                (xSize - 16) / tabs.length, 18, (i == 3 ? ResearchGuiText.Database : tabText(Tab.values()[i])).getLocal());
+                (xSize - 16) / tabs.length, 18, (i == 3 ? ResearchGuiText.Database : tabText(Tab.VALUES[i])).getLocal());
         for (int i = 0; i < rows.length; i++) rows[i] = button(100 + i, 8, 58 + i * 20, columnWidth, 18, "");
         previous = button(10, 8, ySize - 34, 40, 18, ResearchGuiText.Previous.getLocal());
         next = button(11, columnWidth - 32, ySize - 34, 40, 18, ResearchGuiText.Next.getLocal());
@@ -436,7 +436,7 @@ public final class ResearchGui extends AEBaseGui<ResearchContainer> {
             showingOperations = false;
             showingDescription = button.id == 0 || button.id == 3;
             if (button.id == 3) container.requestDatabaseView(0, null);
-            else container.requestView(Tab.values()[button.id], 0, null, 0);
+            else container.requestView(Tab.VALUES[button.id], 0, null, 0);
         } else if (button.id >= 100 && button.id < 100 + rows.length) {
             if (drawnDatabaseMode) {
                 var target = databaseSelections[button.id - 100];

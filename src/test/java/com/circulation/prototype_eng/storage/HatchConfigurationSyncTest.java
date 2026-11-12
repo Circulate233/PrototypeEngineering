@@ -36,8 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HatchConfigurationSyncTest {
     private static HatchConfigurationSnapshot snapshot(UUID session, long revision, long itemEquivalent) {
         var profiles = new ObjectArrayList<HatchConfiguration>();
-        for (var tier : HatchTier.values())
-            for (var mode : HatchMode.values()) {
+        for (var tier : HatchTier.VALUES)
+            for (var mode : HatchMode.VALUES) {
                 var input = ResourceHatchConfiguration.Side.fromItemEquivalent(96, itemEquivalent, List.of(AEKeyType.items(), AEKeyType.fluids()), Reference2LongMaps.singleton(AEKeyType.fluids(), 2000L));
                 var output = ResourceHatchConfiguration.Side.fromItemEquivalent(128, itemEquivalent + tier.level(), List.of(AEKeyType.items(), AEKeyType.fluids()));
                 profiles.add(new ResourceHatchConfiguration(mode.hasInput() ? input : null, mode.hasOutput() ? output : null));
@@ -127,8 +127,8 @@ class HatchConfigurationSyncTest {
         }
         var session = UUID.randomUUID();
         var profiles = new ObjectArrayList<HatchConfiguration>();
-        for (var ignored : HatchTier.values())
-            for (var mode : HatchMode.values()) {
+        for (var ignored : HatchTier.VALUES)
+            for (var mode : HatchMode.VALUES) {
                 profiles.add(ResourceHatchConfiguration.symmetric(mode, 3, capacities));
                 profiles.add(EnergyHatchConfiguration.symmetric(mode, 1000, 32));
             }

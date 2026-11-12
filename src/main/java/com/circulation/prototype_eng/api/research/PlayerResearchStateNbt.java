@@ -123,7 +123,7 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
     public RewardClaim decodeClaim(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Player", "Research", "Level", "Status", "Eligible", "Group", "Claiming", "Claimed", "Children");
         var key = new RewardClaim.Key(uuid(StrictNbt.requireString(tag, "Player")), StrictNbt.requireId(tag, "Research"), StrictNbt.requireInt(tag, "Level"));
-        var status = enumValue(RewardClaim.Status.values(), StrictNbt.requireString(tag, "Status"));
+        var status = enumValue(RewardClaim.Status.VALUES, StrictNbt.requireString(tag, "Status"));
         var group = tag.hasKey("Group") ? Optional.of(StrictNbt.requireId(tag, "Group")) : Optional.<ResourceLocation>empty();
         var children = new ObjectArrayList<RewardClaim.Child>();
         var savedChildren = StrictNbt.requireList(tag, "Children", Constants.NBT.TAG_COMPOUND);
@@ -140,8 +140,8 @@ public final class PlayerResearchStateNbt implements NbtCodec<PlayerResearchStat
                 if (fragments.putIfAbsent(fragment.id(), fragment) != null)
                     throw new IllegalArgumentException("Duplicate reward fragment");
             }
-            children.add(new RewardClaim.Child(parent, enumValue(RewardClaim.Kind.values(), StrictNbt.requireString(saved, "Kind")),
-                enumValue(RewardClaim.ChildStatus.values(), StrictNbt.requireString(saved, "Status")), fragments));
+            children.add(new RewardClaim.Child(parent, enumValue(RewardClaim.Kind.VALUES, StrictNbt.requireString(saved, "Kind")),
+                enumValue(RewardClaim.ChildStatus.VALUES, StrictNbt.requireString(saved, "Status")), fragments));
         }
         var claim = new RewardClaim(key, status, StrictNbt.requireLong(tag, "Eligible"), group, optionalLong(tag, "Claiming"), children, optionalLong(tag, "Claimed"));
         validateClaim(claim);

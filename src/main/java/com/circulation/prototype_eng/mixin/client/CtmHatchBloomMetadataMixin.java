@@ -1,8 +1,9 @@
 package com.circulation.prototype_eng.mixin.client;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import com.circulation.prototype_eng.client.render.HatchBloomMetadata;
 import com.google.gson.JsonElement;
-import net.minecraft.util.BlockRenderLayer;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -17,7 +18,7 @@ public abstract class CtmHatchBloomMetadataMixin {
         at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
     private @Nullable JsonElement prototype_eng$portableHatchBloom(@Nullable JsonElement metadata) {
         boolean bloomAvailable = false;
-        for (var layer : BlockRenderLayer.values()) {
+        for (var layer : ExternalEnumValues.BLOCK_RENDER_LAYERS) {
             if ("BLOOM".equals(layer.name())) {
                 bloomAvailable = true;
                 break;

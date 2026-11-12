@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.client.preview;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEItemKey;
@@ -336,7 +338,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             layerCells.computeIfAbsent(pos.getY(), _ -> new IntArrayList()).add(index);
             var display = model.cells().get(index).display();
             if (display != null) representativePositions.putIfAbsent(display, pos);
-            for (var facing : EnumFacing.values()) {
+            for (var facing : EnumFacing.VALUES) {
                 if (view.at(pos.offset(facing)) == null) {
                     boundaryCells.add(index);
                     break;
@@ -634,7 +636,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             Minecraft.getMinecraft().getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
             var previousLayer = MinecraftForgeClient.getRenderLayer();
             try {
-                for (var layer : BlockRenderLayer.values()) {
+                for (var layer : ExternalEnumValues.BLOCK_RENDER_LAYERS) {
                     if (!state.getBlock().canRenderInLayer(state, layer)) continue;
                     ForgeHooksClient.setRenderLayer(layer);
                     if (layer == BlockRenderLayer.TRANSLUCENT) {

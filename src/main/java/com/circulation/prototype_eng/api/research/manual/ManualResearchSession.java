@@ -228,10 +228,18 @@ public record ManualResearchSession(UUID id, String teamId, TeamResearchQueue.Ke
 
     public enum Status {
         ACTIVE, PAUSED, MATERIAL_COMMIT_PENDING, MATERIAL_COMMITTED, MATERIAL_ABORT_RECEIPT_PENDING,
-        MATERIAL_SETTLED_RECEIPT_PENDING, COMPLETION_PENDING, COMPLETION_PROPAGATED, QUEUE_HEAD_REMOVED
+        MATERIAL_SETTLED_RECEIPT_PENDING, COMPLETION_PENDING, COMPLETION_PROPAGATED, QUEUE_HEAD_REMOVED;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Status[] VALUES = values();
     }
 
-    public enum PauseReason {CONTRIBUTOR_OFFLINE, CONTRIBUTOR_TEAM_CHANGED, SESSION_TIMEOUT, EXPLICIT, WORLD_RESTORED, RESEARCH_INVALIDATED}
+    public enum PauseReason {
+        CONTRIBUTOR_OFFLINE, CONTRIBUTOR_TEAM_CHANGED, SESSION_TIMEOUT, EXPLICIT, WORLD_RESTORED, RESEARCH_INVALIDATED;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final PauseReason[] VALUES = values();
+    }
 
     public record MaterialIntent(UUID operationId, UUID contributor, long sequence,
                                  Object2LongMap<ManualMaterialKey> pendingWork,

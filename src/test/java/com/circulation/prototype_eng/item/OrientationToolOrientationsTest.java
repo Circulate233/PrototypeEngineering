@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.item;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.orientation.RelativeSide;
 import com.circulation.prototype_eng.machine.ControllerOrientation;
@@ -42,9 +44,9 @@ class OrientationToolOrientationsTest {
 
     @Test
     void everyVisibleEdgeTargetsItsAdjacentFaceAndAllFourCornersDoNothing() {
-        for (var current : BlockOrientation.values()) {
+        for (var current : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             for (var face : EnumFacing.VALUES) {
-                for (var part : OrientationToolOrientations.Part.values()) {
+                for (var part : OrientationToolOrientations.Part.VALUES) {
                     if (part == CORNER) continue;
                     double u = part == LEFT ? .1 : part == RIGHT ? .9 : .5;
                     double v = part == BOTTOM ? .1 : part == TOP ? .9 : .5;
@@ -68,7 +70,7 @@ class OrientationToolOrientationsTest {
 
     @Test
     void aligningAnotherFaceAndTurningBackPreservesEveryOriginalTwist() {
-        for (var current : BlockOrientation.values()) {
+        for (var current : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             for (var clicked : EnumFacing.VALUES) {
                 if (clicked == current.getSide(RelativeSide.FRONT)) {
                     continue;

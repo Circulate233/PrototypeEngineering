@@ -21,6 +21,9 @@ public interface AttributeModifier {
     enum Operation {
         ADDITION,
         MULTIPLY_BASE,
-        MULTIPLY_TOTAL
+        MULTIPLY_TOTAL;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Operation[] VALUES = values();
     }
 }

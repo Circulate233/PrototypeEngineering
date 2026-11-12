@@ -172,7 +172,7 @@ class ProcessCancellationTest {
 
     @Test
     void businessFailureAbortsOnceAfterCurrentStageRollbackWithoutRefundingEarlierStages() {
-        for (var failedStage : RecipeStage.values()) {
+        for (var failedStage : RecipeStage.VALUES) {
             var env = new Environment();
             int[] cancelledRequirements = {0};
             int[] listeners = {0};

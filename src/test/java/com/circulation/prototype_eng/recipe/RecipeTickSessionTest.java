@@ -144,7 +144,7 @@ class RecipeTickSessionTest {
         components(process, events);
         var session = Objects.requireNonNull(process.beginTick());
         try (var lane = Executors.newSingleThreadExecutor()) {
-            for (var phase : RecipeStage.values()) {
+            for (var phase : RecipeStage.VALUES) {
                 var stage = Objects.requireNonNull(session.nextStage());
                 assertEquals(phase, stage.phase());
                 stage.acquire();

@@ -92,7 +92,7 @@ public final class StructureCatalogCodec {
                 var orientation = BlockOrientation.get(EnumFacing.byIndex(front), EnumFacing.byIndex(top));
                 boolean hide = bool(input);
                 int kind = input.readUnsignedByte();
-                if (kind >= StructurePreviewProvider.Kind.values().length)
+                if (kind >= StructurePreviewProvider.Kind.VALUES.length)
                     throw new IllegalArgumentException("Unknown preview shape kind");
                 var offset = position(input);
                 int min = input.readInt(), max = input.readInt();
@@ -103,7 +103,7 @@ public final class StructureCatalogCodec {
                 var children = new IntArrayList();
                 int childCount = count(input);
                 for (int c = 0; c < childCount; c++) children.add(input.readInt());
-                nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.values()[kind], offset, min, max, sliceOffset, cells, children, version == 2 ? displays(input, version) : Map.of()));
+                nodes.add(new StructureCatalogView.Node(id, orientation, hide, StructurePreviewProvider.Kind.VALUES[kind], offset, min, max, sliceOffset, cells, children, version == 2 ? displays(input, version) : Map.of()));
             }
             var entries = new Object2ObjectLinkedOpenHashMap<ResourceLocation, StructureCatalogView.Entry>();
             int entryCount = count(input);

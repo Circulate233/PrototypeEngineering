@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.client.render.gecko;
 
-import ae2.api.orientation.BlockOrientation;
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import com.circulation.prototype_eng.api.client.render.MachineRenderPass;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -133,7 +134,7 @@ class GeckoModelGeometryTest {
 
     @Test
     void all24OrientationsPreserveTheBlockCenterAndTransformBasisOnce() {
-        for (var orientation : BlockOrientation.values()) {
+        for (var orientation : ExternalEnumValues.BLOCK_ORIENTATIONS) {
             var stack = new GeckoBakerMath.MatrixStack();
             stack.orientation(orientation);
             var center = new Point3f(0, .5f, 0);
@@ -148,6 +149,6 @@ class GeckoModelGeometryTest {
             assertEquals(facing.getYOffset(), front.y, 1e-6);
             assertEquals(facing.getZOffset(), front.z, 1e-6);
         }
-        assertEquals(24, BlockOrientation.values().length);
+        assertEquals(24, ExternalEnumValues.BLOCK_ORIENTATIONS.length);
     }
 }

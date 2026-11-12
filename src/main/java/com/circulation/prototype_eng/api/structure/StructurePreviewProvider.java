@@ -15,7 +15,12 @@ import java.util.Objects;
 public interface StructurePreviewProvider {
     Geometry previewGeometry();
 
-    enum Kind {OPAQUE, TEMPLATE, SLICE}
+    enum Kind {
+        OPAQUE, TEMPLATE, SLICE;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Kind[] VALUES = values();
+    }
 
     record Geometry(Kind kind, BlockPos offset, int minCount, int maxCount, BlockPos sliceOffset,
                     List<BlockPos> cells, List<MachineStructure> children) {

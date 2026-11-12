@@ -135,7 +135,7 @@ class MachineAssemblyTest {
 
     @Test
     void explicitControllerPolicySurvivesPersistenceAndSavedSelectionOverridesTheDeclaration() {
-        for (var policy : ControllerExecutionPolicy.values()) {
+        for (var policy : ControllerExecutionPolicy.VALUES) {
             var type = declaration().executionMode(ExecutionMode.MAIN_THREAD).executionPolicy(policy).build();
             var assembly = MachineAssembly.builder(type, "v1").instanceFactory(MultithreadController::new).build();
             var owner = assembly.create(new Host(), new MachineLifecycleRegistry());

@@ -269,7 +269,7 @@ class ResearchGuiSnapshotTest {
         var fixture = fixture();
         var snapshots = new ObjectArrayList<ResearchGuiSnapshot>();
         snapshots.add(EMPTY);
-        for (var tab : Tab.values())
+        for (var tab : Tab.VALUES)
             snapshots.add(capture(fixture.view(), fixture.registry(), new Request(tab, 0, null, 0)));
         var entry = new Entry(research(1), 1, 1, 2, 0, false, 41, ManualResearchSession.Status.PAUSED,
             ManualResearchSession.PauseReason.CONTRIBUTOR_OFFLINE, null, null, null);

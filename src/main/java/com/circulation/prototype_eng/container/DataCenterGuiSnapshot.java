@@ -150,8 +150,8 @@ public record DataCenterGuiSnapshot(boolean initialized, boolean savePending, St
 
     private static Decision readDecision(PacketBuffer packet) {
         int value = packet.readUnsignedByte();
-        if (value >= Decision.values().length) throw new IllegalArgumentException("Invalid database GUI permission");
-        return Decision.values()[value];
+        if (value >= Decision.VALUES.length) throw new IllegalArgumentException("Invalid database GUI permission");
+        return Decision.VALUES[value];
     }
 
     private static ResourceLocation readId(PacketBuffer packet) {

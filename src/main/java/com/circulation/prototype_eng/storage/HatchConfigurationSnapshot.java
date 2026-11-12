@@ -24,7 +24,7 @@ import java.util.UUID;
 /** Complete read-only display defaults from one server session and target generation. */
 public record HatchConfigurationSnapshot(UUID session, long revision, List<HatchConfiguration> profiles) {
     public static final int MAX_BYTES = 8 * 1024 * 1024;
-    private static final int PROFILE_COUNT = HatchTier.values().length * HatchMode.values().length * 2;
+    private static final int PROFILE_COUNT = HatchTier.VALUES.length * HatchMode.VALUES.length * 2;
 
     public HatchConfigurationSnapshot {
         Objects.requireNonNull(session);
@@ -33,14 +33,14 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
         profiles = List.copyOf(profiles);
         for (int index = 0; index < profiles.size(); index++) {
             var profile = profiles.get(index);
-            if (profile.mode() != HatchMode.values()[index / 2 % HatchMode.values().length]
+            if (profile.mode() != HatchMode.VALUES[index / 2 % HatchMode.VALUES.length]
                 || (index % 2 == 0 ? !(profile instanceof ResourceHatchConfiguration) : !(profile instanceof EnergyHatchConfiguration)))
                 throw new IllegalArgumentException("Hatch configuration profile order mismatch");
         }
     }
 
     private static int index(HatchTier tier, HatchMode mode) {
-        return (tier.ordinal() * HatchMode.values().length + mode.ordinal()) * 2;
+        return (tier.ordinal() * HatchMode.VALUES.length + mode.ordinal()) * 2;
     }
 
     private static void writeSide(DataOutputStream out, ResourceHatchConfiguration.Side side) throws IOException {
@@ -68,8 +68,8 @@ public record HatchConfigurationSnapshot(UUID session, long revision, List<Hatch
             var session = new UUID(in.readLong(), in.readLong());
             long revision = in.readLong();
             var profiles = new ObjectArrayList<HatchConfiguration>();
-            for (var ignored : HatchTier.values()) {
-                for (var mode : HatchMode.values()) {
+            for (var ignored : HatchTier.VALUES) {
+                for (var mode : HatchMode.VALUES) {
                     profiles.add(new ResourceHatchConfiguration(mode.hasInput() ? readSide(in) : null, mode.hasOutput() ? readSide(in) : null));
                     profiles.add(new EnergyHatchConfiguration(mode.hasInput() ? new EnergyHatchConfiguration.Side(in.readLong(), in.readLong()) : null,
                         mode.hasOutput() ? new EnergyHatchConfiguration.Side(in.readLong(), in.readLong()) : null));

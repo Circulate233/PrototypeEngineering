@@ -8,5 +8,8 @@ package com.circulation.prototype_eng.api.scheduler;
 public enum ExecutionMode {
     MAIN_THREAD,
     CONCURRENT,
-    PLANNED_PARALLEL
+    PLANNED_PARALLEL;
+
+    /** Shared declaration order; callers must not modify this array. */
+    public static final ExecutionMode[] VALUES = values();
 }

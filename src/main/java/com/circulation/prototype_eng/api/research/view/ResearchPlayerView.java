@@ -76,7 +76,12 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
         return Object2LongMaps.unmodifiable(new FrozenCounts<>(source));
     }
 
-    public enum TeamStatus {AVAILABLE, MISSING_TEAM, UNAVAILABLE, DENIED}
+    public enum TeamStatus {
+        AVAILABLE, MISSING_TEAM, UNAVAILABLE, DENIED;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final TeamStatus[] VALUES = values();
+    }
 
     /**
      * Structural targets describe prerequisites only; admission still evaluates the real actor.

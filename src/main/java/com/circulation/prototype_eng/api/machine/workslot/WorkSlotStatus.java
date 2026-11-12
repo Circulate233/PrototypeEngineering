@@ -7,5 +7,8 @@ public enum WorkSlotStatus {
     IDLE,
     RUNNING,
     BLOCKED,
-    FAILED
+    FAILED;
+
+    /** Shared declaration order; callers must not modify this array. */
+    public static final WorkSlotStatus[] VALUES = values();
 }

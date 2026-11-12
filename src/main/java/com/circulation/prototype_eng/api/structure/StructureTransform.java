@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.api.structure;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.orientation.BlockOrientation;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
@@ -29,7 +31,7 @@ public final class StructureTransform {
     }
 
     private static StructureTransform[] createRotations() {
-        BlockOrientation[] orientations = BlockOrientation.values();
+        BlockOrientation[] orientations = ExternalEnumValues.BLOCK_ORIENTATIONS;
         StructureTransform[] rotations = new StructureTransform[orientations.length];
         for (BlockOrientation orientation : orientations) {
             rotations[orientation.ordinal()] = new StructureTransform(orientation);

@@ -132,8 +132,8 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
 
     private static WorkSlotStatus readStatus(ByteBuf data) {
         int status = data.readUnsignedByte();
-        if (status >= WorkSlotStatus.values().length) throw new IllegalArgumentException("Invalid machine GUI status");
-        return WorkSlotStatus.values()[status];
+        if (status >= WorkSlotStatus.VALUES.length) throw new IllegalArgumentException("Invalid machine GUI status");
+        return WorkSlotStatus.VALUES[status];
     }
 
     private static List<Entry> readEntries(PacketBuffer packet) {
@@ -146,7 +146,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             String name = packet.readString(MAX_TEXT);
             String recipe = packet.readString(MAX_TEXT);
             int status = packet.readUnsignedByte();
-            if (status >= WorkSlotStatus.values().length) {
+            if (status >= WorkSlotStatus.VALUES.length) {
                 throw new IllegalArgumentException("Invalid work-slot status");
             }
             int percent = packet.readUnsignedByte();
@@ -159,7 +159,7 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
             for (int j = 0; j < size; j++) {
                 arguments.add(packet.readString(MAX_TEXT));
             }
-            entries.add(new Entry(name, recipe, WorkSlotStatus.values()[status], percent, reason, arguments, packet.readInt()));
+            entries.add(new Entry(name, recipe, WorkSlotStatus.VALUES[status], percent, reason, arguments, packet.readInt()));
         }
         return entries;
     }
@@ -193,11 +193,11 @@ public record MachineGuiSnapshot(boolean formed, boolean active, int totalSlots,
         int running = packet.readInt(), threads = packet.readInt();
         long used = packet.readLong(), limit = packet.readLong();
         int mode = packet.readUnsignedByte();
-        if (mode >= ExecutionMode.values().length) throw new IllegalArgumentException("Invalid execution mode");
+        if (mode >= ExecutionMode.VALUES.length) throw new IllegalArgumentException("Invalid execution mode");
         int policy = packet.readByte();
-        if (policy < -1 || policy >= ControllerExecutionPolicy.values().length) throw new IllegalArgumentException("Invalid controller execution policy");
-        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.values()[mode], packet.readString(MAX_TEXT),
-            policy == -1 ? null : ControllerExecutionPolicy.values()[policy]);
+        if (policy < -1 || policy >= ControllerExecutionPolicy.VALUES.length) throw new IllegalArgumentException("Invalid controller execution policy");
+        return new Details(cross, processing, running, threads, used, limit, ExecutionMode.VALUES[mode], packet.readString(MAX_TEXT),
+            policy == -1 ? null : ControllerExecutionPolicy.VALUES[policy]);
     }
 
     public record Details(boolean crossRecipe, boolean processing, int running, int threadLimit,

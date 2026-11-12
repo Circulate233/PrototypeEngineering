@@ -38,7 +38,7 @@ public final class AttributeModifierNbt implements NbtCodec<AttributeModifier> {
 
     private static AttributeModifier.Operation readOperation(NBTTagCompound tag) {
         var name = StrictNbt.requireString(tag, "Operation");
-        for (var operation : AttributeModifier.Operation.values()) {
+        for (var operation : AttributeModifier.Operation.VALUES) {
             if (operation.name().equals(name)) {
                 return operation;
             }

@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.container;
 
+import com.circulation.prototype_eng.util.ExternalEnumValues;
+
 import ae2.api.behaviors.ContainerItemStrategies;
 import ae2.api.config.Actionable;
 import ae2.api.stacks.AEFluidKey;
@@ -329,10 +331,10 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     private void receiveResourceClick(long[] values) {
         if (!canUseServerWindow() || values == null || values.length != 6 || values[1] < 0 || values[1] > 1
             || values[2] < 0 || values[2] > Integer.MAX_VALUE || values[3] < 0 || values[3] > 40
-            || values[4] < 0 || values[4] >= ClickType.values().length || values[5] < 0 || values[5] > 2) return;
+            || values[4] < 0 || values[4] >= ExternalEnumValues.CLICK_TYPES.length || values[5] < 0 || values[5] > 2) return;
         boolean input = values[1] == 1;
         int logical = (int) values[2];
-        ClickType click = ClickType.values()[(int) values[4]];
+        ClickType click = ExternalEnumValues.CLICK_TYPES[(int) values[4]];
         window.interact(values[0], input, logical, inventory -> {
             if (values[5] == 2 && click == ClickType.PICKUP && values[3] <= 1)
                 doubleClickResource(inventory, logical, input, (int) values[3]);

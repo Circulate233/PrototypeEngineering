@@ -14,7 +14,10 @@ public final class OrientationToolOrientations {
     public static final double EDGE = .2;
 
     public enum Part {
-        CENTER, TOP, RIGHT, BOTTOM, LEFT, CORNER
+        CENTER, TOP, RIGHT, BOTTOM, LEFT, CORNER;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Part[] VALUES = values();
     }
 
     private OrientationToolOrientations() {

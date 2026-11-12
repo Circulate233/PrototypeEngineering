@@ -116,11 +116,26 @@ public record RewardClaim(Key key, Status status, long eligibleAtWorldTime,
         }
     }
 
-    public enum Status {UNCLAIMED, CLAIMING, CLAIMED}
+    public enum Status {
+        UNCLAIMED, CLAIMING, CLAIMED;
 
-    public enum Kind {EVENT, ITEM}
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Status[] VALUES = values();
+    }
 
-    public enum ChildStatus {PENDING, COMPLETED, ERROR}
+    public enum Kind {
+        EVENT, ITEM;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final Kind[] VALUES = values();
+    }
+
+    public enum ChildStatus {
+        PENDING, COMPLETED, ERROR;
+
+        /** Shared declaration order; callers must not modify this array. */
+        public static final ChildStatus[] VALUES = values();
+    }
 
     public record Key(UUID playerUuid, ResourceLocation researchId, int level) {
         public Key {
