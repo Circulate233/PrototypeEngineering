@@ -31,19 +31,11 @@ final class RewardDeliveryPersistence {
     }
 
     static void verifyPlayer(Path file, UUID player, NBTTagCompound expected) throws IOException {
-        verifyPlayer(file, player, expected, new NBTTagCompound());
-    }
-
-    static void verifyPlayer(Path file, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
-        requirePlayer(PlayerDataPersistence.readPlayer(file, player, false), player, expected, cursor);
+        requirePlayer(PlayerDataPersistence.readPlayer(file, player, false), player, expected);
     }
 
     static void verifyHost(Path file, UUID player, NBTTagCompound expected) throws IOException {
-        verifyHost(file, player, expected, new NBTTagCompound());
-    }
-
-    static void verifyHost(Path file, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
-        requirePlayer(readHostForVerification(file, player), player, expected, cursor);
+        requirePlayer(readHostForVerification(file, player), player, expected);
     }
 
     static RewardDeliveryJournal readPlayerJournal(Path file, UUID player) throws IOException {
@@ -81,14 +73,14 @@ final class RewardDeliveryPersistence {
         return result;
     }
 
-    static void verifyPlayerState(Path file, UUID player, NBTTagCompound expectedJournal, NBTTagCompound cursor,
+    static void verifyPlayerState(Path file, UUID player, NBTTagCompound expectedJournal,
                                   @Nullable NBTTagCompound leaf) throws IOException {
-        verifySavedPlayerState(PlayerDataPersistence.readPlayer(file, player, false), player, expectedJournal, cursor, leaf);
+        verifySavedPlayerState(PlayerDataPersistence.readPlayer(file, player, false), player, expectedJournal, leaf);
     }
 
-    static void verifyHostState(Path file, UUID player, NBTTagCompound expectedJournal, NBTTagCompound cursor,
+    static void verifyHostState(Path file, UUID player, NBTTagCompound expectedJournal,
                                 @Nullable NBTTagCompound leaf) throws IOException {
-        verifySavedPlayerState(readHostForVerification(file, player), player, expectedJournal, cursor, leaf);
+        verifySavedPlayerState(readHostForVerification(file, player), player, expectedJournal, leaf);
     }
 
     private static NBTTagCompound readHostForVerification(Path file, UUID player) throws IOException {
@@ -105,12 +97,11 @@ final class RewardDeliveryPersistence {
         return RewardDeliveryJournal.read(entityData, player);
     }
 
-    static void verifySavedPlayerState(NBTTagCompound saved, UUID player, NBTTagCompound expected, NBTTagCompound cursor,
+    static void verifySavedPlayerState(NBTTagCompound saved, UUID player, NBTTagCompound expected,
                                        @Nullable NBTTagCompound leaf) throws IOException {
         if (!journal(saved, player).snapshot().equals(expected))
             throw new IOException("Saved reward delivery journal differs");
-        if (leaf == null) requireCursor(saved, cursor);
-        else requireUniqueLeaf(saved, leaf, cursor);
+        if (leaf != null) requireUniqueLeaf(saved, leaf);
     }
 
     private static NBTTagCompound readCompressed(Path file) throws IOException {
@@ -120,9 +111,9 @@ final class RewardDeliveryPersistence {
         }
     }
 
-    private static void requirePlayer(NBTTagCompound saved, UUID player, NBTTagCompound expected, NBTTagCompound cursor) throws IOException {
+    private static void requirePlayer(NBTTagCompound saved, UUID player, NBTTagCompound expected) throws IOException {
         requirePlayerIdentity(saved, player);
-        requireUniqueLeaf(saved, expected, cursor);
+        requireUniqueLeaf(saved, expected);
     }
 
     private static void requirePlayerIdentity(NBTTagCompound saved, UUID player) throws IOException {
@@ -130,7 +121,7 @@ final class RewardDeliveryPersistence {
             throw new IOException("Saved reward player identity differs");
     }
 
-    static void verifyDrop(Path directory, int x, int z, UUID entityId, NBTTagCompound expected, NBTTagCompound protection) throws IOException {
+    static void verifyDrop(Path directory, int x, int z, UUID entityId, NBTTagCompound expected) throws IOException {
         var file = directory.resolve("region").resolve("r." + (x >> 5) + "." + (z >> 5) + ".mca");
         if (!Files.isRegularFile(file) || Files.size(file) < 8192 || Files.size(file) % 4096 != 0)
             throw new IOException("Saved reward region is missing or malformed: " + file);
@@ -154,14 +145,10 @@ final class RewardDeliveryPersistence {
                     var item = entity.getCompoundTag("Item");
                     boolean identity = entity.hasUniqueId("UUID") && entityId.equals(entity.getUniqueId("UUID"));
                     if (identity || sameFragment(item, expected)) {
-                        if (!identity || !"minecraft:item".equals(entity.getString("id")) || !item.equals(expected))
+                        if (!identity || !RewardEntities.ID.toString().equals(entity.getString("id")) || !item.equals(expected))
                             throw new IOException("Saved reward entity identity or payload differs");
-                        if (!entity.hasKey("Age", Constants.NBT.TAG_SHORT) || entity.getShort("Age") != Short.MIN_VALUE
-                            || !entity.hasKey("PickupDelay", Constants.NBT.TAG_SHORT) || entity.getShort("PickupDelay") != Short.MAX_VALUE
-                            || !entity.hasKey("Invulnerable", Constants.NBT.TAG_BYTE) || !entity.getBoolean("Invulnerable")
-                            || !entity.getCompoundTag("ForgeData").getCompoundTag("PrototypeEngineeringRewardProtection").equals(protection)) {
-                            throw new IOException("Saved reward drop lost its unconfirmed protection");
-                        }
+                        if (!entity.getBoolean(RewardItemEntity.PENDING_TAG))
+                            throw new IOException("Saved reward entity has already released its delivery");
                         matches++;
                     }
                 }
@@ -173,7 +160,7 @@ final class RewardDeliveryPersistence {
         }
     }
 
-    private static void requireUniqueLeaf(NBTTagCompound player, NBTTagCompound expected, NBTTagCompound expectedCursor) throws IOException {
+    private static void requireUniqueLeaf(NBTTagCompound player, NBTTagCompound expected) throws IOException {
         NBTTagList entries = player.getTagList("Inventory", Constants.NBT.TAG_COMPOUND);
         int matches = 0;
         var slots = new IntOpenHashSet();
@@ -188,28 +175,8 @@ final class RewardDeliveryPersistence {
                 matches++;
             }
         }
-        requireCursor(player, expectedCursor);
-        if (!expectedCursor.isEmpty() && sameFragment(expectedCursor, expected)) {
-            if (!expectedCursor.equals(expected)) throw new IOException("Saved reward cursor payload differs");
-            matches++;
-        }
         if (matches != 1)
             throw new IOException("Saved reward inventory requires exactly one tagged leaf; found " + matches);
-    }
-
-    private static void requireCursor(NBTTagCompound player, NBTTagCompound expectedCursor) throws IOException {
-        if (player.hasKey(RewardPlayerInventory.PROTECTED_CURSOR_TAG)) {
-            if (!player.hasKey(RewardPlayerInventory.PROTECTED_CURSOR_TAG, Constants.NBT.TAG_COMPOUND)) {
-                throw new IOException("Saved reward cursor evidence is malformed");
-            }
-            var cursor = player.getCompoundTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG);
-            // Match the complete live cursor even when it belongs to another fragment. An unrelated
-            // corrupt cursor would make readProtectedCursor reject this entire saved player.
-            if (expectedCursor.isEmpty() || !cursor.equals(expectedCursor))
-                throw new IOException("Saved protected cursor differs from its actual owner");
-        } else if (!expectedCursor.isEmpty()) {
-            throw new IOException("Saved protected cursor is missing");
-        }
     }
 
     private static boolean sameFragment(NBTTagCompound actual, NBTTagCompound expected) {

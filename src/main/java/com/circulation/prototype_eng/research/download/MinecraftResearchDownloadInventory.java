@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadInventory;
 import com.circulation.prototype_eng.api.research.download.ResearchDownloadMaterial;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import com.circulation.prototype_eng.research.MaterialInventoryEvidence;
 import com.circulation.prototype_eng.research.PlayerDataPersistence;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -45,7 +44,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
     }
 
     /**
-     * Presence protects the complete inventory, including malformed evidence; it is not commit proof.
+     * A pending receipt prevents a second download from consuming the same operation.
      */
     public static boolean hasPending(EntityPlayerMP player) {
         var data = Objects.requireNonNull(player).getEntityData();
@@ -89,7 +88,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         requireOwner();
         Objects.requireNonNull(operationId);
         PlayerInventoryNbt.encodedSlot(slot);
-        if (hasPending(player) || RewardItemProtection.isProtected(inventory.getStackInSlot(slot))) return null;
+        if (hasPending(player)) return null;
         var before = PlayerInventoryNbt.capture(inventory);
         var captured = ResearchDownloadMaterial.prepare(playerId, operationId, slot, before);
         if (!matches(before)) throw new IllegalStateException("Download inventory changed during capture");
@@ -144,7 +143,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         if (!current.sameOperation(requested))
             throw new IllegalStateException("Download consumption does not own the recorded material operation");
         if (current.status() == ResearchDownloadMaterial.Status.COMMITTED) {
-            requireAfter(current);
+            requireCommitted(current);
             publishAndSave(receipts);
             return true;
         }
@@ -153,7 +152,6 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
             throw new IllegalStateException("Prepared download inventory is unknown or has lost its exact before proof");
         }
         int slot = current.slot();
-        if (RewardItemProtection.isProtected(inventory.getStackInSlot(slot))) return false;
         var after = inventory.getStackInSlot(slot).copy();
         after.shrink(1);
         var nativeAfter = after.isEmpty() ? new NBTTagCompound() : after.writeToNBT(new NBTTagCompound());
@@ -162,7 +160,6 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         }
         if (!matches(current.inventoryBefore()))
             throw new IllegalStateException("Download inventory changed during material preflight");
-        if (RewardItemProtection.isProtected(inventory.getStackInSlot(slot))) return false;
         var committed = current.committed();
         requireOwner();
         try {
@@ -186,7 +183,7 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         requireOwner();
         var receipts = readReceipts(player.getEntityData(), playerId);
         var receipt = requireReceipt(receipts, operationId);
-        requireAfter(receipt);
+        requireCommitted(receipt);
         publishAndSave(receipts);
     }
 
@@ -261,9 +258,9 @@ public final class MinecraftResearchDownloadInventory implements ResearchDownloa
         return receipt;
     }
 
-    private void requireAfter(ResearchDownloadMaterial receipt) {
-        if (receipt.status() != ResearchDownloadMaterial.Status.COMMITTED || !matches(receipt.inventoryAfter())) {
-            throw new IllegalStateException("Committed download materials lack their exact after proof");
+    private static void requireCommitted(ResearchDownloadMaterial receipt) {
+        if (receipt.status() != ResearchDownloadMaterial.Status.COMMITTED) {
+            throw new IllegalStateException("Download material receipt is not committed");
         }
     }
 

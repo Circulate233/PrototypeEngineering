@@ -50,6 +50,8 @@ import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
 import com.circulation.prototype_eng.research.download.MinecraftResearchDownloadInventory;
 import com.circulation.prototype_eng.research.manual.MinecraftManualResearchInventory;
 import com.circulation.prototype_eng.research.reward.MinecraftItemDeliveryAdapter;
+import com.circulation.prototype_eng.research.reward.RewardItemEntity;
+import com.circulation.prototype_eng.research.reward.RewardDeliveryRecovery;
 import com.circulation.prototype_eng.scheduler.ServerTaskSchedulers;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
@@ -1096,6 +1098,7 @@ public final class ServerResearch {
         ServerTaskSchedulers.forServer(current.server).runAtBoundary(() -> {
             if (session == current && !current.closing && belongsTo(current, player)
                 && current.server.getPlayerList().getPlayerByUUID(player.getUniqueID()) == player) {
+                RewardDeliveryRecovery.reconcileDeliveryJournal(player);
                 current.world.playerLogin(player.getUniqueID(), operationTime(current));
                 releaseConfirmedRewards(current, player);
             }
@@ -1112,7 +1115,7 @@ public final class ServerResearch {
             || event.getWorld().getMinecraftServer() != current.server || !(event.getEntity() instanceof EntityItem item)) {
             return;
         }
-        var stack = item.getItem();
+        var stack = item instanceof RewardItemEntity reward ? reward.deliveryStack() : item.getItem();
         if (!stack.hasTagCompound() || !Objects.requireNonNull(stack.getTagCompound()).hasKey(MinecraftItemDeliveryAdapter.DELIVERY_TAG)) {
             return;
         }

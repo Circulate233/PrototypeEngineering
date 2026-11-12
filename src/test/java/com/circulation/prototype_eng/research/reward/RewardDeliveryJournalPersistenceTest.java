@@ -64,13 +64,13 @@ class RewardDeliveryJournalPersistenceTest {
         var journal = empty();
         journal.prepare(inventory);
         journal.prepare(drop);
-        var file = save("player.dat", journal, false, null, null);
+        var file = save("player.dat", journal, false, null);
         var reloaded = RewardDeliveryPersistence.readPlayerJournal(file, PLAYER);
         var candidates = ObjectList.of(inventory.started(), drop.started());
         assertEquals(2, RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, reloaded, candidates).size());
 
         journal.issue(inventory.started());
-        save("player.dat", journal, false, null, null);
+        save("player.dat", journal, false, null);
         var actual = RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, reloaded, candidates);
         assertFalse(actual.contains(inventory.id()));
         assertTrue(actual.contains(drop.id()));
@@ -81,7 +81,7 @@ class RewardDeliveryJournalPersistenceTest {
         var fragment = fragment(1, new ItemDeliveryFragment.Inventory(4));
         var journal = empty();
         journal.prepare(fragment);
-        var file = save("player.dat", journal, false, null, null);
+        var file = save("player.dat", journal, false, null);
         journal.issue(fragment.started());
         // The writer failed: only memory reached ISSUING. The old PREPARED file must not win.
         assertTrue(RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, journal, ObjectList.of(fragment.started())).isEmpty());
@@ -90,7 +90,7 @@ class RewardDeliveryJournalPersistenceTest {
         assertTrue(RewardDeliveryPersistence.preparedFragments(missing, null, PLAYER, empty(), ObjectList.of(fragment.started())).isEmpty());
         assertFalse(Files.exists(missing));
         var prepared = RewardDeliveryPersistence.readPlayerJournal(file, PLAYER);
-        save("player.dat", empty(), false, null, null);
+        save("player.dat", empty(), false, null);
         assertTrue(RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, prepared, ObjectList.of(fragment.started())).isEmpty());
     }
 
@@ -99,46 +99,43 @@ class RewardDeliveryJournalPersistenceTest {
         var fragment = fragment(1, new ItemDeliveryFragment.Inventory(4));
         var prepared = empty();
         prepared.prepare(fragment);
-        var playerFile = save("player.dat", prepared, false, null, null);
-        var hostFile = save("level.dat", prepared, true, null, null);
+        var playerFile = save("player.dat", prepared, false, null);
+        var hostFile = save("level.dat", prepared, true, null);
         var candidates = ObjectList.of(fragment.started());
         assertTrue(RewardDeliveryPersistence.preparedFragments(playerFile, hostFile, PLAYER, prepared, candidates).contains(fragment.id()));
         var issuing = RewardDeliveryPersistence.readPlayerJournal(playerFile, PLAYER);
         issuing.issue(fragment.started());
-        save("player.dat", issuing, false, null, null);
+        save("player.dat", issuing, false, null);
         assertTrue(RewardDeliveryPersistence.preparedFragments(playerFile, hostFile, PLAYER, prepared, candidates).isEmpty());
-        save("player.dat", prepared, false, null, null);
-        save("level.dat", issuing, true, null, null);
+        save("player.dat", prepared, false, null);
+        save("level.dat", issuing, true, null);
         assertTrue(RewardDeliveryPersistence.preparedFragments(playerFile, hostFile, PLAYER, prepared, candidates).isEmpty());
         assertTrue(RewardDeliveryPersistence.readHostJournal(hostFile, PLAYER).contains(fragment, RewardDeliveryJournal.State.ISSUING));
         assertThrows(IOException.class, () -> RewardDeliveryPersistence.preparedFragments(playerFile, directory.resolve("missing-level.dat"), PLAYER, prepared, candidates));
         var reconciled = RewardDeliveryJournal.reconcile(prepared,
             RewardDeliveryPersistence.readPlayerJournal(playerFile, PLAYER), RewardDeliveryPersistence.readHostJournal(hostFile, PLAYER));
         // A subsequent ordinary save must keep the stronger evidence from the other recovery file.
-        save("player.dat", reconciled, false, null, null);
-        save("level.dat", reconciled, true, null, null);
+        save("player.dat", reconciled, false, null);
+        save("level.dat", reconciled, true, null);
         assertTrue(RewardDeliveryPersistence.preparedFragments(playerFile, hostFile, PLAYER, reconciled, candidates).isEmpty());
     }
 
     @Test
-    void persistenceBarrierRequiresFullJournalAndCursorAlongsideTheDeliveredLeaf() throws IOException {
+    void persistenceBarrierRequiresFullJournalAlongsideTheDeliveredLeaf() throws IOException {
         var fragment = fragment(1, new ItemDeliveryFragment.Inventory(4));
-        var cursor = fragment(2, new ItemDeliveryFragment.Inventory(5)).taggedStackNbt();
         var prepared = empty();
         prepared.prepare(fragment);
-        var file = save("player.dat", prepared, false, fragment.taggedStackNbt(), cursor);
+        var file = save("player.dat", prepared, false, fragment.taggedStackNbt());
         var issuing = RewardDeliveryPersistence.readPlayerJournal(file, PLAYER);
         issuing.issue(fragment.started());
         // Correct physical item evidence cannot conceal a stale journal.
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, PLAYER, issuing.snapshot(), cursor, fragment.taggedStackNbt()));
-        save("player.dat", issuing, false, fragment.taggedStackNbt(), cursor);
-        RewardDeliveryPersistence.verifyPlayerState(file, PLAYER, issuing.snapshot(), cursor, fragment.taggedStackNbt());
-        var host = save("level.dat", issuing, true, fragment.taggedStackNbt(), cursor);
-        RewardDeliveryPersistence.verifyHostState(host, PLAYER, issuing.snapshot(), cursor, fragment.taggedStackNbt());
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, new UUID(0, 72), issuing.snapshot(), cursor, null));
-        save("player.dat", issuing, false, fragment.taggedStackNbt(), null);
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, PLAYER, issuing.snapshot(), cursor, null));
-        save("player.dat", prepared, false, null, null);
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, PLAYER, issuing.snapshot(), fragment.taggedStackNbt()));
+        save("player.dat", issuing, false, fragment.taggedStackNbt());
+        RewardDeliveryPersistence.verifyPlayerState(file, PLAYER, issuing.snapshot(), fragment.taggedStackNbt());
+        var host = save("level.dat", issuing, true, fragment.taggedStackNbt());
+        RewardDeliveryPersistence.verifyHostState(host, PLAYER, issuing.snapshot(), fragment.taggedStackNbt());
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayerState(file, new UUID(0, 72), issuing.snapshot(), null));
+        save("player.dat", prepared, false, null);
         var moved = new ItemDeliveryFragment(fragment.id(), fragment.parent(), KEY, fragment.count(), fragment.taggedStackNbt(),
             new ItemDeliveryFragment.Inventory(6), Optional.empty(), ItemDeliveryFragment.Status.DELIVERING);
         var changedLive = empty();
@@ -147,7 +144,7 @@ class RewardDeliveryJournalPersistenceTest {
         assertThrows(IllegalStateException.class, () -> RewardDeliveryPersistence.preparedFragments(file, null, PLAYER, changedLive, ObjectList.of(moved)));
     }
 
-    private Path save(String name, RewardDeliveryJournal journal, boolean host, NBTTagCompound leaf, NBTTagCompound cursor) throws IOException {
+    private Path save(String name, RewardDeliveryJournal journal, boolean host, NBTTagCompound leaf) throws IOException {
         var player = new NBTTagCompound();
         player.setUniqueId("UUID", PLAYER);
         var data = new NBTTagCompound();
@@ -160,7 +157,6 @@ class RewardDeliveryJournalPersistenceTest {
             inventory.appendTag(stack);
         }
         player.setTag("Inventory", inventory);
-        if (cursor != null) player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, cursor.copy());
         var root = player;
         if (host) {
             var world = new NBTTagCompound();

@@ -24,7 +24,7 @@ public interface ResearchDownloadInventory {
     void recordPrepared(ResearchDownloadMaterial receipt);
 
     /**
-     * PREPARED requires its complete before proof; COMMITTED retries persist the after proof without consuming.
+     * PREPARED requires its before inventory; COMMITTED retries save the receipt without consuming again.
      */
     boolean consume(ResearchDownloadMaterial receipt);
 

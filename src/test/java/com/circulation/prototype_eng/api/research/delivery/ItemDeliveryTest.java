@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.research.delivery;
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -74,7 +73,7 @@ class ItemDeliveryTest {
         assertEquals(original, template);
         assertEquals(original.getCompoundTag("ForgeCaps"), fragment.taggedStackNbt().getCompoundTag("ForgeCaps"));
         assertEquals("original", fragment.taggedStackNbt().getCompoundTag("tag").getString("business"));
-        var identity = fragment.taggedStackNbt().getCompoundTag("tag").getCompoundTag(RewardItemProtection.DELIVERY_TAG);
+        var identity = fragment.taggedStackNbt().getCompoundTag("tag").getCompoundTag(ItemDeliveryTemplates.DELIVERY_TAG);
         assertEquals(KEY, ItemDeliveryKeyNbt.readIdentity(identity));
         assertFalse(identity.hasKey("Research"));
         assertFalse(identity.hasKey("Group"));
@@ -149,7 +148,7 @@ class ItemDeliveryTest {
         identity.setString("Group", "delivery:fake_reward");
         assertThrows(IllegalArgumentException.class, () -> ItemDeliveryKeyNbt.readIdentity(identity));
         var reserved = template();
-        reserved.getCompoundTag("tag").setTag(RewardItemProtection.DELIVERY_TAG, new NBTTagCompound());
+        reserved.getCompoundTag("tag").setTag(ItemDeliveryTemplates.DELIVERY_TAG, new NBTTagCompound());
         assertThrows(IllegalArgumentException.class, () -> ItemDeliveryTemplates.copy(reserved));
         var malformed = template();
         malformed.setString("ForgeCaps", "lost");

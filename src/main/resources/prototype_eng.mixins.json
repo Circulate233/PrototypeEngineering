@@ -5,17 +5,6 @@
   "minVersion": "0.8.7",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
-    "NetHandlerPlayServerMixin",
-    "ContainerMixin",
-    "EntityItemMixin",
-    "InventoryPlayerMixin",
-    "EntityPlayerMixin",
-    "EntityLivingBaseMixin",
-    "EntityPlayerMPMixin",
-    "TileEntityHopperMixin",
-    "ArmorPropertiesMixin",
-    "ItemStackMixin",
-    "EnchantmentThornsMixin",
     "NBTTagLongArrayMixin",
     "ZenComponentDataMemberMixin"
   ],

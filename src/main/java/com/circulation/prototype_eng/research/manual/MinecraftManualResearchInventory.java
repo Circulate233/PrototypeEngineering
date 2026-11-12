@@ -9,7 +9,6 @@ import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchInventory;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceipt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceiptNbt;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import com.circulation.prototype_eng.research.MaterialInventoryEvidence;
 import com.circulation.prototype_eng.research.PlayerDataPersistence;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -53,12 +52,12 @@ public final class MinecraftManualResearchInventory implements ManualResearchInv
     }
 
     /**
-     * Reward evidence is always excluded; a download/recovery owner may protect additional slots.
+     * The caller may exclude slots from this research material request.
      */
     public MinecraftManualResearchInventory(EntityPlayerMP player, IntPredicate protectedSlot) {
         this.player = Objects.requireNonNull(player);
         Objects.requireNonNull(protectedSlot);
-        this.protectedSlot = slot -> RewardItemProtection.isProtected(player.inventory.getStackInSlot(slot)) || protectedSlot.test(slot);
+        this.protectedSlot = protectedSlot;
         playerId = Objects.requireNonNull(player.getUniqueID());
         inventory = Objects.requireNonNull(player.inventory);
         server = Objects.requireNonNull(player.getServerWorld().getMinecraftServer());

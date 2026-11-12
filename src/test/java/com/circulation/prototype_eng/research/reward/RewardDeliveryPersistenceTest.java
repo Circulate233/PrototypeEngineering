@@ -42,24 +42,10 @@ class RewardDeliveryPersistenceTest {
     private static NBTTagCompound entity(UUID id, NBTTagCompound item) {
         var entity = new NBTTagCompound();
         entity.setUniqueId("UUID", id);
-        entity.setString("id", "minecraft:item");
+        entity.setString("id", RewardEntities.ID.toString());
         entity.setTag("Item", item.copy());
-        entity.setShort("Age", Short.MIN_VALUE);
-        entity.setShort("PickupDelay", Short.MAX_VALUE);
-        entity.setBoolean("Invulnerable", true);
-        var data = new NBTTagCompound();
-        data.setTag("PrototypeEngineeringRewardProtection", protection());
-        entity.setTag("ForgeData", data);
+        entity.setBoolean(RewardItemEntity.PENDING_TAG, true);
         return entity;
-    }
-
-    private static NBTTagCompound protection() {
-        var value = new NBTTagCompound();
-        value.setString("Fragment", ENTITY.toString());
-        value.setShort("Age", (short) 0);
-        value.setShort("PickupDelay", (short) 0);
-        value.setBoolean("Invulnerable", false);
-        return value;
     }
 
     private static NBTTagCompound leaf() {
@@ -134,96 +120,32 @@ class RewardDeliveryPersistenceTest {
     }
 
     @Test
-    void verifiesProtectedCursorThroughBothPlayerAndIntegratedHostRecoveryFiles() throws IOException {
-        var player = playerData(PLAYER);
-        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, leaf());
-        var file = directory.resolve("cursor-player.dat");
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), leaf());
-        var host = new NBTTagCompound();
-        var data = new NBTTagCompound();
-        data.setTag("Player", player);
-        host.setTag("Data", data);
-        var hostFile = directory.resolve("cursor-level.dat");
-        try (var output = Files.newOutputStream(hostFile)) {
-            CompressedStreamTools.writeCompressed(host, output);
-        }
-        RewardDeliveryPersistence.verifyHost(hostFile, PLAYER, leaf(), leaf());
-    }
-
-    @Test
-    void cursorCannotConfirmADuplicateChangedOrMalformedDelivery() throws IOException {
-        var file = directory.resolve("cursor-conflict.dat");
-        var player = playerData(PLAYER, leaf());
-        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, leaf());
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), leaf()));
-        player = playerData(PLAYER);
-        var changed = leaf();
-        changed.setByte("Count", (byte) 1);
-        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, changed);
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), leaf()));
-        player = playerData(PLAYER, leaf());
-        player.setString(RewardPlayerInventory.PROTECTED_CURSOR_TAG, "invalid");
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf()));
-        var otherCursor = leaf();
-        otherCursor.getCompoundTag("tag").getCompoundTag(MinecraftItemDeliveryAdapter.DELIVERY_TAG).setString("Fragment", PLAYER.toString());
-        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, otherCursor);
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), otherCursor);
-        var brokenCursor = otherCursor.copy();
-        brokenCursor.removeTag("id");
-        player.setTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG, brokenCursor);
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), otherCursor));
-        player.removeTag(RewardPlayerInventory.PROTECTED_CURSOR_TAG);
-        try (var output = Files.newOutputStream(file)) {
-            CompressedStreamTools.writeCompressed(player, output);
-        }
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyPlayer(file, PLAYER, leaf(), otherCursor));
-    }
-
-    @Test
     void verifiesActualRegionFileAtNegativeChunkCoordinates() throws IOException {
         writeChunk(-33, 65, entity(ENTITY, leaf()));
-        RewardDeliveryPersistence.verifyDrop(directory, -33, 65, ENTITY, leaf(), protection());
+        RewardDeliveryPersistence.verifyDrop(directory, -33, 65, ENTITY, leaf());
     }
 
     @Test
     void rejectsWrongChunkEntityDuplicateAndPayload() throws IOException {
         writeChunk(2, 3, entity(ENTITY, leaf()), entity(ENTITY, leaf()));
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf()));
         writeChunk(2, 3, entity(PLAYER, leaf()));
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf()));
         var changed = leaf();
         changed.setShort("Damage", (short) 1);
         writeChunk(2, 3, entity(ENTITY, changed));
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf(), protection()));
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 3, 3, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 3, 3, ENTITY, leaf()));
     }
 
     @Test
     void missingOrMalformedRegionVerificationDoesNotCreateStorage() throws IOException {
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 0, 0, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 0, 0, ENTITY, leaf()));
         assertFalse(Files.exists(directory.resolve("region")));
         Files.createDirectories(directory.resolve("region"));
         var file = directory.resolve("region/r.0.0.mca");
         Files.writeString(file, "broken region");
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 0, 0, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 0, 0, ENTITY, leaf()));
         assertEquals("broken region", Files.readString(file));
     }
 
@@ -232,15 +154,15 @@ class RewardDeliveryPersistenceTest {
         var entity = entity(ENTITY, leaf());
         entity.setString("id", "minecraft:pig");
         writeChunk(2, 3, entity);
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf()));
         entity = entity(ENTITY, leaf());
-        entity.removeTag("Age");
+        entity.removeTag(RewardItemEntity.PENDING_TAG);
         writeChunk(2, 3, entity);
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf()));
         entity = entity(ENTITY, leaf());
-        entity.removeTag("ForgeData");
+        entity.setBoolean(RewardItemEntity.PENDING_TAG, false);
         writeChunk(2, 3, entity);
-        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf(), protection()));
+        assertThrows(IOException.class, () -> RewardDeliveryPersistence.verifyDrop(directory, 2, 3, ENTITY, leaf()));
     }
 
     private Path savePlayer(UUID player, NBTTagCompound... stacks) throws IOException {

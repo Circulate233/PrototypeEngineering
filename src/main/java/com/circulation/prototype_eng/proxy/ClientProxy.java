@@ -8,6 +8,9 @@ import com.circulation.prototype_eng.container.ParallelControllerContainer;
 import com.circulation.prototype_eng.client.gui.MeResourceHatchGui;
 import com.circulation.prototype_eng.client.gui.ParallelControllerGui;
 import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.research.reward.RewardItemEntity;
+import net.minecraft.client.renderer.entity.RenderEntityItem;
+import net.minecraftforge.fml.client.registry.RenderingRegistry;
 import com.circulation.prototype_eng.api.client.gui.MachineScreenRegistry;
 import com.circulation.prototype_eng.api.client.jei.ClientRecipeDeclarations;
 import com.circulation.prototype_eng.client.recipe.ClientRecipeDefinitions;
@@ -441,6 +444,8 @@ public class ClientProxy extends CommonProxy {
     @Override
     public void preInit(FMLPreInitializationEvent event) {
         super.preInit(event);
+        RenderingRegistry.registerEntityRenderingHandler(RewardItemEntity.class,
+            manager -> new RenderEntityItem(manager, Minecraft.getMinecraft().getRenderItem()));
         if (Loader.isModLoaded("jei")) PrototypeJeiPlugin.configureDefinitions(() -> {
             var local = recipeDefinitions().resolved();
             return local == null ? null : new PrototypeJeiPlugin.Definitions(local.snapshot(), local.displays());

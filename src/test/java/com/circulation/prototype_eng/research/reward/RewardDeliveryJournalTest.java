@@ -5,7 +5,6 @@ import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -89,7 +88,7 @@ class RewardDeliveryJournalTest {
         identity.setString("Child", parent.childId().toString());
         identity.setString("Fragment", id.toString());
         var tag = new NBTTagCompound();
-        tag.setTag(RewardItemProtection.DELIVERY_TAG, identity);
+        tag.setTag(ItemDeliveryTemplates.DELIVERY_TAG, identity);
         tag.setString("business", "retained");
         var stack = new NBTTagCompound();
         stack.setString("id", "minecraft:stone");
@@ -320,9 +319,9 @@ class RewardDeliveryJournalTest {
         rejectsMutation(data, tag -> firstReceipt(tag).setInteger("count", 0));
         rejectsMutation(data, tag -> firstReceipt(tag).setInteger("count", 128));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").setByte("Count", (byte) 3));
-        rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").getCompoundTag("tag").removeTag(RewardItemProtection.DELIVERY_TAG));
+        rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").getCompoundTag("tag").removeTag(ItemDeliveryTemplates.DELIVERY_TAG));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").getCompoundTag("tag")
-                                                      .getCompoundTag(RewardItemProtection.DELIVERY_TAG).setString("Player", OTHER_PLAYER.toString()));
+                                                      .getCompoundTag(ItemDeliveryTemplates.DELIVERY_TAG).setString("Player", OTHER_PLAYER.toString()));
         rejectsMutation(data, tag -> firstReceipt(tag).getCompoundTag("stack").setString("id", "stone"));
     }
 

@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.research.download;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.common.util.Constants;
@@ -54,8 +53,8 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
         var selected = PlayerInventoryNbt.stack(inventoryBefore, slot);
         if (selected.isEmpty()) throw new IllegalArgumentException("Download material slot is empty");
         selected.setByte("Count", (byte) 1);
-        if (!selected.equals(material) || protectedMaterial(material)) {
-            throw new IllegalArgumentException("Download material differs from its exact native slot or is protected");
+        if (!selected.equals(material)) {
+            throw new IllegalArgumentException("Download material differs from its exact native slot");
         }
         if (!subtractOne(inventoryBefore, slot).equals(inventoryAfter)) {
             throw new IllegalArgumentException("Download inventory delta must consume exactly one item in its named slot");
@@ -63,7 +62,7 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
     }
 
     /**
-     * Pure capture from an existing inventory image; empty or delivery-protected slots are unavailable.
+     * Pure capture from an existing inventory image; empty slots are unavailable.
      */
     @Nullable
     public static ResearchDownloadMaterial prepare(UUID playerId, UUID operationId, int slot, NBTTagCompound before) {
@@ -71,13 +70,9 @@ public record ResearchDownloadMaterial(UUID playerId, UUID operationId, int slot
         Objects.requireNonNull(operationId);
         var image = PlayerInventoryNbt.copy(before);
         var material = PlayerInventoryNbt.stack(image, slot);
-        if (material.isEmpty() || protectedMaterial(material)) return null;
+        if (material.isEmpty()) return null;
         material.setByte("Count", (byte) 1);
         return new ResearchDownloadMaterial(playerId, operationId, slot, material, image, subtractOne(image, slot), Status.PREPARED);
-    }
-
-    private static boolean protectedMaterial(NBTTagCompound material) {
-        return material.hasKey("tag") && StrictNbt.requireCompound(material, "tag").hasKey(RewardItemProtection.DELIVERY_TAG);
     }
 
     private static NBTTagCompound subtractOne(NBTTagCompound before, int slot) {

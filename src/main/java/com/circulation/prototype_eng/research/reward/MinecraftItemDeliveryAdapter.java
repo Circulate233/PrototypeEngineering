@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import com.circulation.prototype_eng.research.PlayerDataPersistence;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -29,7 +28,6 @@ import net.minecraft.world.chunk.storage.AnvilChunkLoader;
 import net.minecraft.world.storage.SaveHandler;
 import net.minecraft.world.storage.ThreadedFileIOBase;
 import net.minecraftforge.common.DimensionManager;
-import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.common.util.FakePlayer;
 import org.jetbrains.annotations.Nullable;
 
@@ -45,8 +43,7 @@ import java.util.UUID;
  */
 @SuppressWarnings("unused") // Library runtime entry point; no built-in gameplay or packet is registered.
 public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
-    public static final String DELIVERY_TAG = RewardItemProtection.DELIVERY_TAG;
-    private static final String DROP_PROTECTION = "PrototypeEngineeringRewardProtection";
+    public static final String DELIVERY_TAG = ItemDeliveryTemplates.DELIVERY_TAG;
     private static final int MAX_FRAGMENTS = 4096;
     private final EntityPlayerMP player;
     private final MinecraftServer server;
@@ -59,7 +56,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
     }
 
     /**
-     * The proof owner must fence all movement/deletion of unconfirmed tags and inspect durable authoritative storage.
+     * Optional recovery proof for this delivery, supplied by the owner of its saved records.
      */
     public MinecraftItemDeliveryAdapter(EntityPlayerMP player, AbsenceProof absenceProof) {
         this.player = Objects.requireNonNull(player, "player");
@@ -92,7 +89,6 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         }
         if (entity != null) {
             entities.put(fragmentId, entity.getUniqueID());
-            if (fragment.target() instanceof ItemDeliveryFragment.WorldDrop) protectDrop(entity, fragment);
         }
     }
 
@@ -118,49 +114,8 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         return true;
     }
 
-    private static void protectDrop(EntityItem entity, ItemDeliveryFragment fragment) {
-        var data = entity.getEntityData();
-        var state = new NBTTagCompound();
-        entity.writeEntityToNBT(state);
-        if (data.hasKey(DROP_PROTECTION)) {
-            requireDropProtection(data, fragment);
-        } else {
-            var retained = new NBTTagCompound();
-            retained.setString("Fragment", fragment.id().toString());
-            retained.setShort("Age", state.getShort("Age"));
-            retained.setShort("PickupDelay", state.getShort("PickupDelay"));
-            retained.setBoolean("Invulnerable", entity.getIsInvulnerable());
-            data.setTag(DROP_PROTECTION, retained);
-        }
-        // Vanilla pauses age increment and merging for this sentinel; setNoDespawn only delays age.
-        state.setShort("Age", Short.MIN_VALUE);
-        entity.readEntityFromNBT(state);
-        entity.setInfinitePickupDelay();
-        entity.setEntityInvulnerable(true);
-    }
-
-    private static void restoreDrop(EntityItem entity, ItemDeliveryFragment fragment) {
-        var data = entity.getEntityData();
-        if (!data.hasKey(DROP_PROTECTION)) return;
-        var retained = requireDropProtection(data, fragment);
-        var state = new NBTTagCompound();
-        entity.writeEntityToNBT(state);
-        state.setTag("Age", retained.getTag("Age").copy());
-        state.setTag("PickupDelay", retained.getTag("PickupDelay").copy());
-        entity.readEntityFromNBT(state);
-        entity.setEntityInvulnerable(retained.getBoolean("Invulnerable"));
-        data.removeTag(DROP_PROTECTION);
-    }
-
-    private static NBTTagCompound requireDropProtection(NBTTagCompound data, ItemDeliveryFragment fragment) {
-        var retained = StrictNbt.requireCompound(data, DROP_PROTECTION);
-        StrictNbt.requireKeys(retained, "Fragment", "Age", "PickupDelay", "Invulnerable");
-        if (!fragment.id().toString().equals(StrictNbt.requireString(retained, "Fragment")))
-            throw new IllegalStateException("Reward drop protection identity changed");
-        if (!retained.hasKey("Age", Constants.NBT.TAG_SHORT) || !retained.hasKey("PickupDelay", Constants.NBT.TAG_SHORT)
-            || !retained.hasKey("Invulnerable", Constants.NBT.TAG_BYTE))
-            throw new IllegalStateException("Reward drop protection state is malformed");
-        return retained;
+    static ItemStack deliveryStack(EntityItem entity) {
+        return entity instanceof RewardItemEntity reward ? reward.deliveryStack() : entity.getItem();
     }
 
     private static int chunk(double coordinate) {
@@ -234,7 +189,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             if (world.getMinecraftServer() != server) continue;
             for (var entity : world.loadedEntityList) {
                 if (entity instanceof EntityItem item && !item.isDead) {
-                    observe(item.getItem(), item, expected, observed, entities);
+                    observe(deliveryStack(item), item, expected, observed, entities);
                 }
             }
         }
@@ -317,16 +272,15 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             case ItemDeliveryFragment.WorldDrop drop -> {
                 var world = loaded(drop);
                 if (world == null) yield new Delivery(0, Optional.empty());
-                var entity = new EntityItem(world, drop.x(), drop.y(), drop.z(), stack);
+                var entity = new RewardItemEntity(world, drop.x(), drop.y(), drop.z(), stack);
                 entity.setUniqueId(fragment.id());
-                protectDrop(entity, fragment);
                 if (world.getEntityFromUuid(fragment.id()) != null)
                     throw new IllegalStateException("Reward entity identity already exists");
                 // Forge join callbacks have already seen the tagged entity. A cancelled spawn is
                 // not proof that a callback left it untouched or did not transfer its contents.
                 if (!world.spawnEntity(entity)) yield new Delivery(0, Optional.of(entity.getUniqueID()));
                 requireOwner();
-                if (!exact(entity.getItem(), stack)) throw new IllegalStateException("Reward spawn changed payload");
+                if (!exact(deliveryStack(entity), stack)) throw new IllegalStateException("Reward spawn changed payload");
                 yield new Delivery(fragment.count(), Optional.of(entity.getUniqueID()));
             }
         };
@@ -353,14 +307,13 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         var entityId = delivery.entityUuid().orElseThrow();
         var world = loaded((ItemDeliveryFragment.WorldDrop) fragment.target());
         if (world == null || !(world.getEntityFromUuid(entityId) instanceof EntityItem entity) || entity.isDead
-            || !exact(entity.getItem(), expected) || world.getChunkProvider().getLoadedChunk(chunk(entity.posX), chunk(entity.posZ)) == null) {
+            || !exact(deliveryStack(entity), expected) || world.getChunkProvider().getLoadedChunk(chunk(entity.posX), chunk(entity.posZ)) == null) {
             throw new IllegalStateException("Reward drop persistence target is unavailable");
         }
         if (!(world.getChunkProvider().chunkLoader instanceof AnvilChunkLoader loader)) {
             throw new IllegalStateException("Reward persistence requires the authoritative Anvil chunk loader");
         }
         var savedChunk = world.getChunkProvider().getLoadedChunk(chunk(entity.posX), chunk(entity.posZ));
-        protectDrop(entity, fragment);
         try {
             // Use the existing exact chunk writer. A full world save would reenter WorldEvent.Save.
             loader.saveChunk(world, Objects.requireNonNull(savedChunk));
@@ -368,10 +321,9 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             requireOwner();
             if (loader.getPendingSaveCount() != 0)
                 throw new IllegalStateException("Reward chunk save still has pending writes");
-            RewardDeliveryPersistence.verifyDrop(loader.chunkSaveLocation.toPath(), savedChunk.x, savedChunk.z, entityId, fragment.taggedStackNbt(),
-                StrictNbt.requireCompound(entity.getEntityData(), DROP_PROTECTION));
+            RewardDeliveryPersistence.verifyDrop(loader.chunkSaveLocation.toPath(), savedChunk.x, savedChunk.z, entityId, fragment.taggedStackNbt());
             requireOwner();
-            if (world.getEntityFromUuid(entityId) != entity || entity.world != world || entity.isDead || !exact(entity.getItem(), expected)
+            if (world.getEntityFromUuid(entityId) != entity || entity.world != world || entity.isDead || !exact(deliveryStack(entity), expected)
                 || chunk(entity.posX) != savedChunk.x || chunk(entity.posZ) != savedChunk.z
                 || world.getChunkProvider().getLoadedChunk(savedChunk.x, savedChunk.z) != savedChunk) {
                 throw new IllegalStateException("Reward drop changed during its persistence barrier");
@@ -394,11 +346,6 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             throw new IllegalStateException("Reward inventory persistence requires exactly one tagged leaf");
     }
 
-    private NBTTagCompound protectedCursor() {
-        var cursor = player.inventory.getItemStack();
-        return RewardItemProtection.isProtected(cursor) ? cursor.writeToNBT(new NBTTagCompound()) : new NBTTagCompound();
-    }
-
     private RewardDeliveryJournal readJournal() {
         return RewardDeliveryJournal.read(player.getEntityData(), player.getUniqueID());
     }
@@ -408,11 +355,10 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
      */
     private void persistPlayer(@Nullable NBTTagCompound leaf) {
         var journal = readJournal().snapshot();
-        var cursor = protectedCursor();
         PlayerDataPersistence.persist(player, this::requireOwner,
-            saved -> RewardDeliveryPersistence.verifySavedPlayerState(saved, player.getUniqueID(), journal, cursor, leaf));
+            saved -> RewardDeliveryPersistence.verifySavedPlayerState(saved, player.getUniqueID(), journal, leaf));
         requireOwner();
-        if (!journal.equals(readJournal().snapshot()) || !cursor.equals(protectedCursor())) {
+        if (!journal.equals(readJournal().snapshot())) {
             throw new IllegalStateException("Reward player evidence changed during its persistence barrier");
         }
     }
@@ -452,7 +398,7 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
         for (var world : DimensionManager.getWorlds()) {
             if (world.getMinecraftServer() != server) continue;
             for (var value : world.loadedEntityList) {
-                if (value instanceof EntityItem entity && !entity.isDead && releaseCandidate(entity.getItem(), fragment, expected)) {
+                if (value instanceof EntityItem entity && !entity.isDead && releaseCandidate(deliveryStack(entity), fragment, expected)) {
                     drops.add(entity);
                 }
             }
@@ -463,8 +409,9 @@ public final class MinecraftItemDeliveryAdapter implements ItemDeliveryAdapter {
             player.inventory.setInventorySlotContents(slot, releasedStack(player.inventory.getStackInSlot(slot)));
         if (cursor) player.inventory.setItemStack(releasedStack(player.inventory.getItemStack()));
         for (var entity : drops) {
-            restoreDrop(entity, fragment);
-            entity.setItem(releasedStack(entity.getItem()));
+            var released = releasedStack(deliveryStack(entity));
+            if (entity instanceof RewardItemEntity reward) reward.release(released);
+            else entity.setItem(released);
             if (entity.world instanceof WorldServer world) {
                 var loadedChunk = world.getChunkProvider().getLoadedChunk(chunk(entity.posX), chunk(entity.posZ));
                 if (loadedChunk != null) loadedChunk.markDirty();

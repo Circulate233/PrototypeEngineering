@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.delivery;
 
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -13,6 +12,7 @@ import java.util.UUID;
  * Copies complete native templates into tagged leaves without reconstructing them from AEKey.
  */
 public final class ItemDeliveryTemplates {
+    public static final String DELIVERY_TAG = "PrototypeEngineeringRewardDelivery";
     private ItemDeliveryTemplates() {
     }
 
@@ -23,7 +23,7 @@ public final class ItemDeliveryTemplates {
         if (StrictNbt.requireByte(result, "Count") < 1)
             throw new IllegalArgumentException("Empty item delivery template");
         if (result.hasKey("ForgeCaps")) StrictNbt.requireCompound(result, "ForgeCaps");
-        if (result.hasKey("tag") && StrictNbt.requireCompound(result, "tag").hasKey(RewardItemProtection.DELIVERY_TAG)) {
+        if (result.hasKey("tag") && StrictNbt.requireCompound(result, "tag").hasKey(DELIVERY_TAG)) {
             throw new IllegalArgumentException("Business item contains reserved delivery tag");
         }
         normalizeEmptyLists(result);
@@ -56,7 +56,7 @@ public final class ItemDeliveryTemplates {
         var result = copy(template);
         result.setByte("Count", (byte) count);
         var root = result.hasKey("tag") ? StrictNbt.requireCompound(result, "tag") : new NBTTagCompound();
-        root.setTag(RewardItemProtection.DELIVERY_TAG, ItemDeliveryKeyNbt.identity(key, id));
+        root.setTag(DELIVERY_TAG, ItemDeliveryKeyNbt.identity(key, id));
         result.setTag("tag", root);
         return result;
     }

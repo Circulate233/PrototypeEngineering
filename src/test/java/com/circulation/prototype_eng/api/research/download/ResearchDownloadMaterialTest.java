@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.research.download;
 
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
 import com.circulation.prototype_eng.api.research.manual.ManualResearchMaterialReceiptNbt;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import org.junit.jupiter.api.Test;
@@ -78,11 +77,8 @@ class ResearchDownloadMaterialTest {
     }
 
     @Test
-    void emptyAndDeliveryProtectedSlotsCannotPrepareMaterials() {
+    void emptySlotsCannotPrepareMaterials() {
         assertNull(ResearchDownloadMaterial.prepare(PLAYER, OPERATION, 5, inventory(stack(0, 4))));
-        var protectedStack = stack(5, 3);
-        protectedStack.getCompoundTag("tag").setString(RewardItemProtection.DELIVERY_TAG, "malformed evidence stays protected");
-        assertNull(ResearchDownloadMaterial.prepare(PLAYER, OPERATION, 5, inventory(protectedStack)));
     }
 
     @Test

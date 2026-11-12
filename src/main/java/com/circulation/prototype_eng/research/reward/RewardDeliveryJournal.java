@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.research.reward;
 
+import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryTemplates;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryKeyNbt;
 import com.circulation.prototype_eng.api.research.reward.RewardEventKey;
-import com.circulation.prototype_eng.api.research.reward.RewardItemProtection;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
@@ -307,7 +307,7 @@ final class RewardDeliveryJournal {
             StrictNbt.requireId(stack, "id");
             StrictNbt.requireShort(stack, "Damage");
             if (stack.hasKey("ForgeCaps")) StrictNbt.requireCompound(stack, "ForgeCaps");
-            var identity = StrictNbt.requireCompound(StrictNbt.requireCompound(stack, "tag"), RewardItemProtection.DELIVERY_TAG);
+            var identity = StrictNbt.requireCompound(StrictNbt.requireCompound(stack, "tag"), ItemDeliveryTemplates.DELIVERY_TAG);
             if (!ItemDeliveryKeyNbt.readIdentity(identity).equals(parent) || !ItemDeliveryKeyNbt.fragmentId(identity).equals(id)) {
                 throw new IllegalArgumentException("Reward receipt stack identity differs");
             }

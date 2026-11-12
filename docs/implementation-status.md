@@ -1,5 +1,9 @@
 # 实施进度
 
+- 2026-11-12 按用户反馈撤除奖励/下载全局保护：移除NetHandlerPlayServer、Container、InventoryPlayer、EntityPlayer、EntityPlayerMP、EntityLivingBase、ItemStack、ArmorProperties、EnchantmentThorns、EntityItem、TileEntityHopper共11个Mixin及配置条目；删除RewardInteractionEvents、RewardPlayerActions、RewardPlayerInventory、DownloadPlayerInventory和RewardItemProtection。普通玩家交互、背包tick、主动使用、经验拾取、耐久、消失诅咒、死亡掉落、重生及漏斗不再检查交付标签。标签常量移至ItemDeliveryTemplates，仅服务于奖励自身的片段识别。
+- 发放器改为直接创建RewardItemEntity，按Forge实体注册和原生RenderEntityItem注册客户端显示。该实体确认前独立持有物品并保存DeliveryPending，普通服务器物品查询返回空，漏斗空堆栈移除由该实体自身拒绝；确认后恢复普通EntityItem行为，不改写全局实体或漏斗。奖励恢复记录合并移至ServerResearch登录回调，不注入玩家NBT读取，也不在每次创建发放器时重复执行。未确认结果保留本次领取记录，不冻结玩家。下载已提交材料以COMMITTED记录恢复，不要求玩家继续维持旧after库存，避免用全局锁维持历史镜像。
+- 撤除两个只验证旧光标存档的测试，其余实际NBT/RegionFile验证改为专用奖励实体ID和DeliveryPending。隔离源码完整1990 tests/274 suites失败/错误/跳过0，Spotless通过；18个保留/新增Java本机IDEA errorsOnly:false全级零，MCP指定文件build成功。独立JAR/reobf检查2通用+10客户端Mixin，旧11个Mixin class均不存在，奖励实体/注册/恢复类存在。证据C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/reward-local-delivery/。没有启动Minecraft，真实实体跟踪/拾取/漏斗及重载仍待实机；本轮不添加模拟游戏的镜像测试。仅本地提交，保留其它对话在ServerResearch、ClientProxy等同文件的改动和原暂存。用户补充要求的其它Mixin审查继续进行。
+
 - 2026-11-12 JEI重复皮肤入口移除：用户明确不要弃用或效果重复的包装，直接删除`JeiVisuals.Fluid`尺寸枚举及`FluidSkin`记录，取消上一轮保留的转发兼容层。通用`JeiSlot`/AEKey皮肤保持原有实现，不新增替代别名。正式源码、测试、示例Java和ZS全仓检索均无旧入口引用；当前JEI说明已删除保留兼容层的承诺。工作区已有全仓Javadoc/格式等并行修改，本轮按独立声明删除精确提交，保留这些背景内容。
 - 验证：`gradlew.bat build -x test --console=plain`含Spotless、正式Java编译及资源/JAR/reobf通过；本机IDEA MCP对JeiVisuals逐文件errorsOnly:false错误/警告/弱警告0，指定文件MCP build成功且problems空。生产JAR和build/classes/java/main、build/resources/main均没有JeiVisuals$Fluid或JeiVisuals$FluidSkin旧class。本轮只删除无消费者声明，没有新增或执行测试。证据`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/remove-fluid-skin-api/`含构建/MCP、源码与产物清查、删除前基线及精确提交保护；不启动游戏、不推送，原暂存及其他并行工作保持。
 
