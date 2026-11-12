@@ -1,5 +1,8 @@
 # 实施进度
 
+- 2026-11-12 Java/ZS API 文档改写：按用户附带的 AE2S 文档结构重写仓库根目录[api.md](../api.md)和[api-zs-reference.md](../api-zs-reference.md)，不迁回开发记录目录。Java和ZS分别讲调用已有功能与扩展行为，按注册、机器、配方、结构、仓室、研究、网络和客户端集成说明用途、参数、返回对象与调用关系；删除无方法说明的全量签名目录。保留中文、fastutil公开接口约束、LocalizationEnum及pack.mcmeta要求。补充类型与装配接线、四阶段IO、自定义并行、世界事实和模型声明示例；按源码修正研究prerequisite/mutex与bindGeckoTo...方法名，明确ZS声明可在服务端解析，Java模型对象仅客户端加载。
+- 本轮验证：文中3段Java及两份既有Java示例通过javac 25，7段ZS片段通过CraftTweaker 4.1.20.718实际编译器；片段仅编译，未执行脚本或启动游戏。两份API文档本机IDEA MCP逐文件errorsOnly:false最终错误/警告/弱警告均0；仅对Markdown表格做对齐，保留代码块原文。22个API文档链接、代码围栏、两文档禁用表述及原暂存/背景保护校验通过。文档本地提交供用户核对，不推送。证据保存在`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/api-documentation/rewrite/`。未运行游戏或新增测试。用户新增输入/输出/混合仓插入AE资源包的要求，由本轮明确授权的一个子代理独立实现，尚在验证。
+
 - 2026-11-12 测试清理：清点277个测试Java/1963项，审查短方法、直接数学和重复覆盖候选；按断言核对相关源码与保留测试，不将清单筛选等同逐方法全量审计。真实资源事务、并发归属、持久化恢复、客户端输入与API集成路径保留。删除`StructurePreviewInteractionTest`仅验证AE方向枚举四次恒等式的方法；删除`ControllerRotatedModelTest`独立twist映射方法，该表对生产使用的水平朝向已由实际四边形/法线渲染测试覆盖，额外垂直朝向不会进入模型旋转。保留玩家可见顺时针约定、控制器模型渲染、交互方向及结构变换行为测试。`GuiNumbersTest`原每个线程重复执行1000遍相同11条断言，缩为8线程同时各执行一遍，仍覆盖Locale格式、正负long边界及k/M/G舍入。最终1961 tests/270 suites失败/错误/跳过0；`build --rerun-tasks` 与Spotless通过，三修改Java本机MCP `errorsOnly:false` 错误/警告/弱警告0，IDE `build_project` 成功且problems空。未改生产代码、不添加测试；原依赖/结构树/双语改动、暂存JEI测试、`docs/INDEX.md~` 字节及暂存状态均未变化，未开子代理、启动Minecraft或推送。
 
 - 2026-11-12 高性能集合/流审查：正式746Java全部经过JDK AST定位，初始1000候选/271文件，覆盖集合构造、copyOf/copy/clone、addAll/putAll、toArray/arraycopy及流；不把容量构造和只读view误称为复制。正式64个stream与21个toList入口全部改为保原顺序/短路的循环，Files.walk串行管线改访问器，原无parallelStream；run忽略addon仅1条命令补全stream属非发布冷路径，未动示例/测试断言。最终copyOf候选112→87；调用点计数不是运行时分配/耗时测量。

@@ -1,0 +1,6 @@
+example.machine.smelter=示例熔炼机
+example.recipe_pool.smelting=示例熔炼配方
+example.structure.smelter=示例熔炼结构
+example.structure.smelter_cap=熔炼机顶盖
+example.structure.smelter_column=熔炼机立柱
+example.recipe.grade_too_low=机器等级不足
