@@ -472,6 +472,7 @@ gui.prototype_eng.me.StoredStock=实际库存：%s
 gui.prototype_eng.me.MarkUsage=左键选择手持资源，右键清除标记。\nShift / Ctrl ＋滚轮调整数量，中键输入精确数量。
 gui.prototype_eng.me.ReadOnlyBuffer=库存仅通过ME网络转移。
 gui.prototype_eng.me.EmptyMark=空输入标记
+itemGroup.prototype_eng=原型工程
 gui.prototype_eng.me.ColorChannel=隔离组：%s
 gui.prototype_eng.isolation_group.White=白
 gui.prototype_eng.isolation_group.LightGray=浅灰

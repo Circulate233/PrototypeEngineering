@@ -472,6 +472,7 @@ gui.prototype_eng.me.StoredStock=Stored stock: %s
 gui.prototype_eng.me.MarkUsage=Left-click to select the held resource; right-click to clear the mark.\nShift / Ctrl + wheel adjusts the amount; middle-click enters an exact amount.
 gui.prototype_eng.me.ReadOnlyBuffer=Resources transfer through the ME network only.
 gui.prototype_eng.me.EmptyMark=Empty input marker
+itemGroup.prototype_eng=Prototype Engineering
 gui.prototype_eng.me.ColorChannel=Isolation group: %s
 gui.prototype_eng.isolation_group.White=White
 gui.prototype_eng.isolation_group.LightGray=Light gray

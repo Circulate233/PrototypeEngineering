@@ -9,7 +9,6 @@ import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.BuilderMiningTool;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
-import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -36,7 +35,7 @@ public final class StructureToolItem extends AEBaseItem {
         this.builder = builder;
         setRegistryName(new ResourceLocation(Tags.MOD_ID, builder ? "build_instrument" : "scanner_instrument"));
         setMaxStackSize(1);
-        setCreativeTab(CreativeTabs.TOOLS);
+        setCreativeTab(PrototypeCreativeTab.INSTANCE);
     }
 
     public boolean builder() {

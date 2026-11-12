@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 创造物品栏入口补齐：注册事件已有，但缺少独立PE创造页，84内置方块分散原版REDSTONE、3工具在TOOLS。新增PrototypeCreativeTab（原型工程/Prototype Engineering），图标注册后懒取orientation_tool；6类构造入口统一页，继承的Java/CT示例控制器及扩展并行组件自动纳入。原生ItemBlock.getCreativeTab委托block、AE getSubItems及创造SEARCH沿正常枚举，未复制物品清单。8Java和2语言本机IDEA全级零、compileJava/processResources/定向Spotless及MCP build通过。入口[创造页](block-registration.md#创造物品栏)，证据creative-tab/见[实施进度](implementation-status.md)。下一步用户重启后翻到“原型工程”页及创造搜索复验，未启动游戏或推送，背景和原暂存保留。
+
 - 2026-11-12 隔离组选择器截图反馈：ME资源仓/样板总成的handleAeMouseWheelInput在delta=0前因expanded返回true，AE AppEngClient每个MouseInputEvent.Pre都调用该入口并取消true，导致点击/松开永不到达palette。本轮先检查真实滚轮再拦截展开面板；普通/ME面板与按钮局部禁depth写入/测试和lighting，保存恢复depth、mask、blend函数/开关，修槽物品遮挡及透明帧白像素。普通9×9中心从(2,2)铺满，悬停/按下跟随0/1/2px；ME原9×9不改，原PNG保持。中英提示改隔离组/Isolation group，各17名字独立本地化，中文“隔离组：红/无色”。4项交互（含原生WidgetContainer全部17选择）、定向Spotless、5Java本机IDEA全级零及MCP构建通过。入口[隔离组控件](block-registration.md#颜色与样板隔离)，证据isolation-palette/见[实施进度](implementation-status.md)。boundary_cross审查确认cross_1–4显式fixed(1)，整机4并行和每配方线程上限1为不同约束，未改示例。下一步用户重启复验选择/穿透及全部hover/pressed效果，未启动游戏或推送，背景及原暂存保留。
 
 - 2026-11-12 CPU工作中退出重进后无法发放样板：确认为本仓库`MePatternAssemblyBlockEntity.entry`仅用对象身份匹配；AE2S 1.1.1读档会独立解码任务样板，原生提供者按定义相等识别。本轮保留原实例槽优先，补完整AEItemKey定义匹配，合并判断/倍数预检/实际push共用修复；8项既有存储与恢复回归、定向Spotless、本机IDEA错误/警告/弱警告全零及MCP构建通过。入口[样板总成](block-registration.md#样板总成)，证据pattern-cpu-reload/见[实施进度](implementation-status.md)。下一步用户在CPU尚有待发放工作时退出重进，确认继续供料；未启动游戏或推送，背景及原暂存保留。

@@ -10,7 +10,6 @@ import com.google.common.collect.Multimap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.util.ITooltipFlag;
-import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.enchantment.EnumEnchantmentType;
@@ -50,7 +49,7 @@ public class ControllerOrientationTool extends AEBaseItem {
     public ControllerOrientationTool() {
         setRegistryName(new ResourceLocation(Tags.MOD_ID, "orientation_tool"));
         setMaxStackSize(1);
-        setCreativeTab(CreativeTabs.TOOLS);
+        setCreativeTab(PrototypeCreativeTab.INSTANCE);
         setMaxDamage(OrientationToolConfig.settings().maxDurability());
     }
 
