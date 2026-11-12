@@ -276,7 +276,7 @@ public final class MeResourceHatch implements ResourceHatch {
 
     /** Reads into unpublished storage, allowing the tile to validate both sides before replacing a live instance. */
     public static MeResourceHatch load(NBTTagCompound tag, Runnable onChanged) {
-        return load(tag, onChanged, () -> AEColor.RED);
+        return load(tag, onChanged, () -> AEColor.TRANSPARENT);
     }
 
     public static MeResourceHatch load(NBTTagCompound tag, Runnable onChanged, Supplier<AEColor> color) {

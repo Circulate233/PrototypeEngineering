@@ -60,7 +60,7 @@ public class MeResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
     private @Nullable NBTTagCompound nodeData;
     private @Nullable NBTTagCompound suspendedStorage;
     private @Nullable String allocationLocation;
-    private volatile AEColor resourceColor = AEColor.RED;
+    private volatile AEColor resourceColor = AEColor.TRANSPARENT;
     @SuppressWarnings("unused") // Worker writes and the server tick drains STORAGE_DIRTY.
     private boolean storageDirty;
 
@@ -119,7 +119,7 @@ public class MeResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
     @Override
     public void setResourceColor(AEColor color) {
         requireOwner();
-        if (Objects.requireNonNull(color) == AEColor.TRANSPARENT) throw new IllegalArgumentException("Resource group needs a color");
+        Objects.requireNonNull(color, "color");
         if (resourceColor != color) {
             resourceColor = color;
             markDirty();
@@ -269,8 +269,7 @@ public class MeResourceHatchBlockEntity extends AEBaseTile implements IInWorldGr
     public void loadTag(@NotNull NBTTagCompound tag) {
         if (hatch != null && (!hatch.isValid() || hatch.hasTransferReservation()))
             throw new IllegalStateException("Cannot reload an invalid or unresolved ME storage");
-        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.RED;
-        if (nextColor == AEColor.TRANSPARENT) throw new IllegalArgumentException("Saved ME resource color cannot be transparent");
+        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.TRANSPARENT;
         var next = MeResourceHatch.load(tag, this::requestStorageSave, this::resourceColor);
         if (hatch != null) {
             if (!hatch.retireIfIdle()) throw new IllegalStateException("Cannot reload unresolved ME storage");

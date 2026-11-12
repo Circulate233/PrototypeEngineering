@@ -10,9 +10,9 @@ import java.util.List;
  * Implementations share the physical balance's StorageContext across all adapter aliases.
  */
 public interface ResourceHatch {
-    /** Default red preserves cooperation between existing unconfigured resource hatches. */
+    /** Uncolored input is its own group and is also visible to every colored input group. */
     default ResourceInputGroup inputGroup() {
-        return ResourceInputGroup.RED;
+        return ResourceInputGroup.TRANSPARENT;
     }
 
     /** A pattern provider exposes independently isolated views without aggregating their balances. */

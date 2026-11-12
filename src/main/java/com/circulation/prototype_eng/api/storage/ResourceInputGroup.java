@@ -4,15 +4,17 @@ import ae2.api.util.AEColor;
 
 import java.util.Objects;
 
-/** Stable machine-input selection; a partition isolates one pattern inside a color group. */
+/** Stable input selection; uncolored storage is shared and never split into isolated partitions. */
 public record ResourceInputGroup(AEColor color, String partition) {
+    public static final ResourceInputGroup TRANSPARENT = new ResourceInputGroup(AEColor.TRANSPARENT, "");
     public static final ResourceInputGroup RED = new ResourceInputGroup(AEColor.RED, "");
 
     public ResourceInputGroup {
         Objects.requireNonNull(color);
         Objects.requireNonNull(partition);
-        if (color == AEColor.TRANSPARENT || partition.length() > 1024)
+        if (partition.length() > 1024)
             throw new IllegalArgumentException("Invalid resource input group");
+        if (color == AEColor.TRANSPARENT) partition = "";
     }
 
     public ResourceInputGroup(AEColor color) {

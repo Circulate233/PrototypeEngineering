@@ -47,7 +47,7 @@ public final class MeResourceHatchContainer extends AEBaseContainer {
     @GuiSync(0)
     public MeResourceHatchWindowSnapshot snapshot = MeResourceHatchWindowSnapshot.EMPTY;
     @GuiSync(1)
-    public AEColor color = AEColor.RED;
+    public AEColor color = AEColor.TRANSPARENT;
 
     public MeResourceHatchContainer(InventoryPlayer player, MeResourceHatchBlockEntity tile) {
         super(player, tile);
@@ -75,8 +75,8 @@ public final class MeResourceHatchContainer extends AEBaseContainer {
         registerClientAction(VIEW, long[].class, 64, this::receiveView);
         registerClientAction(MARK, long[].class, 128, this::receiveMark);
         registerClientAction(COLOR, Integer.class, value -> {
-            if (canEdit() && value != null && value >= 0 && value < AEColor.VALID_COLORS.length) {
-                tile.setResourceColor(AEColor.VALID_COLORS[value]);
+            if (canEdit() && value != null && value >= 0 && value < AEColor.VALUES.length) {
+                tile.setResourceColor(AEColor.VALUES[value]);
                 capture();
             }
         });
@@ -162,7 +162,7 @@ public final class MeResourceHatchContainer extends AEBaseContainer {
     }
 
     public void setColor(AEColor next) {
-        if (next != AEColor.TRANSPARENT) sendClientAction(COLOR, next.ordinal());
+        sendClientAction(COLOR, next.ordinal());
     }
 
     private void receiveView(long[] values) {

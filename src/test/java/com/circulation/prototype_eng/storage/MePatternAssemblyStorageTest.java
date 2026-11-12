@@ -21,6 +21,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.storage.ResourceHatch;
+import com.circulation.prototype_eng.api.storage.ResourceInputGroup;
 import com.circulation.prototype_eng.api.storage.ResourceStorage;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
@@ -101,6 +102,40 @@ class MePatternAssemblyStorageTest {
         assertTrue(storage.returnInputs(network));
         assertEquals(2, network.amounts.getLong(MATERIAL));
         assertTrue(storage.setMode(Mode.DEFAULT));
+    }
+
+    @Test
+    void uncoloredPatternInputsCombineAndPersistButRecoloringRestoresSlotIsolation() {
+        AEColor[] color = {AEColor.TRANSPARENT};
+        var storage = new MePatternAssemblyStorage(2, () -> color[0], () -> {}, KEYS);
+        storage.bindIdentity("uncolored_isolation");
+        assertTrue(storage.setMode(Mode.PATTERN_ISOLATION));
+        assertTrue(storage.push(0, amounts(MATERIAL, 2)));
+        assertTrue(storage.push(1, amounts(MATERIAL, 2)));
+        storage.catalyst().insert(CATALYST, 1, Actionable.MODULATE);
+        var recipe = recipe("uncolored_isolation", 1, List.of(new GenericStack(MATERIAL, 4), new GenericStack(CATALYST, 1)));
+        var fixture = new Fixture(storage);
+        color[0] = AEColor.RED;
+        assertEquals(RecipeScanner.Status.EXHAUSTED, scan(fixture, recipe).status());
+        color[0] = AEColor.TRANSPARENT;
+        var savedStorage = new NBTTagCompound();
+        storage.save(savedStorage);
+        var restored = MePatternAssemblyStorage.load(savedStorage, 2, () -> color[0], () -> {}, KEYS);
+        var restoredFixture = new Fixture(restored);
+        var admitted = scan(restoredFixture, recipe);
+        assertEquals(RecipeScanner.Status.ADMITTED, admitted.status());
+        var process = Objects.requireNonNull(admitted.process());
+        assertEquals(ResourceInputGroup.TRANSPARENT, process.selectedInputGroup());
+        var codec = RecipeProcessNbt.builder(recipe, "uncolored-group-1").resources(KEYS).build();
+        var saved = codec.encode(process);
+        assertTrue(restoredFixture.host.detach(process));
+        var loadedProcess = codec.decode(restoredFixture.machine, saved);
+        assertTrue(restoredFixture.host.start(loadedProcess));
+        loadedProcess.tick();
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, loadedProcess.state().lifecycle());
+        assertEquals(0, restored.catalyst().amount(CATALYST));
+        for (var partition : restored.inputPartitions()) assertEquals(0, Objects.requireNonNull(partition.input()).amount(MATERIAL));
+        assertEquals(2, restored.output().amount(PRODUCT));
     }
 
     @Test

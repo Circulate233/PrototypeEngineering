@@ -51,7 +51,7 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
     @GuiSync(0)
     public MePatternAssemblySnapshot snapshot = MePatternAssemblySnapshot.EMPTY;
     @GuiSync(1)
-    public AEColor color = AEColor.RED;
+    public AEColor color = AEColor.TRANSPARENT;
 
     public MePatternAssemblyContainer(InventoryPlayer player, MePatternAssemblyBlockEntity tile) {
         super(player, tile);
@@ -74,8 +74,8 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
         registerClientAction(ACTION, long[].class, 128, this::receiveAction);
         registerClientAction(COLOR, long[].class, 64, values -> {
             if (!canEdit() || values == null || values.length != 2 || values[0] != tile.patternRevision()
-                || values[1] < 0 || values[1] >= AEColor.VALID_COLORS.length) return;
-            if (!tile.setInputColor(AEColor.VALID_COLORS[(int) values[1]])) {
+                || values[1] < 0 || values[1] >= AEColor.VALUES.length) return;
+            if (!tile.setInputColor(AEColor.VALUES[(int) values[1]])) {
                 capture();
                 if (getPlayer() instanceof EntityPlayerMP serverPlayer) syncInventoryActionState(serverPlayer);
                 return;
@@ -178,7 +178,8 @@ public final class MePatternAssemblyContainer extends AEBaseContainer {
     }
 
     public void setColor(AEColor next) {
-        if (next != AEColor.TRANSPARENT && presentedRevision == snapshot.revision())
+        Objects.requireNonNull(next, "next");
+        if (presentedRevision == snapshot.revision())
             sendClientAction(COLOR, new long[]{snapshot.patternRevision(), next.ordinal()});
     }
 

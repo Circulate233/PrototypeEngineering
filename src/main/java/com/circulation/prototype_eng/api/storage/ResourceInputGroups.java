@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.api.storage;
 
 import ae2.api.stacks.AEKey2LongMap;
+import ae2.api.util.AEColor;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
@@ -12,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
-/** Immutable input groups keep colors and pattern partitions apart through admission and work. */
+/** Colored inputs remain isolated; every group can also use the same physical uncolored storage. */
 public final class ResourceInputGroups {
     private ResourceInputGroups() {}
 
@@ -36,13 +37,14 @@ public final class ResourceInputGroups {
             // Their later appearance is a binding change, not evidence that the whole group is empty.
             groups.computeIfAbsent(group, _ -> new ObjectArrayList<>());
         }
-        if (groups.isEmpty()) groups.put(ResourceInputGroup.RED, new ObjectArrayList<>());
+        if (groups.isEmpty()) groups.put(ResourceInputGroup.TRANSPARENT, new ObjectArrayList<>());
         groups.forEach((group, members) -> {
             for (var hatch : expanded) {
                 var other = hatch.inputGroup();
-                boolean input = other.equals(group) || hatch.sharedInput() && other.color() == group.color()
+                boolean generic = other.color() == AEColor.TRANSPARENT;
+                boolean input = other.equals(group) || generic || hatch.sharedInput() && other.color() == group.color()
                     && group.partition().startsWith(other.partition());
-                boolean output = other.color() == group.color() && hatch.output() != null;
+                boolean output = (generic || other.color() == group.color()) && hatch.output() != null;
                 if (input || output) members.add(new GroupView(hatch, other, input));
             }
         });

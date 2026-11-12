@@ -72,7 +72,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     private String allocationLocation;
     private HatchInventoryPort port;
     private HatchFluidHandler fluids;
-    private volatile AEColor resourceColor = AEColor.RED;
+    private volatile AEColor resourceColor = AEColor.TRANSPARENT;
     private boolean autoInput;
     private boolean autoOutput;
     private volatile long maxFluidInputRate;
@@ -164,8 +164,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
 
     @Override
     public void setResourceColor(AEColor color) {
-        if (color == null || color == AEColor.TRANSPARENT)
-            throw new IllegalArgumentException("A resource group needs a dye color");
+        Objects.requireNonNull(color, "color");
         if (world != null && (!world.isRemote && !Objects.requireNonNull(world.getMinecraftServer()).isCallingFromMinecraftThread()))
             throw new IllegalStateException("Resource group changes require the server owner");
         resourceColor = color;
@@ -465,8 +464,7 @@ public class ResourceHatchBlockEntity extends AEBaseTile implements ResourceHatc
     public void loadTag(@NotNull NBTTagCompound tag) {
         if (hasTransferReservation())
             throw new IllegalStateException("Cannot reload resource hatch with an unresolved external transfer");
-        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.RED;
-        if (nextColor == AEColor.TRANSPARENT) throw new IllegalArgumentException("Invalid resource group color");
+        var nextColor = tag.hasKey("ResourceColor") ? AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor")) : AEColor.TRANSPARENT;
         boolean modern = tag.hasKey("EffectiveProfile");
         var nextMode = modern || tag.hasKey("Mode") ? HatchMode.valueOf(StrictNbt.requireString(tag, "Mode")) : mode;
         var nextTier = modern || tag.hasKey("Tier") ? HatchTier.of(StrictNbt.requireInt(tag, "Tier")) : tier;

@@ -62,6 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -129,6 +130,90 @@ class ResourceInputGroupsTest {
         assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
         assertEquals(0, red.input.amount(MATERIAL) + blue.input.amount(MATERIAL));
         assertEquals(3, red.output.amount(PRODUCT) + blue.output.amount(PRODUCT));
+    }
+
+    @Test
+    void uncoloredInventoryIsItsOwnGroupAndCanBeReadWithEitherColoredGroup() {
+        var uncolored = new Port(AEColor.TRANSPARENT);
+        var red = new Port(AEColor.RED);
+        var blue = new Port(AEColor.BLUE);
+        uncolored.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        red.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        blue.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        var fixture = new Fixture(uncolored, uncolored, red, blue);
+        var recipe = recipe("uncolored_generic", 1, 4, 0);
+
+        var groups = MachineHatches.get(fixture.machine).inputGroups();
+        assertNotNull(groups.find(ResourceInputGroup.TRANSPARENT));
+        assertNotNull(groups.find(ResourceInputGroup.RED));
+        assertNotNull(groups.find(new ResourceInputGroup(AEColor.BLUE)));
+        var proof = lookup(fixture, recipe);
+        assertEquals(List.of(recipe), proof.result());
+
+        var admitted = scan(fixture, recipe);
+        assertEquals(RecipeScanner.Status.ADMITTED, admitted.status());
+        var process = Objects.requireNonNull(admitted.process());
+        assertEquals(new ResourceInputGroup(AEColor.RED), process.selectedInputGroup());
+        process.tick();
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, process.state().lifecycle());
+        assertEquals(0, uncolored.input.amount(MATERIAL));
+        assertTrue(fixture.host.detach(process));
+        assertEquals(0, red.input.amount(MATERIAL));
+        assertEquals(2, blue.input.amount(MATERIAL));
+        assertEquals(0, red.output.amount(PRODUCT));
+        assertEquals(3, uncolored.output.amount(PRODUCT));
+        assertEquals(0, blue.output.amount(PRODUCT));
+        var validation = proof.beginValidation();
+        assertTrue(validation.advance(new RecipeWorkBudget(Long.MAX_VALUE)));
+        assertFalse(validation.current());
+        assertEquals(RecipeScanner.Status.EXHAUSTED, scan(fixture, recipe).status());
+        uncolored.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        var second = scan(fixture, recipe);
+        assertEquals(RecipeScanner.Status.ADMITTED, second.status());
+        var blueProcess = Objects.requireNonNull(second.process());
+        assertEquals(new ResourceInputGroup(AEColor.BLUE), blueProcess.selectedInputGroup());
+        blueProcess.tick();
+        assertEquals(RecipeProcess.Lifecycle.COMPLETED, blueProcess.state().lifecycle());
+        assertEquals(0, uncolored.input.amount(MATERIAL));
+        assertEquals(0, blue.input.amount(MATERIAL));
+        assertEquals(6, uncolored.output.amount(PRODUCT));
+    }
+
+    @Test
+    void overlappingColoredStartsCannotReserveTheSameUncoloredBalanceTwice() {
+        var uncolored = new Port(AEColor.TRANSPARENT);
+        var red = new Port(AEColor.RED);
+        var blue = new Port(AEColor.BLUE);
+        uncolored.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        red.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        blue.input.insert(MATERIAL, 2, Actionable.MODULATE);
+        var first = new Fixture(uncolored, red);
+        var second = new Fixture(uncolored, blue);
+        var recipe = recipe("shared_uncolored_reservation", 1, 4, 0);
+        var redProcess = new RecipeProcess(first.machine, recipe, 1);
+        var blueProcess = new RecipeProcess(second.machine, recipe, 2);
+        redProcess.selectInputGroup(Objects.requireNonNull(MachineHatches.get(first.machine).inputGroups().find(new ResourceInputGroup(AEColor.RED))));
+        blueProcess.selectInputGroup(Objects.requireNonNull(MachineHatches.get(second.machine).inputGroups().find(new ResourceInputGroup(AEColor.BLUE))));
+        assertEquals(ProcessResult.SUCCESS, RecipeStageExecutor.probeStart(redProcess));
+        assertEquals(ProcessResult.SUCCESS, RecipeStageExecutor.probeStart(blueProcess));
+        assertTrue(first.host.start(redProcess));
+        assertTrue(second.host.start(blueProcess));
+        var redTick = Objects.requireNonNull(redProcess.beginTick());
+        var blueTick = Objects.requireNonNull(blueProcess.beginTick());
+        var redStart = Objects.requireNonNull(redTick.nextStage());
+        var blueStart = Objects.requireNonNull(blueTick.nextStage());
+        redStart.acquire();
+        blueStart.acquire();
+        assertInstanceOf(ProcessResult.Blocked.class, blueStart.settleSynchronously());
+        assertEquals(ProcessResult.SUCCESS, redStart.settleSynchronously());
+        redTick.finish();
+        blueTick.finish();
+        assertEquals(0, uncolored.input.amount(MATERIAL));
+        assertEquals(0, red.input.amount(MATERIAL));
+        assertEquals(2, blue.input.amount(MATERIAL));
+        assertTrue(blue.receipts.isEmpty());
+        assertEquals(1, uncolored.receipts.size());
+        assertEquals(2, uncolored.receipts.getFirst().amounts().getLong(MATERIAL));
     }
 
     @Test

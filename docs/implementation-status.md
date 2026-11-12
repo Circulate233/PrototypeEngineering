@@ -1,5 +1,10 @@
 # 实施进度
 
+- 2026-11-12 福鲁伊克斯默认色与无色通用库存：按用户最新要求，`ResourceHatch`、`BufferedResourceHatch`、普通/ME资源方块实体、样板总成及三个容器均默认`AEColor.TRANSPARENT`；普通/ME资源仓NBT缺少颜色时也回落无色，已保存的明确颜色保留。允许配置和加载透明色；`ResourceInputGroup`把无色partition规范为空，使无色独立成组且不参与颜色或样板槽隔离。各有色组可读取同一份无色输入、向无色输出结算，有色库存之间仍不能拼料；原物理StorageContext/identity、预留和来源回执保持共用，没有复制余额或另建结算系统。
+- GUI保留原16色顺序与原调色板图片，下方增加使用原io_mode按钮和AE福鲁伊克斯三色的无色项；客户端动作使用AE公开VALUES完整枚举校验，普通仓、ME资源总成和样板总成均可设回无色。run的`/pe_me_examples color ... TRANSPARENT`和补全同步接通；颜色与样板隔离示例改为先显式设红/蓝色，再分别验证无色通用读取，避免旧文档把默认色写作红色。
+- 验证：3项新增真实行为回归覆盖无色独立/红蓝共享、重复物理仓去别名和索引验证失效、双控制器交叠START预留不重复付款，以及样板无色跨槽/有色隔离和存储/进程保存恢复。完整`gradlew.bat build --console=plain`通过，Spotless及1990 tests/274 suites失败、错误、跳过均0；14个修改正式/测试Java逐文件本机IDEA MCP `errorsOnly:false`最终错误/警告/弱警告0，MCP指定文件build成功且problems空。初稿测试修正NBT save调用签名、显式库存proof验证和完成进程detach，未修改生产扫描/生命周期以迎合测试。21个addon Java经Java25重新完整编译并安装，run修改Java仍被IDEA排除，分析结果unknown，不记作零诊断。
+- 证据保存在`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/uncolored-groups/`，包括完整测试XML/构建日志、IDEA原始与最终结果、本机MCP构建、addon构建及工作区/暂存保护。入口[颜色契约](block-registration.md#颜色与样板隔离)、[Java API](../api.md)、[run验证步骤](../run/scripts/README-me-assemblies.md)。本阶段仅本地提交，不推送、不开新子代理、不启动Minecraft/FML；实际颜色控件渲染、ME网络、客户端重启与World交互由用户复验，原JEI暂存测试和背景依赖/示例/结构树/语言/纹理修改保留。
+
 - 2026-11-12 run中的新ME与连接纹理示例：新增13/24两个真实CT脚本，6机器、5池、9配方，覆盖通用输入/输出、机械接口、样板槽隔离和共享催化剂、颜色输入组、五阶及Java/ZS外部并行控制器、48种输出和跨int的long物品/流体。原13台/106配方和已有核心/网络/渲染/组合结构示例保留。`MeAssemblyExamples`仅通过公开配置API设置颜色/标记，从实际注册配方生成AE加工样板；stock拒绝直接写ME实际缓存。搭建几何由脚本实际canonical结构导出，真实AE节点设置放置玩家归属。
 - 用户追加的连接纹理场景使用`CtmGalleryExamples`：启动后枚举全部prototype_eng注册方块并加入两种外部并行示例，排序后每类排列3×3地面、3×3后墙、3×3转角墙，共27格，类型间分隔。注册为真实结构、同一布局用于显式build与gallery-check，所有位置预验空气/加载/权限；gallery-list提供实际朝向后的ID/坐标。覆盖检查只证明实际方块匹配，不冒充CTM视觉通过。原始3tile元数据回退等既有渲染限制继续在专题说明。
 - 验证：21个addon Java经javac25完整编译并安装，目标Jar SHA256为`7426fec4ceff75aa2efee4c5d976c063869b8e6a99251c8874dd4e3e08e4f862`；原生pack.mcmeta=3、两语言资源和构建产物一致。真实SDK718编译13脚本全过，运行原10/20核心脚本97PASS/0FAIL；其余新增脚本涉及Forge/AE注册表，仅编译不执行。6个修改Java本机IDEA MCP逐文件errorsOnly:false因run排除返回unknown，不记作零诊断；两ZS/两语言/新专题及run入口文档全级零，原COVERAGE两处、原可视README六处表格弱警告保留；主项目MCP build成功problems空。没有修改正式库源码或启动Minecraft/FML，也未重跑正式库全测试。

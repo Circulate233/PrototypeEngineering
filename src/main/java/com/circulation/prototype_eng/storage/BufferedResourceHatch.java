@@ -40,7 +40,7 @@ import java.util.function.Consumer;
  */
 public final class BufferedResourceHatch implements SlottedResourceHatch {
     private static final ResourceKeyNbt KEYS = new ResourceKeyNbt();
-    private volatile ResourceInputGroup inputGroup = ResourceInputGroup.RED;
+    private volatile ResourceInputGroup inputGroup = ResourceInputGroup.TRANSPARENT;
     private final SlottedResourceBuffer input;
     private final SlottedResourceBuffer output;
     private final MEStorage automation = new AutomationPort();

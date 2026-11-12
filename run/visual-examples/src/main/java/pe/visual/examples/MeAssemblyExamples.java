@@ -207,7 +207,7 @@ public final class MeAssemblyExamples {
         @Override public String getName() { return "pe_me_examples"; }
         @Override public int getRequiredPermissionLevel() { return 2; }
         @Override public String getUsage(ICommandSender sender) {
-            return "/pe_me_examples kit|patterns | inspect x y z | color x y z RED|BLUE | mark x y z slot key|clear amount | "
+            return "/pe_me_examples kit|patterns | inspect x y z | color x y z TRANSPARENT|RED|BLUE | mark x y z slot key|clear amount | "
                 + "assert-parallel/assert-groups x y z expected | gallery-list/gallery-check x y z";
         }
 
@@ -243,8 +243,8 @@ public final class MeAssemblyExamples {
                 var player = getCommandSenderAsPlayer(sender);
                 if (!world.isBlockModifiable(player, position) || !(tile instanceof ResourceHatchGrouping grouped)) throw new CommandException("Target is not an editable resource chamber");
                 AEColor color = null;
-                for (var candidate : AEColor.VALID_COLORS) if (candidate.name().equalsIgnoreCase(args[4])) color = candidate;
-                if (color == null) throw new CommandException("Expected one of the 16 resource group colors");
+                for (var candidate : AEColor.VALUES) if (candidate.name().equalsIgnoreCase(args[4])) color = candidate;
+                if (color == null) throw new CommandException("Expected TRANSPARENT or one of the 16 resource group colors");
                 grouped.setResourceColor(color);
                 sender.sendMessage(Text.Edited.text(grouped.resourceColor()));
                 return;
@@ -276,8 +276,8 @@ public final class MeAssemblyExamples {
         @Override public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos target) {
             if (args.length == 1) return getListOfStringsMatchingLastWord(args, "kit", "patterns", "inspect", "color", "mark", "assert-parallel", "assert-groups", "gallery-list", "gallery-check");
             if (args.length == 5 && args[0].equals("color")) {
-                var colors = new ObjectArrayList<String>(AEColor.VALID_COLORS.length);
-                for (var color : AEColor.VALID_COLORS) colors.add(color.name());
+                var colors = new ObjectArrayList<String>(AEColor.VALUES.length);
+                for (var color : AEColor.VALUES) colors.add(color.name());
                 return getListOfStringsMatchingLastWord(args, colors);
             }
             if (args.length == 6 && args[0].equals("mark")) return getListOfStringsMatchingLastWord(args,

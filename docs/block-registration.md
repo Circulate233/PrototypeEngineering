@@ -65,12 +65,11 @@ ME仓不暴露Forge物品/流体自动化能力，玩家不能把物品写入真
 
 ## 颜色与样板隔离
 
-`ResourceHatch.inputGroup()` 返回 `ResourceInputGroup(AEColor, partition)`，默认红色；所有内置材料仓和ME仓实现
-`ResourceHatchGrouping`
-，提供16色GUI设置并保存到NBT。FE仓不参与颜色分组。颜色相同才形成同一输入库存，配方发现分别查询各组并合并候选身份；准入探测逐组进行，已选进程持续使用选定组，保存/恢复也保留颜色与partition。找不到原组时不回退到其他颜色。
+`ResourceHatch.inputGroup()` 返回 `ResourceInputGroup(AEColor, partition)`，默认福鲁伊克斯透明色（无色）；无色库存作为独立输入组，并可由任一有色组通用读取，不会把其他不同颜色库存并入该组。所有内置材料仓和ME仓实现
+`ResourceHatchGrouping`，GUI可选16种染色与无色并保存到NBT。FE仓不参与颜色分组。颜色相同才形成同一输入库存，配方发现分别查询各组并合并候选身份；准入探测逐组进行，已选进程持续使用选定组，保存/恢复也保留颜色与partition。找不到原组时不回退到其他颜色。
 
 `inputPartitions()` 供样板总成或外部仓室暴露独立视图；普通仓室默认单个自身视图。样板隔离模式下每个样板槽使用稳定partition，
-`sharedInput()` 的催化剂视图对同一总成的每个样板分区暴露。各分区不能拼料；事务去别名依然使用同一物理 `StorageContext`。
+`sharedInput()` 的催化剂视图对同一总成的每个样板分区暴露。有色分区不能拼料；无色时所有槽位暴露为同一个无色库存，不受颜色或样板分区隔离，改回有色后恢复逐槽隔离。底层缓存与事务去别名依然使用原物理 `StorageContext`，各组通用读取不会复制余额或重复预留。
 
 `ResourceRecipeObserver` 接收真实进程attach/detach、实际来源 `inputsCommitted`
 和整阶段成功结算通知。预留只在真实完整阶段提交后、存储锁外发布供料回执，探测和回滚不发布；回调不得从worker读写World，需自行同步纯状态。样板总成据此关联实际供料进程的持久化UUID，避免无关同色仓或同配方同seed进程完成时解除锁定。

@@ -89,7 +89,7 @@ public final class MePatternAssemblyBlockEntity extends AEBaseTile implements II
     private volatile List<PatternEntry> entries = List.of();
     private volatile List<? extends IPatternDetails> available = List.of();
     private long patternRevision;
-    private volatile AEColor color = AEColor.RED;
+    private volatile AEColor color = AEColor.TRANSPARENT;
     private @Nullable String customName;
     private boolean terminalVisible = true;
     private boolean batchingPatterns;
@@ -154,7 +154,7 @@ public final class MePatternAssemblyBlockEntity extends AEBaseTile implements II
 
     public boolean setInputColor(AEColor next) {
         requireOwner();
-        if (Objects.requireNonNull(next) == AEColor.TRANSPARENT) return false;
+        Objects.requireNonNull(next, "next");
         if (color == next) return true;
         if (!storage().idle()) return false;
         color = next;
@@ -514,7 +514,6 @@ public final class MePatternAssemblyBlockEntity extends AEBaseTile implements II
         if (nextPages <= 0 || nextPages > Integer.MAX_VALUE / 36)
             throw new IllegalArgumentException("Invalid saved pattern page count");
         var nextColor = AEColor.valueOf(StrictNbt.requireString(tag, "ResourceColor"));
-        if (nextColor == AEColor.TRANSPARENT) throw new IllegalArgumentException("Transparent pattern input group");
         long nextRevision = StrictNbt.requireLong(tag, "PatternRevision");
         if (nextRevision < 0) throw new IllegalArgumentException("Negative saved pattern revision");
         boolean nextVisible = StrictNbt.requireBoolean(tag, "TerminalVisible");

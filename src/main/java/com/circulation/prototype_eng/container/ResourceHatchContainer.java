@@ -65,7 +65,7 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     @Nullable
     private final FluidHatchSettings fluidSettings;
     @GuiSync(3)
-    public AEColor color = AEColor.RED;
+    public AEColor color = AEColor.TRANSPARENT;
     @GuiSync(2)
     public ResourceHatchWindowSnapshot snapshot = ResourceHatchWindowSnapshot.EMPTY;
     @GuiSync(0)
@@ -108,8 +108,8 @@ public final class ResourceHatchContainer extends AEBaseContainer {
         syncSettings();
         registerClientAction("resourceColor", Integer.class, ordinal -> {
             if (canChangeSettings() && tile instanceof ResourceHatchGrouping grouping
-                && ordinal >= 0 && ordinal < AEColor.VALID_COLORS.length)
-                grouping.setResourceColor(AEColor.VALID_COLORS[ordinal]);
+                && ordinal >= 0 && ordinal < AEColor.VALUES.length)
+                grouping.setResourceColor(AEColor.VALUES[ordinal]);
         });
         registerClientAction(VIEW, long[].class, 96, values -> {
             if (!canUseServerWindow() || values == null || values.length != 3
@@ -209,7 +209,7 @@ public final class ResourceHatchContainer extends AEBaseContainer {
     }
 
     public void setResourceColor(AEColor next) {
-        if (next != AEColor.TRANSPARENT) sendClientAction("resourceColor", next.ordinal());
+        sendClientAction("resourceColor", next.ordinal());
     }
 
     private void syncSettings() {

@@ -47,7 +47,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
 
     @Override
     public Rectangle getBounds() {
-        return new Rectangle(position.x(), position.y(), expanded ? 56 : 17, expanded ? 57 : 18);
+        return new Rectangle(position.x(), position.y(), expanded ? 56 : 17, expanded ? 75 : 18);
     }
 
     @Override
@@ -103,6 +103,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
 
     private @Nullable AEColor colorAt(int x, int y) {
         int relativeX = x - position.x() - 4, relativeY = y - position.y() - 4;
+        if (relativeX >= 0 && relativeX < 9 && relativeY >= 57 && relativeY < 66) return AEColor.TRANSPARENT;
         if (relativeX < 0 || relativeY < 0 || relativeX >= 52 || relativeY >= 52
             || relativeX % 13 >= 9 || relativeY % 13 >= 9) return null;
         return COLORS[relativeY / 13 * 4 + relativeX / 13];
@@ -113,8 +114,7 @@ public final class ResourceColorSelector implements ICompositeWidget {
         if (expanded) return;
         int u = getBounds().contains(mouse.x(), mouse.y()) ? 18 : 0;
         GuiAtlas.draw(GuiAtlas.texture("io_mode"), position.x(), position.y(), u, 0, 17, 18, 256, 256);
-        Gui.drawRect(position.x() + 4, position.y() + 4, position.x() + 13, position.y() + 13,
-            0xff000000 | selected.get().mediumVariant);
+        drawSwatch(position.x() + 4, position.y() + 4, selected.get());
     }
 
     @Override
@@ -122,5 +122,17 @@ public final class ResourceColorSelector implements ICompositeWidget {
         if (!expanded) return;
         GuiAtlas.draw(GuiAtlas.texture("color_palette"), bounds.x + position.x(), bounds.y + position.y(),
             0, 0, 56, 57, 56, 57);
+        int x = bounds.x + position.x(), y = bounds.y + position.y() + 57;
+        int u = colorAt(mouse.x(), mouse.y()) == AEColor.TRANSPARENT ? 18 : 0;
+        GuiAtlas.draw(GuiAtlas.texture("io_mode"), x, y, u, 0, 17, 18, 256, 256);
+        drawSwatch(x + 4, y + 4, AEColor.TRANSPARENT);
+    }
+
+    private static void drawSwatch(int x, int y, AEColor color) {
+        Gui.drawRect(x, y, x + 9, y + 9, 0xff000000 | color.mediumVariant);
+        if (color == AEColor.TRANSPARENT) {
+            Gui.drawRect(x, y, x + 3, y + 9, 0xff000000 | color.blackVariant);
+            Gui.drawRect(x + 6, y, x + 9, y + 9, 0xff000000 | color.whiteVariant);
+        }
     }
 }
