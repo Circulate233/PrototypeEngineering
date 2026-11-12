@@ -5,6 +5,7 @@ import ae2.api.orientation.RelativeSide;
 import ae2.tile.AEBaseTile;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.api.machine.MachineControllerBlockHost;
+import com.circulation.prototype_eng.api.machine.ControllerInventory;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
@@ -34,6 +35,7 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.item.ItemStack;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.util.EnumFacing;
@@ -60,6 +62,7 @@ import java.util.function.UnaryOperator;
 public class MachineControllerBlockEntity extends AEBaseTile implements MachineControllerHost {
     @Nullable
     private ControllerData data;
+    private final ControllerInventory controllerInventory = new ControllerInventory(this::markDirty);
     @Nullable
     private MachineController controller;
     @Nullable
@@ -170,6 +173,34 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     @Override
     public AEBaseTile blockEntity() {
         return this;
+    }
+
+    @Override
+    public ControllerInventory controllerInventory() {
+        return controllerInventory;
+    }
+
+    @Override
+    public int refreshControllerInventorySlots() {
+        requireServer();
+        var current = machine();
+        if (current != null && Objects.requireNonNull(current.lifecycle()).retired()) current = null;
+        if (current != null) current.requirePersistenceBoundary();
+        int count = type().controllerInventorySlots(current);
+        controllerInventory.setAvailableSlots(count);
+        return count;
+    }
+
+    @Override
+    public void addAdditionalDrops(List<ItemStack> drops) {
+        super.addAdditionalDrops(drops);
+        controllerInventory.addDrops(drops);
+    }
+
+    @Override
+    public void clearContent() {
+        super.clearContent();
+        controllerInventory.clear();
     }
 
     @Override
@@ -371,6 +402,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
             try {
                 data = new ControllerData(type.id(), orientation(), null);
                 replacementData = false;
+                refreshControllerInventorySlots();
                 bound.configureStructure(MachineTypeRegistry.INSTANCE.structureCatalog(), MachineTypeRegistry.INSTANCE.structure(type), orientation());
                 structures = new ControllerStructureUpdates(created, bound, scheduler(), this::changed);
                 structures.firstTickAtBoundary(lastTick);
@@ -605,6 +637,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         super.loadTag(tag);
         replacementData = controller != null;
         data = decoded;
+        controllerInventory.readFromNBT(tag, "ControllerInventory");
     }
 
     @Override
@@ -616,6 +649,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
         }
         super.saveAdditional(tag);
         tag.setTag("Machine", saved.encode());
+        controllerInventory.writeToNBT(tag, "ControllerInventory");
     }
 
     private void changed() {
@@ -691,6 +725,7 @@ public class MachineControllerBlockEntity extends AEBaseTile implements MachineC
     }
 
     private void observeRenderState() {
+        refreshControllerInventorySlots();
         var current = machine();
         if (current == null) return;
         var lifecycle = Objects.requireNonNull(current.lifecycle());

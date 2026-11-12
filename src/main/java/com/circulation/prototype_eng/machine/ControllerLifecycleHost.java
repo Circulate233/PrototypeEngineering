@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.machine;
 
 import ae2.api.orientation.BlockOrientation;
+import ae2.api.inventories.InternalInventory;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
@@ -76,6 +77,12 @@ public class ControllerLifecycleHost implements ReloadableStructureHost {
     public static ControllerLifecycleHost nativeHost(ResourceLocation machineType, TileEntity controller, @Nullable UUID player,
                                                      @Nullable ResourceLocation blockId) {
         return new ControllerLifecycleHost(machineType, controller, player, blockId, true);
+    }
+
+    @Override
+    public InternalInventory controllerInventory() {
+        requireServerThread();
+        return controller instanceof MachineControllerHost host ? host.controllerInventory() : InternalInventory.empty();
     }
 
     @Override

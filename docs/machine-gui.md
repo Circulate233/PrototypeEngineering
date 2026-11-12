@@ -8,7 +8,7 @@
 
 默认界面只在顶部显示一次机器声明的本地化标题，正文显示结构未成型/已成型、运行状态、运行线程/容量或运行配方数，以及全机并行占用/上限，并保留玩家主背包和快捷栏。结构名称不在正文重复；结构状态始终按正式formed值显示，不把周期刷新时的processing gate渲染成检查中提示或切换状态。执行模式/策略属于作者的内部调度选择，不在玩家GUI或tooltip中显示。参考 MMCE 的 `GuiMachineController`/`GuiFactoryController` 的结构、状态、线程与并行信息；本库尚无对应事实的蓝图、红石及耗时统计不作虚构显示。
 
-多线程列表按组件及声明工位顺序显示线程，包括闲置线程；跨配方列表只按相同顺序显示实际持有进程的行，每行标题为其配方、附实际进度。行tooltip只补充完整配方ID、有效并行数及被截断的原因，不再重复已经完整显示的状态；没有补充内容的闲置行不弹tooltip。标题、正文和4×4预留图案不弹重复说明。动态空槽不占显示位置，结束/取消后总行数和offset随真实列表裁剪。窗口最多七行，跨页汇总仍包含全机进程。进度素材保留 PM 的89×33区域，13×15滚动条移回背景的独立槽道（x=120），绘制、悬停和拖动命中一致，避免原先放大到38像素后覆盖行内容。
+多线程列表按组件及声明工位顺序显示线程，包括闲置线程；跨配方列表只按相同顺序显示实际持有进程的行，每行标题为其配方、附实际进度。行tooltip只补充完整配方ID、有效并行数及被截断的原因，不再重复已经完整显示的状态；没有补充内容的闲置行不弹tooltip。标题和正文不弹重复说明，4×4区域使用真实控制器库存。动态空槽不占显示位置，结束/取消后总行数和offset随真实列表裁剪。窗口最多七行，跨页汇总仍包含全机进程。进度素材保留 PM 的89×33区域，13×15滚动条移回背景的独立槽道（x=120），绘制、悬停和拖动命中一致，避免原先放大到38像素后覆盖行内容。
 
 进度由绝对工作刻数除以配方时长并裁剪至0..100，零时长进程显示100。多线程工位没有进程时仍显示其保存的结果，因此失败/取消后的原因不会被固定Idle文本覆盖；跨配方取消后的失败仍参加全机状态汇总。机器不存在或inactive时仍同步宿主真实formed和结构身份，不显示虚假的执行计数。结构状态只读宿主formed，不把周期结构检查的临时processing gate映射成跳动的“等待结构检查”；未成型时不再在运行状态处重复“未成型”。
 
@@ -16,7 +16,15 @@
 
 默认扩展页没有任何实际内容提供者，只显示主页面；背景按主体和主tab两块绘制，裁去原图中仍然存在的第二页空线框，自定义内容继续通过既有Java容器/screen注册入口提供。主tab提示在客户端调用枚举getLocal；已退役的扩展/占位、执行策略和检查中枚举及双语条目直接删除，不保留占位翻译。
 
-对照 PM 的 [DefaultMachineUI.kt](F:/clone/PrototypeMachinery/src/main/kotlin/client/gui/DefaultMachineUI.kt)：其七行工位列表与玩家背包是实际功能；`buildGridSlots` 的 4×4 区域新建临时 `ItemStackHandler`，`Status: Idle` 是固定文本，扩展页只含占位说明。当前默认 GUI 展示真实状态，未给这些占位内容增加机器存储或业务职责。PM 的 [DefaultMachineUIBindings.kt](F:/clone/PrototypeMachinery/src/main/kotlin/impl/ui/binding/DefaultMachineUIBindings.kt) 为旧 bindKey/脚本 GUI 服务；本项目扩展改用 Java 容器与 screen，不迁入字符串绑定运行时。
+对照 PM 的 [DefaultMachineUI.kt](F:/clone/PrototypeMachinery/src/main/kotlin/client/gui/DefaultMachineUI.kt)：其七行工位列表与玩家背包是实际功能；`buildGridSlots` 的 4×4 区域新建临时 `ItemStackHandler`，`Status: Idle` 是固定文本，扩展页只含占位说明。当前默认 GUI 展示真实状态，4×4区域现已接入控制器持久化物品库存，不再创建临时占位库存。PM 的 [DefaultMachineUIBindings.kt](F:/clone/PrototypeMachinery/src/main/kotlin/impl/ui/binding/DefaultMachineUIBindings.kt) 为旧 bindKey/脚本 GUI 服务；本项目扩展改用 Java 容器与 screen，不迁入字符串绑定运行时。
+
+## 控制器库存
+
+默认控制器左下角提供16个物品格。`controllerInventorySlots(int)` 设置开放数量，默认0；`controllerInventorySlots(ToIntFunction<MachineInstance>)` 按当前机器实例计算数量。配置动态函数后优先使用其返回值；没有函数、函数被设为null、机器尚未装配或已注销时使用固定值。返回值必须在0到16之间，越界会抛出 `IllegalArgumentException`，不会自动裁剪。动态函数在服务端工作线程结束后的边界执行，必须只读取状态，禁止在函数内修改机器、库存或世界。
+
+`machine.controllerInventory()` 返回物理控制器的原生 `InternalInventory`，可用 `getStackInSlot(slot)` 按索引读取，用原生迭代器遍历。默认宿主的具体实现为 `ControllerInventory`，`availableSlots()` 返回当前开放数，`forEachAvailable((stack, slot) -> ...)` 遍历开放格，`forEachStored(...)` 只遍历实际有物品的格子，包括临时关闭的格子。`MachineControllerHost.controllerStack(slot)` 和 `forEachControllerStack(...)` 供自定义控制器使用。必须在服务端拥有机器执行权时读取这些物品，禁止从配方工作线程直接访问物品堆栈；需要异步计算时，先在服务端采集所需的只读事实。
+
+格子从左到右、从上到下开放。未开放格子覆盖半透明白色，普通点击、拖动、双击、数字键及Shift移动都必须通过相同的服务端开放状态检查。关闭格子保留其中物品，重新开放后恢复访问；全部物品随控制器保存，拆除控制器时参与正常物品掉落。
 
 ## 服务端读取与有界同步
 

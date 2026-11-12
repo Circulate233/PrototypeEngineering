@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.machine.lifecycle;
 
+import ae2.api.inventories.InternalInventory;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
@@ -14,6 +15,11 @@ import java.util.UUID;
  */
 public interface MachineLifecycleHost {
     MachineIdentity identity();
+
+    /** Owner-thread access to physical controller items; non-block hosts are empty by default. */
+    default InternalInventory controllerInventory() {
+        return InternalInventory.empty();
+    }
 
     /**
      * Original physical controller block; opaque or non-block hosts keep absence unprovable.

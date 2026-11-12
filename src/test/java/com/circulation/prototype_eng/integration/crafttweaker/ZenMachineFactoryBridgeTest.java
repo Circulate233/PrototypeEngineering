@@ -39,6 +39,7 @@ import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.nbt.NBTTagInt;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
@@ -82,7 +83,9 @@ class ZenMachineFactoryBridgeTest {
                 Pool.create("ct_factory:external_pool", "pool.title", [FactoryHarness.external()]));
             FactoryHarness.machine(MachineType.create("ct_factory:thread", "machine.title", "ct_factory:shape")
                 .recipePool("ct_factory:pool").attribute("prototype_eng:process_parallelism", 4)
-                .processing(names, 8, 8).executionPolicy("async_scan"));
+                .processing(names, 8, 8).executionPolicy("async_scan")
+                .componentData().controllerInventorySlots(2)
+                .controllerInventorySlots(function(controller as mods.prototype_eng.ControllerContext) as int { return controller.data.getInt("inventory", 8); }));
             FactoryHarness.machine(MachineType.create("ct_factory:cross", "machine.title", "ct_factory:shape")
                 .factory(MachineFactory.crossRecipe()).recipePool("ct_factory:pool")
                 .attribute("prototype_eng:process_parallelism", 4).processing(names, 8, 8).executionPolicy("ASYNC_WORK"));
@@ -115,6 +118,14 @@ class ZenMachineFactoryBridgeTest {
             while (!attempt.finished() && yields++ < 1000) attempt.advance(new RecipeWorkBudget(1), () -> true);
             assertTrue(attempt.finished(), "Actual scanner must progress across owner budget yields");
             assertTrue(yields > 1);
+            if (i == 0) {
+                var machineData = Objects.requireNonNull(owner.components().get(DataComponents.MACHINE));
+                machineData.set("inventory", new NBTTagInt(7));
+                assertEquals(7, assembly.type().controllerInventorySlots(owner));
+                machineData.set("inventory", new NBTTagInt(5));
+                assertEquals(5, assembly.type().controllerInventorySlots(owner));
+                assertEquals(2, assembly.type().controllerInventorySlots(null));
+            }
             var work = Objects.requireNonNull(owner.components().get(MachineWorkSlots.TYPE));
             assertFalse(work.activeProcesses().isEmpty());
             if (i < 2) {
@@ -148,6 +159,7 @@ class ZenMachineFactoryBridgeTest {
         var environment = new GenericCompileEnvironment();
         var registry = new GenericRegistry(environment, new GenericErrorLogger(new PrintStream(output, true, StandardCharsets.UTF_8)));
         for (var type : List.of(ZenMachineType.class, ZenMachineFactory.class, ZenMachineComponent.class,
+            ZenControllerContext.class, ZenControllerInventorySize.class, ZenComponentData.class, ZenControllerSlotVisitor.class,
             ZenRecipeBindings.class, ZenRecipe.class, ZenRecipePool.class, ZenParallelismSelection.class, ZenParallelismCallback.class, IData.class, Harness.class))
             registry.registerNativeClass(type);
         for (var expansion : List.of(ExpandAnyDict.class, ExpandDataStringDict.class, ExpandInt.class, ExpandBool.class, ExpandString.class))

@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.machine;
 
+import ae2.api.inventories.InternalInventory;
 import com.circulation.prototype_eng.api.component.ComponentMap;
 import com.circulation.prototype_eng.api.machine.attribute.MachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.AffinityKeyProvider;
@@ -298,6 +299,12 @@ public class MachineInstance implements PlannedMachineTask {
             }
         }
         return ObjectSets.unmodifiable(keys);
+    }
+
+    /** Controller items are owner-thread state; recipe workers must capture required facts first. */
+    @SuppressWarnings("unused") // Addon components obtain the native controller inventory.
+    public InternalInventory controllerInventory() {
+        return lifecycle == null ? InternalInventory.empty() : lifecycle.host().controllerInventory();
     }
 
     public void requirePersistenceBoundary() {

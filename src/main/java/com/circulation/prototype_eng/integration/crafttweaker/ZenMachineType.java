@@ -47,6 +47,7 @@ public final class ZenMachineType {
     @Nullable
     private ZenNetworkConfiguration network;
     private boolean data;
+    private boolean controllerContext;
     private boolean registered;
 
     private ZenMachineType(String id, String translationKey, String structureId) {
@@ -149,6 +150,25 @@ public final class ZenMachineType {
     }
 
     @ZenMethod
+    public ZenMachineType controllerInventorySlots(int count) {
+        open();
+        builder.controllerInventorySlots(count);
+        return this;
+    }
+
+    @ZenMethod
+    public ZenMachineType controllerInventorySlots(@Nullable ZenControllerInventorySize count) {
+        open();
+        if (count != null && !controllerContext) {
+            builder.component(ZenControllerContext.TYPE);
+            controllerContext = true;
+        }
+        builder.controllerInventorySlots(count == null ? null : machine ->
+            count.slots(Objects.requireNonNull(machine.components().get(ZenControllerContext.TYPE))));
+        return this;
+    }
+
+    @ZenMethod
     public ZenMachineType controllerModel(String modelId) {
         open();
         builder.controllerModel(new ResourceLocation(modelId));
@@ -180,6 +200,7 @@ public final class ZenMachineType {
         for (var component : components) component.bind(assembly);
         if (network != null) network.configure(assembly);
         if (data) assembly.component(DataComponents.MACHINE, DataComponents.MACHINE_CODEC);
+        if (controllerContext) assembly.recreated(ZenControllerContext.TYPE);
         if (scanner != null) {
             assembly.workSlots(new MachineWorkSlotsNbt(revision, Objects.requireNonNull(processCodecs))).recreated(scanner);
         } else if (!type.workSlots().isEmpty() && !type.componentTypes().contains(MachineWorkSlots.TYPE)) {

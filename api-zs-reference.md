@@ -24,6 +24,22 @@ title: ZenScript API 使用参考
 
 ## 声明机器
 
+`controllerInventorySlots(count)` 设置控制器开放物品格数，默认0，合法范围0到16。`controllerInventorySlots(callback)` 配置动态函数，其参数为当前机器对应的 `ControllerContext`。`controller.data` 是 `componentData()` 安装的机器数据，`controller.inventorySize` 返回上次采集的开放槽数，`controller.inventoryStack(slot)` 返回物品副本，`controller.forEachInventory(visitor)` 按索引遍历开放格，visitor的参数是 `(slot as int, stack as IItemStack)`。回调必须只读取当前数据，禁止修改数据、库存或世界。未配置动态函数、机器尚未装配或已注销时使用固定值；用 `null as ControllerInventorySize` 移除函数后也恢复固定值。
+
+`ControllerContext`、`ControllerInventorySize` 和 `ControllerSlotVisitor` 都位于 `mods.prototype_eng`。例如先配置固定2格，再根据机器数据计算开放数：
+
+```zenscript
+import mods.prototype_eng.MachineType;
+import mods.prototype_eng.ControllerContext;
+
+val machine = MachineType.create("example:assembler", "machine.example.assembler", "example:assembler");
+machine.componentData().controllerInventorySlots(2);
+machine.controllerInventorySlots(function(controller as ControllerContext) as int {
+    return controller.data.getInt("inventory_slots", 2);
+});
+machine.register("v1");
+```
+
 `MachineType.create(id, translationKey, structureId)` 创建机器声明。链式方法会把设置写入此声明，`register(revision)` 同时安排机器类型和运行装配的注册，并结束声明。注册后不能再修改机器。
 
 | 方法                                            | 对声明的影响                                                                                                |

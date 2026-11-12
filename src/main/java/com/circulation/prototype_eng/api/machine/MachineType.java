@@ -20,6 +20,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 /**
  * Immutable machine declaration shared by registration, assembly and later controller bindings.
@@ -41,6 +42,9 @@ public final class MachineType {
     private final ControllerExecutionPolicy executionPolicy;
     @Nullable
     private final ResourceLocation controllerModel;
+    private final int controllerInventorySlots;
+    @Nullable
+    private final ToIntFunction<MachineInstance> controllerInventorySize;
 
     private MachineType(Builder builder) {
         id = builder.id;
@@ -56,6 +60,19 @@ public final class MachineType {
         explicitExecutionMode = builder.explicitExecutionMode;
         executionPolicy = builder.executionPolicy;
         controllerModel = builder.controllerModel;
+        controllerInventorySlots = builder.controllerInventorySlots;
+        controllerInventorySize = builder.controllerInventorySize;
+    }
+
+    /** Fixed fallback before assembly, and whenever no dynamic size callback is configured. */
+    public int controllerInventorySlots() {
+        return controllerInventorySlots;
+    }
+
+    /** Pure owner-thread callback; the returned count must fit the default sixteen-slot grid. */
+    public int controllerInventorySlots(@Nullable MachineInstance machine) {
+        return machine == null || controllerInventorySize == null ? controllerInventorySlots
+            : ControllerInventory.requireSlotCount(controllerInventorySize.applyAsInt(machine));
     }
 
     public static Builder builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
@@ -144,6 +161,9 @@ public final class MachineType {
         private ControllerExecutionPolicy executionPolicy;
         @Nullable
         private ResourceLocation controllerModel;
+        private int controllerInventorySlots;
+        @Nullable
+        private ToIntFunction<MachineInstance> controllerInventorySize;
 
         private Builder(ResourceLocation id, LocalizationEnum displayName, ResourceLocation structureId) {
             this.id = Objects.requireNonNull(id, "machine ID");
@@ -210,6 +230,20 @@ public final class MachineType {
         @SuppressWarnings("UnusedReturnValue") // Scripts use the setter effect; Java addons may chain declarations.
         public Builder controllerModel(@Nullable ResourceLocation model) {
             controllerModel = model;
+            return this;
+        }
+
+        /** Sets the fixed fallback without removing an installed dynamic callback. Default is zero. */
+        @SuppressWarnings("UnusedReturnValue") // Java declarations can chain the same setter used by scripts.
+        public Builder controllerInventorySlots(int count) {
+            controllerInventorySlots = ControllerInventory.requireSlotCount(count);
+            return this;
+        }
+
+        /** Null removes the dynamic callback and restores use of the configured fixed count. */
+        @SuppressWarnings("UnusedReturnValue") // Java addons can chain the dynamic setter used by scripts.
+        public Builder controllerInventorySlots(@Nullable ToIntFunction<MachineInstance> count) {
+            controllerInventorySize = count;
             return this;
         }
 

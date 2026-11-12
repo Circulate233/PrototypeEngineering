@@ -4,6 +4,7 @@ import ae2.client.Point;
 import ae2.client.gui.AEBaseGui;
 import ae2.client.gui.widgets.ITooltip;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotStatus;
+import com.circulation.prototype_eng.api.machine.ControllerInventory;
 import com.circulation.prototype_eng.container.MachineContainer;
 import com.circulation.prototype_eng.container.MachineGuiSnapshot;
 import com.circulation.prototype_eng.localization.MachineGuiText;
@@ -116,6 +117,15 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
             fontRenderer.drawString(fontRenderer.trimStringToWidth(status, 81), LIST_X + 4, top + 16,
                 error ? 0xff5555 : idle ? 0xaaaaaa : 0xffffff);
         }
+        GlStateManager.disableLighting();
+        GlStateManager.disableDepth();
+        for (int slot = 0; slot < ControllerInventory.CAPACITY; slot++) if (!container.isControllerSlotAvailable(slot)) {
+            int left = MachineContainer.inventoryX(slot);
+            int top = MachineContainer.inventoryY(slot);
+            drawRect(left, top, left + 16, top + 16, 0xa0ffffff);
+        }
+        GlStateManager.enableDepth();
+        GlStateManager.enableLighting();
         if (maxScroll() > 0) {
             int handleY = handleY();
             boolean hover = new Rectangle(SCROLL_X, handleY, SCROLL_WIDTH, 15).contains(mouseX - guiLeft, mouseY - guiTop);
@@ -151,7 +161,6 @@ public final class MachineGui extends AEBaseGui<MachineContainer> {
     protected void actionPerformed(@NotNull GuiButton button) throws IOException {
         if (button instanceof PageTab) {
             dragging = false;
-            container.selectPage(0);
         } else super.actionPerformed(button);
     }
 

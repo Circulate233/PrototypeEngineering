@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -34,6 +35,28 @@ class MachineTypeRegistryTest {
 
     private static ResourceLocation id(String path) {
         return new ResourceLocation("test", path);
+    }
+
+    @Test
+    void controllerInventoryUsesCurrentMachineDataAndReturnsToFixedSizeWhenCallbackIsRemoved() {
+        var builder = MachineType.builder(id("inventory"), RecipeText.Cancelled, id("shape"));
+        assertEquals(0, builder.build().controllerInventorySlots(null));
+        var datum = new ComponentType<MachineInstance, int[]>(id("open_slots"), _ -> new int[]{3}, List.of());
+        builder.component(datum).controllerInventorySlots(2).controllerInventorySlots(machine -> Objects.requireNonNull(machine.components().get(datum))[0]);
+        var dynamic = builder.build();
+        var machine = new MachineInstance(dynamic);
+        machine.components().put(datum, new int[]{3});
+        assertEquals(2, dynamic.controllerInventorySlots());
+        assertEquals(2, dynamic.controllerInventorySlots(null));
+        assertEquals(3, dynamic.controllerInventorySlots(machine));
+        Objects.requireNonNull(machine.components().get(datum))[0] = 11;
+        assertEquals(11, dynamic.controllerInventorySlots(machine));
+        Objects.requireNonNull(machine.components().get(datum))[0] = 17;
+        assertThrows(IllegalArgumentException.class, () -> dynamic.controllerInventorySlots(machine));
+        builder.controllerInventorySlots(null);
+        assertEquals(2, builder.build().controllerInventorySlots(machine));
+        assertThrows(IllegalArgumentException.class, () -> builder.controllerInventorySlots(-1));
+        assertThrows(IllegalArgumentException.class, () -> builder.controllerInventorySlots(17));
     }
 
     @Test
