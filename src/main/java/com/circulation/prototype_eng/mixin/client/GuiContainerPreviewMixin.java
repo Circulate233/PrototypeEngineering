@@ -17,15 +17,17 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 /** Only a preview's local draw container skips server-pointer assignment; only its scoped parent keeps cursor ownership. */
 @Mixin(GuiContainer.class)
 public abstract class GuiContainerPreviewMixin implements PreviewNativeGui.Slots {
-    @Shadow protected abstract void drawSlot(Slot slot);
+    @Shadow
+    protected abstract void drawSlot(Slot slot);
 
-    @Override public void prototype_eng$renderSlot(Slot slot) {
+    @Override
+    public void prototype_eng$renderSlot(Slot slot) {
         drawSlot(slot);
     }
 
     @Redirect(method = "initGui", at = @At(value = "FIELD", target = "Lnet/minecraft/client/entity/EntityPlayerSP;openContainer:Lnet/minecraft/inventory/Container;", opcode = Opcodes.PUTFIELD), require = 1, allow = 1)
     private void prototype_eng$keepOriginalWindow(EntityPlayerSP player, Container local) {
-        if (!((Object) this instanceof StructurePreviewGui) && PreviewScreenTransitions.binding((GuiContainer) (Object) this, local))
+        if (!((Object) this instanceof StructurePreviewGui<?>) && PreviewScreenTransitions.binding((GuiContainer) (Object) this, local))
             player.openContainer = local;
     }
 

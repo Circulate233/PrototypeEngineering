@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 结构预览子界面类型修正：`StructurePreviewGui<C extends AEBaseContainer>`直接继承`AEBaseGui<C>`，父界面构造器接收`AEBaseGui<C>`；独立入口明确返回`StructurePreviewGui<StructurePreviewContainer>`。导航和Mixin只使用有界通配符，不再固定AEBaseContainer或使用原始类型。既有24项导航回归及Spotless通过，4Java本机IDEA全级零、MCP构建成功。入口[结构GUI](structures.md)，证据preview-subscreen-types/。下一步用户复验父页返回和槽位恢复；未开子代理、启动游戏或推送，其他对话改动及暂存独立保留。
+
 - 2026-11-12 控制器库存：固定槽数默认0或ToIntFunction<MachineInstance>动态返回，无回调按固定值，范围0..16。真实4×4原生槽位、关闭格前景白色覆盖/服务端拒绝、缩小保留物品、TE保存/正常掉落以及读取遍历入口均接通；Java与ZS说明已补。完整1994 tests/275 suites及Spotless通过，16Java本机IDEA全级零、MCP构建成功。入口[机器GUI](machine-gui.md#控制器库存)、[实施进度](implementation-status.md)。下一步用户复验真实物品存取、关闭重开、存档/掉落和白色覆盖；未启动游戏/开子代理/推送，原背景和暂存保留。
 
 - 2026-11-12 样板槽隔离修正：开启后每槽以总成身份/槽号独立扫描，脱离总成颜色；只共享本总成催化剂和外部未分区无色库存，不能拼别槽、借其他总成催化剂或有色普通仓。普通无色默认值和未隔离模式颜色分组保持。显式partition保留并规范为透明色，恢复兼容原有色槽标识且不切换槽位。红/蓝/无色真实供料与存档恢复用例及完整build共1991 tests/274 suites全零、Spotless通过；3个修改Java本机IDEA全级零，MCP指定文件构建成功。入口[颜色规则](block-registration.md#颜色与样板隔离)、[样板验证](../run/scripts/README-me-assemblies.md)，证据见[实施进度](implementation-status.md)。下一步用户重启验证三种颜色均逐槽隔离、催化剂和无色供料；未启动游戏/推送，背景和原暂存保留。

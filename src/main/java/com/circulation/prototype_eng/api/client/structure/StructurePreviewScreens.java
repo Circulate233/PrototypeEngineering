@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.client.structure;
 
 import ae2.api.orientation.BlockOrientation;
 import ae2.client.gui.AEBaseGui;
+import ae2.container.AEBaseContainer;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.client.gui.StructurePreviewGui;
 import com.circulation.prototype_eng.client.preview.PreviewScreenTransitions;
@@ -35,8 +36,8 @@ public final class StructurePreviewScreens {
         var view = new StructurePreviewView(service, id, settings, machine);
         view.anchor(StructurePreviewScreensAnchor.current());
         var navigation = PreviewScreenTransitions.capture(service);
-        var screen = mc.currentScreen instanceof AEBaseGui<?> parent ? new StructurePreviewGui(parent, view, navigation)
-            : new StructurePreviewGui(mc.player.inventory, view, navigation);
+        var screen = mc.currentScreen instanceof AEBaseGui<?> parent ? new StructurePreviewGui<>(parent, view, navigation)
+            : StructurePreviewGui.standalone(mc.player.inventory, view, navigation);
         return navigation.open(screen);
     }
 
@@ -48,7 +49,7 @@ public final class StructurePreviewScreens {
         return open(machine.structureId(), settings, machine);
     }
 
-    public static boolean open(AEBaseGui<?> parent, MachineType machine, BlockOrientation orientation) {
+    public static <C extends AEBaseContainer> boolean open(AEBaseGui<C> parent, MachineType machine, BlockOrientation orientation) {
         var mc = Minecraft.getMinecraft();
         if (mc.currentScreen != parent || mc.player == null || mc.world == null || !mc.player.isEntityAlive() || mc.player.getHealth() <= 0 || mc.player.openContainer != parent.getContainer())
             return false;
@@ -58,7 +59,7 @@ public final class StructurePreviewScreens {
         var view = new StructurePreviewView(service, machine.structureId(), settings, machine);
         view.anchor(parent.getContainer().getTarget() instanceof TileEntity tile ? tile.getPos() : StructurePreviewScreensAnchor.current());
         var navigation = PreviewScreenTransitions.capture(service);
-        return navigation.open(new StructurePreviewGui(parent, view, navigation));
+        return navigation.open(new StructurePreviewGui<>(parent, view, navigation));
     }
 
     /** Independent custom pool pages can compose this concrete panel without extending the default page. */

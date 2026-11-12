@@ -184,7 +184,7 @@ public final class PreviewScreenTransitions {
         private final int window;
         private final @Nullable GuiScreen parent;
         private final ObjectArrayList<SavedSlot> originalSlots = new ObjectArrayList<>();
-        private StructurePreviewGui viewer;
+        private StructurePreviewGui<?> viewer;
         private boolean returned;
 
         private Session(StructurePreviews service) {
@@ -214,15 +214,15 @@ public final class PreviewScreenTransitions {
                 && player.openContainer == container && container.windowId == window && player.isEntityAlive() && player.getHealth() > 0 && !service.closed();
         }
 
-        public boolean viewerCurrent(StructurePreviewGui screen) {
+        public boolean viewerCurrent(StructurePreviewGui<?> screen) {
             return viewer == screen && Minecraft.getMinecraft().currentScreen == screen && ownerCurrent();
         }
 
-        public boolean initCurrent(StructurePreviewGui screen) {
+        public boolean initCurrent(StructurePreviewGui<?> screen) {
             return viewerCurrent(screen);
         }
 
-        public boolean open(StructurePreviewGui screen) {
+        public boolean open(StructurePreviewGui<?> screen) {
             if (viewer != null || !ownerCurrent() || Minecraft.getMinecraft().currentScreen != parent) return false;
             viewer = screen;
             var previous = active;
@@ -270,11 +270,11 @@ public final class PreviewScreenTransitions {
         }
 
         private void keepNestedViewerSuspended() {
-            if (Minecraft.getMinecraft().currentScreen instanceof StructurePreviewGui next && next != viewer && next.getContainer() == container)
+            if (Minecraft.getMinecraft().currentScreen instanceof StructurePreviewGui<?> next && next != viewer && next.getContainer() == container)
                 next.suspendNativeSlots();
         }
 
-        public void suspendNativeSlots(StructurePreviewGui screen) {
+        public void suspendNativeSlots(StructurePreviewGui<?> screen) {
             if (screen.getContainer() != container || !viewerCurrent(screen)) return;
             for (var saved : originalSlots) if (container.inventorySlots.contains(saved.slot)) saved.suspend();
         }

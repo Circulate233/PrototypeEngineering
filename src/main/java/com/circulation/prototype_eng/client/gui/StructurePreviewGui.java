@@ -24,30 +24,29 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 
-/** Concrete AE2 screen. A machine sub-screen uses exactly the parent's original container and window. */
-public final class StructurePreviewGui extends AEBaseGui<AEBaseContainer> {
+/** A preview sub-screen retains its parent's container type and original window. */
+public final class StructurePreviewGui<C extends AEBaseContainer> extends AEBaseGui<C> {
     private final StructurePreviewView view;
     private final PreviewScreenTransitions.Session navigation;
     private final PreviewBackRequest backRequest = new PreviewBackRequest(StructurePreviewGui::buttonsReleased, this::back);
     private StructurePreviewPanel panel;
 
-    public StructurePreviewGui(InventoryPlayer inventory, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
-        this(new StructurePreviewContainer(inventory), inventory, view, navigation);
+    public static StructurePreviewGui<StructurePreviewContainer> standalone(InventoryPlayer inventory, StructurePreviewView view,
+                                                                          PreviewScreenTransitions.Session navigation) {
+        return new StructurePreviewGui<>(new StructurePreviewContainer(inventory), inventory, view, navigation);
     }
 
-    public StructurePreviewGui(AEBaseGui<?> parent, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
+    public StructurePreviewGui(AEBaseGui<C> parent, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
         this(parent.getContainer(), parent.getContainer().getPlayerInventory(), view, navigation);
     }
 
-    private StructurePreviewGui(AEBaseContainer container, InventoryPlayer inventory, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
+    private StructurePreviewGui(C container, InventoryPlayer inventory, StructurePreviewView view, PreviewScreenTransitions.Session navigation) {
         super(container, inventory);
         this.view = view;
         this.navigation = navigation;
         xSize = 184;
         ySize = 220;
         widgets.add("close", new SimpleIconButton(Icon.CLEAR, GuiText.Close.text(), backRequest::mousePress), new Point(164, 4));
-        // A canceled native InitPre still leaves a displayed GUI. Its resources and local input
-        // must already exist; a canceled/replaced GuiOpen releases this panel through Session.
         panel = new StructurePreviewPanel(view);
     }
 
