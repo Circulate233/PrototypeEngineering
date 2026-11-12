@@ -36,7 +36,7 @@ public final class MeResourceHatchGui extends AEBaseGui<MeResourceHatchContainer
         super(container, player);
         xSize = 195;
         ySize = container.guiHeight;
-        background = GuiAtlas.texture("gui_bus/" + (container.mode() == HatchMode.MIXED ? "gui_item_io_bus" : "gui_item_bus"));
+        background = GuiAtlas.texture("gui_bus/" + (container.mode() == HatchMode.MIXED ? "gui_resource_io_bus" : "gui_resource_bus"));
         inputScroll.setCaptureMouseWheel(false);
         outputScroll.setCaptureMouseWheel(false);
         widgets.add("meInputScroll", inputScroll);

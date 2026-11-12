@@ -1,5 +1,10 @@
 # 实施进度
 
+- 2026-11-12 ME仓室GUI纹理返工：按用户截图纠正上一版擦除框跨不同画布尺寸套用的问题。先将全部10张新增GUI源图覆盖恢复，再逐图移除：`gui_item_bus`/`gui_item_io_bus`旧x=0挂耳及右侧升级栏、`gui_mix_bus`/`gui_mix_io_bus`各自x=0空按钮轮廓和右侧升级栏、样板图右侧升级栏。资源图左边框按原邻接像素补齐；资源/mix/样板的各自坐标明确记录在纹理修图清单，退回/模式/颜色按钮、背包/滚动槽、主框线与底部slot sprite均保留。5张通用slot、样板slot、io_mode和palette atlas直接从原图复制，像素没有修改；共享工作区后续重编码不影响RGBA核对结论，不承诺最终PNG字节与原图相同。
+- 用户点名item命名的ME总成图片已改名为`gui_bus/gui_resource_bus.png`与`gui_bus/gui_resource_io_bus.png`，`MeResourceHatchGui`已引用通用命名。5张背景按像素白名单逐像素断言擦除外与原图一致；mix/样板主区完全一致；逐张放大前后图证明边框完整且没有半列升级残迹。Java `MeResourceHatchGui`本机IDEA MCP `errorsOnly:false`无错误/警告/弱警告，MCP指定文件构建成功。完整Gradle `build -x test`含Spotless、资源/JAR/reobf及check通过；本轮纯像素、资源名称和静态引用修复，没有增加镜像测试。证据与源纹理、基线、像素清单、修图程序、对比图和构建日志位于`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`。
+- 打包再次验证10张图与源码及build/resources/main显示像素一致，构建仅清理全透明像素RGB，旧item资源名在源目录和JAR中均无残留。共享工作区中途修改结构预览时，MCP重查曾报其`StructurePreviewPanel.java`中GuiScreen赋值给GuiContainer的类型错误；保留失败证据，没有代改这部分进行中的工作。其负责线程后续修复后，最终本机MCP指定GUI文件构建恢复成功且problems空，早先Gradle通过证据及纹理/打包核对也仍有效。
+- 仍需用户完整重启核对运行时截图和纹理引用；没有启动游戏或推送。初始182份工作区修改中9份是本轮用户要求返工的GUI，目标外173份文件按哈希保护；原暂存JEI测试与随后其它对话新增的暂存变动均保留。本轮只纳入GUI纹理、直接引用、规范和状态记录。
+
 - 2026-11-12 结构预览子界面保留泛型：原StructurePreviewGui同时接受独立与任意父容器，却固定继承AEBaseGui<AEBaseContainer>。现改为StructurePreviewGui<C extends AEBaseContainer> extends AEBaseGui<C>，父构造器要求AEBaseGui<C>，公开open方法保留C；独立standalone工厂返回StructurePreviewGui<StructurePreviewContainer>，私有构造器参数为C。Session和Mixin的观察引用使用StructurePreviewGui<?>，全部创建点用类型推断，没有原始类型、强转或unchecked压制。子页继续沿AE原生switchToScreen/returnFromSubScreen及原Session事件保护工作。
 - 对比AE2的GuiKeyTypeSelection<C>泛型子页实现，未按宽泛父容器类型复制。4个修改Java逐文件本机IDEA errorsOnly:false错误/警告/弱警告均0，MCP指定文件build成功；隔离HEAD源码加本轮4文件编译及现有PreviewScreenNavigationTest共24项通过，失败/错误/跳过0，定向Spotless通过。首轮隔离构建遗漏生成Tags源码目录导致编译失败，已仅修正外部验证脚本并复跑成功，未为检查修改项目构建文件或添加镜像测试。真实GL/HEI与父页返回仍待用户客户端复验。证据C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/preview-subscreen-types/。只本地提交本轮源码和文档段落，不推送；其他对话的共享文档修改及暂存单独保留。
 

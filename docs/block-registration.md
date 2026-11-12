@@ -50,10 +50,11 @@ UV，迁移命名空间，并沿现有仓室规范把发光覆盖层后绘且设
 
 四个 `me_*` 均有独立方块、物品与模型注册。三种资源总成已接入独立事务库存及实际 ME 节点；样板总成按下节规则接入，最终验证见实施进度。
 
-GUI输入/输出原图采用用户指定的 `prototypemachinery/textures/gui/gui_bus/gui_item_bus.png`，接口采用 `gui_item_io_bus.png`
-。保留下角标记槽及实际槽两个18×18图案，擦除无功能的升级列与自动IO按钮；源导出同名mix原图缺少这两个图案，不作为上述GUI主图。样板背景和操作图来自
-`导出/gui/gui_bus/gui_pattern_bus*.png`，配套 `io_mode.png`、`color_palette.png`
-。样板升级列擦除，退回、模式与颜色控件保留。所有修改均有像素范围及原字节证据，界面不再显示不存在的升级或邻居自动IO。
+GUI输入/输出原图采用用户指定的 `prototypemachinery/textures/gui/gui_bus/gui_item_bus.png`，接口采用 `gui_item_io_bus.png`；当前资源文件分别使用通用命名 `gui_resource_bus.png`、`gui_resource_io_bus.png`，正式GUI不再引用item命名。保留下角标记槽及实际槽两个18×18图案，移除无功能的升级列与自动IO按钮；导出的mix原图没有这两个图案，保留其原布局但不替换正式GUI主图。
+
+2026-11-12按用户截图重新修图：这批10张新增GUI纹理全部从上述原始目录和`导出/gui`恢复后再修改。五张背景分别定位：资源图升级列为`[199,4,225,176)`，mix图为`[217,4,243,176)`，样板图为`[346,4,372,176)`，坐标右下不包含。不能跨图片套用同一擦除框。资源图左侧自动IO挂耳完整清除，并从邻近完好边框补回两列接缝；mix图只清除两处空按钮轮廓。标题、正文、背包、滚动槽和底部slot/箭头图案保留，样板左侧退回/模式/颜色控件保留。
+
+`gui_bus_slot.png`、`gui_pattern_bus_slot.png`、`io_mode.png`及两张调色板从原文件恢复，不作像素修改。五张背景逐像素核对确认白名单外RGBA与原图完全一致；mix及样板主界面完整区域与原图一致。共享工作区出现PNG重编码，最终以完整RGBA一致性验证，不把文件字节变化当作像素改变。修图清单与逐张放大前后对比保存在`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，资源构建与游戏画面验证分别记录于实施进度。
 
 ## 通用 ME 库存
 

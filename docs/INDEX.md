@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-12 ME仓室GUI纹理返工：截图指出首版擦除框宽度套用错误，造成mix图右边框缺损和半列升级栏、资源图自动IO按钮残片。10张新增图均从原始`prototypemachinery/textures/gui`或`导出/gui`逐文件恢复后重做；资源图、mix图、样板图分别按原分辨率独立擦除，白名单外像素与原始纹理一致。5张sprite/palette atlas全部像素按原图恢复；item命名输入/接口图改为`gui_resource_bus.png`/`gui_resource_io_bus.png`并更新GUI引用。Gradle build -x test含Spotless及最终MCP定向构建通过，GUI引用Java本机MCP全级零；中途并行预览编译错误已由其负责线程修复，未代改其源码。10张资源及JAR显示一致，旧item资源名无残留。逐图对比与像素清单见`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，入口[纹理规则](block-registration.md)。需用户重启检查真实纹理上传和GUI绘制；未启动Minecraft/推送，本轮目标外既有背景及暂存保持。
+
 - 2026-11-12 结构预览子界面类型修正：`StructurePreviewGui<C extends AEBaseContainer>`直接继承`AEBaseGui<C>`，父界面构造器接收`AEBaseGui<C>`；独立入口明确返回`StructurePreviewGui<StructurePreviewContainer>`。导航和Mixin只使用有界通配符，不再固定AEBaseContainer或使用原始类型。既有24项导航回归及Spotless通过，4Java本机IDEA全级零、MCP构建成功。入口[结构GUI](structures.md)，证据preview-subscreen-types/。下一步用户复验父页返回和槽位恢复；未开子代理、启动游戏或推送，其他对话改动及暂存独立保留。
 
 - 2026-11-12 控制器库存：固定槽数默认0或ToIntFunction<MachineInstance>动态返回，无回调按固定值，范围0..16。真实4×4原生槽位、关闭格前景白色覆盖/服务端拒绝、缩小保留物品、TE保存/正常掉落以及读取遍历入口均接通；Java与ZS说明已补。完整1994 tests/275 suites及Spotless通过，16Java本机IDEA全级零、MCP构建成功。入口[机器GUI](machine-gui.md#控制器库存)、[实施进度](implementation-status.md)。下一步用户复验真实物品存取、关闭重开、存档/掉落和白色覆盖；未启动游戏/开子代理/推送，原背景和暂存保留。
