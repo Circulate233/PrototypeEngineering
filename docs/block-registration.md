@@ -56,6 +56,8 @@ GUI输入/输出原图采用用户指定的 `prototypemachinery/textures/gui/gui
 
 `gui_bus_slot.png`、`gui_pattern_bus_slot.png`、`io_mode.png`及两张调色板从原文件恢复，不作像素修改。五张背景逐像素核对确认白名单外RGBA与原图完全一致；mix及样板主界面完整区域与原图一致。共享工作区出现PNG重编码，最终以完整RGBA一致性验证，不把文件字节变化当作像素改变。修图清单与逐张放大前后对比保存在`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261112/gui-artwork-repair/`，资源构建与游戏画面验证分别记录于实施进度。
 
+随后2026-11-12纹理使用清理移除了确认无消费者的`gui_mix_bus.png`、`gui_mix_io_bus.png`、`gui_bus_slot.png`和`color_palette_shadow.png`。正式ME GUI仍使用上述通用命名两张资源主图、样板主图及其slot图集，`io_mode.png`和`color_palette.png`保留。未被模型或CTM元数据引用的导出备用图也已删除，注册装饰方块实际使用的基础面和已有CTM元数据引用不变。
+
 ## 通用 ME 库存
 
 `MeAssemblyConfig` 从 `config/prototype_eng/me_assemblies.cfg`

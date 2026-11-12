@@ -17,7 +17,7 @@ import javax.annotation.ParametersAreNonnullByDefault;
 import java.util.Locale;
 import java.util.Objects;
 
-/** Native Minecraft drawing compositions. PM textures retain their original paths and MIT notice. */
+/** Native Minecraft drawing compositions. Resource slots share AEKey rendering and generic skins. */
 @SideOnly(Side.CLIENT)
 @ParametersAreNonnullByDefault
 public final class JeiVisuals {
@@ -102,21 +102,21 @@ public final class JeiVisuals {
         }
     }
 
+    /** Legacy layout sizes retained for callers; their skin is the same generic AEKey skin. */
     public enum Fluid {
-        PLAID("1_1_plaid", 18, 18), HALF_1("0o5_1", 9, 18), HALF_2("0o5_2", 9, 36), HALF_3("0o5_3", 9, 54), HALF_4("0o5_4", 9, 72),
-        ONE_1("1_1", 18, 18), ONE_2("1_2", 18, 36), ONE_3("1_3", 18, 54), ONE_4("1_4", 18, 72),
-        ONE_HALF_1("1o5_1", 27, 18), ONE_HALF_2("1o5_2", 27, 36), ONE_HALF_3("1o5_3", 27, 54), ONE_HALF_4("1o5_4", 27, 72),
-        TWO_1("2_1", 36, 18), TWO_2("2_2", 36, 36), TWO_3("2_3", 36, 54), TWO_4("2_4", 36, 72);
-        final Texture base, top;
+        PLAID(18, 18), HALF_1(9, 18), HALF_2(9, 36), HALF_3(9, 54), HALF_4(9, 72),
+        ONE_1(18, 18), ONE_2(18, 36), ONE_3(18, 54), ONE_4(18, 72),
+        ONE_HALF_1(27, 18), ONE_HALF_2(27, 36), ONE_HALF_3(27, 54), ONE_HALF_4(27, 72),
+        TWO_1(36, 18), TWO_2(36, 36), TWO_3(36, 54), TWO_4(36, 72);
+        private final int width, height;
 
-        Fluid(String key, int width, int height) {
-            String directory = key.equals("0o5_1") ? "gas_module/" : "fluid_module/";
-            base = new Texture(texture(directory + key + "_base"), width, height);
-            top = new Texture(texture(directory + key + "_top"), width, height);
+        Fluid(int width, int height) {
+            this.width = width;
+            this.height = height;
         }
 
         public JeiSlot slot(int x, int y) {
-            return new JeiSlot(x, y, base.width, base.height, 1, new FluidSkin(this));
+            return new JeiSlot(x, y, width, height, 1, new FluidSkin(this));
         }
     }
 
@@ -359,6 +359,7 @@ public final class JeiVisuals {
         }
     }
 
+    /** Compatibility skin: no fluid/gas-specific texture or rendering branch. */
     public record FluidSkin(Fluid fluid) implements JeiSlot.Skin {
         public FluidSkin {
             Objects.requireNonNull(fluid);
@@ -366,12 +367,12 @@ public final class JeiVisuals {
 
         @Override
         public void background(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) {
-            fluid.base.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
+            AUTOMATIC.background(minecraft, slot, resource);
         }
 
         @Override
         public void foreground(Minecraft minecraft, JeiSlot slot, JeiRecipeDisplay.Resource resource) {
-            fluid.top.draw(minecraft, slot.x(), slot.y(), slot.width(), slot.height());
+            AUTOMATIC.foreground(minecraft, slot, resource);
         }
     }
 }
