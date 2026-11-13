@@ -1,5 +1,15 @@
 # 实施进度
 
+## 2026-11-14 网络中心停用原因与运算仓标题/布局
+
+- 用户反馈中心一直显示“网络未生效”。确认原GUI把未成型、队伍无效等全部合并为Inactive；中心不能支付每tick费用时，NetworkRuntime在选择备用中心前把其capture移除，原发布状态表也失去该中心，GUI只能取得null并再次显示同一文案。现复用原状态表保留 `INSUFFICIENT_POWER` 诊断，缺电中心仍不获得工作许可，中心选择/费用与回滚规则不变。GUI分别显示未成型、队伍无效、能源不足、无可用中心、等级/并发不足；未取得发布状态时明确显示状态未就绪。状态文字限宽，悬停可查看全文，能源不足附供电说明。
+- 原run与demo中心均在生效时支付4 FE/t，单独放置/成型且没有可支付能源不会生效。计划只读查看实际JVM状态，进程检查时游戏已经退出，只有Gradle daemon；未附加Arthas或启动游戏。**用户当时具体是哪一种停用条件仍未确认**，不把源码诊断当成该世界的实际状态证据；后续以新提示与用户反馈核对。
+- 四级运算仓方块本地化改为其他仓相同的带色等级前缀：`[Computation-LvN]-运算仓` / `Computation Hatch`。物理GUI与MEStorage描述共用HatchGuiTitle的等级方块键。共享资源仓GUI标题明确居左，运算仓槽位改为标准x26/y24；原195×132紧凑尺寸、玩家库存位置、容量与外部IO保持。只修正坐标与命名，没有添加布局包装、配置复制或静态镜像测试。
+- 当前日志同时显示demo IO组件引用不存在的 `minecraft:items/redstone` 贴图，已更正为 `minecraft:items/redstone_dust`。没有修改日志中其他旧ME存档加载问题。
+- 扩展原中心付费/备用选择行为测试，确认高阶中心缺电后发布可读的INSUFFICIENT_POWER状态、不给工作许可、低阶中心仍按原规则接替。未新增测试方法。完整 **Gradle build成功，1863 tests/271 suites，失败0、错误0**，包括Spotless、JAR/reobf；11份Java本机IDEA MCP格式化并逐文件 `get_file_problems(errorsOnly:false)`，错误/警告/弱警告全零，MCP build_project成功。27Java addon已重新编译安装，15真实SDK脚本与原核心事务检查通过，无FML/Bootstrap初始化。
+- 证据目录 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/network-status-hatch-layout/`：`idea-results.json`、`idea-buffer.json`、`build-verified.log`、`addon.log`、`sdk.log` 与 `sdk/script-verifier-result.json`。首轮编译发现MEStorage描述仍引用旧通用名称，已迁移为等级名称并完整重建；失败日志保留。
+- 下一步用户完整启动复验中心的具体状态提示、供电后生效、备用中心选择和运算仓带级别的左对齐标题/槽位/组件贴图。静态与行为验证不替代该世界的真实条件或渲染结果。本阶段本地提交，不推送、不启动游戏。
+
 ## 2026-11-14 run网络设备、组件与配方演示
 
 - 新增run的16/31两份ZS脚本，注册 `net_demo_center`、`net_demo_computer`、`net_demo_station`、`net_demo_database` 四种专用默认控制器及 `net_demo_load` 普通联网负载机。中心一级/4并发/4 FE/t，计算机上限8并发，研究站一级/算力100与量子位10每tick速率/8 FE/t，数据库一级/16条。负载机1工位/1并行，两条普通配方无需研究门槛即可观察资源占用；结构与操作见[run演示](../run/scripts/README-network-demo.md)。所有内容只在run开发addon/脚本中注册。

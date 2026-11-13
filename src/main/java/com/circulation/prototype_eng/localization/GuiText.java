@@ -11,7 +11,6 @@ public enum GuiText implements LocalizationEnum {
     Output,
     Energy,
     ResourceStorage,
-    ComputationHatch,
     ComputationCapacity,
     ComputationComponentsOnly,
     InputRate,

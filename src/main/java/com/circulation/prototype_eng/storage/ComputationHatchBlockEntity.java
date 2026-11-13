@@ -12,7 +12,7 @@ import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.HatchMode;
 import com.circulation.prototype_eng.api.storage.HatchTier;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
-import com.circulation.prototype_eng.localization.GuiText;
+import com.circulation.prototype_eng.localization.HatchGuiTitle;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.item.ItemStack;
@@ -100,12 +100,12 @@ public class ComputationHatchBlockEntity extends AEBaseTile implements ResourceH
 
     @Override
     public ITextComponent guiTitle() {
-        return GuiText.ComputationHatch.text();
+        return HatchGuiTitle.computation(tier()).text();
     }
 
     @Override
     public ResourceHatchLayout layout() {
-        return new ResourceHatchLayout(level, 1, 195, 132, 256, 25, (215 - level * 18) / 2, 0, 27, false,
+        return new ResourceHatchLayout(level, 1, 195, 132, 256, 24, 26, 0, 27, false,
             new ResourceLocation(Tags.MOD_ID, "textures/gui/computation_hatch/level_" + level + ".png"));
     }
 

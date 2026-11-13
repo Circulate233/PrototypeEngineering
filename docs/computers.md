@@ -34,6 +34,8 @@ MachineAssembly.builder(type, "computer-v1")
 
 等级与内容由运算仓 TE 保存和恢复，不在 onLoad 反查方块补配置。破坏使用现有来源预留和延迟掉落机制，不复制仍有补偿义务的库存。
 
+2026-11-14 运算仓名称、GUI标题与MEStorage描述统一使用带色等级方块名称 `[Computation-LvN]-运算仓`。共享资源仓标题居左，运算仓资源槽从标准x26/y24开始，紧凑195×132尺寸保持。
+
 ## 组件、配方与内部资源
 
 组件物品实现 `NetworkComputerComponent.capture(ItemStack, MachineInstance)`，返回：

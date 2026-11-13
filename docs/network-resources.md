@@ -23,6 +23,8 @@ static final NetworkResourceType COOLING = NetworkResourceType.computer(
 
 客户端保留展示对象与行顺序，增量更新原行；成行文本仅在数值变化或GUI重新初始化后生成，不经ITextComponent数组或每tick字符串传输。宽384、高162～242的显示屏无玩家背包，超过5行才显示滑块，滚动完全在客户端完成。占用读取在该tick工作join后、预算关闭前执行。
 
+状态分别显示能源不足、未成型、所有者队伍无效等原因；尚未取得当前发布状态时显示状态未就绪。缺电中心保留INSUFFICIENT_POWER诊断，仍不获得工作许可；原选择与费用规则不变，悬停能源不足可查看供电说明。
+
 ## 供给与预算
 
 `NetworkComputerComponent.Capture(concurrencyPerItem, resourcesPerItem, requiredResources, energyPerTick, current)` 分别定义整数并发、double供给、本机消耗、FE与版本证明。物料安装数量仍按long汇总；供给乘安装数量后用 `addTo` 合并。单件组件、计算机和研究站资源量没有固有上限，保留非负、有限数量和实际算术溢出预检。

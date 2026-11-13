@@ -190,6 +190,7 @@ public final class NetworkRuntime implements AutoCloseable {
             var external = this.participants.capture(tick, epoch);
             var contributions = new ObjectArrayList<>(external.contributions);
             contributions.addAll(Objects.requireNonNull(participants.apply(epoch)));
+            var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>(captures.size());
             NetworkPlan plan;
             while (true) {
                 var inputs = NetworkPlanner.capture(epoch, devices, contributions, teams);
@@ -209,6 +210,7 @@ public final class NetworkRuntime implements AutoCloseable {
                 }
                 if (unavailable == null) break;
                 rollbackPower(upkeep);
+                states.put(unavailable, NetworkWorkState.INSUFFICIENT_POWER);
                 var absent = captures.remove(unavailable);
                 devices.remove(absent.snapshot());
             }
@@ -243,7 +245,6 @@ public final class NetworkRuntime implements AutoCloseable {
                     additions.put(entry.getKey(), new NetworkTeamBudget(tick, entry.getValue().concurrencyPerTick(), entry.getValue().resourcesPerTick(), ownerCheck));
                 }
             }
-            var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>(captures.size());
             for (var registration : captures.keySet()) {
                 states.put(registration, Objects.requireNonNull(plan.workStates().get(registration.identity.identity().machineId())));
             }

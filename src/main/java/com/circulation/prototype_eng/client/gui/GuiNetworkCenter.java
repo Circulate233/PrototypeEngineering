@@ -102,9 +102,8 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
         fontRenderer.drawString(container.networkLevel == 0 ? "—" : (container.networkLevel < 10 ? "0" : "") + container.networkLevel, 0, 0, 0xe1edf1);
         GlStateManager.popMatrix();
         fontRenderer.drawString(NetworkCenterGuiText.Level.getLocal(), 69, 42, 0x87969f);
-        var status = container.state == NetworkWorkState.ACTIVE_CENTER ? NetworkCenterGuiText.Active
-            : container.state == NetworkWorkState.SAME_TYPE_CONFLICT ? NetworkCenterGuiText.Standby : NetworkCenterGuiText.Inactive;
-        fontRenderer.drawString(status.getLocal(), 69, 57, container.state == NetworkWorkState.ACTIVE_CENTER ? 0x9dccb4 : 0xc3ac87);
+        GuiLabel.draw(fontRenderer, statusText().getLocal(), 69, 57, 80, 10,
+            container.state == NetworkWorkState.ACTIVE_CENTER ? 0x9dccb4 : 0xc3ac87, false);
         fontRenderer.drawString(NetworkCenterGuiText.Concurrency.getLocal(), 150, 40, 0xd5e1e6);
         String concurrency = container.concurrencyUsed + " / " + container.concurrency;
         fontRenderer.drawString(concurrency, 362 - fontRenderer.getStringWidth(concurrency), 40, 0xe1edf1);
@@ -118,6 +117,20 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
                 GuiLabel.draw(fontRenderer, container.resources.rows().get(scrollIndex + row).text(), LIST_X, LIST_Y + row * ROW_HEIGHT + 5,
                     listWidth(), 10, 0xd5e1e6, false);
         }
+    }
+
+    private NetworkCenterGuiText statusText() {
+        if (container.state == null) return NetworkCenterGuiText.NoState;
+        return switch (container.state) {
+            case ACTIVE_CENTER, ACTIVE_DATA_CENTER, ACTIVE_DEVICE -> NetworkCenterGuiText.Active;
+            case UNFORMED -> NetworkCenterGuiText.Unformed;
+            case OWNER_TEAM_REJECTED -> NetworkCenterGuiText.TeamRejected;
+            case INSUFFICIENT_POWER -> NetworkCenterGuiText.NoPower;
+            case NO_ACTIVE_CENTER -> NetworkCenterGuiText.NoActiveCenter;
+            case CENTER_LEVEL_INSUFFICIENT -> NetworkCenterGuiText.LevelInsufficient;
+            case SAME_TYPE_CONFLICT -> NetworkCenterGuiText.Standby;
+            case INSUFFICIENT_THREADS -> NetworkCenterGuiText.NoConcurrency;
+        };
     }
 
     private int handleHeight() {
@@ -174,6 +187,11 @@ public class GuiNetworkCenter extends AEBaseGui<ContainerNetworkCenter> {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         super.drawScreen(mouseX, mouseY, partialTicks);
+        if (isPointInRegion(69, 57, 80, 10, mouseX, mouseY)) {
+            var status = statusText();
+            drawHoveringText(status == NetworkCenterGuiText.NoPower
+                ? List.of(status.getLocal(), NetworkCenterGuiText.PowerHint.getLocal()) : List.of(status.getLocal()), mouseX, mouseY, fontRenderer);
+        }
         if (isPointInRegion(LIST_X, LIST_Y, listWidth(), visibleRows * ROW_HEIGHT, mouseX, mouseY)) {
             int row = scrollIndex + (mouseY - guiTop - LIST_Y) / ROW_HEIGHT;
             if (row < container.resources.rows().size()) {

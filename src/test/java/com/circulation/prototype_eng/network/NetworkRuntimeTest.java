@@ -12,6 +12,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
+import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
@@ -24,6 +25,7 @@ import net.minecraft.util.math.BlockPos;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.FutureTask;
@@ -116,6 +118,8 @@ class NetworkRuntimeTest {
             runtime.beginTick(1);
             assertTrue(runtime.refresh());
             assertFalse(highRole.allowsNetworkWork());
+            assertEquals(NetworkWorkState.INSUFFICIENT_POWER, highRole.state());
+            assertEquals(NetworkWorkState.INSUFFICIENT_POWER, Objects.requireNonNull(highRole.view()).state());
             assertTrue(lowRole.allowsNetworkWork());
             assertEquals(17, lowPower.storedEnergy());
             assertEquals(1, runtime.plan().teams().get("team").concurrencyPerTick());

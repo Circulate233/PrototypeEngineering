@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-14 中心状态与运算仓样式修正：缺电中心保留INSUFFICIENT_POWER诊断，GUI分别显示能源不足、未成型、队伍无效、暂无中心与状态未就绪，未再统一误写未生效；示例中心生效需4 FE/t。运算仓使用与其他仓一致的带色Computation-LvN方块名称/GUI标题，资源标题居左、槽位起点26/24；示例IO组件红石贴图改为redstone_dust。11Java经IDEA格式化/全级检查全零，完整1863测试/271 suites、MCP构建、27Java addon安装和15脚本检查通过，证据见[实施进度](implementation-status.md)。当前游戏已退出，用户当时的具体停用原因未取得运行态证据；下一步完整启动查看新的原因提示并复验标题/槽位。本地提交，不启动游戏/推送。
+
 - 2026-11-14 run网络演示补齐：独立net_demo中心/计算机/研究站/数据库及普通负载机，三种计算组件、三条供给配方、两条无需研究的负载配方，六种外部资源含分数数量。`/pe_examples kit network`领取整套材料，原build/charge和扩展net-stock可搭建、供能、投物品与水/岩浆；入口[演示操作](../run/scripts/README-network-demo.md)。27Java addon已编译安装，15真实ZS脚本及既有核心行为检查通过；6份run Java经IDEA格式化/全级检查请求，均被IDE排除，MCP主项目构建通过，证据见[实施进度](implementation-status.md)。下一步用户完整启动，复验中心六行/滑块、占用变化、组件全停/配方独立供给与恢复；本地提交，不启动游戏/推送。
 
 - 2026-11-13 网络中心GUI与资源增量同步完成：按[获批HTML](previews/network-center.html)实现无背包显示屏，384×162～242，超过5行本地滑块。资源无注册/默认类型，double/R2D按单例身份，addTo累加，并发独立整数。最终采用资源自己的AE PacketWritable固定展示包，后续只同步索引与变化的占用/上限double，归零移除、新容器完整基线，稳定时无更新包；已删除未提交的TextComponent数组方案。入口[网络资源](network-resources.md)、[API](../api.md#资源展示包与增量同步)。1863测试/271 suites与完整build、MCP构建、27Java addon和13脚本编译通过；198份src Java已IDEA格式化/全级检查，197份全零、1份未实际改动CTM测试保留18条IDE依赖解析错误，6份run被排除。证据见[实施进度](implementation-status.md)。下一步用户实机复验滚动、数量变化/归零及重开恢复；本地提交、不启动游戏/推送。

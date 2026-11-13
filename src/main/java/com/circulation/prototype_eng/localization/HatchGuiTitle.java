@@ -16,6 +16,10 @@ public record HatchGuiTitle(String translationKey) implements LocalizationEnum {
             + mode.name().toLowerCase(Locale.ROOT) + "_hatch_" + tier.level() + ".name");
     }
 
+    public static HatchGuiTitle computation(HatchTier tier) {
+        return new HatchGuiTitle("tile." + Tags.MOD_ID + ".computation_hatch_" + tier.level() + ".name");
+    }
+
     @Override
     public String getTranslationKey() {
         return translationKey;

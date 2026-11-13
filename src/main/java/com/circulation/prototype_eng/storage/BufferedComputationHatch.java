@@ -15,7 +15,8 @@ import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.storage.SlottedResourceHatch;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
-import com.circulation.prototype_eng.localization.GuiText;
+import com.circulation.prototype_eng.localization.HatchGuiTitle;
+import com.circulation.prototype_eng.api.storage.HatchTier;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2LongOpenHashMap;
 import net.minecraft.nbt.NBTTagCompound;
@@ -182,7 +183,7 @@ public final class BufferedComputationHatch implements ComputationHatch {
 
         @Override
         public ITextComponent getDescription() {
-            return GuiText.ComputationHatch.text();
+            return HatchGuiTitle.computation(HatchTier.of(inventory.size())).text();
         }
     }
 }

@@ -181,7 +181,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
 
     @Override
     public void drawFG(int x, int y, int mouseX, int mouseY) {
-        GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
+        GuiLabel.draw(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
         if (container.mode().hasInput())
             GuiAtlas.inset(container.inputLeft, container.resourceTop, container.columns * 18, container.visibleRows * 18);
         if (container.mode().hasOutput())

@@ -8,6 +8,7 @@ import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.IContainerListener;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * A read-only display container. It adds no controller slots or player inventory slots.
@@ -27,7 +28,7 @@ public final class ContainerNetworkCenter extends AEBaseContainer {
     @GuiSync(3)
     public NetworkCenterResourcePacket resourceUpdate = NetworkCenterResourcePacket.EMPTY;
     @GuiSync(4)
-    public NetworkWorkState state = NetworkWorkState.NO_ACTIVE_CENTER;
+    public @Nullable NetworkWorkState state;
 
     public ContainerNetworkCenter(InventoryPlayer player, MachineControllerHost host) {
         super(player, host.blockEntity());
@@ -51,7 +52,7 @@ public final class ContainerNetworkCenter extends AEBaseContainer {
             var machine = host.machine();
             var device = machine == null ? null : machine.networkDevice();
             var view = device == null ? null : device.view();
-            state = view == null ? NetworkWorkState.NO_ACTIVE_CENTER : view.state();
+            state = view == null ? null : view.state();
             var team = view == null ? null : view.team();
             networkLevel = team == null ? 0 : team.centerLevel();
             concurrency = team == null ? 0 : team.concurrencyPerTick();
