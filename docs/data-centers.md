@@ -1,5 +1,29 @@
 # 数据中心下载与自动同步
 
+## 默认控制器（2026-11-13）
+
+`DataCenterController` 是可继承的默认数据库控制器，直接继承 `MachineInstance`，实现 `DataCenter` 网络角色契约。它组合已有 `DataCenterStorage` 组件，等级、容量、研究内容及磁盘导入回执只保存在该组件中，不在控制器另存一份。没有普通配方工位或独立业务tick；下载和自动同步仍由共享研究服务推进，GUI继续延缓。
+
+Java先定义存储组件，再声明机器与装配：
+
+```java
+var storage = MachineDataCenterStorage.component(
+    new ResourceLocation("example", "database/storage"), 1, 16, ResearchRegistry.INSTANCE);
+var type = MachineType.builder(id, title, structure)
+    .component(MachineOwnership.TYPE).component(storage).component(DataCenter.DEVICE).build();
+var assembly = MachineAssembly.builder(type, "data-center-v1")
+    .instanceFactory(value -> new DataCenterController(value, storage))
+    .component(storage, MachineDataCenterStorage.CODEC).recreated(DataCenter.DEVICE).build();
+```
+
+`new DataCenterController(type, storage)` 接受任意实现 `DataCenterStorage` 的已声明组件类型。默认存储工厂的等级为非负整数，容量为正整数，容量按不同研究条目数计数；研究完成等级不是数据库阶级。存储内容和完整磁盘回执沿现有codec保存恢复，默认物理持久适配仍使用原机器区块的真实保存与回读。
+
+`DataCenter.dataCenterStorage()` 返回该加载代的实际存储组件；`DataCenter.DEVICE` 从其当前内容、等级和容量捕获网络快照，并保留存储版本证明。自定义控制器可直接实现此接口与独立存储，仍须声明所有权、存储组件、持久codec及重建的角色。写入遵守既有服务器授权和存储契约，接口访问不单独授予下载或导入权限。
+
+每队活动数据库按等级、已有研究条目数及持久机器UUID选择；多个库不合并内容。活动数据库占用1份标准并发，优先于普通设备，不能取得额度时不授予活动许可。只升级库中已有的合格多等级研究，不自动补入新研究，普通下载和磁盘导入沿下文原规则。
+
+ZS使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacity).register(revision)`；工厂安装相同Java控制器、持久存储及网络角色，无需为专用数据库安装普通配方组件。Java示例 `DataCenterExamples` 注册一级/16条的 `java_data_center`，结构为控制器上方铁块；原ZS `net_database` 使用同样等级和容量，原结构保留，修订为 `data-center-v1`。
+
 普通数据库下载只把当前云研究等级写入活动物理数据库，不消费研究等级、玩家材料或奖励资格。普通物品化下载已接到真实注册回调、扣料/扣级、世界存档和交付恢复，详见[物品化下载](research-downloads.md)。分级盘由外部用户注册实际物品及阶级，库提供公开物品接口、编码事件及真实数据库／玩家库存共同恢复；磁盘导入消费准确槽位的一件盘，不扣研究来源等级或改变奖励资格。
 
 ## 旧实现与保留行为

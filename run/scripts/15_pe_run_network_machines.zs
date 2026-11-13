@@ -22,9 +22,8 @@ MachineType.computer("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_
     ComputingResources.create().add(compute, 1000), [coolingRecipe]).register("computer-v1");
 MachineType.researchStation("pe_run_tests:net_station", Text.NetStation.key, "pe_run_tests:net_shape", 1,
     ComputingResources.create().add(compute, 10), 8).register("research-station-v1");
-MachineType.create("pe_run_tests:net_database", Text.NetDatabase.key, "pe_run_tests:net_shape")
-    .network(NetworkConfiguration.create("pe_run_tests:net_database", "DATA_CENTER", 1, empty,
-        ComputingModifier.create(), 16, NetworkRequirements.create())).register("v1");
+MachineType.dataCenter("pe_run_tests:net_database", Text.NetDatabase.key, "pe_run_tests:net_shape", 1, 16)
+    .register("data-center-v1");
 MachineType.create("pe_run_tests:net_device", Text.NetDevice.key, "pe_run_tests:net_shape")
     .attribute("prototype_eng:process_parallelism", 1).attribute("prototype_eng:max_concurrent_processes", 1)
     .componentData().recipePool("pe_run_tests:net_pool").processing(names, 8, 8).workSlot("main", [], false, "LOCKED_RETRY")

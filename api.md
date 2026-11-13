@@ -265,6 +265,8 @@ MachineAssembly.builder(type, "research-station-v1")
 
 ZS 入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`，每tick配方用 `ComputerRecipe.create(id, Resource[] inputs, ComputingResources provided)`，内部类型用 `ComputingResource.internal(id, logicalConcurrency)`。完整规则、Java/ZS 示例和边界见[计算机与运算仓](docs/computers.md)。计算机GUI继续延缓；本轮仅实现运算仓GUI。
 
+默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量与内容由存储组件定义，控制器直接使用现有持久化、下载及自动升级能力，无配方工位或独立业务tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置codec，只将网络角色标为recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库沿既有规则占1份优先并发，GUI继续延缓。Java/ZS完整入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
+
 ### GUI、模型与 JEI
 
 `MachineRenderRegistrationEvent` 为机器或结构绑定 Gecko 模型。`MachineGuiRegistry` 注册公共侧容器，`MachineScreenRegistry` 注册客户端屏幕。必须把屏幕、模型和 JEI 类的加载限制在客户端，否则专用服务器可能因缺少客户端类而启动失败。

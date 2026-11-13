@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 默认数据库控制器完成：可继承DataCenterController组合现有持久存储，DataCenter接口角色及Java/ZS工厂已接入；原等级/容量、下载、自动升级和磁盘规则保持，活动库继续占1份优先并发，无普通配方工位或业务tick，GUI延缓。入口[数据库](data-centers.md)。5Java经IDEA格式化/逐文件检查，4主/测试全级零、1run被排除；完整1864测试、MCP构建、25Java addon与13脚本SDK编译/97核心断言通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验数据库入网、存储/下载/导入及退出重进恢复；本地提交，不启动游戏/推送。
+
 - 2026-11-13 计算机与运算仓完成：默认可继承 ComputerController、双方法 NetworkComputer 接口、四级共享运算仓及紧凑GUI/像素纹理已接入。组件消耗不足时全部组件供给停摆，配方独立继续，内部资源不外泄。启动需其他设备先提供1并发；计算机/研究站/活动数据库优先于普通设备，可收回普通租约，同条件使用持久UUID。供给变化在同tick生效，保留已消费量。入口[计算机与运算仓](computers.md)，49Java已IDEA格式化/逐文件检查，46主/测试全级零、3run被排除；完整1864测试、MCP构建、24Java addon与13脚本SDK编译通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验仓IO/界面、组件费用及退出重进并发恢复；计算机GUI延缓，本地提交，不启动游戏/推送。
 
 - 2026-11-13 网络中心线程额度与供给定义：中心增加 Java/ZS 的 threadCapacity，只有活动中心贡献供给并沿原规则收费；默认向量构造一次复用。删除资源类型 maxPerTickValue、单物品THREAD最多1及研究站类型速率上限，物品和自定义计算机的供给均由开发者定义；默认倍率消除不必要的百万倍中间乘法。API与示例已迁移，见[计算资源](network-resources.md)、[网络中心](network-runtime.md)、[API](../api.md#研究与计算网络)。完整1859测试、IDEA构建、23Java addon及13脚本编译通过；18Java已格式化，17主/测试全级零、1run被排除。证据见[实施进度](implementation-status.md)，下一步用户实机复验中心并发与自定义供给；本地提交，不推送或启动游戏。

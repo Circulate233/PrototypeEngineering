@@ -37,6 +37,8 @@
 
 中心使用上方铁块和后方FE仓；计算机的四级运算仓在X−1，即(5,80,0)，FE仓在Z+1。把一张net_computer_card手动装入运算仓，并通过外部流体输入持续供应至少1000mB水/t；每tick冷却配方耗水1000mB，卡需1000冷却与32FE才提供供给。其他控制器的输入仓在X+1，输出仓在X−1，FE输入在Z+1。全部由实际玩家放置/认领，FTB team使用实际已加入的队伍；没有自动创建队伍或伪造权限。成型并持续供水后分别执行：
 
+`net_database`已改用默认 `DataCenterController`，等级1/容量16及原结构不变，存储和磁盘回执沿原codec，角色在重载后重新取得许可。Java示例 `pe_run_tests:java_data_center` 同为一级/16条，结构为控制器上方铁块；不要与本队原库同时放置来判断单库内容，因为同条件按持久UUID选中一个。两个默认数据库均无GUI，自动升级和以下研究下载/磁盘导入仍使用既有后台入口。
+
 ```text
 /pe_run_tests net-status 0 80 0 NETWORK_CENTER ACTIVE_CENTER
 /pe_run_tests net-status 6 80 0 COMPUTER ACTIVE_DEVICE

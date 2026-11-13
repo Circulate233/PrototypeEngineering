@@ -1,6 +1,7 @@
 package com.circulation.prototype_eng.network;
 
 import com.circulation.prototype_eng.api.component.ComponentType;
+import com.circulation.prototype_eng.api.machine.DataCenterController;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
@@ -239,8 +240,7 @@ class MachineDataCenterStorageTest {
         private final ComponentType<MachineInstance, MachineDataCenterStorage> storage = MachineDataCenterStorage.component(id("storage"),
             ownership, 1, 2, research, _ -> this.dirty++, this::persistDisk);
         private final ComponentType<MachineInstance, MachineNetworkDevice> dataRole = MachineNetworkDevice.capturedComponent(id("data_role"),
-            ownership, (owner, identity) -> Objects.requireNonNull(owner.components().get(storage)).networkCapture(identity,
-                Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+            ownership, (owner, identity) -> ((DataCenterController) owner).networkCapture(identity), _ -> network);
         private final Object2LongOpenHashMap<NetworkResourceType> supply = new Object2LongOpenHashMap<>();
         private final ComponentType<MachineInstance, MachineNetworkDevice> centerRole = MachineNetworkDevice.component(id("center_role"),
             ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
@@ -249,7 +249,8 @@ class MachineDataCenterStorageTest {
         private final MachineType dataType = MachineType.builder(id("data_machine"), GuiText.ResourceStorage, id("structure"))
                                                         .component(ownership).component(storage).component(dataRole).build();
         private final MachineAssembly dataAssembly = MachineAssembly.builder(dataType, "data-v1").component(ownership, MachineOwnership.CODEC)
-                                                                    .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole).build();
+                                                                    .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole)
+                                                                    .instanceFactory(type -> new DataCenterController(type, storage)).build();
         private final MachineInstance center;
         private int dirty;
         private int diskSaveCalls;

@@ -1,5 +1,14 @@
 # 实施进度
 
+## 2026-11-13 默认数据库控制器
+
+- 按原定需求补充可继承 `DataCenterController` 和 `DataCenter` 网络角色接口；控制器直接继承 `MachineInstance`，组合已声明的 `DataCenterStorage` 组件。等级、容量、研究内容和磁盘回执只由存储组件维护，不在控制器复制数据；没有普通配方工位或独立业务tick。自定义控制器可直接实现角色接口或使用独立存储组件，原公开存储和真实持久适配契约保留。
+- 复用现有 `MachineDataCenterStorage` / `ResearchDataCenter` 的下载、已有多等级研究自动升级、磁盘导入和内容/回执codec。网络捕获读取实际存储快照并保留版本证明；活动数据库继续占1份优先并发，按等级/研究条目数/持久UUID选择单个物理库，未改权限、研究门槛、容量算法或导入恢复规则。GUI仍延缓，本轮未制作HTML、GUI或新功能。
+- Java构造为 `DataCenterController(type, storageComponent)`，机器声明所有权、存储组件和 `DataCenter.DEVICE`，装配绑定存储codec并重建角色。ZS新增 `MachineType.dataCenter(id, title, structure, level, capacity)`。Java addon的 `java_data_center` 为一级/16条、控制器上方铁块；原ZS `net_database` 改用默认实现，一级/16条与原结构保留，修订为 `data-center-v1`，未另做旧v1示例迁移。API、需求和原生操作入口同步，见[数据库](data-centers.md)。
+- 既有 `MachineDataCenterStorageTest` 改为真实创建/恢复默认控制器，继续检查物理选择、内容失效、复制身份、下载/同步和磁盘持久回执；没有新增getter、参数镜像或重复防御测试。完整 **Gradle build成功，1864 tests/270 suites，失败0、错误0、跳过0**，Spotless、JAR/reobf均通过。
+- 5份Java使用本机IDEA MCP格式化并逐文件 `get_file_problems(errorsOnly:false)`；4份主/测试源码错误、警告、弱警告全零，1份run示例被IDE排除。MCP `build_project`成功。25份实际Java addon编译并安装，13份实际CT SDK脚本编译、既有97核心断言全部通过。证据目录 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/data-center-controller/`，包括 `idea-results.json`、`idea-summary.json`、`idea-build.json`、`build-summary.json`、`build.log`、`addon-result.json` 和 `sdk/script-verifier-result.json`。
+- 下一步由用户实机复验数据库成型/入网、唯一选择、普通下载/自动升级/磁盘导入及退出重进后的内容与并发恢复。编译和行为验证不替代原生World结果。本阶段本地提交，不推送、不启动Minecraft客户端或服务端。
+
 ## 2026-11-13 默认计算机、运算仓与网络设备并发优先级
 
 - 新增可继承 `ComputerController`，组合已有组件读取、物料需求和费用事务；`NetworkComputer` 只暴露并发额度与外部资源。控制器本身无FE费用、普通配方工位或独立业务tick。所有默认网络设备控制器可继承；计算机GUI继续延缓，未新增数据库控制器或研究界面。

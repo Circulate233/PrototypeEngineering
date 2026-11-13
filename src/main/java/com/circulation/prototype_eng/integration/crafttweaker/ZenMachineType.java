@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.integration.crafttweaker;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.ComputerController;
+import com.circulation.prototype_eng.api.machine.DataCenterController;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
 import com.circulation.prototype_eng.api.machine.NetworkCenterController;
@@ -14,6 +15,8 @@ import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotRestartPolicy;
 import com.circulation.prototype_eng.api.network.NetworkCenter;
+import com.circulation.prototype_eng.api.network.DataCenter;
+import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
@@ -22,6 +25,7 @@ import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanning;
 import com.circulation.prototype_eng.api.recipe.scanning.ScanLimits;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
 import com.circulation.prototype_eng.api.research.station.ResearchStation;
+import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.scheduler.ControllerExecutionPolicy;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
 import com.circulation.prototype_eng.integration.crafttweaker.network.ZenNetworkConfiguration;
@@ -124,6 +128,19 @@ public final class ZenMachineType {
         declaration.network(new ZenNetworkConfiguration(builder -> builder.component(MachineOwnership.TYPE)
                                                                           .component(ComputerController.COMPONENTS).component(ComputerController.DEVICE),
             builder -> builder.recreated(ComputerController.COMPONENTS, ComputerController.DEVICE)));
+        return declaration;
+    }
+
+    @ZenMethod
+    public static ZenMachineType dataCenter(String id, String translationKey, String structureId, int level, int capacity) {
+        var name = new ResourceLocation(id);
+        var storage = MachineDataCenterStorage.component(new ResourceLocation(name.getNamespace(), name.getPath() + "/database"),
+            level, capacity, ResearchRegistry.INSTANCE);
+        var declaration = create(id, translationKey, structureId);
+        declaration.factory(new ZenMachineFactory(type -> new DataCenterController(type, storage)));
+        declaration.network(new ZenNetworkConfiguration(builder -> builder.component(MachineOwnership.TYPE)
+                                                                          .component(storage).component(DataCenter.DEVICE),
+            builder -> builder.component(storage, MachineDataCenterStorage.CODEC).recreated(DataCenter.DEVICE)));
         return declaration;
     }
 
