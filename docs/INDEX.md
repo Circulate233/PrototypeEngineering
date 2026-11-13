@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 自动构建器与NovaEngineering-Core只读对照完成：ME物品/流体取料、缺料AE确认队列、整批缺料报告/齐料门槛、库存候选自动选择/保留合法已有块、障碍策略、自动投影层推进、构建速率配置及普通外部方块结构适配仍有差距；DE五配置档案为次要便利项。动态段数、库存/流体搭建、排序、暂停/拆卸已有；30秒投影和绑定操作沿用户明确要求，不改回Nova。本次实际工具两边都不写TE NBT，PE另缺整组世界高度预检。逐项来源和边界见[构建器对照](builder-nova-audit.md)，证据builder-nova-audit/见[实施进度](implementation-status.md)。下一步由用户确认扩展范围；仅审查文档本地提交，未改生产源码/启动游戏/推送，原背景及暂存保留。
+
 - 2026-11-12 创造物品栏入口补齐：注册事件已有，但缺少独立PE创造页，84内置方块分散原版REDSTONE、3工具在TOOLS。新增PrototypeCreativeTab（原型工程/Prototype Engineering），图标注册后懒取orientation_tool；6类构造入口统一页，继承的Java/CT示例控制器及扩展并行组件自动纳入。原生ItemBlock.getCreativeTab委托block、AE getSubItems及创造SEARCH沿正常枚举，未复制物品清单。8Java和2语言本机IDEA全级零、compileJava/processResources/定向Spotless及MCP build通过。入口[创造页](block-registration.md#创造物品栏)，证据creative-tab/见[实施进度](implementation-status.md)。下一步用户重启后翻到“原型工程”页及创造搜索复验，未启动游戏或推送，背景和原暂存保留。
 
 - 2026-11-12 隔离组选择器截图反馈：ME资源仓/样板总成的handleAeMouseWheelInput在delta=0前因expanded返回true，AE AppEngClient每个MouseInputEvent.Pre都调用该入口并取消true，导致点击/松开永不到达palette。本轮先检查真实滚轮再拦截展开面板；普通/ME面板与按钮局部禁depth写入/测试和lighting，保存恢复depth、mask、blend函数/开关，修槽物品遮挡及透明帧白像素。普通9×9中心从(2,2)铺满，悬停/按下跟随0/1/2px；ME原9×9不改，原PNG保持。中英提示改隔离组/Isolation group，各17名字独立本地化，中文“隔离组：红/无色”。4项交互（含原生WidgetContainer全部17选择）、定向Spotless、5Java本机IDEA全级零及MCP构建通过。入口[隔离组控件](block-registration.md#颜色与样板隔离)，证据isolation-palette/见[实施进度](implementation-status.md)。boundary_cross审查确认cross_1–4显式fixed(1)，整机4并行和每配方线程上限1为不同约束，未改示例。下一步用户重启复验选择/穿透及全部hover/pressed效果，未启动游戏或推送，背景及原暂存保留。
