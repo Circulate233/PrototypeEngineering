@@ -5,10 +5,10 @@
 从项目根目录执行：
 
 ```powershell
-# 编译当前主类和全部 21 个 addon Java，安装开发 addon；不启动游戏。
+# 编译当前主类和全部27个addon Java，安装开发addon；不启动游戏。
 .\run\prepare-tests.ps1
 
-# 用真实 SDK718 编译全部 13 份脚本，执行核心脚本与 97 项行为断言；不启动游戏。
+# 用真实SDK718编译全部15份脚本，执行既有核心行为检查；不启动游戏。
 .\run\verification\verify.ps1
 
 # 以下由用户执行，完整启动开发客户端；新增机器不能仅 /ct reload。
@@ -17,6 +17,8 @@
 ```
 
 验证报告默认在 `verification/results/script-verifier-result.json`，原始日志也在该目录。`prepare-tests.ps1` 导出当前真实类路径，已不依赖旧 `build/staging`。准备失败或 addon 被占用时先解决错误再启动。
+
+新增[完整网络演示](scripts/README-network-demo.md)：网络中心、计算机、研究站、数据库和普通负载机，三种组件、三条计算机供给配方与两条普通负载配方。进入游戏后用 `/pe_examples kit network` 领取设备与原料，按专题命令搭建、充电、投料，可直接检查中心GUI的六行资源、滑块与占用变化。
 
 本批新增[ME总成与连接纹理](scripts/README-me-assemblies.md)。在已加载且没有建筑的空地执行下列命令，即可生成覆盖全部正式PE注册方块的检验结构；每种方块有相接的3×3地面、后墙与侧墙，共27格：
 

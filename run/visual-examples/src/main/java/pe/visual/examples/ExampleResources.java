@@ -13,7 +13,11 @@ public enum ExampleResources implements NetworkResourceType {
     COMPUTE("compute", false, "FLOP/t"),
     QUBIT("qubit", false, "Q/t"),
     NET_COMPUTE("net_compute", false, "FLOP/t"),
-    COOLING("cooling", true, "CU/t");
+    COOLING("cooling", true, "CU/t"),
+    MEMORY("memory", false, "MiB"),
+    BANDWIDTH("bandwidth", false, "MB/t"),
+    STORAGE("storage", false, "IOPS"),
+    SIGNAL("signal", false, "sig/t");
 
     private static final ResourceLocation PACKET_TYPE = new ResourceLocation("pe_run_tests", "example_resource");
     private static final ExampleResources[] PACKET_VALUES = values();

@@ -1,5 +1,14 @@
 # 实施进度
 
+## 2026-11-14 run网络设备、组件与配方演示
+
+- 新增run的16/31两份ZS脚本，注册 `net_demo_center`、`net_demo_computer`、`net_demo_station`、`net_demo_database` 四种专用默认控制器及 `net_demo_load` 普通联网负载机。中心一级/4并发/4 FE/t，计算机上限8并发，研究站一级/算力100与量子位10每tick速率/8 FE/t，数据库一级/16条。负载机1工位/1并行，两条普通配方无需研究门槛即可观察资源占用；结构与操作见[run演示](../run/scripts/README-network-demo.md)。所有内容只在run开发addon/脚本中注册。
+- Java Item新增CPU、量子和IO三种 `NetworkComputerComponent` 实现实例，分别提供4/4/2并发；CPU算力500、量子64量子位、IO提供内存128.5/带宽256.25/存储吞吐64/信号100。每件冷却消耗500/250/250，FE16/24/8。IO资源以R2D addTo定义，固定Capture按原契约复用。新增四个资源单例和Java/ZS桥，包沿原enum布局传序号，无逐资源注册。三个组件模型引用原版图标，中英文名称已补齐。
+- 计算机每tick三条供给配方：10mB水或5mB岩浆分别提供1000内部冷却，红石1提供200外部信号。三种组件各1件时1000冷却与48 FE可完全工作，六种外部资源触发中心滚动；第四槽再装CPU并补岩浆可检验算力800及并发8的本机上限。组件费用不足时全部组件停摆，已能运行的信号配方继续供给。两条普通负载分别消耗圆石/石英、产出玻璃/铁粒，使用三种不同网络资源含16.5分数占用，便于直接观察增量更新。
+- `/pe_examples kit network`发放五台设备、三种组件、仓室与原料，build补全演示布局和自动补全；沿原真实玩家放置链建立所有权。`/pe_run_tests net-stock`除物品外支持水/岩浆，通过AEKey2LongMap和真实仓室端口投料。没有新增GUI或自动启动游戏的入口，没有新增镜像测试；使用已有SDK/实际addon编译及核心行为检查。
+- 27份Java addon已使用当前开发类路径实际编译并安装至run/mods，15份真实CT SDK脚本全部编译通过，既有核心事务/保存/工厂检查返回成功。6份修改Java已使用本机IDEA MCP格式化，逐文件 `get_file_problems(errorsOnly:false)` 全部返回run目录被排除，错误/警告/弱警告数量不可得，未记为零诊断；MCP build_project成功，仅证明主项目构建。证据 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261114/network-demo/` 内 `addon-verified.log`、`idea-results.json`、`idea-rechecked.json`、`sdk.log` 和 `sdk/script-verifier-result.json`。
+- 本阶段本地提交，不推送、不启动Minecraft客户端/服务器或FML/Bootstrap。下一步由用户完整启动并按演示文档领取/搭建/供能，复验设备入网、组件和配方费用、六行/滑块与分数显示、资源归零/恢复及关闭重开GUI；编译与核心检查不替代原生World注册或渲染验收。
+
 ## 2026-11-13 网络中心显示屏、R2D资源与增量发布
 
 - 网络中心容器/屏幕已按获批HTML接入默认控制器：纯数据显示，无玩家背包，宽384、高162～242，1～5行动态高度，超过5行才启用滑块；滚动只改变客户端行选择。显示网络等级、活动状态、固定整数并发占用和网络资源占用/产出。资源读取在本tick工作join后、预算关闭前进行，容器复用一次创建的读取回调。

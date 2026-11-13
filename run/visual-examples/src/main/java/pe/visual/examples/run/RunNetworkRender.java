@@ -4,6 +4,7 @@ import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import ae2.api.config.Actionable;
 import ae2.api.orientation.BlockOrientation;
 import ae2.api.stacks.AEItemKey;
+import ae2.api.stacks.AEFluidKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.HatchCapabilities;
 import com.circulation.prototype_eng.api.component.ComponentType;
@@ -73,6 +74,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
+import net.minecraftforge.fluids.FluidRegistry;
+import net.minecraftforge.fluids.FluidStack;
 import pe.visual.examples.VisualExamples;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
@@ -211,14 +214,20 @@ public final class RunNetworkRender {
         if (controller == null || controller == Blocks.AIR) return null;
         var result = new BlockPos2ObjectMap<Block>();
         result.put(BlockPos.ORIGIN, controller);
-        if (machine.equals("net_computer")) {
+        if (machine.equals("net_computer") || machine.equals("net_demo_computer")) {
             result.put(new BlockPos(-1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:computation_hatch_4"))));
+            if (machine.equals("net_demo_computer"))
+                result.put(new BlockPos(1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:input_hatch_4"))));
             result.put(new BlockPos(0, 0, 1), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:energy_input_hatch_4"))));
             return result;
         }
-        if (machine.equals("net_center")) {
+        if (machine.equals("net_center") || machine.equals("net_demo_center")) {
             result.put(new BlockPos(0, 1, 0), Blocks.IRON_BLOCK);
             result.put(new BlockPos(0, 0, 1), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:energy_input_hatch_4"))));
+            return result;
+        }
+        if (machine.equals("net_demo_database")) {
+            result.put(new BlockPos(0, 1, 0), Blocks.IRON_BLOCK);
             return result;
         }
         result.put(new BlockPos(1, 0, 0), Objects.requireNonNull(ForgeRegistries.BLOCKS.getValue(new ResourceLocation("prototype_eng:input_hatch_10"))));
@@ -259,8 +268,9 @@ public final class RunNetworkRender {
                 requireCount(args, 6);
                 var pos = CommandBase.parseBlockPos(sender, args, 1, false);
                 long amount = CommandBase.parseLong(args[5], 1, 1_000_000);
-                var item = Objects.requireNonNull(ForgeRegistries.ITEMS.getValue(new ResourceLocation(args[4])));
-                var key = Objects.requireNonNull(AEItemKey.of(new ItemStack(item)));
+                var key = args[4].equals("water") || args[4].equals("lava")
+                    ? AEFluidKey.of(new FluidStack(Objects.requireNonNull(FluidRegistry.getFluid(args[4])), 1))
+                    : Objects.requireNonNull(AEItemKey.of(new ItemStack(Objects.requireNonNull(ForgeRegistries.ITEMS.getValue(new ResourceLocation(args[4]))))));
                 var hatch = HatchCapabilities.findResource(player.world.getTileEntity(pos), null);
                 var input = hatch == null ? null : hatch.input();
                 NativeChecks.check("net_native_resource_input", input != null);
@@ -268,7 +278,7 @@ public final class RunNetworkRender {
                 amounts.addTo(key, amount);
                 NativeChecks.check("net_supply_preflight", input.insert(key, amounts.getLong(key), Actionable.SIMULATE) == amount);
                 NativeChecks.check("net_supply_native_insert", input.insert(key, amount, Actionable.MODULATE) == amount);
-                pass(player, "net_supply_native_insert", "item=" + key.getDisplayName() + " amount=" + amount);
+                pass(player, "net_supply_native_insert", "resource=" + key.getDisplayName() + " amount=" + amount);
             }
             case "net-status" -> {
                 requireCount(args, 6);

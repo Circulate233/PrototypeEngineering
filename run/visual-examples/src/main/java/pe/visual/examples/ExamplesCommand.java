@@ -66,7 +66,7 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/pe_examples kit [boundary|composite|me] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
+        return "/pe_examples kit [boundary|composite|me|network] | build <machine> <x> <y> <z> [orientation:NORTH_UP] [repeats:1-4] | structure-check <x> <y> <z> <repeats> <matched> | charge/drain <x> <y> <z> [FE] | stock <x> <y> <z> <recipe> [runs:1-16] [candidate:1-64]";
     }
 
     @Override
@@ -76,6 +76,27 @@ public final class ExamplesCommand extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] arguments) throws CommandException {
+        if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("network")) {
+            var player = getCommandSenderAsPlayer(sender);
+            for (String name : List.of("center", "computer", "station", "database", "load"))
+                give(player, item(new ResourceLocation("pe_run_tests", "net_demo_" + name + "_controller")), 1);
+            for (String name : List.of("cpu", "quantum", "io"))
+                give(player, item(new ResourceLocation("pe_run_tests", "net_demo_" + name + "_card")), 2);
+            give(player, item(new ResourceLocation("prototype_eng", "computation_hatch_4")), 1);
+            give(player, item(new ResourceLocation("prototype_eng", "input_hatch_4")), 1);
+            give(player, item(new ResourceLocation("prototype_eng", "input_hatch_10")), 2);
+            give(player, item(new ResourceLocation("prototype_eng", "output_hatch_10")), 2);
+            give(player, item(new ResourceLocation("prototype_eng", "energy_input_hatch_4")), 4);
+            give(player, Item.getItemFromBlock(Blocks.IRON_BLOCK), 2);
+            give(player, Item.getItemFromBlock(Blocks.COBBLESTONE), 64);
+            give(player, Items.QUARTZ, 64);
+            give(player, Items.REDSTONE, 64);
+            give(player, Items.WATER_BUCKET, 2);
+            give(player, Items.LAVA_BUCKET, 2);
+            player.inventoryContainer.detectAndSendChanges();
+            player.sendMessage(ExampleText.NetworkKit.text());
+            return;
+        }
         if (arguments.length == 2 && arguments[0].equals("kit") && arguments[1].equals("me")) {
             MEAssemblyExamples.giveKit(getCommandSenderAsPlayer(sender));
             return;
@@ -283,7 +304,7 @@ public final class ExamplesCommand extends CommandBase {
         if (arguments.length == 1)
             return getListOfStringsMatchingLastWord(arguments, "kit", "build", "stock", "charge", "drain", "structure-check");
         if (arguments.length == 2 && arguments[0].equals("kit"))
-            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me");
+            return getListOfStringsMatchingLastWord(arguments, "boundary", "composite", "me", "network");
         if (arguments.length == 2 && arguments[0].equals("build")) {
             var names = new ObjectArrayList<String>(List.of("press", "mixer", "sorter"));
             names.add(CtmGalleryExamples.TYPE.toString());
@@ -294,6 +315,8 @@ public final class ExamplesCommand extends CommandBase {
             names.add("pe_run_tests:native_data_cross");
             names.add("pe_run_tests:core_world");
             names.add("pe_run_tests:external_filter");
+            names.addAll(List.of("pe_run_tests:net_demo_center", "pe_run_tests:net_demo_computer", "pe_run_tests:net_demo_station",
+                "pe_run_tests:net_demo_database", "pe_run_tests:net_demo_load"));
             names.addAll(List.of("pe_run_tests:net_center", "pe_run_tests:net_computer", "pe_run_tests:net_station", "pe_run_tests:net_database", "pe_run_tests:net_device",
                 "pe_run_tests:render_default", "pe_run_tests:render_transparent", "pe_run_tests:render_bloom", "pe_run_tests:render_bloom_transparent", "pe_run_tests:render_whole"));
             return getListOfStringsMatchingLastWord(arguments, names);

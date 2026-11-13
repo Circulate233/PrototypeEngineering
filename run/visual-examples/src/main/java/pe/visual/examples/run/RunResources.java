@@ -34,4 +34,24 @@ public final class RunResources {
     public static ZenComputingResource cooling() {
         return new ZenComputingResource(ExampleResources.COOLING);
     }
+
+    @ZenMethod
+    public static ZenComputingResource memory() {
+        return new ZenComputingResource(ExampleResources.MEMORY);
+    }
+
+    @ZenMethod
+    public static ZenComputingResource bandwidth() {
+        return new ZenComputingResource(ExampleResources.BANDWIDTH);
+    }
+
+    @ZenMethod
+    public static ZenComputingResource storage() {
+        return new ZenComputingResource(ExampleResources.STORAGE);
+    }
+
+    @ZenMethod
+    public static ZenComputingResource signal() {
+        return new ZenComputingResource(ExampleResources.SIGNAL);
+    }
 }

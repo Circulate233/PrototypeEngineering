@@ -21,6 +21,7 @@ import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.item.PrototypeCreativeTab;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.item.Item;
@@ -69,6 +70,16 @@ public final class ComputerExamples {
     public static void items(RegistryEvent.Register<Item> event) {
         event.getRegistry().register(new ComputingCard("computer_card", ExampleResources.COMPUTE));
         event.getRegistry().register(new ComputingCard("net_computer_card", ExampleResources.NET_COMPUTE));
+        event.getRegistry().register(new ComputingCard("net_demo_cpu_card", 4,
+            Reference2DoubleMaps.singleton(ExampleResources.NET_COMPUTE, 500), Reference2DoubleMaps.singleton(COOLING, 500), 16));
+        event.getRegistry().register(new ComputingCard("net_demo_quantum_card", 4,
+            Reference2DoubleMaps.singleton(ExampleResources.QUBIT, 64), Reference2DoubleMaps.singleton(COOLING, 250), 24));
+        var io = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+        io.addTo(ExampleResources.MEMORY, 128.5);
+        io.addTo(ExampleResources.BANDWIDTH, 256.25);
+        io.addTo(ExampleResources.STORAGE, 64);
+        io.addTo(ExampleResources.SIGNAL, 100);
+        event.getRegistry().register(new ComputingCard("net_demo_io_card", 2, io, Reference2DoubleMaps.singleton(COOLING, 250), 8));
     }
 
     @SubscribeEvent
@@ -97,12 +108,15 @@ public final class ComputerExamples {
         private final Capture definition;
 
         public ComputingCard(String name, NetworkResourceType resource) {
+            this(name, 8, Reference2DoubleMaps.singleton(resource, 1_000), Reference2DoubleMaps.singleton(COOLING, 1_000), 32);
+        }
+
+        public ComputingCard(String name, long concurrency, Reference2DoubleMap<NetworkResourceType> supplied,
+                             Reference2DoubleMap<NetworkResourceType> required, long energyPerTick) {
             setRegistryName(id(name));
             setTranslationKey("pe_run_tests." + name);
             setCreativeTab(PrototypeCreativeTab.INSTANCE);
-            var supplied = new Reference2DoubleOpenHashMap<NetworkResourceType>();
-            supplied.put(resource, 1_000);
-            definition = new Capture(8, supplied, Reference2DoubleMaps.singleton(COOLING, 1_000), 32, () -> true);
+            definition = new Capture(concurrency, supplied, required, energyPerTick, () -> true);
         }
 
         @Override
@@ -118,7 +132,7 @@ public final class ComputerExamples {
 
         @SubscribeEvent
         public static void models(ModelRegistryEvent event) {
-            for (String name : List.of("computer_card", "net_computer_card")) {
+            for (String name : List.of("computer_card", "net_computer_card", "net_demo_cpu_card", "net_demo_quantum_card", "net_demo_io_card")) {
                 var key = id(name);
                 ModelLoader.setCustomModelResourceLocation(Objects.requireNonNull(ForgeRegistries.ITEMS.getValue(key)), 0,
                     new ModelResourceLocation(key, "inventory"));
