@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 大小写重命名启动崩溃：用户日志的旧MeResourceHatchBlock来自run/mods/pe_visual_examples-1.0.0-dev.jar，旧Jar为11-12产物，主工程和示例源码已改ME；Windows按旧大小写找到新class后触发JVM wrong name。重新导出当前开发类路径，删除示例一处已移除RewardItemProtection检查，21Java重编译并安装成功；65class/383个PE引用严格大小写均匹配，无旧Me类名。证据stale-example-classpath/见[实施进度](implementation-status.md)。下一步用户重新启动复验；后续主API/类名改动先run/prepare-tests.ps1更新独立addon，直接runClient不会编译它。未启动游戏，示例目录IDEA被排除不可分析，主类全级零/MCP构建通过，本次增量本地提交，原重命名/暂存保持。
+
 - 2026-11-13 构建器批准范围已接入：四按钮放右侧原面板内部、进度条上方，原384×228尺寸保持，树裁剪/输入同步缩至144，底图仅清除29像素旧坐标图标。齐料/位置预检、准确缺料与本次跳过、严格当前规划、ME物品/流体取料及原生缺料合成确认、整轮匹配隐藏/自动取消投影、builder.cfg间隔/批量、流体格命中/图标/每格1B样板、普通外部Java/CT锚点注册均已接线。14项新增行为/真实ZS编译，工作树1996 tests/283 suites及独立候选1994 tests/282 suites全通过，28Java+2语言本机IDEA全级零、MCP指定构建成功。入口[当前构建器](structure-tools.md#2026-11-13-构建器预检me与外部结构)，证据builder-expansion/见[实施进度](implementation-status.md)。下一步用户重启复验按钮上方位置、缺料门槛/跳过、有效无线终端取料、AE确认后补建、完整投影取消、3格流体3000mB导入及外部锚点；本轮不自动替代/推进层，不新增TileNBT写入/合成后自动恢复；本地提交、不推送/启动游戏，背景及现有暂存保留。
 
 - 2026-11-13 自动构建器与NovaEngineering-Core只读对照完成：ME物品/流体取料、缺料AE确认队列、整批缺料报告/齐料门槛、库存候选自动选择/保留合法已有块、障碍策略、自动投影层推进、构建速率配置及普通外部方块结构适配仍有差距；DE五配置档案为次要便利项。动态段数、库存/流体搭建、排序、暂停/拆卸已有；30秒投影和绑定操作沿用户明确要求，不改回Nova。本次实际工具两边都不写TE NBT，PE另缺整组世界高度预检。逐项来源和边界见[构建器对照](builder-nova-audit.md)，证据builder-nova-audit/见[实施进度](implementation-status.md)。下一步由用户确认扩展范围；仅审查文档本地提交，未改生产源码/启动游戏/推送，原背景及暂存保留。

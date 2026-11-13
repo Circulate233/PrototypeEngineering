@@ -693,8 +693,7 @@ public final class RunNetworkRender {
             && receipt.orElseThrow().intent().researchId().equals(research) && receipt.orElseThrow().intent().level() == level
             && receipt.orElseThrow().intent().slot() == saved.getInteger("encoding_slot") && receipt.orElseThrow().amount() == 1);
         var completed = receipt.orElseThrow(); var output = player.inventory.getStackInSlot(outputSlot);
-        NativeChecks.check("research_encoding_actual_native_output", output.getItem() instanceof ResearchDiskCarrier && output.getCount() == 1
-            && !com.circulation.prototype_eng.api.research.reward.RewardItemProtection.isProtected(output));
+        NativeChecks.check("research_encoding_actual_native_output", output.getItem() instanceof ResearchDiskCarrier && output.getCount() == 1);
         var disk = ((ResearchDiskCarrier) output.getItem()).readResearchDisk(output, ResearchRegistry.INSTANCE);
         NativeChecks.check("research_encoding_payload_and_template", disk != null && disk.tier() == tier && disk.entries().size() == 1 && disk.entries().getInt(research) == level
             && output.serializeNBT().equals(completed.output()) && Objects.requireNonNull(output.getTagCompound()).getString("pe_run_tests_template").equals("native_encoding_preserved"));
