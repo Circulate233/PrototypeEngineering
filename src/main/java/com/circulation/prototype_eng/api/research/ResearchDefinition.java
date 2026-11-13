@@ -6,7 +6,7 @@ import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -127,7 +127,7 @@ public final class ResearchDefinition {
         return stageForLevel(level).mutexRules();
     }
 
-    public Object2LongMap<NetworkResourceType> totalResourceDemandForLevel(int level) {
+    public Reference2DoubleMap<NetworkResourceType> totalResourceDemandForLevel(int level) {
         return stageForLevel(level).resourceDemandForLevel(level);
     }
 

@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
@@ -24,12 +23,6 @@ class ResearchDefinitionTest {
         return ResearchLevelStage.builder(first, last).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
     }
 
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
-    }
-
     private static ResourceLocation id(String path) {
         return new ResourceLocation("prototype_eng_test", path);
     }
@@ -38,11 +31,11 @@ class ResearchDefinitionTest {
     void registryPublishesNothingAfterFailedValidationAndAcceptsRepairedReferences() {
         var registry = new ResearchRegistry();
         registry.register(definition("dependent", 1).stage(stage(1, 1).prerequisite(id("missing"), 1).build()).build());
-        assertThrows(IllegalArgumentException.class, () -> registry.freeze(resources()));
+        assertThrows(IllegalArgumentException.class, registry::freeze);
         assertFalse(registry.isFrozen());
         assertThrows(IllegalStateException.class, registry::all);
         registry.register(definition("missing", 1).stage(stage(1, 1).build()).build());
-        registry.freeze(resources());
+        registry.freeze();
         assertEquals(2, registry.all().size());
         assertEquals(id("dependent"), registry.require(id("dependent")).id());
         assertThrows(IllegalStateException.class, () -> registry.register(definition("late", 1).stage(stage(1, 1).build()).build()));
@@ -53,18 +46,18 @@ class ResearchDefinitionTest {
         var cyclic = new ResearchRegistry();
         cyclic.register(definition("a", 1).stage(stage(1, 1).prerequisite(id("b"), 1).build()).build());
         cyclic.register(definition("b", 1).stage(stage(1, 1).prerequisite(id("a"), 1).build()).build());
-        assertThrows(IllegalArgumentException.class, () -> cyclic.freeze(resources()));
+        assertThrows(IllegalArgumentException.class, cyclic::freeze);
 
         var asymmetric = new ResearchRegistry();
         asymmetric.register(definition("a", 3).stage(stage(1, 3).mutex(id("b"), 1).build()).build());
         asymmetric.register(definition("b", 3).stage(stage(1, 1).mutex(id("a"), 1).build()).stage(stage(2, 3).build()).build());
-        assertThrows(IllegalArgumentException.class, () -> asymmetric.freeze(resources()));
+        assertThrows(IllegalArgumentException.class, asymmetric::freeze);
 
         var symmetric = new ResearchRegistry();
         symmetric.register(definition("a", Integer.MAX_VALUE).stage(stage(1, Integer.MAX_VALUE).mutex(id("b"), 1).build()).build());
         symmetric.register(definition("b", Integer.MAX_VALUE).stage(stage(1, 2).mutex(id("a"), 1).build())
                                                              .stage(stage(3, Integer.MAX_VALUE).mutex(id("a"), 1).build()).build());
-        assertDoesNotThrow(() -> symmetric.freeze(resources()));
+        assertDoesNotThrow(symmetric::freeze);
     }
 
 }

@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.research;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycle;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.delivery.DownloadOutputKey;
 import com.circulation.prototype_eng.api.research.delivery.ItemDelivery;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
@@ -40,7 +39,8 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -76,7 +76,6 @@ import java.util.function.Supplier;
 public final class ResearchWorld {
     private final Thread owner = Thread.currentThread();
     private final ResearchRegistry registry;
-    private final NetworkResourceRegistry resources;
     private final ResearchPermissionPolicy permissions;
     private final TeamResearchStart admission;
     private final ResearchEligibility eligibility;
@@ -111,13 +110,12 @@ public final class ResearchWorld {
     @Nullable
     private TeamOwnedResearch.Completion activeTeamLevel;
 
-    public ResearchWorld(ResearchRegistry registry, NetworkResourceRegistry resources,
+    public ResearchWorld(ResearchRegistry registry,
                          ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
         this.registry = Objects.requireNonNull(registry);
-        this.resources = Objects.requireNonNull(resources);
         this.permissions = Objects.requireNonNull(permissions);
         this.writer = Objects.requireNonNull(writer);
-        admission = new TeamResearchStart(registry, resources, permissions);
+        admission = new TeamResearchStart(registry, permissions);
         eligibility = new ResearchEligibility(registry);
         downloadSources = new ResearchDownloadSources(registry);
     }
@@ -381,7 +379,7 @@ public final class ResearchWorld {
                 }
             }
             var queueRows = new ObjectArrayList<ResearchPlayerView.QueueRow>();
-            var numericProgress = new Object2LongOpenHashMap<ResourceLocation>();
+            var numericProgress = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             var manualRows = new ObjectArrayList<ResearchPlayerView.ManualRow>();
             long queueEpoch = 0;
             if (queueDecision == ResearchPermissionPolicy.Decision.ALLOWED && queueSnapshot != null) {
@@ -389,8 +387,8 @@ public final class ResearchWorld {
                 for (var entry : queueSnapshot.entries())
                     queueRows.add(new ResearchPlayerView.QueueRow(entry.key().queueEntryId(),
                         entry.key().researchId(), entry.key().targetLevel(), entry.requestedBy(), entry.createdAtWorldTime()));
-                for (var progress : queueSnapshot.resourceProgress().object2LongEntrySet())
-                    numericProgress.put(progress.getKey().id(), progress.getLongValue());
+                for (var progress : queueSnapshot.resourceProgress().reference2DoubleEntrySet())
+                    numericProgress.addTo(progress.getKey(), progress.getDoubleValue());
                 for (var manual : manualSnapshots)
                     manualRows.add(new ResearchPlayerView.ManualRow(manual.queueKey().queueEntryId(),
                         manual.status(), manual.pauseReason(), manual.contributor(), manual.work()));
@@ -537,7 +535,7 @@ public final class ResearchWorld {
             }
             var restoredTeams = new Object2ObjectLinkedOpenHashMap<String, TeamProgress>(saved.teams().size());
             for (var snapshot : saved.teams()) {
-                var team = new TeamProgress(snapshot.teamId(), TeamResearchQueue.restore(registry, resources, snapshot.queue()), restoredPlayers);
+                var team = new TeamProgress(snapshot.teamId(), TeamResearchQueue.restore(registry, snapshot.queue()), restoredPlayers);
                 team.research.restore(snapshot.research());
                 team.knownMembers = snapshot.knownMembers();
                 team.blacklist.addAll(snapshot.blacklist());
@@ -1492,7 +1490,7 @@ public final class ResearchWorld {
             if (levelWritersBusy()) return ResearchLevelResult.BUSY;
             if (previous != null && previous.research.sourceReserved(id)) return ResearchLevelResult.SOURCE_RESERVED;
             if (level < before && pendingLevelCompletion(id, null, target)) return ResearchLevelResult.BUSY;
-            var team = previous == null ? new TeamProgress(target, new TeamResearchQueue(registry, resources, target), players) : previous;
+            var team = previous == null ? new TeamProgress(target, new TeamResearchQueue(registry, target), players) : previous;
             var source = team.research;
             var baseline = source.snapshot();
             var receipt = level > before ? source.tryPrepareCompletion(id, level) : source.tryPrepareSourceMutation(id, before, level, null);
@@ -1748,7 +1746,7 @@ public final class ResearchWorld {
         }
         var team = teams.get(id);
         if (team == null) {
-            team = new TeamProgress(id, new TeamResearchQueue(registry, resources, id), players);
+            team = new TeamProgress(id, new TeamResearchQueue(registry, id), players);
             teams.put(id, team);
             capturedTeams = null;
             dirty = true;

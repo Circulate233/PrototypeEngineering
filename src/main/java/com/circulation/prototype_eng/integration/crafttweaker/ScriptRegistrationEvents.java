@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.registration.DefinitionRegistrations;
@@ -41,11 +40,6 @@ public final class ScriptRegistrationEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void declarations(RecipeDeclarationRegistrationEvent event) {
-        DefinitionRegistrations.dispatch(event);
-    }
-
-    @SubscribeEvent(priority = EventPriority.LOWEST)
-    public static void resources(NetworkResourceRegistrationEvent event) {
         DefinitionRegistrations.dispatch(event);
     }
 

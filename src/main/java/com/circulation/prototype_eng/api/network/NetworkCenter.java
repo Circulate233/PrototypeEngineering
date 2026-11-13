@@ -5,8 +5,8 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
@@ -22,17 +22,19 @@ public interface NetworkCenter {
         new ResourceLocation(Tags.MOD_ID, "network_center"), (owner, identity) ->
             new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER,
                 ((NetworkCenter) owner).networkLevel(), Objects.requireNonNull(owner.lifecycle()).formed(),
-                identity.loadOrder(), ((NetworkCenter) owner).networkResources(), NetworkResourceModifier.EMPTY, 0, 0), () -> true,
+                identity.loadOrder(), ((NetworkCenter) owner).providedConcurrency(), ((NetworkCenter) owner).networkResources(), NetworkResourceModifier.EMPTY, 0, 0), () -> true,
                 owner.energyPerTick() == 0 ? null : owner::reservePower));
 
     long energyPerTick();
 
     int networkLevel();
 
+    long providedConcurrency();
+
     /**
-     * Fixed, zero-default, read-only contribution; THREAD supplies logical concurrency capacity.
+     * Fixed, zero-default, read-only double resource contribution; concurrency is supplied separately.
      */
-    default Object2LongMap<NetworkResourceType> networkResources() {
-        return Object2LongMaps.emptyMap();
+    default Reference2DoubleMap<NetworkResourceType> networkResources() {
+        return Reference2DoubleMaps.emptyMap();
     }
 }

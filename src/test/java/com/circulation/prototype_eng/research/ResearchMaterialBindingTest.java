@@ -4,7 +4,6 @@ import ae2.api.config.Actionable;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.recipe.overlay.RecipeOverlayType;
@@ -47,7 +46,7 @@ class ResearchMaterialBindingTest {
         for (var definition : definitions) {
             registry.register(definition);
         }
-        registry.freeze(resources());
+        registry.freeze();
         return registry;
     }
 
@@ -65,12 +64,6 @@ class ResearchMaterialBindingTest {
 
     private static RecipeRequirement<EnergyRequirement> energy() {
         return RecipeRequirements.ENERGY.requirement(id("energy"), new EnergyRequirement(2, 3, 0, 7, false));
-    }
-
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
     }
 
     private static ResourceLocation id(String name) {
@@ -177,18 +170,18 @@ class ResearchMaterialBindingTest {
         var extension = new Extension(4);
         var registry = new ResearchRegistry();
         registry.register(definition("dependent", 1, extension.stage(1, 1, "1").prerequisite(id("missing"), 1).build()));
-        assertThrows(IllegalArgumentException.class, () -> registry.freeze(resources()));
+        assertThrows(IllegalArgumentException.class, registry::freeze);
         assertEquals(0, extension.configurations);
         assertFalse(registry.isFrozen());
         registry.register(definition("missing", 1, stage(1, 1).build()));
-        registry.freeze(resources());
+        registry.freeze();
         assertEquals(1, extension.configurations);
         var codec = registry.materials(id("dependent"), 1);
         var sources = new Sources(20, 100);
         var paid = extension.blocked(codec, sources);
         var replacement = new Sources(15, 0);
         extension.complete(codec.decodeMaterialCycle(replacement.owner, replacement.hatches, codec.encode(paid)), replacement, 7);
-        assertThrows(IllegalStateException.class, () -> registry.freeze(resources()));
+        assertThrows(IllegalStateException.class, registry::freeze);
         assertEquals(1, extension.configurations);
     }
 
@@ -204,12 +197,12 @@ class ResearchMaterialBindingTest {
                                                                   failingExtension.configure(builder);
                                                                   throw failure;
                                                               }).build()));
-        assertSame(failure, assertThrows(IllegalStateException.class, () -> registry.freeze(resources())));
+        assertSame(failure, assertThrows(IllegalStateException.class, registry::freeze));
         assertFalse(registry.isFrozen());
         assertThrows(IllegalStateException.class, registry::all);
         assertThrows(IllegalStateException.class, () -> registry.materials(id("first"), 1));
         assertThrows(IllegalStateException.class, () -> registry.register(definition("late", 1, stage(1, 1).build())));
-        assertThrows(IllegalStateException.class, () -> registry.freeze(resources()));
+        assertThrows(IllegalStateException.class, registry::freeze);
         assertEquals(1, firstExtension.configurations);
         assertEquals(1, failingExtension.configurations);
     }

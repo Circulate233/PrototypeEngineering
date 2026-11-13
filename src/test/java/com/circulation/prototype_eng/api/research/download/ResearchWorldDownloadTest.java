@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.download;
 
 import ae2.api.stacks.AEKey;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
@@ -337,7 +336,7 @@ class ResearchWorldDownloadTest {
     @Test
     void zeroCostDownloadCreatesEveryEmptyOriginalMemberSourceBeforeEvaluatingMaterial() {
         var fixture = new Fixture(0);
-        var world = new ResearchWorld(fixture.registry, fixture.resources, ResearchPermissionPolicy.DEFAULT, fixture.saves);
+        var world = new ResearchWorld(fixture.registry, ResearchPermissionPolicy.DEFAULT, fixture.saves);
         var intent = new ResearchDownloadOperation.Intent(PLAYER, new UUID(0, 4), new UUID(0, 5), "original_team", RESEARCH, 4, 5);
         var calls = new AtomicInteger();
         assertEquals(ResearchDownloadResult.Status.NO_EVENT, fixture.request(world, intent, calls).status());
@@ -379,7 +378,6 @@ class ResearchWorldDownloadTest {
 
     private static final class Fixture {
         final ResearchRegistry registry = new ResearchRegistry();
-        final NetworkResourceRegistry resources = new NetworkResourceRegistry();
         final ResearchWorldNbt codec;
         final Saves saves = new Saves();
         final Inventory inventory = new Inventory();
@@ -390,12 +388,11 @@ class ResearchWorldDownloadTest {
         }
 
         Fixture(int cost) {
-            resources.freeze();
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(4).itemDownloadLevelCost(cost)
                                                 .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 4).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-            registry.freeze(resources);
-            codec = new ResearchWorldNbt(registry, resources, new ResourceKeyNbt(id -> TYPE.getId().equals(id) ? TYPE : null));
+            registry.freeze();
+            codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(id -> TYPE.getId().equals(id) ? TYPE : null));
         }
 
         ResearchWorldSnapshot initial() {
@@ -404,7 +401,7 @@ class ResearchWorldDownloadTest {
             var offline = new PlayerResearchState(OFFLINE);
             offline.completeAtLeast(RESEARCH, 2);
             var team = new TeamOwnedResearch("original_team", registry);
-            var queue = new TeamResearchQueue(registry, resources, team.teamId());
+            var queue = new TeamResearchQueue(registry, team.teamId());
             var members = new ObjectOpenHashSet<>(ObjectList.of(PLAYER, OFFLINE));
             var membership = OwnerTeamResolution.resolved(PLAYER, team.teamId(), OwnerTeamType.PLAYER, members, Optional.of(PLAYER));
             var players = new Object2ObjectOpenHashMap<UUID, PlayerResearchState>();
@@ -424,7 +421,7 @@ class ResearchWorldDownloadTest {
         }
 
         ResearchWorld restore(ResearchWorldSnapshot saved) {
-            var world = new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, saves);
+            var world = new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, saves);
             var decoded = codec.decode(codec.encode(saved));
             world.restore(decoded);
             saves.durable = decoded;

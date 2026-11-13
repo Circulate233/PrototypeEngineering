@@ -13,17 +13,15 @@ import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.network.resource.ComputerRecipe;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.structure.StructureDefinitions;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.item.PrototypeCreativeTab;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -49,7 +47,7 @@ import java.util.Objects;
 public final class ComputerExamples {
     private static final ResourceLocation ID = id("java_computer");
     private static final ResourceLocation SHAPE = id("java_computer_shape");
-    public static final NetworkResourceType COOLING = new NetworkResourceType(id("cooling"), false, true);
+    public static final NetworkResourceType COOLING = ExampleResources.COOLING;
 
     private ComputerExamples() {
     }
@@ -68,14 +66,9 @@ public final class ComputerExamples {
     }
 
     @SubscribeEvent
-    public static void resources(NetworkResourceRegistrationEvent event) {
-        event.registry().register(COOLING);
-    }
-
-    @SubscribeEvent
     public static void items(RegistryEvent.Register<Item> event) {
-        event.getRegistry().register(new ComputingCard("computer_card", NetworkResources.COMPUTE));
-        event.getRegistry().register(new ComputingCard("net_computer_card", new NetworkResourceType(id("net_compute"), false)));
+        event.getRegistry().register(new ComputingCard("computer_card", ExampleResources.COMPUTE));
+        event.getRegistry().register(new ComputingCard("net_computer_card", ExampleResources.NET_COMPUTE));
     }
 
     @SubscribeEvent
@@ -94,9 +87,9 @@ public final class ComputerExamples {
         event.structure(StructureDefinitions.template(SHAPE, BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(cells), List.of(), List.of()));
         var cooling = new ComputerRecipe(id("java_cooling"), List.of(new GenericStack(
-            AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1_000)), 1_000)), Object2LongMaps.singleton(COOLING, 1_000));
+            AEFluidKey.of(new FluidStack(FluidRegistry.WATER, 1_000)), 1_000)), Reference2DoubleMaps.singleton(COOLING, 1_000));
         event.assembly(MachineAssembly.builder(Objects.requireNonNull(event.registry().get(ID)), "computer-v1")
-                                      .instanceFactory(type -> new ComputerController(type, 8, Object2LongMaps.singleton(NetworkResources.COMPUTE, 1_000), List.of(cooling)))
+                                      .instanceFactory(type -> new ComputerController(type, 8, Reference2DoubleMaps.singleton(ExampleResources.COMPUTE, 1_000), List.of(cooling)))
                                       .recreated(ComputerController.COMPONENTS, ComputerController.DEVICE).build());
     }
 
@@ -107,10 +100,9 @@ public final class ComputerExamples {
             setRegistryName(id(name));
             setTranslationKey("pe_run_tests." + name);
             setCreativeTab(PrototypeCreativeTab.INSTANCE);
-            var supplied = new Object2LongOpenHashMap<NetworkResourceType>();
-            supplied.put(NetworkResources.THREAD, 8);
+            var supplied = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             supplied.put(resource, 1_000);
-            definition = new Capture(supplied, Object2LongMaps.singleton(COOLING, 1_000), 32, () -> true);
+            definition = new Capture(8, supplied, Reference2DoubleMaps.singleton(COOLING, 1_000), 32, () -> true);
         }
 
         @Override

@@ -21,7 +21,6 @@ Java addon 通过 Forge 事件提交定义。库在对应事件结束后检查�
 | 注册事件                                    | 用途                                               |
 | ------------------------------------------- | -------------------------------------------------- |
 | `MachineTypeRegistrationEvent`              | 声明机器类型，库随后为这些类型创建控制器方块。     |
-| `NetworkResourceRegistrationEvent`          | 添加计算网络使用的资源种类。                       |
 | `NetworkComputerComponentRegistrationEvent` | 声明哪些物品提供计算资源。                         |
 | `ResearchRegistrationEvent`                 | 添加研究及等级要求。                               |
 | `ResearchItemDownloadRegistrationEvent`     | 设置研究下载所用材料和生成物品的函数。             |
@@ -228,42 +227,48 @@ Java 在 `ParallelControllerRegistrationEvent` 中向 `event.registry()` 注册 
 
 `ResearchResourceFormula.builder().constant(type, demand)` 定义固定总需求；同一 builder 的 `.affine(type, base, slope)` 按阶段内的等级偏移计算总需求：`base + slope × (当前等级 - 阶段首级)`，最后调用 `.build()`。研究公式不设置单站速率，旧 `segmentGrantLimit` 参数已移除。`DATABASE_AND_ITEM` 允许个人研究写入数据库或下载成物品；`ITEM_ONLY` 的普通完成量归队伍并通过物品下载交付。奖励组可以含物品或自定义事件。
 
-计算网络资源通过 `NetworkResourceRegistrationEvent` 注册，提供该资源的物品通过 `NetworkComputerComponentRegistrationEvent` 注册。机器用 `MachineOwnership` 保存所有者，以 `MachineNetworkDevice` 声明网络中心、计算机、研究站、数据中心或普通设备角色；`NetworkRecipeWork` 处理配方的研究和计算资源要求。给资源数量本身不会授予研究权限。
+计算网络资源由使用方实现并复用 `NetworkResourceType` 单例，不需要资源注册，库没有默认资源。提供资源的物品实现 `NetworkComputerComponent`；已有显式物品适配仍可用组件注册事件。机器用 `MachineOwnership` 保存所有者，`MachineNetworkDevice` 声明角色，`NetworkRecipeWork` 处理研究和数值需求。
 
 默认 `NetworkCenterController(type, level, threadCapacity, energyPerTick)` 提供网络等级和线程额度；默认 `ResearchStationController(type, level, rates, energyPerTick)` 提供研究等级、各资源每 tick 推进速率及 FE 消耗。二者直接继承 `MachineInstance`，不安装配方工位或机器业务 tick。中心通过网络发布服务工作，研究站通过共享研究服务工作。中心旧的两参数/三参数构造器保留，省略的线程额度为 0，两参数时耗能也为 0。
 
-只有当前活动中心的供给计入队伍，并与计算机和外部参与者的供给相加；中心缺能或失效后按新活动中心重新取供给。`THREAD` 是已有的逻辑并发额度，研究站和普通配方共用整机租约，不是 JVM 工作线程数量。`NetworkCenter.networkResources()` 返回当前加载代固定的只读资源表；默认控制器只声明配置的 THREAD，并复用同一张表，自定义中心可返回自己的资源向量。
+只有活动中心的供给计入队伍，并与计算机和外部参与者相加。并发是独立整数限制，中心不占用，其他工作机器共用整机租约。`NetworkCenter.providedConcurrency()` 提供并发；`networkResources()` 提供double资源表，默认控制器的资源表为空，自定义中心可提供自己的资源。
 
-计算资源类型用 `new NetworkResourceType(id, logicalConcurrency)` 声明。资源类型不限制单件物品、整台计算机或研究站的资源量；线程、算力和自定义资源均由开发者决定供给或速率。计算物品的 `resourcesPerItem` 按实际安装数量相乘，再与机器直接声明的供给汇总。例如一件物品可声明 64 THREAD、2048 COMPUTE 和任意自定义资源量。旧 `maxPerTickValue` 字段及构造参数已删除；数量仍使用非负 long，实际累加/倍增不能溢出。
+资源实现 `NetworkResourceType extends PacketWritable`，资源表、速率及研究需求均用 `Reference2DoubleMap<NetworkResourceType>`，按对象身份处理，复用单例并用addTo累加。数量为非负有限double，保留真实算术溢出预检；并发单独使用long，不注册为资源。默认便利入口 `NetworkResourceType.network(id, name, pattern)` / `.computer(...)`。详见[网络资源与展示包](docs/network-resources.md)。
 
 Java 分别给类型声明 `MachineOwnership.TYPE` 和 `NetworkCenter.DEVICE` / `ResearchStation.DEVICE`，给装配指定实例工厂并将对应 `DEVICE` 标为 `recreated`。例如研究站装配：
 
 ```java
 MachineAssembly.builder(type, "research-station-v1")
     .instanceFactory(value -> new ResearchStationController(value, 1,
-        Object2LongMaps.singleton(NetworkResources.COMPUTE, 10), 8))
+        Reference2DoubleMaps.singleton(COMPUTE, 10), 8))
     .recreated(ResearchStation.DEVICE).build();
 ```
 
-`rates` 是 `Object2LongMap<NetworkResourceType>`，未列资源速率为 0；定义后按只读契约借用，不复制。速率不得为负，不能包含逻辑线程类型，具体速率由开发者定义。等级与耗能在当前加载代固定，耗能非负。自定义运行时可直接实现 `api.network.NetworkCenter` 或 `api.research.station.ResearchStation` 并安装对应角色组件，无需继承默认控制器；无机器业务 tick 的实现覆写 `requiresTick()` 返回 `false`。
+`rates` 是 `Reference2DoubleMap<NetworkResourceType>`，未列资源速率为0；定义后按只读契约借用，不复制。速率由开发者定义，等级与非负FE在加载代固定。自定义运行时可直接实现 `NetworkCenter` 或 `ResearchStation`，无业务tick的实现返回 `requiresTick() = false`。
 
 每段每种资源增加 `min(网络研究供给, 各参与站该资源速率之和, 剩余需求)`。站点等级决定是否合格，速率由站点定义；多个站仍合摊一份 START → TICK → END 材料，不按站数复制。研究站只在成功推进的 END 与进度一起结算自己的 FE，待机或材料周期未完成时不扣这笔电费；材料定义自身的阶段 FE 按原规则另行结算。缺能站不进入新段候选。网络中心只对本次生效者收费，缺能时重选可供电中心。同一设备同一服务器 tick 只成功付费一次，重新发布或调用不会重复扣费。
 
-完整 Java 示例见 [NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java) 和 [ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心与研究站当前只提供控制器和接线，相关 GUI 延缓实现。
+完整Java示例见[NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java)和[ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心纯数据显示GUI已接入，研究站GUI仍延缓。
+
+### 资源展示包与增量同步
+
+自定义资源提供 `packetType()` 和 `writeToPacket(ByteBuf)`，并在两侧mod初始化时通过 `NetworkResourcePackets.register(packetType, decoder)` 提供该包布局的解码函数；不逐项注册资源。固定展示数据在单例生命周期内保持不变，客户端实现 `displayName()`、`format(double)`。默认格式资源包发送翻译键与Java数量格式，例如 `%.2f FLOP/t`。
+
+网络中心通过AE的 `PacketWritable` 增量发布：新增资源发送固定展示包与初值，后续只发送索引、字段标记和变化的double，归零发送移除索引。新容器取得完整基线，稳定数据不发送更新。客户端保留行，宽384、高162～242，超过5行才显示滑块，滚动不请求服务器。
 
 ### 计算机与运算仓
 
-`NetworkComputer` 接口只暴露 `providedConcurrency()` 和 `providedResources()`；资源表包含 THREAD，按只读契约交接。默认 `ComputerController(type, maximumThreads, resourceLimits, recipes)` 可被继承，与网络中心、研究站控制器一样使用共同机器生命周期。类型声明 `MachineOwnership.TYPE`、`ComputerController.COMPONENTS`、`ComputerController.DEVICE`，装配将后两项标为 recreated。计算机自身不收费，组件的 FE 在网络发布事务中支付。
+`NetworkComputer` 只暴露独立整数 `providedConcurrency()` 和R2D资源表 `providedResources()`。默认可继承 `ComputerController` 组合现有组件、材料事务和网络发布，无普通配方工位或独立业务tick，本体不耗FE。
 
 只从 `ComputationHatch` 读取安装组件，组成变化由事件通知，稳定时复用缓存。四级 `computation_hatch_1..4` 分别为1/2/3/4槽；每槽物品1件，非物品原生容量1000/4000/16000/64000。物品的 Item 必须实现 `NetworkComputerComponent`，非物品类型不限。共享库存接受外部插入/抽取，没有自动IO。
 
 组件返回 `new NetworkComputerComponent.Capture(provided, requiredResources, energyPerTick, currentProof)`。本机汇总所有组件的消耗，任何资源或 FE 不足时全部组件供给停摆；可运行的 `ComputerRecipe` 独立继续。`ComputerRecipe(id, inputsPerTick, provided)` 是每tick的供给配方，复用原资源需求的 TICK 事务支付一份输入，也可传只读资格条件。控制器可用 `installedComponents()` 取得安装身份与定义。
 
-`new NetworkResourceType(id, logicalConcurrency, true)` 声明内部资源，例如冷却。内部资源仅在本机产生和占用，不进入 `providedResources()` 或队伍网络；未用额度不跨tick累积。具体控制器的线程/资源上限按配置应用，不是资源类型的固有限制。
+`NetworkResourceType.computer(id, name, pattern)` 或自定义internal资源声明本机资源，只在计算机内产生和占用，不进入队伍网络。具体控制器的并发/资源上限不构成类型固有限制。
 
 计算机启动须先取得中心或其他已获准设备提供的1份并发，不能用自己的待生效供给启动；活动数据库占用1份，研究站推进时申请，中心不占用。三类网络设备优先于普通设备，高优先级申请可收回普通租约并使其未提交凭据失效；同条件使用持久UUID，避免加载顺序决定结果。尚未获准的计算机只预留、不支付材料或组件FE。
 
-ZS 入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`，每tick配方用 `ComputerRecipe.create(id, Resource[] inputs, ComputingResources provided)`，内部类型用 `ComputingResource.internal(id, logicalConcurrency)`。完整规则、Java/ZS 示例和边界见[计算机与运算仓](docs/computers.md)。计算机GUI继续延缓；本轮仅实现运算仓GUI。
+ZS入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`；供给配方用 `ComputerRecipe.create(id, Resource[] inputs, ComputingResources provided)`；资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`。自定义Java资源可经 `ZenComputingResource` 包装器交给脚本。计算机GUI仍延缓，见[计算机](docs/computers.md)。
 
 默认数据库使用 `DataCenterController(type, storageComponent)`，`storageComponent` 是已声明的 `DataCenterStorage` 组件类型。等级、容量与内容由存储组件定义，控制器直接使用现有持久化、下载及自动升级能力，无配方工位或独立业务tick，并可继承。类型声明 `MachineOwnership.TYPE`、存储组件和 `DataCenter.DEVICE`；装配为存储配置codec，只将网络角色标为recreated。自定义控制器也可直接实现 `DataCenter`，通过 `dataCenterStorage()` 提供实际存储组件。活动数据库沿既有规则占1份优先并发，GUI继续延缓。Java/ZS完整入口见[默认数据库控制器](docs/data-centers.md#默认控制器2026-11-13)。
 
@@ -462,9 +467,9 @@ MachineType.researchStation("example:station", "example.station", "example:stati
     ComputingResources.create().add(compute, 10), 8).register("station-v1");
 ```
 
-中心在等级后依次填写线程额度、FE/t，研究站最后一项是 FE/t。资源类型使用 `ComputingResource.create(id, logicalConcurrency)`，不再传上限。普通 `MachineType.create(...)` 可链式调用 `.requiresNetwork(true)` 或 `.requiresNetwork(false)`；省略时遵循上述配置和显式角色规则。
+中心在等级后填写并发、FE/t；研究站最后一项为FE/t。资源用 `ComputingResource.network(id, translationKey, pattern)` / `.computer(...)`，无需注册。普通机器可显式 `.requiresNetwork(true/false)`，省略时遵循配置默认false；专用角色保留。
 
-计算资源用 `ComputingResource` 定义，`ComputingResources` 累加资源数量，`ComputingModifier` 设置数量修饰。`NetworkConfiguration.create(...)` 组合机器角色、等级、供给和配方需求，然后传给 preinit 中的 `.network(...)`。内置 `thread/compute/qubit` 已注册，禁止再次注册。
+资源由开发者定义单例，`ComputingResources` 累加double，`ComputingModifier` 设置修饰。`NetworkConfiguration.create(...)` 组合角色、等级、独立并发、供给和配方需求；库不预置thread/compute/qubit。
 
 `RenderBindings.gecko()` 设置 geo、纹理和动画，再绑定到机器、组件或结构。`Options.create(...)` 设置 JEI 概率标记和材料候选显示；`pool.jeiOptions(...)` 返回带显示设置的新池。具体参数和示例见 [ZS 使用参考](api-zs-reference.md)。
 

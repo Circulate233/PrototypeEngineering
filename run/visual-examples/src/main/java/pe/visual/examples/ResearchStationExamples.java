@@ -8,14 +8,13 @@ import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.ResearchStationController;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.research.station.ResearchStation;
 import com.circulation.prototype_eng.api.structure.StructureDefinitions;
 import com.circulation.prototype_eng.api.structure.StructurePattern;
 import com.circulation.prototype_eng.api.structure.StructurePredicate;
 import com.circulation.prototype_eng.api.structure.StructurePredicates;
 import com.circulation.prototype_eng.util.BlockPos2ObjectMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fml.common.Mod;
@@ -60,7 +59,7 @@ public final class ResearchStationExamples {
         event.structure(StructureDefinitions.template(SHAPE, BlockOrientation.NORTH_UP, BlockPos.ORIGIN,
             false, new StructurePattern(cells), List.of(), List.of()));
         event.assembly(MachineAssembly.builder(Objects.requireNonNull(event.registry().get(ID)), "research-station-v1")
-                                      .instanceFactory(type -> new ResearchStationController(type, 1, Object2LongMaps.singleton(NetworkResources.COMPUTE, 10), 8))
+                                      .instanceFactory(type -> new ResearchStationController(type, 1, Reference2DoubleMaps.singleton(ExampleResources.COMPUTE, 10), 8))
                                       .recreated(ResearchStation.DEVICE).build());
     }
 

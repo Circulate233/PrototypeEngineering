@@ -27,9 +27,8 @@ import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -64,8 +63,8 @@ import com.circulation.prototype_eng.research.ResearchEligibility;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
@@ -117,26 +116,20 @@ class NetworkRecipeWorkTest {
         return new RecipeCatalog(List.of(new DefaultRecipePool(id("recipes"), "network_work_test.recipes", recipes)));
     }
 
-    private static Object2LongOpenHashMap<NetworkResourceType> demand() {
-        var demand = new Object2LongOpenHashMap<NetworkResourceType>();
-        demand.put(NetworkResources.COMPUTE, 10);
+    private static Reference2DoubleOpenHashMap<NetworkResourceType> demand() {
+        var demand = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+        demand.put(ComputingResourceFixtures.COMPUTE, 10);
         return demand;
     }
 
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
-    }
-
-    private static ResearchRegistry research(NetworkResourceRegistry resources) {
+    private static ResearchRegistry research() {
         var registry = new ResearchRegistry();
         for (var name : List.of("gate", "filler_one", "filler_two")) {
             int max = name.equals("gate") ? 3 : 1;
             registry.register(ResearchDefinition.builder(id(name)).maxLevel(max).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, max).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 
@@ -154,7 +147,7 @@ class NetworkRecipeWorkTest {
             var five = fixture.process(first, fixture.normal, 5);
             assertSame(ProcessResult.SUCCESS, three.tick());
             assertSame(ProcessResult.SUCCESS, five.tick());
-            assertEquals(20, fixture.permit(first).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(20, fixture.permit(first).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(92, first.input.storedEnergy());
             assertEquals(1, three.state().successfulTicks());
             assertEquals(1, five.state().successfulTicks());
@@ -162,7 +155,7 @@ class NetworkRecipeWorkTest {
             assertInstanceOf(ProcessResult.Blocked.class, rejected.tick());
             assertEquals(RecipeProcess.Lifecycle.NEW, rejected.state().lifecycle());
             assertEquals(100, other.input.storedEnergy());
-            assertEquals(20, fixture.permit(first).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(20, fixture.permit(first).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 
@@ -183,14 +176,14 @@ class NetworkRecipeWorkTest {
             assertEquals(RecipeProcess.Lifecycle.NEW, Objects.requireNonNull(scanned.process()).state().lifecycle());
             assertEquals(100, candidate.input.storedEnergy());
             assertEquals(0, candidate.output.storedEnergy());
-            assertEquals(100, fixture.permit(candidate).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, fixture.permit(candidate).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertSame(ProcessResult.SUCCESS, fixture.process(actual, fixture.normal, 1).tick(), "Probes on another machine do not claim its only lease");
             fixture.nextTick();
             var witness = Objects.requireNonNull(fixture.permit(candidate).reserve(id("operation_witness"), demand()));
             assertEquals(0, witness.operation().sequence(), "The candidate's first real operation follows all probes without an allocated probe sequence");
             assertTrue(witness.commit());
             witness.rollback();
-            assertEquals(100, fixture.permit(candidate).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, fixture.permit(candidate).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(0, fixture.hooks.committed.getInt(RecipeStage.END));
         }
     }
@@ -211,7 +204,7 @@ class NetworkRecipeWorkTest {
             var process = fixture.process(machine, fixture.normal, 1);
             assertInstanceOf(ProcessResult.Blocked.class, process.tick(), "Cloud and losing database levels cannot satisfy a missing active database entry");
             assertEquals(0, process.state().successfulTicks());
-            assertEquals(100, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             active.downloadResearch(id("gate"), 1, fixture.cloud());
             fixture.refresh();
             assertInstanceOf(ProcessResult.Blocked.class, process.tick(), "Recipe level two is insufficient for the machine's default level three");
@@ -220,7 +213,7 @@ class NetworkRecipeWorkTest {
             fixture.refresh();
             assertSame(ProcessResult.SUCCESS, process.tick(), "The combined minimum is three, so the actual downloaded level three passes");
             assertEquals(99, machine.input.storedEnergy());
-            assertEquals(90, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(90, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 
@@ -235,12 +228,12 @@ class NetworkRecipeWorkTest {
             assertEquals(0, process.state().successfulTicks());
             assertEquals(100, machine.input.storedEnergy());
             assertTrue(process.persistenceReady());
-            fixture.supply.put(NetworkResources.COMPUTE, 50);
+            fixture.supply.put(ComputingResourceFixtures.COMPUTE, 50);
             fixture.nextTick();
             assertSame(ProcessResult.SUCCESS, process.tick());
             assertEquals(1, process.state().successfulTicks());
             assertEquals(97, machine.input.storedEnergy());
-            assertEquals(20, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(20, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 
@@ -265,8 +258,8 @@ class NetworkRecipeWorkTest {
                 assertEquals(1, process.state().successfulTicks());
                 assertEquals(RecipeProcess.Lifecycle.RUNNING, process.state().lifecycle());
                 assertEquals(97, machine.input.storedEnergy(), "Only the rejected tick's FE returns");
-                assertEquals(70, completedBook.availableResources().getLong(NetworkResources.COMPUTE), "Earlier completed work stays paid");
-                assertEquals(100, attemptedBook.availableResources().getLong(NetworkResources.COMPUTE));
+                assertEquals(70, completedBook.availableResources().getDouble(ComputingResourceFixtures.COMPUTE), "Earlier completed work stays paid");
+                assertEquals(100, attemptedBook.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
                 assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.TICK));
                 assertTrue(process.persistenceReady(), "Expected authority loss remains resumable");
                 fixture.hooks.onTickCommit = () -> {
@@ -275,7 +268,7 @@ class NetworkRecipeWorkTest {
                 assertSame(ProcessResult.SUCCESS, process.tick());
                 assertEquals(2, process.state().successfulTicks());
                 assertEquals(94, machine.input.storedEnergy());
-                assertEquals(70, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+                assertEquals(70, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             }
         }
     }
@@ -295,9 +288,9 @@ class NetworkRecipeWorkTest {
                 throw failure;
             };
             assertSame(failure, assertThrows(IllegalStateException.class, process::tick));
-            assertEquals(100, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             fixture.refresh();
-            assertEquals(100, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE), "Old compensation never enters the newly published book");
+            assertEquals(100, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE), "Old compensation never enters the newly published book");
             assertEquals(99, machine.input.storedEnergy());
             assertEquals(1, process.state().successfulTicks());
             assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.TICK));
@@ -316,14 +309,14 @@ class NetworkRecipeWorkTest {
             assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.START));
             assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.TICK));
             assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.END));
-            assertEquals(90, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(90, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(95, machine.input.storedEnergy());
             assertEquals(5, machine.output.storedEnergy());
             var zero = fixture.process(machine, fixture.zero, 1);
             assertSame(ProcessResult.SUCCESS, zero.tick());
             assertEquals(RecipeProcess.Lifecycle.COMPLETED, zero.state().lifecycle());
             assertEquals(0, zero.state().successfulTicks());
-            assertEquals(80, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(80, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(2, fixture.hooks.committed.getInt(RecipeStage.START));
             assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.TICK));
             assertEquals(2, fixture.hooks.committed.getInt(RecipeStage.END));
@@ -343,14 +336,14 @@ class NetworkRecipeWorkTest {
             var codec = RecipeProcessNbt.builder(fixture.normal, "network-v1").build();
             var restored = codec.decode(machine.owner, codec.encode(original));
             assertEquals(original.state(), restored.state());
-            assertEquals(80, paid.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(80, paid.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             fixture.nextTick();
             assertSame(ProcessResult.SUCCESS, restored.tick());
             assertEquals(2, restored.state().successfulTicks());
             assertEquals(96, machine.input.storedEnergy());
             assertEquals(1, fixture.hooks.committed.getInt(RecipeStage.START), "Saved started state does not replay START");
-            assertEquals(80, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(80, paid.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(80, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(80, paid.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 
@@ -363,11 +356,11 @@ class NetworkRecipeWorkTest {
             var process = fixture.process(machine, fixture.normal, 10_000_000);
             assertInstanceOf(ProcessResult.Blocked.class, process.tick());
             assertEquals(RecipeProcess.Lifecycle.NEW, process.state().lifecycle());
-            assertEquals(capacity, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(capacity, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(100, machine.input.storedEnergy());
             process.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
             assertSame(ProcessResult.SUCCESS, process.tick());
-            assertEquals(0, fixture.permit(machine).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(0, fixture.permit(machine).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(99, machine.input.storedEnergy());
         }
     }
@@ -377,21 +370,20 @@ class NetworkRecipeWorkTest {
         private final Object world = new Object();
         private final List<MachineInstance> machines = new ObjectArrayList<>();
         private final Hooks hooks = new Hooks();
-        private final NetworkResourceRegistry resources = resources();
-        private final ResearchRegistry research = research(resources);
+        private final ResearchRegistry research = research();
         private final PlayerResearchState player = new PlayerResearchState(new UUID(0, 1));
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
-        private final NetworkRuntime network = new NetworkRuntime(identities, resources,
+        private final NetworkRuntime network = new NetworkRuntime(identities,
             owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
         private final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
-        private final Object2LongOpenHashMap<NetworkResourceType> supply = new Object2LongOpenHashMap<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> supply = new Reference2DoubleOpenHashMap<>();
         private final ComponentType<MachineInstance, MachineDataCenterStorage> storage = MachineDataCenterStorage.component(id("storage"),
             ownership, 1, 3, research, _ -> {
             });
         private final ComponentType<MachineInstance, MachineNetworkDevice> workerRole = MachineNetworkDevice.component(id("worker_role"), ownership,
             (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 1,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         private final MachineRecipe normal = recipe("normal", 4, new EnergyRequirement(0, 1, 0, 0, false), hooks);
         private final MachineRecipe fast = recipe("fast", 1, new EnergyRequirement(2, 3, 0, 5, false), hooks);
         private final MachineRecipe zero = recipe("zero", 0, new EnergyRequirement(2, 3, 0, 5, false), hooks);
@@ -407,33 +399,32 @@ class NetworkRecipeWorkTest {
         }
 
         private Fixture(long threads, long compute, boolean researchGate, long recipeCompute) {
-            supply.put(NetworkResources.THREAD, threads);
-            supply.put(NetworkResources.COMPUTE, compute);
+            supply.put(ComputingResourceFixtures.COMPUTE, compute);
             var extensions = new NetworkRecipeExtensions();
             extensions.register((_, builder) -> {
-                builder.resource(NetworkResources.COMPUTE, recipeCompute);
+                builder.resource(ComputingResourceFixtures.COMPUTE, recipeCompute);
                 if (researchGate) {
                     builder.research(id("gate"), 2);
                 }
             });
-            extensions.publish(catalog(List.of(normal, fast, zero)), research, resources);
-            var defaults = NetworkWorkRequirements.builder().resource(NetworkResources.COMPUTE, 4);
+            extensions.publish(catalog(List.of(normal, fast, zero)), research);
+            var defaults = NetworkWorkRequirements.builder().resource(ComputingResourceFixtures.COMPUTE, 4);
             if (researchGate) {
                 defaults.research(id("gate"), 3);
             }
-            var work = NetworkRecipeWork.component(id("network_work"), workerRole, defaults.build(), extensions, research, resources);
+            var work = NetworkRecipeWork.component(id("network_work"), workerRole, defaults.build(), extensions, research);
             var workerType = type("worker").component(ownership).component(workerRole).component(work).recipePool(id("recipes")).build();
             workerAssembly = MachineAssembly.builder(workerType, "worker-v1").component(ownership, MachineOwnership.CODEC).recreated(workerRole, work).build();
             var dataRole = MachineNetworkDevice.capturedComponent(id("data_role"), ownership,
                 (owner, identity) -> Objects.requireNonNull(owner.components().get(storage)).networkCapture(identity,
-                    Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+                    Objects.requireNonNull(owner.lifecycle()).formed(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var dataType = type("data_center").component(ownership).component(storage).component(dataRole).build();
             dataAssembly = MachineAssembly.builder(dataType, "data-v1").component(ownership, MachineOwnership.CODEC)
                                           .component(storage, MachineDataCenterStorage.CODEC).recreated(dataRole).build();
             network.beginTick(tick);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership,
                 (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                    Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.singleton(NetworkResources.THREAD, 2), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), 2, Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var centerType = type("center").component(ownership).component(centerRole).build();
             var centerAssembly = MachineAssembly.builder(centerType, "center-v1").component(ownership, MachineOwnership.CODEC).recreated(centerRole).build();
             attach(centerAssembly.create(host(centerType.id()), new MachineLifecycleRegistry()));
@@ -441,13 +432,13 @@ class NetworkRecipeWorkTest {
             var components = new NetworkComputerComponentRegistry();
             ComputerSupplyFixtures.register(components, card, _ -> {
                 var captured = NetworkResourceModifier.copyResources(supply);
-                return new NetworkComputerComponent.Capture(captured, () -> captured.equals(supply));
+                return new NetworkComputerComponent.Capture(threads, captured, Reference2DoubleMaps.emptyMap(), 0, () -> captured.equals(supply));
             });
-            components.freeze(resources);
+            components.freeze();
             var installed = MachineComputerComponents.component(id("computer_supply"), components, ComputerSupplyFixtures::warehouses);
             var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
                 (owner, identity) -> Objects.requireNonNull(owner.components().get(installed)).networkCapture(identity, 1,
-                    Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+                    Objects.requireNonNull(owner.lifecycle()).formed(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             var computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
                                           .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());

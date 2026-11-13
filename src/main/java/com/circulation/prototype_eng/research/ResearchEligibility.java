@@ -10,7 +10,7 @@ import com.circulation.prototype_eng.api.research.ResearchStartContext;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 
@@ -50,7 +50,7 @@ public final class ResearchEligibility {
                                       Map<UUID, PlayerResearchState> playerStates,
                                       Object2IntMap<ResourceLocation> teamOwnedResearch, int networkCenterLevel,
                                       Set<ResourceLocation> blacklistedResearchIds,
-                                      Object2LongMap<NetworkResourceType> availableResources) {
+                                      Reference2DoubleMap<NetworkResourceType> availableResources) {
         requireTeamId(teamId);
         if (networkCenterLevel < 0) {
             throw new IllegalArgumentException("Negative network center level");
@@ -138,7 +138,7 @@ public final class ResearchEligibility {
      * team-wide candidate cache is never used as permission, nor substituted for the player predicate.
      */
     public boolean canStart(TeamResearchView view, ResourceLocation researchId, int targetLevel, UUID requestedBy,
-                            Object2LongMap<NetworkResourceType> availableResources, int networkCenterLevel) {
+                            Reference2DoubleMap<NetworkResourceType> availableResources, int networkCenterLevel) {
         requireView(view);
         Objects.requireNonNull(requestedBy);
         if (!view.members().contains(requestedBy)) {

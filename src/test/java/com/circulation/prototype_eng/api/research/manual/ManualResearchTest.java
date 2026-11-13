@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.api.research.manual;
 
 import ae2.api.stacks.AEKey2LongMap;
 import ae2.api.stacks.GenericStack;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
@@ -121,8 +120,6 @@ class ManualResearchTest {
     }
 
     private static Fixture fixture(ResearchDownloadDeliveryPolicy policy, long... targets) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         var rewards = new RewardGroup(id("reward"), List.of(new RewardChild.Event(id("event"), (_, _) -> {
             fail("Manual completion only creates reward eligibility");
@@ -133,13 +130,13 @@ class ManualResearchTest {
                                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build())
                                                                          .rewardGroup(1, rewards).build()).build());
         }
-        registry.freeze(resources);
+        registry.freeze();
         var inputs = new ObjectArrayList<GenericStack>();
         for (long target : targets) {
             inputs.add(new GenericStack(MATERIAL, target));
         }
         var materials = ManualMaterials.from(List.of(RecipeRequirements.RESOURCES.requirement(id("materials"), new ResourceRequirement(inputs, List.of()))));
-        return new Fixture(registry, resources, materials);
+        return new Fixture(registry, materials);
     }
 
     private static ManualResearch.Context context(long time) {
@@ -662,7 +659,6 @@ class ManualResearchTest {
 
     private static final class Fixture {
         private final ResearchRegistry registry;
-        private final NetworkResourceRegistry resources;
         private final ManualMaterials materials;
         private final Checkpoints checkpoints = new Checkpoints();
         private final Object2ObjectOpenHashMap<UUID, PlayerResearchState> players = new Object2ObjectOpenHashMap<>();
@@ -671,14 +667,13 @@ class ManualResearchTest {
         private TeamOwnedResearch team;
         private ManualResearch runtime;
 
-        private Fixture(ResearchRegistry registry, NetworkResourceRegistry resources, ManualMaterials materials) {
+        private Fixture(ResearchRegistry registry, ManualMaterials materials) {
             this.registry = registry;
-            this.resources = resources;
             this.materials = materials;
             for (var player : List.of(FIRST, SECOND, LATE)) {
                 players.put(player, new PlayerResearchState(player));
             }
-            queue = new TeamResearchQueue(registry, resources, "team");
+            queue = new TeamResearchQueue(registry, "team");
             team = new TeamOwnedResearch("team", registry);
             runtime = new ManualResearch(queue, team, players, checkpoints, _ -> materials);
             entry = queue.enqueue(TARGET, 1, FIRST, 1);
@@ -703,7 +698,7 @@ class ManualResearchTest {
         private void reopen() {
             var saved = checkpoints.latest;
             assertNotNull(saved);
-            queue = TeamResearchQueue.restore(registry, resources, saved.queue());
+            queue = TeamResearchQueue.restore(registry, saved.queue());
             team = new TeamOwnedResearch("team", registry);
             team.restore(saved.team());
             for (var player : players.keySet()) {

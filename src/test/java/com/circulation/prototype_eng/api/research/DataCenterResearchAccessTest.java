@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.minecraft.util.ResourceLocation;
@@ -33,7 +33,7 @@ class DataCenterResearchAccessTest {
             var physical = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(machine)));
             var permit = Objects.requireNonNull(fixture.role(machine).workPermit());
             var reservation = Objects.requireNonNull(permit.reserve(new ResourceLocation("test_data_access", "earlier_work"),
-                Object2LongMaps.singleton(NetworkResources.COMPUTE, 30)));
+                Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 30)));
             assertTrue(reservation.commit());
             long firstEpoch = Objects.requireNonNull(fixture.network.plan()).epoch();
             var first = access.download(fixture.membership(OWNER), fixture.permission(), fixture.machineId(machine), FIRST, 1, () -> true);
@@ -48,8 +48,8 @@ class DataCenterResearchAccessTest {
             assertEquals(1, fresh.snapshot().storedResearch().getInt(SECOND));
             var freshPermit = Objects.requireNonNull(fixture.role(machine).workPermit());
             assertEquals(0, freshPermit.tick());
-            assertEquals(70, freshPermit.availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(100, freshPermit.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(70, freshPermit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(100, freshPermit.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(2, fixture.dirtyWrites);
             assertEquals(before, world.snapshot());
         }

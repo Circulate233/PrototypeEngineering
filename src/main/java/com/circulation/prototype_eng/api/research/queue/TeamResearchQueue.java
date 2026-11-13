@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.queue;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
@@ -9,8 +8,8 @@ import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -36,11 +35,10 @@ import java.util.UUID;
 public final class TeamResearchQueue {
     public static final int CAPACITY = 5;
     private final ResearchRegistry registry;
-    private final NetworkResourceRegistry resources;
     private final String teamId;
     private final Thread ownerThread = Thread.currentThread();
     private final ObjectArrayList<Entry> entries = new ObjectArrayList<>(CAPACITY);
-    private final Object2LongOpenHashMap<NetworkResourceType> progress = new Object2LongOpenHashMap<>();
+    private final Reference2DoubleOpenHashMap<NetworkResourceType> progress = new Reference2DoubleOpenHashMap<>();
     private long nextEntryId = 1;
     private long epoch;
     private long updatedAtWorldTime;
@@ -49,11 +47,10 @@ public final class TeamResearchQueue {
     @Nullable
     private Object pendingMutation;
 
-    public TeamResearchQueue(ResearchRegistry registry, NetworkResourceRegistry resources, String teamId) {
+    public TeamResearchQueue(ResearchRegistry registry, String teamId) {
         this.registry = Objects.requireNonNull(registry);
-        this.resources = Objects.requireNonNull(resources);
         this.teamId = Objects.requireNonNull(teamId);
-        if (!registry.isFrozen() || !resources.isFrozen()) {
+        if (!registry.isFrozen()) {
             throw new IllegalStateException("Research queue requires frozen registries");
         }
         if (teamId.isBlank() || !teamId.equals(teamId.trim())) {
@@ -64,9 +61,9 @@ public final class TeamResearchQueue {
     /**
      * Call on the actual runtime owner thread. Saved data contains no owner-thread or plan authority.
      */
-    public static TeamResearchQueue restore(ResearchRegistry registry, NetworkResourceRegistry resources, Snapshot saved) {
+    public static TeamResearchQueue restore(ResearchRegistry registry, Snapshot saved) {
         Objects.requireNonNull(saved);
-        var queue = new TeamResearchQueue(registry, resources, saved.teamId());
+        var queue = new TeamResearchQueue(registry, saved.teamId());
         queue.validateSnapshot(saved);
         queue.replace(saved);
         return queue;
@@ -97,10 +94,6 @@ public final class TeamResearchQueue {
         return registry;
     }
 
-    public NetworkResourceRegistry resources() {
-        requireThread();
-        return resources;
-    }
 
     public long epoch() {
         requireThread();
@@ -137,7 +130,7 @@ public final class TeamResearchQueue {
         return entries.isEmpty() ? Optional.empty() : Optional.of(entries.getFirst());
     }
 
-    public Object2LongMap<NetworkResourceType> resourceProgressSnapshot() {
+    public Reference2DoubleMap<NetworkResourceType> resourceProgressSnapshot() {
         requireThread();
         return NetworkResourceModifier.copyResources(progress);
     }
@@ -177,8 +170,8 @@ public final class TeamResearchQueue {
      * Available quantities are borrowed read-only for this synchronous planning call.
      */
     public Optional<SegmentPlan> planSegment(Key expectedHead, Collection<UUID> stationIds,
-                                             Object2LongMap<NetworkResourceType> availableResources,
-                                             Object2LongMap<NetworkResourceType> stationCapacity, long worldTime) {
+                                             Reference2DoubleMap<NetworkResourceType> availableResources,
+                                             Reference2DoubleMap<NetworkResourceType> stationCapacity, long worldTime) {
         requireBoundary();
         var head = requireHead(expectedHead);
         if (worldTime < 0) {
@@ -195,31 +188,28 @@ public final class TeamResearchQueue {
         var stations = stations(stationIds);
         NetworkResourceModifier.validateResources(availableResources);
         NetworkResourceModifier.validateResources(stationCapacity);
-        for (var type : availableResources.keySet()) {
-            resources.canonical(type);
-        }
         var stage = registry.require(head.key().researchId()).stageForLevel(head.key().targetLevel());
         if (stage.researchTier() == 0) {
             throw new IllegalStateException("Tier-zero research requires manual execution");
         }
         var demand = stage.resourceDemandForLevel(head.key().targetLevel());
-        var ceiling = new Object2LongOpenHashMap<>(progress);
-        var grants = new Object2LongOpenHashMap<NetworkResourceType>(demand.size());
+        var ceiling = new Reference2DoubleOpenHashMap<>(progress);
+        var grants = new Reference2DoubleOpenHashMap<NetworkResourceType>(demand.size());
         boolean complete = true;
-        for (var entry : demand.object2LongEntrySet()) {
+        for (var entry : demand.reference2DoubleEntrySet()) {
             var type = entry.getKey();
-            long before = progress.getLong(type);
-            long remaining = entry.getLongValue() - before;
+            double before = progress.getDouble(type);
+            double remaining = entry.getDoubleValue() - before;
             if (remaining <= 0) {
                 continue;
             }
-            long cap = stationCapacity.getOrDefault(type, 0L);
-            long grant = Math.min(remaining, Math.min(availableResources.getOrDefault(type, 0L), cap));
+            double cap = stationCapacity.getOrDefault(type, 0D);
+            double grant = Math.min(remaining, Math.min(availableResources.getOrDefault(type, 0D), cap));
             if (grant > 0) {
                 grants.put(type, grant);
                 ceiling.addTo(type, grant);
             }
-            if (ceiling.getLong(type) < entry.getLongValue()) {
+            if (ceiling.getDouble(type) < entry.getDoubleValue()) {
                 complete = false;
             }
         }
@@ -326,9 +316,9 @@ public final class TeamResearchQueue {
             throw new IllegalArgumentException("Empty research queue has progress");
         }
         var demand = expected == null ? null : registry.require(expected.researchId()).totalResourceDemandForLevel(expected.targetLevel());
-        for (var entry : saved.resourceProgress().object2LongEntrySet()) {
-            var type = resources.canonical(entry.getKey());
-            if (type.logicalConcurrency() || demand == null || !demand.containsKey(type) || entry.getLongValue() > demand.getLong(type)) {
+        for (var entry : saved.resourceProgress().reference2DoubleEntrySet()) {
+            var type = entry.getKey();
+            if (type.internal() || demand == null || !demand.containsKey(type) || entry.getDoubleValue() > demand.getDouble(type)) {
                 throw new IllegalArgumentException("Saved research progress is outside numeric head demand");
             }
         }
@@ -429,7 +419,7 @@ public final class TeamResearchQueue {
     }
 
     public record Snapshot(String teamId, ObjectList<Entry> entries, @Nullable Key activeHead,
-                           Object2LongMap<NetworkResourceType> resourceProgress, long nextEntryId, long epoch,
+                           Reference2DoubleMap<NetworkResourceType> resourceProgress, long nextEntryId, long epoch,
                            long updatedAtWorldTime, long lastGrantedEntryId, long lastGrantedWorldTime) {
         public Snapshot {
             Objects.requireNonNull(teamId);
@@ -455,15 +445,15 @@ public final class TeamResearchQueue {
         private final ObjectSet<UUID> stationIds;
         private final long queueEpoch;
         private final long worldTime;
-        private final Object2LongMap<NetworkResourceType> progressBefore;
-        private final Object2LongMap<NetworkResourceType> progressCeiling;
-        private final Object2LongMap<NetworkResourceType> grantedResources;
+        private final Reference2DoubleMap<NetworkResourceType> progressBefore;
+        private final Reference2DoubleMap<NetworkResourceType> progressCeiling;
+        private final Reference2DoubleMap<NetworkResourceType> grantedResources;
         private final ObjectList<RecipeRequirement<?>> materialRequirements;
         private final boolean completesResearch;
 
         private SegmentPlan(TeamResearchQueue owner, Entry head, ObjectSet<UUID> stationIds, long queueEpoch, long worldTime,
-                            Object2LongMap<NetworkResourceType> progressBefore, Object2LongMap<NetworkResourceType> progressCeiling,
-                            Object2LongMap<NetworkResourceType> grantedResources, ObjectList<RecipeRequirement<?>> materialRequirements,
+                            Reference2DoubleMap<NetworkResourceType> progressBefore, Reference2DoubleMap<NetworkResourceType> progressCeiling,
+                            Reference2DoubleMap<NetworkResourceType> grantedResources, ObjectList<RecipeRequirement<?>> materialRequirements,
                             boolean completesResearch) {
             this.owner = owner;
             this.head = head;
@@ -493,15 +483,15 @@ public final class TeamResearchQueue {
             return worldTime;
         }
 
-        public Object2LongMap<NetworkResourceType> progressBefore() {
+        public Reference2DoubleMap<NetworkResourceType> progressBefore() {
             return progressBefore;
         }
 
-        public Object2LongMap<NetworkResourceType> progressCeiling() {
+        public Reference2DoubleMap<NetworkResourceType> progressCeiling() {
             return progressCeiling;
         }
 
-        public Object2LongMap<NetworkResourceType> grantedResources() {
+        public Reference2DoubleMap<NetworkResourceType> grantedResources() {
             return grantedResources;
         }
 
@@ -518,7 +508,7 @@ public final class TeamResearchQueue {
      * Grant amounts are borrowed immutable data from the completed segment plan.
      */
     public record GrantResult(Entry entry, ObjectSet<UUID> stationIds,
-                              Object2LongMap<NetworkResourceType> grantedResources,
+                              Reference2DoubleMap<NetworkResourceType> grantedResources,
                               boolean completedResearch) {
         public GrantResult {
             Objects.requireNonNull(entry);

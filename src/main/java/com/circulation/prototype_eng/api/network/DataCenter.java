@@ -6,7 +6,7 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
@@ -30,7 +30,7 @@ public interface DataCenter {
         var snapshot = contents.snapshot();
         return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DATA_CENTER,
             snapshot.level(), Objects.requireNonNull(((MachineInstance) this).lifecycle()).formed(), identity.loadOrder(),
-            Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, snapshot.capacity(), snapshot.storedResearch().size(), snapshot),
+            Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, snapshot.capacity(), snapshot.storedResearch().size(), snapshot),
             contents.current());
     }
 }

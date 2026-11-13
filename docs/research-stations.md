@@ -14,7 +14,7 @@ Java 示例为 `run/visual-examples/src/main/java/pe/visual/examples/ResearchSta
 
 ## 对齐旧实现与 R29
 
-复核 PN `ResearchStationRuntimeImpl` / `ResearchStationTickImpl` 和 PM 的真实需求系统。保留同队、成型、加载、等级、活动物理数据中心门限，维度轮换与维度内 UUID 顺序，各站共享整机 THREAD 租约。多个站合摊一份材料，每种 numeric 的推进量改为 `min(研究供给, 各参与站该资源速率之和, 剩余需求)`；研究读取独立供给，不扣普通配方余额。
+复核 PN `ResearchStationRuntimeImpl` / `ResearchStationTickImpl` 和 PM 的真实需求系统。保留同队、成型、加载、等级、活动物理数据中心门限，维度轮换与维度内 UUID 顺序，各站共享整机 固定并发 租约。多个站合摊一份材料，每种 numeric 的推进量改为 `min(研究供给, 各参与站该资源速率之和, 剩余需求)`；研究读取独立供给，不扣普通配方余额。
 
 R29 确认每次有效推进完整执行材料 START、TICK、END。旧 PN 投影丢掉属性/输出并混合部分阶段，不沿用该缺口。新材料保留完整 `RecipeRequirement`，不新增投影 DTO；每段只在 END 成功后授予研究进度。
 
@@ -45,7 +45,7 @@ START 完成 source apply → business commit → 全部终态确认后，才获
 
 `ResearchWorldNbt` Schema 5 在同一研究文件内保存队头、原站 UUID/owner/维度/位置、可选原控制器方块 ID、最后授予时间与完整材料进程。严格拒绝缺字段、重复站、错误队头和旧格式；NBT 防御复制。恢复先保留原会话，原站真实加载、身份与位置准确且重新获准后才解码，不重放历史 START/TICK。方块 ID 只证明物理来源，不是另一层运行身份；相同站点恢复保留原凭据。普通不可用继续等待，不换另一批站续付半途材料。
 
-换队或黑名单使研究失效时，`restoreForCleanup` 只证明原真实站点和仓室，允许在失去旧队网络工作许可后解码并取消；该证明不能用于推进，不获取 THREAD/numeric。取消异常保留已重建进程，禁止重新解码重放回调。
+换队或黑名单使研究失效时，`restoreForCleanup` 只证明原真实站点和仓室，允许在失去旧队网络工作许可后解码并取消；该证明不能用于推进，不获取 固定并发/numeric。取消异常保留已重建进程，禁止重新解码重放回调。
 
 ## 永久破坏与原进程所有权
 

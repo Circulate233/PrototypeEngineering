@@ -266,7 +266,7 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 ## 计算资源与机器网络角色
 
-默认计算机使用 `MachineType.computer(id, translationKey, structureId, maximumThreads, resourceLimits, recipes)`；`resourceLimits` 未列出的资源不增加本机限制。`ComputerRecipe.create(id, Resource[] inputsPerTick, ComputingResources provided)` 声明每tick的供给配方。`ComputingResource.internal(id, logicalConcurrency)` 创建内部类型，仍需注册；它只在计算机内部结算，不发布到网络。算力组件物品必须由 Java Item 实现 `NetworkComputerComponent`，消耗不足时全部组件供给停摆，可运行配方保持独立。具体例子见[计算机与运算仓](docs/computers.md)。
+默认计算机使用 `MachineType.computer(id, translationKey, structureId, maximumThreads, resourceLimits, recipes)`；未列资源不增加本机限额。`ComputerRecipe.create(id, Resource[] inputsPerTick, ComputingResources provided)` 定义供给配方。内部类型由 `ComputingResource.computer(id, translationKey, pattern)` 创建，无资源注册。组件Item由Java实现，费用不足时全部组件停摆，能运行配方独立继续，见[计算机](docs/computers.md)。
 
 默认数据库使用 `MachineType.dataCenter(id, translationKey, structureId, level, capacity).register(revision)`，level为非负整数，capacity为正整数，按不同研究条目数计数。工厂组合 `DataCenterController`、现有持久存储和DATA_CENTER角色，不安装普通配方工位；活动库占1份优先并发，内容、自动升级、下载与磁盘导入规则保持。默认控制器可继承，Java亦可通过 `DataCenter` 接口提供独立存储实现。GUI继续延缓，见[数据库](docs/data-centers.md#默认控制器2026-11-13)。
 
@@ -276,7 +276,7 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 普通控制器的 `.requiresNetwork(true/false)` 优先于 `config/prototype_eng/controllers.cfg` 中 `network.defaultRequiresNetwork`（默认 false）。显式 `.network(...)` 仍表示选择网络角色；显式 false 只豁免共同配方门限，保留自定义配方的资源/研究条件。专用网络中心、研究站保留各自角色。
 
-`ComputingResource.create(id, logicalConcurrency)` 创建新的计算资源种类，随后调用 `register()` 提交。logicalConcurrency 表示该资源以并发占用管理，例如线程数；普通数值资源可以参与按 tick 的资源工作。单件物品与自定义计算机的线程、算力和自定义资源量均由开发者定义，不存在类型固有上限；旧 maxPerTickValue 参数和属性已删除。`thread()`、`compute()` 和 `qubit()` 是库提供的类型，不应再次注册。
+`ComputingResource.network(id, translationKey, pattern)` / `.computer(...)` 创建外部/本机资源单例，无register、默认资源或logicalConcurrency属性。pattern是数量格式，例如 `%.2f FLOP/t`；任意自定义Java资源可通过 `ZenComputingResource` 包装器提供。数值和速率均为double，并发在控制器/组件中单独定义为long。复用同一资源对象，跨loader经Bindings或Java共享，见[网络资源](docs/network-resources.md)。
 
 `ComputingResources.create()` 创建资源数量表，链式 `add(resource, amount)` 累加供应量，`amount(resource)` 查询数值。`ComputingModifier` 用 `flat` 添加固定量，用 `multiplierPpm` 表示百万分比增量，`500000` 为额外 50%。
 

@@ -6,8 +6,7 @@ import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeWork;
 import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
@@ -49,23 +48,21 @@ class NetworkRecipeReplacementTest {
         var registry = registry(current, "v2");
         registry.declareHistoricalRevision(old, "v1");
         registry.freeze();
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var research = new ResearchRegistry();
-        research.freeze(resources);
+        research.freeze();
         var extensions = new NetworkRecipeExtensions();
         var calls = new ObjectArrayList<MachineRecipe>();
         extensions.register((recipe, builder) -> {
             assertFalse(Thread.holdsLock(extensions));
             calls.add(recipe);
-            builder.resource(NetworkResources.COMPUTE, recipe.durationTicks());
+            builder.resource(ComputingResourceFixtures.COMPUTE, recipe.durationTicks());
         });
-        extensions.publish(registry.snapshot(), research, resources);
+        extensions.publish(registry.snapshot(), research);
         assertEquals(List.of(old, current), calls);
         var device = new ComponentType<MachineInstance, MachineNetworkDevice>(id("device"), _ -> {
             throw new AssertionError("Pure requirement capture cannot acquire a network device");
         }, List.of());
-        var work = NetworkRecipeWork.component(id("work"), device, NetworkWorkRequirements.EMPTY, extensions, research, resources);
+        var work = NetworkRecipeWork.component(id("work"), device, NetworkWorkRequirements.EMPTY, extensions, research);
         var machine = new MachineInstance();
         machine.components().create(work, machine);
         var oldProcess = new RecipeProcess(machine, old, 1);
@@ -80,10 +77,10 @@ class NetworkRecipeReplacementTest {
         assertThrows(IllegalStateException.class, () -> extensions.install(repeated));
         var newProcess = new RecipeProcess(machine, next, 2);
         var newGate = assertInstanceOf(NetworkRecipeWork.Binding.class, newProcess.orderedRequirements().getFirst().payload()).requirements();
-        assertEquals(2, oldGate.resources().getLong(NetworkResources.COMPUTE));
-        assertEquals(8, newGate.resources().getLong(NetworkResources.COMPUTE));
+        assertEquals(2, oldGate.resources().getDouble(ComputingResourceFixtures.COMPUTE));
+        assertEquals(8, newGate.resources().getDouble(ComputingResourceFixtures.COMPUTE));
         assertSame(oldGate, assertInstanceOf(NetworkRecipeWork.Binding.class, oldProcess.orderedRequirements().getFirst().payload()).requirements());
-        assertEquals(4, extensions.require(current).resources().getLong(NetworkResources.COMPUTE));
+        assertEquals(4, extensions.require(current).resources().getDouble(ComputingResourceFixtures.COMPUTE));
     }
 
     @Test
@@ -92,10 +89,8 @@ class NetworkRecipeReplacementTest {
         var next = recipe(8);
         var registry = registry(old, "v1");
         registry.freeze();
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var research = new ResearchRegistry();
-        research.freeze(resources);
+        research.freeze();
         var failure = new IllegalArgumentException("configuration failed");
         var retained = new ObjectArrayList<NetworkWorkRequirements.Builder>();
         var calls = new int[1];
@@ -105,7 +100,7 @@ class NetworkRecipeReplacementTest {
             retained.add(builder);
             if (recipe == next) throw failure;
         });
-        extensions.publish(registry.snapshot(), research, resources);
+        extensions.publish(registry.snapshot(), research);
         var expected = extensions.snapshot();
         assertSame(failure, assertThrows(IllegalArgumentException.class, () -> extensions.prepare(expected, List.of(next))));
         assertSame(failure, assertThrows(IllegalArgumentException.class, () -> extensions.prepare(expected, List.of(next))));

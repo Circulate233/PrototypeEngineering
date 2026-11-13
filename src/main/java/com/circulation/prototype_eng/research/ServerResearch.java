@@ -6,7 +6,6 @@ import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchAccess;
@@ -57,7 +56,7 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.feed_the_beast.ftblib.lib.data.ForgeTeam;
 import com.feed_the_beast.ftblib.lib.data.TeamType;
 import com.feed_the_beast.ftblib.lib.data.Universe;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -131,11 +130,10 @@ public final class ServerResearch {
         }
         var overworld = Objects.requireNonNull(server.getWorld(0), "Research startup requires the overworld");
         var registry = ResearchRegistry.INSTANCE;
-        var resources = NetworkResourceRegistry.INSTANCE;
         var file = new ResearchStateFile(overworld.getSaveHandler().getMapFileFromName("prototype_eng_research").toPath(),
-            new ResearchWorldNbt(registry, resources, new ResourceKeyNbt()));
+            new ResearchWorldNbt(registry, new ResourceKeyNbt()));
         var permissions = ResearchServerConfiguration.INSTANCE.permissions();
-        var world = new ResearchWorld(registry, resources, permissions, snapshot -> {
+        var world = new ResearchWorld(registry, permissions, snapshot -> {
             try {
                 file.write(snapshot);
             } catch (IOException failure) {
@@ -191,7 +189,7 @@ public final class ServerResearch {
     /**
      * The request names the exact database shown by the server, never a replacement selected later.
      */
-    @SuppressWarnings("resource")
+    @SuppressWarnings({"resource", "unused"}) // Public request API retained while the research GUI is deferred.
     public static void requestDataCenterDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
                                                  ResourceLocation id, int level, BooleanSupplier ownerCurrent,
                                                  Consumer<DataCenterResearchAccess.Result> result) {
@@ -229,7 +227,7 @@ public final class ServerResearch {
         }, ExecutionMode.MAIN_THREAD);
     }
 
-    @SuppressWarnings("resource")
+    @SuppressWarnings({"resource", "unused"}) // Public request API retained while the research GUI is deferred.
     public static void requestDataCenterView(EntityPlayerMP actor, BooleanSupplier ownerCurrent, Consumer<DataCenterPlayerView> result) {
         var current = actorSession(actor);
         Objects.requireNonNull(ownerCurrent);
@@ -270,7 +268,7 @@ public final class ServerResearch {
     /**
      * An exact native inventory slot supplies one material; the server freezes event output once.
      */
-    @SuppressWarnings("resource")
+    @SuppressWarnings({"resource", "unused"}) // Public request API retained while the research GUI is deferred.
     public static void requestItemDownload(EntityPlayerMP actor, String expectedTeam, UUID expectedDataCenterId,
                                            ResourceLocation id, int level, int slot, UUID nonce, BooleanSupplier ownerCurrent,
                                            Consumer<ResearchDownloadResult> result) {
@@ -718,7 +716,7 @@ public final class ServerResearch {
             && permission.equals(permission(current, actor, membership));
         if (ResearchRegistry.INSTANCE.require(id).researchTierForLevel(target) == 0) {
             return current.world.start(membership, permission, id, target,
-                new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), operationTime(current),
+                new TeamResearchStart.Environment(0, 0, 0, Reference2DoubleMaps.emptyMap()), operationTime(current),
                 online.keySet(), actorCurrent);
         }
         var network = ServerNetworkRuntime.forServer(current.server);
@@ -1010,7 +1008,7 @@ public final class ServerResearch {
     /**
      * The callback receives null for a busy/stale read, never a replacement empty research state.
      */
-    @SuppressWarnings("resource")
+    @SuppressWarnings({"resource", "unused"}) // Public request API retained while the research GUI is deferred.
     public static void requestView(EntityPlayerMP actor, BooleanSupplier ownerCurrent, Consumer<ResearchPlayerView> result) {
         var current = actorSession(actor);
         Objects.requireNonNull(ownerCurrent);

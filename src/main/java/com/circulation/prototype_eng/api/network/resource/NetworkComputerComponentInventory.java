@@ -7,8 +7,8 @@ import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.api.storage.StorageContext;
 import com.circulation.prototype_eng.util.AEKeyLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 
@@ -25,18 +25,23 @@ public final class NetworkComputerComponentInventory {
     private final List<StorageContext> contexts;
     private final LongArrayList revisions;
     private final List<BooleanSupplier> providers;
-    private final Object2LongMap<NetworkResourceType> resources;
+    private final Reference2DoubleMap<NetworkResourceType> resources;
     private final boolean capturedValid;
     private final List<Installed> components;
+    private final long concurrency;
 
     private NetworkComputerComponentInventory(List<StorageContext> contexts, LongArrayList revisions,
-                                              List<BooleanSupplier> providers, Object2LongMap<NetworkResourceType> resources, boolean capturedValid, List<Installed> components) {
+                                              List<BooleanSupplier> providers, Reference2DoubleMap<NetworkResourceType> resources, boolean capturedValid, List<Installed> components) {
         this.contexts = contexts;
         this.revisions = revisions;
         this.providers = providers;
         this.resources = resources;
         this.capturedValid = capturedValid;
         this.components = components;
+        long total = 0;
+        for (var component : components)
+            total = Math.addExact(total, Math.multiplyExact(component.count(), component.definition().concurrencyPerItem()));
+        concurrency = total;
     }
 
     public static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, MachineInstance computer,
@@ -96,25 +101,20 @@ public final class NetworkComputerComponentInventory {
         return new NetworkComputerComponentInventory(contexts, revisions, providers, resources, capturedValid, components);
     }
 
-    private static Object2LongMap<NetworkResourceType> calculate(NetworkComputerComponentRegistry registry, MachineInstance computer, AEKey2LongMap installed,
-                                                                 List<BooleanSupplier> providers, List<Installed> components) {
-        var totals = new Object2LongOpenHashMap<NetworkResourceType>();
+    private static Reference2DoubleMap<NetworkResourceType> calculate(NetworkComputerComponentRegistry registry, MachineInstance computer, AEKey2LongMap installed,
+                                                                      List<BooleanSupplier> providers, List<Installed> components) {
+        var totals = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         installed.forEachEntry((key, count) -> {
             var captured = registry.capture(key, computer);
             providers.add(captured.current());
             components.add(new Installed(key, count, captured));
-            for (var entry : captured.resourcesPerItem().object2LongEntrySet()) {
-                long perItem = entry.getLongValue();
+            for (var entry : captured.resourcesPerItem().reference2DoubleEntrySet()) {
+                double perItem = entry.getDoubleValue();
                 if (perItem == 0) {
                     continue;
                 }
-                if (perItem > Long.MAX_VALUE / count) {
-                    throw new ArithmeticException("Computer component supply multiplication overflow");
-                }
-                long amount = perItem * count;
-                if (amount > Long.MAX_VALUE - totals.getLong(entry.getKey())) {
-                    throw new ArithmeticException("Computer component supply total overflow");
-                }
+                double amount = NetworkResourceModifier.product(perItem, count);
+                NetworkResourceModifier.sum(amount, totals.getDouble(entry.getKey()));
                 totals.addTo(entry.getKey(), amount);
             }
         });
@@ -127,8 +127,12 @@ public final class NetworkComputerComponentInventory {
         }
     }
 
-    public Object2LongMap<NetworkResourceType> resourcesPerTick() {
+    public Reference2DoubleMap<NetworkResourceType> resourcesPerTick() {
         return resources;
+    }
+
+    public long concurrencyPerTick() {
+        return concurrency;
     }
 
     /**

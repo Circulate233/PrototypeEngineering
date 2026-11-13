@@ -19,8 +19,6 @@ import com.circulation.prototype_eng.api.machine.render.MachineRenderSnapshot;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarations;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
@@ -112,19 +110,17 @@ public class CommonProxy implements IGuiHandler {
     }
 
     public void postInit() {
-        MinecraftForge.EVENT_BUS.post(new NetworkResourceRegistrationEvent(NetworkResourceRegistry.INSTANCE));
-        NetworkResourceRegistry.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new NetworkComputerComponentRegistrationEvent(NetworkComputerComponentRegistry.INSTANCE));
-        NetworkComputerComponentRegistry.INSTANCE.freeze(NetworkResourceRegistry.INSTANCE);
+        NetworkComputerComponentRegistry.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new ResearchRegistrationEvent(ResearchRegistry.INSTANCE));
-        ResearchRegistry.INSTANCE.freeze(NetworkResourceRegistry.INSTANCE);
+        ResearchRegistry.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new ResearchItemDownloadRegistrationEvent(ResearchItemDownloadRegistry.INSTANCE));
         ResearchItemDownloadRegistry.INSTANCE.freeze(ResearchRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new ResearchServerConfigurationEvent(ResearchServerConfiguration.INSTANCE));
         ResearchServerConfiguration.INSTANCE.freeze();
         MinecraftForge.EVENT_BUS.post(new RecipeRegistrationEvent(RecipeRegistry.INSTANCE, NetworkRecipeExtensions.INSTANCE));
         RecipeRegistry.INSTANCE.freeze(MachineTypeRegistry.INSTANCE.types());
-        NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.snapshot(), ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
+        NetworkRecipeExtensions.INSTANCE.publish(RecipeRegistry.INSTANCE.snapshot(), ResearchRegistry.INSTANCE);
         MinecraftForge.EVENT_BUS.post(new RecipeDeclarationRegistrationEvent(RecipeDeclarations.INSTANCE, RecipeRegistry.INSTANCE.snapshot()));
         var structurePredicates = new StructurePredicateRegistry();
         BuiltinStructurePredicates.register(structurePredicates);

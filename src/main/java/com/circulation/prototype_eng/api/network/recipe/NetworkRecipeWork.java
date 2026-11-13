@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.network.MachineNetworkDevice;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.requirement.MachineRecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirement;
@@ -38,20 +37,19 @@ public final class NetworkRecipeWork implements MachineRecipeRequirements {
 
     public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
                                                                               ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults) {
-        return component(id, device, defaults, NetworkRecipeExtensions.INSTANCE, ResearchRegistry.INSTANCE, NetworkResourceRegistry.INSTANCE);
+        return component(id, device, defaults, NetworkRecipeExtensions.INSTANCE, ResearchRegistry.INSTANCE);
     }
 
     public static ComponentType<MachineInstance, NetworkRecipeWork> component(ResourceLocation id,
                                                                               ComponentType<MachineInstance, MachineNetworkDevice> device, NetworkWorkRequirements defaults,
-                                                                              NetworkRecipeExtensions extensions, ResearchRegistry research, NetworkResourceRegistry resources) {
+                                                                              NetworkRecipeExtensions extensions, ResearchRegistry research) {
         Objects.requireNonNull(id);
         Objects.requireNonNull(device);
         Objects.requireNonNull(defaults);
         Objects.requireNonNull(extensions);
         Objects.requireNonNull(research);
-        Objects.requireNonNull(resources);
         return new ComponentType<>(id, _ -> {
-            defaults.validate(research, resources);
+            defaults.validate(research);
             if (!extensions.published()) {
                 throw new IllegalStateException("Network recipe requirements have not been published");
             }

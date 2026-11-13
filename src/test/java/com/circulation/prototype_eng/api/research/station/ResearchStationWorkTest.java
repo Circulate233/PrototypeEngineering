@@ -4,7 +4,7 @@ import ae2.api.config.Actionable;
 import ae2.api.stacks.GenericStack;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.probability.ResourceChance;
 import com.circulation.prototype_eng.api.recipe.probability.WeightedSampling;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -68,7 +68,7 @@ class ResearchStationWorkTest {
     private static ResearchDefinition definition(long demand, RecipeRequirement<?>... requirements) {
         var formula = ResearchResourceFormula.builder();
         if (demand > 0) {
-            formula.constant(NetworkResources.COMPUTE, demand);
+            formula.constant(ComputingResourceFixtures.COMPUTE, demand);
         }
         var stage = ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(formula.build());
         for (var requirement : requirements) {
@@ -288,7 +288,7 @@ class ResearchStationWorkTest {
             assertEquals(10, second.energy().storedEnergy());
             put(first, 6);
             assertEquals(ResearchStationWork.Status.ADVANCED, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
-            assertEquals(7, state.queue.resourceProgressSnapshot().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, state.queue.resourceProgressSnapshot().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(7, first.energy().storedEnergy());
             assertEquals(6, second.energy().storedEnergy());
             assertEquals(ResearchStationWork.Status.WAITING, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
@@ -312,7 +312,7 @@ class ResearchStationWorkTest {
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             assertEquals(1, capture.stationIds().size());
             assertEquals(ResearchStationWork.Status.ADVANCED, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
-            assertEquals(2, state.queue.resourceProgressSnapshot().getLong(NetworkResources.COMPUTE));
+            assertEquals(2, state.queue.resourceProgressSnapshot().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(7, first.energy().storedEnergy());
             assertEquals(10, second.energy().storedEnergy());
         }
@@ -334,18 +334,18 @@ class ResearchStationWorkTest {
             var state = new State(fixture);
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             assertEquals(ResearchStationWork.Status.ADVANCED, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
-            assertEquals(6, state.queue.resourceProgressSnapshot().getLong(NetworkResources.COMPUTE));
+            assertEquals(6, state.queue.resourceProgressSnapshot().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(6, input(first) + input(second));
             assertEquals(2, output(first) + output(second));
             assertEquals(16, first.energy().storedEnergy() + second.energy().storedEnergy());
-            assertEquals(100, Objects.requireNonNull(fixture.roleOf(first.machine()).workPermit()).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, Objects.requireNonNull(fixture.roleOf(first.machine()).workPermit()).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(ResearchStationWork.Status.WAITING, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
             assertEquals(3, phases.size());
             fixture.nextTick();
             capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             var result = state.work.advance(capture, context(2), lanes.tasks, deadline());
             assertEquals(ResearchStationWork.Status.COMPLETED, result.status());
-            assertEquals(4, Objects.requireNonNull(result.grant()).grantedResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(4, Objects.requireNonNull(result.grant()).grantedResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(0, input(first) + input(second));
             assertEquals(4, output(first) + output(second));
             assertEquals(12, first.energy().storedEnergy() + second.energy().storedEnergy());
@@ -400,7 +400,7 @@ class ResearchStationWorkTest {
             var capture = Objects.requireNonNull(fixture.selector.capture("team", 2));
             assertEquals(ResearchStationWork.Status.WAITING, state.work.advance(capture, context(1), lanes.tasks, deadline()).status());
             assertEquals(7, input(station));
-            assertEquals(0, state.queue.resourceProgressSnapshot().getLong(NetworkResources.COMPUTE));
+            assertEquals(0, state.queue.resourceProgressSnapshot().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(1, Objects.requireNonNull(state.work.materialState()).successfulTicks());
             assertEquals(0, Objects.requireNonNull(state.work.materialState()).progress());
             Objects.requireNonNull(station.warehouse().output()).extract(PRODUCT, 2, Actionable.MODULATE);
@@ -542,7 +542,7 @@ class ResearchStationWorkTest {
         private final ResearchStationWork work;
 
         private State(StationFixtures fixture) {
-            queue = new TeamResearchQueue(fixture.research, fixture.resources, "team");
+            queue = new TeamResearchQueue(fixture.research, "team");
             queue.enqueue(id("research"), 1, OWNER, 0);
             work = new ResearchStationWork(queue, new TeamOwnedResearch("team", fixture.research), Map.of(OWNER, player));
         }

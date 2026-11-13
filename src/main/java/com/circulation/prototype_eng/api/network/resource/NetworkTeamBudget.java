@@ -1,65 +1,44 @@
 package com.circulation.prototype_eng.api.network.resource;
 
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
-import java.util.Comparator;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 /**
- * One team's current tick supply, shared machine leases and ordinary work reservations. Mutable state
- * belongs to the runtime owner; immutable numeric supply remains independent for research grants.
- * Closing revokes new work and commits, while receipts retain compensation against this book alone.
+ * Owner-managed double resource balances and the fixed integer machine-concurrency limit.
+ * Research reads an independent supply vector. Receipts compensate only their issuing tick.
  */
 public final class NetworkTeamBudget implements AutoCloseable {
     private final long tick;
-    private final NetworkResourceRegistry registry;
     private final Runnable ownerCheck;
-    private final Object2LongOpenHashMap<NetworkResourceType> ceiling;
-    private Object2LongMap<NetworkResourceType> numericResources;
-    private final Object2LongOpenHashMap<NetworkResourceType> available;
-    private final Object2LongOpenHashMap<NetworkResourceType> logicalAvailable;
-    private final Object2ObjectOpenHashMap<NetworkResourceType, ObjectOpenHashSet<UUID>> leasedMachines = new Object2ObjectOpenHashMap<>();
+    private final Reference2DoubleOpenHashMap<NetworkResourceType> ceiling;
+    private Reference2DoubleMap<NetworkResourceType> numericResources;
+    private final Reference2DoubleOpenHashMap<NetworkResourceType> available;
+    private long concurrencyCapacity;
+    private final ObjectOpenHashSet<UUID> leasedMachines = new ObjectOpenHashSet<>();
     private final ObjectOpenHashSet<UUID> networkLeases = new ObjectOpenHashSet<>();
-    // Retain only duplicate-detection keys, not receipts that capture older publications and hosts.
     private final ObjectOpenHashSet<Operation> operations = new ObjectOpenHashSet<>();
     private volatile boolean active = true;
 
-    public NetworkTeamBudget(long tick, NetworkResourceRegistry registry,
-                             Object2LongMap<NetworkResourceType> capacity, Runnable ownerCheck) {
-        this.ownerCheck = Objects.requireNonNull(ownerCheck, "Network budget owner check");
+    public NetworkTeamBudget(long tick, long concurrencyCapacity,
+                             Reference2DoubleMap<NetworkResourceType> capacity, Runnable ownerCheck) {
+        this.ownerCheck = Objects.requireNonNull(ownerCheck);
         ownerCheck.run();
-        if (tick < 0L) {
-            throw new IllegalArgumentException("Network budget tick must be non-negative");
-        }
-        this.registry = Objects.requireNonNull(registry, "Computing resource registry");
-        if (!registry.isFrozen()) {
-            throw new IllegalStateException("Computing resource registry is not ready");
-        }
-        Objects.requireNonNull(capacity, "Network budget capacity");
-        ceiling = new Object2LongOpenHashMap<>(capacity);
-        var numeric = new Object2LongOpenHashMap<NetworkResourceType>(capacity.size());
-        var logical = new Object2LongOpenHashMap<NetworkResourceType>(capacity.size());
-        for (var entry : capacity.object2LongEntrySet()) {
-            var type = registry.canonical(entry.getKey());
-            long amount = entry.getLongValue();
-            if (amount < 0L) {
-                throw new IllegalArgumentException("Network budget capacity must be non-negative");
-            }
-            (type.logicalConcurrency() ? logical : numeric).put(type, amount);
-        }
+        if (tick < 0 || concurrencyCapacity < 0)
+            throw new IllegalArgumentException("Negative tick or concurrency capacity");
+        NetworkResourceModifier.validateResources(capacity);
         this.tick = tick;
-        this.numericResources = NetworkResourceModifier.copyResources(numeric);
-        this.available = numeric;
-        this.logicalAvailable = logical;
+        this.concurrencyCapacity = concurrencyCapacity;
+        ceiling = new Reference2DoubleOpenHashMap<>(capacity);
+        numericResources = capacity;
+        available = new Reference2DoubleOpenHashMap<>(capacity);
     }
 
     public long tick() {
@@ -72,69 +51,68 @@ public final class NetworkTeamBudget implements AutoCloseable {
     }
 
     /**
-     * Immutable current numeric ceiling; ordinary reservations never consume this research vector.
+     * Current supply, borrowed read-only; ordinary reservations do not consume research supply.
      */
-    public Object2LongMap<NetworkResourceType> numericResources() {
+    public Reference2DoubleMap<NetworkResourceType> numericResources() {
         return numericResources;
     }
 
-    /**
-     * An immutable snapshot of ordinary work's remaining numeric balance.
-     */
-    public Object2LongMap<NetworkResourceType> availableResources() {
+    public Reference2DoubleMap<NetworkResourceType> availableResources() {
         ownerCheck.run();
-        var snapshot = new Object2LongOpenHashMap<>(available);
-        for (var entry : snapshot.object2LongEntrySet())
-            if (entry.getLongValue() < 0) entry.setValue(0);
-        return snapshot;
+        var result = new Reference2DoubleOpenHashMap<>(available);
+        for (var entry : result.reference2DoubleEntrySet())
+            if (entry.getDoubleValue() < 0) entry.setValue(0);
+        return result;
     }
 
-    public LeaseStatus requestLease(UUID machineId) {
-        return requestLease(machineId, NetworkResources.THREAD);
+    @SuppressWarnings("unused") // Public owner-side budget API for addons.
+    public long concurrencyCapacity() {
+        ownerCheck.run();
+        return concurrencyCapacity;
     }
 
-    /**
-     * Non-mutating admission check; a probe must not consume the machine's lease.
-     */
-    public boolean canRequestLease(UUID machineId) {
+    public int usedConcurrency() {
         ownerCheck.run();
-        Objects.requireNonNull(machineId);
-        if (!active) {
-            return false;
-        }
-        var machines = leasedMachines.get(NetworkResources.THREAD);
-        return machines != null && machines.contains(machineId) || logicalAvailable.getLong(NetworkResources.THREAD) > 0;
+        return leasedMachines.size();
+    }
+
+    public double occupiedResource(NetworkResourceType type) {
+        ownerCheck.run();
+        return Math.max(0, ceiling.getDouble(type) - available.getDouble(type));
     }
 
     public boolean hasLease(UUID machineId) {
         ownerCheck.run();
-        var machines = leasedMachines.get(NetworkResources.THREAD);
-        return machines != null && machines.contains(machineId);
+        return leasedMachines.contains(machineId);
     }
 
-    /**
-     * Retire infrastructure that unloaded, changed teams, lost formation or lost its selected role.
-     */
-    public void retainNetworkLeases(Predicate<UUID> current) {
+    public boolean canRequestLease(UUID machineId) {
         ownerCheck.run();
-        var machines = leasedMachines.get(NetworkResources.THREAD);
-        for (var iterator = networkLeases.iterator(); iterator.hasNext(); ) {
-            var id = iterator.next();
-            if (current.test(id)) continue;
-            iterator.remove();
-            machines.remove(id);
-            logicalAvailable.addTo(NetworkResources.THREAD, 1);
-        }
+        return active && (hasLease(machineId) || leasedMachines.size() < concurrencyCapacity);
     }
 
     public boolean canRequestNetworkLease(UUID machineId) {
         ownerCheck.run();
-        if (!active) return false;
-        return hasLease(machineId) || availableConcurrency(ceiling.getLong(NetworkResources.THREAD)) > 0;
+        return active && (hasLease(machineId) || availableConcurrency(concurrencyCapacity) > 0);
+    }
+
+    public long availableConcurrency(long currentSupply) {
+        ownerCheck.run();
+        return Math.max(0, currentSupply - networkLeases.size());
+    }
+
+    public void retainNetworkLeases(Predicate<UUID> current) {
+        ownerCheck.run();
+        for (var iterator = networkLeases.iterator(); iterator.hasNext(); ) {
+            var id = iterator.next();
+            if (current.test(id)) continue;
+            iterator.remove();
+            leasedMachines.remove(id);
+        }
     }
 
     /**
-     * Network infrastructure precedes ordinary work, even when the latter happened to load first.
+     * Infrastructure reclaims ordinary leases in stable UUID order without a temporary sorted list.
      */
     public LeaseStatus requestNetworkLease(UUID machineId) {
         ownerCheck.run();
@@ -144,146 +122,72 @@ public final class NetworkTeamBudget implements AutoCloseable {
             return LeaseStatus.ALREADY_GRANTED;
         }
         if (!canRequestNetworkLease(machineId)) return LeaseStatus.INSUFFICIENT_CAPACITY;
-        var machines = leasedMachines.get(NetworkResources.THREAD);
-        if (logicalAvailable.getLong(NetworkResources.THREAD) <= 0 && machines != null) {
-            var ordinary = new ObjectArrayList<UUID>();
-            for (var candidate : machines) if (!networkLeases.contains(candidate)) ordinary.add(candidate);
-            ordinary.sort(Comparator.reverseOrder());
-            for (var victim : ordinary) {
-                if (logicalAvailable.getLong(NetworkResources.THREAD) > 0) break;
-                machines.remove(victim);
-                logicalAvailable.addTo(NetworkResources.THREAD, 1);
-            }
+        while (leasedMachines.size() >= concurrencyCapacity) {
+            UUID victim = null;
+            for (var candidate : leasedMachines)
+                if (!networkLeases.contains(candidate) && (victim == null || candidate.compareTo(victim) > 0))
+                    victim = candidate;
+            leasedMachines.remove(victim);
         }
-        var result = requestLease(machineId);
-        if (result == LeaseStatus.GRANTED) networkLeases.add(machineId);
-        return result;
+        leasedMachines.add(machineId);
+        networkLeases.add(machineId);
+        return LeaseStatus.GRANTED;
+    }
+
+    public LeaseStatus requestLease(UUID machineId) {
+        ownerCheck.run();
+        Objects.requireNonNull(machineId);
+        if (!active) return LeaseStatus.EXPIRED;
+        if (leasedMachines.contains(machineId)) return LeaseStatus.ALREADY_GRANTED;
+        if (leasedMachines.size() >= concurrencyCapacity) return LeaseStatus.INSUFFICIENT_CAPACITY;
+        leasedMachines.add(machineId);
+        return LeaseStatus.GRANTED;
     }
 
     /**
-     * Infrastructure can reclaim ordinary leases; existing consumption remains charged.
+     * Supply changes retain consumption and reservations, including across a drop and restoration.
      */
-    public long availableConcurrency(long currentSupply) {
+    public void refreshCapacity(long concurrency, Reference2DoubleMap<NetworkResourceType> supply) {
         ownerCheck.run();
-        return Math.max(0, currentSupply - networkLeases.size());
-    }
-
-    /**
-     * Update supply after events. Signed balances preserve existing consumption even across a drop
-     * below the amount already spent; restoring a supplier never refills those spent units.
-     */
-    public void refreshCapacity(Object2LongMap<NetworkResourceType> supply) {
-        ownerCheck.run();
+        concurrencyCapacity = concurrency;
         for (var type : supply.keySet()) ceiling.putIfAbsent(type, 0);
-        Object2LongOpenHashMap<NetworkResourceType> numeric = null;
-        for (var entry : ceiling.object2LongEntrySet()) {
-            var type = entry.getKey();
-            long before = entry.getLongValue();
-            long after = supply.getOrDefault(type, 0L);
-            if (after == before) continue;
+        for (var entry : ceiling.reference2DoubleEntrySet()) {
+            double before = entry.getDoubleValue();
+            double after = supply.getDouble(entry.getKey());
+            if (before == after) continue;
             entry.setValue(after);
-            if (type.logicalConcurrency()) logicalAvailable.addTo(type, after - before);
-            else {
-                available.addTo(type, after - before);
-                if (numeric == null) numeric = new Object2LongOpenHashMap<>(numericResources);
-                numeric.put(type, after);
-            }
+            available.addTo(entry.getKey(), after - before);
         }
-        if (numeric != null) numericResources = numeric;
+        numericResources = supply;
     }
 
-    /**
-     * Checks the entire numeric demand without reserving balances or an operation identity.
-     */
-    public boolean canReserve(Object2LongMap<NetworkResourceType> required) {
+    public boolean canReserve(Reference2DoubleMap<NetworkResourceType> required) {
         ownerCheck.run();
         boolean fits = active;
-        for (var entry : Objects.requireNonNull(required).object2LongEntrySet()) {
-            var type = registry.canonical(entry.getKey());
-            long amount = entry.getLongValue();
-            if (type.logicalConcurrency() || amount <= 0) {
-                throw new IllegalArgumentException("Work demand must contain positive numeric resources");
-            }
-            fits &= available.getLong(type) >= amount;
+        for (var entry : required.reference2DoubleEntrySet()) {
+            double amount = entry.getDoubleValue();
+            if (!Double.isFinite(amount) || amount <= 0)
+                throw new IllegalArgumentException("Work demands must be finite and positive");
+            fits &= available.getDouble(entry.getKey()) >= amount;
         }
         return fits;
     }
 
     /**
-     * Grants one non-releasable lease per machine and logical dimension, in owner call order.
+     * The completed requirement map is borrowed unchanged until this receipt reaches its final state.
+     * Admission prechecks the complete vector before any debit or operation-key consumption.
      */
-    public LeaseStatus requestLease(UUID machineId, NetworkResourceType logicalType) {
+    public @Nullable Reservation reserve(Operation operation, Reference2DoubleMap<NetworkResourceType> required, BooleanSupplier authorized) {
         ownerCheck.run();
-        Objects.requireNonNull(machineId, "Network lease machine id");
-        var type = registry.canonical(logicalType);
-        if (!type.logicalConcurrency()) {
-            throw new IllegalArgumentException("Machine leases require a logical computing resource");
-        }
-        if (!active) {
-            return LeaseStatus.EXPIRED;
-        }
-        var machines = leasedMachines.get(type);
-        if (machines != null && machines.contains(machineId)) {
-            return LeaseStatus.ALREADY_GRANTED;
-        }
-        if (logicalAvailable.getLong(type) <= 0L) {
-            return LeaseStatus.INSUFFICIENT_CAPACITY;
-        }
-        if (machines == null) {
-            machines = new ObjectOpenHashSet<>();
-            leasedMachines.put(type, machines);
-        }
-        machines.add(machineId);
-        logicalAvailable.addTo(type, -1L);
-        return LeaseStatus.GRANTED;
-    }
-
-    /**
-     * Validates the complete positive numeric vector before reserving it as one operation. Failed
-     * capacity or authorization checks consume neither resources nor the operation's identity.
-     * Empty vectors are accepted as permission receipts for work with no numeric cost.
-     */
-    public @Nullable Reservation reserve(Operation operation, Object2LongMap<NetworkResourceType> required,
-                                         BooleanSupplier authorized) {
-        ownerCheck.run();
-        Objects.requireNonNull(operation, "Network budget operation");
-        Objects.requireNonNull(required, "Network operation requirements");
-        Objects.requireNonNull(authorized, "Network operation authorization");
-        var quantities = new Object2LongOpenHashMap<NetworkResourceType>(required.size());
-        for (var entry : required.object2LongEntrySet()) {
-            var type = registry.canonical(entry.getKey());
-            long amount = entry.getLongValue();
-            if (type.logicalConcurrency() || amount <= 0L) {
-                throw new IllegalArgumentException("Network operation requirements must be positive numeric resources");
-            }
-            quantities.put(type, amount);
-        }
-        requireUnused(operation);
-        if (!active) {
-            return null;
-        }
-        if (!authorized.getAsBoolean() || !active) {
-            return null;
-        }
-        // Authorization runs owner code; recheck identities before touching balances if it admitted work.
-        requireUnused(operation);
-        for (var entry : quantities.object2LongEntrySet()) {
-            if (available.getLong(entry.getKey()) < entry.getLongValue()) {
-                return null;
-            }
-        }
-        var reservation = new Reservation(this, operation, quantities, authorized);
-        operations.add(operation);
-        for (var entry : quantities.object2LongEntrySet()) {
-            available.addTo(entry.getKey(), -entry.getLongValue());
-        }
-        return reservation;
-    }
-
-    private void requireUnused(Operation operation) {
-        if (operations.contains(operation)) {
+        Objects.requireNonNull(operation);
+        Objects.requireNonNull(authorized);
+        if (operations.contains(operation))
             throw new IllegalStateException("Duplicate network operation at tick " + tick + ": " + operation);
-        }
+        if (!canReserve(required) || !authorized.getAsBoolean() || !active) return null;
+        var receipt = new Reservation(this, operation, required, authorized);
+        operations.add(operation);
+        for (var entry : required.reference2DoubleEntrySet()) available.addTo(entry.getKey(), -entry.getDoubleValue());
+        return receipt;
     }
 
     @Override
@@ -292,33 +196,24 @@ public final class NetworkTeamBudget implements AutoCloseable {
         active = false;
     }
 
-    /**
-     * NOT_REQUIRED is used by the runtime for exempt centers; the book itself never returns it.
-     */
     public enum LeaseStatus {GRANTED, ALREADY_GRANTED, INSUFFICIENT_CAPACITY, EXPIRED, NOT_REQUIRED}
 
-    /**
-     * Stable source and sequence distinguish work sites and new rounds on the same machine.
-     */
     public record Operation(UUID machineId, ResourceLocation sourceId, long sequence) {
         public Operation {
-            Objects.requireNonNull(machineId, "Network operation machine id");
-            Objects.requireNonNull(sourceId, "Network operation source id");
-            if (sequence < 0L) {
-                throw new IllegalArgumentException("Network operation sequence must be non-negative");
-            }
+            Objects.requireNonNull(machineId);
+            Objects.requireNonNull(sourceId);
+            if (sequence < 0) throw new IllegalArgumentException("Negative work sequence");
         }
     }
 
     public static final class Reservation {
         private final NetworkTeamBudget issuingBook;
         private final Operation operation;
-        private final Object2LongMap<NetworkResourceType> resources;
+        private final Reference2DoubleMap<NetworkResourceType> resources;
         private final BooleanSupplier authorized;
         private State state = State.RESERVED;
 
-        private Reservation(NetworkTeamBudget issuingBook, Operation operation,
-                            Object2LongMap<NetworkResourceType> resources, BooleanSupplier authorized) {
+        private Reservation(NetworkTeamBudget issuingBook, Operation operation, Reference2DoubleMap<NetworkResourceType> resources, BooleanSupplier authorized) {
             this.issuingBook = issuingBook;
             this.operation = operation;
             this.resources = resources;
@@ -329,7 +224,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
             return operation;
         }
 
-        public Object2LongMap<NetworkResourceType> resources() {
+        public Reference2DoubleMap<NetworkResourceType> resources() {
             return resources;
         }
 
@@ -338,46 +233,23 @@ public final class NetworkTeamBudget implements AutoCloseable {
             return state;
         }
 
-        /**
-         * A stale authorization leaves the reservation intact for original-book compensation.
-         */
         public boolean commit() {
             issuingBook.ownerCheck.run();
-            requireReserved();
-            if (!issuingBook.active) {
-                return false;
-            }
-            if (!authorized.getAsBoolean() || !issuingBook.active) {
-                return false;
-            }
-            requireReserved();
+            if (state != State.RESERVED)
+                throw new IllegalStateException("Network operation cannot commit from " + state);
+            if (!issuingBook.active || !authorized.getAsBoolean() || !issuingBook.active) return false;
             state = State.COMMITTED;
             return true;
         }
 
-        private void requireReserved() {
-            if (state != State.RESERVED) {
-                throw new IllegalStateException("Network operation cannot commit from " + state + ": " + operation);
-            }
-        }
-
-        /**
-         * Idempotent compensation also restores committed work, independently of current authority.
-         */
         public void rollback() {
             issuingBook.ownerCheck.run();
-            if (state == State.ROLLED_BACK) {
-                return;
-            }
-            for (var entry : resources.object2LongEntrySet()) {
-                long refunded = Math.addExact(issuingBook.available.getLong(entry.getKey()), entry.getLongValue());
-                if (refunded > issuingBook.numericResources.getLong(entry.getKey())) {
-                    throw new IllegalStateException("Network compensation exceeds original capacity for " + entry.getKey().id());
-                }
-            }
-            for (var entry : resources.object2LongEntrySet()) {
-                issuingBook.available.addTo(entry.getKey(), entry.getLongValue());
-            }
+            if (state == State.ROLLED_BACK) return;
+            for (var entry : resources.reference2DoubleEntrySet())
+                if (!Double.isFinite(issuingBook.available.getDouble(entry.getKey()) + entry.getDoubleValue()))
+                    throw new ArithmeticException("Computing resource compensation overflows");
+            for (var entry : resources.reference2DoubleEntrySet())
+                issuingBook.available.addTo(entry.getKey(), entry.getDoubleValue());
             state = State.ROLLED_BACK;
         }
 

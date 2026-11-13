@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -28,13 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResearchDataCenterTest {
     private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var definition : definitions) {
             registry.register(definition);
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 

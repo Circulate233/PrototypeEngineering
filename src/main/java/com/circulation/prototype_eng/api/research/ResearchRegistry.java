@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -71,19 +70,15 @@ public final class ResearchRegistry {
         return frozen != null;
     }
 
-    public void freeze(NetworkResourceRegistry resources) {
+    public void freeze() {
         if (frozen != null) {
             throw new IllegalStateException("Research registry already frozen");
         }
         if (materialBindingStarted) {
             throw new IllegalStateException("Research material configuration cannot be replayed");
         }
-        if (!Objects.requireNonNull(resources).isFrozen()) {
-            throw new IllegalStateException("Computing resources must be frozen before research");
-        }
         for (var definition : registrations.values()) {
             for (var stage : definition.stages()) {
-                stage.resourceFormula().validateResources(resources);
                 for (var prerequisite : stage.prerequisites().object2IntEntrySet()) {
                     validateReference(definition, prerequisite.getKey(), prerequisite.getIntValue(), "prerequisite");
                 }

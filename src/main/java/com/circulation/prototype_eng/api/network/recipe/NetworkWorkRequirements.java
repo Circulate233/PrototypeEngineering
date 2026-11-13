@@ -1,15 +1,13 @@
 package com.circulation.prototype_eng.api.network.recipe;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchSnapshots;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
@@ -22,7 +20,7 @@ public final class NetworkWorkRequirements {
     public static final NetworkWorkRequirements EMPTY = builder().build();
 
     private final Object2IntMap<ResourceLocation> research;
-    private final Object2LongMap<NetworkResourceType> resources;
+    private final Reference2DoubleMap<NetworkResourceType> resources;
 
     private NetworkWorkRequirements(Builder builder) {
         research = ResearchSnapshots.levels(builder.research);
@@ -50,14 +48,14 @@ public final class NetworkWorkRequirements {
     /**
      * Complete immutable numeric vector at parallelism one; logical concurrency uses machine leases.
      */
-    public Object2LongMap<NetworkResourceType> resources() {
+    public Reference2DoubleMap<NetworkResourceType> resources() {
         return resources;
     }
 
     /**
      * Computes the complete exact vector before budget acquisition; overflow cannot hide excess demand.
      */
-    public Object2LongMap<NetworkResourceType> scaledResources(int parallelism) {
+    public Reference2DoubleMap<NetworkResourceType> scaledResources(int parallelism) {
         if (parallelism < 1) {
             throw new IllegalArgumentException("Work parallelism must be positive");
         }
@@ -67,11 +65,11 @@ public final class NetworkWorkRequirements {
     /**
      * A retimed batch slice may have no work or more than int capacity; the full vector remains exact.
      */
-    public Object2LongMap<NetworkResourceType> scaledResources(long parallelism) {
+    public Reference2DoubleMap<NetworkResourceType> scaledResources(long parallelism) {
         if (parallelism < 0) throw new IllegalArgumentException("Work quantity must be nonnegative");
-        var scaled = new Object2LongOpenHashMap<NetworkResourceType>(resources.size());
-        for (var entry : resources.object2LongEntrySet()) {
-            scaled.put(entry.getKey(), Math.multiplyExact(entry.getLongValue(), parallelism));
+        var scaled = new Reference2DoubleOpenHashMap<NetworkResourceType>(resources.size());
+        for (var entry : resources.reference2DoubleEntrySet()) {
+            scaled.put(entry.getKey(), NetworkResourceModifier.product(entry.getDoubleValue(), parallelism));
         }
         return scaled;
     }
@@ -79,17 +77,14 @@ public final class NetworkWorkRequirements {
     /**
      * Loading-time authority check, also used by machine defaults before runtime assembly.
      */
-    public void validate(ResearchRegistry researchRegistry, NetworkResourceRegistry resourceRegistry) {
-        if (!Objects.requireNonNull(researchRegistry).isFrozen() || !Objects.requireNonNull(resourceRegistry).isFrozen()) {
+    public void validate(ResearchRegistry researchRegistry) {
+        if (!Objects.requireNonNull(researchRegistry).isFrozen()) {
             throw new IllegalStateException("Work requirements need frozen research and computing registries");
         }
         for (var entry : research.object2IntEntrySet()) {
             if (entry.getIntValue() > researchRegistry.require(entry.getKey()).maxLevel()) {
                 throw new IllegalArgumentException("Work research requirement exceeds maxLevel: " + entry.getKey());
             }
-        }
-        for (var type : resources.keySet()) {
-            resourceRegistry.canonical(type);
         }
     }
 
@@ -98,17 +93,14 @@ public final class NetworkWorkRequirements {
      */
     public static final class Builder {
         private final Object2IntOpenHashMap<ResourceLocation> research = new Object2IntOpenHashMap<>();
-        private final Object2LongOpenHashMap<NetworkResourceType> resources = new Object2LongOpenHashMap<>();
-        private final Object2ObjectOpenHashMap<ResourceLocation, NetworkResourceType> metadata = new Object2ObjectOpenHashMap<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> resources = new Reference2DoubleOpenHashMap<>();
         private boolean sealed;
 
         private Builder() {
         }
 
-        private static void checkAddition(long existing, long amount) {
-            if (amount > Long.MAX_VALUE - existing) {
-                throw new ArithmeticException("Work numeric demand overflows");
-            }
+        private static void checkAddition(double existing, double amount) {
+            NetworkResourceModifier.sum(existing, amount);
         }
 
         public Builder research(ResourceLocation id, int minimumLevel) {
@@ -121,11 +113,10 @@ public final class NetworkWorkRequirements {
             return this;
         }
 
-        public Builder resource(NetworkResourceType type, long amountPerWorkUnit) {
+        public Builder resource(NetworkResourceType type, double amountPerWorkUnit) {
             requireMutable();
             checkResource(type, amountPerWorkUnit);
-            checkAddition(resources.getLong(type), amountPerWorkUnit);
-            metadata.putIfAbsent(type.id(), type);
+            checkAddition(resources.getDouble(type), amountPerWorkUnit);
             resources.addTo(type, amountPerWorkUnit);
             return this;
         }
@@ -136,15 +127,15 @@ public final class NetworkWorkRequirements {
         public Builder addAll(NetworkWorkRequirements requirements) {
             requireMutable();
             Objects.requireNonNull(requirements);
-            for (var entry : requirements.resources.object2LongEntrySet()) {
-                checkResource(entry.getKey(), entry.getLongValue());
-                checkAddition(resources.getLong(entry.getKey()), entry.getLongValue());
+            for (var entry : requirements.resources.reference2DoubleEntrySet()) {
+                checkResource(entry.getKey(), entry.getDoubleValue());
+                checkAddition(resources.getDouble(entry.getKey()), entry.getDoubleValue());
             }
             for (var entry : requirements.research.object2IntEntrySet()) {
                 research(entry.getKey(), entry.getIntValue());
             }
-            for (var entry : requirements.resources.object2LongEntrySet()) {
-                resource(entry.getKey(), entry.getLongValue());
+            for (var entry : requirements.resources.reference2DoubleEntrySet()) {
+                resource(entry.getKey(), entry.getDoubleValue());
             }
             return this;
         }
@@ -162,17 +153,13 @@ public final class NetworkWorkRequirements {
             sealed = true;
         }
 
-        private void checkResource(NetworkResourceType type, long amount) {
+        private void checkResource(NetworkResourceType type, double amount) {
             Objects.requireNonNull(type);
-            if (type.logicalConcurrency()) {
-                throw new IllegalArgumentException("Work numeric vector cannot contain logical resource: " + type.id());
+            if (type.internal()) {
+                throw new IllegalArgumentException("Network work cannot demand a computer-local resource: " + type.id());
             }
-            if (amount < 1L) {
+            if (!Double.isFinite(amount) || amount <= 0) {
                 throw new IllegalArgumentException("Work numeric demand must be positive: " + type.id());
-            }
-            var existing = metadata.get(type.id());
-            if (existing != null && !existing.equals(type)) {
-                throw new IllegalArgumentException("Conflicting work resource metadata: " + type.id());
             }
         }
 

@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
 import ae2.api.stacks.AEKey;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryAdapter;
 import com.circulation.prototype_eng.api.research.delivery.ItemDeliveryFragment;
@@ -18,7 +17,7 @@ import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.research.ResearchWorldNbt;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -90,8 +89,6 @@ class ResearchWorldRewardTest {
     }
 
     private static Fixture fixture(RewardChild... children) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         var stage = ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
                                       .rewardGroup(1, new RewardGroup(GROUP, ObjectList.of(children)))
@@ -100,8 +97,8 @@ class ResearchWorldRewardTest {
                                             .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).stage(stage).build());
         registry.register(ResearchDefinition.builder(WORK).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-        registry.freeze(resources);
-        return new Fixture(registry, resources, new ResearchWorldNbt(registry, resources,
+        registry.freeze();
+        return new Fixture(registry, new ResearchWorldNbt(registry,
             new ResourceKeyNbt(type -> type.equals(TYPE.getId()) ? TYPE : null)));
     }
 
@@ -519,7 +516,7 @@ class ResearchWorldRewardTest {
             new ObjectOpenHashSet<>(ObjectList.of(ALICE)), Optional.of(ALICE));
         var permission = new ResearchPermissionContext(ALICE, "new_team", null, "new_team", true, false, false);
         assertEquals(TeamResearchStart.Status.STARTED, world.start(membership, permission, WORK, 1,
-            new TeamResearchStart.Environment(2, 1, 1, Object2LongMaps.emptyMap()), 13, Set.of(ALICE), () -> true).status());
+            new TeamResearchStart.Environment(2, 1, 1, Reference2DoubleMaps.emptyMap()), 13, Set.of(ALICE), () -> true).status());
         var newTeam = world.snapshot().teams().stream().filter(team -> team.teamId().equals("new_team")).findFirst().orElseThrow();
         assertTrue(newTeam.research().levels().isEmpty());
         assertEquals(ResearchRewardClaimer.Status.CLAIMED, claim(world, new Adapter(saves)).status());
@@ -691,7 +688,7 @@ class ResearchWorldRewardTest {
         assertEquals(world.snapshot(), saves.durable);
     }
 
-    private record Fixture(ResearchRegistry registry, NetworkResourceRegistry resources, ResearchWorldNbt codec) {
+    private record Fixture(ResearchRegistry registry, ResearchWorldNbt codec) {
         ResearchWorldSnapshot roundTrip(ResearchWorldSnapshot snapshot) {
             return codec.decode(codec.encode(snapshot));
         }
@@ -702,7 +699,7 @@ class ResearchWorldRewardTest {
             completion.commit();
             completion.complete();
             var bob = new PlayerResearchState(BOB);
-            var queue = new TeamResearchQueue(registry, resources, "old_team");
+            var queue = new TeamResearchQueue(registry, "old_team");
             queue.enqueue(WORK, 1, ALICE, 10);
             var team = new ResearchWorldSnapshot.Team("old_team", new ObjectOpenHashSet<>(ObjectList.of(ALICE, BOB)),
                 new ObjectOpenHashSet<>(), new TeamOwnedResearch("old_team", registry).snapshot(), queue.snapshot(), ObjectList.of());
@@ -710,7 +707,7 @@ class ResearchWorldRewardTest {
         }
 
         ResearchWorld restore(Saves saves, ResearchWorldSnapshot snapshot) {
-            var world = new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, saves);
+            var world = new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, saves);
             var restored = roundTrip(snapshot);
             world.restore(restored);
             saves.durable = restored;

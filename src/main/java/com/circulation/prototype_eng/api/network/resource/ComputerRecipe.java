@@ -10,7 +10,7 @@ import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeStage;
 import com.circulation.prototype_eng.api.recipe.requirement.RequirementTransaction;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,16 +25,16 @@ import java.util.function.Predicate;
 public final class ComputerRecipe {
     private final MachineRecipe recipe;
     private final RecipeRequirement<ResourceRequirement> inputs;
-    private final Object2LongMap<NetworkResourceType> provided;
+    private final Reference2DoubleMap<NetworkResourceType> provided;
     private final Predicate<MachineInstance> condition;
 
     public ComputerRecipe(ResourceLocation id, List<GenericStack> inputsPerTick,
-                          Object2LongMap<NetworkResourceType> provided) {
+                          Reference2DoubleMap<NetworkResourceType> provided) {
         this(id, inputsPerTick, provided, _ -> true);
     }
 
     public ComputerRecipe(ResourceLocation id, List<GenericStack> inputsPerTick,
-                          Object2LongMap<NetworkResourceType> provided, Predicate<MachineInstance> condition) {
+                          Reference2DoubleMap<NetworkResourceType> provided, Predicate<MachineInstance> condition) {
         inputs = RecipeRequirements.RESOURCES.requirement(id,
             new ResourceRequirement(List.of(), inputsPerTick, List.of(), List.of(), false));
         recipe = new MachineRecipe(id, 1, List.of(inputs));
@@ -47,7 +47,7 @@ public final class ComputerRecipe {
         return recipe.id();
     }
 
-    public Object2LongMap<NetworkResourceType> provided() {
+    public Reference2DoubleMap<NetworkResourceType> provided() {
         return provided;
     }
 

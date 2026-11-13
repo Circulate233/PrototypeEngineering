@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.research;
 
 import ae2.api.stacks.AEKey;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.PlayerResearchStateNbt;
@@ -246,9 +245,7 @@ class ResearchRewardClaimTest {
         var definition = definition(group(new RewardChild.Item(id("items"), ITEM, 5)));
         var registry = new ResearchRegistry();
         registry.register(definition);
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        registry.freeze(resources);
+        registry.freeze();
         var codec = new PlayerResearchStateNbt(registry, new ResourceKeyNbt(typeId -> typeId.equals(TYPE.getId()) ? TYPE : null));
         var player = eligible();
         var adapter = new Adapter();

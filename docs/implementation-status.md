@@ -1,5 +1,16 @@
 # 实施进度
 
+## 2026-11-13 网络中心显示屏、R2D资源与增量发布
+
+- 网络中心容器/屏幕已按获批HTML接入默认控制器：纯数据显示，无玩家背包，宽384、高162～242，1～5行动态高度，超过5行才启用滑块；滚动只改变客户端行选择。显示网络等级、活动状态、固定整数并发占用和网络资源占用/产出。资源读取在本tick工作join后、预算关闭前进行，容器复用一次创建的读取回调。
+- 资源注册表/事件、默认THREAD/COMPUTE/QUBIT和canonical/freeze身份校验删除。数值供给、预算、组件消耗、研究公式/队列进度及Java/ZS参数迁移为double与Reference2DoubleMap；并发独立为long容量和整机租约。单例身份、零默认值和只读借用写入Javadoc；累加/扣减用addTo，保留实际事务与有限数量/溢出预检。内部计算机资源不进入网络输出。
+- 用户最终修正采用 `NetworkResourceType extends PacketWritable`，替换此前未提交的ITextComponent数组方案。资源自己的固定包负责客户端展示数据；默认格式包携带翻译键和数量格式，自定义资源实现客户端名称/format(double)和自己的包布局。NetworkResourcePackets只登记布局解码器，不登记资源实例或逐项资源id。Java/ZS示例复用同一资源单例，示例enum包仅传序号。
+- `NetworkCenterResourcePacket implements PacketWritable` 使用AE原生GuiSync自定义字段通路：新增资源发送固定定义和初值，后续仅发送资源索引、字段标记与变化的double，未变字段不重发；归零发送移除。新容器监听者取得完整基线。无变化时不创建更新包或行列表，客户端保留原行和显示顺序，成行字符串只在值变化或GUI重初始化后生成。没有服务端分页请求或每tick文本数组整包更新。
+- 仅新增1项必要AE真实DataSynchronization行为检查，覆盖固定包解码、占用/上限独立增量、未变资源保留、归零移除和新容器完整基线，并核对增量字节小于初次包。迁移原预算、供给、队列、持久化和真实ZS编译行为测试；已失效的资源注册/元数据防御测试移除，没有新增getter/常量或单例违约测试。完整 **Gradle build通过：1863 tests/271 suites，失败0、错误0、跳过0**；Spotless、JAR/reobf通过，MCP build_project成功。
+- 本机IDEA MCP格式化并逐文件 `get_file_problems(errorsOnly:false)` 检查 **198份src Java：197份错误/警告/弱警告全零；1份原有未实际改动的FullCtmTextureTest仍有18条CTM依赖解析错误**。6份run Java被IDE排除，未把它们记为IDE零诊断；27份Java addon已实际编译安装，13份真实CT SDK脚本编译及原核心事务检查通过，不进行FML/Bootstrap初始化。API、专题文档及原生复验脚本已迁移。
+- 证据目录 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/network-center-gui/`：`idea-final.json`、`idea-rechecked.json`、`idea-run.json`、`idea-run-remaining.json`、`build-final-verified.log`、`addon-final.log`、`sdk-final.log` 和 `sdk/script-verifier-result.json`。初次编译/Spotless/旧run桥接失败日志保留，最终结果以上述完成记录为准。
+- 下一步由用户实机复验网络中心无背包显示、动态高度/滚动、中文名称/数量格式、资源供给/占用变化、归零消失及关闭重开恢复。静态与行为验证不替代真实World或渲染验收。本阶段本地提交，不推送，不启动Minecraft客户端/服务端。
+
 ## 2026-11-13 默认数据库控制器
 
 - 按原定需求补充可继承 `DataCenterController` 和 `DataCenter` 网络角色接口；控制器直接继承 `MachineInstance`，组合已声明的 `DataCenterStorage` 组件。等级、容量、研究内容和磁盘回执只由存储组件维护，不在控制器复制数据；没有普通配方工位或独立业务tick。自定义控制器可直接实现角色接口或使用独立存储组件，原公开存储和真实持久适配契约保留。

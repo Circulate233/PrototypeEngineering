@@ -19,13 +19,13 @@ public final class ZenResearchFormula {
     }
 
     @ZenMethod
-    public ZenResearchFormula constant(ZenComputingResource type, long demand) {
+    public ZenResearchFormula constant(ZenComputingResource type, double demand) {
         builder.constant(type.value(), demand);
         return this;
     }
 
     @ZenMethod
-    public ZenResearchFormula affine(ZenComputingResource type, long base, long slope) {
+    public ZenResearchFormula affine(ZenComputingResource type, double base, double slope) {
         builder.affine(type.value(), base, slope);
         return this;
     }

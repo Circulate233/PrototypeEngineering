@@ -92,7 +92,7 @@ public final class ScriptVerifier {
             ZenStructureFacts.class, ZenStructureQuery.class, ZenStructureCapture.class, ZenStructureValidator.class,
             ZenHatchConfiguration.class, ZenResourceHatchSide.class, ZenEnergyHatchSide.class, ZenHatchUpdate.class, ZenHatchReport.class,
             ZenJeiOptions.class, ZenJeiPage.class, ZenGeckoBinding.class, ZenRenderBindings.class,
-            ZenComputingResource.class, ZenComputingResources.class, ZenComputingModifier.class, ZenComputerComponent.class, ZenComputerRecipe.class,
+            pe.visual.examples.run.RunResources.class, ZenComputingResource.class, ZenComputingResources.class, ZenComputingModifier.class, ZenComputerComponent.class, ZenComputerRecipe.class,
             ZenNetworkConfiguration.class, ZenNetworkRequirements.class, ZenNetworkRecipes.class, ZenNetworkRecipeContext.class, ZenNetworkRecipeCallback.class,
             ZenResearch.class, ZenResearchStage.class, ZenResearchFormula.class, ZenResearchReward.class,
             ZenResearchRewardCallback.class, ZenResearchRewardEvent.class, ZenResearchStartCondition.class, ZenResearchStartContext.class,

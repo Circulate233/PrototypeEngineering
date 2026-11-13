@@ -1,13 +1,13 @@
 package com.circulation.prototype_eng.api.research.queue;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
 import com.circulation.prototype_eng.api.research.ResearchRegistry;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraftforge.common.util.Constants;
 
@@ -20,11 +20,9 @@ import java.util.UUID;
 @SuppressWarnings("unused")
 public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapshot> {
     private final ResearchRegistry registry;
-    private final NetworkResourceRegistry resources;
 
-    public ResearchQueueNbt(ResearchRegistry registry, NetworkResourceRegistry resources) {
+    public ResearchQueueNbt(ResearchRegistry registry) {
         this.registry = Objects.requireNonNull(registry);
-        this.resources = Objects.requireNonNull(resources);
     }
 
     private static NBTTagCompound encodeKey(TeamResearchQueue.Key key) {
@@ -55,9 +53,9 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
 
     @Override
     public NBTTagCompound encode(TeamResearchQueue.Snapshot value) {
-        TeamResearchQueue.restore(registry, resources, value);
+        TeamResearchQueue.restore(registry, value);
         var tag = new NBTTagCompound();
-        tag.setInteger("Version", 1);
+        tag.setInteger("Version", 2);
         tag.setString("Team", value.teamId());
         tag.setLong("NextEntryId", value.nextEntryId());
         tag.setLong("Epoch", value.epoch());
@@ -78,10 +76,10 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
             tag.setTag("Head", encodeKey(head));
         }
         var progress = new NBTTagList();
-        for (var entry : value.resourceProgress().object2LongEntrySet()) {
+        for (var entry : value.resourceProgress().reference2DoubleEntrySet()) {
             var saved = new NBTTagCompound();
             saved.setString("Resource", entry.getKey().id().toString());
-            saved.setLong("Amount", entry.getLongValue());
+            saved.setDouble("Amount", entry.getDoubleValue());
             progress.appendTag(saved);
         }
         tag.setTag("Progress", progress);
@@ -92,7 +90,8 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
     public TeamResearchQueue.Snapshot decode(NBTTagCompound tag) {
         StrictNbt.requireKeys(tag, "Version", "Team", "NextEntryId", "Epoch", "UpdatedAt", "LastGrantedEntryId",
             "LastGrantedAt", "Queue", "HasHead", "Head", "Progress");
-        if (StrictNbt.requireInt(tag, "Version") != 1) {
+        int version = StrictNbt.requireInt(tag, "Version");
+        if (version != 1 && version != 2) {
             throw new IllegalArgumentException("Unknown research queue save version");
         }
         var savedEntries = StrictNbt.requireList(tag, "Queue", Constants.NBT.TAG_COMPOUND);
@@ -110,21 +109,31 @@ public final class ResearchQueueNbt implements NbtCodec<TeamResearchQueue.Snapsh
         if (head == null && tag.hasKey("Head")) {
             throw new IllegalArgumentException("Absent research head has saved head fields");
         }
-        var amounts = new Object2LongOpenHashMap<NetworkResourceType>();
+        var amounts = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         var progress = StrictNbt.requireList(tag, "Progress", Constants.NBT.TAG_COMPOUND);
         for (int index = 0; index < progress.tagCount(); index++) {
             var entry = progress.getCompoundTagAt(index);
             StrictNbt.requireKeys(entry, "Resource", "Amount");
-            var type = resources.require(StrictNbt.requireId(entry, "Resource"));
+            var type = resourceType(head, StrictNbt.requireId(entry, "Resource"));
             if (amounts.containsKey(type)) {
                 throw new IllegalArgumentException("Duplicate saved research resource");
             }
-            amounts.put(type, StrictNbt.requireLong(entry, "Amount"));
+            amounts.put(type, version == 1 ? StrictNbt.requireLong(entry, "Amount") : StrictNbt.requireDouble(entry, "Amount"));
         }
         var saved = new TeamResearchQueue.Snapshot(StrictNbt.requireString(tag, "Team"), entries, head, amounts,
             StrictNbt.requireLong(tag, "NextEntryId"), StrictNbt.requireLong(tag, "Epoch"), StrictNbt.requireLong(tag, "UpdatedAt"),
             StrictNbt.requireLong(tag, "LastGrantedEntryId"), StrictNbt.requireLong(tag, "LastGrantedAt"));
-        TeamResearchQueue.restore(registry, resources, saved);
+        TeamResearchQueue.restore(registry, saved);
         return saved;
+    }
+
+    /**
+     * Saved IDs resolve through this head's own formula singletons, without a resource registry.
+     */
+    private NetworkResourceType resourceType(TeamResearchQueue.Key head, ResourceLocation id) {
+        if (head == null) throw new IllegalArgumentException("Resource progress has no research head");
+        for (var type : registry.require(head.researchId()).stageForLevel(head.targetLevel()).resourceDemandForLevel(head.targetLevel()).keySet())
+            if (type.id().equals(id)) return type;
+        throw new IllegalArgumentException("Saved resource is not a demand of the research head: " + id);
     }
 }

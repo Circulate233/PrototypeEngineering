@@ -30,9 +30,8 @@ import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -56,8 +55,8 @@ import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
@@ -126,11 +125,11 @@ class NetworkControllerParallelismTest {
                     assertEquals(5, RecipeParallelism.effective(process));
                     assertEquals(5, host.sharedUsage(fixture.recipe).occupied());
                     assertEquals(0, host.sharedUsage(fixture.recipe).available());
-                    assertEquals(100, fixture.permit(worker).availableResources().getLong(NetworkResources.COMPUTE));
+                    assertEquals(100, fixture.permit(worker).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
                     assertEquals(100, worker.input.storedEnergy());
                     assertEquals(100, Objects.requireNonNull(worker.items.input()).amount(INPUT), "Admission probes must restore resource holds");
                     host.tickProcesses();
-                    assertEquals(50, fixture.permit(worker).availableResources().getLong(NetworkResources.COMPUTE), "(Machine 4 + recipe 6) × final 5");
+                    assertEquals(50, fixture.permit(worker).availableResources().getDouble(ComputingResourceFixtures.COMPUTE), "(Machine 4 + recipe 6) × final 5");
                     var competitor = new RecipeProcess(other.owner, fixture.recipe, 19);
                     competitor.attributes().setBase(StandardMachineAttributes.PROCESS_PARALLELISM, 1);
                     assertInstanceOf(ProcessResult.Blocked.class, competitor.tick(), "The admitted machine owns the one real PN thread lease");
@@ -140,7 +139,7 @@ class NetworkControllerParallelismTest {
                     assertEquals(15, worker.output.storedEnergy(), "END 3 × 5");
                     assertEquals(90, Objects.requireNonNull(worker.items.input()).amount(INPUT));
                     assertEquals(15, Objects.requireNonNull(worker.items.output()).amount(OUTPUT));
-                    assertEquals(50, fixture.permit(worker).availableResources().getLong(NetworkResources.COMPUTE));
+                    assertEquals(50, fixture.permit(worker).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
                     assertTrue(host.activeProcesses().isEmpty());
                     assertEquals(0, owner.recipeThreadCount(fixture.recipe.id()));
                 }
@@ -170,18 +169,16 @@ class NetworkControllerParallelismTest {
         private int positions;
 
         private Fixture(Function<MachineType, MachineInstance> factory) {
-            var resources = new NetworkResourceRegistry();
-            resources.freeze();
             var research = new ResearchRegistry();
-            research.freeze(resources);
-            network = new NetworkRuntime(identities, resources, owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER,
+            research.freeze();
+            network = new NetworkRuntime(identities, owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER,
                 ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
             workerRole = role("worker_role", NetworkDeviceRole.DEVICE);
             var extensions = new NetworkRecipeExtensions();
-            extensions.register((_, builder) -> builder.resource(NetworkResources.COMPUTE, 6));
-            extensions.publish(catalog, research, resources);
-            var work = NetworkRecipeWork.component(id("network_work"), workerRole, NetworkWorkRequirements.builder().resource(NetworkResources.COMPUTE, 4).build(),
-                extensions, research, resources);
+            extensions.register((_, builder) -> builder.resource(ComputingResourceFixtures.COMPUTE, 6));
+            extensions.publish(catalog, research);
+            var work = NetworkRecipeWork.component(id("network_work"), workerRole, NetworkWorkRequirements.builder().resource(ComputingResourceFixtures.COMPUTE, 4).build(),
+                extensions, research);
             var workerType = type("worker").component(ownership).component(workerRole).component(work).recipePool(id("recipes")).build();
             workerAssembly = MachineAssembly.builder(workerType, "v1").instanceFactory(factory).component(ownership, MachineOwnership.CODEC).recreated(workerRole, work).build();
             network.beginTick(0);
@@ -189,17 +186,16 @@ class NetworkControllerParallelismTest {
             var centerType = type("center").component(ownership).component(centerRole).build();
             attach(MachineAssembly.builder(centerType, "v1").component(ownership, MachineOwnership.CODEC).recreated(centerRole).build()
                                   .create(host(centerType.id()), new MachineLifecycleRegistry()));
-            var supply = new Object2LongOpenHashMap<NetworkResourceType>();
-            supply.put(NetworkResources.THREAD, 1);
-            supply.put(NetworkResources.COMPUTE, 100);
+            var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+            supply.put(ComputingResourceFixtures.COMPUTE, 100);
             var card = ComputerSupplyFixtures.key("controller_card");
             var components = new NetworkComputerComponentRegistry();
-            ComputerSupplyFixtures.register(components, card, _ -> new NetworkComputerComponent.Capture(NetworkResourceModifier.copyResources(supply), () -> true));
-            components.freeze(resources);
+            ComputerSupplyFixtures.register(components, card, _ -> new NetworkComputerComponent.Capture(1, NetworkResourceModifier.copyResources(supply), Reference2DoubleMaps.emptyMap(), 0, () -> true));
+            components.freeze();
             var installed = MachineComputerComponents.component(id("computer_supply"), components, ComputerSupplyFixtures::warehouses);
             var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
                 (owner, identity) -> Objects.requireNonNull(owner.components().get(installed)).networkCapture(identity, 1,
-                    Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+                    Objects.requireNonNull(owner.lifecycle()).formed(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             var computer = MachineAssembly.builder(computerType, "v1").component(ownership, MachineOwnership.CODEC).recreated(installed, computerRole).build()
                                           .create(host(computerType.id()), new MachineLifecycleRegistry());
@@ -216,8 +212,7 @@ class NetworkControllerParallelismTest {
 
         private ComponentType<MachineInstance, MachineNetworkDevice> role(String path, NetworkDeviceRole role) {
             return MachineNetworkDevice.component(id(path), ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, 1,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER
-                ? Object2LongMaps.singleton(NetworkResources.THREAD, 1) : Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER ? 1 : 0, Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         }
 
         private Worker worker() {

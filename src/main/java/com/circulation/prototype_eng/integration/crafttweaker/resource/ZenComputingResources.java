@@ -3,8 +3,8 @@ package com.circulation.prototype_eng.integration.crafttweaker.resource;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import crafttweaker.annotations.ZenRegister;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import stanhebben.zenscript.annotations.ZenClass;
 import stanhebben.zenscript.annotations.ZenMethod;
 
@@ -15,7 +15,7 @@ import stanhebben.zenscript.annotations.ZenMethod;
 @ZenClass("mods.prototype_eng.resource.ComputingResources")
 @SuppressWarnings("unused") // Entry points are called by ZenScript and Java addons.
 public final class ZenComputingResources {
-    private final Object2LongOpenHashMap<NetworkResourceType> values = new Object2LongOpenHashMap<>();
+    private final Reference2DoubleOpenHashMap<NetworkResourceType> values = new Reference2DoubleOpenHashMap<>();
 
     @ZenMethod
     public static ZenComputingResources create() {
@@ -23,24 +23,21 @@ public final class ZenComputingResources {
     }
 
     @ZenMethod
-    public ZenComputingResources add(ZenComputingResource resource, long amount) {
+    public ZenComputingResources add(ZenComputingResource resource, double amount) {
         var type = resource.value();
-        if (amount < 0) throw new IllegalArgumentException("Computing supply must be nonnegative");
-        if (amount > Long.MAX_VALUE - values.getLong(type))
-            throw new IllegalArgumentException("Computing supply overflows");
-        var check = new Object2LongOpenHashMap<>(values);
-        check.addTo(type, amount);
-        NetworkResourceModifier.copyResources(check);
+        if (!Double.isFinite(amount) || amount < 0)
+            throw new IllegalArgumentException("Computing supply must be finite and nonnegative");
+        NetworkResourceModifier.sum(amount, values.getDouble(type));
         values.addTo(type, amount);
         return this;
     }
 
     @ZenMethod
-    public long amount(ZenComputingResource resource) {
-        return values.getLong(resource.value());
+    public double amount(ZenComputingResource resource) {
+        return values.getDouble(resource.value());
     }
 
-    public Object2LongMap<NetworkResourceType> value() {
+    public Reference2DoubleMap<NetworkResourceType> value() {
         return NetworkResourceModifier.copyResources(values);
     }
 }

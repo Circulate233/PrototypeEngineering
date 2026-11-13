@@ -19,17 +19,16 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentInventory;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.storage.SlottedResourceBuffer;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -51,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NetworkComputerComponentsTest {
     private static final AEKey CARD = ComputerSupplyFixtures.key("card");
-    private static final NetworkResourceType CUSTOM = new NetworkResourceType(id("custom"), false);
+    private static final NetworkResourceType CUSTOM = ComputingResourceFixtures.network(id("custom"));
 
     private static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, SlottedResourceStorage... storage) {
         return NetworkComputerComponentInventory.capture(registry, new MachineInstance(), List.of(storage));
@@ -66,22 +65,15 @@ class NetworkComputerComponentsTest {
         assertTrue(storage.tryReplaceSlot(slot, storage.getStack(slot), new GenericStack(key, count)));
     }
 
-    private static NetworkComputerComponentRegistry registry(Object2LongMap<NetworkResourceType> resources) {
+    private static NetworkComputerComponentRegistry registry(Reference2DoubleMap<NetworkResourceType> resources) {
         var registry = new NetworkComputerComponentRegistry();
         ComputerSupplyFixtures.fixed(registry, CARD, resources);
-        registry.freeze(resources());
+        registry.freeze();
         return registry;
     }
 
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.register(CUSTOM);
-        resources.freeze();
-        return resources;
-    }
-
-    private static Object2LongMap<NetworkResourceType> vector(NetworkResourceType type, long amount) {
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+    private static Reference2DoubleMap<NetworkResourceType> vector(NetworkResourceType type, double amount) {
+        var result = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         result.put(type, amount);
         return result;
     }
@@ -100,7 +92,7 @@ class NetworkComputerComponentsTest {
         put(second, 0, CARD, 3);
         put(second, 1, ComputerSupplyFixtures.key("ordinary_unregistered"), Long.MAX_VALUE);
         var captured = capture(registry, first, second, first);
-        assertEquals(((long) Integer.MAX_VALUE + 6) * 5, captured.resourcesPerTick().getLong(CUSTOM));
+        assertEquals(((long) Integer.MAX_VALUE + 6) * 5, captured.resourcesPerTick().getDouble(CUSTOM));
         assertTrue(captured.current());
         put(first, 0, CARD, 1);
         assertFalse(captured.current());
@@ -108,13 +100,13 @@ class NetworkComputerComponentsTest {
 
     @Test
     void extractionHoldsStillSupplyUntilAppliedAndPendingOutputsDoNotSupply() {
-        var registry = registry(vector(NetworkResources.COMPUTE, 10));
+        var registry = registry(vector(ComputingResourceFixtures.COMPUTE, 10));
         var storage = buffer(2);
         put(storage, 0, CARD, 4);
         var extract = Objects.requireNonNull(storage.reserveExtract(storage.snapshot(), CARD, 2).reservation());
         var insert = Objects.requireNonNull(storage.reserveInsert(storage.snapshot(), CARD, 3).reservation());
         var captured = capture(registry, storage);
-        assertEquals(40, captured.resourcesPerTick().getLong(NetworkResources.COMPUTE));
+        assertEquals(40, captured.resourcesPerTick().getDouble(ComputingResourceFixtures.COMPUTE));
         storage.context().lock();
         try {
             extract.apply();
@@ -122,32 +114,31 @@ class NetworkComputerComponentsTest {
             storage.context().unlock();
         }
         assertFalse(captured.current());
-        assertEquals(20, capture(registry, storage).resourcesPerTick().getLong(NetworkResources.COMPUTE));
+        assertEquals(20, capture(registry, storage).resourcesPerTick().getDouble(ComputingResourceFixtures.COMPUTE));
         ResourceTransactions.rollback(List.of(extract, insert));
-        assertEquals(40, capture(registry, storage).resourcesPerTick().getLong(NetworkResources.COMPUTE));
+        assertEquals(40, capture(registry, storage).resourcesPerTick().getDouble(ComputingResourceFixtures.COMPUTE));
     }
 
     @Test
-    void developerDefinedSupplyChecksMetadataAndOverflowBeforePublication() {
+    void developerDefinedSupplyRejectsNonFiniteAccumulationBeforePublication() {
         var storage = buffer(2);
         put(storage, 0, CARD, 17);
-        var supply = vector(NetworkResources.THREAD, 64);
-        supply.put(NetworkResources.COMPUTE, 2_048);
+        var supply = vector(ComputingResourceFixtures.COMPUTE, 2_048);
         supply.put(CUSTOM, 10_000);
-        var captured = capture(registry(supply), storage).resourcesPerTick();
-        assertEquals(1_088, captured.getLong(NetworkResources.THREAD));
-        assertEquals(34_816, captured.getLong(NetworkResources.COMPUTE));
-        assertEquals(170_000, captured.getLong(CUSTOM));
-        var drifted = new NetworkResourceType(CUSTOM.id(), true);
-        assertThrows(IllegalArgumentException.class, () -> capture(registry(vector(drifted, 6)), storage));
-        var unknown = new NetworkResourceType(id("unknown"), false);
-        assertThrows(IllegalArgumentException.class, () -> capture(registry(vector(unknown, 0)), storage));
-        assertThrows(ArithmeticException.class, () -> capture(registry(vector(NetworkResources.COMPUTE, Long.MAX_VALUE)), storage));
+        var components = new NetworkComputerComponentRegistry();
+        ComputerSupplyFixtures.fixed(components, CARD, 64, supply);
+        components.freeze();
+        var installed = capture(components, storage);
+        var captured = installed.resourcesPerTick();
+        assertEquals(1_088, installed.concurrencyPerTick());
+        assertEquals(34_816, captured.getDouble(ComputingResourceFixtures.COMPUTE));
+        assertEquals(170_000, captured.getDouble(CUSTOM));
+        assertThrows(ArithmeticException.class, () -> capture(registry(vector(ComputingResourceFixtures.COMPUTE, Double.MAX_VALUE)), storage));
         var registry = new NetworkComputerComponentRegistry();
         var other = ComputerSupplyFixtures.key("second_component");
-        ComputerSupplyFixtures.fixed(registry, CARD, vector(NetworkResources.COMPUTE, Long.MAX_VALUE));
-        ComputerSupplyFixtures.fixed(registry, other, vector(NetworkResources.COMPUTE, 1));
-        registry.freeze(resources());
+        ComputerSupplyFixtures.fixed(registry, CARD, vector(ComputingResourceFixtures.COMPUTE, Double.MAX_VALUE));
+        ComputerSupplyFixtures.fixed(registry, other, vector(ComputingResourceFixtures.COMPUTE, Double.MAX_VALUE));
+        registry.freeze();
         put(storage, 0, CARD, 1);
         put(storage, 1, other, 1);
         assertThrows(ArithmeticException.class, () -> capture(registry, storage));
@@ -161,9 +152,9 @@ class NetworkComputerComponentsTest {
         ComputerSupplyFixtures.register(registry, CARD, _ -> {
             calls[0]++;
             long captured = value[0];
-            return new NetworkComputerComponent.Capture(vector(NetworkResources.COMPUTE, captured), () -> captured == value[0]);
+            return new NetworkComputerComponent.Capture(vector(ComputingResourceFixtures.COMPUTE, captured), () -> captured == value[0]);
         });
-        registry.freeze(resources());
+        registry.freeze();
         var storage = buffer(1);
         put(storage, 0, CARD, 3);
         var captured = capture(registry, storage);
@@ -177,7 +168,7 @@ class NetworkComputerComponentsTest {
         assertEquals(1, calls[0]);
         value[0] = 3;
         assertFalse(captured.current());
-        assertEquals(9, capture(registry, storage).resourcesPerTick().getLong(NetworkResources.COMPUTE));
+        assertEquals(9, capture(registry, storage).resourcesPerTick().getDouble(ComputingResourceFixtures.COMPUTE));
         storage.context().invalidate();
         assertFalse(captured.current());
         assertFalse(assertDoesNotThrow(() -> capture(registry, storage)).current());
@@ -189,28 +180,28 @@ class NetworkComputerComponentsTest {
         put(storage, 0, CARD, 2);
         boolean[] mutate = {false};
         var registry = new NetworkComputerComponentRegistry();
-        ComputerSupplyFixtures.register(registry, CARD, _ -> new NetworkComputerComponent.Capture(vector(NetworkResources.COMPUTE, 5), () -> {
+        ComputerSupplyFixtures.register(registry, CARD, _ -> new NetworkComputerComponent.Capture(vector(ComputingResourceFixtures.COMPUTE, 5), () -> {
             if (mutate[0]) {
                 put(storage, 0, CARD, 3);
             }
             return true;
         }));
-        registry.freeze(resources());
+        registry.freeze();
         var captured = capture(registry, storage);
         mutate[0] = true;
         assertFalse(captured.current());
         var invalidating = new NetworkComputerComponentRegistry();
         ComputerSupplyFixtures.register(invalidating, CARD, _ -> {
             storage.context().invalidate();
-            return new NetworkComputerComponent.Capture(vector(NetworkResources.COMPUTE, 5), () -> true);
+            return new NetworkComputerComponent.Capture(vector(ComputingResourceFixtures.COMPUTE, 5), () -> true);
         });
-        invalidating.freeze(resources());
+        invalidating.freeze();
         assertFalse(capture(invalidating, storage).current());
     }
 
     @Test
     void restoredExistingBufferFeedsRecreatedComponentAndOldProofNeverRevives() {
-        var registry = registry(vector(NetworkResources.COMPUTE, 4));
+        var registry = registry(vector(ComputingResourceFixtures.COMPUTE, 4));
         var source = buffer(1);
         put(source, 0, CARD, 7);
         var sourceHolder = new SlottedResourceStorage[]{source};
@@ -226,7 +217,7 @@ class NetworkComputerComponentsTest {
             var original = assembly.create(new Host(), new MachineLifecycleRegistry());
             Objects.requireNonNull(original.lifecycle()).form(new MachineHatches(List.of(), List.of(), List.of()));
             var identity = Objects.requireNonNull(Objects.requireNonNull(original.components().get(ownership)).registration());
-            var previous = Objects.requireNonNull(original.components().get(supply)).networkCapture(identity, 1, true, Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY);
+            var previous = Objects.requireNonNull(original.components().get(supply)).networkCapture(identity, 1, true, Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY);
             var saved = assembly.encode(original);
             var keys = new ResourceKeyNbt(_ -> ComputerSupplyFixtures.TYPE);
             var decoded = keys.readStacks(keys.writeStacks(List.of(new GenericStack(CARD, 7))));
@@ -237,9 +228,9 @@ class NetworkComputerComponentsTest {
             var restored = assembly.restore(new Host(), saved, new MachineLifecycleRegistry());
             Objects.requireNonNull(restored.lifecycle()).form(new MachineHatches(List.of(), List.of(), List.of()));
             var restoredIdentity = Objects.requireNonNull(Objects.requireNonNull(restored.components().get(ownership)).registration());
-            var current = Objects.requireNonNull(restored.components().get(supply)).networkCapture(restoredIdentity, 1, true, Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY);
+            var current = Objects.requireNonNull(restored.components().get(supply)).networkCapture(restoredIdentity, 1, true, Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY);
             assertFalse(previous.current().getAsBoolean());
-            assertEquals(28, current.snapshot().resourcesPerTick().getLong(NetworkResources.COMPUTE));
+            assertEquals(28, current.snapshot().resourcesPerTick().getDouble(ComputingResourceFixtures.COMPUTE));
             assertTrue(current.current().getAsBoolean());
             restored.components().remove(supply);
             assertFalse(current.current().getAsBoolean());

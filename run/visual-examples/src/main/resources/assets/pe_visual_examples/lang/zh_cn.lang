@@ -128,3 +128,7 @@ pe_run_tests.java_computer=Java 计算机
 pe_run_tests.java_data_center=Java 数据中心
 item.pe_run_tests.computer_card.name=算力组件示例
 item.pe_run_tests.net_computer_card.name=网络算力组件示例
+pe_run_tests.resource.compute=算力
+pe_run_tests.resource.qubit=量子位
+pe_run_tests.resource.net_compute=网络算力
+pe_run_tests.resource.cooling=冷却值

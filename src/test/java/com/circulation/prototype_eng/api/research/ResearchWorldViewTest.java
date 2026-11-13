@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.research;
 
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
@@ -19,7 +19,7 @@ import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -66,12 +66,9 @@ class ResearchWorldViewTest {
     private static final ResourceLocation REWARD = id("reward");
     private static final ResourceLocation GROUP = id("choice");
     private static final ResourceLocation OTHER_GROUP = id("other_choice");
-    private static final NetworkResourceType COMPUTE = new NetworkResourceType(id("compute"), false);
+    private static final NetworkResourceType COMPUTE = ComputingResourceFixtures.network(id("compute"));
 
     private static ResearchWorld world(ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
-        var resources = new NetworkResourceRegistry();
-        resources.register(COMPUTE);
-        resources.freeze();
         var registry = new ResearchRegistry();
         var ordinary = ResearchResourceFormula.builder().constant(COMPUTE, 10).build();
         registry.register(ResearchDefinition.builder(BASE).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
@@ -86,7 +83,7 @@ class ResearchWorldViewTest {
                                             .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ordinary)
                                                                      .rewardGroup(1, new RewardGroup(GROUP, ObjectList.of(event)))
                                                                      .rewardGroup(1, new RewardGroup(OTHER_GROUP, ObjectList.of(event))).build()).build());
-        registry.freeze(resources);
+        registry.freeze();
         var child = new RewardClaim.Child(new RewardEventKey(ALICE, REWARD, 1, GROUP, event.id()), RewardClaim.Kind.EVENT,
             RewardClaim.ChildStatus.PENDING, Object2ObjectMaps.emptyMap());
         var aliceClaim = RewardClaim.unclaimed(new RewardClaim.Key(ALICE, REWARD, 1), 1).select(GROUP, 2, ObjectList.of(child));
@@ -96,10 +93,10 @@ class ResearchWorldViewTest {
         var first = new TeamResearchQueue.Key(BASE, 3, 1);
         var queue = new TeamResearchQueue.Snapshot("old", ObjectList.of(new TeamResearchQueue.Entry(first, BOB, 2),
             new TeamResearchQueue.Entry(new TeamResearchQueue.Key(DEPENDENT, 1, 2), ALICE, 3)), first,
-            Object2LongMaps.singleton(COMPUTE, 6), 3, 7, 10, 1, 9);
+            Reference2DoubleMaps.singleton(COMPUTE, 6), 3, 7, 10, 1, 9);
         var team = new ResearchWorldSnapshot.Team("old", members(ALICE, BOB), new ObjectOpenHashSet<>(),
             new TeamOwnedResearch.Snapshot("old", levels(OWNED, 2)), queue, ObjectList.of());
-        var world = new ResearchWorld(registry, resources, permissions, writer);
+        var world = new ResearchWorld(registry, permissions, writer);
         world.restore(new ResearchWorldSnapshot(10, players, ObjectList.of(team)));
         return world;
     }
@@ -195,7 +192,7 @@ class ResearchWorldViewTest {
         assertEquals(7, view.team().queueEpoch());
         assertEquals(ObjectList.of(new ResearchPlayerView.QueueRow(1, BASE, 3, BOB, 2),
             new ResearchPlayerView.QueueRow(2, DEPENDENT, 1, ALICE, 3)), view.team().queueRows());
-        assertEquals(6, view.team().numericProgress().getLong(COMPUTE.id()));
+        assertEquals(6, view.team().numericProgress().getDouble(COMPUTE));
         assertEquals(1, view.team().numericProgress().size());
         assertTrue(view.team().manualRows().isEmpty());
     }

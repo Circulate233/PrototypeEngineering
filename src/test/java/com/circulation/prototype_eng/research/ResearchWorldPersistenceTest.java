@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -19,8 +18,9 @@ import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
 import com.circulation.prototype_eng.api.research.reward.RewardGroup;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.CompressedStreamTools;
@@ -67,8 +67,6 @@ class ResearchWorldPersistenceTest {
     }
 
     private static Fixture fixture() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(MANUAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
@@ -78,14 +76,14 @@ class ResearchWorldPersistenceTest {
         var group = new RewardGroup(id("choice"), ObjectList.of(event));
         registry.register(ResearchDefinition.builder(PERSONAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(1, group).build()).build());
-        registry.freeze(resources);
+        registry.freeze();
         var team = new TeamOwnedResearch("team", registry);
         var completion = team.prepareCompletion(OWNED, 1);
         completion.commit();
         completion.complete();
-        var queue = new TeamResearchQueue(registry, resources, "team");
+        var queue = new TeamResearchQueue(registry, "team");
         queue.enqueue(MANUAL, 1, PLAYER, 1);
-        return new Fixture(new ResearchWorldNbt(registry, resources, new ResourceKeyNbt(_ -> null)), team, queue);
+        return new Fixture(new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null)), team, queue);
     }
 
     private static ResourceLocation id(String path) {
@@ -112,7 +110,7 @@ class ResearchWorldPersistenceTest {
         assertThrows(IllegalArgumentException.class, () -> new ResearchWorldSnapshot(10, ObjectList.of(player()), ObjectList.of(team, team)));
         assertThrows(IllegalArgumentException.class, () -> world(fixture, ObjectList.of(active(fixture), active(fixture))));
         var entry = fixture.queue().activeHead().orElseThrow();
-        var queue = new TeamResearchQueue.Snapshot("team", ObjectList.of(entry, entry), entry.key(), Object2LongMaps.emptyMap(), 2, 0, 1, -1, -1);
+        var queue = new TeamResearchQueue.Snapshot("team", ObjectList.of(entry, entry), entry.key(), Reference2DoubleMaps.emptyMap(), 2, 0, 1, -1, -1);
         assertThrows(IllegalArgumentException.class, () -> new ResearchWorldSnapshot.Team("team", team.knownMembers(), team.blacklist(), team.research(), queue, ObjectList.of()));
     }
 

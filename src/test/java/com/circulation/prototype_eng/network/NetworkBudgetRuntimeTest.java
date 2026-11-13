@@ -7,9 +7,8 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.LeaseStatus;
 import com.circulation.prototype_eng.api.scheduler.ExecutionMode;
@@ -17,9 +16,9 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
@@ -44,8 +43,8 @@ class NetworkBudgetRuntimeTest {
         return Objects.requireNonNull(registration.workPermit());
     }
 
-    private static Object2LongMap<NetworkResourceType> amount(long value) {
-        return Object2LongMaps.singleton(NetworkResources.COMPUTE, value);
+    private static Reference2DoubleMap<NetworkResourceType> amount(long value) {
+        return Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, value);
     }
 
     @Test
@@ -61,7 +60,7 @@ class NetworkBudgetRuntimeTest {
             assertTrue(spent.commit());
             var pending = Objects.requireNonNull(first.reserve(SOURCE, 1, amount(2)));
             assertEquals(LeaseStatus.INSUFFICIENT_CAPACITY, permit(fixture.second).requestLease());
-            assertEquals(10, first.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, first.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
 
             fixture.captureFailure = true;
             assertThrows(IllegalStateException.class, runtime::refresh);
@@ -72,7 +71,7 @@ class NetworkBudgetRuntimeTest {
             assertTrue(runtime.refresh());
             var recaptured = permit(fixture.first);
             assertEquals(LeaseStatus.ALREADY_GRANTED, recaptured.requestLease());
-            assertEquals(4, recaptured.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(4, recaptured.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertNull(recaptured.reserve(SOURCE, 2, amount(5)));
 
             fixture.accepted = false;
@@ -81,16 +80,16 @@ class NetworkBudgetRuntimeTest {
             fixture.accepted = true;
             fixture.compute = 3;
             assertTrue(runtime.refresh());
-            assertEquals(0, permit(fixture.first).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(0, permit(fixture.first).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertNull(permit(fixture.first).reserve(SOURCE, 2, amount(1)));
             fixture.compute = 10;
             assertTrue(runtime.refresh());
-            assertEquals(4, permit(fixture.first).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(4, permit(fixture.first).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             fixture.compute = 100;
             assertTrue(runtime.refresh());
             var returned = permit(fixture.first);
-            assertEquals(94, returned.availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(100, returned.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(94, returned.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(100, returned.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(LeaseStatus.INSUFFICIENT_CAPACITY, permit(fixture.second).requestLease());
             runtime.endTick();
             assertFalse(returned.current());
@@ -100,10 +99,10 @@ class NetworkBudgetRuntimeTest {
             assertTrue(runtime.refresh());
             var nextTick = permit(fixture.second);
             assertEquals(LeaseStatus.GRANTED, nextTick.requestLease());
-            assertEquals(100, nextTick.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, nextTick.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             spent.rollback();
-            assertEquals(100, returned.availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(100, nextTick.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, returned.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(100, nextTick.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 
@@ -140,7 +139,7 @@ class NetworkBudgetRuntimeTest {
             failedProof.rollback();
             fixture.proofFailure = false;
             assertTrue(runtime.refresh());
-            assertEquals(10, permit(fixture.first).availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, permit(fixture.first).availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 
@@ -160,7 +159,7 @@ class NetworkBudgetRuntimeTest {
                 var current = permit(fixture.first);
                 assertEquals(LeaseStatus.ALREADY_GRANTED, current.requestLease());
                 assertNull(current.reserve(SOURCE, 1, amount(6)));
-                assertEquals(4, current.availableResources().getLong(NetworkResources.COMPUTE));
+                assertEquals(4, current.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             }, ExecutionMode.MAIN_THREAD);
             scheduler.submit(() -> {
                 assertTrue(workerPermit[0].current());
@@ -179,7 +178,7 @@ class NetworkBudgetRuntimeTest {
                 });
                 assertEquals(3, preparations[0]);
                 assertTrue(workerReceipt[0].commit());
-                assertEquals(0, workerPermit[0].availableResources().getLong(NetworkResources.COMPUTE));
+                assertEquals(0, workerPermit[0].availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             } finally {
                 runtime.endTick();
             }
@@ -203,9 +202,7 @@ class NetworkBudgetRuntimeTest {
         private boolean centerProofValid = true;
 
         private Fixture() {
-            var registry = new NetworkResourceRegistry();
-            registry.freeze();
-            runtime = new NetworkRuntime(identities, registry, ownerId -> accepted
+            runtime = new NetworkRuntime(identities, ownerId -> accepted
                 ? OwnerTeamResolution.resolved(ownerId, "team", OwnerTeamType.SERVER, ObjectSet.of(ownerId), Optional.empty())
                 : OwnerTeamResolution.rejected(ownerId, OwnerTeamResolutionStatus.NO_TEAM, "owner left"), this::requireOwner);
             center = register(identity(1), NetworkDeviceRole.NETWORK_CENTER);
@@ -224,13 +221,12 @@ class NetworkBudgetRuntimeTest {
                 if (captureFailure) {
                     throw new IllegalStateException("capture failed");
                 }
-                var resources = new Object2LongOpenHashMap<NetworkResourceType>();
+                var resources = new Reference2DoubleOpenHashMap<NetworkResourceType>();
                 if (role == NetworkDeviceRole.NETWORK_CENTER) {
-                    resources.put(NetworkResources.THREAD, 1);
-                    resources.put(NetworkResources.COMPUTE, compute);
+                    resources.put(ComputingResourceFixtures.COMPUTE, compute);
                 }
                 return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), role, 1, true,
-                    identity.loadOrder(), resources, NetworkResourceModifier.EMPTY, 0, 0), () -> {
+                    identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER ? 1 : 0, resources, NetworkResourceModifier.EMPTY, 0, 0), () -> {
                     if (proofFailure) {
                         throw new IllegalStateException("proof failed");
                     }

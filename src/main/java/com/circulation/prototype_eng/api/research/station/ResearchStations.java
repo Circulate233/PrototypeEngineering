@@ -25,9 +25,9 @@ import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
@@ -205,7 +205,7 @@ public final class ResearchStations {
             }
         }
         if (center == null) {
-            return new Admission(this, revision, new TeamResearchStart.Environment(0, 0, 0, Object2LongMaps.emptyMap()), List.of());
+            return new Admission(this, revision, new TeamResearchStart.Environment(0, 0, 0, Reference2DoubleMaps.emptyMap()), List.of());
         }
         int level = center.permit.deviceSnapshot().level();
         var dataCenter = center.permit.dataCenterResearch();
@@ -526,7 +526,7 @@ public final class ResearchStations {
         private final List<MachineInstance> machines;
         private final ObjectSet<UUID> stationIds;
         private final MachineHatches hatches;
-        private final Object2LongMap<NetworkResourceType> capacity;
+        private final Reference2DoubleMap<NetworkResourceType> capacity;
 
         private Capture(ResearchStations selector, String teamId, int requiredTier, int dimension, List<Station> stations, MachineHatches hatches) {
             this(selector, teamId, requiredTier, dimension, stations, hatches, null);
@@ -550,13 +550,13 @@ public final class ResearchStations {
             sites = capturedSites == null ? originalSites : ObjectLists.unmodifiable(capturedSites);
             machines = ObjectLists.unmodifiable(capturedMachines);
             this.hatches = hatches;
-            var rates = new Object2LongOpenHashMap<NetworkResourceType>();
+            var rates = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             for (var station : stations) {
-                for (var entry : ((ResearchStation) station.machine()).researchRates().object2LongEntrySet()) {
+                for (var entry : ((ResearchStation) station.machine()).researchRates().reference2DoubleEntrySet()) {
                     var resource = entry.getKey();
-                    long rate = entry.getLongValue();
-                    long before = rates.getLong(resource);
-                    if (rate > Long.MAX_VALUE - before) rates.put(resource, Long.MAX_VALUE);
+                    double rate = entry.getDoubleValue();
+                    double before = rates.getDouble(resource);
+                    if (!Double.isFinite(before + rate)) rates.put(resource, Double.MAX_VALUE);
                     else rates.addTo(resource, rate);
                 }
             }
@@ -599,11 +599,11 @@ public final class ResearchStations {
             return hatches;
         }
 
-        public Object2LongMap<NetworkResourceType> numericResources() {
+        public Reference2DoubleMap<NetworkResourceType> numericResources() {
             return stations.getFirst().permit.numericResources();
         }
 
-        public Object2LongMap<NetworkResourceType> capacity() {
+        public Reference2DoubleMap<NetworkResourceType> capacity() {
             return capacity;
         }
 

@@ -2,7 +2,7 @@ package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -64,12 +64,12 @@ public interface NetworkParticipant {
 
     enum Cancellation {CANCELLED, RETRYABLE, UNKNOWN}
 
-    record WorkType(ResourceLocation id, Object2LongMap<NetworkResourceType> resources) {
+    record WorkType(ResourceLocation id, Reference2DoubleMap<NetworkResourceType> resources) {
         public WorkType {
             Objects.requireNonNull(id);
             resources = NetworkResourceModifier.copyResources(resources);
-            for (var entry : resources.object2LongEntrySet()) {
-                if (entry.getKey().logicalConcurrency() || entry.getLongValue() <= 0) {
+            for (var entry : resources.reference2DoubleEntrySet()) {
+                if (entry.getKey().internal() || entry.getDoubleValue() <= 0) {
                     throw new IllegalArgumentException("Participant work needs positive numeric demands");
                 }
             }
@@ -95,13 +95,14 @@ public interface NetworkParticipant {
      * Resource quantities follow the same rule and use a zero default return value.
      */
     record Snapshot(UUID participantId, UUID ownerId, Kind kind, long tick, long epoch, long version,
-                    Object2LongMap<NetworkResourceType> resources,
+                    long concurrencyPerTick,
+                    Reference2DoubleMap<NetworkResourceType> resources,
                     List<WorkType> workTypes, List<MaterialSource> materialSources) {
         public Snapshot {
             Objects.requireNonNull(participantId);
             Objects.requireNonNull(ownerId);
             Objects.requireNonNull(kind);
-            if (tick < 0 || epoch < 0 || version < 0) {
+            if (tick < 0 || epoch < 0 || version < 0 || concurrencyPerTick < 0) {
                 throw new IllegalArgumentException("Negative participant snapshot generation");
             }
             NetworkResourceModifier.validateResources(resources);
@@ -116,8 +117,13 @@ public interface NetworkParticipant {
         }
 
         boolean sameCapabilities(Snapshot other) {
-            return resources.equals(other.resources) && workTypes.equals(other.workTypes)
+            return concurrencyPerTick == other.concurrencyPerTick && resources.equals(other.resources) && workTypes.equals(other.workTypes)
                 && materialSources.equals(other.materialSources);
+        }
+
+        public Snapshot(UUID participantId, UUID ownerId, Kind kind, long tick, long epoch, long version,
+                        Reference2DoubleMap<NetworkResourceType> resources, List<WorkType> workTypes, List<MaterialSource> materialSources) {
+            this(participantId, ownerId, kind, tick, epoch, version, 0, resources, workTypes, materialSources);
         }
     }
 

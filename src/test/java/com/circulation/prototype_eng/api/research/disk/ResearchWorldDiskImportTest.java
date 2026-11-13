@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research.disk;
 
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.PlayerInventoryNbt;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
@@ -118,7 +117,7 @@ class ResearchWorldDiskImportTest {
     @Test
     void deniedPermissionNeverPreparesPlayerOrWritesDatabase() {
         var fixture = new Fixture(directory);
-        var world = new ResearchWorld(fixture.registry, fixture.resources, (_, _) -> ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER, fixture.saves);
+        var world = new ResearchWorld(fixture.registry, (_, _) -> ResearchPermissionPolicy.Decision.NOT_TEAM_MEMBER, fixture.saves);
         assertEquals(ResearchDiskImportResult.Status.PERMISSION_DENIED, fixture.request(world).status());
         assertNull(fixture.inventory.receipt);
         assertEquals(0, fixture.storage.commits);
@@ -414,7 +413,6 @@ class ResearchWorldDiskImportTest {
 
     private static final class Fixture {
         final ResearchRegistry registry = new ResearchRegistry();
-        final NetworkResourceRegistry resources = new NetworkResourceRegistry();
         final ResearchWorldNbt codec;
         final Saves saves = new Saves();
         final Inventory inventory = new Inventory(saves);
@@ -428,20 +426,19 @@ class ResearchWorldDiskImportTest {
         ResearchDiskData data;
 
         Fixture(Path directory) {
-            resources.freeze();
             registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(100).specialOnly(true)
                                                 .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(LOOP).maxLevel(100).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 100).researchTier(2).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-            registry.freeze(resources);
-            codec = new ResearchWorldNbt(registry, resources, new ResourceKeyNbt(_ -> null));
+            registry.freeze();
+            codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null));
             data = new ResearchDiskData(registry, 3, Object2IntMaps.singleton(RESEARCH, 90));
             storage = new Storage(registry, saves, directory);
         }
 
         ResearchWorld world() {
-            return new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, saves);
+            return new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, saves);
         }
 
         ResearchWorld restore(ResearchWorldSnapshot saved) {

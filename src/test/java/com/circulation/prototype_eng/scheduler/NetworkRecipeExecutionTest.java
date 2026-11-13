@@ -36,9 +36,8 @@ import com.circulation.prototype_eng.api.network.recipe.NetworkWorkRequirements;
 import com.circulation.prototype_eng.api.network.resource.ComputerSupplyFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
@@ -81,8 +80,8 @@ import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources.Key;
 import com.circulation.prototype_eng.testsupport.TestResources.KeyType;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
@@ -771,18 +770,16 @@ class NetworkRecipeExecutionTest {
 
         private Fixture(long threads, long compute, int duration, boolean pure, UnaryOperator<MachineRecipe> customize, AtomicBoolean tickGate) {
             this.tickGate = tickGate;
-            var resources = new NetworkResourceRegistry();
             var research = new ResearchRegistry();
-            resources.freeze();
-            research.freeze(resources);
-            network = new NetworkRuntime(identities, resources,
+            research.freeze();
+            network = new NetworkRuntime(identities,
                 identity -> OwnerTeamResolution.resolved(identity, "team", OwnerTeamType.SERVER, ObjectSets.singleton(identity), Optional.empty()), this::requireOwner);
             var factory = new MachineRecipeExecutionFactory(this::candidates, () -> this::refresh, () -> tick, () -> tickOpen && tickGate.get(), machine -> machine.components().assemblyBindings().stream()
                                                                                                                                                                    .anyMatch(binding -> binding.component() instanceof NetworkRecipeWork));
             scheduler = new TaskScheduler(owner, 2, 2, factory, Duration.ofSeconds(5));
             role = MachineNetworkDevice.component(id("role"), ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var source = new RecipeRequirementSystem<String>() {
                 @Override
                 @SuppressWarnings("ReturnOfInnerClass") // Exercises a captured owner binding.
@@ -852,16 +849,15 @@ class NetworkRecipeExecutionTest {
             recipe = customize.apply(new MachineRecipe(id("recipe"), duration, List.of(requirement)));
             catalog = new RecipeCatalog(List.of(new DefaultRecipePool(id("pool"), "network_execution_test.pool", List.of(recipe))));
             var extensions = new NetworkRecipeExtensions();
-            extensions.publish(catalog, research, resources);
+            extensions.publish(catalog, research);
             work = NetworkRecipeWork.component(id("work"), role,
-                NetworkWorkRequirements.builder().resource(NetworkResources.COMPUTE, 3).build(), extensions, research, resources);
+                NetworkWorkRequirements.builder().resource(ComputingResourceFixtures.COMPUTE, 3).build(), extensions, research);
             network.beginTick(tick);
-            var supply = new Object2LongOpenHashMap<NetworkResourceType>();
-            supply.put(NetworkResources.THREAD, threads);
-            supply.put(NetworkResources.COMPUTE, compute);
+            var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+            supply.put(ComputingResourceFixtures.COMPUTE, compute);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.singleton(NetworkResources.THREAD, 1), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), 1, Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var type = type("center").component(ownership).component(centerRole).build();
             center = MachineAssembly.builder(type, "center-v1").component(ownership, MachineOwnership.CODEC)
                                     .recreated(centerRole).build().create(host(type.id()), new MachineLifecycleRegistry());
@@ -869,13 +865,13 @@ class NetworkRecipeExecutionTest {
             var components = new NetworkComputerComponentRegistry();
             var computeCard = ComputerSupplyFixtures.key("compute_card");
             var threadCard = ComputerSupplyFixtures.key("thread_card");
-            ComputerSupplyFixtures.fixed(components, computeCard, Object2LongMaps.singleton(NetworkResources.COMPUTE, supply.getLong(NetworkResources.COMPUTE)));
-            ComputerSupplyFixtures.fixed(components, threadCard, Object2LongMaps.singleton(NetworkResources.THREAD, 1));
-            components.freeze(resources);
+            ComputerSupplyFixtures.fixed(components, computeCard, Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, supply.getDouble(ComputingResourceFixtures.COMPUTE)));
+            ComputerSupplyFixtures.fixed(components, threadCard, 1, Reference2DoubleMaps.emptyMap());
+            components.freeze();
             var installed = MachineComputerComponents.component(id("computer_supply"), components, ComputerSupplyFixtures::warehouses);
             var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
                 (machine, identity) -> Objects.requireNonNull(machine.components().get(installed)).networkCapture(identity, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             var computerType = type("computer").component(ownership).component(installed).component(computerRole).build();
             computer = MachineAssembly.builder(computerType, "computer-v1").component(ownership, MachineOwnership.CODEC)
                                       .recreated(installed, computerRole).build().create(host(computerType.id()), new MachineLifecycleRegistry());
@@ -1065,8 +1061,8 @@ class NetworkRecipeExecutionTest {
             return process;
         }
 
-        private long availableCompute(Worker worker) {
-            return permit(worker).availableResources().getLong(NetworkResources.COMPUTE);
+        private double availableCompute(Worker worker) {
+            return permit(worker).availableResources().getDouble(ComputingResourceFixtures.COMPUTE);
         }
 
         private NetworkRuntime.WorkPermit permit(Worker worker) {

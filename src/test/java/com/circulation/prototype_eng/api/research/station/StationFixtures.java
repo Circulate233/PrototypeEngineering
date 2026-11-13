@@ -19,9 +19,8 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
@@ -34,8 +33,8 @@ import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.storage.BufferedResourceHatch;
 import com.circulation.prototype_eng.testsupport.TestResources;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import it.unimi.dsi.fastutil.objects.Reference2LongMaps;
@@ -55,7 +54,6 @@ final class StationFixtures implements AutoCloseable {
     static final TestResources.KeyType TYPE = new TestResources.KeyType("station_material");
     final Thread owner = Thread.currentThread();
     final Object world = new Object();
-    final NetworkResourceRegistry resources = new NetworkResourceRegistry();
     final ResearchRegistry research = new ResearchRegistry();
     final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
     final MachineLifecycleRegistry listeners = new MachineLifecycleRegistry();
@@ -77,10 +75,9 @@ final class StationFixtures implements AutoCloseable {
     StationFixtures(long threads, long compute, int dataCenterTier, ResearchDefinition definition) {
         this.threads = Math.addExact(threads, 1); // The active database holds one infrastructure lease.
         this.compute = compute;
-        resources.freeze();
         research.register(definition);
-        research.freeze(resources);
-        network = new NetworkRuntime(identities, resources, player -> OwnerTeamResolution.resolved(player, player.equals(OWNER) ? "team" : "other",
+        research.freeze();
+        network = new NetworkRuntime(identities, player -> OwnerTeamResolution.resolved(player, player.equals(OWNER) ? "team" : "other",
             OwnerTeamType.SERVER, ObjectSets.singleton(player), Optional.empty()), this::requireOwner);
         network.beginTick(0);
         role(NetworkDeviceRole.NETWORK_CENTER, 3, 0, OWNER, world);
@@ -93,7 +90,7 @@ final class StationFixtures implements AutoCloseable {
 
     static ResearchDefinition defaultDefinition() {
         return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
-                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10).build()).build()).build();
+                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(2).resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, 10).build()).build()).build();
     }
 
     Entry station(int level, int dimension) {
@@ -109,19 +106,18 @@ final class StationFixtures implements AutoCloseable {
     }
 
     private Entry role(NetworkDeviceRole role, int level, int dimension, UUID player, Object worldIdentity, long rate, long energyPerTick) {
-        var vector = new Object2LongOpenHashMap<NetworkResourceType>();
+        var vector = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         if (role == NetworkDeviceRole.NETWORK_CENTER) {
-            vector.put(NetworkResources.THREAD, threads);
-            vector.put(NetworkResources.COMPUTE, compute);
+            vector.put(ComputingResourceFixtures.COMPUTE, compute);
         }
         var attached = MachineNetworkDevice.component(id("role_" + positions), ownership,
             (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, level, Objects.requireNonNull(machine.lifecycle()).formed(),
-                identity.loadOrder(), vector, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER ? threads : 0, vector, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         var type = MachineType.builder(id("machine_" + positions), GuiText.ResourceStorage, id("structure")).component(ownership).component(attached).build();
         var builder = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).recreated(attached);
         if (role == NetworkDeviceRole.RESEARCH_STATION)
             builder.instanceFactory(value -> new ResearchStationController(value, level,
-                Object2LongMaps.singleton(NetworkResources.COMPUTE, rate), energyPerTick));
+                Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, rate), energyPerTick));
         var assembly = builder.build();
         return attach(assembly.create(host(type.id(), dimension, player, worldIdentity), listeners), assembly, attached);
     }
@@ -131,7 +127,7 @@ final class StationFixtures implements AutoCloseable {
         });
         var role = MachineNetworkDevice.capturedComponent(id("data_role_" + positions), ownership,
             (machine, identity) -> Objects.requireNonNull(machine.components().get(storage)).networkCapture(identity,
-                Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+                Objects.requireNonNull(machine.lifecycle()).formed(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
         var type = MachineType.builder(id("data_" + positions), GuiText.ResourceStorage, id("structure")).component(ownership).component(storage).component(role).build();
         var assembly = MachineAssembly.builder(type, "v1").component(ownership, MachineOwnership.CODEC).component(storage, MachineDataCenterStorage.CODEC).recreated(role).build();
         attach(assembly.create(host(type.id(), 0, OWNER, world), listeners), assembly, role);

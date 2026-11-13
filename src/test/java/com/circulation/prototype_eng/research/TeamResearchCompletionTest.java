@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
@@ -40,8 +39,6 @@ class TeamResearchCompletionTest {
     private static final UUID SECOND = new UUID(1, 2);
 
     private static ResearchRegistry registry() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var id : List.of(PERSONAL, TEAM)) {
             var rewards = new RewardGroup(new ResourceLocation("test", "group"), new ObjectArrayList<>(List.of(
@@ -55,7 +52,7 @@ class TeamResearchCompletionTest {
                                                                          .resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(2, rewards)
                                                                          .rewardGroup(Integer.MAX_VALUE, rewards).build()).build());
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 

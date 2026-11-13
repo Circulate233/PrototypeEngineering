@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
@@ -16,9 +15,8 @@ import com.circulation.prototype_eng.api.research.TeamResearchStart;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -41,16 +39,14 @@ class TeamResearchStartTest {
     private static final ResourceLocation RESEARCH = new ResourceLocation("test", "research");
 
     private static Setup setup(int tier, ResearchStartCondition condition) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(1)
                                             .deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).startCondition(condition)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-        registry.freeze(resources);
+        registry.freeze();
         var view = new ResearchEligibility(registry).calculate("team", List.of(MEMBER), Map.of(MEMBER, new PlayerResearchState(MEMBER)),
-            Object2IntMaps.emptyMap(), 0, Set.of(), Object2LongMaps.emptyMap());
-        return new Setup(registry, resources, new TeamResearchQueue(registry, resources, "team"), view);
+            Object2IntMaps.emptyMap(), 0, Set.of(), Reference2DoubleMaps.emptyMap());
+        return new Setup(registry, new TeamResearchQueue(registry, "team"), view);
     }
 
     private static ResearchPermissionContext member() {
@@ -62,8 +58,7 @@ class TeamResearchStartTest {
     }
 
     private static TeamResearchStart.Environment environment(int center, int dataCenter, int station) {
-        Object2LongMap<NetworkResourceType> resources = Object2LongMaps.emptyMap();
-        return new TeamResearchStart.Environment(center, dataCenter, station, resources);
+        return new TeamResearchStart.Environment(center, dataCenter, station, Reference2DoubleMaps.emptyMap());
     }
 
     @Test
@@ -74,11 +69,11 @@ class TeamResearchStartTest {
                 return false;
             }
             calls[0]++;
-            return context.playerId().equals(MEMBER) && context.availableResources().getLong(NetworkResources.COMPUTE) == 15;
+            return context.playerId().equals(MEMBER) && context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE) == 15;
         });
         assertFalse(setup.view.isStartable(RESEARCH));
-        var supply = new Object2LongOpenHashMap<NetworkResourceType>();
-        supply.put(NetworkResources.COMPUTE, 15);
+        var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+        supply.put(ComputingResourceFixtures.COMPUTE, 15);
         var result = setup.start(ResearchPermissionPolicy.DEFAULT).start(setup.request(member(),
             new TeamResearchStart.Environment(0, 0, 0, supply), () -> true));
         assertEquals(TeamResearchStart.Status.STARTED, result.status());
@@ -86,7 +81,7 @@ class TeamResearchStartTest {
         assertEquals(MEMBER, result.entry().requestedBy());
         assertEquals(1, calls[0]);
         assertEquals(1, setup.queue.size());
-        assertEquals(15, supply.getLong(NetworkResources.COMPUTE));
+        assertEquals(15, supply.getDouble(ComputingResourceFixtures.COMPUTE));
         assertTrue(setup.queue.resourceProgressSnapshot().isEmpty());
     }
 
@@ -196,10 +191,10 @@ class TeamResearchStartTest {
         assertEquals(1, calls[0]);
     }
 
-    private record Setup(ResearchRegistry registry, NetworkResourceRegistry resources, TeamResearchQueue queue,
+    private record Setup(ResearchRegistry registry, TeamResearchQueue queue,
                          TeamResearchView view) {
         TeamResearchStart start(ResearchPermissionPolicy policy) {
-            return new TeamResearchStart(registry, resources, policy);
+            return new TeamResearchStart(registry, policy);
         }
 
         TeamResearchStart.Request request(ResearchPermissionContext permission, TeamResearchStart.Environment environment, BooleanSupplier current) {

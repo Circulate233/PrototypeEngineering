@@ -16,7 +16,7 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -49,7 +49,7 @@ import com.circulation.prototype_eng.research.ResearchWorldNbt;
 import com.circulation.prototype_eng.scheduler.TaskScheduler;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.testsupport.TestResources;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.nbt.NBTTagCompound;
@@ -99,7 +99,7 @@ class ResearchWorldStationTest {
 
     private static ResearchDefinition definition(long demand, Observations observations, ResearchStartCondition condition) {
         var stage = ResearchLevelStage.builder(1, 1).researchTier(2)
-                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, demand).build())
+                                      .resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, demand).build())
                                       .materialPersistence("world-station-v1", builder -> builder.resources(KEYS))
                                       .materialRequirement(observations.requirement())
                                       .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("world_io"), new ResourceRequirement(
@@ -110,7 +110,7 @@ class ResearchWorldStationTest {
     }
 
     private static ResearchWorld world(StationFixtures fixture, Consumer<ResearchWorldSnapshot> writer) {
-        return new ResearchWorld(fixture.research, fixture.resources, ResearchPermissionPolicy.DEFAULT, writer);
+        return new ResearchWorld(fixture.research, ResearchPermissionPolicy.DEFAULT, writer);
     }
 
     private static TeamResearchStart.Result start(ResearchWorld world, long time) {
@@ -126,7 +126,7 @@ class ResearchWorldStationTest {
     }
 
     private static TeamResearchStart.Environment environment() {
-        return new TeamResearchStart.Environment(3, 2, 2, Object2LongMaps.emptyMap());
+        return new TeamResearchStart.Environment(3, 2, 2, Reference2DoubleMaps.emptyMap());
     }
 
     private static OwnerTeamResolution membership(String team) {
@@ -563,7 +563,7 @@ class ResearchWorldStationTest {
                 assertEquals(30 - time * 3L, amount(station, RAW, false));
                 assertEquals(time * 2L, amount(station, PRODUCT, true));
                 assertEquals(100 - time * 4L, station.energy().storedEnergy());
-                assertEquals(time < 4 ? time * 3L : 0, team(saved, "team").queue().resourceProgress().getLong(NetworkResources.COMPUTE));
+                assertEquals(time < 4 ? time * 3L : 0, team(saved, "team").queue().resourceProgress().getDouble(ComputingResourceFixtures.COMPUTE));
                 assertEquals(time == 4 ? 1 : 0, playerLevel(saved));
                 fixture.advanceTick();
             }
@@ -594,13 +594,13 @@ class ResearchWorldStationTest {
             checkpoint = world.snapshot();
             var saved = Objects.requireNonNull(team(checkpoint, "team").stationWork().segment());
             site = saved.sites().getFirst();
-            assertEquals(1, saved.processTag().getCompoundTag("State").getLong("SuccessfulTicks"));
+            assertEquals(1, saved.processTag().getCompoundTag("State").getDouble("SuccessfulTicks"));
             assertEquals(7, amount(station, RAW, false));
             assertEquals(95, station.energy().storedEnergy());
             assertTrue(team(checkpoint, "team").queue().resourceProgress().isEmpty());
             assertEquals(0, playerLevel(checkpoint));
             assertEquals(checkpoint, writes.getLast());
-            var codec = new ResearchWorldNbt(original.research, original.resources, KEYS);
+            var codec = new ResearchWorldNbt(original.research, KEYS);
             checkpoint = codec.decode(codec.encode(checkpoint));
             machineTag = station.assembly().encode(station.machine());
         }
@@ -652,7 +652,7 @@ class ResearchWorldStationTest {
             assertTrue(world.savePending());
             assertFalse(execution.finished());
             var pending = attempts.getLast();
-            assertEquals(3, team(pending, "team").queue().resourceProgress().getLong(NetworkResources.COMPUTE));
+            assertEquals(3, team(pending, "team").queue().resourceProgress().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(7, amount(station, RAW, false));
             assertEquals(2, amount(station, PRODUCT, true));
             assertEquals(96, station.energy().storedEnergy());
@@ -834,7 +834,7 @@ class ResearchWorldStationTest {
     void restoredPaidWorkCancelsAfterItsOwnerMigratesEvenThoughTheOldTeamHasNoWorkPermit() {
         var observations = new Observations();
         try (var fixture = new StationFixtures(1, 100, 2, definition(3, observations, ResearchStartCondition.ALWAYS_ALLOWED));
-             var migrated = new NetworkRuntime(fixture.identities, fixture.resources, _ -> membership("migrated"), fixture::requireOwner);
+             var migrated = new NetworkRuntime(fixture.identities, _ -> membership("migrated"), fixture::requireOwner);
              var lanes = new Lanes()) {
             var original = fixture.station(2, 0);
             put(original, RAW, 10, false);
@@ -844,7 +844,7 @@ class ResearchWorldStationTest {
             });
             start(world, 0);
             assertTrue(prepare(world, fixture, lanes, 1, membership("team")).advance(deadline()));
-            var codec = new ResearchWorldNbt(fixture.research, fixture.resources, KEYS);
+            var codec = new ResearchWorldNbt(fixture.research, KEYS);
             var checkpoint = codec.decode(codec.encode(world.snapshot()));
             var saved = Objects.requireNonNull(team(checkpoint, "team").stationWork().segment());
             var site = saved.sites().getFirst();
@@ -853,7 +853,7 @@ class ResearchWorldStationTest {
             migrated.beginTick(1);
             var attached = MachineNetworkDevice.component(original.role().id(), fixture.ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.RESEARCH_STATION, 2,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0),
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0),
                 _ -> migrated);
             var type = MachineType.builder(site.location().machineType(), GuiText.ResourceStorage, id("structure"))
                                   .component(fixture.ownership).component(attached).build();

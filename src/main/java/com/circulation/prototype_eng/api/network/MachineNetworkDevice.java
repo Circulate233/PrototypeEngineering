@@ -11,7 +11,7 @@ import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListe
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,7 +27,7 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     public static final ComponentType<MachineInstance, MachineNetworkDevice> DEFAULT = capturedComponent(
         new ResourceLocation(Tags.MOD_ID, "default_network_device"), (owner, identity) ->
             new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DEVICE, 0,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(),
                 NetworkResourceModifier.EMPTY, 0, 0), () -> true));
     private final MachineInstance owner;
     private final ComponentType<MachineInstance, MachineOwnership> ownershipType;
@@ -104,6 +104,16 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
     @Nullable
     public NetworkWorkState state() {
         return registration == null ? null : registration.state();
+    }
+
+    public @Nullable NetworkRuntime.TeamView view() {
+        return registration == null ? null : registration.view();
+    }
+
+    public boolean readDisplayAtEndTick(Runnable read) {
+        if (registration == null) return false;
+        registration.readDisplayAtEndTick(read);
+        return true;
     }
 
     /**

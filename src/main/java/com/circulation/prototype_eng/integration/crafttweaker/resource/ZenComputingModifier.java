@@ -18,13 +18,13 @@ public final class ZenComputingModifier {
     }
 
     @ZenMethod
-    public ZenComputingModifier flat(ZenComputingResource resource, long amount) {
+    public ZenComputingModifier flat(ZenComputingResource resource, double amount) {
         builder.flat(resource.value(), amount);
         return this;
     }
 
     @ZenMethod
-    public ZenComputingModifier multiplierPpm(ZenComputingResource resource, long amount) {
+    public ZenComputingModifier multiplierPpm(ZenComputingResource resource, double amount) {
         builder.multiplierPpm(resource.value(), amount);
         return this;
     }

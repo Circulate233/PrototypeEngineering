@@ -9,8 +9,8 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Objects;
@@ -27,11 +27,11 @@ public interface ResearchStation {
         new ResourceLocation(Tags.MOD_ID, "research_station"), (owner, identity) ->
             new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.RESEARCH_STATION,
                 ((ResearchStation) owner).researchLevel(), Objects.requireNonNull(owner.lifecycle()).formed(),
-                identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> true));
+                identity.loadOrder(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), () -> true));
 
     int researchLevel();
 
-    Object2LongMap<NetworkResourceType> researchRates();
+    Reference2DoubleMap<NetworkResourceType> researchRates();
 
     long energyPerTick();
 }

@@ -3,7 +3,7 @@ package com.circulation.prototype_eng.api.network;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import org.jetbrains.annotations.Nullable;
 
@@ -49,11 +49,12 @@ public final class NetworkPlan {
      * Resource quantities are borrowed zero-default immutable data for this plan's lifetime.
      */
     public record Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId,
-                       Object2LongMap<NetworkResourceType> resourcesPerTick,
+                       long concurrencyPerTick,
+                       Reference2DoubleMap<NetworkResourceType> resourcesPerTick,
                        @Nullable DataCenterResearchSnapshot dataCenterResearch) {
         public Team {
             Objects.requireNonNull(centerId);
-            if (centerLevel < 1) {
+            if (centerLevel < 1 || concurrencyPerTick < 0) {
                 throw new IllegalArgumentException("Invalid selected center level");
             }
             if (dataCenterResearch != null && !dataCenterResearch.dataCenterId().equals(dataCenterId)) {
@@ -62,8 +63,13 @@ public final class NetworkPlan {
             NetworkResourceModifier.validateResources(resourcesPerTick);
         }
 
-        public Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId, Object2LongMap<NetworkResourceType> resourcesPerTick) {
-            this(centerId, centerLevel, dataCenterId, resourcesPerTick, null);
+        public Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId, Reference2DoubleMap<NetworkResourceType> resourcesPerTick) {
+            this(centerId, centerLevel, dataCenterId, 0, resourcesPerTick, null);
+        }
+
+        public Team(UUID centerId, int centerLevel, @Nullable UUID dataCenterId, Reference2DoubleMap<NetworkResourceType> resourcesPerTick,
+                    @Nullable DataCenterResearchSnapshot dataCenterResearch) {
+            this(centerId, centerLevel, dataCenterId, 0, resourcesPerTick, dataCenterResearch);
         }
     }
 }

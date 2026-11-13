@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research.disk;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
@@ -35,13 +34,11 @@ class ResearchDiskTest {
     }
 
     private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var definition : definitions) {
             registry.register(definition);
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 

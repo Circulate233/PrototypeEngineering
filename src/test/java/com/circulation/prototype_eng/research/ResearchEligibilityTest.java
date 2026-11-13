@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
@@ -12,7 +11,7 @@ import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.ResearchStartContext;
 import com.circulation.prototype_eng.api.research.TeamResearchView;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
@@ -43,13 +42,11 @@ class ResearchEligibilityTest {
     }
 
     private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var definition : definitions) {
             registry.register(definition);
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 
@@ -69,8 +66,8 @@ class ResearchEligibilityTest {
         return result;
     }
 
-    private static Object2LongOpenHashMap<NetworkResourceType> resources() {
-        return new Object2LongOpenHashMap<>();
+    private static Reference2DoubleOpenHashMap<NetworkResourceType> resources() {
+        return new Reference2DoubleOpenHashMap<>();
     }
 
     private static ResourceLocation id(String path) {
@@ -172,11 +169,11 @@ class ResearchEligibilityTest {
             .stage(stage(1, 2).prerequisite(gate.id(), 1).build()).startCondition(context -> {
                 seen.set(context);
                 return member.playerUuid().equals(context.playerId()) && context.networkCenterLevel() >= 2
-                    && context.availableResources().getLong(NetworkResources.COMPUTE) >= 7;
+                    && context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE) >= 7;
             }).build();
         var eligibility = new ResearchEligibility(registry(gate, target));
         var amount = resources();
-        amount.put(NetworkResources.COMPUTE, 7);
+        amount.put(ComputingResourceFixtures.COMPUTE, 7);
         var view = eligibility.calculate("actual_team", List.of(member.playerUuid()), Map.of(member.playerUuid(), member),
             levels(), 2, Set.of(), amount);
         assertFalse(view.isStartable(target.id()), "A player condition must not be fabricated for a team-wide candidate");
@@ -189,8 +186,8 @@ class ResearchEligibilityTest {
         assertEquals(1, captured.targetLevel());
         assertEquals(1, captured.teamSharedResearchLevels().getInt(gate.id()));
         assertTrue(captured.teamHasNetworkCenter());
-        amount.put(NetworkResources.COMPUTE, 1);
-        assertEquals(7, captured.availableResources().getLong(NetworkResources.COMPUTE));
+        amount.put(ComputingResourceFixtures.COMPUTE, 1);
+        assertEquals(7, captured.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         assertFalse(eligibility.canStart(view, target.id(), 1, member.playerUuid(), amount, 2));
         assertThrows(IllegalArgumentException.class, () -> eligibility.canStart(view, target.id(), 1, UUID.randomUUID(), amount, 2));
         assertThrows(NullPointerException.class, () -> eligibility.canStart(view, target.id(), 1, null, amount, 2));
@@ -263,7 +260,7 @@ class ResearchEligibilityTest {
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(), -1, Set.of(), resources()));
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(), Map.of(), levels(), 0, Set.of(id("unknown_blacklist")), resources()));
         var malformedResources = resources();
-        malformedResources.put(NetworkResources.COMPUTE, -1);
+        malformedResources.put(ComputingResourceFixtures.COMPUTE, -1);
         assertThrows(IllegalArgumentException.class, () -> eligibility.calculate("team", List.of(memberId), Map.of(memberId, member), levels(), 0, Set.of(), malformedResources));
         var view = eligibility.calculate("team", List.of(memberId), Map.of(memberId, member), levels(), 0, Set.of(), resources());
         var anotherAuthority = new ResearchEligibility(registry(definition));
@@ -273,22 +270,22 @@ class ResearchEligibilityTest {
     @Test
     void resourceSnapshotIsFrozenBeforeTheFirstConditionCanChangeItsOriginalInput() {
         var amount = resources();
-        amount.put(NetworkResources.COMPUTE, 7);
+        amount.put(ComputingResourceFixtures.COMPUTE, 7);
         var observed = new AtomicInteger();
         var first = definition("snapshot_first", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
                                                                                              .startCondition(_ -> {
-                                                                                                 amount.put(NetworkResources.COMPUTE, 0);
+                                                                                                 amount.put(ComputingResourceFixtures.COMPUTE, 0);
                                                                                                  return true;
                                                                                              }).build();
         var second = definition("snapshot_second", 1, ResearchDownloadDeliveryPolicy.ITEM_ONLY).stage(stage(1, 1).build())
                                                                                                .startCondition(context -> {
-                                                                                                   observed.set(Math.toIntExact(context.availableResources().getLong(NetworkResources.COMPUTE)));
+                                                                                                   observed.set((int) context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
                                                                                                    return observed.get() == 7;
                                                                                                }).build();
         var eligibility = new ResearchEligibility(registry(first, second));
         TeamResearchView view = eligibility.calculate("team", List.of(), Map.of(), levels(), 0, Set.of(), amount);
         assertEquals(7, observed.get());
         assertTrue(view.isStartable(second.id()));
-        assertEquals(0, amount.getLong(NetworkResources.COMPUTE));
+        assertEquals(0, amount.getDouble(ComputingResourceFixtures.COMPUTE));
     }
 }

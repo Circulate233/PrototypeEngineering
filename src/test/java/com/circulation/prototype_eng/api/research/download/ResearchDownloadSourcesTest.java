@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research.download;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -595,8 +594,6 @@ class ResearchDownloadSourcesTest {
         }
 
         private Fixture(int cost, int researchTier) {
-            var resources = new NetworkResourceRegistry();
-            resources.freeze();
             var reward = new RewardGroup(new ResourceLocation("test_download_sources", "history"),
                 new ObjectArrayList<>(ObjectList.of(new RewardChild.Event(new ResourceLocation("test_download_sources", "unused_event"), (_, _) -> {
                     fail("Downloading source levels must not deliver historical rewards");
@@ -609,7 +606,7 @@ class ResearchDownloadSourcesTest {
                                                     .stage(ResearchLevelStage.builder(1, 4).researchTier(researchTier)
                                                                              .resourceFormula(ResearchResourceFormula.builder().build()).rewardGroup(2, reward).build()).build());
             }
-            registry.freeze(resources);
+            registry.freeze();
             players.put(FIRST, new PlayerResearchState(FIRST));
             players.put(SECOND, new PlayerResearchState(SECOND));
             team = new TeamOwnedResearch("team", registry);

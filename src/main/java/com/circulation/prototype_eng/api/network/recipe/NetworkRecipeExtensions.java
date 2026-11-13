@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.network.recipe;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
@@ -30,8 +29,6 @@ public final class NetworkRecipeExtensions {
     @Nullable
     private ResearchRegistry research;
     @Nullable
-    private NetworkResourceRegistry resources;
-    @Nullable
     private volatile Snapshot frozen;
     @Nullable
     private volatile PublicationBinding publicationBinding;
@@ -54,8 +51,8 @@ public final class NetworkRecipeExtensions {
     /**
      * Failed initial publication remains unavailable and cannot replay callbacks or register again.
      */
-    public void publish(RecipeCatalog catalog, ResearchRegistry research, NetworkResourceRegistry resources) {
-        beginPublication(research, resources);
+    public void publish(RecipeCatalog catalog, ResearchRegistry research) {
+        beginPublication(research);
         var recipes = new ObjectArrayList<>(Objects.requireNonNull(catalog).recipes());
         recipes.sort(Comparator.comparing(MachineRecipe::id));
         publishInitial(recipes);
@@ -64,8 +61,8 @@ public final class NetworkRecipeExtensions {
     /**
      * Current and declared historical objects must all have accurate PN gates before machine restoration.
      */
-    public void publish(RecipeRegistry.Snapshot catalog, ResearchRegistry research, NetworkResourceRegistry resources) {
-        beginPublication(research, resources);
+    public void publish(RecipeRegistry.Snapshot catalog, ResearchRegistry research) {
+        beginPublication(research);
         Objects.requireNonNull(catalog);
         var identities = new ReferenceOpenHashSet<MachineRecipe>();
         var recipes = new ObjectArrayList<MachineRecipe>();
@@ -77,16 +74,15 @@ public final class NetworkRecipeExtensions {
         publishInitial(recipes);
     }
 
-    private void beginPublication(ResearchRegistry research, NetworkResourceRegistry resources) {
+    private void beginPublication(ResearchRegistry research) {
         synchronized (this) {
             if (publicationStarted)
                 throw new IllegalStateException("Network recipe extension publication already started");
             publicationStarted = true;
-            if (!Objects.requireNonNull(research).isFrozen() || !Objects.requireNonNull(resources).isFrozen()) {
+            if (!Objects.requireNonNull(research).isFrozen()) {
                 throw new IllegalStateException("Network recipe extensions need frozen research and computing registries");
             }
             this.research = research;
-            this.resources = resources;
             var ordered = new ObjectArrayList<>(registrations);
             ordered.sort(Comparator.comparingInt(Registration::priority).thenComparingLong(Registration::sequence));
             configuration = ObjectLists.unmodifiable(ordered);
@@ -185,7 +181,7 @@ public final class NetworkRecipeExtensions {
         try {
             for (var registration : configuration) registration.extension.extend(recipe, builder);
             var requirements = builder.build();
-            requirements.validate(Objects.requireNonNull(research), Objects.requireNonNull(resources));
+            requirements.validate(Objects.requireNonNull(research));
             synchronized (this) {
                 state.requirements = requirements;
                 state.complete = true;

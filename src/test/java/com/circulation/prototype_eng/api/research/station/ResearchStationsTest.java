@@ -4,10 +4,10 @@ import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleRegistry;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.storage.StorageFence;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -82,17 +82,17 @@ class ResearchStationsTest {
             assertEquals(1, first.stationIds().size());
             var role = fixture.roleOf(first.primary());
             var permit = Objects.requireNonNull(role.workPermit());
-            var ordinary = Objects.requireNonNull(permit.reserve(id("ordinary"), Object2LongMaps.singleton(NetworkResources.COMPUTE, 30)));
+            var ordinary = Objects.requireNonNull(permit.reserve(id("ordinary"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 30)));
             assertTrue(ordinary.commit());
             var repeated = Objects.requireNonNull(fixture.selector.capture("team", 2));
             assertEquals(first.stationIds(), repeated.stationIds(), "ALREADY_GRANTED remains a valid contributor");
-            assertEquals(100, repeated.numericResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(70, permit.availableResources().getLong(NetworkResources.COMPUTE));
-            var queue = new TeamResearchQueue(fixture.research, fixture.resources, repeated.teamId());
+            assertEquals(100, repeated.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(70, permit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            var queue = new TeamResearchQueue(fixture.research, repeated.teamId());
             var head = queue.enqueue(id("research"), 1, OWNER, 0);
             var plan = queue.planSegment(head.key(), repeated.stationIds(), repeated.numericResources(), repeated.capacity(), 0).orElseThrow();
-            assertEquals(3, plan.grantedResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(70, permit.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(3, plan.grantedResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(70, permit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
         }
     }
 

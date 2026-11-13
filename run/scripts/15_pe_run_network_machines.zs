@@ -1,5 +1,6 @@
 #loader preinit
 import mods.pe_run_tests.Text;
+import mods.pe_run_tests.Resources;
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.recipe.Bindings;
 import mods.prototype_eng.recipe.Resource;
@@ -11,11 +12,11 @@ import mods.prototype_eng.network.NetworkConfiguration;
 import mods.prototype_eng.network.NetworkRequirements;
 
 var names = Bindings.scope("pe_run_tests:bindings");
-var compute = ComputingResource.create("pe_run_tests:net_compute", false);
+var compute = Resources.netCompute();
 var empty = ComputingResources.create();
 MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1, 4, 4)
     .register("network-center-v1");
-var cooling = ComputingResource.internal("pe_run_tests:cooling", false);
+var cooling = Resources.cooling();
 var coolingRecipe = ComputerRecipe.create("pe_run_tests:cooling_recipe", [Resource.fluid(<liquid:water>, 1000)],
     ComputingResources.create().add(cooling, 1000));
 MachineType.computer("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_computer_shape", 8,

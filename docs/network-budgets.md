@@ -12,10 +12,9 @@
 
 ## lease、数值与操作身份
 
-- 用户确认的消费规则：算力等数值资源随配方并行量缩放；并发资源（标准 THREAD）按机器只占 1，不随并行量、工位数或 Java 工作线程数重复占用。NetworkRecipeWorkSystem 已按实际进程并行量缩放；START/扫描只检查，工作 TICK 占用，零时长 START 占用一次，见[配方消费者](network-recipes.md)。
-- `requestLease(machineId)` 使用 THREAD；同一机器本 tick 只消耗一份，其他工位为 ALREADY_GRANTED。没有工位结束即释放的操作，数值不足/取消也不退 lease，保持 PN 请求顺序。
-- `requestLease(machineId, logicalType)` 支持已注册自定义 logical 维度，各维独立机器集合和 long 容量，不再只支持 THREAD 或强制 int。一次申请一维，不代表多维 lease 原子申请。
-- WorkPermit 对活动中心免标准 THREAD lease，返回 NOT_REQUIRED；自定义 logical 仍实际申请。计算机与活动数据库在发布时取得各自1份标准并发；研究站实际推进时申请。三者优先于普通设备，可收回普通租约，使其未提交凭据失效。卸载、换队、结构失效或落选的网络设备释放该租约；同条件按持久 UUID 选择。计算机不能用自身待生效的供给启动，详见[计算机](computers.md)。
+- 数值资源用double并随配方并行量缩放；固定并发是独立long额度，每台机器占1，不随工位或Java线程重复占用。START/扫描只检查，TICK占用，零时长START占用一次。
+- `requestLease(machineId)` 申请固定并发；同一机器同tick幂等，其他工位ALREADY_GRANTED，工位结束不单独释放。
+- 活动中心免并发。计算机与活动数据库发布时各占1，研究站实际推进时占1，三者优先普通机器，可收回普通租约。计算机须由中心或其他已获准设备先提供启动额度，不能自启动，见[计算机](computers.md)。
 - `numericResources()` 为当前发布的只读研究供给；普通预留扣另一份 availableResources。两份 numeric 预算独立，研究与普通配方共享机器 lease。
 - `reserve(Operation, required, authorized)` 先校验完整 numeric 向量和全部余额，再整组 addTo 扣减。不足返回 null，不部分扣减、不占操作键。空需求允许无数值成本的授权凭据。
 

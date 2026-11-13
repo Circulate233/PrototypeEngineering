@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
@@ -11,7 +10,7 @@ import com.circulation.prototype_eng.api.research.ResearchRegistry;
 import com.circulation.prototype_eng.api.research.ResearchResourceFormula;
 import com.circulation.prototype_eng.api.research.ResearchStartContext;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.util.ResourceLocation;
@@ -58,13 +57,11 @@ class ResearchStructuralEligibilityTest {
     }
 
     private static ResearchRegistry registry(ResearchDefinition... definitions) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var definition : definitions) {
             registry.register(definition);
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 
@@ -78,10 +75,10 @@ class ResearchStructuralEligibilityTest {
         return result;
     }
 
-    private static Object2LongOpenHashMap<NetworkResourceType> resources(long compute) {
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
+    private static Reference2DoubleOpenHashMap<NetworkResourceType> resources(long compute) {
+        var result = new Reference2DoubleOpenHashMap<NetworkResourceType>();
         if (compute > 0) {
-            result.put(NetworkResources.COMPUTE, compute);
+            result.put(ComputingResourceFixtures.COMPUTE, compute);
         }
         return result;
     }
@@ -98,7 +95,7 @@ class ResearchStructuralEligibilityTest {
                                                                                               .startCondition(context -> {
                                                                                                   calls.incrementAndGet();
                                                                                                   seen.set(context);
-                                                                                                  return context.networkCenterLevel() >= 2 && context.availableResources().getLong(NetworkResources.COMPUTE) >= 7;
+                                                                                                  return context.networkCenterLevel() >= 2 && context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE) >= 7;
                                                                                               }).build();
         var eligibility = new ResearchEligibility(registry(target));
         var player = new PlayerResearchState(FIRST);

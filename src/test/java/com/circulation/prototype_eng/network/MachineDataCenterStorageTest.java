@@ -18,9 +18,8 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
@@ -38,8 +37,8 @@ import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.research.DataCenterStorageNbt;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.nbt.NBTTagCompound;
@@ -66,17 +65,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MachineDataCenterStorageTest {
-    private static NetworkResourceRegistry resources() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
-        return resources;
-    }
-
-    private static ResearchRegistry research(NetworkResourceRegistry resources) {
+    private static ResearchRegistry research() {
         var registry = new ResearchRegistry();
         registry.register(definition("loop", 3));
         registry.register(definition("other", 1));
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 
@@ -108,7 +101,7 @@ class MachineDataCenterStorageTest {
             assertEquals(fixture.storage(first).snapshot(), team.dataCenterResearch(), "Equal-size data centers use persistent UUID ordering");
             assertFalse(Objects.requireNonNull(team.dataCenterResearch()).storedResearch().containsKey(id("other")));
             var old = Objects.requireNonNull(fixture.role(first).workPermit());
-            var receipt = Objects.requireNonNull(old.reserve(id("work"), 0, Object2LongMaps.emptyMap()));
+            var receipt = Objects.requireNonNull(old.reserve(id("work"), 0, Reference2DoubleMaps.emptyMap()));
             fixture.player.completeAtLeast(id("loop"), 3);
             assertEquals(DataCenterStorage.Result.UPDATED, fixture.storage(first).synchronizeLoopingResearch(fixture.cloud()));
             assertFalse(receipt.commit());
@@ -216,11 +209,11 @@ class MachineDataCenterStorageTest {
             assertTrue(fixture.network.refresh());
             var component = Objects.requireNonNull(fixture.center.components().get(fixture.centerRole));
             var before = Objects.requireNonNull(component.workPermit());
-            fixture.supply.put(NetworkResources.COMPUTE, 50);
+            fixture.supply.put(ComputingResourceFixtures.COMPUTE, 50);
             assertNull(component.workPermit());
             assertEquals(NetworkTeamBudget.LeaseStatus.EXPIRED, before.requestLease());
             assertTrue(fixture.network.refresh());
-            assertEquals(50, Objects.requireNonNull(component.workPermit()).numericResources().getLong(NetworkResources.COMPUTE),
+            assertEquals(50, Objects.requireNonNull(component.workPermit()).numericResources().getDouble(ComputingResourceFixtures.COMPUTE),
                 "A successful recapture publishes the current supply without resetting consumption");
         }
     }
@@ -229,11 +222,10 @@ class MachineDataCenterStorageTest {
         private final Thread ownerThread = Thread.currentThread();
         private final Object world = new Object();
         private final List<MachineInstance> machines = new ObjectArrayList<>();
-        private final NetworkResourceRegistry resources = resources();
-        private final ResearchRegistry research = research(resources);
+        private final ResearchRegistry research = research();
         private final PlayerResearchState player = new PlayerResearchState(new UUID(0, 1));
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
-        private final NetworkRuntime network = new NetworkRuntime(identities, resources,
+        private final NetworkRuntime network = new NetworkRuntime(identities,
             owner -> OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()), this::requireOwner);
         private final ComponentType<MachineInstance, MachineOwnership> ownership = new ComponentType<>(id("ownership"),
             owner -> new MachineOwnership(owner, _ -> identities), List.of());
@@ -241,10 +233,10 @@ class MachineDataCenterStorageTest {
             ownership, 1, 2, research, _ -> this.dirty++, this::persistDisk);
         private final ComponentType<MachineInstance, MachineNetworkDevice> dataRole = MachineNetworkDevice.capturedComponent(id("data_role"),
             ownership, (owner, identity) -> ((DataCenterController) owner).networkCapture(identity), _ -> network);
-        private final Object2LongOpenHashMap<NetworkResourceType> supply = new Object2LongOpenHashMap<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> supply = new Reference2DoubleOpenHashMap<>();
         private final ComponentType<MachineInstance, MachineNetworkDevice> centerRole = MachineNetworkDevice.component(id("center_role"),
             ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), NetworkResourceModifier.copyResources(supply),
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), 5, NetworkResourceModifier.copyResources(supply),
                 NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         private final MachineType dataType = MachineType.builder(id("data_machine"), GuiText.ResourceStorage, id("structure"))
                                                         .component(ownership).component(storage).component(dataRole).build();
@@ -261,8 +253,7 @@ class MachineDataCenterStorageTest {
         private int positions;
 
         private Fixture() {
-            supply.put(NetworkResources.THREAD, 5);
-            supply.put(NetworkResources.COMPUTE, 20);
+            supply.put(ComputingResourceFixtures.COMPUTE, 20);
             network.beginTick(0);
             var type = MachineType.builder(id("center_machine"), GuiText.ResourceStorage, id("structure"))
                                   .component(ownership).component(centerRole).build();

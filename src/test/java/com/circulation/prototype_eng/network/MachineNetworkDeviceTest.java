@@ -22,7 +22,6 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessNbt;
@@ -38,7 +37,7 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.energy.EnergyBuffer;
 import com.circulation.prototype_eng.localization.GuiText;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.nbt.NBTTagCompound;
@@ -67,12 +66,6 @@ class MachineNetworkDeviceTest {
 
     private static ResourceLocation id(String path) {
         return new ResourceLocation("network_device_test", path);
-    }
-
-    private static NetworkResourceRegistry resources() {
-        var registry = new NetworkResourceRegistry();
-        registry.freeze();
-        return registry;
     }
 
     @Test
@@ -138,7 +131,7 @@ class MachineNetworkDeviceTest {
             assertTrue(fixture.network.refresh());
             original.owner.onSchedule();
             var originalPermit = Objects.requireNonNull(fixture.networkDevice(original).workPermit());
-            var originalWork = Objects.requireNonNull(originalPermit.reserve(id("saved_work"), 0, Object2LongMaps.emptyMap()));
+            var originalWork = Objects.requireNonNull(originalPermit.reserve(id("saved_work"), 0, Reference2DoubleMaps.emptyMap()));
             var first = original.process("first");
             var committed = first.state();
             var saved = fixture.assembly.encode(original.owner);
@@ -173,7 +166,7 @@ class MachineNetworkDeviceTest {
             assertEquals(45, restored.input.storedEnergy());
             assertTrue(fixture.network.refresh());
             var restoredPermit = Objects.requireNonNull(fixture.networkDevice(restored).workPermit());
-            var restoredWork = Objects.requireNonNull(restoredPermit.reserve(id("saved_work"), 1, Object2LongMaps.emptyMap()));
+            var restoredWork = Objects.requireNonNull(restoredPermit.reserve(id("saved_work"), 1, Reference2DoubleMaps.emptyMap()));
             assertTrue(restoredWork.commit());
             restored.owner.onSchedule();
             assertEquals(2, resumed.state().successfulTicks());
@@ -202,7 +195,7 @@ class MachineNetworkDeviceTest {
         private final Object world = new Object();
         private final List<AssembledMachine> machines = new ObjectArrayList<>();
         private final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
-        private final NetworkRuntime network = new NetworkRuntime(identities, resources(), owner -> this.rejected
+        private final NetworkRuntime network = new NetworkRuntime(identities, owner -> this.rejected
             ? OwnerTeamResolution.rejected(owner, OwnerTeamResolutionStatus.NO_TEAM, "test owner has no team")
             : OwnerTeamResolution.resolved(owner, "team", OwnerTeamType.SERVER, ObjectSets.singleton(owner), Optional.empty()),
             this::requireOwner);
@@ -238,7 +231,7 @@ class MachineNetworkDeviceTest {
             network.beginTick(0);
             networkType = MachineNetworkDevice.component(id("network"),
                 ownershipType, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER,
-                    1, Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
+                    1, Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(),
                     NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var builder = MachineType.builder(id("machine"), GuiText.ResourceStorage, id("structure"))
                                      .component(ownershipType).component(networkType).component(MachineWorkSlots.TYPE)

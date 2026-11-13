@@ -2,10 +2,7 @@ package com.circulation.prototype_eng.api.network;
 
 import com.circulation.prototype_eng.api.machine.ControllerEnergy;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
@@ -13,7 +10,7 @@ import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
 import com.circulation.prototype_eng.api.transaction.ReservedTransaction;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectLinkedOpenHashMap;
@@ -28,6 +25,7 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongFunction;
+import java.util.function.ToDoubleFunction;
 import java.util.function.Supplier;
 
 /**
@@ -37,12 +35,12 @@ import java.util.function.Supplier;
  */
 public final class NetworkRuntime implements AutoCloseable {
     private final MachineIdentityRegistry identities;
-    private final NetworkResourceRegistry resources;
     private final OwnerTeamResolver teams;
     private final Runnable ownerCheck;
     private final NetworkParticipants participants;
     private final Reference2ObjectLinkedOpenHashMap<Object, Registration> registrations = new Reference2ObjectLinkedOpenHashMap<>();
     private final Object2ObjectOpenHashMap<String, NetworkTeamBudget> budgets = new Object2ObjectOpenHashMap<>();
+    private final ObjectArrayList<Runnable> displayReads = new ObjectArrayList<>();
     @Nullable
     private volatile Publication published;
     private long nextEpoch;
@@ -53,15 +51,11 @@ public final class NetworkRuntime implements AutoCloseable {
     private boolean closed;
     private boolean closing;
 
-    public NetworkRuntime(MachineIdentityRegistry identities, NetworkResourceRegistry resources, OwnerTeamResolver teams, Runnable ownerCheck) {
+    public NetworkRuntime(MachineIdentityRegistry identities, OwnerTeamResolver teams, Runnable ownerCheck) {
         this.identities = Objects.requireNonNull(identities);
-        this.resources = Objects.requireNonNull(resources);
-        if (!resources.isFrozen()) {
-            throw new IllegalStateException("Network runtime requires frozen computing resources");
-        }
         this.teams = Objects.requireNonNull(teams);
         this.ownerCheck = Objects.requireNonNull(ownerCheck);
-        participants = new NetworkParticipants(this, resources, teams, ownerCheck);
+        participants = new NetworkParticipants(this, teams, ownerCheck);
     }
 
     /**
@@ -88,13 +82,19 @@ public final class NetworkRuntime implements AutoCloseable {
      */
     public void endTick() {
         requireMutation();
-        revoke();
         try {
-            participants.endTick();
+            int count = displayReads.size();
+            for (int index = 0; index < count; index++) displayReads.get(index).run();
         } finally {
-            for (var budget : budgets.values()) budget.close();
-            budgets.clear();
-            ticking = false;
+            displayReads.clear();
+            revoke();
+            try {
+                participants.endTick();
+            } finally {
+                for (var budget : budgets.values()) budget.close();
+                budgets.clear();
+                ticking = false;
+            }
         }
     }
 
@@ -130,8 +130,8 @@ public final class NetworkRuntime implements AutoCloseable {
         return refresh(_ -> List.of());
     }
 
-    private static NetworkDeviceSnapshot withResources(NetworkDeviceSnapshot source, Object2LongMap<NetworkResourceType> resources) {
-        return new NetworkDeviceSnapshot(source.identity(), source.role(), source.level(), source.formed(), source.loadOrder(),
+    private static NetworkDeviceSnapshot withResources(NetworkDeviceSnapshot source, long concurrency, Reference2DoubleMap<NetworkResourceType> resources) {
+        return new NetworkDeviceSnapshot(source.identity(), source.role(), source.level(), source.formed(), source.loadOrder(), concurrency,
             resources, source.resourceModifier(), source.dataCenterCapacity(), source.storedResearchCount(), source.dataCenterResearch());
     }
 
@@ -192,7 +192,7 @@ public final class NetworkRuntime implements AutoCloseable {
             contributions.addAll(Objects.requireNonNull(participants.apply(epoch)));
             NetworkPlan plan;
             while (true) {
-                var inputs = NetworkPlanner.capture(resources, epoch, devices, contributions, teams);
+                var inputs = NetworkPlanner.capture(epoch, devices, contributions, teams);
                 external.bindOwners(inputs);
                 plan = NetworkPlanner.plan(inputs);
                 Registration unavailable = null;
@@ -222,7 +222,7 @@ public final class NetworkRuntime implements AutoCloseable {
                 var capture = captures.get(registration);
                 var work = Objects.requireNonNull(capture.computerWork()).apply(tick);
                 computerWork.put(registration, work);
-                var snapshot = withResources(capture.snapshot(), work.resources());
+                var snapshot = withResources(capture.snapshot(), work.concurrency(), work.resources());
                 devices.set(devices.indexOf(capture.snapshot()), snapshot);
                 captures.put(registration, new Capture(snapshot, capture.current(), capture.centerPower(), capture.computerWork()));
             }
@@ -240,7 +240,7 @@ public final class NetworkRuntime implements AutoCloseable {
             var additions = new Object2ObjectOpenHashMap<String, NetworkTeamBudget>();
             for (var entry : plan.teams().entrySet()) {
                 if (!budgets.containsKey(entry.getKey())) {
-                    additions.put(entry.getKey(), new NetworkTeamBudget(tick, resources, entry.getValue().resourcesPerTick(), ownerCheck));
+                    additions.put(entry.getKey(), new NetworkTeamBudget(tick, entry.getValue().concurrencyPerTick(), entry.getValue().resourcesPerTick(), ownerCheck));
                 }
             }
             var states = new Reference2ObjectOpenHashMap<Registration, NetworkWorkState>(captures.size());
@@ -283,7 +283,7 @@ public final class NetworkRuntime implements AutoCloseable {
                 return false;
             budgets.putAll(additions);
             for (var entry : plan.teams().entrySet())
-                budgets.get(entry.getKey()).refreshCapacity(entry.getValue().resourcesPerTick());
+                budgets.get(entry.getKey()).refreshCapacity(entry.getValue().concurrencyPerTick(), entry.getValue().resourcesPerTick());
             for (var registration : admission.services()) {
                 var id = registration.identity.identity().machineId();
                 budgets.get(plan.teamIds().get(id)).requestNetworkLease(id);
@@ -313,7 +313,7 @@ public final class NetworkRuntime implements AutoCloseable {
                                     Reference2ObjectOpenHashMap<Registration, Capture> captures,
                                     List<NetworkContribution> contributions,
                                     Reference2ObjectOpenHashMap<Registration, NetworkSupplyTransaction> work) {
-        var inputs = NetworkPlanner.capture(resources, epoch, devices, contributions, teams);
+        var inputs = NetworkPlanner.capture(epoch, devices, contributions, teams);
         var initial = NetworkPlanner.plan(inputs);
         for (var entry : budgets.entrySet()) {
             entry.getValue().retainNetworkLeases(id -> entry.getKey().equals(initial.teamIds().get(id))
@@ -331,7 +331,7 @@ public final class NetworkRuntime implements AutoCloseable {
             var state = initial.workStates().get(id);
             var team = initial.teamIds().get(id);
             if (state == NetworkWorkState.ACTIVE_CENTER)
-                capacities.put(team, new ServiceCapacity(snapshot.resourcesPerTick().getLong(NetworkResources.THREAD), snapshot.resourceModifier(), budgets.get(team)));
+                capacities.put(team, new ServiceCapacity(snapshot.concurrencyPerTick(), budgets.get(team)));
             else if (snapshot.role() == NetworkDeviceRole.COMPUTER && state == NetworkWorkState.ACTIVE_DEVICE)
                 computers.add(registration);
             else if (state == NetworkWorkState.ACTIVE_DATA_CENTER) databases.add(registration);
@@ -339,7 +339,7 @@ public final class NetworkRuntime implements AutoCloseable {
         for (var contribution : contributions) {
             var owner = inputs.owner(contribution.ownerId());
             var capacity = owner.accepted() ? capacities.get(owner.teamId()) : null;
-            if (capacity != null) capacity.add(contribution.resourcesPerTick().getLong(NetworkResources.THREAD));
+            if (capacity != null) capacity.add(contribution.concurrencyPerTick());
         }
         // Already-issued leases remain valid for this tick. A fresh computer must obtain a thread
         // from the center, external sources or an earlier admitted computer before adding its own supply.
@@ -347,12 +347,12 @@ public final class NetworkRuntime implements AutoCloseable {
             var id = registration.identity.identity().machineId();
             var capacity = capacities.get(initial.teamIds().get(id));
             if (capacity.budget == null || !capacity.budget.hasLease(id)) return false;
-            capacity.add(captures.get(registration).snapshot().resourcesPerTick().getLong(NetworkResources.THREAD));
+            capacity.add(captures.get(registration).snapshot().concurrencyPerTick());
             services.add(registration);
             return true;
         });
         computers.sort(Comparator.<Registration>comparingLong(registration ->
-                                     captures.get(registration).snapshot().resourcesPerTick().getLong(NetworkResources.THREAD)).reversed()
+                                     captures.get(registration).snapshot().concurrencyPerTick()).reversed()
                                  .thenComparing(registration -> registration.identity.identity().machineId()));
         for (var registration : computers) {
             var snapshot = captures.get(registration).snapshot();
@@ -360,7 +360,7 @@ public final class NetworkRuntime implements AutoCloseable {
             var capacity = capacities.get(team);
             if (capacity.available() > 0) {
                 capacity.claimed++;
-                capacity.add(snapshot.resourcesPerTick().getLong(NetworkResources.THREAD));
+                capacity.add(snapshot.concurrencyPerTick());
                 services.add(registration);
             } else rejected.put(snapshot.identity().machineId(), team);
         }
@@ -400,12 +400,10 @@ public final class NetworkRuntime implements AutoCloseable {
     private static final class ServiceCapacity {
         private long raw;
         private long claimed;
-        private final NetworkResourceModifier modifier;
         private final @Nullable NetworkTeamBudget budget;
 
-        private ServiceCapacity(long raw, NetworkResourceModifier modifier, @Nullable NetworkTeamBudget budget) {
+        private ServiceCapacity(long raw, @Nullable NetworkTeamBudget budget) {
             this.raw = raw;
-            this.modifier = modifier;
             this.budget = budget;
         }
 
@@ -414,8 +412,7 @@ public final class NetworkRuntime implements AutoCloseable {
         }
 
         private long available() {
-            long capacity = modifier.apply(NetworkResources.THREAD, raw);
-            return (budget == null ? capacity : budget.availableConcurrency(capacity)) - claimed;
+            return (budget == null ? raw : budget.availableConcurrency(raw)) - claimed;
         }
     }
 
@@ -459,6 +456,7 @@ public final class NetworkRuntime implements AutoCloseable {
         // Finished receipts can acquire explicit compensation duties after an earlier successful close.
         // New work remains prohibited, but every close must revisit the retained original cleanup.
         closing = true;
+        displayReads.clear();
         revoke();
         boolean settled;
         try {
@@ -573,6 +571,28 @@ public final class NetworkRuntime implements AutoCloseable {
             return state == NetworkWorkState.ACTIVE_CENTER || state == NetworkWorkState.ACTIVE_DATA_CENTER || state == NetworkWorkState.ACTIVE_DEVICE;
         }
 
+        /**
+         * Borrowed read-only display access at the runtime owner boundary; it grants no work.
+         */
+        public @Nullable TeamView view() {
+            runtime.ownerCheck.run();
+            var current = runtime.published;
+            if (!active || current == null || !current.states.containsKey(this)) return null;
+            var teamId = current.plan.teamIds().get(identity.identity().machineId());
+            var team = current.plan.teams().get(teamId);
+            var budget = runtime.budgets.get(teamId);
+            return team == null ? new TeamView(current.states.get(this), null, 0, _ -> 0)
+                : new TeamView(current.states.get(this), team, budget.usedConcurrency(), budget::occupiedResource);
+        }
+
+        /**
+         * Queue a read-only GUI capture after this tick's workers join and before its budgets close.
+         */
+        public void readDisplayAtEndTick(Runnable read) {
+            runtime.ownerCheck.run();
+            runtime.displayReads.add(read);
+        }
+
         void revoke() {
             runtime.revoke();
         }
@@ -663,21 +683,21 @@ public final class NetworkRuntime implements AutoCloseable {
         /**
          * Immutable research supply; it is independent of ordinary work reservations, as in PN.
          */
-        public Object2LongMap<NetworkResourceType> numericResources() {
+        public Reference2DoubleMap<NetworkResourceType> numericResources() {
             return budget.numericResources();
         }
 
         /**
          * Diagnostic snapshot of this issuing tick, including after its permit expires.
          */
-        public Object2LongMap<NetworkResourceType> availableResources() {
+        public Reference2DoubleMap<NetworkResourceType> availableResources() {
             return budget.availableResources();
         }
 
         /**
          * Side-effect-free candidate admission; real acquisition must reserve again.
          */
-        public boolean canReserve(Object2LongMap<NetworkResourceType> required) {
+        public boolean canReserve(Reference2DoubleMap<NetworkResourceType> required) {
             if (!authorized()) {
                 return false;
             }
@@ -696,30 +716,22 @@ public final class NetworkRuntime implements AutoCloseable {
          * Allocates a fresh owner sequence for one real requirement attempt, including multiple work slots.
          */
         @Nullable
-        public NetworkTeamBudget.Reservation reserve(ResourceLocation sourceId, Object2LongMap<NetworkResourceType> required) {
+        public NetworkTeamBudget.Reservation reserve(ResourceLocation sourceId, Reference2DoubleMap<NetworkResourceType> required) {
             registration.runtime.ownerCheck.run();
             long sequence = registration.nextWorkSequence;
             registration.nextWorkSequence = Math.incrementExact(sequence);
             return reserve(sourceId, sequence, required);
         }
 
-        public NetworkTeamBudget.LeaseStatus requestLease() {
-            return requestLease(NetworkResources.THREAD);
-        }
-
         /**
-         * Centers are exempt only from the standard machine thread lease.
+         * The fixed integer machine lease; active centers are exempt.
          */
-        public NetworkTeamBudget.LeaseStatus requestLease(NetworkResourceType type) {
-            if (!authorized()) {
-                return NetworkTeamBudget.LeaseStatus.EXPIRED;
-            }
-            if (type.equals(NetworkResources.THREAD) && publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER) {
+        public NetworkTeamBudget.LeaseStatus requestLease() {
+            if (!authorized()) return NetworkTeamBudget.LeaseStatus.EXPIRED;
+            if (publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER)
                 return NetworkTeamBudget.LeaseStatus.NOT_REQUIRED;
-            }
-            if (type.equals(NetworkResources.THREAD) && priorityDevice())
-                return budget.requestNetworkLease(registration.identity.identity().machineId());
-            return budget.requestLease(registration.identity.identity().machineId(), type);
+            var id = registration.identity.identity().machineId();
+            return priorityDevice() ? budget.requestNetworkLease(id) : budget.requestLease(id);
         }
 
         /**
@@ -729,7 +741,7 @@ public final class NetworkRuntime implements AutoCloseable {
          */
         @Nullable
         public NetworkTeamBudget.Reservation reserve(ResourceLocation sourceId, long sequence,
-                                                     Object2LongMap<NetworkResourceType> required) {
+                                                     Reference2DoubleMap<NetworkResourceType> required) {
             var operation = new NetworkTeamBudget.Operation(registration.identity.identity().machineId(), sourceId, sequence);
             var lease = requestLease();
             if (lease == NetworkTeamBudget.LeaseStatus.EXPIRED || lease == NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY) {
@@ -753,5 +765,9 @@ public final class NetworkRuntime implements AutoCloseable {
                        Reference2ObjectOpenHashMap<Registration, NetworkWorkState> states,
                        Reference2ObjectOpenHashMap<Registration, Capture> captures,
                        NetworkParticipants.CaptureSet participants) {
+    }
+
+    public record TeamView(NetworkWorkState state, @Nullable NetworkPlan.Team team, int usedConcurrency,
+                           ToDoubleFunction<NetworkResourceType> occupiedResource) {
     }
 }

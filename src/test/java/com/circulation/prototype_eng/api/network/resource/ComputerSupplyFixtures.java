@@ -7,7 +7,8 @@ import com.circulation.prototype_eng.api.network.MachineComputerComponents;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import com.circulation.prototype_eng.testsupport.TestResources;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 
 import java.util.function.Function;
 
@@ -28,8 +29,12 @@ public final class ComputerSupplyFixtures {
         registry.registerKey(key, capture);
     }
 
-    public static void fixed(NetworkComputerComponentRegistry registry, AEKey key, Object2LongMap<NetworkResourceType> resources) {
-        var capture = new NetworkComputerComponent.Capture(resources, () -> true);
+    public static void fixed(NetworkComputerComponentRegistry registry, AEKey key, Reference2DoubleMap<NetworkResourceType> resources) {
+        fixed(registry, key, 0, resources);
+    }
+
+    public static void fixed(NetworkComputerComponentRegistry registry, AEKey key, long concurrency, Reference2DoubleMap<NetworkResourceType> resources) {
+        var capture = new NetworkComputerComponent.Capture(concurrency, resources, Reference2DoubleMaps.emptyMap(), 0, () -> true);
         register(registry, key, _ -> capture);
     }
 

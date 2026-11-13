@@ -1,8 +1,6 @@
 package com.circulation.prototype_eng.integration.crafttweaker.research;
 
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeCatalog;
@@ -36,7 +34,7 @@ import crafttweaker.zenscript.expand.ExpandDataStringDict;
 import crafttweaker.zenscript.expand.ExpandInt;
 import crafttweaker.zenscript.expand.ExpandString;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.junit.jupiter.api.Test;
@@ -92,8 +90,7 @@ class ZenResearchNetworkBridgeTest {
             import mods.prototype_eng.research.ResearchReward;
             import mods.prototype_eng.research.ResearchServer;
             import tests.prototype_eng.ResearchHarness;
-            var compute = ComputingResource.create("ct_research:compute", false);
-            compute.register();
+            var compute = ComputingResource.network("ct_research:compute", "ct_research.compute", "%s");
             var reward = ResearchReward.create("ct_research:choice").event("ct_research:event", function(event) {
                 if event.groupId == "ct_research:choice" && event.level == 1 { return "RETRY_LATER"; }
                 return "APPLIED";
@@ -115,26 +112,23 @@ class ZenResearchNetworkBridgeTest {
         ZenModule.classes.clear();
         ZenModule.loadedClasses.clear();
         Objects.requireNonNull(new ZenModule(classes, getClass().getClassLoader()).getMain()).run();
-        var resources = new NetworkResourceRegistry();
-        DefinitionRegistrations.dispatch(new NetworkResourceRegistrationEvent(resources));
-        resources.freeze();
         var research = new ResearchRegistry();
         DefinitionRegistrations.dispatch(new ResearchRegistrationEvent(research));
-        research.freeze(resources);
+        research.freeze();
         var configuration = new ResearchServerConfiguration();
         DefinitionRegistrations.dispatch(new ResearchServerConfigurationEvent(configuration));
         configuration.freeze();
         var definition = research.require(new ResourceLocation("ct_research:research"));
-        var compute = resources.require(new ResourceLocation("ct_research:compute"));
-        assertEquals(3000000000L, definition.totalResourceDemandForLevel(1).getLong(compute));
+        var compute = definition.totalResourceDemandForLevel(1).keySet().iterator().next();
+        assertEquals(3000000000L, definition.totalResourceDemandForLevel(1).getDouble(compute));
         assertTrue(definition.unlocks(new ResearchUnlockQuery(new ResourceLocation("ct_research:effect"), new ResourceLocation("ct_research:target"), 1)));
         var player = UUID.randomUUID();
         var permission = new ResearchPermissionContext(player, "team", player, "team", false, false, false);
         var levels = new Object2IntOpenHashMap<ResourceLocation>();
         var view = new TeamResearchView(research, "team", List.of(player), levels, levels, List.of());
-        var queue = new TeamResearchQueue(research, resources, "team");
-        var amounts = new Object2LongOpenHashMap<NetworkResourceType>();
-        var admission = new TeamResearchStart(research, resources, configuration.permissions());
+        var queue = new TeamResearchQueue(research, "team");
+        var amounts = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+        var admission = new TeamResearchStart(research, configuration.permissions());
         var missing = new TeamResearchStart.Request(queue, view, permission, definition.id(), 1,
             new TeamResearchStart.Environment(1, 1, 1, amounts), 1, () -> true);
         assertEquals(TeamResearchStart.Status.NOT_STARTABLE, admission.start(missing).status());
@@ -149,11 +143,11 @@ class ZenResearchNetworkBridgeTest {
         assertEquals(RewardEventAction.Result.RETRY_LATER, child.action().deliver(new RewardEventKey(player, definition.id(), 1, group.id(), child.id()), new ResearchRewardContext(player, definition, 1, 2)));
         var extensions = new NetworkRecipeExtensions();
         extensions.register(1, ZenNetworkRecipes.extension(Objects.requireNonNull(Harness.extension)));
-        extensions.publish(new RecipeCatalog(List.of(new DefaultRecipePool(new ResourceLocation("ct_research:pool"), "pool", List.of(Objects.requireNonNull(Harness.recipe).recipe())))), research, resources);
+        extensions.publish(new RecipeCatalog(List.of(new DefaultRecipePool(new ResourceLocation("ct_research:pool"), "pool", List.of(Objects.requireNonNull(Harness.recipe).recipe())))), research);
         var replacement = ZenRecipe.create("ct_research:recipe", "new", 6, new ZenRequirement[0]);
         var prepared = extensions.prepare(extensions.snapshot(), List.of(replacement.recipe()));
         extensions.install(prepared);
-        assertEquals(11L, extensions.require(Harness.recipe.recipe()).resources().getLong(compute));
+        assertEquals(11L, extensions.require(Harness.recipe.recipe()).resources().getDouble(compute));
         assertTrue(extensions.require(replacement.recipe()).resources().isEmpty());
         assertThrows(IllegalStateException.class, () -> definitionWrapper().register());
     }

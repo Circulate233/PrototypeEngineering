@@ -1,11 +1,10 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.research.ResearchEligibility;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -21,16 +20,14 @@ import java.util.function.BooleanSupplier;
 public final class TeamResearchStart {
     private final Thread owner = Thread.currentThread();
     private final ResearchRegistry registry;
-    private final NetworkResourceRegistry resources;
     private final ResearchEligibility eligibility;
     private final ResearchPermissionPolicy permissions;
     private boolean executing;
 
-    public TeamResearchStart(ResearchRegistry registry, NetworkResourceRegistry resources,
+    public TeamResearchStart(ResearchRegistry registry,
                              ResearchPermissionPolicy permissions) {
         this.registry = Objects.requireNonNull(registry);
-        this.resources = Objects.requireNonNull(resources);
-        if (!registry.isFrozen() || !resources.isFrozen()) {
+        if (!registry.isFrozen()) {
             throw new IllegalStateException("Research start requires frozen definitions");
         }
         this.permissions = Objects.requireNonNull(permissions);
@@ -58,16 +55,13 @@ public final class TeamResearchStart {
         var queue = request.queue();
         var view = request.view();
         var actor = request.permission();
-        if (queue.registry() != registry || queue.resources() != resources || view.registry() != registry || !queue.teamId().equals(view.teamId())
+        if (queue.registry() != registry || view.registry() != registry || !queue.teamId().equals(view.teamId())
             || !view.teamId().equals(actor.targetTeamId())) {
             throw new IllegalArgumentException("Research request changed its captured team or registry");
         }
         var definition = registry.require(request.researchId());
         if (request.targetLevel() < 1 || request.targetLevel() > definition.maxLevel()) {
             throw new IllegalArgumentException("Research target is outside its definition");
-        }
-        for (var type : request.environment().availableResources().keySet()) {
-            resources.canonical(type);
         }
         if (queue.busy()) {
             return denied(Status.QUEUE_BUSY);
@@ -130,7 +124,7 @@ public final class TeamResearchStart {
      * Active device levels; zero represents absence. Resources retain the current captured vector.
      */
     public record Environment(int networkCenterLevel, int dataCenterLevel, int highestResearchStationLevel,
-                              Object2LongMap<NetworkResourceType> availableResources) {
+                              Reference2DoubleMap<NetworkResourceType> availableResources) {
         public Environment {
             if (dataCenterLevel < 0 || highestResearchStationLevel < 0
                 || dataCenterLevel > networkCenterLevel || highestResearchStationLevel > networkCenterLevel) {

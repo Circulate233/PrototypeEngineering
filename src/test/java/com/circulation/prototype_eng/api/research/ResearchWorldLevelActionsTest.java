@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.api.research;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
@@ -207,8 +206,6 @@ class ResearchWorldLevelActionsTest {
         private final ResearchWorld world;
 
         private Fixture(Consumer<ResearchWorldSnapshot> writer) {
-            var resources = new NetworkResourceRegistry();
-            resources.freeze();
             var registry = new ResearchRegistry();
             var event = new RewardChild.Event(id("event"), (_, _) -> {
                 fail("Level repair delivered a reward event");
@@ -228,7 +225,7 @@ class ResearchWorldLevelActionsTest {
                                                 .stage(ResearchLevelStage.builder(1, 5).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
             registry.register(ResearchDefinition.builder(MANUAL).maxLevel(5).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 5).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-            registry.freeze(resources);
+            registry.freeze();
             var claims = new ObjectArrayList<RewardClaim>();
             claims.add(RewardClaim.unclaimed(new RewardClaim.Key(ALICE, PERSONAL, 1), 1));
             var pending = new RewardClaim.Child(new RewardEventKey(ALICE, PERSONAL, 2, GROUP, event.id()), RewardClaim.Kind.EVENT, RewardClaim.ChildStatus.PENDING, Object2ObjectMaps.emptyMap());
@@ -240,8 +237,8 @@ class ResearchWorldLevelActionsTest {
             alice.put(MANUAL, 3);
             var bob = new Object2IntOpenHashMap<ResourceLocation>();
             bob.put(PERSONAL, 5);
-            world = new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, writer);
-            var queue = new TeamResearchQueue(registry, resources, "old").snapshot();
+            world = new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, writer);
+            var queue = new TeamResearchQueue(registry, "old").snapshot();
             var team = new ResearchWorldSnapshot.Team("old", new ObjectOpenHashSet<>(ObjectList.of(ALICE, BOB)), new ObjectOpenHashSet<>(),
                 new TeamOwnedResearch.Snapshot("old", new Object2IntOpenHashMap<>()), queue, ObjectList.of());
             world.restore(new ResearchWorldSnapshot(10, ObjectList.of(new PlayerResearchState.Snapshot(ALICE, alice, claims), new PlayerResearchState.Snapshot(BOB, bob, ObjectList.of())), ObjectList.of(team)));

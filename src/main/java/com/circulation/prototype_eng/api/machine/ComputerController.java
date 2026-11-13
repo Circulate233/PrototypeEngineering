@@ -15,14 +15,13 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.storage.ResourceReservation;
 import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 
@@ -41,19 +40,20 @@ public class ComputerController extends MachineInstance implements NetworkComput
         new ResourceLocation(Tags.MOD_ID, "computer"), (owner, identity) -> ((ComputerController) owner).networkCapture(identity));
 
     private final long concurrencyLimit;
-    private final Object2LongMap<NetworkResourceType> limits;
+    private final Reference2DoubleMap<NetworkResourceType> limits;
     private final List<ComputerRecipe> recipes;
     private final ControllerEnergy componentEnergy = new ControllerEnergy();
     private long suppliedTick = Long.MIN_VALUE;
     private long suppliedComposition;
-    private Object2LongMap<NetworkResourceType> supplied = Object2LongMaps.emptyMap();
-    private Object2LongMap<NetworkResourceType> recipeSupply = Object2LongMaps.emptyMap();
+    private Reference2DoubleMap<NetworkResourceType> supplied = Reference2DoubleMaps.emptyMap();
+    private Reference2DoubleMap<NetworkResourceType> recipeSupply = Reference2DoubleMaps.emptyMap();
+    private long suppliedConcurrency;
 
     public ComputerController(MachineType type) {
-        this(type, Long.MAX_VALUE, Object2LongMaps.emptyMap(), List.of());
+        this(type, Long.MAX_VALUE, Reference2DoubleMaps.emptyMap(), List.of());
     }
 
-    public ComputerController(MachineType type, long concurrencyLimit, Object2LongMap<NetworkResourceType> limits, List<ComputerRecipe> recipes) {
+    public ComputerController(MachineType type, long concurrencyLimit, Reference2DoubleMap<NetworkResourceType> limits, List<ComputerRecipe> recipes) {
         super(type);
         if (concurrencyLimit < 0) throw new IllegalArgumentException("Negative computer concurrency limit");
         NetworkResourceModifier.validateResources(limits);
@@ -62,21 +62,20 @@ public class ComputerController extends MachineInstance implements NetworkComput
         this.recipes = recipes;
     }
 
-    private static void add(Object2LongOpenHashMap<NetworkResourceType> totals, Object2LongMap<NetworkResourceType> values, long count) {
-        for (var entry : values.object2LongEntrySet()) {
-            long amount = Math.multiplyExact(entry.getLongValue(), count);
-            if (amount > Long.MAX_VALUE - totals.getLong(entry.getKey()))
-                throw new ArithmeticException("Computer resource total overflows");
+    private static void add(Reference2DoubleOpenHashMap<NetworkResourceType> totals, Reference2DoubleMap<NetworkResourceType> values, long count) {
+        for (var entry : values.reference2DoubleEntrySet()) {
+            double amount = NetworkResourceModifier.product(entry.getDoubleValue(), count);
+            NetworkResourceModifier.sum(amount, totals.getDouble(entry.getKey()));
             totals.addTo(entry.getKey(), amount);
         }
     }
 
-    private static Object2LongMap<NetworkResourceType> external(Object2LongMap<NetworkResourceType> values) {
-        if (values.isEmpty()) return Object2LongMaps.emptyMap();
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
-        for (var entry : values.object2LongEntrySet())
-            if (!entry.getKey().internal() && entry.getLongValue() != 0)
-                result.put(entry.getKey(), entry.getLongValue());
+    private static Reference2DoubleMap<NetworkResourceType> external(Reference2DoubleMap<NetworkResourceType> values) {
+        if (values.isEmpty()) return Reference2DoubleMaps.emptyMap();
+        var result = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+        for (var entry : values.reference2DoubleEntrySet())
+            if (!entry.getKey().internal() && entry.getDoubleValue() != 0)
+                result.put(entry.getKey(), entry.getDoubleValue());
         return result;
     }
 
@@ -99,11 +98,11 @@ public class ComputerController extends MachineInstance implements NetworkComput
 
     @Override
     public long providedConcurrency() {
-        return supplied.getLong(NetworkResources.THREAD);
+        return suppliedConcurrency;
     }
 
     @Override
-    public Object2LongMap<NetworkResourceType> providedResources() {
+    public Reference2DoubleMap<NetworkResourceType> providedResources() {
         return supplied;
     }
 
@@ -121,9 +120,12 @@ public class ComputerController extends MachineInstance implements NetworkComput
         var reader = computerComponents();
         reader.installed();
         long composition = reader.compositionVersion();
-        if (suppliedComposition != reader.compositionVersion()) supplied = external(recipeSupply);
+        if (suppliedComposition != reader.compositionVersion()) {
+            supplied = external(recipeSupply);
+            suppliedConcurrency = 0;
+        }
         return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.COMPUTER, 0,
-            Objects.requireNonNull(lifecycle()).formed(), identity.loadOrder(), supplied, NetworkResourceModifier.EMPTY, 0, 0),
+            Objects.requireNonNull(lifecycle()).formed(), identity.loadOrder(), suppliedConcurrency, supplied, NetworkResourceModifier.EMPTY, 0, 0),
             () -> reader.compositionCurrent(composition), null, this::prepareSupply);
     }
 
@@ -134,11 +136,11 @@ public class ComputerController extends MachineInstance implements NetworkComput
         var reader = computerComponents();
         var installed = reader.installed();
         if (suppliedTick == tick)
-            return new Prepared(tick, reader.compositionVersion(), recipeSupply, supplied, List.of(), List.of());
+            return new Prepared(tick, reader.compositionVersion(), recipeSupply, supplied, suppliedConcurrency, List.of(), List.of());
         var transactions = new ObjectArrayList<ReversibleTransaction>();
         var tokens = new ObjectArrayList<ResourceReservation>();
         try {
-            var generated = new Object2LongOpenHashMap<NetworkResourceType>();
+            var generated = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             for (var recipe : recipes) {
                 var transaction = recipe.prepare(this, tick);
                 if (transaction == null) continue;
@@ -150,18 +152,18 @@ public class ComputerController extends MachineInstance implements NetworkComput
                 tokens.addAll(transaction.reservations());
                 add(generated, recipe.provided(), 1);
             }
-            var total = new Object2LongOpenHashMap<>(generated);
+            var total = new Reference2DoubleOpenHashMap<>(generated);
             add(total, installed.resourcesPerTick(), 1);
             limit(total);
-            var needed = new Object2LongOpenHashMap<NetworkResourceType>();
+            var needed = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             long energy = 0;
             for (var component : installed.components()) {
                 add(needed, component.definition().requiredResources(), component.count());
                 energy = Math.addExact(energy, Math.multiplyExact(component.definition().energyPerTick(), component.count()));
             }
             boolean powered = true;
-            for (var demand : needed.object2LongEntrySet())
-                if (total.getLong(demand.getKey()) < demand.getLongValue()) {
+            for (var demand : needed.reference2DoubleEntrySet())
+                if (total.getDouble(demand.getKey()) < demand.getDoubleValue()) {
                     powered = false;
                     break;
                 }
@@ -174,13 +176,15 @@ public class ComputerController extends MachineInstance implements NetworkComput
                 }
             }
             if (powered) {
-                for (var demand : needed.object2LongEntrySet()) total.addTo(demand.getKey(), -demand.getLongValue());
+                for (var demand : needed.reference2DoubleEntrySet())
+                    total.addTo(demand.getKey(), -demand.getDoubleValue());
             } else {
-                total = new Object2LongOpenHashMap<>(generated);
+                total = new Reference2DoubleOpenHashMap<>(generated);
                 limit(total);
             }
             limit(generated);
-            return new Prepared(tick, reader.compositionVersion(), generated, external(total), transactions, tokens);
+            return new Prepared(tick, reader.compositionVersion(), generated, external(total),
+                powered ? Math.min(concurrencyLimit, installed.concurrencyPerTick()) : 0, transactions, tokens);
         } catch (RuntimeException | Error failure) {
             try {
                 rollback(tokens, transactions);
@@ -191,41 +195,48 @@ public class ComputerController extends MachineInstance implements NetworkComput
         }
     }
 
-    private void limit(Object2LongOpenHashMap<NetworkResourceType> values) {
-        for (var entry : values.object2LongEntrySet()) {
-            long maximum = limits.getOrDefault(entry.getKey(), Long.MAX_VALUE);
-            if (entry.getKey().equals(NetworkResources.THREAD)) maximum = Math.min(maximum, concurrencyLimit);
-            entry.setValue(Math.min(entry.getLongValue(), maximum));
+    private void limit(Reference2DoubleOpenHashMap<NetworkResourceType> values) {
+        for (var entry : values.reference2DoubleEntrySet()) {
+            double maximum = limits.getOrDefault(entry.getKey(), Double.MAX_VALUE);
+            entry.setValue(Math.min(entry.getDoubleValue(), maximum));
         }
     }
 
     private final class Prepared implements NetworkSupplyTransaction {
         private final long tick;
         private final long composition;
-        private final Object2LongMap<NetworkResourceType> recipes;
-        private final Object2LongMap<NetworkResourceType> result;
+        private final Reference2DoubleMap<NetworkResourceType> recipes;
+        private final Reference2DoubleMap<NetworkResourceType> result;
+        private final long concurrency;
         private final List<? extends ReversibleTransaction> transactions;
         private final List<ResourceReservation> reservations;
         private final long oldTick = suppliedTick;
         private final long oldComposition = suppliedComposition;
-        private final Object2LongMap<NetworkResourceType> oldRecipes = recipeSupply;
-        private final Object2LongMap<NetworkResourceType> oldSupply = supplied;
+        private final Reference2DoubleMap<NetworkResourceType> oldRecipes = recipeSupply;
+        private final Reference2DoubleMap<NetworkResourceType> oldSupply = supplied;
+        private final long oldConcurrency = suppliedConcurrency;
         private Resolution resolution = Resolution.REVERSIBLE;
 
-        private Prepared(long tick, long composition, Object2LongMap<NetworkResourceType> recipes,
-                         Object2LongMap<NetworkResourceType> result, List<? extends ReversibleTransaction> transactions,
+        private Prepared(long tick, long composition, Reference2DoubleMap<NetworkResourceType> recipes,
+                         Reference2DoubleMap<NetworkResourceType> result, long concurrency, List<? extends ReversibleTransaction> transactions,
                          List<ResourceReservation> reservations) {
             this.tick = tick;
             this.composition = composition;
             this.recipes = recipes;
             this.result = result;
+            this.concurrency = concurrency;
             this.transactions = transactions;
             this.reservations = reservations;
         }
 
         @Override
-        public Object2LongMap<NetworkResourceType> resources() {
+        public Reference2DoubleMap<NetworkResourceType> resources() {
             return result;
+        }
+
+        @Override
+        public long concurrency() {
+            return concurrency;
         }
 
         @Override
@@ -252,6 +263,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
             suppliedComposition = composition;
             recipeSupply = recipes;
             supplied = result;
+            suppliedConcurrency = concurrency;
         }
 
         @Override
@@ -267,6 +279,7 @@ public class ComputerController extends MachineInstance implements NetworkComput
             suppliedComposition = oldComposition;
             recipeSupply = oldRecipes;
             supplied = oldSupply;
+            suppliedConcurrency = oldConcurrency;
             resolution = Resolution.ROLLED_BACK;
         }
 

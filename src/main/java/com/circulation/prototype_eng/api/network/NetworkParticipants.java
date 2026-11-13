@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.network;
 import com.circulation.prototype_eng.api.network.NetworkParticipant.Cancellation;
 import com.circulation.prototype_eng.api.network.NetworkParticipant.Command;
 import com.circulation.prototype_eng.api.network.NetworkParticipant.Snapshot;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
@@ -29,7 +28,6 @@ import java.util.UUID;
 public final class NetworkParticipants {
     private static final ResourceLocation BUDGET_SOURCE = new ResourceLocation("prototype_eng", "external_participant");
     private final NetworkRuntime runtime;
-    private final NetworkResourceRegistry resources;
     private final OwnerTeamResolver teams;
     private final Runnable ownerCheck;
     private final Object2ObjectLinkedOpenHashMap<UUID, Registration> registrations = new Object2ObjectLinkedOpenHashMap<>();
@@ -38,9 +36,8 @@ public final class NetworkParticipants {
     private boolean operating;
     private boolean stopping;
 
-    NetworkParticipants(NetworkRuntime runtime, NetworkResourceRegistry resources, OwnerTeamResolver teams, Runnable ownerCheck) {
+    NetworkParticipants(NetworkRuntime runtime, OwnerTeamResolver teams, Runnable ownerCheck) {
         this.runtime = runtime;
-        this.resources = resources;
         this.teams = teams;
         this.ownerCheck = ownerCheck;
     }
@@ -189,13 +186,9 @@ public final class NetworkParticipants {
                         || snapshot.version() == last.version() && (snapshot.tick() != last.tick() || !snapshot.sameCapabilities(last)))) {
                         throw new IllegalArgumentException("Participant snapshot version did not advance with its tick or capabilities");
                     }
-                    for (var type : snapshot.resources().keySet()) resources.canonical(type);
-                    for (var work : snapshot.workTypes()) {
-                        for (var type : work.resources().keySet()) resources.canonical(type);
-                    }
                     registration.lastSnapshot = snapshot;
                     result.contributions.add(new NetworkContribution(registration.id, registration.owner, epoch,
-                        snapshot.version(), snapshot.resources()));
+                        snapshot.version(), snapshot.concurrencyPerTick(), snapshot.resources()));
                 }
                 result.observed.put(registration, new Observed(state, capture));
             }

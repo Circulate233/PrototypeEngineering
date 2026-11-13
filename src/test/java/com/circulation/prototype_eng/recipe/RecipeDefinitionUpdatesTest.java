@@ -1,8 +1,7 @@
 package com.circulation.prototype_eng.recipe;
 
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.MachineRecipe;
 import com.circulation.prototype_eng.api.recipe.RecipeDefinitionUpdates;
@@ -83,7 +82,7 @@ class RecipeDefinitionUpdatesTest {
                  assertEquals(0, exited.getCount());
                  assertSame(next, notice.current().catalog().recipes().getFirst());
                  assertSame(nextCodec, fixture.codecs.snapshot().require(next));
-                 assertEquals(4, fixture.extensions.require(next).resources().getLong(NetworkResources.COMPUTE));
+                 assertEquals(4, fixture.extensions.require(next).resources().getDouble(ComputingResourceFixtures.COMPUTE));
              })) {
             var before = fixture.registry.snapshot();
             scheduler.submit(() -> {
@@ -254,19 +253,17 @@ class RecipeDefinitionUpdatesTest {
             codecs = new RecipeProcessCodecs(List.of(RecipeProcessNbt.builder(old, "v1").build()));
             if (persistent) registry.bindProcessCodecs(codecs);
             registry.freeze();
-            var resources = new NetworkResourceRegistry();
-            resources.freeze();
             var research = new ResearchRegistry();
-            research.freeze(resources);
+            research.freeze();
             extensions.register((recipe, builder) -> {
                 assertSame(owner, Thread.currentThread());
                 assertFalse(Thread.holdsLock(registry));
                 assertFalse(Thread.holdsLock(extensions));
                 calls++;
                 if (recipe.durationTicks() == 99) throw configurationFailure;
-                builder.resource(NetworkResources.COMPUTE, recipe.durationTicks());
+                builder.resource(ComputingResourceFixtures.COMPUTE, recipe.durationTicks());
             });
-            extensions.publish(registry.snapshot(), research, resources);
+            extensions.publish(registry.snapshot(), research);
         }
     }
 }

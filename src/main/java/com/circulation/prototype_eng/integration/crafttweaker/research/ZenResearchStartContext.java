@@ -57,7 +57,7 @@ public record ZenResearchStartContext(ResearchStartContext value) {
     }
 
     @ZenMethod
-    public long available(ZenComputingResource resource) {
-        return value.availableResources().getLong(resource.value());
+    public double available(ZenComputingResource resource) {
+        return value.availableResources().getDouble(resource.value());
     }
 }

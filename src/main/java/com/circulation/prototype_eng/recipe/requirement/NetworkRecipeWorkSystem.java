@@ -36,8 +36,8 @@ public final class NetworkRecipeWorkSystem implements RecipeRequirementSystem<Ne
         }
         long parallelism = process.crossRecipeTiming() != null && process.captureTickContext() != null
             ? process.crossRecipeTiming().materialTimes(process) : RecipeParallelism.effective(process);
-        for (long amount : binding.requirements().resources().values()) {
-            if (parallelism != 0 && amount > Long.MAX_VALUE / parallelism) {
+        for (double amount : binding.requirements().resources().values()) {
+            if (!Double.isFinite(amount * parallelism)) {
                 return rejected(RecipeText.NetworkCapacityMissing.blocked());
             }
         }

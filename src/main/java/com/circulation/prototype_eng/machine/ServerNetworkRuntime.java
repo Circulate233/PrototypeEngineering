@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.machine;
 
 import com.circulation.prototype_eng.api.network.NetworkParticipants;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.integration.ftb.FtbOwnerTeamResolver;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.Nullable;
@@ -25,7 +24,7 @@ public final class ServerNetworkRuntime {
             throw new IllegalStateException("A server network runtime is already running");
         }
         var identities = ServerMachineIdentities.forServer(server);
-        session = new Session(server, new NetworkRuntime(identities, NetworkResourceRegistry.INSTANCE,
+        session = new Session(server, new NetworkRuntime(identities,
             new FtbOwnerTeamResolver(server), () -> requireThread(server)));
     }
 

@@ -128,3 +128,7 @@ pe_run_tests.java_computer=Java Computer
 pe_run_tests.java_data_center=Java Data Center
 item.pe_run_tests.computer_card.name=Example Computing Component
 item.pe_run_tests.net_computer_card.name=Example Network Computing Component
+pe_run_tests.resource.compute=Compute
+pe_run_tests.resource.qubit=Qubits
+pe_run_tests.resource.net_compute=Network Compute
+pe_run_tests.resource.cooling=Cooling

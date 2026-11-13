@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research.disk;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.DataCenterStorage;
 import com.circulation.prototype_eng.api.research.PlayerResearchState;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
@@ -47,8 +46,6 @@ class ResearchDiskStorageStateTest {
     }
 
     private static ResearchRegistry registry() {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var id : Set.of(LOOP, OTHER, BLOCKER)) {
             var stage = ResearchLevelStage.builder(1, 10).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build());
@@ -57,7 +54,7 @@ class ResearchDiskStorageStateTest {
             registry.register(ResearchDefinition.builder(id).maxLevel(10).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(stage.build()).build());
         }
-        registry.freeze(resources);
+        registry.freeze();
         return registry;
     }
 

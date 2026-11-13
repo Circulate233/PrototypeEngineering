@@ -2,27 +2,27 @@ package com.circulation.prototype_eng.api.machine;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.research.station.ResearchStation;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 
 /**
  * Research work is driven by the shared research service, not a recipe-controller tick.
  */
 public class ResearchStationController extends MachineInstance implements ResearchStation {
     private final int researchLevel;
-    private final Object2LongMap<NetworkResourceType> rates;
+    private final Reference2DoubleMap<NetworkResourceType> rates;
     private final long energyPerTick;
 
     /**
      * The completed rate map is borrowed read-only for this controller's lifetime.
      */
-    public ResearchStationController(MachineType type, int level, Object2LongMap<NetworkResourceType> rates, long energyPerTick) {
+    public ResearchStationController(MachineType type, int level, Reference2DoubleMap<NetworkResourceType> rates, long energyPerTick) {
         super(type);
         if (level < 1 || energyPerTick < 0)
             throw new IllegalArgumentException("Invalid research station level or energy cost");
-        for (var entry : rates.object2LongEntrySet()) {
+        for (var entry : rates.reference2DoubleEntrySet()) {
             var resource = entry.getKey();
-            long rate = entry.getLongValue();
-            if (resource.logicalConcurrency() || rate < 0)
+            double rate = entry.getDoubleValue();
+            if (resource.internal() || !Double.isFinite(rate) || rate < 0)
                 throw new IllegalArgumentException("Invalid station rate for " + resource.id());
         }
         researchLevel = level;
@@ -36,7 +36,7 @@ public class ResearchStationController extends MachineInstance implements Resear
     }
 
     @Override
-    public Object2LongMap<NetworkResourceType> researchRates() {
+    public Reference2DoubleMap<NetworkResourceType> researchRates() {
         return rates;
     }
 

@@ -18,7 +18,7 @@ import com.circulation.prototype_eng.research.DataCenterStorageNbt;
 import com.circulation.prototype_eng.research.ResearchDataCenter;
 import com.circulation.prototype_eng.research.disk.MinecraftDataCenterPersistence;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -229,7 +229,7 @@ public final class MachineDataCenterStorage implements ResearchDiskStorage, Mach
      * Combine with MachineNetworkDevice.capturedComponent so physical and content proofs are both retained.
      */
     public NetworkRuntime.Capture networkCapture(MachineIdentityRegistry.Registration identity, boolean formed,
-                                                 Object2LongMap<NetworkResourceType> resources, NetworkResourceModifier modifier) {
+                                                 Reference2DoubleMap<NetworkResourceType> resources, NetworkResourceModifier modifier) {
         requireLive();
         if (identity.runtimeIdentity() != owner || !identity.identity().machineId().equals(snapshot().dataCenterId())) {
             throw new IllegalArgumentException("Data-center capture has foreign ownership");

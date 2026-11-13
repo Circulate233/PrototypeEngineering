@@ -1,5 +1,6 @@
 #loader crafttweaker
 import mods.pe_run_tests.Text;
+import mods.pe_run_tests.Resources;
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.recipe.Bindings;
 import mods.prototype_eng.recipe.Recipe;
@@ -27,9 +28,8 @@ import mods.pe_run_tests.NativeChecks;
 import mods.pe_run_tests.CoreCases;
 
 var names = Bindings.scope("pe_run_tests:bindings");
-var compute = ComputingResource.create("pe_run_tests:net_compute", false);
-compute.register();
-var supply = ComputingResources.create().add(compute, 100).add(ComputingResource.thread(), 1);
+var compute = Resources.netCompute();
+var supply = ComputingResources.create().add(compute, 100);
 NativeChecks.check("net_supply_addTo", supply.amount(compute) == 100);
 var empty = ComputingResources.create();
 var modifier = ComputingModifier.create().flat(compute, 2).multiplierPpm(compute, 1000000);

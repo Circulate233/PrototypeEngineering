@@ -12,8 +12,8 @@ import com.circulation.prototype_eng.api.network.resource.NetworkComputerCompone
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.util.ResourceLocation;
@@ -50,7 +50,8 @@ public final class MachineComputerComponents implements MachineLifecycleListener
             if (!a.item().equals(b.item()) || a.count() != b.count()
                 || !a.definition().resourcesPerItem().equals(b.definition().resourcesPerItem())
                 || !a.definition().requiredResources().equals(b.definition().requiredResources())
-                || a.definition().energyPerTick() != b.definition().energyPerTick()) return false;
+                || a.definition().energyPerTick() != b.definition().energyPerTick()
+                || a.definition().concurrencyPerItem() != b.definition().concurrencyPerItem()) return false;
         }
         return true;
     }
@@ -150,7 +151,7 @@ public final class MachineComputerComponents implements MachineLifecycleListener
      * Pair with MachineNetworkDevice.capturedComponent; numeric supply and logical lease capacity both come from items.
      */
     public NetworkRuntime.Capture networkCapture(MachineIdentityRegistry.Registration identity, int level, boolean formed,
-                                                 Object2LongMap<NetworkResourceType> declared, NetworkResourceModifier modifier) {
+                                                 Reference2DoubleMap<NetworkResourceType> declared, NetworkResourceModifier modifier) {
         requireThread();
         if (!live() || identity.runtimeIdentity() != owner || Objects.requireNonNull(owner.lifecycle()).formed() != formed) {
             throw new IllegalStateException("Computer capture requires its exact live owner and formation");
@@ -167,17 +168,15 @@ public final class MachineComputerComponents implements MachineLifecycleListener
             current = () -> sources.current().getAsBoolean() && installed.current() && sources.current().getAsBoolean();
         }
         NetworkResourceModifier.validateResources(declared);
-        var combined = new Object2LongOpenHashMap<>(declared);
+        var combined = new Reference2DoubleOpenHashMap<>(declared);
         combined.defaultReturnValue(0);
-        for (var entry : installed.resourcesPerTick().object2LongEntrySet()) {
-            long amount = entry.getLongValue();
-            if (amount > Long.MAX_VALUE - combined.getLong(entry.getKey())) {
-                throw new ArithmeticException("Computer declared and item supply overflow");
-            }
+        for (var entry : installed.resourcesPerTick().reference2DoubleEntrySet()) {
+            double amount = entry.getDoubleValue();
+            NetworkResourceModifier.sum(amount, combined.getDouble(entry.getKey()));
             combined.addTo(entry.getKey(), amount);
         }
         var snapshot = new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.COMPUTER, level, formed,
-            identity.loadOrder(), combined, modifier, 0, 0);
+            identity.loadOrder(), installed.concurrencyPerTick(), combined, modifier, 0, 0);
         return new NetworkRuntime.Capture(snapshot, () -> {
             requireThread();
             return live() && Objects.requireNonNull(owner.lifecycle()).formed() == formed && current.getAsBoolean();

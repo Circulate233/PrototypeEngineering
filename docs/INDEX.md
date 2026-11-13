@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 网络中心GUI与资源增量同步完成：按[获批HTML](previews/network-center.html)实现无背包显示屏，384×162～242，超过5行本地滑块。资源无注册/默认类型，double/R2D按单例身份，addTo累加，并发独立整数。最终采用资源自己的AE PacketWritable固定展示包，后续只同步索引与变化的占用/上限double，归零移除、新容器完整基线，稳定时无更新包；已删除未提交的TextComponent数组方案。入口[网络资源](network-resources.md)、[API](../api.md#资源展示包与增量同步)。1863测试/271 suites与完整build、MCP构建、27Java addon和13脚本编译通过；198份src Java已IDEA格式化/全级检查，197份全零、1份未实际改动CTM测试保留18条IDE依赖解析错误，6份run被排除。证据见[实施进度](implementation-status.md)。下一步用户实机复验滚动、数量变化/归零及重开恢复；本地提交、不启动游戏/推送。
+
 - 2026-11-13 默认数据库控制器完成：可继承DataCenterController组合现有持久存储，DataCenter接口角色及Java/ZS工厂已接入；原等级/容量、下载、自动升级和磁盘规则保持，活动库继续占1份优先并发，无普通配方工位或业务tick，GUI延缓。入口[数据库](data-centers.md)。5Java经IDEA格式化/逐文件检查，4主/测试全级零、1run被排除；完整1864测试、MCP构建、25Java addon与13脚本SDK编译/97核心断言通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验数据库入网、存储/下载/导入及退出重进恢复；本地提交，不启动游戏/推送。
 
 - 2026-11-13 计算机与运算仓完成：默认可继承 ComputerController、双方法 NetworkComputer 接口、四级共享运算仓及紧凑GUI/像素纹理已接入。组件消耗不足时全部组件供给停摆，配方独立继续，内部资源不外泄。启动需其他设备先提供1并发；计算机/研究站/活动数据库优先于普通设备，可收回普通租约，同条件使用持久UUID。供给变化在同tick生效，保留已消费量。入口[计算机与运算仓](computers.md)，49Java已IDEA格式化/逐文件检查，46主/测试全级零、3run被排除；完整1864测试、MCP构建、24Java addon与13脚本SDK编译通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验仓IO/界面、组件费用及退出重进并发恢复；计算机GUI延缓，本地提交，不启动游戏/推送。

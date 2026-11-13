@@ -1,8 +1,8 @@
 package com.circulation.prototype_eng.api.network.resource;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import net.minecraft.item.ItemStack;
 
 import java.util.Objects;
@@ -16,9 +16,13 @@ public interface NetworkComputerComponent {
     /**
      * Fixed supply has no machine, recipe or gameplay defaults.
      */
-    static NetworkComputerComponent fixed(Object2LongMap<NetworkResourceType> resources) {
+    static NetworkComputerComponent fixed(Reference2DoubleMap<NetworkResourceType> resources) {
+        return fixed(0, resources);
+    }
+
+    static NetworkComputerComponent fixed(long concurrency, Reference2DoubleMap<NetworkResourceType> resources) {
         var frozen = NetworkResourceModifier.copyResources(resources);
-        var captured = new Capture(frozen, () -> true);
+        var captured = new Capture(concurrency, frozen, Reference2DoubleMaps.emptyMap(), 0, () -> true);
         return (_, _) -> captured;
     }
 
@@ -31,16 +35,23 @@ public interface NetworkComputerComponent {
      * Version proof must be read-only and acquire no additional storage/domain locks, including inside a recipe fence.
      * The completed zero-default resource map is borrowed unchanged while this capture is retained.
      */
-    record Capture(Object2LongMap<NetworkResourceType> resourcesPerItem,
-                   Object2LongMap<NetworkResourceType> requiredResources, long energyPerTick, BooleanSupplier current) {
-        public Capture(Object2LongMap<NetworkResourceType> resourcesPerItem, BooleanSupplier current) {
-            this(resourcesPerItem, Object2LongMaps.emptyMap(), 0, current);
+    record Capture(long concurrencyPerItem, Reference2DoubleMap<NetworkResourceType> resourcesPerItem,
+                   Reference2DoubleMap<NetworkResourceType> requiredResources, long energyPerTick,
+                   BooleanSupplier current) {
+        public Capture(Reference2DoubleMap<NetworkResourceType> resourcesPerItem, BooleanSupplier current) {
+            this(0, resourcesPerItem, Reference2DoubleMaps.emptyMap(), 0, current);
+        }
+
+        public Capture(Reference2DoubleMap<NetworkResourceType> resourcesPerItem, Reference2DoubleMap<NetworkResourceType> requiredResources,
+                       long energyPerTick, BooleanSupplier current) {
+            this(0, resourcesPerItem, requiredResources, energyPerTick, current);
         }
 
         public Capture {
             NetworkResourceModifier.validateResources(resourcesPerItem);
             NetworkResourceModifier.validateResources(requiredResources);
-            if (energyPerTick < 0) throw new IllegalArgumentException("Negative computing component FE cost");
+            if (energyPerTick < 0 || concurrencyPerItem < 0)
+                throw new IllegalArgumentException("Negative component concurrency or FE cost");
             Objects.requireNonNull(current);
         }
     }

@@ -2,7 +2,6 @@ package com.circulation.prototype_eng.research;
 
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.NbtCodec;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.persistence.StrictNbt;
@@ -45,10 +44,10 @@ public final class ResearchWorldNbt implements NbtCodec<ResearchWorldSnapshot> {
     private final ManualResearchSessionNbt manual;
     private final ResearchDownloadNbt downloads;
 
-    public ResearchWorldNbt(ResearchRegistry registry, NetworkResourceRegistry resources, ResourceKeyNbt keys) {
+    public ResearchWorldNbt(ResearchRegistry registry, ResourceKeyNbt keys) {
         this.registry = Objects.requireNonNull(registry);
         players = new PlayerResearchStateNbt(registry, keys);
-        queues = new ResearchQueueNbt(registry, resources);
+        queues = new ResearchQueueNbt(registry);
         manual = new ManualResearchSessionNbt(registry);
         downloads = new ResearchDownloadNbt(registry, keys);
     }

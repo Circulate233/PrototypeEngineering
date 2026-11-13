@@ -1,10 +1,9 @@
 package com.circulation.prototype_eng.api.machine;
 
 import com.circulation.prototype_eng.api.network.NetworkCenter;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 
 /**
  * Ready-to-use network-center runtime. It has no recipe hosts or business ticks; the physical host's
@@ -13,7 +12,8 @@ import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 public class NetworkCenterController extends MachineInstance implements NetworkCenter {
     private final int networkLevel;
     private final long energyPerTick;
-    private final Object2LongMap<NetworkResourceType> networkResources;
+    private final Reference2DoubleMap<NetworkResourceType> networkResources;
+    private final long threadCapacity;
 
     public NetworkCenterController(MachineType type, int networkLevel) {
         this(type, networkLevel, 0);
@@ -29,7 +29,8 @@ public class NetworkCenterController extends MachineInstance implements NetworkC
             throw new IllegalArgumentException("Invalid network center level, thread capacity or energy cost");
         this.networkLevel = networkLevel;
         this.energyPerTick = energyPerTick;
-        networkResources = threadCapacity == 0 ? Object2LongMaps.emptyMap() : Object2LongMaps.singleton(NetworkResources.THREAD, threadCapacity);
+        this.threadCapacity = threadCapacity;
+        networkResources = Reference2DoubleMaps.emptyMap();
     }
 
     @Override
@@ -38,7 +39,12 @@ public class NetworkCenterController extends MachineInstance implements NetworkC
     }
 
     @Override
-    public Object2LongMap<NetworkResourceType> networkResources() {
+    public long providedConcurrency() {
+        return threadCapacity;
+    }
+
+    @Override
+    public Reference2DoubleMap<NetworkResourceType> networkResources() {
         return networkResources;
     }
 

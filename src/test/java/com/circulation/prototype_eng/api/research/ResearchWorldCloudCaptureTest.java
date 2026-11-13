@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.api.research.station.ResearchStations;
 import com.circulation.prototype_eng.api.scheduler.planned.PlannedCancellationToken.Reason;
@@ -12,7 +11,7 @@ import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -57,8 +56,6 @@ class ResearchWorldCloudCaptureTest {
     private static final ResourceLocation BLOCKED = id("blocked");
 
     private static ResearchWorld world(ResearchPermissionPolicy permissions, Consumer<ResearchWorldSnapshot> writer) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var research : ObjectList.of(BASE, BLOCKED))
             registry.register(ResearchDefinition.builder(research).maxLevel(3)
@@ -68,15 +65,15 @@ class ResearchWorldCloudCaptureTest {
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).prerequisite(BASE, 2).build()).build());
         registry.register(ResearchDefinition.builder(OWNED).maxLevel(3).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
                                             .stage(ResearchLevelStage.builder(1, 3).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-        registry.freeze(resources);
+        registry.freeze();
         var aliceLevels = levels(BASE, 1);
         aliceLevels.put(BLOCKED, 1);
         var bobLevels = levels(BASE, 3);
         bobLevels.put(DEPENDENT, 1);
-        var queue = new TeamResearchQueue.Snapshot("a", ObjectList.of(), null, Object2LongMaps.emptyMap(), 1, 0, 0, -1, -1);
+        var queue = new TeamResearchQueue.Snapshot("a", ObjectList.of(), null, Reference2DoubleMaps.emptyMap(), 1, 0, 0, -1, -1);
         var team = new ResearchWorldSnapshot.Team("a", members(ALICE, BOB), new ObjectOpenHashSet<>(ObjectList.of(BLOCKED)),
             new TeamOwnedResearch.Snapshot("a", levels(OWNED, 2)), queue, ObjectList.of());
-        var world = new ResearchWorld(registry, resources, permissions, writer);
+        var world = new ResearchWorld(registry, permissions, writer);
         world.restore(new ResearchWorldSnapshot(10, ObjectList.of(new PlayerResearchState.Snapshot(ALICE, aliceLevels, ObjectList.of()),
             new PlayerResearchState.Snapshot(BOB, bobLevels, ObjectList.of())), ObjectList.of(team)));
         return world;

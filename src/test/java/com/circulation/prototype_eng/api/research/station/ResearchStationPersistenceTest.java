@@ -21,7 +21,7 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
@@ -50,8 +50,8 @@ import com.circulation.prototype_eng.localization.GuiText;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
 import net.minecraft.nbt.NBTTagCompound;
@@ -118,7 +118,7 @@ class ResearchStationPersistenceTest {
             }
         }).requirement(id("saved_observer"), action);
         var stage = ResearchLevelStage.builder(1, 1).researchTier(2)
-                                      .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 3).build())
+                                      .resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, 3).build())
                                       .materialPersistence("saved-station-v1", codec -> codec.resources(KEYS))
                                       .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("saved_io"), new ResourceRequirement(
                                           List.of(new GenericStack(RAW, 2)), List.of(new GenericStack(RAW, 1)), List.of(), List.of(new GenericStack(PRODUCT, 2)), false)))
@@ -217,7 +217,7 @@ class ResearchStationPersistenceTest {
             assertEquals(List.of(RecipeStage.START, RecipeStage.TICK), phases);
             assertEquals(7, amount(station, RAW, false));
             assertEquals(100, amount(station, PRODUCT, true));
-            assertEquals(100, newPermit.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, newPermit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, newPermit.requestLease(), "Cleanup did not take a station work lease");
             assertEquals(ResearchStationWork.Status.CANCELLED, restored.work.result().status());
             assertNull(restored.work.snapshot().segment());
@@ -463,7 +463,7 @@ class ResearchStationPersistenceTest {
             assertEquals(List.of(RecipeStage.START, RecipeStage.TICK), phases);
             state.work.restore(new ResearchStationWork.Saved(-1,
                 new ResearchStationWork.SavedSegment(state.queue.activeHead().orElseThrow().key(), capture.sites(), materials.encode(process))));
-            assertEquals(0, capture.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(0, capture.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertFalse(state.work.cancel(deadline()));
             assertTrue(state.work.resume(capture));
             assertEquals(List.of(RecipeStage.START, RecipeStage.TICK), phases, "Resume needs no numeric grant and executes no END");
@@ -613,7 +613,7 @@ class ResearchStationPersistenceTest {
         private final ResearchStationWork work;
 
         private State(StationFixtures fixture) {
-            this(fixture, new TeamResearchQueue(fixture.research, fixture.resources, "team"));
+            this(fixture, new TeamResearchQueue(fixture.research, "team"));
             queue.enqueue(id("research"), 1, OWNER, 0);
         }
 
@@ -645,7 +645,7 @@ class ResearchStationPersistenceTest {
 
         private MovingTeamFixture(ResearchDefinition definition) {
             fixture = new StationFixtures(10, 100, 2, definition);
-            network = new NetworkRuntime(fixture.identities, fixture.resources, player -> OwnerTeamResolution.resolved(player, teamId,
+            network = new NetworkRuntime(fixture.identities, player -> OwnerTeamResolution.resolved(player, teamId,
                 OwnerTeamType.SERVER, ObjectSets.singleton(player), Optional.empty()), fixture::requireOwner);
             network.beginTick(0);
             role(NetworkDeviceRole.NETWORK_CENTER);
@@ -655,14 +655,13 @@ class ResearchStationPersistenceTest {
         }
 
         private Entry role(NetworkDeviceRole role) {
-            var supply = new Object2LongOpenHashMap<NetworkResourceType>();
+            var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             if (role == NetworkDeviceRole.NETWORK_CENTER) {
-                supply.put(NetworkResources.THREAD, 10);
-                supply.put(NetworkResources.COMPUTE, 100);
+                supply.put(ComputingResourceFixtures.COMPUTE, 100);
             }
             var component = MachineNetworkDevice.component(id("moving_role_" + fixture.positions), fixture.ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, 2, Objects.requireNonNull(machine.lifecycle()).formed(),
-                    identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER ? 10 : 0, supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             return attach(component, null, role == NetworkDeviceRole.RESEARCH_STATION);
         }
 
@@ -671,7 +670,7 @@ class ResearchStationPersistenceTest {
             });
             var component = MachineNetworkDevice.capturedComponent(id("moving_data_role"), fixture.ownership,
                 (machine, identity) -> Objects.requireNonNull(machine.components().get(storage)).networkCapture(identity,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), Reference2DoubleMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
             attach(component, storage, false);
         }
 
@@ -683,7 +682,7 @@ class ResearchStationPersistenceTest {
             var type = typeBuilder.build();
             var builder = MachineAssembly.builder(type, "moving-v1").component(fixture.ownership, MachineOwnership.CODEC).recreated(role);
             if (station) builder.instanceFactory(value -> new ResearchStationController(value, 2,
-                Object2LongMaps.singleton(NetworkResources.COMPUTE, 3), 0));
+                Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 3), 0));
             if (storage != null) {
                 builder.component(storage, MachineDataCenterStorage.CODEC);
             }

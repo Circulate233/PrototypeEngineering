@@ -1,7 +1,6 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.reward.RewardChild;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import com.circulation.prototype_eng.api.research.reward.RewardEventAction;
@@ -13,7 +12,7 @@ import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.scheduler.planned.PlannedTaskExecutor;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
@@ -71,7 +70,7 @@ class ResearchWorldTest {
     }
 
     private static TeamResearchStart.Environment environment() {
-        return new TeamResearchStart.Environment(2, 1, 1, Object2LongMaps.emptyMap());
+        return new TeamResearchStart.Environment(2, 1, 1, Reference2DoubleMaps.emptyMap());
     }
 
     private static OwnerTeamResolution membership(UUID player, String team, UUID... members) {
@@ -83,8 +82,6 @@ class ResearchWorldTest {
     }
 
     private static Fixture fixture(ResearchStartCondition condition) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         for (var id : ObjectList.of(FIRST, SECOND)) {
             registry.register(ResearchDefinition.builder(id).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM).startCondition(condition)
@@ -97,8 +94,8 @@ class ResearchWorldTest {
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build()).prerequisite(BASE, 1).build()).build());
         registry.register(ResearchDefinition.builder(EMPTY_MANUAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-        registry.freeze(resources);
-        return new Fixture(registry, resources);
+        registry.freeze();
+        return new Fixture(registry);
     }
 
     private static ResourceLocation id(String path) {
@@ -420,9 +417,9 @@ class ResearchWorldTest {
         assertEquals(1, world.snapshot().players().size());
     }
 
-    private record Fixture(ResearchRegistry registry, NetworkResourceRegistry resources) {
+    private record Fixture(ResearchRegistry registry) {
         ResearchWorld world(Consumer<ResearchWorldSnapshot> writer) {
-            return new ResearchWorld(registry, resources, ResearchPermissionPolicy.DEFAULT, writer);
+            return new ResearchWorld(registry, ResearchPermissionPolicy.DEFAULT, writer);
         }
     }
 }

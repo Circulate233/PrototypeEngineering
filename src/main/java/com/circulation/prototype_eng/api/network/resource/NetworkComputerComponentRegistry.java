@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.network.resource;
 import ae2.api.stacks.AEItemKey;
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -47,14 +46,11 @@ public final class NetworkComputerComponentRegistry {
         }
     }
 
-    public void freeze(NetworkResourceRegistry resources) {
+    public void freeze() {
         if (frozen != null) {
             throw new IllegalStateException("Computer component registry already frozen");
         }
-        if (!Objects.requireNonNull(resources).isFrozen()) {
-            throw new IllegalStateException("Computer components require frozen computing resources");
-        }
-        frozen = new Frozen(new Object2ObjectOpenHashMap<>(registrations), resources);
+        frozen = new Frozen(new Object2ObjectOpenHashMap<>(registrations));
         registrations.clear();
     }
 
@@ -68,20 +64,8 @@ public final class NetworkComputerComponentRegistry {
         if (provider == null && itemProvider == null) {
             throw new IllegalArgumentException("Unregistered computer component item");
         }
-        var capture = Objects.requireNonNull(itemProvider == null ? provider.apply(computer)
+        return Objects.requireNonNull(itemProvider == null ? provider.apply(computer)
             : itemProvider.capture(((AEItemKey) key).toStack(), computer), "Computer component supply capture");
-        var supplied = capture.resourcesPerItem();
-        var validated = new Object2LongOpenHashMap<NetworkResourceType>(supplied.size());
-        for (var entry : supplied.object2LongEntrySet()) {
-            var type = current.resources.canonical(entry.getKey());
-            long amount = entry.getLongValue();
-            if (amount < 0) {
-                throw new IllegalArgumentException("Negative computer component supply: " + type.id());
-            }
-            validated.put(type, amount);
-        }
-        for (var type : capture.requiredResources().keySet()) current.resources.canonical(type);
-        return new NetworkComputerComponent.Capture(validated, capture.requiredResources(), capture.energyPerTick(), capture.current());
     }
 
     void requireReady() {
@@ -101,7 +85,6 @@ public final class NetworkComputerComponentRegistry {
     }
 
     private record Frozen(
-        Object2ObjectOpenHashMap<AEKey, Function<MachineInstance, NetworkComputerComponent.Capture>> providers,
-        NetworkResourceRegistry resources) {
+        Object2ObjectOpenHashMap<AEKey, Function<MachineInstance, NetworkComputerComponent.Capture>> providers) {
     }
 }

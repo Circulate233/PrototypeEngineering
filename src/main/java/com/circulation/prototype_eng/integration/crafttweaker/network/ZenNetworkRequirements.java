@@ -34,7 +34,7 @@ public final class ZenNetworkRequirements {
     }
 
     @ZenMethod
-    public ZenNetworkRequirements resource(ZenComputingResource resource, long amountPerWorkUnit) {
+    public ZenNetworkRequirements resource(ZenComputingResource resource, double amountPerWorkUnit) {
         builder.resource(resource.value(), amountPerWorkUnit);
         return this;
     }

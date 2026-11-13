@@ -7,7 +7,7 @@ import com.circulation.prototype_eng.api.network.MachineDataCenterStorage;
 import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.NetworkWorkState;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.recipe.requirement.RecipeRequirements;
 import com.circulation.prototype_eng.api.recipe.requirement.ResourceRequirement;
@@ -23,7 +23,7 @@ import com.circulation.prototype_eng.api.research.TeamResearchView;
 import com.circulation.prototype_eng.api.research.queue.TeamResearchQueue;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -47,19 +47,19 @@ class ResearchStationAdmissionTest {
     private static ResearchDefinition definition(int tier, ResearchStartCondition condition) {
         return ResearchDefinition.builder(id("research")).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                  .startCondition(condition).stage(ResearchLevelStage.builder(1, 1).researchTier(tier)
-                                                                                    .resourceFormula(ResearchResourceFormula.builder().constant(NetworkResources.COMPUTE, 10).build())
+                                                                                    .resourceFormula(ResearchResourceFormula.builder().constant(ComputingResourceFixtures.COMPUTE, 10).build())
                                                                                     .materialRequirement(RecipeRequirements.RESOURCES.requirement(id("admission_io"), new ResourceRequirement(
                                                                                         List.of(new GenericStack(MATERIAL, 5)), List.of(), List.of(), List.of(), false))).build()).build();
     }
 
     private static TeamResearchQueue queue(StationFixtures fixture) {
-        return new TeamResearchQueue(fixture.research, fixture.resources, "team");
+        return new TeamResearchQueue(fixture.research, "team");
     }
 
     private static TeamResearchStart.Result start(StationFixtures fixture, TeamResearchQueue queue, ResearchStations.Admission admission) {
         var view = new TeamResearchView(fixture.research, "team", Set.of(OWNER), Object2IntMaps.emptyMap(), Object2IntMaps.emptyMap(), Set.of());
         var actor = new ResearchPermissionContext(OWNER, "team", null, "team", false, false, false);
-        var start = new TeamResearchStart(fixture.research, fixture.resources, ResearchPermissionPolicy.DEFAULT);
+        var start = new TeamResearchStart(fixture.research, ResearchPermissionPolicy.DEFAULT);
         return start.start(new TeamResearchStart.Request(queue, view, actor, id("research"), 1, admission.environment(), 1, admission::current));
     }
 
@@ -69,8 +69,8 @@ class ResearchStationAdmissionTest {
         int[] callbacks = {0};
         var definition = definition(2, context -> {
             callbacks[0]++;
-            assertEquals(70, context.availableResources().getLong(NetworkResources.COMPUTE));
-            var consumption = Objects.requireNonNull(Objects.requireNonNull(permits[0]).reserve(id("condition_numeric_consumption"), Object2LongMaps.singleton(NetworkResources.COMPUTE, 70)));
+            assertEquals(70, context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            var consumption = Objects.requireNonNull(Objects.requireNonNull(permits[0]).reserve(id("condition_numeric_consumption"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 70)));
             assertTrue(consumption.commit());
             return true;
         });
@@ -80,7 +80,7 @@ class ResearchStationAdmissionTest {
             fixture.refresh();
             var permit = Objects.requireNonNull(fixture.roleOf(fixture.entries.getFirst().machine()).workPermit());
             permits[0] = permit;
-            var earlier = Objects.requireNonNull(permit.reserve(id("earlier_numeric_consumption"), Object2LongMaps.singleton(NetworkResources.COMPUTE, 30)));
+            var earlier = Objects.requireNonNull(permit.reserve(id("earlier_numeric_consumption"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 30)));
             assertTrue(earlier.commit());
             var publication = fixture.network.plan();
             var captured = fixture.selector.admission("team");
@@ -90,14 +90,14 @@ class ResearchStationAdmissionTest {
             assertSame(publication, fixture.network.plan(), "Budget consumption keeps the same network publication");
             assertTrue(permit.current());
             assertFalse(captured.current());
-            assertEquals(70, captured.environment().availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(0, permit.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(70, captured.environment().availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(0, permit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(TeamResearchStart.Status.STALE_CONTEXT, start(fixture, queue, captured).status());
             assertEquals(1, callbacks[0]);
             assertEquals(0, queue.size());
             assertEquals(17, Objects.requireNonNull(station.warehouse().input()).amount(MATERIAL));
             assertEquals(10, station.energy().storedEnergy());
-            assertEquals(100, permit.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, permit.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, Objects.requireNonNull(fixture.roleOf(station.machine()).workPermit()).requestLease());
         }
     }
@@ -165,7 +165,7 @@ class ResearchStationAdmissionTest {
         var definition = definition(2, context -> {
             callbacks[0]++;
             return OWNER.equals(context.playerId()) && context.networkCenterLevel() == 3
-                && context.availableResources().getLong(NetworkResources.COMPUTE) == 70;
+                && context.availableResources().getDouble(ComputingResourceFixtures.COMPUTE) == 70;
         });
         try (var fixture = new StationFixtures(1, 100, 2, definition)) {
             var first = fixture.station(2, -1);
@@ -173,18 +173,18 @@ class ResearchStationAdmissionTest {
             assertEquals(17, Objects.requireNonNull(first.warehouse().input()).insert(MATERIAL, 17, Actionable.MODULATE));
             fixture.refresh();
             var centerPermit = Objects.requireNonNull(fixture.roleOf(fixture.entries.getFirst().machine()).workPermit());
-            var priorWork = Objects.requireNonNull(centerPermit.reserve(id("ordinary_before_admission"), Object2LongMaps.singleton(NetworkResources.COMPUTE, 30)));
+            var priorWork = Objects.requireNonNull(centerPermit.reserve(id("ordinary_before_admission"), Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 30)));
             assertTrue(priorWork.commit());
             var captured = fixture.selector.admission("team");
-            assertEquals(70, captured.environment().availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(100, centerPermit.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(70, captured.environment().availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
+            assertEquals(100, centerPermit.numericResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertTrue(fixture.selector.admission("team").current());
             assertEquals(TeamResearchStart.Status.STARTED, start(fixture, queue(fixture), captured).status());
             assertEquals(1, callbacks[0]);
             assertEquals(17, Objects.requireNonNull(first.warehouse().input()).amount(MATERIAL));
             assertEquals(10, first.energy().storedEnergy());
             assertEquals(10, second.energy().storedEnergy());
-            assertEquals(70, centerPermit.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(70, centerPermit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             var firstPermit = Objects.requireNonNull(fixture.roleOf(first.machine()).workPermit());
             var secondPermit = Objects.requireNonNull(fixture.roleOf(second.machine()).workPermit());
             assertEquals(NetworkTeamBudget.LeaseStatus.GRANTED, firstPermit.requestLease());

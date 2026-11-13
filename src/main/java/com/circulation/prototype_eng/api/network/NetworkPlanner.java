@@ -1,11 +1,11 @@
 package com.circulation.prototype_eng.api.network;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -30,13 +30,10 @@ public final class NetworkPlanner {
      * Both lists are borrowed immutable inputs: keep their contents unchanged while the returned Inputs
      * is retained or used by a planner, including across worker execution.
      */
-    public static Inputs capture(NetworkResourceRegistry resources, long epoch, List<NetworkDeviceSnapshot> devices,
+    public static Inputs capture(long epoch, List<NetworkDeviceSnapshot> devices,
                                  List<NetworkContribution> contributions, OwnerTeamResolver resolver) {
         if (epoch < 0) {
             throw new IllegalArgumentException("Negative discovery epoch");
-        }
-        if (!resources.isFrozen()) {
-            throw new IllegalStateException("Network capture requires frozen computing resources");
         }
         Objects.requireNonNull(resolver);
         var owners = new ObjectLinkedOpenHashSet<UUID>();
@@ -48,9 +45,6 @@ public final class NetworkPlanner {
                 throw new IllegalArgumentException("Duplicate device UUID in discovery");
             }
             owners.add(device.identity().ownerId());
-            checkResources(resources, device.resourcesPerTick());
-            checkResources(resources, device.resourceModifier().flatAdjustments());
-            checkResources(resources, device.resourceModifier().multiplierPpmAdjustments());
         }
         for (var contribution : contributions) {
             Objects.requireNonNull(contribution);
@@ -58,7 +52,6 @@ public final class NetworkPlanner {
                 throw new IllegalArgumentException("Stale or duplicate participant contribution");
             }
             owners.add(contribution.ownerId());
-            checkResources(resources, contribution.resourcesPerTick());
         }
         var resolved = new Object2ObjectOpenHashMap<UUID, OwnerTeamResolution>(owners.size());
         var teams = new Object2ObjectOpenHashMap<String, OwnerTeamResolution>();
@@ -135,8 +128,9 @@ public final class NetworkPlanner {
                     dataCenter = device;
                 }
             }
-            var totals = new Object2LongOpenHashMap<NetworkResourceType>();
+            var totals = new Reference2DoubleOpenHashMap<NetworkResourceType>();
             accumulate(totals, center.resourcesPerTick());
+            long concurrency = center.concurrencyPerTick();
             for (var device : devices) {
                 NetworkWorkState state;
                 if (!device.formed()) {
@@ -153,16 +147,18 @@ public final class NetworkPlanner {
                 states.put(device.identity().machineId(), state);
                 if (state == NetworkWorkState.ACTIVE_DEVICE && device.role() == NetworkDeviceRole.COMPUTER) {
                     accumulate(totals, device.resourcesPerTick());
+                    concurrency = Math.addExact(concurrency, device.concurrencyPerTick());
                 }
             }
             var participantResources = contributions.get(entry.getKey());
             if (participantResources != null) {
                 for (var contribution : participantResources) {
                     accumulate(totals, contribution.resourcesPerTick());
+                    concurrency = Math.addExact(concurrency, contribution.concurrencyPerTick());
                 }
             }
             selections.put(entry.getKey(), new NetworkPlan.Team(center.identity().machineId(), center.level(),
-                dataCenter == null ? null : dataCenter.identity().machineId(), center.resourceModifier().apply(totals),
+                dataCenter == null ? null : dataCenter.identity().machineId(), concurrency, external(center.resourceModifier().apply(totals)),
                 dataCenter == null ? null : dataCenter.dataCenterResearch()));
         }
         return new NetworkPlan(inputs.epoch, states, teamIds, selections);
@@ -178,21 +174,17 @@ public final class NetworkPlanner {
         return candidate.identity().machineId().compareTo(retained.identity().machineId()) < 0;
     }
 
-    private static void accumulate(Object2LongOpenHashMap<NetworkResourceType> totals, Object2LongMap<NetworkResourceType> contribution) {
-        for (var entry : contribution.object2LongEntrySet()) {
-            long amount = entry.getLongValue();
-            if (amount > Long.MAX_VALUE - totals.getLong(entry.getKey())) {
-                throw new ArithmeticException("Network resource total overflow");
-            }
-            totals.addTo(entry.getKey(), amount);
-        }
+    private static Reference2DoubleMap<NetworkResourceType> external(Reference2DoubleMap<NetworkResourceType> produced) {
+        produced.reference2DoubleEntrySet().removeIf(entry -> entry.getKey().internal());
+        return produced;
     }
 
-    private static void checkResources(NetworkResourceRegistry types, Object2LongMap<NetworkResourceType> resources) {
-        for (var type : resources.keySet()) {
-            types.canonical(type);
-            if (type.internal())
-                throw new IllegalArgumentException("Internal computing resources cannot enter the network: " + type.id());
+    private static void accumulate(Reference2DoubleOpenHashMap<NetworkResourceType> totals, Reference2DoubleMap<NetworkResourceType> contribution) {
+        for (var entry : contribution.reference2DoubleEntrySet()) {
+            if (entry.getKey().internal()) continue;
+            double amount = entry.getDoubleValue();
+            NetworkResourceModifier.sum(amount, totals.getDouble(entry.getKey()));
+            totals.addTo(entry.getKey(), amount);
         }
     }
 

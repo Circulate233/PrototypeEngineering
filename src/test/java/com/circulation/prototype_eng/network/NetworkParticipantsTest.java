@@ -10,16 +10,15 @@ import com.circulation.prototype_eng.api.network.NetworkParticipant.Snapshot;
 import com.circulation.prototype_eng.api.network.NetworkParticipants;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolutionStatus;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.util.ResourceLocation;
@@ -59,10 +58,10 @@ class NetworkParticipantsTest {
     private static final ResourceLocation WORK = new ResourceLocation("test", "work");
     private static final ResourceLocation SOURCE = new ResourceLocation("test", "source");
 
-    private static Object2LongMap<NetworkResourceType> amounts(long compute, long qubit) {
-        var result = new Object2LongOpenHashMap<NetworkResourceType>();
-        if (compute > 0) result.put(NetworkResources.COMPUTE, compute);
-        if (qubit > 0) result.put(NetworkResources.QUBIT, qubit);
+    private static Reference2DoubleMap<NetworkResourceType> amounts(long compute, long qubit) {
+        var result = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+        if (compute > 0) result.put(ComputingResourceFixtures.COMPUTE, compute);
+        if (qubit > 0) result.put(ComputingResourceFixtures.QUBIT, qubit);
         return result;
     }
 
@@ -92,7 +91,7 @@ class NetworkParticipantsTest {
     @Test
     void completeVectorRejectsWithoutPartialSpendAndContributionReceivesCenterModifierOnce() {
         try (var fixture = new Fixture()) {
-            fixture.modifier = NetworkResourceModifier.builder().multiplierPpm(NetworkResources.COMPUTE, 1_000_000).build();
+            fixture.modifier = NetworkResourceModifier.builder().multiplierPpm(ComputingResourceFixtures.COMPUTE, 1_000_000).build();
             fixture.participant.cost = amounts(3, 50);
             fixture.start(0);
             assertEquals(20, fixture.available());
@@ -121,7 +120,7 @@ class NetworkParticipantsTest {
             assertEquals(NetworkParticipants.WorkResult.CANCELLED, invalidated.commit());
             assertEquals(0, fixture.participant.effects);
             assertEquals(1, fixture.participant.cancels);
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertNull(fixture.runtime.plan());
         }
     }
@@ -144,7 +143,7 @@ class NetworkParticipantsTest {
             assertEquals(10, fixture.available());
             assertEquals(NetworkParticipants.WorkResult.CANCELLED, completed.compensate());
             assertEquals(ALREADY_CANCELLED, completed.compensate());
-            assertEquals(10, originalPermit.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, originalPermit.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(10, fixture.available());
         }
     }
@@ -177,7 +176,7 @@ class NetworkParticipantsTest {
         try (var fixture = new Fixture()) {
             fixture.start(0);
             var ordinary = Objects.requireNonNull(fixture.centerPermit().reserve(WORK,
-                Object2LongMaps.singleton(NetworkResources.COMPUTE, 8)));
+                Reference2DoubleMaps.singleton(ComputingResourceFixtures.COMPUTE, 8)));
             fixture.participant.proof = false;
             assertFalse(ordinary.commit());
             assertNull(fixture.runtime.plan());
@@ -196,7 +195,7 @@ class NetworkParticipantsTest {
             var work = fixture.plan(1);
             fixture.participant.cancellation = UNKNOWN;
             assertEquals(CLEANUP_PENDING, work.cancel());
-            assertEquals(7, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(CLEANUP_PENDING, work.cancel());
             assertEquals(1, fixture.participant.cancels);
             fixture.runtime.endTick();
@@ -206,7 +205,7 @@ class NetworkParticipantsTest {
             fixture.participant.resolution = CANCELLED;
             assertTrue(fixture.runtime.refresh());
             assertEquals(1, fixture.participant.cancels);
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(10, fixture.available());
         }
     }
@@ -223,7 +222,7 @@ class NetworkParticipantsTest {
             assertSame(fixture.participant.commitFailure, work.failure());
             assertEquals(1, fixture.participant.effects);
             assertNull(fixture.runtime.plan());
-            assertEquals(7, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(CLEANUP_PENDING, work.commit());
             assertEquals(1, fixture.participant.commits);
             assertEquals(1, fixture.participant.cancels);
@@ -295,7 +294,7 @@ class NetworkParticipantsTest {
             assertThrows(IllegalStateException.class, () -> fixture.runtime.beginTick(1));
             fixture.participant.cancellation = UNKNOWN;
             assertEquals(CLEANUP_PENDING, work.compensate());
-            assertEquals(7, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertThrows(IllegalStateException.class, fixture.runtime::close);
             assertEquals(List.of(work), fixture.runtime.participants().pendingWork());
             assertEquals(1, fixture.participant.cancels);
@@ -303,10 +302,10 @@ class NetworkParticipantsTest {
             fixture.runtime.close();
             assertEquals(NetworkParticipants.WorkState.CANCELLED, work.state());
             assertEquals(0, fixture.participant.effects);
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             fixture.runtime.close();
             assertEquals(ALREADY_CANCELLED, work.compensate());
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(1, fixture.participant.cancels);
             assertTrue(fixture.runtime.participants().pendingWork().isEmpty());
         }
@@ -325,7 +324,7 @@ class NetworkParticipantsTest {
             assertEquals(NetworkParticipants.WorkState.CANCELLED, work.state());
             assertEquals(0, fixture.participant.commits);
             assertEquals(1, fixture.participant.cancels);
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertNull(fixture.runtime.plan());
             assertTrue(fixture.runtime.participants().pendingWork().isEmpty());
             assertEquals(ALREADY_CANCELLED, work.commit());
@@ -347,14 +346,14 @@ class NetworkParticipantsTest {
             assertEquals(NetworkParticipants.WorkState.CANCELLING, work.state());
             assertEquals(0, fixture.participant.commits);
             assertEquals(1, fixture.participant.cancels);
-            assertEquals(7, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(List.of(work), fixture.runtime.participants().pendingWork());
             assertEquals(CLEANUP_PENDING, work.commit());
             assertEquals(1, fixture.participant.cancels);
             fixture.ownerFailure = null;
             fixture.participant.completeCancellation(work.command());
             assertTrue(fixture.runtime.participants().retryCleanup());
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(ALREADY_CANCELLED, work.cancel());
             assertEquals(0, fixture.participant.commits);
         }
@@ -375,14 +374,14 @@ class NetworkParticipantsTest {
             assertEquals(1, failure.getSuppressed().length);
             assertSame(cleanup, failure.getSuppressed()[0]);
             assertEquals(0, fixture.participant.commits);
-            assertEquals(7, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(7, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(CLEANUP_PENDING, work.commit());
             assertEquals(1, fixture.participant.cancels);
             fixture.participant.proofFailure = null;
             fixture.participant.cancelFailure = null;
             fixture.participant.resolution = RETRYABLE;
             assertEquals(NetworkParticipants.WorkResult.CANCELLED, work.cancel());
-            assertEquals(10, original.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(10, original.availableResources().getDouble(ComputingResourceFixtures.COMPUTE));
             assertEquals(0, fixture.participant.commits);
             assertEquals(2, fixture.participant.cancels);
         }
@@ -395,7 +394,7 @@ class NetworkParticipantsTest {
             var snapshot = fixture.snapshot();
             var work = fixture.plan(1);
             var worker = new FutureTask<>(() -> {
-                assertEquals(8, snapshot.resources().getLong(NetworkResources.COMPUTE));
+                assertEquals(8, snapshot.resources().getDouble(ComputingResourceFixtures.COMPUTE));
                 assertThrows(IllegalStateException.class, work::commit);
                 assertThrows(IllegalStateException.class, fixture.registration::close);
                 assertThrows(IllegalStateException.class, fixture.runtime.participants()::retryCleanup);
@@ -432,7 +431,7 @@ class NetworkParticipantsTest {
         private long versionStep = 1;
         private long supply = 8;
         private boolean proof = true;
-        private Object2LongMap<NetworkResourceType> cost = amounts(3, 1);
+        private Reference2DoubleMap<NetworkResourceType> cost = amounts(3, 1);
         private Cancellation cancellation = CANCELLED;
         private Cancellation resolution = UNKNOWN;
         private RuntimeException commitFailure;
@@ -525,9 +524,7 @@ class NetworkParticipantsTest {
         private RuntimeException ownerFailure;
 
         private Fixture() {
-            var resources = new NetworkResourceRegistry();
-            resources.freeze();
-            runtime = new NetworkRuntime(identities, resources, this::resolve, this::requireOwner);
+            runtime = new NetworkRuntime(identities, this::resolve, this::requireOwner);
             center = device(1, NetworkDeviceRole.NETWORK_CENTER);
             other = device(2, NetworkDeviceRole.DEVICE);
             registration = runtime.participants().register(participant);
@@ -549,14 +546,13 @@ class NetworkParticipantsTest {
             var identity = identities.register(new PersistentMachineIdentity(new UUID(0, id), CENTER_OWNER),
                 new MachineIdentity(TYPE, 0, new BlockPos(id, 0, 0)), this, new Object());
             return runtime.register(identity, () -> {
-                var supply = new Object2LongOpenHashMap<NetworkResourceType>();
+                var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
                 if (role == NetworkDeviceRole.NETWORK_CENTER) {
-                    supply.put(NetworkResources.THREAD, 1);
-                    supply.put(NetworkResources.COMPUTE, 2);
-                    supply.put(NetworkResources.QUBIT, 2);
+                    supply.put(ComputingResourceFixtures.COMPUTE, 2);
+                    supply.put(ComputingResourceFixtures.QUBIT, 2);
                 }
                 return new NetworkRuntime.Capture(new NetworkDeviceSnapshot(identity.identity(), role, 1, true,
-                    identity.loadOrder(), supply, modifier, 0, 0), () -> true);
+                    identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER ? 1 : 0, supply, modifier, 0, 0), () -> true);
             });
         }
 
@@ -583,8 +579,8 @@ class NetworkParticipantsTest {
             return Objects.requireNonNull(other.workPermit());
         }
 
-        private long available() {
-            return centerPermit().availableResources().getLong(NetworkResources.COMPUTE);
+        private double available() {
+            return centerPermit().availableResources().getDouble(ComputingResourceFixtures.COMPUTE);
         }
 
         private void requireOwner() {

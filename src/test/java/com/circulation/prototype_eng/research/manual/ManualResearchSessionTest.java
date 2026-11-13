@@ -1,6 +1,5 @@
 package com.circulation.prototype_eng.research.manual;
 
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.research.ResearchDefinition;
 import com.circulation.prototype_eng.api.research.ResearchDownloadDeliveryPolicy;
 import com.circulation.prototype_eng.api.research.ResearchLevelStage;
@@ -52,12 +51,10 @@ class ManualResearchSessionTest {
     }
 
     private static ManualResearchSessionNbt codec(int tier) {
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var registry = new ResearchRegistry();
         registry.register(ResearchDefinition.builder(RESEARCH).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.ITEM_ONLY)
                                             .stage(ResearchLevelStage.builder(1, 1).researchTier(tier).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-        registry.freeze(resources);
+        registry.freeze();
         return new ManualResearchSessionNbt(registry);
     }
 

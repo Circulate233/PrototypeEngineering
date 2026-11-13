@@ -1,12 +1,9 @@
 package com.circulation.prototype_eng.api.research;
 
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import net.minecraft.util.ResourceLocation;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 
 import java.util.Objects;
 
@@ -15,8 +12,8 @@ import java.util.Objects;
  */
 @SuppressWarnings("unused")
 public final class ResearchResourceFormula {
-    private final Object2LongMap<NetworkResourceType> baseDemands;
-    private final Object2LongMap<NetworkResourceType> demandSlopes;
+    private final Reference2DoubleMap<NetworkResourceType> baseDemands;
+    private final Reference2DoubleMap<NetworkResourceType> demandSlopes;
 
     private ResearchResourceFormula(Builder builder) {
         baseDemands = immutable(builder.baseDemands);
@@ -27,34 +24,34 @@ public final class ResearchResourceFormula {
         return new Builder();
     }
 
-    private static long exact(NetworkResourceType type, long base, long slope, long offset) {
+    private static double exact(NetworkResourceType type, double base, double slope, long offset) {
         try {
-            return Math.addExact(base, Math.multiplyExact(slope, offset));
+            return NetworkResourceModifier.sum(base, NetworkResourceModifier.product(slope, offset));
         } catch (ArithmeticException failure) {
             throw new IllegalArgumentException("Research demand overflows for " + type.id(), failure);
         }
     }
 
-    private static Object2LongMap<NetworkResourceType> immutable(Object2LongMap<NetworkResourceType> source) {
+    private static Reference2DoubleMap<NetworkResourceType> immutable(Reference2DoubleMap<NetworkResourceType> source) {
         return NetworkResourceModifier.copyResources(source);
     }
 
-    public Object2LongMap<NetworkResourceType> baseDemands() {
+    public Reference2DoubleMap<NetworkResourceType> baseDemands() {
         return baseDemands;
     }
 
-    public Object2LongMap<NetworkResourceType> demandSlopes() {
+    public Reference2DoubleMap<NetworkResourceType> demandSlopes() {
         return demandSlopes;
     }
 
-    public Object2LongMap<NetworkResourceType> demandsAt(int stageFirstLevel, int level) {
+    public Reference2DoubleMap<NetworkResourceType> demandsAt(int stageFirstLevel, int level) {
         if (stageFirstLevel < 1 || level < stageFirstLevel) {
             throw new IllegalArgumentException("Research formula level precedes its positive stage start");
         }
-        var result = new Object2LongOpenHashMap<NetworkResourceType>(baseDemands.size());
+        var result = new Reference2DoubleOpenHashMap<NetworkResourceType>(baseDemands.size());
         long offset = (long) level - stageFirstLevel;
-        for (var entry : baseDemands.object2LongEntrySet()) {
-            result.put(entry.getKey(), exact(entry.getKey(), entry.getLongValue(), demandSlopes.getLong(entry.getKey()), offset));
+        for (var entry : baseDemands.reference2DoubleEntrySet()) {
+            result.put(entry.getKey(), exact(entry.getKey(), entry.getDoubleValue(), demandSlopes.getDouble(entry.getKey()), offset));
         }
         return result;
     }
@@ -66,39 +63,31 @@ public final class ResearchResourceFormula {
         if (firstLevel < 1 || lastLevel < firstLevel) {
             throw new IllegalArgumentException("Invalid research formula range " + firstLevel + ".." + lastLevel);
         }
-        for (var entry : baseDemands.object2LongEntrySet()) {
-            exact(entry.getKey(), entry.getLongValue(), demandSlopes.getLong(entry.getKey()), (long) lastLevel - firstLevel);
-        }
-    }
-
-    void validateResources(NetworkResourceRegistry registry) {
-        for (var type : baseDemands.keySet()) {
-            registry.canonical(type);
+        for (var entry : baseDemands.reference2DoubleEntrySet()) {
+            exact(entry.getKey(), entry.getDoubleValue(), demandSlopes.getDouble(entry.getKey()), (long) lastLevel - firstLevel);
         }
     }
 
     public static final class Builder {
-        private final Object2LongOpenHashMap<NetworkResourceType> baseDemands = new Object2LongOpenHashMap<>();
-        private final Object2LongOpenHashMap<NetworkResourceType> demandSlopes = new Object2LongOpenHashMap<>();
-        private final ObjectOpenHashSet<ResourceLocation> ids = new ObjectOpenHashSet<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> baseDemands = new Reference2DoubleOpenHashMap<>();
+        private final Reference2DoubleOpenHashMap<NetworkResourceType> demandSlopes = new Reference2DoubleOpenHashMap<>();
 
         private Builder() {
         }
 
-        public Builder constant(NetworkResourceType type, long demand) {
+        public Builder constant(NetworkResourceType type, double demand) {
             return affine(type, demand, 0);
         }
 
-        public Builder affine(NetworkResourceType type, long base, long slope) {
+        public Builder affine(NetworkResourceType type, double base, double slope) {
             Objects.requireNonNull(type);
-            if (type.logicalConcurrency() || base < 0 || slope < 0) {
+            if (!Double.isFinite(base) || !Double.isFinite(slope) || base < 0 || slope < 0 || type.internal()) {
                 throw new IllegalArgumentException("Invalid numeric research demand for " + type.id());
             }
-            if (!ids.add(type.id())) {
-                throw new IllegalArgumentException("Duplicate research formula resource " + type.id());
-            }
-            baseDemands.put(type, base);
-            demandSlopes.put(type, slope);
+            NetworkResourceModifier.sum(baseDemands.getDouble(type), base);
+            NetworkResourceModifier.sum(demandSlopes.getDouble(type), slope);
+            baseDemands.addTo(type, base);
+            demandSlopes.addTo(type, slope);
             return this;
         }
 

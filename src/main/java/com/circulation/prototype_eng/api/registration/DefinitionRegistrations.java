@@ -3,7 +3,6 @@ package com.circulation.prototype_eng.api.registration;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistrationEvent;
 import com.circulation.prototype_eng.api.network.resource.NetworkComputerComponentRegistrationEvent;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationRegistrationEvent;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistrationEvent;
 import com.circulation.prototype_eng.api.research.ResearchRegistrationEvent;
@@ -24,7 +23,6 @@ public final class DefinitionRegistrations {
     private static final Phase<RecipeRegistrationEvent> RECIPES = new Phase<>("recipes");
     private static final Phase<RecipeDeclarationRegistrationEvent> DECLARATIONS = new Phase<>("recipe declaration manifest");
     private static final Phase<MachineRuntimeRegistrationEvent> RUNTIME = new Phase<>("machine runtime");
-    private static final Phase<NetworkResourceRegistrationEvent> RESOURCES = new Phase<>("computing resources");
     private static final Phase<NetworkComputerComponentRegistrationEvent> COMPUTER_COMPONENTS = new Phase<>("computer components");
     private static final Phase<ResearchServerConfigurationEvent> RESEARCH_SERVER = new Phase<>("research server configuration");
     private static final Phase<ResearchRegistrationEvent> RESEARCH = new Phase<>("research definitions");
@@ -66,10 +64,6 @@ public final class DefinitionRegistrations {
         DECLARATIONS.deliver(event);
     }
 
-    public static void resources(Consumer<NetworkResourceRegistrationEvent> declaration) {
-        RESOURCES.add(declaration);
-    }
-
     public static void computerComponents(Consumer<NetworkComputerComponentRegistrationEvent> declaration) {
         COMPUTER_COMPONENTS.add(declaration);
     }
@@ -84,10 +78,6 @@ public final class DefinitionRegistrations {
 
     public static void structurePredicates(Consumer<StructurePredicateRegistrationEvent> declaration) {
         STRUCTURE_PREDICATES.add(declaration);
-    }
-
-    public static void dispatch(NetworkResourceRegistrationEvent event) {
-        RESOURCES.deliver(event);
     }
 
     public static void dispatch(NetworkComputerComponentRegistrationEvent event) {

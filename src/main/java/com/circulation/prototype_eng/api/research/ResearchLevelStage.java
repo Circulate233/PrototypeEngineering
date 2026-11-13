@@ -15,7 +15,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
@@ -112,7 +112,7 @@ public final class ResearchLevelStage {
         return resourceFormula;
     }
 
-    public Object2LongMap<NetworkResourceType> resourceDemandForLevel(int level) {
+    public Reference2DoubleMap<NetworkResourceType> resourceDemandForLevel(int level) {
         validateLevel(level);
         return resourceFormula.demandsAt(firstLevel, level);
     }

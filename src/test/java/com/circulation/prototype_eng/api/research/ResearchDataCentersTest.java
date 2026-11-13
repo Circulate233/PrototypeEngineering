@@ -17,9 +17,8 @@ import com.circulation.prototype_eng.api.network.NetworkDeviceRole;
 import com.circulation.prototype_eng.api.network.NetworkDeviceSnapshot;
 import com.circulation.prototype_eng.api.network.NetworkRuntime;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
-import com.circulation.prototype_eng.api.network.resource.NetworkResources;
+import com.circulation.prototype_eng.api.network.resource.ComputingResourceFixtures;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolution;
 import com.circulation.prototype_eng.api.team.OwnerTeamType;
 import com.circulation.prototype_eng.localization.GuiText;
@@ -27,8 +26,8 @@ import com.circulation.prototype_eng.research.ResearchDataCenter;
 import com.circulation.prototype_eng.research.ResearchEligibility;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMaps;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectSets;
@@ -315,7 +314,6 @@ class ResearchDataCentersTest {
         final Thread owner = Thread.currentThread();
         final Object worldToken = new Object();
         final ObjectArrayList<MachineInstance> machines = new ObjectArrayList<>();
-        final NetworkResourceRegistry resources = new NetworkResourceRegistry();
         final ResearchRegistry research = new ResearchRegistry();
         final PlayerResearchState player = new PlayerResearchState(OWNER);
         final MachineIdentityRegistry identities = new MachineIdentityRegistry(this::requireOwner);
@@ -335,13 +333,12 @@ class ResearchDataCentersTest {
         @Nullable RuntimeException dirtyFailure;
 
         Fixture() {
-            resources.freeze();
             for (var definition : ObjectList.of(definition(FIRST, 3), definition(SECOND, 1)))
                 research.register(definition);
-            research.freeze(resources);
+            research.freeze();
             player.completeAtLeast(FIRST, 1);
             player.completeAtLeast(SECOND, 1);
-            network = new NetworkRuntime(identities, resources, this::membership, this::requireOwner);
+            network = new NetworkRuntime(identities, this::membership, this::requireOwner);
             dataRole = MachineNetworkDevice.capturedComponent(id("data_role"), ownership, (machine, identity) -> {
                 var captured = storage(machine).capture();
                 var contents = captured.snapshot();
@@ -349,7 +346,7 @@ class ResearchDataCentersTest {
                     contents = new DataCenterResearchSnapshot(contents.dataCenterId(), contents.level(),
                         contents.capacity(), contents.revision(), Object2IntMaps.singleton(FIRST, 1));
                 var snapshot = new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.DATA_CENTER, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(),
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Reference2DoubleMaps.emptyMap(),
                     NetworkResourceModifier.EMPTY, contents.capacity(), contents.storedResearch().size(), contents);
                 return new NetworkRuntime.Capture(snapshot, captured.current());
             }, _ -> network);
@@ -357,12 +354,11 @@ class ResearchDataCentersTest {
                                   .component(ownership).component(storageType).component(dataRole).build();
             dataAssembly = MachineAssembly.builder(dataType, "data-v1").component(ownership, MachineOwnership.CODEC)
                                           .recreated(storageType).recreated(dataRole).build();
-            var supply = new Object2LongOpenHashMap<NetworkResourceType>();
-            supply.put(NetworkResources.COMPUTE, 100);
-            supply.put(NetworkResources.THREAD, 2);
+            var supply = new Reference2DoubleOpenHashMap<NetworkResourceType>();
+            supply.put(ComputingResourceFixtures.COMPUTE, 100);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership, (machine, identity) ->
                 new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), 2, supply, NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var centerType = MachineType.builder(id("center_machine"), GuiText.ResourceStorage, id("structure"))
                                         .component(ownership).component(centerRole).build();
             var assembly = MachineAssembly.builder(centerType, "center-v1").component(ownership, MachineOwnership.CODEC).recreated(centerRole).build();
@@ -419,7 +415,7 @@ class ResearchDataCentersTest {
         }
 
         ResearchWorld researchWorld(ResearchPermissionPolicy policy, Consumer<ResearchWorldSnapshot> writer) {
-            var result = new ResearchWorld(research, resources, policy, writer);
+            var result = new ResearchWorld(research, policy, writer);
             result.restore(new ResearchWorldSnapshot(0, ObjectList.of(player.snapshot()), ObjectList.of()));
             return result;
         }

@@ -8,7 +8,6 @@ import com.circulation.prototype_eng.api.client.jei.RecipeJeiDisplays;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.attribute.StandardMachineAttributes;
 import com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.recipe.CompositeRecipePool;
 import com.circulation.prototype_eng.api.recipe.DefaultRecipePool;
 import com.circulation.prototype_eng.api.recipe.RecipeDeclarationKey;
@@ -417,12 +416,10 @@ class ZenRecipeBridgeTest {
         var codecs = new RecipeProcessCodecs(List.of(original.codec()));
         registry.bindProcessCodecs(codecs);
         registry.freeze();
-        var resources = new NetworkResourceRegistry();
-        resources.freeze();
         var research = new ResearchRegistry();
-        research.freeze(resources);
+        research.freeze();
         var extensions = new NetworkRecipeExtensions();
-        extensions.publish(registry.snapshot(), research, resources);
+        extensions.publish(registry.snapshot(), research);
         try (var scheduler = new TaskScheduler(Thread.currentThread(), 1, 1);
              var updates = new RecipeDefinitionUpdates(registry, extensions, scheduler, UUID.randomUUID(), _ -> {
              })) {

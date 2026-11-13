@@ -6,6 +6,8 @@ import com.circulation.prototype_eng.api.research.manual.ManualResearchSession;
 import com.circulation.prototype_eng.api.research.reward.RewardClaim;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Reference2DoubleMap;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.ObjectSet;
 import net.minecraft.util.ResourceLocation;
@@ -41,6 +43,7 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
     /**
      * Compatibility constructor: an older detached view grants no new operation permissions.
      */
+    @SuppressWarnings("unused") // Public compatibility constructor for existing API callers.
     public ResearchPlayerView(UUID playerUuid, long serverTime, boolean savePending,
                               Decision personalPermission, Object2IntMap<ResourceLocation> personalLevels,
                               Team team, ObjectList<ClaimSummary> claims) {
@@ -79,7 +82,7 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
                        Object2IntMap<ResourceLocation> sharedLevels,
                        Object2IntMap<ResourceLocation> structuralTargets, ObjectSet<ResourceLocation> blacklist,
                        long queueEpoch, ObjectList<QueueRow> queueRows,
-                       Object2LongMap<ResourceLocation> numericProgress, ObjectList<ManualRow> manualRows) {
+                       Reference2DoubleMap<NetworkResourceType> numericProgress, ObjectList<ManualRow> manualRows) {
         public Team {
             Objects.requireNonNull(status);
             Objects.requireNonNull(id);
@@ -93,7 +96,9 @@ public record ResearchPlayerView(UUID playerUuid, long serverTime, boolean saveP
             validateLevels(structuralTargets);
             Objects.requireNonNull(blacklist);
             Objects.requireNonNull(queueRows);
-            validateCounts(numericProgress);
+            for (var entry : numericProgress.reference2DoubleEntrySet())
+                if (!Double.isFinite(entry.getDoubleValue()) || entry.getDoubleValue() < 0)
+                    throw new IllegalArgumentException("Invalid research progress");
             Objects.requireNonNull(manualRows);
             if (viewPermission != Decision.ALLOWED && (!sharedLevels.isEmpty() || !structuralTargets.isEmpty() || !blacklist.isEmpty())) {
                 throw new IllegalArgumentException("Denied team view contains research data");

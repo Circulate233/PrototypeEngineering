@@ -241,15 +241,15 @@ public final class RunNetworkRender {
             case "net-registered" -> {
                 requireCount(args, 1);
                 var research = ResearchRegistry.INSTANCE.require(id("research_station"));
-                var compute = com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry.INSTANCE.require(id("net_compute"));
-                NativeChecks.check("research_actual_stage_formula", research.totalResourceDemandForLevel(1).getLong(compute) == 1200
-                    && research.totalResourceDemandForLevel(2).getLong(compute) == 1300);
+                var compute = pe.visual.examples.ExampleResources.NET_COMPUTE;
+                NativeChecks.check("research_actual_stage_formula", research.totalResourceDemandForLevel(1).getDouble(compute) == 1200
+                    && research.totalResourceDemandForLevel(2).getDouble(compute) == 1300);
                 NativeChecks.check("research_actual_prerequisite_mutex", research.prerequisitesForLevel(1).getInt(id("research_manual")) == 1
                     && !ResearchRegistry.INSTANCE.require(id("research_mutex")).mutexRulesForLevel(1).isEmpty());
                 var canonical = Objects.requireNonNull(RecipeRegistry.INSTANCE.catalog().recipes().stream().filter(r -> r.id().equals(id("net_recipe"))).findFirst().orElse(null));
                 var requirements = com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions.INSTANCE.require(canonical);
-                NativeChecks.check("net_actual_exact_recipe_extensions", requirements.resources().getLong(compute) == 2
-                    && !requirements.resources().containsKey(com.circulation.prototype_eng.api.network.resource.NetworkResources.THREAD)
+                NativeChecks.check("net_actual_exact_recipe_extensions", requirements.resources().getDouble(compute) == 2
+                    && requirements.resources().size() == 1
                     && requirements.researchRequirements().getInt(id("research_station")) == 1);
                 NativeChecks.check("research_real_disk_items", diskItem != null && lowDiskItem != null
                     && ForgeRegistries.ITEMS.getValue(id("research_disk")) == diskItem && ForgeRegistries.ITEMS.getValue(id("research_low_disk")) == lowDiskItem);
@@ -299,8 +299,8 @@ public final class RunNetworkRender {
                         if (entry.component() instanceof MachineNetworkDevice device) {
                             var permit = device.workPermit();
                             NativeChecks.check("net_physical_item_supply", permit != null && permit.current()
-                                && permit.deviceSnapshot().resourcesPerTick().getLong(com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry.INSTANCE.require(id("net_compute"))) == compute
-                                && permit.deviceSnapshot().resourcesPerTick().getLong(com.circulation.prototype_eng.api.network.resource.NetworkResources.THREAD) == threads);
+                                && permit.deviceSnapshot().resourcesPerTick().getDouble(pe.visual.examples.ExampleResources.NET_COMPUTE) == compute
+                                && permit.deviceSnapshot().concurrencyPerTick() == threads);
                             pass(player, "net_physical_item_supply", "raw per-device compute=" + compute + " threads=" + threads + " actual team remaining=" + permit.availableResources());
                             return;
                         }
@@ -341,11 +341,11 @@ public final class RunNetworkRender {
                     for (var entry : owner.components().assemblyBindings())
                         if (entry.component() instanceof MachineNetworkDevice device) {
                             var permit = Objects.requireNonNull(device.workPermit());
-                            var compute = com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry.INSTANCE.require(id("net_compute"));
+                            var compute = pe.visual.examples.ExampleResources.NET_COMPUTE;
                             var required = com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions.INSTANCE.require(
                                 processes.getFirst().recipe()).scaledResources(expected);
-                            NativeChecks.check("net_final_numeric_vector", required.size() == 1 && required.getLong(compute) == 2L * expected
-                                && !required.containsKey(com.circulation.prototype_eng.api.network.resource.NetworkResources.THREAD));
+                            NativeChecks.check("net_final_numeric_vector", required.size() == 1 && required.getDouble(compute) == 2L * expected
+                            );
                             var before = permit.availableResources();
                             var receipts = new it.unimi.dsi.fastutil.objects.ObjectArrayList<com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.Reservation>();
                             boolean committed = true;
@@ -357,11 +357,11 @@ public final class RunNetworkRender {
                                     var vector = com.circulation.prototype_eng.api.network.recipe.NetworkRecipeExtensions.INSTANCE.require(actualProcess.recipe()).scaledResources(expected);
                                     var receipt = permit.reserve(id("net_budget_probe"), vector);
                                     NativeChecks.check("net_native_budget_receipt", receipt != null && receipt.operation().machineId().equals(Objects.requireNonNull(host.savedIdentity()).machineId())
-                                        && receipt.resources().getLong(compute) == 2L * expected);
+                                        && receipt.resources().getDouble(compute) == 2L * expected);
                                     receipts.add(receipt);
                                 }
                                 NativeChecks.check("net_same_machine_lease_shared", permit.requestLease() == com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget.LeaseStatus.ALREADY_GRANTED);
-                                NativeChecks.check("net_native_budget_actual_total_delta", permit.availableResources().getLong(compute) == before.getLong(compute) - 2L * expected * expectedCount);
+                                NativeChecks.check("net_native_budget_actual_total_delta", permit.availableResources().getDouble(compute) == before.getDouble(compute) - 2L * expected * expectedCount);
                                 for (var receipt : receipts) committed &= receipt.commit();
                             } finally {
                                 for (var receipt : receipts) receipt.rollback();
@@ -457,10 +457,10 @@ public final class RunNetworkRender {
                     NativeChecks.check("research_station_actual_team", membership.accepted());
                     var team = ServerResearch.forServer(server).snapshot().teams().stream().filter(t -> t.teamId().equals(membership.teamId())).findFirst().orElseThrow();
                     var segment = Objects.requireNonNull(team.stationWork().segment(), "No actual pending material segment");
-                    long progress = team.queue().resourceProgress().getLong(com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry.INSTANCE.require(id("net_compute")));
+                    double progress = team.queue().resourceProgress().getDouble(pe.visual.examples.ExampleResources.NET_COMPUTE);
                     var image = new NBTTagCompound();
                     image.setLong("queue_entry", segment.key().queueEntryId());
-                    image.setLong("numeric_progress", progress);
+                    image.setDouble("numeric_progress", progress);
                     image.setTag("process", segment.processTag());
                     var sites = new NBTTagList();
                     for (var site : segment.sites()) {

@@ -4,7 +4,6 @@ import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.identity.PersistentMachineIdentity;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineIdentity;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
 import com.circulation.prototype_eng.api.persistence.ResourceKeyNbt;
 import com.circulation.prototype_eng.api.recipe.process.ProcessResult;
 import com.circulation.prototype_eng.api.recipe.process.RecipeProcess;
@@ -216,7 +215,7 @@ class ResearchWorldStationPersistenceTest {
     @Test
     void envelopeValidatesResearchTierButFullMaterialRevisionWaitsForTheRealOwner() {
         var fixture = new Fixture();
-        var manualQueue = new TeamResearchQueue(fixture.registry, fixture.resources, "team");
+        var manualQueue = new TeamResearchQueue(fixture.registry, "team");
         var manualEntry = manualQueue.enqueue(MANUAL, 1, PLAYER, 1);
         var wrongTier = new ResearchStationWork.Saved(4, new ResearchStationWork.SavedSegment(manualEntry.key(), fixture.sites, fixture.processTag));
         var manualTeam = new ResearchWorldSnapshot.Team("team", members(), new ObjectOpenHashSet<>(), fixture.research.snapshot(),
@@ -233,7 +232,6 @@ class ResearchWorldStationPersistenceTest {
     }
 
     private static final class Fixture {
-        private final NetworkResourceRegistry resources = new NetworkResourceRegistry();
         private final ResearchRegistry registry = new ResearchRegistry();
         private final PlayerResearchState player = new PlayerResearchState(PLAYER);
         private final MachineInstance owner = new MachineInstance();
@@ -246,7 +244,6 @@ class ResearchWorldStationPersistenceTest {
             new ResearchStations.Site(new PersistentMachineIdentity(new UUID(0, 6), PLAYER), new MachineIdentity(id("other_station"), -1, new BlockPos(-14, 69, 21))));
 
         private Fixture() {
-            resources.freeze();
             var energy = RecipeRequirements.ENERGY.requirement(id("material_energy"), new EnergyRequirement(0, 3, 0, 0, false));
             registry.register(ResearchDefinition.builder(STATION).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(1).resourceFormula(ResearchResourceFormula.builder().build())
@@ -254,12 +251,12 @@ class ResearchWorldStationPersistenceTest {
                                                     }).build()).build());
             registry.register(ResearchDefinition.builder(MANUAL).maxLevel(1).deliveryPolicy(ResearchDownloadDeliveryPolicy.DATABASE_AND_ITEM)
                                                 .stage(ResearchLevelStage.builder(1, 1).researchTier(0).resourceFormula(ResearchResourceFormula.builder().build()).build()).build());
-            registry.freeze(resources);
-            queue = new TeamResearchQueue(registry, resources, "team");
+            registry.freeze();
+            queue = new TeamResearchQueue(registry, "team");
             queue.enqueue(STATION, 1, PLAYER, 1);
             queue.enqueue(MANUAL, 1, PLAYER, 2);
             research = new TeamOwnedResearch("team", registry);
-            codec = new ResearchWorldNbt(registry, resources, new ResourceKeyNbt(_ -> null));
+            codec = new ResearchWorldNbt(registry, new ResourceKeyNbt(_ -> null));
             var materials = RecipeProcess.materialCycle(owner, registry.materials(STATION, 1).recipe(), emptyHatches(), 7);
             assertInstanceOf(ProcessResult.Blocked.class, materials.tick());
             processTag = registry.materials(STATION, 1).encode(materials);
