@@ -65,7 +65,7 @@ public final class ResourceHatchGui extends AEBaseGui<ResourceHatchContainer> {
         if (container.hasColorGrouping()) {
             colorSelector = new ResourceColorSelector(() -> container.color, container::setResourceColor,
                 ResourceColorSelector.Style.HATCH);
-            colorSelector.setPosition(new Point(4, 50));
+            colorSelector.setPosition(new Point(4, 49));
             widgets.add("resourceColor", colorSelector);
         }
         widgets.add("autoInput", new HatchToggleButton(true,
