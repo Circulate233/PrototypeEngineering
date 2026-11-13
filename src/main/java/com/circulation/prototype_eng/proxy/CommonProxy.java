@@ -10,7 +10,6 @@ import com.circulation.prototype_eng.Tags;
 import com.circulation.prototype_eng.api.gui.EnergyHatchGuiHost;
 import com.circulation.prototype_eng.api.gui.MachineGuiRegistry;
 import com.circulation.prototype_eng.api.gui.ParallelControllerGuiHost;
-import com.circulation.prototype_eng.api.gui.ResearchGuiAccess;
 import com.circulation.prototype_eng.api.gui.ResourceHatchGuiHost;
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineRuntimeRegistrationEvent;
@@ -40,7 +39,6 @@ import com.circulation.prototype_eng.container.ContainerEnergyHatch;
 import com.circulation.prototype_eng.container.ContainerMEPatternAssembly;
 import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
 import com.circulation.prototype_eng.container.ContainerParallelController;
-import com.circulation.prototype_eng.container.ContainerResearch;
 import com.circulation.prototype_eng.container.ContainerResourceHatch;
 import com.circulation.prototype_eng.container.ContainerStructureTool;
 import com.circulation.prototype_eng.machine.ControllerDisplayData;
@@ -240,9 +238,6 @@ public class CommonProxy implements IGuiHandler {
     public Object getServerGuiElement(int id, EntityPlayer player, World world, int x, int y, int z) {
         if (id == ContainerStructureTool.GUI_ID) {
             return ContainerStructureTool.open(player.inventory, x);
-        }
-        if (id == ResearchGuiAccess.GUI_ID) {
-            return new ContainerResearch(player.inventory);
         }
         if (id != 0 && id != 3 && id != 4 && id != 5) return null;
         var position = new BlockPos(x, y, z);

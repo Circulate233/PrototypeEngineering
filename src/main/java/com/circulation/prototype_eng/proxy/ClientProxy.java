@@ -20,7 +20,6 @@ import com.circulation.prototype_eng.client.gui.GuiEnergyHatch;
 import com.circulation.prototype_eng.client.gui.GuiMEPatternAssembly;
 import com.circulation.prototype_eng.client.gui.GuiMEResourceHatch;
 import com.circulation.prototype_eng.client.gui.GuiParallelController;
-import com.circulation.prototype_eng.client.gui.GuiResearch;
 import com.circulation.prototype_eng.client.gui.GuiResourceHatch;
 import com.circulation.prototype_eng.client.gui.GuiScannerInstrument;
 import com.circulation.prototype_eng.client.preview.PreviewClientOpenQueue;
@@ -47,7 +46,6 @@ import com.circulation.prototype_eng.container.ContainerEnergyHatch;
 import com.circulation.prototype_eng.container.ContainerMEPatternAssembly;
 import com.circulation.prototype_eng.container.ContainerMEResourceHatch;
 import com.circulation.prototype_eng.container.ContainerParallelController;
-import com.circulation.prototype_eng.container.ContainerResearch;
 import com.circulation.prototype_eng.container.ContainerResourceHatch;
 import com.circulation.prototype_eng.container.ContainerStructureTool;
 import com.circulation.prototype_eng.integration.jei.PrototypeJeiPlugin;
@@ -494,7 +492,6 @@ public class ClientProxy extends CommonProxy {
             case ContainerStructureTool tool -> tool.builder()
                 ? new GuiBuilderInstrument(tool, player.inventory)
                 : new GuiScannerInstrument(tool, player.inventory);
-            case ContainerResearch research -> new GuiResearch(research, player.inventory);
             case ContainerMEPatternAssembly pattern -> new GuiMEPatternAssembly(pattern, player.inventory);
             case ContainerMEResourceHatch me -> new GuiMEResourceHatch(me, player.inventory);
             case ContainerParallelController parallel -> new GuiParallelController(parallel, player.inventory);

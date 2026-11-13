@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 按用户要求移除全部现有研究相关GUI：研究/队列/奖励/数据库/遗忘与管理员页面、专用容器/入口/同步/图标注册/文案与测试删除；后台研究能力保留。研究GUI恢复为延缓实现，后续仅按用户逐项要求处理。入口[研究GUI状态](research-gui.md)，删除范围与必要验证见[实施进度](implementation-status.md)。此前研究GUI已完成或待验记录已撤销。
+
 - 2026-11-13 再次全仓复审与统一提交：修复BlockPos Map普通构造器漏复制；清理结构临时坐标、归并排序重复缓冲、分组/样板全表扫描、每帧NBT字符串及剩余Frozen包装，改为Javadoc只读交接。1105份Java均已通过IDEA MCP格式化并逐份检查：1076全级零、5份CTM仍有IDE依赖解析诊断、24份文档/run被排除；完整Gradle build的1883项测试全通过，MCP build及21Java addon编译安装成功。入口[复审](defensive-programming-audit.md#2026-11-13-再次复审与统一格式化)、[集合契约](blockpos-maps.md)，最终证据见[实施进度](implementation-status.md)。本次按用户授权统一提交，日志严格为`Clean and Spoless code`；下一步读取最新实施证据，实际画面/游戏行为由用户复验。不启动游戏、不推送。
 
 - 2026-11-13 构建器六开关与实际策略已接入：完整材料需求/等待材料补充、完整空间需求/忽略世界流体、ME取料/自动AE合成三组；三项从属开关在客户端和服务器校验前置，关前置时清除从属开启状态。严格空间只认空气（可选择将世界流体视为空气），关闭则用原采掘/保护事件挖掘占位；缺料等待保留当前位置，补料后继续，不等待则跳过。直接复用结构选择工具20×13开关及21×14底框阴影，24组完整像素对照全相等；标签和tooltip显式分行。入口[工具布局](structure-tools.md#2026-11-13-构建器预检me与外部结构)，证据builder-policies/见[实施进度](implementation-status.md)。独立17项测试和本轮IDEA全级通过；整仓构建仍受其他进行中的接口重构影响。下一步用户重启复验六开关/前置、草和石块挖掘、世界流体、等待后补料及AE确认；本地提交、不推送/启动游戏，背景与暂存保留。
@@ -180,7 +182,7 @@
 | 配方阶段/预设事件的真实迁移状态与功能优先顺序 | [recipe-feature-parity.md](recipe-feature-parity.md)、[pm-recipe-events-audit.md](pm-recipe-events-audit.md) |
 | 普通数据库下载/自动升级/真实物理授权/数据库 GUI | [data-centers.md](data-centers.md) |
 | 普通物品转换/材料和来源费用/nonce与原生输出恢复/分级盘边界 | [research-downloads.md](research-downloads.md) |
-| 研究 GUI/分页同步/文案/开始接管黑名单与领取 | [research-gui.md](research-gui.md) |
+| 研究 GUI（已移除，延缓实现） | [research-gui.md](research-gui.md) |
 | 研究定义/资格/入队/队列/完成传播/奖励与服务器缺口 | [research-features.md](research-features.md)、[pn-research-execution-audit.md](pn-research-execution-audit.md) |
 | 研究站显式消费者/真实来源/材料周期/END共同提交 | [research-stations.md](research-stations.md) |
 | 服务器研究 owner/单一存档/FTB/玩家事件/手动入口 | [server-research.md](server-research.md) |

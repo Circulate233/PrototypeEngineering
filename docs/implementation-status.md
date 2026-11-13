@@ -1,5 +1,12 @@
 # 实施进度
 
+## 2026-11-13 移除研究 GUI，恢复延缓状态
+
+- 按用户明确要求删除整套现有研究GUI：研究、队列、奖励、数据库、遗忘和管理员操作页面，以及专用容器、打开入口、分页同步、图标注册和GUI文案。共删除7份生产类、4份专用测试，并移除混合GUI编解码测试中的2项研究用例；机器GUI及其测试保留。
+- 研究、队列、奖励、数据库、下载、研究盘和权限/持久化的后台Java能力保留。原研究GUI文案中另被研究盘右键导入使用的11条反馈移到独立ResearchDiskText，中英文原内容保持，避免删除GUI影响现有物品交互。
+- [研究GUI文档](research-gui.md)已改为延缓状态，需求和索引同步；此前“研究GUI已完成/待实机验收”记录撤销。后续仅按用户逐项要求处理，不保留占位界面或自行重做。
+- 必要验证：主/测试编译输出清理后，`compileTestJava build -x test`成功，包含Spotless及JAR/reobf；未新增或运行行为测试。5份修改/新增Java本机IDEA MCP `get_file_problems(errorsOnly:false)`错误、警告、弱警告全零，MCP指定构建成功。源码无已删除GUI类或翻译键引用。证据：`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/remove-research-gui/`。本地提交，不推送、不启动游戏。
+
 ## 2026-11-13 再次复审、全仓格式化与统一提交
 
 - 从 `57efff1` 的当前工作树重新复审，完整基线、四分片源码审查与逐文件覆盖记录位于 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/clean-spoless-review/`。重点修复及契约见 [防御性编程复审](defensive-programming-audit.md#2026-11-13-再次复审与统一格式化) 和 [BlockPos Map](blockpos-maps.md)。本轮统一收录当前未提交改动，提交日志严格采用用户指定的 `Clean and Spoless code`，不再沿用早期单独隔离暂存的方案。

@@ -1,7 +1,7 @@
 package com.circulation.prototype_eng.api.research.disk;
 
 import com.circulation.prototype_eng.api.machine.MachineControllerHost;
-import com.circulation.prototype_eng.localization.ResearchGuiText;
+import com.circulation.prototype_eng.localization.ResearchDiskText;
 import com.circulation.prototype_eng.research.ServerResearch;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -37,7 +37,7 @@ public final class ResearchDiskInteractions {
             return EnumActionResult.FAIL;
         if (!world.isRemote && player instanceof EntityPlayerMP actor) {
             ServerResearch.requestDiskImport(actor, pos, hand, facing,
-                result -> actor.sendStatusMessage(ResearchGuiText.diskImport(result.status()).text(), true));
+                result -> actor.sendStatusMessage(ResearchDiskText.diskImport(result.status()).text(), true));
         }
         return EnumActionResult.SUCCESS;
     }
