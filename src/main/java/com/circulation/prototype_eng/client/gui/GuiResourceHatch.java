@@ -58,10 +58,9 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
         xSize = container.guiWidth;
         ySize = container.guiHeight;
         boolean mixed = container.mode() == HatchMode.MIXED;
-        String folder = mixed ? "gui_material_io_hatch" : "gui_material_hatch";
-        background = GuiAtlas.texture(folder + "/" + folder + "_" + container.tier().level());
-        inputScrollbar = new HatchScrollbar(mixed, container.mode().hasInput());
-        outputScrollbar = new HatchScrollbar(mixed, container.mode().hasOutput());
+        background = container.background;
+        inputScrollbar = new HatchScrollbar(mixed, container.scrollbars && container.mode().hasInput());
+        outputScrollbar = new HatchScrollbar(mixed, container.scrollbars && container.mode().hasOutput());
         widgets.add("inputScrollbar", inputScrollbar);
         widgets.add("outputScrollbar", outputScrollbar);
         if (container.hasColorGrouping()) {
@@ -70,16 +69,18 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
             colorSelector.setPosition(new Point(4, 49));
             widgets.add("resourceColor", colorSelector);
         }
-        widgets.add("autoInput", new HatchToggleButton(true,
-            () -> container.autoInput, container.hasAutomationSettings() && container.mode().hasInput(), container::toggleInput, new Point(4, 13)));
-        widgets.add("autoOutput", new HatchToggleButton(false,
-            () -> container.autoOutput, container.hasAutomationSettings() && container.mode().hasOutput(), container::toggleOutput, new Point(4, 31)));
+        if (container.hasAutomationSettings()) {
+            widgets.add("autoInput", new HatchToggleButton(true,
+                () -> container.autoInput, container.mode().hasInput(), container::toggleInput, new Point(4, 13)));
+            widgets.add("autoOutput", new HatchToggleButton(false,
+                () -> container.autoOutput, container.mode().hasOutput(), container::toggleOutput, new Point(4, 31)));
+        }
     }
 
     @Override
     public void initGui() {
         super.initGui();
-        inputScrollbar.configure(26, container.resourceTop, container.columns, container.visibleRows,
+        inputScrollbar.configure(container.inputLeft, container.resourceTop, container.columns, container.visibleRows,
             container.mode().hasInput() ? container.inputRows() : 0);
         outputScrollbar.configure(container.outputLeft, container.resourceTop, container.columns, container.visibleRows,
             container.mode().hasOutput() ? container.outputRows() : 0);
@@ -89,7 +90,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     @Override
     protected void updateBeforeRender() {
         super.updateBeforeRender();
-        inputScrollbar.configure(26, container.resourceTop, container.columns, container.visibleRows, container.inputRows());
+        inputScrollbar.configure(container.inputLeft, container.resourceTop, container.columns, container.visibleRows, container.inputRows());
         outputScrollbar.configure(container.outputLeft, container.resourceTop, container.columns, container.visibleRows, container.outputRows());
         var mouse = new Point(Mouse.getX() * width / mc.displayWidth - guiLeft,
             height - Mouse.getY() * height / mc.displayHeight - 1 - guiTop);
@@ -112,7 +113,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
                 boolean visible = container.logicalSlot(slot.slotNumber) >= 0
                     && top + 18 > container.resourceTop && top < container.resourceTop + container.visibleRows * 18L;
                 resource.setActive(visible);
-                slot.xPos = visible ? (input ? 26 : container.outputLeft) + cell % container.columns * 18 + 1 : -9999;
+                slot.xPos = visible ? (input ? container.inputLeft : container.outputLeft) + cell % container.columns * 18 + 1 : -9999;
                 slot.yPos = visible ? (int) top + 1 : -9999;
             }
         }
@@ -135,7 +136,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     }
 
     private void drawSlotFrames(int x, int y, boolean input) {
-        int left = input ? 26 : container.outputLeft;
+        int left = input ? container.inputLeft : container.outputLeft;
         beginClip(left);
         try {
             for (var slot : container.inventorySlots) {
@@ -157,7 +158,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
             }
             return;
         }
-        beginClip(container.isInputSlot(slot.slotNumber) ? 26 : container.outputLeft);
+        beginClip(container.isInputSlot(slot.slotNumber) ? container.inputLeft : container.outputLeft);
         try {
             super.drawSlot(slot);
         } finally {
@@ -182,7 +183,7 @@ public final class GuiResourceHatch extends AEBaseGui<ContainerResourceHatch> {
     public void drawFG(int x, int y, int mouseX, int mouseY) {
         GuiLabel.drawCentered(fontRenderer, Objects.requireNonNull(container.getGuiTitle()).getFormattedText(), 29, 8, titleWidth(), 10, 0x404040, false);
         if (container.mode().hasInput())
-            GuiAtlas.inset(26, container.resourceTop, container.columns * 18, container.visibleRows * 18);
+            GuiAtlas.inset(container.inputLeft, container.resourceTop, container.columns * 18, container.visibleRows * 18);
         if (container.mode().hasOutput())
             GuiAtlas.inset(container.outputLeft, container.resourceTop, container.columns * 18, container.visibleRows * 18);
     }

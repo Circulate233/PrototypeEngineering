@@ -1,17 +1,17 @@
 package com.circulation.prototype_eng.api.network;
 
-import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
-import it.unimi.dsi.fastutil.objects.Object2LongMaps;
+import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleEvent;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleHost;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineLifecycleListener;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.structure.MachineStructureHost;
 import com.circulation.prototype_eng.machine.ServerNetworkRuntime;
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -146,7 +146,7 @@ public final class MachineNetworkDevice implements MachineLifecycleListener {
         }
         return new NetworkRuntime.Capture(snapshot, () -> lifecycle.schedulingAllowed() && lifecycle.formed() == formed
             && owner.components().get(boundType) == this && (structureHost == null || structureHost.structureConfiguration() == configuration)
-            && captured.current().getAsBoolean(), captured.centerPower());
+            && captured.current().getAsBoolean(), captured.centerPower(), captured.computerWork());
     }
 
     @Override

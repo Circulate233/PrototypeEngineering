@@ -2,6 +2,8 @@
 import mods.pe_run_tests.Text;
 import mods.prototype_eng.MachineType;
 import mods.prototype_eng.recipe.Bindings;
+import mods.prototype_eng.recipe.Resource;
+import mods.prototype_eng.resource.ComputerRecipe;
 import mods.prototype_eng.resource.ComputingResource;
 import mods.prototype_eng.resource.ComputingResources;
 import mods.prototype_eng.resource.ComputingModifier;
@@ -13,9 +15,11 @@ var compute = ComputingResource.create("pe_run_tests:net_compute", false);
 var empty = ComputingResources.create();
 MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1, 4, 4)
     .register("network-center-v1");
-MachineType.create("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_shape")
-    .network(NetworkConfiguration.create("pe_run_tests:net_computer", "COMPUTER", 0, empty,
-        ComputingModifier.create().flat(compute, 2).multiplierPpm(compute, 1000000), 0, NetworkRequirements.create())).register("v1");
+var cooling = ComputingResource.internal("pe_run_tests:cooling", false);
+var coolingRecipe = ComputerRecipe.create("pe_run_tests:cooling_recipe", [Resource.fluid(<liquid:water>, 1000)],
+    ComputingResources.create().add(cooling, 1000));
+MachineType.computer("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_computer_shape", 8,
+    ComputingResources.create().add(compute, 1000), [coolingRecipe]).register("computer-v1");
 MachineType.researchStation("pe_run_tests:net_station", Text.NetStation.key, "pe_run_tests:net_shape", 1,
     ComputingResources.create().add(compute, 10), 8).register("research-station-v1");
 MachineType.create("pe_run_tests:net_database", Text.NetDatabase.key, "pe_run_tests:net_shape")

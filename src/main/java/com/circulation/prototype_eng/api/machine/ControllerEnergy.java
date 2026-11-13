@@ -42,7 +42,13 @@ public final class ControllerEnergy {
      * Call with no other payment outstanding for this controller. Null means insufficient FE.
      */
     public @Nullable Payment reserve(MachineInstance machine, long tick) {
-        long remaining = machine.energyPerTick();
+        return reserve(machine, tick, machine.energyPerTick());
+    }
+
+    /**
+     * Explicit nonnegative subsystem cost; the machine itself need not have an upkeep fee.
+     */
+    public @Nullable Payment reserve(MachineInstance machine, long tick, long remaining) {
         if (remaining == 0 || paidTick == tick) return Payment.FREE;
         var tokens = new ObjectArrayList<ResourceReservation>();
         var visited = new ReferenceOpenHashSet<StorageContext>();

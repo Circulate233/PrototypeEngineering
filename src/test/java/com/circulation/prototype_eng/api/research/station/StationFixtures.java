@@ -75,7 +75,7 @@ final class StationFixtures implements AutoCloseable {
     @SuppressWarnings("unused")
         // Shared station consumer tests provide full material requirements and numeric supply here.
     StationFixtures(long threads, long compute, int dataCenterTier, ResearchDefinition definition) {
-        this.threads = threads;
+        this.threads = Math.addExact(threads, 1); // The active database holds one infrastructure lease.
         this.compute = compute;
         resources.freeze();
         research.register(definition);

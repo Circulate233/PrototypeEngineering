@@ -28,12 +28,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Independent multi-type slots. Every view and reservation shares one balance and lock.
  */
 public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private final StorageContext context;
+    private final Predicate<AEKey> accepted;
     private final Reference2LongArrayMap<AEKeyType> capacities = new Reference2LongArrayMap<>();
     private final AEKey[] keys;
     private final long[] amounts;
@@ -54,6 +56,14 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     private volatile @Nullable Consumer<List<GenericStack>> destructionDrops;
 
     public SlottedResourceBuffer(int slots, Reference2LongMap<AEKeyType> capacities, Runnable onChanged) {
+        this(slots, capacities, _ -> true, onChanged);
+    }
+
+    /**
+     * The insertion predicate is immutable, thread-safe and independent of inventory state.
+     */
+    public SlottedResourceBuffer(int slots, Reference2LongMap<AEKeyType> capacities, Predicate<AEKey> accepted, Runnable onChanged) {
+        this.accepted = Objects.requireNonNull(accepted);
         if (slots <= 0 || capacities.isEmpty()) {
             throw new IllegalArgumentException("A buffer needs slots and supported resource types");
         }
@@ -233,7 +243,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
     @Override
     public long getMaxAmount(AEKey key) {
         Objects.requireNonNull(key);
-        return getCapacity(key.getType());
+        return accepted.test(key) ? getCapacity(key.getType()) : 0;
     }
 
     @Override
@@ -248,7 +258,7 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
         context.lock();
         try {
             checkSlot(slot);
-            return context.isValid() && capacities.containsKey(key.getType())
+            return context.isValid() && getMaxAmount(key) > 0
                 && (reservedExtract[slot] == 0 && reservedInsert[slot] == 0 || key.equals(keys[slot]));
         } finally {
             context.unlock();
@@ -654,14 +664,14 @@ public final class SlottedResourceBuffer implements SlottedResourceStorage {
 
     private void validateStack(@Nullable GenericStack stack) {
         if (stack != null && (stack.amount() < 0
-            || stack.amount() > capacities.getLong(stack.what().getType())
+            || stack.amount() > getMaxAmount(stack.what())
             || !capacities.containsKey(stack.what().getType()))) {
             throw new IllegalArgumentException("Slot resource or amount is outside configured capacity");
         }
     }
 
     private long insertionHeadroom(AEKey key) {
-        return Long.MAX_VALUE - totals.getLong(key) - insertHolds.getLong(key);
+        return accepted.test(key) ? Long.MAX_VALUE - totals.getLong(key) - insertHolds.getLong(key) : 0;
     }
 
     private Allocation allocate(AEKey key, long requested, boolean insert) {

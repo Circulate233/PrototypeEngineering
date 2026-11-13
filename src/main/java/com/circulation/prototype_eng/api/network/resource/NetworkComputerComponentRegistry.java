@@ -64,10 +64,12 @@ public final class NetworkComputerComponentRegistry {
     NetworkComputerComponent.Capture capture(AEKey key, MachineInstance computer) {
         var current = requireFrozen();
         var provider = current.providers.get(key);
-        if (provider == null) {
+        var itemProvider = key instanceof AEItemKey item && item.getItem() instanceof NetworkComputerComponent component ? component : null;
+        if (provider == null && itemProvider == null) {
             throw new IllegalArgumentException("Unregistered computer component item");
         }
-        var capture = Objects.requireNonNull(provider.apply(computer), "Computer component supply capture");
+        var capture = Objects.requireNonNull(itemProvider == null ? provider.apply(computer)
+            : itemProvider.capture(((AEItemKey) key).toStack(), computer), "Computer component supply capture");
         var supplied = capture.resourcesPerItem();
         var validated = new Object2LongOpenHashMap<NetworkResourceType>(supplied.size());
         for (var entry : supplied.object2LongEntrySet()) {
@@ -78,7 +80,8 @@ public final class NetworkComputerComponentRegistry {
             }
             validated.put(type, amount);
         }
-        return new NetworkComputerComponent.Capture(validated, capture.current());
+        for (var type : capture.requiredResources().keySet()) current.resources.canonical(type);
+        return new NetworkComputerComponent.Capture(validated, capture.requiredResources(), capture.energyPerTick(), capture.current());
     }
 
     void requireReady() {
@@ -86,7 +89,7 @@ public final class NetworkComputerComponentRegistry {
     }
 
     boolean registered(AEKey key) {
-        return requireFrozen().providers.containsKey(key);
+        return key instanceof AEItemKey item && item.getItem() instanceof NetworkComputerComponent || requireFrozen().providers.containsKey(key);
     }
 
     private Frozen requireFrozen() {

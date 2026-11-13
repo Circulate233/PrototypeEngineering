@@ -117,7 +117,8 @@ public final class NetworkPlanner {
             NetworkDeviceSnapshot center = null;
             for (var device : devices) {
                 if (device.formed() && device.role() == NetworkDeviceRole.NETWORK_CENTER && (center == null
-                    || device.level() > center.level() || device.level() == center.level() && device.loadOrder() < center.loadOrder())) {
+                    || device.level() > center.level() || device.level() == center.level()
+                    && device.identity().machineId().compareTo(center.identity().machineId()) < 0)) {
                     center = device;
                 }
             }
@@ -174,7 +175,7 @@ public final class NetworkPlanner {
         if (candidate.storedResearchCount() != retained.storedResearchCount()) {
             return candidate.storedResearchCount() > retained.storedResearchCount();
         }
-        return candidate.loadOrder() < retained.loadOrder();
+        return candidate.identity().machineId().compareTo(retained.identity().machineId()) < 0;
     }
 
     private static void accumulate(Object2LongOpenHashMap<NetworkResourceType> totals, Object2LongMap<NetworkResourceType> contribution) {
@@ -190,6 +191,8 @@ public final class NetworkPlanner {
     private static void checkResources(NetworkResourceRegistry types, Object2LongMap<NetworkResourceType> resources) {
         for (var type : resources.keySet()) {
             types.canonical(type);
+            if (type.internal())
+                throw new IllegalArgumentException("Internal computing resources cannot enter the network: " + type.id());
         }
     }
 
@@ -212,6 +215,10 @@ public final class NetworkPlanner {
 
         OwnerTeamResolution owner(UUID ownerId) {
             return Objects.requireNonNull(owners.get(ownerId));
+        }
+
+        Inputs withDevices(List<NetworkDeviceSnapshot> devices) {
+            return new Inputs(epoch, devices, contributions, owners);
         }
     }
 }

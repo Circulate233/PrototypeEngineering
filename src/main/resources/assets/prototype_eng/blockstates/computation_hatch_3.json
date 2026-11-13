@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "normal": {
+      "model": "prototype_eng:computation_hatch_3"
+    },
+    "inventory": {
+      "model": "prototype_eng:item/computation_hatch_3"
+    }
+  }
+}

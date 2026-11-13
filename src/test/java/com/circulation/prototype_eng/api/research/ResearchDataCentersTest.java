@@ -73,11 +73,18 @@ class ResearchDataCentersTest {
         return new ResourceLocation("test_data_centers", path);
     }
 
+    private static List<MachineInstance> orderedDataCenters(Fixture fixture) {
+        var first = fixture.dataCenter();
+        var second = fixture.dataCenter();
+        return fixture.machineId(first).compareTo(fixture.machineId(second)) < 0 ? List.of(first, second) : List.of(second, first);
+    }
+
     @Test
     void exactPublishedWinnerExposesItsExternalStorageAndRejectsForeignTargets() {
         try (var fixture = new Fixture()) {
-            var first = fixture.dataCenter();
-            var loser = fixture.dataCenter();
+            var pair = orderedDataCenters(fixture);
+            var first = pair.getFirst();
+            var loser = pair.getLast();
             assertNull(fixture.selector.capture("team", fixture.machineId(first)));
             fixture.refresh();
             var capture = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(first)));
@@ -190,8 +197,9 @@ class ResearchDataCentersTest {
     @Test
     void refreshedOwnerTeamAndSelectedWinnerInvalidateTheOldCapture() {
         try (var fixture = new Fixture()) {
-            var first = fixture.dataCenter();
-            var second = fixture.dataCenter();
+            var pair = orderedDataCenters(fixture);
+            var first = pair.getFirst();
+            var second = pair.getLast();
             fixture.refresh();
             var original = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(first)));
             fixture.storage(second).downloadResearch(FIRST, 1, fixture.cloud());
@@ -232,8 +240,9 @@ class ResearchDataCentersTest {
     @Test
     void originalPhysicalBindingSurvivesItsWriteAndRecoversAfterSelectionAndTeamChanges() {
         try (var fixture = new Fixture()) {
-            var first = fixture.dataCenter();
-            var second = fixture.dataCenter();
+            var pair = orderedDataCenters(fixture);
+            var first = pair.getFirst();
+            var second = pair.getLast();
             fixture.refresh();
             var original = Objects.requireNonNull(fixture.selector.capture("team", fixture.machineId(first)));
             var target = original.target();

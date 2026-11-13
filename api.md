@@ -249,7 +249,21 @@ MachineAssembly.builder(type, "research-station-v1")
 
 每段每种资源增加 `min(网络研究供给, 各参与站该资源速率之和, 剩余需求)`。站点等级决定是否合格，速率由站点定义；多个站仍合摊一份 START → TICK → END 材料，不按站数复制。研究站只在成功推进的 END 与进度一起结算自己的 FE，待机或材料周期未完成时不扣这笔电费；材料定义自身的阶段 FE 按原规则另行结算。缺能站不进入新段候选。网络中心只对本次生效者收费，缺能时重选可供电中心。同一设备同一服务器 tick 只成功付费一次，重新发布或调用不会重复扣费。
 
-完整 Java 示例见 [NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java) 和 [ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。当前只提供控制器和接线，没有新增 HTML 或 GUI。
+完整 Java 示例见 [NetworkCenterExamples.java](run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java) 和 [ResearchStationExamples.java](run/visual-examples/src/main/java/pe/visual/examples/ResearchStationExamples.java)。网络中心与研究站当前只提供控制器和接线，相关 GUI 延缓实现。
+
+### 计算机与运算仓
+
+`NetworkComputer` 接口只暴露 `providedConcurrency()` 和 `providedResources()`；资源表包含 THREAD，按只读契约交接。默认 `ComputerController(type, maximumThreads, resourceLimits, recipes)` 可被继承，与网络中心、研究站控制器一样使用共同机器生命周期。类型声明 `MachineOwnership.TYPE`、`ComputerController.COMPONENTS`、`ComputerController.DEVICE`，装配将后两项标为 recreated。计算机自身不收费，组件的 FE 在网络发布事务中支付。
+
+只从 `ComputationHatch` 读取安装组件，组成变化由事件通知，稳定时复用缓存。四级 `computation_hatch_1..4` 分别为1/2/3/4槽；每槽物品1件，非物品原生容量1000/4000/16000/64000。物品的 Item 必须实现 `NetworkComputerComponent`，非物品类型不限。共享库存接受外部插入/抽取，没有自动IO。
+
+组件返回 `new NetworkComputerComponent.Capture(provided, requiredResources, energyPerTick, currentProof)`。本机汇总所有组件的消耗，任何资源或 FE 不足时全部组件供给停摆；可运行的 `ComputerRecipe` 独立继续。`ComputerRecipe(id, inputsPerTick, provided)` 是每tick的供给配方，复用原资源需求的 TICK 事务支付一份输入，也可传只读资格条件。控制器可用 `installedComponents()` 取得安装身份与定义。
+
+`new NetworkResourceType(id, logicalConcurrency, true)` 声明内部资源，例如冷却。内部资源仅在本机产生和占用，不进入 `providedResources()` 或队伍网络；未用额度不跨tick累积。具体控制器的线程/资源上限按配置应用，不是资源类型的固有限制。
+
+计算机启动须先取得中心或其他已获准设备提供的1份并发，不能用自己的待生效供给启动；活动数据库占用1份，研究站推进时申请，中心不占用。三类网络设备优先于普通设备，高优先级申请可收回普通租约并使其未提交凭据失效；同条件使用持久UUID，避免加载顺序决定结果。尚未获准的计算机只预留、不支付材料或组件FE。
+
+ZS 入口为 `MachineType.computer(id, title, structure, maximumThreads, limits, recipes)`，每tick配方用 `ComputerRecipe.create(id, Resource[] inputs, ComputingResources provided)`，内部类型用 `ComputingResource.internal(id, logicalConcurrency)`。完整规则、Java/ZS 示例和边界见[计算机与运算仓](docs/computers.md)。计算机GUI继续延缓；本轮仅实现运算仓GUI。
 
 ### GUI、模型与 JEI
 

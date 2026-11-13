@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 计算机与运算仓完成：默认可继承 ComputerController、双方法 NetworkComputer 接口、四级共享运算仓及紧凑GUI/像素纹理已接入。组件消耗不足时全部组件供给停摆，配方独立继续，内部资源不外泄。启动需其他设备先提供1并发；计算机/研究站/活动数据库优先于普通设备，可收回普通租约，同条件使用持久UUID。供给变化在同tick生效，保留已消费量。入口[计算机与运算仓](computers.md)，49Java已IDEA格式化/逐文件检查，46主/测试全级零、3run被排除；完整1864测试、MCP构建、24Java addon与13脚本SDK编译通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验仓IO/界面、组件费用及退出重进并发恢复；计算机GUI延缓，本地提交，不启动游戏/推送。
+
 - 2026-11-13 网络中心线程额度与供给定义：中心增加 Java/ZS 的 threadCapacity，只有活动中心贡献供给并沿原规则收费；默认向量构造一次复用。删除资源类型 maxPerTickValue、单物品THREAD最多1及研究站类型速率上限，物品和自定义计算机的供给均由开发者定义；默认倍率消除不必要的百万倍中间乘法。API与示例已迁移，见[计算资源](network-resources.md)、[网络中心](network-runtime.md)、[API](../api.md#研究与计算网络)。完整1859测试、IDEA构建、23Java addon及13脚本编译通过；18Java已格式化，17主/测试全级零、1run被排除。证据见[实施进度](implementation-status.md)，下一步用户实机复验中心并发与自定义供给；本地提交，不推送或启动游戏。
 
 - 2026-11-13 研究站控制器、设备耗能与普通控制器联网默认：新增 ResearchStation 接口及无配方/无业务 tick 的默认控制器；研究移除单站限额，推进取网络供给、各站速率之和及剩余需求的最小值。研究站实际推进时结算 FE，中心生效时结算 FE，同 tick 不重复。普通控制器共同基类读取 controllers.cfg 默认 false，Java/ZS 可显式覆盖；专用角色保留。真实玩家新放置的物理机器即使离线也保存所有权。Java/ZS 示例与 [API](../api.md#控制器是否需要网络)、[网络中心](network-runtime.md)、[研究站](research-stations.md)同步，无 HTML/GUI。36Java经IDEA格式化，33主/测试全级零、3run被排除；1859测试、完整构建、MCP构建、23Java addon和13脚本编译通过，证据见[实施进度](implementation-status.md)。下一步用户实机复验成型/读档、队伍许可、速率及FE；本地提交，不推送或启动游戏。

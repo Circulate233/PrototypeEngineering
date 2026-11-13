@@ -32,8 +32,9 @@ public final class HatchFluidHandler implements IFluidHandler {
         this.settings = settings;
         inputStorage = hatch.input();
         outputStorage = hatch.output();
-        input = new GenericStackFluidStorage(new HatchInventoryPort(hatch, true, false));
-        output = new GenericStackFluidStorage(new HatchInventoryPort(hatch, false, true));
+        boolean shared = inputStorage != null && inputStorage == outputStorage;
+        input = new GenericStackFluidStorage(new HatchInventoryPort(hatch, true, shared));
+        output = shared ? input : new GenericStackFluidStorage(new HatchInventoryPort(hatch, false, true));
     }
 
     private static IFluidTankProperties[] tankProperties(GenericStackFluidStorage adapter, @Nullable SlottedResourceStorage storage) {
@@ -51,6 +52,7 @@ public final class HatchFluidHandler implements IFluidHandler {
     @Override
     public IFluidTankProperties[] getTankProperties() {
         var inputs = tankProperties(input, inputStorage);
+        if (inputStorage != null && inputStorage == outputStorage) return inputs;
         var outputs = tankProperties(output, outputStorage);
         var result = Arrays.copyOf(inputs, inputs.length + outputs.length);
         System.arraycopy(outputs, 0, result, inputs.length, outputs.length);

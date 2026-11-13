@@ -1,5 +1,6 @@
 package com.circulation.prototype_eng.api.network.resource;
 
+import ae2.api.stacks.AEKey;
 import ae2.api.stacks.AEKey2LongMap;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
@@ -26,14 +27,16 @@ public final class NetworkComputerComponentInventory {
     private final List<BooleanSupplier> providers;
     private final Object2LongMap<NetworkResourceType> resources;
     private final boolean capturedValid;
+    private final List<Installed> components;
 
     private NetworkComputerComponentInventory(List<StorageContext> contexts, LongArrayList revisions,
-                                              List<BooleanSupplier> providers, Object2LongMap<NetworkResourceType> resources, boolean capturedValid) {
+                                              List<BooleanSupplier> providers, Object2LongMap<NetworkResourceType> resources, boolean capturedValid, List<Installed> components) {
         this.contexts = contexts;
         this.revisions = revisions;
         this.providers = providers;
         this.resources = resources;
         this.capturedValid = capturedValid;
+        this.components = components;
     }
 
     public static NetworkComputerComponentInventory capture(NetworkComputerComponentRegistry registry, MachineInstance computer,
@@ -88,16 +91,18 @@ public final class NetworkComputerComponentInventory {
             installed.clear();
         }
         var providers = new ObjectArrayList<BooleanSupplier>();
-        var resources = calculate(registry, computer, installed, providers);
-        return new NetworkComputerComponentInventory(contexts, revisions, providers, resources, capturedValid);
+        var components = new ObjectArrayList<Installed>();
+        var resources = calculate(registry, computer, installed, providers, components);
+        return new NetworkComputerComponentInventory(contexts, revisions, providers, resources, capturedValid, components);
     }
 
     private static Object2LongMap<NetworkResourceType> calculate(NetworkComputerComponentRegistry registry, MachineInstance computer, AEKey2LongMap installed,
-                                                                 List<BooleanSupplier> providers) {
+                                                                 List<BooleanSupplier> providers, List<Installed> components) {
         var totals = new Object2LongOpenHashMap<NetworkResourceType>();
         installed.forEachEntry((key, count) -> {
             var captured = registry.capture(key, computer);
             providers.add(captured.current());
+            components.add(new Installed(key, count, captured));
             for (var entry : captured.resourcesPerItem().object2LongEntrySet()) {
                 long perItem = entry.getLongValue();
                 if (perItem == 0) {
@@ -127,12 +132,29 @@ public final class NetworkComputerComponentInventory {
     }
 
     /**
+     * Read-only installed identities and their captured component definitions.
+     */
+    public List<Installed> components() {
+        return components;
+    }
+
+    /**
      * Safe inside a foreign storage fence: version proofs acquire no physical storage locks or resample providers.
      */
     public boolean current() {
         if (!capturedValid || !currentStorages()) return false;
+        return providersCurrent() && currentStorages();
+    }
+
+    /**
+     * Event-driven hosts prove installed item identity separately from unrelated resource balances.
+     */
+    public boolean providersCurrent() {
         for (var provider : providers) if (!provider.getAsBoolean()) return false;
-        return currentStorages();
+        return true;
+    }
+
+    public record Installed(AEKey item, long count, NetworkComputerComponent.Capture definition) {
     }
 
     private boolean currentStorages() {

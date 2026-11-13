@@ -73,7 +73,7 @@ class NetworkPlannerTest {
     }
 
     @Test
-    void selectsCentersByLevelThenAgeAndDataCentersByLevelResearchThenAgeIncludingFullStorage() {
+    void selectsCentersAndDataCentersUsingPersistentIdentityForTiesIncludingFullStorage() {
         var devices = List.of(
             device(1, NetworkDeviceRole.NETWORK_CENTER, 1, true, 1, 0, 0),
             device(2, NetworkDeviceRole.NETWORK_CENTER, 2, true, 10, 0, 0),
@@ -88,11 +88,11 @@ class NetworkPlannerTest {
             device(11, NetworkDeviceRole.DEVICE, 0, true, 0, 100, 0));
         var plan = NetworkPlanner.plan(NetworkPlanner.capture(RESOURCES, 1, devices, List.of(), teams()));
         var team = plan.teams().get("team");
-        assertEquals(uuid(3), team.centerId());
-        assertEquals(uuid(7), team.dataCenterId());
+        assertEquals(uuid(2), team.centerId());
+        assertEquals(uuid(6), team.dataCenterId());
         assertEquals(NetworkWorkState.SAME_TYPE_CONFLICT, plan.workStates().get(uuid(1)));
-        assertEquals(NetworkWorkState.SAME_TYPE_CONFLICT, plan.workStates().get(uuid(2)));
-        assertEquals(NetworkWorkState.SAME_TYPE_CONFLICT, plan.workStates().get(uuid(6)));
+        assertEquals(NetworkWorkState.SAME_TYPE_CONFLICT, plan.workStates().get(uuid(3)));
+        assertEquals(NetworkWorkState.SAME_TYPE_CONFLICT, plan.workStates().get(uuid(7)));
         assertEquals(NetworkWorkState.CENTER_LEVEL_INSUFFICIENT, plan.workStates().get(uuid(8)));
         assertEquals(NetworkWorkState.CENTER_LEVEL_INSUFFICIENT, plan.workStates().get(uuid(9)));
         assertEquals(NetworkWorkState.UNFORMED, plan.workStates().get(uuid(10)));

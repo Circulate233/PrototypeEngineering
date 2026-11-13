@@ -13,7 +13,6 @@ import mods.prototype_eng.structure.Predicate;
 import mods.prototype_eng.resource.ComputingResource;
 import mods.prototype_eng.resource.ComputingResources;
 import mods.prototype_eng.resource.ComputingModifier;
-import mods.prototype_eng.resource.ComputerComponent;
 import mods.prototype_eng.network.NetworkConfiguration;
 import mods.prototype_eng.network.NetworkRequirements;
 import mods.prototype_eng.network.NetworkRecipes;
@@ -32,7 +31,6 @@ var compute = ComputingResource.create("pe_run_tests:net_compute", false);
 compute.register();
 var supply = ComputingResources.create().add(compute, 100).add(ComputingResource.thread(), 1);
 NativeChecks.check("net_supply_addTo", supply.amount(compute) == 100);
-ComputerComponent.fixed(supply).register(<minecraft:diamond>);
 var empty = ComputingResources.create();
 var modifier = ComputingModifier.create().flat(compute, 2).multiplierPpm(compute, 1000000);
 
@@ -89,4 +87,8 @@ Structure.template("pe_run_tests:net_shape", "NORTH_UP", 0, 0, 0, false,
 
 Structure.template("pe_run_tests:net_center_shape", "NORTH_UP", 0, 0, 0, false,
     Pattern.create().put(0, 1, 0, Predicate.block("minecraft:iron_block"))
+        .put(0, 0, 1, Predicate.energyInputHatch()), [], []).register();
+
+Structure.template("pe_run_tests:net_computer_shape", "NORTH_UP", 0, 0, 0, false,
+    Pattern.create().put(-1, 0, 0, Predicate.block("prototype_eng:computation_hatch_4"))
         .put(0, 0, 1, Predicate.energyInputHatch()), [], []).register();

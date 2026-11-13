@@ -266,6 +266,10 @@ first/last 包含首尾等级，tier 为 0 时由玩家手动投料，正数表�
 
 ## 计算资源与机器网络角色
 
+默认计算机使用 `MachineType.computer(id, translationKey, structureId, maximumThreads, resourceLimits, recipes)`；`resourceLimits` 未列出的资源不增加本机限制。`ComputerRecipe.create(id, Resource[] inputsPerTick, ComputingResources provided)` 声明每tick的供给配方。`ComputingResource.internal(id, logicalConcurrency)` 创建内部类型，仍需注册；它只在计算机内部结算，不发布到网络。算力组件物品必须由 Java Item 实现 `NetworkComputerComponent`，消耗不足时全部组件供给停摆，可运行配方保持独立。具体例子见[计算机与运算仓](docs/computers.md)。
+
+运算仓四级为1/2/3/4槽，物品每槽1件，非物品每槽1000/4000/16000/64000；只接受组件物品及任意非物品，支持外部双向IO，无自动IO。计算机、研究站、活动数据库优先申请并发；计算机不能以自身待生效供给启动，中心无需并发。默认控制器可继承，计算机GUI暂缓。
+
 专用控制器在 preinit 用 `MachineType.networkCenter(id, translationKey, structureId, level, threadCapacity, energyPerTick)` 或 `MachineType.researchStation(id, translationKey, structureId, level, rates, energyPerTick)` 创建，随后 `register(revision)`。中心的 threadCapacity 为逻辑并发额度；`rates` 为 `ComputingResources`，按资源设置研究站每 tick 速率；最后参数是 FE/t。中心只在生效时贡献供给并扣费，站点只在实际推进成功时扣费，同 tick 不重复。中心旧入口省略的线程额度为0，省略 energyPerTick 时免费。二者使用专用 Java 运行时，不调用 `processing` 或添加工作槽；接口与完整示例见 [API](api.md#研究与计算网络)。
 
 普通控制器的 `.requiresNetwork(true/false)` 优先于 `config/prototype_eng/controllers.cfg` 中 `network.defaultRequiresNetwork`（默认 false）。显式 `.network(...)` 仍表示选择网络角色；显式 false 只豁免共同配方门限，保留自定义配方的资源/研究条件。专用网络中心、研究站保留各自角色。

@@ -22,12 +22,14 @@ public final class HatchInventoryPort implements GenericInternalInventory {
     @Nullable
     private final SlottedResourceStorage output;
     private final List<StorageContext> contexts;
+    private final boolean shared;
     private final ThreadLocal<Boolean> batching = new ThreadLocal<>();
 
     public HatchInventoryPort(SlottedResourceHatch hatch, boolean includeInput, boolean includeOutput) {
         Objects.requireNonNull(hatch);
         input = includeInput ? hatch.input() : null;
         output = includeOutput ? hatch.output() : null;
+        shared = input != null && input == output;
         if (input != null && output != null && input.context() != output.context()) {
             contexts = input.context().order() < output.context().order()
                 ? List.of(input.context(), output.context()) : List.of(output.context(), input.context());
@@ -44,7 +46,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
 
     @Override
     public int size() {
-        return Math.addExact(inputSize(), output == null ? 0 : output.size());
+        return Math.addExact(inputSize(), output == null || shared ? 0 : output.size());
     }
 
     private SlottedResourceStorage inventory(int slot) {
@@ -136,7 +138,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
     @Override
     public long extract(int slot, AEKey key, long amount, Actionable mode) {
         SlottedResourceStorage inv = inventory(slot);
-        return canExtract() && slot >= inputSize() ? inv.extract(localSlot(slot), key, amount, mode) : 0;
+        return canExtract() && (shared || slot >= inputSize()) ? inv.extract(localSlot(slot), key, amount, mode) : 0;
     }
 
     @Override
@@ -158,7 +160,7 @@ public final class HatchInventoryPort implements GenericInternalInventory {
             boolean sameKey = previous != null && next != null && previous.what().equals(next.what());
             boolean removes = previous != null && (!sameKey || next.amount() < previous.amount());
             boolean adds = next != null && (!sameKey || next.amount() > previous.amount());
-            if ((removes && slot < inputSize()) || (adds && slot >= inputSize())) {
+            if (!shared && ((removes && slot < inputSize()) || (adds && slot >= inputSize()))) {
                 throw new UnsupportedOperationException("Cannot reverse this hatch slot's direction");
             }
             if (!inv.tryReplaceSlot(localSlot(slot), previous, next)) {

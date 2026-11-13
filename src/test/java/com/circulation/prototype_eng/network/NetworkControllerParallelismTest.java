@@ -196,7 +196,7 @@ class NetworkControllerParallelismTest {
             var components = new NetworkComputerComponentRegistry();
             ComputerSupplyFixtures.register(components, card, _ -> new NetworkComputerComponent.Capture(NetworkResourceModifier.copyResources(supply), () -> true));
             components.freeze(resources);
-            var installed = MachineComputerComponents.component(id("computer_supply"), components);
+            var installed = MachineComputerComponents.component(id("computer_supply"), components, ComputerSupplyFixtures::warehouses);
             var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
                 (owner, identity) -> Objects.requireNonNull(owner.components().get(installed)).networkCapture(identity, 1,
                     Objects.requireNonNull(owner.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);
@@ -216,7 +216,8 @@ class NetworkControllerParallelismTest {
 
         private ComponentType<MachineInstance, MachineNetworkDevice> role(String path, NetworkDeviceRole role) {
             return MachineNetworkDevice.component(id(path), ownership, (owner, identity) -> new NetworkDeviceSnapshot(identity.identity(), role, 1,
-                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                Objects.requireNonNull(owner.lifecycle()).formed(), identity.loadOrder(), role == NetworkDeviceRole.NETWORK_CENTER
+                ? Object2LongMaps.singleton(NetworkResources.THREAD, 1) : Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
         }
 
         private Worker worker() {

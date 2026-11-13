@@ -96,15 +96,20 @@ public final class NetworkResourceModifier {
         var result = new Object2LongOpenHashMap<NetworkResourceType>(metadata.size());
         result.defaultReturnValue(0L);
         for (var type : metadata.values()) {
-            long adjustedBase = Math.addExact(base.getOrDefault(type, 0L), flat.getLong(type));
-            long factor = Math.addExact(ONE_MILLION, multiplierPpm.getLong(type));
-            if (adjustedBase < 0L) {
-                throw new IllegalArgumentException("Computing resource modifier produces a negative value for " + type.id());
-            }
-            result.put(type, factor == ONE_MILLION ? adjustedBase
-                : Math.floorDiv(Math.multiplyExact(adjustedBase, factor), ONE_MILLION));
+            result.put(type, apply(type, base.getOrDefault(type, 0L)));
         }
         return result;
+    }
+
+    /**
+     * Applies this declaration to one registered resource, without allocating a temporary vector.
+     */
+    public long apply(NetworkResourceType type, long base) {
+        long adjusted = Math.addExact(base, flat.getLong(type));
+        long factor = Math.addExact(ONE_MILLION, multiplierPpm.getLong(type));
+        if (adjusted < 0)
+            throw new IllegalArgumentException("Computing resource modifier produces a negative value for " + type.id());
+        return factor == ONE_MILLION ? adjusted : Math.floorDiv(Math.multiplyExact(adjusted, factor), ONE_MILLION);
     }
 
     public static final class Builder {

@@ -16,7 +16,7 @@
 /pe_run_tests client-server-manifest 0
 ```
 
-`net-registered` 检查实际 frozen registry 的 1200/1300 计算需求、10 的分段上限、先决/互斥与准确 net_recipe 的纯数值compute×2、研究一级门。THREAD是每机器logical lease，不可添加到数值需求vector。客户端 `bindings` 核对 renderer 使用的同一个 registry、四 pass、machine/component/whole/per-slice 声明和资源包中的 geo/texture/animation；`manifest` 要求完整目录与私有客户端 snapshot 匹配、准确独立页面实例、全局 alternatives/显示概率和该页 expanded/隐藏概率设置。
+`net-registered` 检查实际 frozen registry 的1200/1300计算需求、先决/互斥与准确net_recipe的纯数值compute×2、研究一级门。研究站自身配置速率10，研究不定义单站限额。THREAD是每机器logical lease，不可添加到数值需求vector。客户端 `bindings` 核对 renderer 使用的同一个 registry、四 pass、machine/component/whole/per-slice 声明和资源包中的 geo/texture/animation；`manifest` 要求完整目录与私有客户端 snapshot 匹配、准确独立页面实例、全局 alternatives/显示概率和该页 expanded/隐藏概率设置。
 
 ## 2. 五种真实网络角色和物理计算物品
 
@@ -28,12 +28,14 @@
 /pe_examples build pe_run_tests:net_station 12 80 0
 /pe_examples build pe_run_tests:net_database 18 80 0
 /pe_examples build pe_run_tests:net_device 24 80 0
-/pe_run_tests net-stock 7 80 0 minecraft:diamond 8
+/give @p pe_run_tests:net_computer_card 1
+/pe_examples charge 0 80 1 100000
+/pe_examples charge 6 80 1 100000
 /pe_examples charge 12 80 1 10000
 /pe_examples charge 24 80 1 10000
 ```
 
-各控制器的输入仓在 X+1，输出仓在 X−1，FE 输入在 Z+1。全部由实际玩家放置/认领，FTB team 使用实际已加入的队伍；没有自动创建队伍或伪造权限。成型后分别执行：
+中心使用上方铁块和后方FE仓；计算机的四级运算仓在X−1，即(5,80,0)，FE仓在Z+1。把一张net_computer_card手动装入运算仓，并通过外部流体输入持续供应至少1000mB水/t；每tick冷却配方耗水1000mB，卡需1000冷却与32FE才提供供给。其他控制器的输入仓在X+1，输出仓在X−1，FE输入在Z+1。全部由实际玩家放置/认领，FTB team使用实际已加入的队伍；没有自动创建队伍或伪造权限。成型并持续供水后分别执行：
 
 ```text
 /pe_run_tests net-status 0 80 0 NETWORK_CENTER ACTIVE_CENTER
@@ -41,10 +43,10 @@
 /pe_run_tests net-status 12 80 0 RESEARCH_STATION ACTIVE_DEVICE
 /pe_run_tests net-status 18 80 0 DATA_CENTER ACTIVE_DATA_CENTER
 /pe_run_tests net-status 24 80 0 DEVICE ACTIVE_DEVICE
-/pe_run_tests net-supply 6 80 0 800 8
+/pe_run_tests net-supply 6 80 0 1000 8
 ```
 
-输出须有实际当前 permit、角色、state、供给；computer 的 diamond 来自物理输入仓，声明基础供给为零。每个实际物品供 compute100/thread1（thread每物品上限1），8枚的原始供给必须800/8，团队compute再由flat2/ppm1000000调整。取出全部diamond执行 `net-supply 6 80 0 0 0`，再放回执行800/8，不用数字声明代替物理槽。卸下中心、恢复结构、改变真实 FTB 队伍后再运行原生角色检查。负面情况使用 `net-denied <controller坐标> <UNFORMED/NO_ACTIVE_CENTER/OWNER_TEAM_REJECTED/CENTER_LEVEL_INSUFFICIENT/SAME_TYPE_CONFLICT>`，真实state必须吻合且网络work与permit均拒绝；`net-status`仅用于当前实际ACTIVE角色。
+输出须有实际当前permit、角色、state、供给。一张卡在费用全部满足时提供1000 net_compute/8 THREAD，内部冷却不进入队伍供给。取出卡或停水并耗尽仓内水后执行 `net-supply 6 80 0 0 0`，恢复卡/供水后检查1000/8。中心提供4并发，计算机和活动数据库各占1，研究站推进时占1；先加载普通机器后再形成计算机/数据库，基础设备应优先取得额度。退出重进应保持同条件设备的UUID选择，不随加载顺序改变。卸下中心、恢复结构、改变真实FTB队伍后再运行原生角色检查。负面情况使用 `net-denied <controller坐标> <UNFORMED/NO_ACTIVE_CENTER/OWNER_TEAM_REJECTED/CENTER_LEVEL_INSUFFICIENT/SAME_TYPE_CONFLICT/INSUFFICIENT_THREADS>`，真实state必须吻合且网络work与permit均拒绝；`net-status`仅用于当前实际ACTIVE角色。
 
 ## 3. 手动、站点、队列、先决和互斥
 

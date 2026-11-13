@@ -861,7 +861,7 @@ class NetworkRecipeExecutionTest {
             supply.put(NetworkResources.COMPUTE, compute);
             var centerRole = MachineNetworkDevice.component(id("center_role"), ownership,
                 (machine, identity) -> new NetworkDeviceSnapshot(identity.identity(), NetworkDeviceRole.NETWORK_CENTER, 1,
-                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
+                    Objects.requireNonNull(machine.lifecycle()).formed(), identity.loadOrder(), Object2LongMaps.singleton(NetworkResources.THREAD, 1), NetworkResourceModifier.EMPTY, 0, 0), _ -> network);
             var type = type("center").component(ownership).component(centerRole).build();
             center = MachineAssembly.builder(type, "center-v1").component(ownership, MachineOwnership.CODEC)
                                     .recreated(centerRole).build().create(host(type.id()), new MachineLifecycleRegistry());
@@ -872,7 +872,7 @@ class NetworkRecipeExecutionTest {
             ComputerSupplyFixtures.fixed(components, computeCard, Object2LongMaps.singleton(NetworkResources.COMPUTE, supply.getLong(NetworkResources.COMPUTE)));
             ComputerSupplyFixtures.fixed(components, threadCard, Object2LongMaps.singleton(NetworkResources.THREAD, 1));
             components.freeze(resources);
-            var installed = MachineComputerComponents.component(id("computer_supply"), components);
+            var installed = MachineComputerComponents.component(id("computer_supply"), components, ComputerSupplyFixtures::warehouses);
             var computerRole = MachineNetworkDevice.capturedComponent(id("computer_role"), ownership,
                 (machine, identity) -> Objects.requireNonNull(machine.components().get(installed)).networkCapture(identity, 1,
                     Objects.requireNonNull(machine.lifecycle()).formed(), Object2LongMaps.emptyMap(), NetworkResourceModifier.EMPTY), _ -> network);

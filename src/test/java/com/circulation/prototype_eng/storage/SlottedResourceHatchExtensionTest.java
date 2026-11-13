@@ -33,6 +33,33 @@ class SlottedResourceHatchExtensionTest {
     }
 
     @Test
+    void sharedComputationSlotsExposeBothDirectionsOnceAndHonorFiltersAndReservations() {
+        var card = new Key(TARGET, "card");
+        var rejected = new Key(TARGET, "ordinary_item");
+        var fluid = new Key(OTHER, "fluid");
+        for (int tier = 1; tier <= 4; tier++) {
+            long amount = BufferedComputationHatch.nonItemCapacity(tier);
+            var capacities = new Reference2LongArrayMap<AEKeyType>();
+            capacities.put(TARGET, 1);
+            capacities.put(OTHER, amount);
+            var storage = new SlottedResourceBuffer(tier, capacities, key -> !key.equals(rejected), () -> {
+            });
+            var shared = new ExternalHatch(storage, storage);
+            var port = new HatchInventoryPort(shared, true, true);
+            assertEquals(tier, port.size());
+            assertEquals(0, port.insert(0, rejected, 1, Actionable.MODULATE));
+            assertEquals(1, port.insert(0, card, 64, Actionable.MODULATE));
+            assertEquals(0, port.insert(0, card, 1, Actionable.MODULATE));
+            assertEquals(1, port.extract(0, card, 64, Actionable.MODULATE));
+            assertEquals(amount, port.insert(0, fluid, amount + 1, Actionable.MODULATE));
+            var reserved = Objects.requireNonNull(storage.reserveExtract(storage.snapshot(), fluid, 1_000).reservation());
+            assertEquals(amount - 1_000, port.extract(0, fluid, amount, Actionable.MODULATE));
+            assertTrue(ResourceTransactions.commit(List.of(reserved)));
+            assertEquals(0, storage.amount(fluid));
+        }
+    }
+
+    @Test
     void externalAsymmetricHatchUsesSharedAdaptersAndClearsOnlyUnreservedTargetContents() {
         var hatch = hatch();
         var first = new Key(TARGET, "first");

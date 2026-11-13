@@ -5,7 +5,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * Machine-side resource access. Input and output have independent contents.
+ * Machine-side resource access. Sides may own independent contents or share one bidirectional balance.
  * Storage is independently synchronized; host discovery still belongs to the server thread.
  * Implementations share the physical balance's StorageContext across all adapter aliases.
  */

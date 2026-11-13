@@ -93,13 +93,18 @@ class MachineDataCenterStorageTest {
         try (var fixture = new Fixture()) {
             var first = fixture.dataCenter();
             var second = fixture.dataCenter();
+            if (fixture.storage(first).snapshot().dataCenterId().compareTo(fixture.storage(second).snapshot().dataCenterId()) > 0) {
+                var previous = first;
+                first = second;
+                second = previous;
+            }
             fixture.player.completeAtLeast(id("loop"), 1);
             fixture.player.completeAtLeast(id("other"), 1);
             assertEquals(DataCenterStorage.Result.UPDATED, fixture.storage(first).downloadResearch(id("loop"), 1, fixture.cloud()));
             assertEquals(DataCenterStorage.Result.UPDATED, fixture.storage(second).downloadResearch(id("other"), 1, fixture.cloud()));
             assertTrue(fixture.network.refresh());
             var team = Objects.requireNonNull(fixture.network.plan()).teams().get("team");
-            assertEquals(fixture.storage(first).snapshot(), team.dataCenterResearch(), "Equal-size data centers retain the earlier load");
+            assertEquals(fixture.storage(first).snapshot(), team.dataCenterResearch(), "Equal-size data centers use persistent UUID ordering");
             assertFalse(Objects.requireNonNull(team.dataCenterResearch()).storedResearch().containsKey(id("other")));
             var old = Objects.requireNonNull(fixture.role(first).workPermit());
             var receipt = Objects.requireNonNull(old.reserve(id("work"), 0, Object2LongMaps.emptyMap()));
@@ -214,8 +219,8 @@ class MachineDataCenterStorageTest {
             assertNull(component.workPermit());
             assertEquals(NetworkTeamBudget.LeaseStatus.EXPIRED, before.requestLease());
             assertTrue(fixture.network.refresh());
-            assertEquals(20, Objects.requireNonNull(component.workPermit()).numericResources().getLong(NetworkResources.COMPUTE),
-                "Same-tick recapture retains the first accepted budget even when supply changes");
+            assertEquals(50, Objects.requireNonNull(component.workPermit()).numericResources().getLong(NetworkResources.COMPUTE),
+                "A successful recapture publishes the current supply without resetting consumption");
         }
     }
 

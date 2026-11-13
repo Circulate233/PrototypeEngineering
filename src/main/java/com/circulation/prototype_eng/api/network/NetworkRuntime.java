@@ -1,15 +1,18 @@
 package com.circulation.prototype_eng.api.network;
 
-import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.machine.ControllerEnergy;
-import com.circulation.prototype_eng.api.storage.ResourceReservation;
-import com.circulation.prototype_eng.api.storage.ResourceTransactions;
+import com.circulation.prototype_eng.api.machine.identity.MachineIdentityRegistry;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceRegistry;
+import com.circulation.prototype_eng.api.network.resource.NetworkResourceModifier;
 import com.circulation.prototype_eng.api.network.resource.NetworkResourceType;
 import com.circulation.prototype_eng.api.network.resource.NetworkResources;
 import com.circulation.prototype_eng.api.network.resource.NetworkTeamBudget;
 import com.circulation.prototype_eng.api.research.DataCenterResearchSnapshot;
+import com.circulation.prototype_eng.api.storage.ResourceReservation;
+import com.circulation.prototype_eng.api.storage.ResourceTransactions;
 import com.circulation.prototype_eng.api.team.OwnerTeamResolver;
+import com.circulation.prototype_eng.api.transaction.ReservedTransaction;
+import com.circulation.prototype_eng.api.transaction.ReversibleTransaction;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -18,8 +21,10 @@ import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongFunction;
@@ -125,6 +130,19 @@ public final class NetworkRuntime implements AutoCloseable {
         return refresh(_ -> List.of());
     }
 
+    private static NetworkDeviceSnapshot withResources(NetworkDeviceSnapshot source, Object2LongMap<NetworkResourceType> resources) {
+        return new NetworkDeviceSnapshot(source.identity(), source.role(), source.level(), source.formed(), source.loadOrder(),
+            resources, source.resourceModifier(), source.dataCenterCapacity(), source.storedResearchCount(), source.dataCenterResearch());
+    }
+
+    private static void rollbackSupply(List<? extends ReservedTransaction> payments) {
+        var tokens = new ObjectArrayList<ResourceReservation>();
+        for (var payment : payments) tokens.addAll(payment.reservations());
+        ResourceTransactions.rollback(tokens, () -> {
+            for (int i = payments.size() - 1; i >= 0; i--) payments.get(i).rollback();
+        });
+    }
+
     /**
      * Captures and atomically publishes one complete batch at an exclusive scheduler boundary.
      * False means a captured proof became obsolete; no previous batch remains authorized.
@@ -145,6 +163,7 @@ public final class NetworkRuntime implements AutoCloseable {
         captureRevoked = false;
         preparing = true;
         var upkeep = new ObjectArrayList<ControllerEnergy.Payment>();
+        var computerWork = new Reference2ObjectOpenHashMap<Registration, NetworkSupplyTransaction>();
         boolean powerSettled = false;
         Throwable failure = null;
         try {
@@ -193,6 +212,22 @@ public final class NetworkRuntime implements AutoCloseable {
                 var absent = captures.remove(unavailable);
                 devices.remove(absent.snapshot());
             }
+            var supplyOrder = new ObjectArrayList<Registration>();
+            for (var entry : captures.reference2ObjectEntrySet())
+                if (entry.getValue().computerWork() != null
+                    && plan.workStates().get(entry.getValue().snapshot().identity().machineId()) == NetworkWorkState.ACTIVE_DEVICE)
+                    supplyOrder.add(entry.getKey());
+            supplyOrder.sort(Comparator.comparing(registration -> registration.identity.identity().machineId()));
+            for (var registration : supplyOrder) {
+                var capture = captures.get(registration);
+                var work = Objects.requireNonNull(capture.computerWork()).apply(tick);
+                computerWork.put(registration, work);
+                var snapshot = withResources(capture.snapshot(), work.resources());
+                devices.set(devices.indexOf(capture.snapshot()), snapshot);
+                captures.put(registration, new Capture(snapshot, capture.current(), capture.centerPower(), capture.computerWork()));
+            }
+            var admission = admitServices(epoch, devices, captures, contributions, computerWork);
+            plan = admission.plan();
             for (var entry : captures.reference2ObjectEntrySet()) {
                 if (!entry.getKey().identity.unique() || !entry.getValue().current().getAsBoolean()) {
                     return false;
@@ -215,31 +250,56 @@ public final class NetworkRuntime implements AutoCloseable {
             if (captureRevoked || identities.revision() != revision) {
                 return false;
             }
-            var publication = new Publication(revision, plan, states, captures, external);
-            if (upkeep.isEmpty()) {
-                budgets.putAll(additions);
-                published = publication;
-                powerSettled = true;
-                return true;
-            }
+            var payments = new ObjectArrayList<ReservedTransaction>(upkeep.size() + computerWork.size());
+            payments.addAll(upkeep);
+            payments.addAll(computerWork.values());
             var tokens = new ObjectArrayList<ResourceReservation>();
-            for (var payment : upkeep) tokens.addAll(payment.reservations());
+            for (var payment : payments) tokens.addAll(payment.reservations());
             powerSettled = true; // ResourceTransactions now owns all completion/compensation paths.
-            return ResourceTransactions.commit(tokens, () -> {
-                for (var payment : upkeep) payment.commit();
-                // Existing teams retain their first accepted capacity and all consumption for this tick.
-                budgets.putAll(additions);
-                published = publication;
-            }, () -> upkeep.forEach(ControllerEnergy.Payment::complete), () -> {
-                published = null;
-                for (int i = upkeep.size() - 1; i >= 0; i--) upkeep.get(i).rollback();
-            });
+            if (!ResourceTransactions.commit(tokens,
+                () -> {
+                    for (var payment : payments) if (!payment.prepareCommit()) return false;
+                    return true;
+                },
+                () -> {
+                    for (var payment : payments) if (!payment.validateCommit()) return false;
+                    return true;
+                },
+                () -> payments.forEach(ReversibleTransaction::commit),
+                () -> payments.forEach(ReversibleTransaction::complete),
+                () -> {
+                    for (int i = payments.size() - 1; i >= 0; i--) payments.get(i).rollback();
+                })) return false;
+            // Cost application changes the supplying hatch versions. Capture their post-payment proofs
+            // after every domain lock and notification has finished, before exposing any new permits.
+            for (var registration : computerWork.keySet()) {
+                var captured = registration.source.apply(registration.identity);
+                if (captured == null || !captured.current().getAsBoolean()
+                    || !captured.snapshot().resourcesPerTick().equals(computerWork.get(registration).resources()))
+                    return false;
+                captures.put(registration, captured);
+            }
+            if (captureRevoked || identities.revision() != revision || !this.participants.current(external))
+                return false;
+            budgets.putAll(additions);
+            for (var entry : plan.teams().entrySet())
+                budgets.get(entry.getKey()).refreshCapacity(entry.getValue().resourcesPerTick());
+            for (var registration : admission.services()) {
+                var id = registration.identity.identity().machineId();
+                budgets.get(plan.teamIds().get(id)).requestNetworkLease(id);
+            }
+            published = new Publication(revision, plan, states, captures, external);
+            return true;
         } catch (RuntimeException | Error cause) {
             failure = cause;
             throw cause;
         } finally {
             try {
-                if (!powerSettled) rollbackPower(upkeep);
+                if (!powerSettled) {
+                    var payments = new ObjectArrayList<ReservedTransaction>(upkeep);
+                    payments.addAll(computerWork.values());
+                    rollbackSupply(payments);
+                }
             } catch (RuntimeException | Error cleanup) {
                 if (failure == null) throw cleanup;
                 if (cleanup != failure) failure.addSuppressed(cleanup);
@@ -247,6 +307,119 @@ public final class NetworkRuntime implements AutoCloseable {
                 preparing = false;
             }
         }
+    }
+
+    private Admission admitServices(long epoch, ObjectArrayList<NetworkDeviceSnapshot> devices,
+                                    Reference2ObjectOpenHashMap<Registration, Capture> captures,
+                                    List<NetworkContribution> contributions,
+                                    Reference2ObjectOpenHashMap<Registration, NetworkSupplyTransaction> work) {
+        var inputs = NetworkPlanner.capture(resources, epoch, devices, contributions, teams);
+        var initial = NetworkPlanner.plan(inputs);
+        for (var entry : budgets.entrySet()) {
+            entry.getValue().retainNetworkLeases(id -> entry.getKey().equals(initial.teamIds().get(id))
+                && (initial.workStates().get(id) == NetworkWorkState.ACTIVE_DEVICE
+                || initial.workStates().get(id) == NetworkWorkState.ACTIVE_DATA_CENTER));
+        }
+        var capacities = new Object2ObjectOpenHashMap<String, ServiceCapacity>();
+        var computers = new ObjectArrayList<Registration>();
+        var databases = new ObjectArrayList<Registration>();
+        var services = new ObjectArrayList<Registration>();
+        var rejected = new Object2ObjectOpenHashMap<UUID, String>();
+        for (var registration : captures.keySet()) {
+            var snapshot = captures.get(registration).snapshot();
+            var id = snapshot.identity().machineId();
+            var state = initial.workStates().get(id);
+            var team = initial.teamIds().get(id);
+            if (state == NetworkWorkState.ACTIVE_CENTER)
+                capacities.put(team, new ServiceCapacity(snapshot.resourcesPerTick().getLong(NetworkResources.THREAD), snapshot.resourceModifier(), budgets.get(team)));
+            else if (snapshot.role() == NetworkDeviceRole.COMPUTER && state == NetworkWorkState.ACTIVE_DEVICE)
+                computers.add(registration);
+            else if (state == NetworkWorkState.ACTIVE_DATA_CENTER) databases.add(registration);
+        }
+        for (var contribution : contributions) {
+            var owner = inputs.owner(contribution.ownerId());
+            var capacity = owner.accepted() ? capacities.get(owner.teamId()) : null;
+            if (capacity != null) capacity.add(contribution.resourcesPerTick().getLong(NetworkResources.THREAD));
+        }
+        // Already-issued leases remain valid for this tick. A fresh computer must obtain a thread
+        // from the center, external sources or an earlier admitted computer before adding its own supply.
+        computers.removeIf(registration -> {
+            var id = registration.identity.identity().machineId();
+            var capacity = capacities.get(initial.teamIds().get(id));
+            if (capacity.budget == null || !capacity.budget.hasLease(id)) return false;
+            capacity.add(captures.get(registration).snapshot().resourcesPerTick().getLong(NetworkResources.THREAD));
+            services.add(registration);
+            return true;
+        });
+        computers.sort(Comparator.<Registration>comparingLong(registration ->
+                                     captures.get(registration).snapshot().resourcesPerTick().getLong(NetworkResources.THREAD)).reversed()
+                                 .thenComparing(registration -> registration.identity.identity().machineId()));
+        for (var registration : computers) {
+            var snapshot = captures.get(registration).snapshot();
+            var team = initial.teamIds().get(snapshot.identity().machineId());
+            var capacity = capacities.get(team);
+            if (capacity.available() > 0) {
+                capacity.claimed++;
+                capacity.add(snapshot.resourcesPerTick().getLong(NetworkResources.THREAD));
+                services.add(registration);
+            } else rejected.put(snapshot.identity().machineId(), team);
+        }
+        for (var registration : databases) {
+            var id = registration.identity.identity().machineId();
+            var team = initial.teamIds().get(id);
+            var capacity = capacities.get(team);
+            if (capacity.budget != null && capacity.budget.hasLease(id)) services.add(registration);
+            else if (capacity.available() > 0) {
+                capacity.claimed++;
+                services.add(registration);
+            } else {
+                for (var snapshot : devices)
+                    if (snapshot.role() == NetworkDeviceRole.DATA_CENTER && team.equals(initial.teamIds().get(snapshot.identity().machineId())))
+                        rejected.put(snapshot.identity().machineId(), team);
+            }
+        }
+        devices.removeIf(snapshot -> rejected.containsKey(snapshot.identity().machineId()));
+        for (var registration : captures.keySet()) {
+            if (!rejected.containsKey(registration.identity.identity().machineId())) continue;
+            var preparation = work.remove(registration);
+            if (preparation != null) rollbackSupply(List.of(preparation));
+        }
+        var plan = NetworkPlanner.plan(inputs.withDevices(devices));
+        if (!rejected.isEmpty()) {
+            var states = new Object2ObjectOpenHashMap<>(plan.workStates());
+            var owners = new Object2ObjectOpenHashMap<>(plan.teamIds());
+            for (var entry : rejected.entrySet()) {
+                states.put(entry.getKey(), NetworkWorkState.INSUFFICIENT_THREADS);
+                owners.put(entry.getKey(), entry.getValue());
+            }
+            plan = new NetworkPlan(epoch, states, owners, new Object2ObjectOpenHashMap<>(plan.teams()));
+        }
+        return new Admission(plan, services);
+    }
+
+    private static final class ServiceCapacity {
+        private long raw;
+        private long claimed;
+        private final NetworkResourceModifier modifier;
+        private final @Nullable NetworkTeamBudget budget;
+
+        private ServiceCapacity(long raw, NetworkResourceModifier modifier, @Nullable NetworkTeamBudget budget) {
+            this.raw = raw;
+            this.modifier = modifier;
+            this.budget = budget;
+        }
+
+        private void add(long amount) {
+            raw = Math.addExact(raw, amount);
+        }
+
+        private long available() {
+            long capacity = modifier.apply(NetworkResources.THREAD, raw);
+            return (budget == null ? capacity : budget.availableConcurrency(capacity)) - claimed;
+        }
+    }
+
+    private record Admission(NetworkPlan plan, List<Registration> services) {
     }
 
     private static void rollbackPower(List<ControllerEnergy.Payment> payments) {
@@ -352,9 +525,14 @@ public final class NetworkRuntime implements AutoCloseable {
      * A detached snapshot plus an owner-only exact-state proof, also checked before budget work.
      */
     public record Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current,
-                          @Nullable LongFunction<ControllerEnergy.Payment> centerPower) {
+                          @Nullable LongFunction<ControllerEnergy.Payment> centerPower,
+                          @Nullable LongFunction<NetworkSupplyTransaction> computerWork) {
         public Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current) {
-            this(snapshot, current, null);
+            this(snapshot, current, null, null);
+        }
+
+        public Capture(NetworkDeviceSnapshot snapshot, BooleanSupplier current, @Nullable LongFunction<ControllerEnergy.Payment> centerPower) {
+            this(snapshot, current, centerPower, null);
         }
 
         public Capture {
@@ -504,7 +682,14 @@ public final class NetworkRuntime implements AutoCloseable {
                 return false;
             }
             boolean center = publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER;
-            return (center || budget.canRequestLease(registration.identity.identity().machineId())) && budget.canReserve(required);
+            var id = registration.identity.identity().machineId();
+            boolean leased = center || (priorityDevice() ? budget.canRequestNetworkLease(id) : budget.canRequestLease(id));
+            return leased && budget.canReserve(required);
+        }
+
+        private boolean priorityDevice() {
+            var role = deviceSnapshot().role();
+            return role == NetworkDeviceRole.COMPUTER || role == NetworkDeviceRole.RESEARCH_STATION || role == NetworkDeviceRole.DATA_CENTER;
         }
 
         /**
@@ -532,6 +717,8 @@ public final class NetworkRuntime implements AutoCloseable {
             if (type.equals(NetworkResources.THREAD) && publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER) {
                 return NetworkTeamBudget.LeaseStatus.NOT_REQUIRED;
             }
+            if (type.equals(NetworkResources.THREAD) && priorityDevice())
+                return budget.requestNetworkLease(registration.identity.identity().machineId());
             return budget.requestLease(registration.identity.identity().machineId(), type);
         }
 
@@ -548,7 +735,8 @@ public final class NetworkRuntime implements AutoCloseable {
             if (lease == NetworkTeamBudget.LeaseStatus.EXPIRED || lease == NetworkTeamBudget.LeaseStatus.INSUFFICIENT_CAPACITY) {
                 return null;
             }
-            return budget.reserve(operation, required, this::authorized);
+            return budget.reserve(operation, required, () -> authorized()
+                && (publication.states.get(registration) == NetworkWorkState.ACTIVE_CENTER || budget.hasLease(operation.machineId())));
         }
 
         /**

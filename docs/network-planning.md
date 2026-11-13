@@ -24,8 +24,8 @@ Universe 未加载或不属于本服务器、未知 owner、无队伍、无效�
 
 | 情况 | 结果 |
 |---|---|
-| 多个已成型网络中心 | 最高等级优先，同级加载最早者生效；其他中心为 SAME_TYPE_CONFLICT。 |
-| 多个符合中心等级的已成型数据中心 | 最高等级，再已存 distinct research 数最多，再加载最早。满库仍可选；不按空余容量选择，也不合并其他中心数据。 |
+| 多个已成型网络中心 | 最高等级优先，同级按持久机器 UUID 选择；其他中心为 SAME_TYPE_CONFLICT。 |
+| 多个符合中心等级的已成型数据中心 | 最高等级，再已存 distinct research 数最多，再按持久机器 UUID。满库仍可选；不按空余容量选择，也不合并其他中心数据。 |
 | 非中心设备等级高于活动中心 | CENTER_LEVEL_INSUFFICIENT。 |
 | 没有活动中心 | 已成型设备 NO_ACTIVE_CENTER，未成型设备 UNFORMED；参与者不能单独创建网络。 |
 | owner 当前队伍拒绝 | OWNER_TEAM_REJECTED，优先于结构状态；不加入有效队伍表。 |

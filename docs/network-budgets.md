@@ -8,15 +8,15 @@
 
 内置 ServerTaskSchedulers 每个真实 server END 事件只递增一次会话内 long 序号；begin/end 包住完整 scheduler.tick。每次 MAIN action 前与 CONCURRENT 捕获前仍分别 refresh。序号不使用世界时间，不受改时间或多次捕获影响；新服务器会话创建新 runtime。
 
-每队伍首次成功发布时，以该次完整供给创建 NetworkTeamBudget。同 tick 后续发布保留第一份容量、余额、lease 与操作键。捕获失败、revoke、队伍暂时消失后返回、中心供给改变都不补充额度；下一真实 tick 才采用新供给。新出现的队伍首次成功发布时建立自己的账本。
+每队伍首次成功发布时，以该次完整供给创建 NetworkTeamBudget。同 tick 后续成功发布按当前供给与上一容量的差值调整账本，保留已经消费或预留的数量和操作键。新增供给立即可用；供给下降到已消费量以下时，可用量显示为0，随后恢复供给也不会抹去消费记录。捕获失败或 revoke 本身不刷新额度。新出现的队伍首次成功发布时建立自己的账本，下一真实 tick 才重置消费记录。
 
 ## lease、数值与操作身份
 
 - 用户确认的消费规则：算力等数值资源随配方并行量缩放；并发资源（标准 THREAD）按机器只占 1，不随并行量、工位数或 Java 工作线程数重复占用。NetworkRecipeWorkSystem 已按实际进程并行量缩放；START/扫描只检查，工作 TICK 占用，零时长 START 占用一次，见[配方消费者](network-recipes.md)。
 - `requestLease(machineId)` 使用 THREAD；同一机器本 tick 只消耗一份，其他工位为 ALREADY_GRANTED。没有工位结束即释放的操作，数值不足/取消也不退 lease，保持 PN 请求顺序。
 - `requestLease(machineId, logicalType)` 支持已注册自定义 logical 维度，各维独立机器集合和 long 容量，不再只支持 THREAD 或强制 int。一次申请一维，不代表多维 lease 原子申请。
-- WorkPermit 对活动中心免标准 THREAD lease，返回 NOT_REQUIRED；自定义 logical 仍实际申请。其他角色在普通数值预留前真实申请 THREAD，不给所有已加载设备预分配额度。
-- `numericResources()` 为本 tick 初始不可变研究供给；普通预留扣另一份 availableResources。保留 PN 两份 numeric 预算、共享 lease；研究分配算法尚未接入。
+- WorkPermit 对活动中心免标准 THREAD lease，返回 NOT_REQUIRED；自定义 logical 仍实际申请。计算机与活动数据库在发布时取得各自1份标准并发；研究站实际推进时申请。三者优先于普通设备，可收回普通租约，使其未提交凭据失效。卸载、换队、结构失效或落选的网络设备释放该租约；同条件按持久 UUID 选择。计算机不能用自身待生效的供给启动，详见[计算机](computers.md)。
+- `numericResources()` 为当前发布的只读研究供给；普通预留扣另一份 availableResources。两份 numeric 预算独立，研究与普通配方共享机器 lease。
 - `reserve(Operation, required, authorized)` 先校验完整 numeric 向量和全部余额，再整组 addTo 扣减。不足返回 null，不部分扣减、不占操作键。空需求允许无数值成本的授权凭据。
 
 Operation 包含 machine UUID、稳定 source ResourceLocation 和 sequence；source 表示工位/来源，sequence 区分同 tick 新一轮工作，不能拿 capture epoch 作工作序号。成功预留后本 tick 同键不可再次使用，包括已补偿的键；未接受的申请可以原键重试。账本只保存去重键，不反向保存 receipt，避免已结束操作滞留旧 Publication 与宿主。

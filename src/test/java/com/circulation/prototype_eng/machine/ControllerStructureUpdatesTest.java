@@ -590,6 +590,7 @@ class ControllerStructureUpdatesTest {
     @Test
     void currentWorkerFailureAndRejectedSubmissionFaultThroughTheRefreshFailureBoundary() {
         try (var fixture = new Fixture()) {
+            fixture.updates.checkPolicy(new StructureCheckPolicy(4096, Duration.ofSeconds(2), Duration.ofSeconds(5), StructureCheckPolicy.FinalMode.COOPERATIVE));
             fixture.tick(0);
             var failure = new AssertionError("current evaluation failed");
             fixture.host.configuration = configuration(() -> {

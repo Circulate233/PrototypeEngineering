@@ -79,11 +79,18 @@ class NetworkBudgetRuntimeTest {
             assertTrue(runtime.refresh());
             assertNull(fixture.first.workPermit());
             fixture.accepted = true;
+            fixture.compute = 3;
+            assertTrue(runtime.refresh());
+            assertEquals(0, permit(fixture.first).availableResources().getLong(NetworkResources.COMPUTE));
+            assertNull(permit(fixture.first).reserve(SOURCE, 2, amount(1)));
+            fixture.compute = 10;
+            assertTrue(runtime.refresh());
+            assertEquals(4, permit(fixture.first).availableResources().getLong(NetworkResources.COMPUTE));
             fixture.compute = 100;
             assertTrue(runtime.refresh());
             var returned = permit(fixture.first);
-            assertEquals(4, returned.availableResources().getLong(NetworkResources.COMPUTE));
-            assertEquals(10, returned.numericResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(94, returned.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, returned.numericResources().getLong(NetworkResources.COMPUTE));
             assertEquals(LeaseStatus.INSUFFICIENT_CAPACITY, permit(fixture.second).requestLease());
             runtime.endTick();
             assertFalse(returned.current());
@@ -95,7 +102,7 @@ class NetworkBudgetRuntimeTest {
             assertEquals(LeaseStatus.GRANTED, nextTick.requestLease());
             assertEquals(100, nextTick.availableResources().getLong(NetworkResources.COMPUTE));
             spent.rollback();
-            assertEquals(10, returned.availableResources().getLong(NetworkResources.COMPUTE));
+            assertEquals(100, returned.availableResources().getLong(NetworkResources.COMPUTE));
             assertEquals(100, nextTick.availableResources().getLong(NetworkResources.COMPUTE));
         }
     }

@@ -4,15 +4,18 @@ import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.util.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.Comparator;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 /**
- * One team's fixed tick supply, shared machine leases and ordinary work reservations. Mutable state
+ * One team's current tick supply, shared machine leases and ordinary work reservations. Mutable state
  * belongs to the runtime owner; immutable numeric supply remains independent for research grants.
  * Closing revokes new work and commits, while receipts retain compensation against this book alone.
  */
@@ -20,10 +23,12 @@ public final class NetworkTeamBudget implements AutoCloseable {
     private final long tick;
     private final NetworkResourceRegistry registry;
     private final Runnable ownerCheck;
-    private final Object2LongMap<NetworkResourceType> numericResources;
+    private final Object2LongOpenHashMap<NetworkResourceType> ceiling;
+    private Object2LongMap<NetworkResourceType> numericResources;
     private final Object2LongOpenHashMap<NetworkResourceType> available;
     private final Object2LongOpenHashMap<NetworkResourceType> logicalAvailable;
     private final Object2ObjectOpenHashMap<NetworkResourceType, ObjectOpenHashSet<UUID>> leasedMachines = new Object2ObjectOpenHashMap<>();
+    private final ObjectOpenHashSet<UUID> networkLeases = new ObjectOpenHashSet<>();
     // Retain only duplicate-detection keys, not receipts that capture older publications and hosts.
     private final ObjectOpenHashSet<Operation> operations = new ObjectOpenHashSet<>();
     private volatile boolean active = true;
@@ -40,6 +45,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
             throw new IllegalStateException("Computing resource registry is not ready");
         }
         Objects.requireNonNull(capacity, "Network budget capacity");
+        ceiling = new Object2LongOpenHashMap<>(capacity);
         var numeric = new Object2LongOpenHashMap<NetworkResourceType>(capacity.size());
         var logical = new Object2LongOpenHashMap<NetworkResourceType>(capacity.size());
         for (var entry : capacity.object2LongEntrySet()) {
@@ -66,7 +72,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
     }
 
     /**
-     * Immutable original numeric supply; ordinary reservations never consume this research vector.
+     * Immutable current numeric ceiling; ordinary reservations never consume this research vector.
      */
     public Object2LongMap<NetworkResourceType> numericResources() {
         return numericResources;
@@ -77,7 +83,10 @@ public final class NetworkTeamBudget implements AutoCloseable {
      */
     public Object2LongMap<NetworkResourceType> availableResources() {
         ownerCheck.run();
-        return NetworkResourceModifier.copyResources(available);
+        var snapshot = new Object2LongOpenHashMap<>(available);
+        for (var entry : snapshot.object2LongEntrySet())
+            if (entry.getLongValue() < 0) entry.setValue(0);
+        return snapshot;
     }
 
     public LeaseStatus requestLease(UUID machineId) {
@@ -95,6 +104,92 @@ public final class NetworkTeamBudget implements AutoCloseable {
         }
         var machines = leasedMachines.get(NetworkResources.THREAD);
         return machines != null && machines.contains(machineId) || logicalAvailable.getLong(NetworkResources.THREAD) > 0;
+    }
+
+    public boolean hasLease(UUID machineId) {
+        ownerCheck.run();
+        var machines = leasedMachines.get(NetworkResources.THREAD);
+        return machines != null && machines.contains(machineId);
+    }
+
+    /**
+     * Retire infrastructure that unloaded, changed teams, lost formation or lost its selected role.
+     */
+    public void retainNetworkLeases(Predicate<UUID> current) {
+        ownerCheck.run();
+        var machines = leasedMachines.get(NetworkResources.THREAD);
+        for (var iterator = networkLeases.iterator(); iterator.hasNext(); ) {
+            var id = iterator.next();
+            if (current.test(id)) continue;
+            iterator.remove();
+            machines.remove(id);
+            logicalAvailable.addTo(NetworkResources.THREAD, 1);
+        }
+    }
+
+    public boolean canRequestNetworkLease(UUID machineId) {
+        ownerCheck.run();
+        if (!active) return false;
+        return hasLease(machineId) || availableConcurrency(ceiling.getLong(NetworkResources.THREAD)) > 0;
+    }
+
+    /**
+     * Network infrastructure precedes ordinary work, even when the latter happened to load first.
+     */
+    public LeaseStatus requestNetworkLease(UUID machineId) {
+        ownerCheck.run();
+        if (!active) return LeaseStatus.EXPIRED;
+        if (hasLease(machineId)) {
+            networkLeases.add(machineId);
+            return LeaseStatus.ALREADY_GRANTED;
+        }
+        if (!canRequestNetworkLease(machineId)) return LeaseStatus.INSUFFICIENT_CAPACITY;
+        var machines = leasedMachines.get(NetworkResources.THREAD);
+        if (logicalAvailable.getLong(NetworkResources.THREAD) <= 0 && machines != null) {
+            var ordinary = new ObjectArrayList<UUID>();
+            for (var candidate : machines) if (!networkLeases.contains(candidate)) ordinary.add(candidate);
+            ordinary.sort(Comparator.reverseOrder());
+            for (var victim : ordinary) {
+                if (logicalAvailable.getLong(NetworkResources.THREAD) > 0) break;
+                machines.remove(victim);
+                logicalAvailable.addTo(NetworkResources.THREAD, 1);
+            }
+        }
+        var result = requestLease(machineId);
+        if (result == LeaseStatus.GRANTED) networkLeases.add(machineId);
+        return result;
+    }
+
+    /**
+     * Infrastructure can reclaim ordinary leases; existing consumption remains charged.
+     */
+    public long availableConcurrency(long currentSupply) {
+        ownerCheck.run();
+        return Math.max(0, currentSupply - networkLeases.size());
+    }
+
+    /**
+     * Update supply after events. Signed balances preserve existing consumption even across a drop
+     * below the amount already spent; restoring a supplier never refills those spent units.
+     */
+    public void refreshCapacity(Object2LongMap<NetworkResourceType> supply) {
+        ownerCheck.run();
+        for (var type : supply.keySet()) ceiling.putIfAbsent(type, 0);
+        Object2LongOpenHashMap<NetworkResourceType> numeric = null;
+        for (var entry : ceiling.object2LongEntrySet()) {
+            var type = entry.getKey();
+            long before = entry.getLongValue();
+            long after = supply.getOrDefault(type, 0L);
+            if (after == before) continue;
+            entry.setValue(after);
+            if (type.logicalConcurrency()) logicalAvailable.addTo(type, after - before);
+            else {
+                available.addTo(type, after - before);
+                if (numeric == null) numeric = new Object2LongOpenHashMap<>(numericResources);
+                numeric.put(type, after);
+            }
+        }
+        if (numeric != null) numericResources = numeric;
     }
 
     /**
@@ -131,7 +226,7 @@ public final class NetworkTeamBudget implements AutoCloseable {
         if (machines != null && machines.contains(machineId)) {
             return LeaseStatus.ALREADY_GRANTED;
         }
-        if (logicalAvailable.getLong(type) == 0L) {
+        if (logicalAvailable.getLong(type) <= 0L) {
             return LeaseStatus.INSUFFICIENT_CAPACITY;
         }
         if (machines == null) {

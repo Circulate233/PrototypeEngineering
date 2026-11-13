@@ -1,5 +1,16 @@
 # 实施进度
 
+## 2026-11-13 默认计算机、运算仓与网络设备并发优先级
+
+- 新增可继承 `ComputerController`，组合已有组件读取、物料需求和费用事务；`NetworkComputer` 只暴露并发额度与外部资源。控制器本身无FE费用、普通配方工位或独立业务tick。所有默认网络设备控制器可继承；计算机GUI继续延缓，未新增数据库控制器或研究界面。
+- 四级运算仓各1/2/3/4槽，物品每槽1件且Item必须实现 `NetworkComputerComponent`；所有非物品原生容量各1000/4000/16000/64000。外部物品、流体和AE适配器共享双向库存，无自动IO。等级与内容由TE序列化，不在加载时反查方块补定义。组成事件驱动缓存，稳定库存不轮询机箱；运算仓GUI与像素纹理按用户授权直接参考现有风格制作。底图和方块预览见证据 `computation-hatches.png`。
+- 组件定义可携带本机计算资源占用和每tick FE；默认控制器可限制总体并发与各资源供给。任一种组件消耗不足时全部组件供给停摆，能运行的配方独立继续；内部计算资源只在本机生成/消耗，不进入网络。`ComputerRecipe` 每tick通过已有TICK资源事务支付一份完整输入并生成该tick供给，无普通加工配方START/END或持久进度。未获并发准入只预留不支付，同tick不重复付款；同tick组成变化保留已支付配方，新组件下一tick工作。
+- 计算机启动前须先从中心、外部来源或已获准计算机取得1并发，不能用自身待生效额度启动。中心免标准并发，活动数据库占1，研究站推进时申请。三类网络设备优先于普通设备，必要时按UUID收回普通租约，使其未提交工作凭据失效；旧提交结果不重放。中心同级、数据库同级/研究数及计算机同供给量以持久UUID选择，不依赖重载次序。供给变化按当前容量差调整同tick账本，新增供给立即可用，下降再恢复保留已消费/预留量，补偿只回原账本。
+- Java/ZS工厂与开发示例已接入。Java `java_computer` 和 ZS `net_computer` 使用四级运算仓、组件卡、每tick1000mB水生成内部冷却；卡提供8线程/1000算力并消耗1000冷却/32FE。相关API和原生操作文档已迁移，详见[计算机与运算仓](computers.md)。
+- 必要行为检查仅新增4个控制器/并发测试及1个运算仓共享IO测试，覆盖事务费用、组件全停、内部隔离、禁止自启动、研究站抢占、后成型基础设施及双向预留。既有测试夹具迁移为显式普通仓适配、启动/数据库开销及UUID选择；既有预算测试扩展下降/恢复保留消费。最终完整 **Gradle build成功，1864 tests/270 suites，失败0、错误0、跳过0**，包含Spotless、JAR/reobf。首次最终构建遗留一处数据库旧容量断言及结构异常测试的5ms时间片抢先耗尽；已分别迁移预期和显式设置异常场景时间片，原异常/失权断言保留，最终完整重跑通过。失败日志/XML与修复后日志均保存。
+- **49份Java**经IDEA MCP格式化与逐文件 `get_file_problems(errorsOnly:false)`；**46份主/测试源码错误、警告、弱警告全零，3份run源码被IDE排除**。首轮一处测试的可空permit警告已显式断言并补检清零；未用抑制隐藏问题。MCP `build_project` 成功。24份真实Java addon编译安装、13份真实CT SDK脚本编译及既有97核心断言全部通过，无FML/Bootstrap初始化。证据目录 `C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/computer-controller/`，主要为 `idea-final-results.json`、`idea-final-summary.json`、`build-summary.json`、`build-verified.log`、`addon-result.json` 和 `sdk/script-verifier-result.json`。
+- 下一步由用户完整启动实机复验四级运算仓过滤/容量/外部双向IO、GUI和纹理、供给/FE/缺冷却及退出重进后的基础设备优先级。编译与行为测试不替代原生World结果。本阶段本地提交，不推送、不启动Minecraft客户端或服务端。
+
 ## 2026-11-13 网络中心线程额度与开发者供给定义
 
 - 网络中心增加 `NetworkCenterController(type, level, threadCapacity, energyPerTick)` 和对应6参数ZS入口；通过 `NetworkCenter.networkResources()` 进入原中心供给链，只有活动中心计入共享预算，与计算机/参与者相加。默认控制器的供给表构造一次后按只读契约复用，仍无配方工位或业务tick；Java/ZS示例显式提供4线程、4 FE/t。旧重载省略线程时保持0。

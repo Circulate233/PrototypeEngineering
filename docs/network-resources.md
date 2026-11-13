@@ -8,7 +8,7 @@
 
 注册表保留三种标准维度：`prototype_eng:thread` 为 logicalConcurrency；`prototype_eng:compute`、`prototype_eng:qubit` 为 numeric。所有类型都没有固有供给上限，单件物品、整台计算机及研究站速率由开发者定义。扩展通过 `register(new NetworkResourceType(id, logicalConcurrency))` 声明类型；2026-11-13 按用户要求删除 maxPerTickValue 字段及旧 THREAD 每件最多1的限制。
 
-`require(id)` 用于加载时解析注册声明；`canonical(type)` 校验全部元数据并返回注册实例。相同 ID 但逻辑属性或上限不同一律拒绝；相等的 record 可以由加载器重建，不要求 Java 对象身份一致。`types()` 是按注册顺序冻结的声明列表，未暴露可变 map entry。重复 ID 和 freeze 后注册均报错。
+`require(id)` 用于加载时解析注册声明；`canonical(type)` 校验全部元数据并返回注册实例。相同 ID 但逻辑属性或内部/外部作用域不同一律拒绝；相等的 record 可以由加载器重建，不要求 Java 对象身份一致。`types()` 是按注册顺序冻结的声明列表，未暴露可变 map entry。重复 ID 和 freeze 后注册均报错。三参数构造的 internal=true 仅供计算机本地预算，网络捕获拒绝内部类型。
 
 `NetworkRuntime` 构造和 `NetworkPlanner.capture(resources, epoch, devices, contributions, resolver)` 要求冻结的注册表。内置服务器使用全局表，独立宿主可以传入自己的冻结表。capture 在查询队伍前校验每个设备供给、中心 flat/ppm 修饰器及参与者供给中的所有键，包括值为零的声明；即使本批没有另一份同名声明，也能拒绝未注册类型和元数据漂移。
 
@@ -22,11 +22,11 @@
 
 外部 provider 的 `capture(ItemStack, MachineInstance)` 在 owner 捕获边界接收私有 count-one 副本，返回 `NetworkComputerComponent.Capture(resourcesPerItem, current)`。返回向量按只读契约使用，全部声明（包括零值）经注册类型及 logicalConcurrency 校验，供给量非负。`fixed(resources)` 是固定供给便利入口，不制造组件 ID、纯栈、context 或 Impl 镜像层。
 
-`NetworkComputerComponentInventory.capture` 初次按公开 `SlottedResourceStorage` 的 committed `getStack` 捕获槽内容，并在各 `StorageContext` 锁下截取修订。默认 `MachineComputerComponents` 读取当前 `MachineHatches` 的输入、输出槽；同物理 context 的多个别名只算一次，各 context 按已有 lock order 排序后 `lockAll`。已预留提取但尚未 apply 的物品仍物理安装，待插入输出还未进入 committed 槽，因此不能用 `StorageSnapshot.available` 替代真实内容。非 slotted 仓没有可枚举物理槽的证据，不提供组件供给。
+`NetworkComputerComponentInventory.capture` 初次按公开 `SlottedResourceStorage` 的 committed `getStack` 捕获槽内容，并在各 `StorageContext` 锁下截取修订。默认 `MachineComputerComponents` 只读取 `ComputationHatch`，结构绑定和物品组成变化事件触发重建，稳定时复用缓存；不定时遍历普通输入/输出仓。同物理 context 的多个别名只算一次，各 context 按已有 lock order 排序后 `lockAll`。已预留提取但尚未 apply 的物品仍物理安装，待插入输出还未进入 committed 槽，因此不能用 `StorageSnapshot.available` 替代真实内容。
 
 安装数量由 `AEKey2LongMap` 按 long 汇总；开发者定义的每物品供给经溢出预检乘安装数量，随后用 fastutil `addTo` 累加，最后合并机器 declared vector。单件物品可以提供多份 THREAD、任意算力及自定义资源量，例如64 THREAD和2048 COMPUTE；自定义计算机也没有额外供给上限。整机消费仍按既有规则申请 lease，与 Java worker 数量无关。网络中心也可直接配置线程额度，仅当前活动中心的供给计入队伍。
 
-`MachineComputerComponents` 在装配中声明为 recreated，和 `MachineNetworkDevice.capturedComponent` 配合调用 `networkCapture`。默认证明保留准确组件、formation、不可变 `MachineHatches` 绑定、仓宿主有效性及每个物理 context 的修订。外部来源返回 `MachineComputerComponents.Sources(storages, current)`，可枚举自己的公开槽实现，同时自证准确来源绑定。仓失效或拆除生成失败证明、正常拒绝整批发布，不发布剩余仓的部分供给；metadata、负值和算术溢出等供给错误继续硬失败。
+`MachineComputerComponents` 在装配中声明为 recreated。默认控制器组合它与原资源需求、费用事务，通过网络发布先准入再支付，见[计算机与运算仓](computers.md)。默认证明保留组件组成版本及仓有效性，水等非物品输入/预留变化不触发组件扫描。外部显式 Sources 适配器仍可枚举自己的公开槽并提供准确来源证明，沿原 context 修订捕获；使用方自行负责其工作策略。
 
 供给、外部 Sources 的 `current` 都必须只读并且不获取额外 storage/domain 锁。配方的 `WorkPermit.authorized` 会在 FE/材料事务持锁及 planned `ResourceBatch` fence 内调用这些证明：初次捕获完整锁下读取，后续只用 `StorageContext.current(expectedRevision)` 的 release/acquire 版本证明与 provider 自有版本回执，不重新读取槽或重算 provider。证明回调后再次核对 context 修订，防止回调期间来源变化通过旧证明。普通仓室本身负责 NBT 保存恢复；reader 不保存内容、epoch 或许可，新装配读恢复后的真实仓槽，旧实例证明不复活。
 

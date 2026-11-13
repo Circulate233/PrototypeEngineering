@@ -124,3 +124,6 @@ pe_run_tests.me.galleryentry=%s: panel origin %s
 pe_run_tests.me.galleryready=PASS block coverage: %s types and %s loaded matching cells. Inspect CTM rendering visually.
 pe_run_tests.java_network_center=Java Network Center
 pe_run_tests.java_research_station=Java Research Station
+pe_run_tests.java_computer=Java Computer
+item.pe_run_tests.computer_card.name=Example Computing Component
+item.pe_run_tests.net_computer_card.name=Example Network Computing Component

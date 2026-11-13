@@ -25,6 +25,16 @@ public record ZenComputingResource(NetworkResourceType value) {
     }
 
     @ZenMethod
+    public static ZenComputingResource internal(String id, boolean logicalConcurrency) {
+        return new ZenComputingResource(new NetworkResourceType(new ResourceLocation(id), logicalConcurrency, true));
+    }
+
+    @ZenGetter("internal")
+    public boolean internal() {
+        return value.internal();
+    }
+
+    @ZenMethod
     public static ZenComputingResource thread() {
         return new ZenComputingResource(NetworkResources.THREAD);
     }

@@ -418,7 +418,7 @@ class NetworkParticipantsTest {
             assertNull(fixture.runtime.plan());
             fixture.participant.versionStep = 1;
             assertTrue(fixture.runtime.refresh());
-            assertEquals(10, fixture.available());
+            assertEquals(11, fixture.available());
             fixture.runtime.endTick();
             fixture.start(1);
             assertEquals(11, fixture.available());

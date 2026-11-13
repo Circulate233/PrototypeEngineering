@@ -2,6 +2,7 @@ package com.circulation.prototype_eng.api.network.resource;
 
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
+import it.unimi.dsi.fastutil.objects.Object2LongMaps;
 import net.minecraft.item.ItemStack;
 
 import java.util.Objects;
@@ -30,9 +31,16 @@ public interface NetworkComputerComponent {
      * Version proof must be read-only and acquire no additional storage/domain locks, including inside a recipe fence.
      * The completed zero-default resource map is borrowed unchanged while this capture is retained.
      */
-    record Capture(Object2LongMap<NetworkResourceType> resourcesPerItem, BooleanSupplier current) {
+    record Capture(Object2LongMap<NetworkResourceType> resourcesPerItem,
+                   Object2LongMap<NetworkResourceType> requiredResources, long energyPerTick, BooleanSupplier current) {
+        public Capture(Object2LongMap<NetworkResourceType> resourcesPerItem, BooleanSupplier current) {
+            this(resourcesPerItem, Object2LongMaps.emptyMap(), 0, current);
+        }
+
         public Capture {
             NetworkResourceModifier.validateResources(resourcesPerItem);
+            NetworkResourceModifier.validateResources(requiredResources);
+            if (energyPerTick < 0) throw new IllegalArgumentException("Negative computing component FE cost");
             Objects.requireNonNull(current);
         }
     }

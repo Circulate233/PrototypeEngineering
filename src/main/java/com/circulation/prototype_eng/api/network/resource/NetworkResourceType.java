@@ -8,7 +8,11 @@ import java.util.Objects;
  * Metadata for a game-level computing budget, independent of item/fluid identity and JVM threads.
  * Supply quantities belong to providers; resource types impose no per-item or per-device limit.
  */
-public record NetworkResourceType(ResourceLocation id, boolean logicalConcurrency) {
+public record NetworkResourceType(ResourceLocation id, boolean logicalConcurrency, boolean internal) {
+    public NetworkResourceType(ResourceLocation id, boolean logicalConcurrency) {
+        this(id, logicalConcurrency, false);
+    }
+
     public NetworkResourceType {
         Objects.requireNonNull(id, "Computing resource id");
         if (id.getNamespace().isBlank() || id.getPath().isBlank()) {

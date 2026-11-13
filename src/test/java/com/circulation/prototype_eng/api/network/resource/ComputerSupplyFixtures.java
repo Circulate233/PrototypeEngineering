@@ -2,6 +2,10 @@ package com.circulation.prototype_eng.api.network.resource;
 
 import ae2.api.stacks.AEKey;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
+import com.circulation.prototype_eng.api.machine.component.MachineHatches;
+import com.circulation.prototype_eng.api.network.MachineComputerComponents;
+import com.circulation.prototype_eng.api.storage.SlottedResourceStorage;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import com.circulation.prototype_eng.testsupport.TestResources;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 
@@ -27,5 +31,18 @@ public final class ComputerSupplyFixtures {
     public static void fixed(NetworkComputerComponentRegistry registry, AEKey key, Object2LongMap<NetworkResourceType> resources) {
         var capture = new NetworkComputerComponent.Capture(resources, () -> true);
         register(registry, key, _ -> capture);
+    }
+
+    /**
+     * Explicit warehouse adapter for recipe-consumer fixtures; default computers use computation hatches.
+     */
+    public static MachineComputerComponents.Sources warehouses(MachineInstance machine) {
+        var hatches = MachineHatches.get(machine);
+        var storages = new ObjectArrayList<SlottedResourceStorage>();
+        for (var hatch : hatches.resources()) {
+            if (hatch.input() instanceof SlottedResourceStorage input) storages.add(input);
+            if (hatch.output() instanceof SlottedResourceStorage output) storages.add(output);
+        }
+        return new MachineComputerComponents.Sources(storages, () -> MachineHatches.get(machine) == hatches);
     }
 }
