@@ -113,8 +113,13 @@ public final class StructureToolContainer extends AEBaseContainer {
             if (action.kind.equals("task")) StructureBuildTasks.toggle(getPlayer(), slot, tool);
             else if (action.kind.equals("builder_setting") && BuilderState.state(tag) == BuilderState.State.IDLE) {
                 for (var setting : BuilderState.Setting.VALUES)
-                    if (setting.name().equals(action.key)) tag.setBoolean(setting.key, !setting.enabled(tag));
-                if (action.key.equals("ME")) BuilderState.cycleMeMode(tag);
+                    if (setting.name().equals(action.key)) setting.toggle(tag);
+                switch (action.key) {
+                    case "ME" -> BuilderState.cycleMeMode(tag);
+                    case "ME_USE" -> BuilderState.toggleMeUse(tag);
+                    case "ME_CRAFT" -> BuilderState.toggleMeCraft(tag);
+                    default -> { }
+                }
             }
             else if ((action.kind.equals("material") || action.kind.equals("cell_material") || action.kind.equals("slice"))
                 && action.key.length() <= 8192 && action.value.length() <= 8192)

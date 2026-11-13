@@ -46,7 +46,7 @@ import java.util.function.Supplier;
 
 /** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
 final class BuilderStructureTree {
-    private static final int HEIGHT = 144;
+    private static final int HEIGHT = 130;
     private final StructureToolContainer container;
     private final Consumer<Set<BlockPos>> highlight;
     private Consumer<StructureDisplay> materialReplacement = _ -> { };

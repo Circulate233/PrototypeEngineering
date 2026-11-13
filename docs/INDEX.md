@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 构建器六开关与实际策略已接入：完整材料需求/等待材料补充、完整空间需求/忽略世界流体、ME取料/自动AE合成三组；三项从属开关在客户端和服务器校验前置，关前置时清除从属开启状态。严格空间只认空气（可选择将世界流体视为空气），关闭则用原采掘/保护事件挖掘占位；缺料等待保留当前位置，补料后继续，不等待则跳过。直接复用结构选择工具20×13开关及21×14底框阴影，24组完整像素对照全相等；标签和tooltip显式分行。入口[工具布局](structure-tools.md#2026-11-13-构建器预检me与外部结构)，证据builder-policies/见[实施进度](implementation-status.md)。独立17项测试和本轮IDEA全级通过；整仓构建仍受其他进行中的接口重构影响。下一步用户重启复验六开关/前置、草和石块挖掘、世界流体、等待后补料及AE确认；本地提交、不推送/启动游戏，背景与暂存保留。
+
 - 2026-11-13 分组按钮按自动IO基准修正：保留自动IO全部源码、states及40张仓室底图，仅给普通分组增加原底图同款固定底框/阴影，生成42×16三态专图；分组y49与IO y13/31等距。240组中心外像素对照差异0，展开面板无色按钮也复用。入口[隔离组控件](block-registration.md#颜色与样板隔离)，证据hatch-button-consistency/见[实施进度](implementation-status.md)。2Java本机IDEA errorsOnly:false全级零及MCP构建通过，独立输出Gradle build/Spotless与既有4交互测试通过；下一步用户重启复验三态。只本地提交，不推送/启动游戏，保留原重命名/暂存及其他修改。
 
 - 2026-11-13 大小写重命名启动崩溃：用户日志的旧MeResourceHatchBlock来自run/mods/pe_visual_examples-1.0.0-dev.jar，旧Jar为11-12产物，主工程和示例源码已改ME；Windows按旧大小写找到新class后触发JVM wrong name。重新导出当前开发类路径，删除示例一处已移除RewardItemProtection检查，21Java重编译并安装成功；65class/383个PE引用严格大小写均匹配，无旧Me类名。证据stale-example-classpath/见[实施进度](implementation-status.md)。下一步用户重新启动复验；后续主API/类名改动先run/prepare-tests.ps1更新独立addon，直接runClient不会编译它。未启动游戏，示例目录IDEA被排除不可分析，主类全级零/MCP构建通过，本次增量本地提交，原重命名/暂存保持。

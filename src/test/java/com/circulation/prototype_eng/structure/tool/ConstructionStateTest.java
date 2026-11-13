@@ -21,7 +21,8 @@ class ConstructionStateTest {
         var copy = tag.copy();
         assertFalse(BuilderState.Setting.REQUIRE_MATERIALS.enabled(copy));
         assertFalse(BuilderState.Setting.REQUIRE_SPACE.enabled(copy));
-        assertTrue(BuilderState.Setting.REPLACE_FLUIDS.enabled(copy));
+        assertFalse(BuilderState.Setting.REPLACE_FLUIDS.enabled(copy));
+        assertTrue(BuilderState.Setting.WAIT_MATERIALS.enabled(copy));
         assertEquals(2, BuilderState.meMode(copy));
         BuilderState.cycleMeMode(copy);
         assertEquals(0, BuilderState.meMode(copy));

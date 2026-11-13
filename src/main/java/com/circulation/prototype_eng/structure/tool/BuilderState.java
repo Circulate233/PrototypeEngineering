@@ -24,19 +24,45 @@ import java.util.UUID;
 public final class BuilderState {
     public enum Setting {
         REQUIRE_MATERIALS("BuilderRequireMaterials", true), REQUIRE_SPACE("BuilderRequireSpace", true),
-        REPLACE_FLUIDS("BuilderReplaceFluids", false);
+        REPLACE_FLUIDS("BuilderReplaceFluids", false), WAIT_MATERIALS("BuilderWaitMaterials", false);
         public static final Setting[] VALUES = values();
         public final String key;
         private final boolean fallback;
 
         Setting(String key, boolean fallback) { this.key = key; this.fallback = fallback; }
 
-        public boolean enabled(NBTTagCompound tag) { return tag.hasKey(key) ? tag.getBoolean(key) : fallback; }
+        public boolean available(NBTTagCompound tag) {
+            return switch (this) {
+                case WAIT_MATERIALS -> !REQUIRE_MATERIALS.enabled(tag);
+                case REPLACE_FLUIDS -> REQUIRE_SPACE.enabled(tag);
+                default -> true;
+            };
+        }
+
+        public boolean enabled(NBTTagCompound tag) {
+            return available(tag) && (tag.hasKey(key) ? tag.getBoolean(key) : fallback);
+        }
+
+        public void toggle(NBTTagCompound tag) {
+            if (!available(tag)) return;
+            tag.setBoolean(key, !enabled(tag));
+            if (this == REQUIRE_MATERIALS && enabled(tag)) tag.setBoolean(WAIT_MATERIALS.key, false);
+            if (this == REQUIRE_SPACE && !enabled(tag)) tag.setBoolean(REPLACE_FLUIDS.key, false);
+        }
     }
 
     public static int meMode(NBTTagCompound tag) { return Math.clamp(tag.getInteger("BuilderMeMode"), 0, 2); }
 
     public static void cycleMeMode(NBTTagCompound tag) { tag.setInteger("BuilderMeMode", (meMode(tag) + 1) % 3); }
+    public static void toggleMeUse(NBTTagCompound tag) {
+        tag.setInteger("BuilderMeMode", meMode(tag) > 0 ? 0 : 1);
+    }
+
+    public static void toggleMeCraft(NBTTagCompound tag) {
+        int mode = meMode(tag);
+        if (mode > 0) tag.setInteger("BuilderMeMode", mode == 2 ? 1 : 2);
+    }
+
     private BuilderState() {
     }
 

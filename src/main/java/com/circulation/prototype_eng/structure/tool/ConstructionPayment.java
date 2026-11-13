@@ -38,6 +38,13 @@ final class ConstructionPayment {
         this.owner = owner;
     }
 
+    static long missingAmount(EntityPlayerMP player, GenericStack resource, boolean useMe) {
+        long missing = resource.amount() - new ConstructionInventory(player).take(resource);
+        if (missing <= 0 || !useMe) return missing;
+        var me = ConstructionMeAccess.find(player);
+        return me == null ? missing : missing - me.extract(resource.what(), missing, Actionable.SIMULATE);
+    }
+
     static @Nullable ConstructionPayment prepare(EntityPlayerMP player, GenericStack resource, boolean useMe) {
         var inventories = ConstructionInventory.inventories(player);
         ItemTake item = null;

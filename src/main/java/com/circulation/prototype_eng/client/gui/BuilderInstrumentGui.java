@@ -33,13 +33,16 @@ import java.util.Objects;
 /** Original PM builder panel: preview at (4,2), clipped tree and task controls. */
 @SuppressWarnings("resource") // The client lifecycle owns the borrowed shared preview service.
 public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer> implements PreviewNativeGui {
+    private static final int SETTINGS_LEFT = 196;
+    private static final int SETTINGS_TOP = 146;
+    private static final int SETTINGS_COLUMN = 92;
+    private static final int SETTINGS_ROW = 18;
     private final BuilderStructureTree tree;
     private StructurePreviewPanel preview;
     private ResourceLocation id;
     private String appliedSelections = "";
     private boolean selectionsPending;
     private BlockOrientation orientation;
-    private int pressedSetting = -1;
 
     @Override
     public void prototype_eng$renderItemTooltip(ItemStack stack, int x, int y) {
@@ -185,37 +188,63 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     }
 
     private void settings(int mouseX, int mouseY) {
-        var tag = container.snapshot();
-        boolean enabled = BuilderState.state(tag) == BuilderState.State.IDLE;
-        for (int index = 0; index < 4; index++) {
-            int x = 193 + index % 2 * 91, y = 154 + index / 2 * 23;
-            boolean hover = mouseX >= x && mouseX < x + 89 && mouseY >= y && mouseY < y + 22;
-            String variant = enabled && index == pressedSetting ? "pressed" : hover && enabled ? "selected" : "default";
-            StructureToolDraw.horizontal("gui_scanner_instrument/output_" + variant,
-                x, y, 89, 22, 130, 4, 8, 126, 4);
-            var label = settingLabel(index);
-            int mode = index == 1 ? BuilderState.meMode(tag) : setting(index).enabled(tag) ? 1 : 0;
-            var text = label.getLocal() + " " + (index == 1 ? meLabel(mode).getLocal()
-                : (mode == 1 ? StructureToolText.BuilderEnabled : StructureToolText.BuilderDisabled).getLocal());
-            GuiLabel.drawCentered(fontRenderer, text, x + 3, y + 3, 83, 16, enabled ? 0xffffff : 0xff969696, false);
+        for (int index = 0; index < 6; index++) {
+            int left = SETTINGS_LEFT + index % 2 * SETTINGS_COLUMN;
+            int top = SETTINGS_TOP + index / 2 * SETTINGS_ROW;
+            boolean enabled = settingAvailable(index);
+            var label = fontRenderer.listFormattedStringToWidth(settingLabel(index).getLocal(), 54);
+            int textY = top + Math.max(0, (SETTINGS_ROW - label.size() * fontRenderer.FONT_HEIGHT) / 2);
+            for (var line : label) {
+                fontRenderer.drawString(line, left, textY, enabled ? 0xffffff : 0xff969696);
+                textY += fontRenderer.FONT_HEIGHT;
+            }
+            // The exact switch used by the structure selector: no custom sprite or stretched frame.
+            StructureToolDraw.image("gui_states/switch/s_normal/" + (settingOn(index) ? "on" : "off")
+                + (enabled && settingHover(index, mouseX, mouseY) ? "_selected" : ""), left + 56, top + 3, 20, 13);
         }
     }
 
+    private static boolean settingHover(int index, int mouseX, int mouseY) {
+        int left = SETTINGS_LEFT + index % 2 * SETTINGS_COLUMN + 56;
+        int top = SETTINGS_TOP + index / 2 * SETTINGS_ROW + 3;
+        return mouseX >= left && mouseX < left + 20 && mouseY >= top && mouseY < top + 13;
+    }
+
+    private static boolean settingRowHover(int index, int mouseX, int mouseY) {
+        int left = SETTINGS_LEFT + index % 2 * SETTINGS_COLUMN;
+        int top = SETTINGS_TOP + index / 2 * SETTINGS_ROW;
+        return mouseX >= left && mouseX < left + 76 && mouseY >= top && mouseY < top + SETTINGS_ROW;
+    }
+
+    private boolean settingAvailable(int index) {
+        var tag = container.snapshot();
+        return BuilderState.state(tag) == BuilderState.State.IDLE
+            && (index == 5 ? BuilderState.meMode(tag) > 0 : index == 4 || setting(index).available(tag));
+    }
+
+    private boolean settingOn(int index) {
+        var tag = container.snapshot();
+        return index == 4 ? BuilderState.meMode(tag) > 0 : index == 5 ? BuilderState.meMode(tag) == 2 : setting(index).enabled(tag);
+    }
+
     private static BuilderState.Setting setting(int index) {
-        return index == 0 ? BuilderState.Setting.REQUIRE_MATERIALS : index == 2 ? BuilderState.Setting.REQUIRE_SPACE : BuilderState.Setting.REPLACE_FLUIDS;
+        return switch (index) {
+            case 0 -> BuilderState.Setting.REQUIRE_MATERIALS;
+            case 1 -> BuilderState.Setting.WAIT_MATERIALS;
+            case 2 -> BuilderState.Setting.REQUIRE_SPACE;
+            default -> BuilderState.Setting.REPLACE_FLUIDS;
+        };
     }
 
     private static StructureToolText settingLabel(int index) {
         return switch (index) {
             case 0 -> StructureToolText.BuilderRequireMaterials;
-            case 1 -> StructureToolText.BuilderMe;
+            case 1 -> StructureToolText.BuilderWaitMaterials;
             case 2 -> StructureToolText.BuilderRequireSpace;
-            default -> StructureToolText.BuilderReplaceFluids;
+            case 3 -> StructureToolText.BuilderReplaceFluids;
+            case 4 -> StructureToolText.BuilderMe;
+            default -> StructureToolText.BuilderMeCraft;
         };
-    }
-
-    private static StructureToolText meLabel(int mode) {
-        return mode == 0 ? StructureToolText.BuilderMeOff : mode == 1 ? StructureToolText.BuilderMeSupply : StructureToolText.BuilderMeCraft;
     }
 
     private boolean taskHover(int x, int y) {
@@ -225,16 +254,20 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void drawScreen(int x, int y, float partial) {
         super.drawScreen(x, y, partial);
-        for (int index = 0; index < 4; index++) {
-            int left = guiLeft + 193 + index % 2 * 91, top = guiTop + 154 + index / 2 * 23;
-            if (x >= left && x < left + 89 && y >= top && y < top + 22) {
+        for (int index = 0; index < 6; index++) {
+            if (settingRowHover(index, x - guiLeft, y - guiTop)) {
                 var tip = switch (index) {
                     case 0 -> StructureToolText.BuilderRequireMaterialsHelp;
-                    case 1 -> StructureToolText.BuilderMeHelp;
+                    case 1 -> StructureToolText.BuilderWaitMaterialsHelp;
                     case 2 -> StructureToolText.BuilderRequireSpaceHelp;
-                    default -> StructureToolText.BuilderReplaceFluidsHelp;
+                    case 3 -> StructureToolText.BuilderReplaceFluidsHelp;
+                    case 4 -> StructureToolText.BuilderMeHelp;
+                    default -> StructureToolText.BuilderMeCraftHelp;
                 };
-                drawHoveringText(fontRenderer.listFormattedStringToWidth(tip.getLocal(), 260), x, y);
+                String status = StructureToolText.BuilderSettingState.getLocal(
+                    (settingOn(index) ? StructureToolText.BuilderEnabled : StructureToolText.BuilderDisabled).getLocal());
+                String text = settingLabel(index).getLocal() + "\n" + status + "\n" + tip.getLocal().replace("\\n", "\n");
+                drawHoveringText(fontRenderer.listFormattedStringToWidth(text, 160), x, y);
                 return;
             }
         }
@@ -254,12 +287,11 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     protected void mouseClicked(int x, int y, int button) throws IOException {
-        for (int index = 0; index < 4; index++) {
-            int left = guiLeft + 193 + index % 2 * 91, top = guiTop + 154 + index / 2 * 23;
-            if (x >= left && x < left + 89 && y >= top && y < top + 22) {
-                if (button == 0 && BuilderState.state(container.snapshot()) == BuilderState.State.IDLE) {
-                    pressedSetting = index;
-                    container.action("builder_setting", index == 1 ? "ME" : setting(index).name(), "");
+        for (int index = 0; index < 6; index++) {
+            if (settingHover(index, x - guiLeft, y - guiTop)) {
+                if (button == 0 && settingAvailable(index)) {
+                    String key = index == 4 ? "ME_USE" : index == 5 ? "ME_CRAFT" : setting(index).name();
+                    container.action("builder_setting", key, "");
                 }
                 return;
             }
@@ -308,7 +340,6 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     protected void mouseReleased(int x, int y, int button) {
-        pressedSetting = -1;
         tree.release(x - guiLeft - 191, y - guiTop - 8, button);
         if (preview != null) preview.release(x - guiLeft - 4, y - guiTop - 2, button);
         super.mouseReleased(x, y, button);
