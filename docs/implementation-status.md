@@ -1,5 +1,13 @@
 # 实施进度
 
+## 2026-11-13 网络中心控制器
+
+- 仅按本轮要求实现控制器和Java/ZS创建示例，未生成HTML、未绘制或新增GUI。研究相关GUI继续延缓。
+- 新增`NetworkCenter`等级职责接口和默认`NetworkCenterController`，后者直接继承通用`MachineInstance`，没有多线程/跨配方控制器、配方工位、扫描器、物料/能源需求或`NetworkRecipeWork`。公共`requiresTick()`声明在该加载代固定；默认中心返回false，`MachineController`加载时不将其登记为业务tick任务。原物理宿主和结构检查服务仍维护成型/失效，网络全局发布沿原生命周期登记；没有新增调度器。
+- 中心只提供等级，不提供计算资源或modifier。继续沿原网络规划为每队选中唯一活动中心：最高等级、同级最早加载，其余冲突。Java可独立实现`NetworkCenter`并使用同一role组件，无需继承默认控制器。
+- ZS新增`MachineType.networkCenter(id, title, structure, level)`，使用相同Java实现；更新run现有中心声明。Java注册示例`NetworkCenterExamples`通过公开事件创建`java_network_center`。两种示例都是控制器上方一个铁块、等级1；不附加仓室/FE或配方。新示例修订为`network-center-v1`，原示例旧存档不宣称已迁移。使用入口见[网络中心控制器](network-runtime.md#网络中心控制器2026-11-13)。
+- 验证：`MachineControllerTest`增加一项完整加载→调度→保存→卸载→恢复→破坏行为，确认业务计数不推进且生命周期仍正确；与既有网络规划、网络组件及真实CT工厂测试共同运行，21 tests/4 suites全部通过。Gradle build/Spotless/JAR/reobf与MCP指定构建成功；6份正式/测试Java逐文件`get_file_problems(errorsOnly:false)`错误、警告、弱警告全零。新增addon Java被IDE排除，如实记录；实际22Java addon编译安装通过，实际SDK脚本编译及既有97核心断言通过。未启动游戏/服务端，未推送。证据：`C:/Users/a1896/.codex/work-recovery/PrototypeEngineering-20261113/network-center-controller/`。
+
 ## 2026-11-13 移除研究 GUI，恢复延缓状态
 
 - 按用户明确要求删除整套现有研究GUI：研究、队列、奖励、数据库、遗忘和管理员操作页面，以及专用容器、打开入口、分页同步、图标注册和GUI文案。共删除7份生产类、4份专用测试，并移除混合GUI编解码测试中的2项研究用例；机器GUI及其测试保留。

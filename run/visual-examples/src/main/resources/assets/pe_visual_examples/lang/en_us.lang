@@ -122,3 +122,4 @@ pe_run_tests.me.process=Recipe %s, process %s, input group %s, state %s
 pe_run_tests.me.check=%s: %s; actual result %s
 pe_run_tests.me.galleryentry=%s: panel origin %s
 pe_run_tests.me.galleryready=PASS block coverage: %s types and %s loaded matching cells. Inspect CTM rendering visually.
+pe_run_tests.java_network_center=Java Network Center

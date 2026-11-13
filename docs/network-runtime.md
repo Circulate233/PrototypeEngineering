@@ -1,5 +1,24 @@
 # 网络角色、整批发布与配方门限
 
+## 网络中心控制器（2026-11-13）
+
+本轮仅实现控制器与Java/ZS创建示例，不制作HTML或GUI。`api.network.NetworkCenter`是网络等级职责接口；自定义机器运行时可独立实现它。默认`api.machine.NetworkCenterController`直接继承通用`MachineInstance`，不继承多线程或跨配方控制器，不声明配方、工位或`NetworkRecipeWork`。它的`requiresTick()`返回false，物理控制器不将它登记到机器业务tick队列；原有物理宿主、结构成型检查及网络发布服务仍负责加载、结构变化、卸载和选中中心。
+
+每队只有一个活动中心，沿既有规则选择最高等级、同级最早加载者；其他已成型中心为`SAME_TYPE_CONFLICT`。默认控制器只提供正整数网络等级，资源供给为空、没有资源修饰。等级属于当前机器定义，在该加载代内保持不变；所有权沿既有`MachineOwnership`保存，网络登记在加载时建立、卸载时撤销。
+
+Java声明时给机器添加`MachineOwnership.TYPE`和`NetworkCenter.DEVICE`，装配指定`type -> new NetworkCenterController(type, level)`并将`NetworkCenter.DEVICE`标为recreated。自定义实现只需实现`NetworkCenter`并使用相同role组件；无业务tick的自定义运行时同样覆写`requiresTick()`，无需继承默认控制器。
+
+ZS提供完整快捷入口：
+
+```zenscript
+MachineType.networkCenter("example:center", "example.center", "example:center_shape", 1)
+    .register("network-center-v1");
+```
+
+入口使用相同Java契约与装配工厂，返回原`MachineType`声明句柄。网络中心不调用`processing`或声明配方工位。Java可直接用的注册示例为`run/visual-examples/src/main/java/pe/visual/examples/NetworkCenterExamples.java`；ZS示例为`run/scripts/15_pe_run_network_machines.zs`，结构在`30_pe_run_network.zs`。两例均为控制器上方一个铁块，等级1，不需要仓室/能源。装有run addon及脚本后可取得`pe_run_tests:java_network_center_controller`或`pe_run_tests:net_center_controller`。
+
+以下为既有网络运行时记录。
+
 本阶段把[网络规划](network-planning.md)接入实际机器生命周期和服务器调度。使用方仍自行声明角色、等级、资源和机器；没有内置正式机器。当前提供共同网络条件、每 tick 预算/lease，以及普通配方的具体研究/数值消费者；研究站和完整正式 planned 仍须继续迁移。
 
 ## 声明与恢复

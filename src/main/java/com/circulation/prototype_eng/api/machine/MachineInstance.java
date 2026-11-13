@@ -76,6 +76,14 @@ public class MachineInstance implements PlannedMachineTask {
     }
 
     /**
+     * Whether the physical controller registers this runtime for business ticks. Fixed for the loaded
+     * generation; passive runtimes still receive lifecycle events and independent structure checks.
+     */
+    public boolean requiresTick() {
+        return true;
+    }
+
+    /**
      * All logical hosts share this machine's allowance, including explicitly constructed external hosts.
      */
     public void registerRecipeHost(MachineWorkSlots host) {

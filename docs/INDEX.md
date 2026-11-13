@@ -4,6 +4,8 @@
 
 ## 当前检查点
 
+- 2026-11-13 网络中心控制器：新增NetworkCenter等级接口与默认NetworkCenterController，直接使用通用机器生命周期，不继承多线程/跨配方控制器、不创建配方工位/费用组件、不登记机器业务tick。沿现有结构检查和网络唯一活动中心选择；Java/ZS示例均为控制器上方铁块、等级1。只处理控制器，未制作HTML/GUI。入口[网络中心控制器](network-runtime.md#网络中心控制器2026-11-13)，验证见[实施进度](implementation-status.md)；后续界面等待用户逐项要求。
+
 - 2026-11-13 按用户要求移除全部现有研究相关GUI：研究/队列/奖励/数据库/遗忘与管理员页面、专用容器/入口/同步/图标注册/文案与测试删除；后台研究能力保留。研究GUI恢复为延缓实现，后续仅按用户逐项要求处理。入口[研究GUI状态](research-gui.md)，删除范围与必要验证见[实施进度](implementation-status.md)。此前研究GUI已完成或待验记录已撤销。
 
 - 2026-11-13 再次全仓复审与统一提交：修复BlockPos Map普通构造器漏复制；清理结构临时坐标、归并排序重复缓冲、分组/样板全表扫描、每帧NBT字符串及剩余Frozen包装，改为Javadoc只读交接。1105份Java均已通过IDEA MCP格式化并逐份检查：1076全级零、5份CTM仍有IDE依赖解析诊断、24份文档/run被排除；完整Gradle build的1883项测试全通过，MCP build及21Java addon编译安装成功。入口[复审](defensive-programming-audit.md#2026-11-13-再次复审与统一格式化)、[集合契约](blockpos-maps.md)，最终证据见[实施进度](implementation-status.md)。本次按用户授权统一提交，日志严格为`Clean and Spoless code`；下一步读取最新实施证据，实际画面/游戏行为由用户复验。不启动游戏、不推送。

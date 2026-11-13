@@ -177,7 +177,7 @@ public final class MachineController implements PlannedMachineTask {
                 phase = Phase.LOADED;
                 return;
             }
-            scheduler.register(this);
+            if (created.requiresTick()) scheduler.register(this);
             pendingSave = null;
             phase = Phase.LOADED;
         } catch (RuntimeException | Error failure) {

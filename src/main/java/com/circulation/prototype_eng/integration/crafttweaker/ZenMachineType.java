@@ -4,11 +4,14 @@ import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.data.DataComponents;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.NetworkCenterController;
+import com.circulation.prototype_eng.api.machine.identity.MachineOwnership;
 import com.circulation.prototype_eng.api.machine.persistence.MachineAssembly;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlots;
 import com.circulation.prototype_eng.api.machine.workslot.MachineWorkSlotsNbt;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotDefinition;
 import com.circulation.prototype_eng.api.machine.workslot.WorkSlotRestartPolicy;
+import com.circulation.prototype_eng.api.network.NetworkCenter;
 import com.circulation.prototype_eng.api.recipe.RecipeRegistry;
 import com.circulation.prototype_eng.api.recipe.persistence.RecipeProcessCodecs;
 import com.circulation.prototype_eng.api.recipe.scanning.RecipeScanner;
@@ -62,6 +65,21 @@ public final class ZenMachineType {
     @ZenMethod
     public static ZenMachineType create(String id, String translationKey, String structureId) {
         return new ZenMachineType(id, translationKey, structureId);
+    }
+
+    /**
+     * Declares a passive center using the same public Java role and runtime factory.
+     */
+    @ZenMethod
+    public static ZenMachineType networkCenter(String id, String translationKey, String structureId, int level) {
+        if (level < 1) throw new IllegalArgumentException("Network center level must be positive");
+        var declaration = create(id, translationKey, structureId);
+        declaration.factory(new ZenMachineFactory(type -> new NetworkCenterController(type, level)));
+        declaration.network(new ZenNetworkConfiguration(builder -> builder
+            .component(MachineOwnership.TYPE)
+            .component(NetworkCenter.DEVICE),
+            builder -> builder.recreated(NetworkCenter.DEVICE)));
+        return declaration;
     }
 
     @ZenMethod

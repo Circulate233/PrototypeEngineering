@@ -11,9 +11,8 @@ import mods.prototype_eng.network.NetworkRequirements;
 var names = Bindings.scope("pe_run_tests:bindings");
 var compute = ComputingResource.create("pe_run_tests:net_compute", false, 0);
 var empty = ComputingResources.create();
-MachineType.create("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_shape")
-    .network(NetworkConfiguration.create("pe_run_tests:net_center", "NETWORK_CENTER", 1, empty,
-        ComputingModifier.create(), 0, NetworkRequirements.create())).register("v1");
+MachineType.networkCenter("pe_run_tests:net_center", Text.NetCenter.key, "pe_run_tests:net_center_shape", 1)
+    .register("network-center-v1");
 MachineType.create("pe_run_tests:net_computer", Text.NetComputer.key, "pe_run_tests:net_shape")
     .network(NetworkConfiguration.create("pe_run_tests:net_computer", "COMPUTER", 0, empty,
         ComputingModifier.create().flat(compute, 2).multiplierPpm(compute, 1000000), 0, NetworkRequirements.create())).register("v1");

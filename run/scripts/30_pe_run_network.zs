@@ -86,3 +86,6 @@ NetworkRender.registerDiskEncoding();
 Structure.template("pe_run_tests:net_shape", "NORTH_UP", 0, 0, 0, false,
     Pattern.create().put(0, 0, 0, Predicate.notAir()).put(1, 0, 0, Predicate.resourceHatch())
         .put(-1, 0, 0, Predicate.resourceHatch()).put(0, 0, 1, Predicate.energyInputHatch()), [], []).translated(Text.NetworkStructure.key).register();
+
+Structure.template("pe_run_tests:net_center_shape", "NORTH_UP", 0, 0, 0, false,
+    Pattern.create().put(0, 1, 0, Predicate.block("minecraft:iron_block")), [], []).register();

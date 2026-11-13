@@ -3,6 +3,7 @@ package com.circulation.prototype_eng.machine;
 import com.circulation.prototype_eng.api.component.ComponentType;
 import com.circulation.prototype_eng.api.machine.MachineInstance;
 import com.circulation.prototype_eng.api.machine.MachineType;
+import com.circulation.prototype_eng.api.machine.NetworkCenterController;
 import com.circulation.prototype_eng.api.machine.component.MachineHatches;
 import com.circulation.prototype_eng.api.machine.component.MachineSystem;
 import com.circulation.prototype_eng.api.machine.lifecycle.MachineController;
@@ -104,6 +105,48 @@ class MachineControllerTest {
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             throw new AssertionError(failure);
+        }
+    }
+
+    @Test
+    void networkCenterLoadsAndRestoresWithoutJoiningBusinessTicks() {
+        var component = counterType(new Action());
+        var type = declaration(ExecutionMode.MAIN_THREAD).component(component).build();
+        var assembly = MachineAssembly.builder(type, "network-center-v1")
+                                      .instanceFactory(value -> new NetworkCenterController(value, 2))
+                                      .component(component, new CounterCodec()).build();
+        var events = new ObjectArrayList<String>();
+        var registry = new MachineLifecycleRegistry();
+        registry.register(new MachineLifecycleListener() {
+            @Override
+            public void onLoaded(MachineLifecycleEvent.Loaded event) {
+                events.add("loaded");
+            }
+
+            @Override
+            public void onUnloaded(MachineLifecycleEvent.Unloaded event) {
+                events.add("unloaded");
+            }
+        });
+        try (var scheduler = scheduler()) {
+            var controller = new MachineController(assembly, new Host(), scheduler, registry);
+            controller.load(null);
+            var center = (NetworkCenterController) runtime(controller);
+            counter(center, component).progress = 12;
+            scheduler.tick();
+            assertEquals(0, scheduler.registeredCount());
+            assertEquals(12, counter(center, component).progress);
+            var saved = controller.save();
+            controller.unload(MachineLifecycleEvent.UnloadReason.CHUNK_UNLOAD);
+
+            var restored = new MachineController(assembly, new Host(), scheduler, registry);
+            restored.load(saved);
+            scheduler.tick();
+            assertEquals(0, scheduler.registeredCount());
+            assertEquals(2, ((NetworkCenterController) runtime(restored)).networkLevel());
+            assertEquals(12, counter(runtime(restored), component).progress);
+            restored.controllerBroken();
+            assertEquals(List.of("loaded", "unloaded", "loaded", "unloaded"), events);
         }
     }
 
