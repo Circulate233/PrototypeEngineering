@@ -7,6 +7,11 @@ import com.circulation.prototype_eng.Tags;
 public enum StructureToolText implements LocalizationEnum {
     ScannerTitle,
     BuilderTitle,
+    BuilderRequireMaterials, BuilderRequireMaterialsHelp,
+    BuilderMe, BuilderMeHelp, BuilderMeOff, BuilderMeSupply, BuilderMeCraft,
+    BuilderRequireSpace, BuilderRequireSpaceHelp, BuilderReplaceFluids, BuilderReplaceFluidsHelp,
+    BuilderEnabled, BuilderDisabled, BuilderMissing, BuilderMissingEntry, BuilderBlocked,
+    BuilderSkipped, BuilderMeUnavailable,
     OriginSet,
     OriginRestart,
     CornerSet,

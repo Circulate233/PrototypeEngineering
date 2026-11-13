@@ -24,6 +24,7 @@ public final class StructureProjectionState {
     private StructurePreviewModel model;
     private Status[] statuses = new Status[0];
     private int scanCursor;
+    private boolean sweepMatched = true;
     private int renderCursor;
     @Nullable
     private Object round;
@@ -89,9 +90,15 @@ public final class StructureProjectionState {
             model = completed;
             statuses = new Status[model.cells().size()];
             scanCursor = 0;
+            sweepMatched = true;
             renderCursor = 0;
         }
         var observations = statuses;
+        if (completed.cells().isEmpty() && nextIntent.options().hideDisplayedMatches()) {
+            previews.stopProjection();
+            clear();
+            return;
+        }
         int visits = Math.min(nextIntent.options().scanChecksPerTick(), completed.cells().size());
         for (int i = 0; i < visits; i++) {
             int observedCursor = scanCursor;
@@ -100,7 +107,16 @@ public final class StructureProjectionState {
             if (!currentRound(activeRound, currentWorld, nextIntent, nextRequest, completed, observations)
                 || scanCursor != observedCursor) return;
             observations[observedCursor] = Objects.requireNonNull(observed);
+            sweepMatched &= cell.position().equals(BlockPos.ORIGIN) || observed == Status.DISPLAY_MATCH;
             scanCursor = observedCursor + 1 == completed.cells().size() ? 0 : observedCursor + 1;
+            if (scanCursor == 0) {
+                if (sweepMatched && nextIntent.options().hideDisplayedMatches()) {
+                    previews.stopProjection();
+                    clear();
+                    return;
+                }
+                sweepMatched = true;
+            }
         }
     }
 
@@ -163,6 +179,7 @@ public final class StructureProjectionState {
     private void clearObservations() {
         statuses = new Status[0];
         scanCursor = 0;
+        sweepMatched = true;
         renderCursor = 0;
     }
 

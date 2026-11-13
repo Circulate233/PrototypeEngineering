@@ -1,6 +1,9 @@
 package com.circulation.prototype_eng.proxy;
 
 import com.circulation.prototype_eng.HatchConfig;
+import com.circulation.prototype_eng.BuilderConfig;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistry;
+import com.circulation.prototype_eng.api.structure.StructureConstructionRegistrationEvent;
 import com.circulation.prototype_eng.MeAssemblyConfig;
 import com.circulation.prototype_eng.ParallelControllerConfig;
 import com.circulation.prototype_eng.storage.MeResourceHatchBlockEntity;
@@ -95,6 +98,7 @@ public class CommonProxy implements IGuiHandler {
 
     public void preInit(FMLPreInitializationEvent event) {
         HatchConfig.load(event.getModConfigurationDirectory());
+        BuilderConfig.load(event.getModConfigurationDirectory());
         MeAssemblyConfig.load(event.getModConfigurationDirectory());
         ParallelControllerConfig.load(event.getModConfigurationDirectory());
         SchedulerConfig.load(event.getModConfigurationDirectory());
@@ -132,6 +136,8 @@ public class CommonProxy implements IGuiHandler {
         structureFactories = structurePredicates;
         var structures = structureData.resolve(javaStructures, structurePredicates, new ForgeStructureBlocks());
         MachineTypeRegistry.INSTANCE.resolveRuntime(structures, machines.assemblies());
+        MinecraftForge.EVENT_BUS.post(new StructureConstructionRegistrationEvent());
+        StructureConstructionRegistry.INSTANCE.freeze(MachineTypeRegistry.INSTANCE.structureCatalog());
     }
 
     public void serverAboutToStart(FMLServerAboutToStartEvent event) {

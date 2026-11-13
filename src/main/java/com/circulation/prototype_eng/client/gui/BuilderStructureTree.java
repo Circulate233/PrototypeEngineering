@@ -1,5 +1,9 @@
 package com.circulation.prototype_eng.client.gui;
 
+import ae2.api.stacks.AEFluidKey;
+import ae2.api.stacks.GenericStack;
+import ae2.api.stacks.AmountFormat;
+import net.minecraftforge.fluids.Fluid;
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.api.structure.StructureCatalogView;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
@@ -42,6 +46,7 @@ import java.util.function.Supplier;
 
 /** PM's clipped tree: original row slices, connections, material chooser and slice sliders. */
 final class BuilderStructureTree {
+    private static final int HEIGHT = 144;
     private final StructureToolContainer container;
     private final Consumer<Set<BlockPos>> highlight;
     private Consumer<StructureDisplay> materialReplacement = _ -> { };
@@ -223,7 +228,13 @@ final class BuilderStructureTree {
                 var display = count.getKey().display;
                 var choice = count.getKey().option;
                 boolean alternatives = display.options().size() > 1;
-                var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(name(choice, display.tileNbt()), count.getLongValue()), 2, display, instance.path(), 0, 0, 0);
+                var item = stack(choice, display.tileNbt());
+                var fluid = GenericStack.unwrapItemStack(item);
+                var amount = fluid != null && fluid.what() instanceof AEFluidKey
+                    ? fluid.what().formatAmount(Math.multiplyExact(count.getLongValue(), Fluid.BUCKET_VOLUME), AmountFormat.FULL)
+                    : Long.toString(count.getLongValue());
+                var materialName = fluid != null && fluid.what() instanceof AEFluidKey ? fluid.what().getDisplayName().getFormattedText() : name(choice, display.tileNbt());
+                var material = new Row(materials.id + "/" + index++, (alternatives ? StructureToolText.BuildInstrumentMaterialAnyofEntry : StructureToolText.BuildInstrumentMaterialEntry).getLocal(materialName, amount), 2, display, instance.path(), 0, 0, 0);
                 material.option = choice;
                 materials.children.add(material);
             }
@@ -260,8 +271,8 @@ final class BuilderStructureTree {
         float width = (maxX - minX) * scale, height = (maxY - minY) * scale;
         float minPanX = width + 8 <= 185 ? (185 - width) / 2 - minX * scale : 181 - maxX * scale;
         float maxPanX = width + 8 <= 185 ? minPanX : 4 - minX * scale;
-        float minPanY = height + 25 <= 192 ? 21 - minY * scale : 188 - maxY * scale;
-        float maxPanY = height + 25 <= 192 ? minPanY : 21 - minY * scale;
+        float minPanY = height + 25 <= HEIGHT ? 21 - minY * scale : HEIGHT - 4 - maxY * scale;
+        float maxPanY = height + 25 <= HEIGHT ? minPanY : 21 - minY * scale;
         panX = Math.clamp(panX, minPanX, maxPanX);
         panY = Math.clamp(panY, minPanY, maxPanY);
     }
@@ -276,10 +287,10 @@ final class BuilderStructureTree {
         mouseY = (my - drawnPanY) / drawnScale;
         texturedState();
         if (root == null) {
-            clip.draw(0, 0, 185, 192, () -> Minecraft.getMinecraft().fontRenderer.drawStringWithShadow(StructureToolText.NoStructureData.getLocal(), 4, 23, 0xff9e9e9e));
+            clip.draw(0, 0, 185, HEIGHT, () -> Minecraft.getMinecraft().fontRenderer.drawStringWithShadow(StructureToolText.NoStructureData.getLocal(), 4, 23, 0xff9e9e9e));
             return;
         }
-        clip.draw(0, 0, 185, 192, () -> {
+        clip.draw(0, 0, 185, HEIGHT, () -> {
             GlStateManager.pushMatrix();
             try {
                 GlStateManager.translate(panX, panY, 0);
@@ -368,7 +379,7 @@ final class BuilderStructureTree {
     }
 
     boolean press(int x, int y, int button) {
-        if (x < 0 || y < 0 || x >= 185 || y >= 192) return false;
+        if (x < 0 || y < 0 || x >= 185 || y >= HEIGHT) return false;
         if (button == 1 || button == 0 && y < 19) {
             lastMaterialClick = null;
             dragButton = button;
@@ -445,7 +456,7 @@ final class BuilderStructureTree {
     }
 
     boolean wheel(int x, int y, int delta) {
-        if (x < 0 || y < 0 || x >= 185 || y >= 192) return false;
+        if (x < 0 || y < 0 || x >= 185 || y >= HEIGHT) return false;
         lastMaterialClick = null;
         int direction = Integer.signum(delta);
         if (GuiScreen.isCtrlKeyDown()) scale = Math.clamp(scale + direction * .1f, .5f, 2f);
@@ -456,7 +467,7 @@ final class BuilderStructureTree {
     }
 
     List<String> tooltip(int x, int y) {
-        if (x < 0 || y < 0 || x >= 185 || y >= 192) return List.of();
+        if (x < 0 || y < 0 || x >= 185 || y >= HEIGHT) return List.of();
         float tx = (x - drawnPanX) / drawnScale, ty = (y - drawnPanY) / drawnScale;
         for (var hit : hits)
             if (hit.contains(tx, ty) && hit.row().display != null && hit.row().display.options().size() > 1)

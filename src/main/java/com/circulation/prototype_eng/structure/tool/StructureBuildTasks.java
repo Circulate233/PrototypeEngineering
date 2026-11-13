@@ -2,7 +2,13 @@ package com.circulation.prototype_eng.structure.tool;
 
 import ae2.api.orientation.BlockOrientation;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
+import com.circulation.prototype_eng.BuilderConfig;
+import com.circulation.prototype_eng.PrototypeEngineering;
+import com.circulation.prototype_eng.structure.StructureMaterials;
+import ae2.api.config.Actionable;
+import ae2.api.stacks.AEKey2LongMap;
+import ae2.api.stacks.GenericStack;
+import ae2.api.stacks.AmountFormat;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.api.structure.StructureTransform;
 import com.circulation.prototype_eng.localization.StructureToolText;
@@ -10,11 +16,8 @@ import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.block.Block;
-import com.circulation.prototype_eng.structure.StructurePickWorld;
-import net.minecraft.init.Blocks;
 import net.minecraft.block.BlockFalling;
 import net.minecraft.block.BlockLiquid;
-import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -30,27 +33,21 @@ import net.minecraftforge.common.util.BlockSnapshot;
 import net.minecraftforge.event.ForgeEventFactory;
 import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fluids.Fluid;
-import net.minecraftforge.fluids.FluidRegistry;
-import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.FluidUtil;
 import net.minecraftforge.fluids.IFluidBlock;
-import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import net.minecraftforge.items.CapabilityItemHandler;
-import net.minecraftforge.items.IItemHandlerModifiable;
-import net.minecraftforge.items.wrapper.PlayerInvWrapper;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.UUID;
 
-/** Server-owned PM builder tasks: one per player, eight attempts per tick, inventory-safe payments. */
+/** Server-owned builder tasks: one per player, configurable batches and inventory-safe payments. */
 @Mod.EventBusSubscriber(modid = Tags.MOD_ID)
 public final class StructureBuildTasks {
     private static final Map<UUID, Task> TASKS = new Object2ObjectOpenHashMap<>();
@@ -71,27 +68,30 @@ public final class StructureBuildTasks {
             return;
         }
         var pos = BuilderState.position(tag);
-        if (!tag.getBoolean("Bound") || tag.getInteger("BoundDim") != player.world.provider.getDimension()
-            || !player.world.isBlockLoaded(pos) || !(player.world.getTileEntity(pos) instanceof MachineControllerHost host)) {
+        var anchor = ConstructionTarget.resolve(player.world, pos);
+        if (!tag.getBoolean("Bound") || tag.getInteger("BoundDim") != player.world.provider.getDimension() || anchor == null) {
             player.sendStatusMessage(StructureToolText.Unavailable.text(), true);
             return;
         }
         var open = player.openContainer;
-        host.readGuiAtBoundary(() -> {
+        anchor.atBoundary(() -> {
+            var host = ConstructionTarget.resolve(player.world, pos);
+            if (host == null || !anchor.current() || !host.binding().toString().equals(tag.getString("BoundMachineId"))
+                || !host.structure().toString().equals(tag.getString("BoundStructureId"))) return;
             if (player.openContainer != open || player.inventory.getStackInSlot(slot) != tool || !open.canInteractWith(player)
-                || player.world.getTileEntity(pos) != host || !BuilderState.position(BuilderState.data(tool)).equals(pos))
+                || !BuilderState.position(BuilderState.data(tool)).equals(pos))
                 return;
             var server = player.getServer();
             if (server == null) return;
             var view = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
-            if (view == null || !view.entries().containsKey(host.type().structureId())) {
+            if (view == null || !view.entries().containsKey(host.structure())) {
                 player.sendStatusMessage(StructureToolText.Unavailable.text(), true);
                 return;
             }
             var old = TASKS.remove(player.getUniqueID());
             if (old != null) BuilderState.state(BuilderState.data(old.tool), BuilderState.State.IDLE);
-            var plan = StructureBuildPlan.expand(view, host.type().structureId(), host.orientation(), BuilderState.sliceCounts(BuilderState.data(tool)));
-            var rotation = StructureTransform.between(view.nodes().get(view.entries().get(host.type().structureId()).node()).orientation(), host.orientation());
+            var plan = StructureBuildPlan.expand(view, host.structure(), host.orientation(), BuilderState.sliceCounts(BuilderState.data(tool)));
+            var rotation = StructureTransform.between(view.nodes().get(view.entries().get(host.structure()).node()).orientation(), host.orientation());
             boolean dismantle = host.formed();
             var targets = new ObjectArrayList<Target>();
             boolean unresolved = false;
@@ -115,11 +115,11 @@ public final class StructureBuildTasks {
                         continue;
                     }
                     targets.add(new Target(position, StructureToolExport.rotateState(resolved, rotation), cell.display().tileNbt()));
-                }
+                } else unresolved = true;
             }
             if (unresolved) {
                 player.sendStatusMessage(StructureToolText.BuildInstrumentReqUnknown.text(), true);
-                if (targets.isEmpty()) {
+                if (targets.isEmpty() || BuilderState.Setting.REQUIRE_MATERIALS.enabled(tag)) {
                     BuilderState.state(tag, BuilderState.State.IDLE);
                     BuilderState.progress(tag, 0, 0);
                     player.inventory.markDirty();
@@ -130,6 +130,11 @@ public final class StructureBuildTasks {
                                                  .thenComparingInt(target -> target.position().getX()).thenComparingInt(target -> target.position().getZ());
             targets.sort(dismantle ? order.reversed() : Comparator.comparing((Target target) -> target.state() != null && (target.state().getMaterial().isLiquid()
                 || target.state().getBlock() instanceof BlockFalling)).thenComparing(order));
+            if (!dismantle) {
+                var ready = prepare(player, tool, targets);
+                if (ready == null) return;
+                targets = ready;
+            }
             var task = new Task(player, slot, tool, host, dismantle, List.copyOf(targets));
             TASKS.put(player.getUniqueID(), task);
             BuilderState.state(tag, dismantle ? BuilderState.State.DISASSEMBLING : BuilderState.State.BUILDING);
@@ -150,13 +155,14 @@ public final class StructureBuildTasks {
             BuilderState.state(tag, BuilderState.State.IDLE);
             return;
         }
-        if (BuilderState.state(tag).paused()) return;
-        for (int attempts = 0; attempts < 8 && task.done < task.targets.size(); attempts++) {
+        if (BuilderState.state(tag).paused() || task.world.getTotalWorldTime() % BuilderConfig.interval() != 0) return;
+        for (int visits = 0, attempts = 0; visits < task.targets.size() && attempts < BuilderConfig.batch() && task.done < task.targets.size(); visits++) {
             int index = task.cursor++;
             if (task.cursor == task.targets.size()) task.cursor = 0;
             if (task.complete[index]) continue;
+            attempts++;
             var target = task.targets.get(index);
-            if (operate(player, task.world, target, task.tool)) {
+            if (operate(player, task, target)) {
                 task.complete[index] = true;
                 task.done++;
             }
@@ -169,6 +175,70 @@ public final class StructureBuildTasks {
             player.sendStatusMessage(StructureToolText.Complete.text(), true);
         } else if (task.world.getTotalWorldTime() % 40 == 0)
             player.sendStatusMessage(StructureToolText.Waiting.text(), true);
+    }
+
+    private static @Nullable ObjectArrayList<Target> prepare(EntityPlayer player, ItemStack tool, List<Target> targets) {
+        var tag = BuilderState.data(tool);
+        var candidates = new ObjectArrayList<Target>(targets.size());
+        var resources = new ObjectArrayList<GenericStack>(targets.size());
+        int blocked = 0;
+        for (var target : targets) {
+            if (player.world.isOutsideBuildHeight(target.position()) || !player.world.isBlockLoaded(target.position(), false)) {
+                blocked++;
+                continue;
+            }
+            var current = player.world.getBlockState(target.position());
+            if (current.equals(target.state())) continue;
+            if (!placeable(player, tool, target.position(), current)) {
+                blocked++;
+                continue;
+            }
+            var resource = StructureMaterials.resource(player.world, target.position(), Objects.requireNonNull(target.state()), player, target.tileNbt());
+            if (resource == null) {
+                player.sendMessage(StructureToolText.BuildInstrumentReqUnknown.text());
+                return null;
+            }
+            candidates.add(target);
+            resources.add(resource);
+        }
+        if (blocked > 0) {
+            player.sendMessage(StructureToolText.BuilderBlocked.text(blocked));
+        }
+        if (player.isCreative()) return blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag) ? null : candidates;
+        var inventory = new ConstructionInventory(player);
+        var me = BuilderState.meMode(tag) == 0 ? null : ConstructionMeAccess.find((EntityPlayerMP) player);
+        if (BuilderState.meMode(tag) != 0 && me == null) player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
+        var result = ConstructionPreflight.allocate(resources, required -> {
+            long local = inventory.take(required);
+            return local + (me == null ? 0 : me.extract(required.what(), required.amount() - local, Actionable.SIMULATE));
+        });
+        reportMissing(player, result.missing());
+        var admitted = new ObjectArrayList<Target>(result.positions().size());
+        for (int index : result.positions()) admitted.add(candidates.get(index));
+        boolean requireAll = BuilderState.Setting.REQUIRE_MATERIALS.enabled(tag);
+        if (!result.missing().isEmpty() && BuilderState.meMode(tag) == 2 && me != null) {
+            var craft = new ObjectArrayList<GenericStack>(result.missing().size());
+            result.missing().forEachEntry((key, amount) -> {
+                if (me.craftable(key)) craft.add(new GenericStack(key, amount));
+            });
+            if (!craft.isEmpty() && !me.openCrafting(craft, tool)) player.sendMessage(StructureToolText.BuilderMeUnavailable.text());
+        }
+        if (requireAll && !result.missing().isEmpty() || blocked > 0 && BuilderState.Setting.REQUIRE_SPACE.enabled(tag)) return null;
+        if (admitted.size() < candidates.size()) player.sendMessage(StructureToolText.BuilderSkipped.text(candidates.size() - admitted.size()));
+        return admitted;
+    }
+
+    private static void reportMissing(EntityPlayer player, AEKey2LongMap missing) {
+        if (missing.isEmpty()) return;
+        player.sendMessage(StructureToolText.BuilderMissing.text());
+        missing.forEachEntry((key, amount) -> player.sendMessage(StructureToolText.BuilderMissingEntry.text(
+            key.getDisplayName(), key.formatAmount(amount, AmountFormat.FULL))));
+    }
+
+    private static boolean placeable(EntityPlayer player, ItemStack tool, BlockPos pos, IBlockState current) {
+        if (!player.world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) return false;
+        if (current.getMaterial().isLiquid()) return BuilderState.Setting.REPLACE_FLUIDS.enabled(BuilderState.data(tool));
+        return current.getBlock().isAir(current, player.world, pos) || current.getBlock().isReplaceable(player.world, pos);
     }
 
     @SubscribeEvent
@@ -186,43 +256,85 @@ public final class StructureBuildTasks {
         });
     }
 
-    private static boolean operate(EntityPlayer player, World world, Target target, ItemStack tool) {
+    private static boolean operate(EntityPlayer player, Task task, Target target) {
+        var world = task.world;
+        var tool = task.tool;
         var pos = target.position();
-        if (!world.isBlockLoaded(pos) || !world.isBlockModifiable(player, pos)
-            || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) return false;
+        if (world.isOutsideBuildHeight(pos) || !world.isBlockLoaded(pos, false) || !world.isBlockModifiable(player, pos)
+            || !player.canPlayerEdit(pos, EnumFacing.UP, tool)) {
+            if (target.state() != null && !BuilderState.Setting.REQUIRE_SPACE.enabled(BuilderState.data(tool))) {
+                player.sendMessage(StructureToolText.BuilderBlocked.text(1));
+                return true;
+            }
+            return false;
+        }
         var current = world.getBlockState(pos);
         var desired = target.state();
         if (desired == null && world.isAirBlock(pos) || current.equals(desired)) return true;
-        var payment = desired == null || player.isCreative() ? Payment.FREE : payment(player, world, pos, desired, target.tileNbt());
-        if (payment == null) return false;
+        if (desired != null && !placeable(player, tool, pos, current)) {
+            if (!BuilderState.Setting.REQUIRE_SPACE.enabled(BuilderState.data(tool))) {
+                player.sendMessage(StructureToolText.BuilderBlocked.text(1));
+                return true;
+            }
+            return false;
+        }
+        var resource = desired == null || player.isCreative() ? null : StructureMaterials.resource(world, pos, desired, player, target.tileNbt());
+        var payment = desired == null || player.isCreative() ? ConstructionPayment.FREE
+            : resource == null ? null : ConstructionPayment.prepare((EntityPlayerMP) player, resource, BuilderState.meMode(BuilderState.data(tool)) > 0);
+        if (payment == null) {
+            if (resource != null && !BuilderState.Setting.REQUIRE_MATERIALS.enabled(BuilderState.data(tool))) {
+                var missing = new AEKey2LongMap.OpenHashMap(1);
+                missing.addTo(resource.what(), resource.amount());
+                reportMissing(player, missing);
+                player.sendMessage(StructureToolText.BuilderSkipped.text(1));
+                return true;
+            }
+            return false;
+        }
+        if (desired == null) return remove(player, world, pos, current, tool);
         if (!world.isAirBlock(pos)) {
-            if (!remove(player, world, pos, current, tool, desired == null)) return false;
+            // Replacing grass/liquids is placement, without harvesting the old block into inventory.
+            var event = new BlockEvent.BreakEvent(world, pos, current, player);
+            event.setExpToDrop(0);
+            if (MinecraftForge.EVENT_BUS.post(event) || !world.getBlockState(pos).equals(current) || !task.valid(player)) return false;
         }
-        if (desired == null) return true;
-        if (!payment.commit()) return false;
         var snapshot = BlockSnapshot.getBlockSnapshot(world, pos);
-        if (!world.setBlockState(pos, desired, 2)) {
-            payment.refund(player);
-            return false;
+        boolean placed = false;
+        boolean finished = false;
+        try {
+            if (!payment.commit() || !task.valid(player) || !world.getBlockState(pos).equals(current)) return false;
+            placed = true;
+            if (!world.setBlockState(pos, desired, 2)) return false;
+            if (ForgeEventFactory.onPlayerBlockPlace(player, snapshot, EnumFacing.UP, EnumHand.MAIN_HAND).isCanceled()
+                || !task.valid(player) || !world.getBlockState(pos).equals(desired)) return false;
+            world.notifyNeighborsOfStateChange(pos, desired.getBlock(), true);
+            // Placement is committed before delivering returned containers to the player.
+            finished = true;
+            payment.finish();
+            return true;
+        } catch (RuntimeException failure) {
+            PrototypeEngineering.LOGGER.error("Construction failed at {}", pos, failure);
+            return finished;
+        } finally {
+            if (!finished) {
+                try {
+                    if (placed) snapshot.restore(true, false);
+                } finally {
+                    payment.refund(player);
+                }
+            }
         }
-        if (ForgeEventFactory.onPlayerBlockPlace(player, snapshot, EnumFacing.UP, EnumHand.MAIN_HAND).isCanceled()) {
-            snapshot.restore(true, false);
-            payment.refund(player);
-            return false;
-        }
-        world.notifyNeighborsOfStateChange(pos, desired.getBlock(), true);
-        return true;
     }
 
-    private static boolean remove(EntityPlayer player, World world, BlockPos pos, IBlockState state, ItemStack tool, boolean dismantle) {
+    private static boolean remove(EntityPlayer player, World world, BlockPos pos, IBlockState state, ItemStack tool) {
         var block = state.getBlock();
         boolean fluid = block instanceof IFluidBlock || block instanceof BlockLiquid || state.getMaterial().isLiquid();
         if (state.getBlockHardness(world, pos) < 0) return false;
         @SuppressWarnings("deprecation") // Forge's harvest query uses the actual state on this Minecraft version.
         var actual = block.getActualState(state, world, pos);
-        if (!player.isCreative() && !fluid && !(dismantle ? BuilderMiningTool.canHarvest(tool, actual, player) : block.getHarvestLevel(actual) <= 3))
+        if (!player.isCreative() && !fluid && !BuilderMiningTool.canHarvest(tool, actual, player))
             return false;
-        var harvestedWith = dismantle ? BuilderMiningTool.profile(tool) : ItemStack.EMPTY;
+        var harvestedWith = BuilderMiningTool.profile(tool);
         var event = new BlockEvent.BreakEvent(world, pos, state, player);
         // The task's builder may be in the offhand or another slot. Do not use an unrelated main-hand enchantment.
         event.setExpToDrop(player.isCreative() || fluid
@@ -252,123 +364,6 @@ public final class StructureBuildTasks {
         return true;
     }
 
-    private static boolean itemMatches(ItemStack a, ItemStack b) {
-        return !a.isEmpty() && ItemStack.areItemsEqual(a, b) && ItemStack.areItemStackTagsEqual(a, b);
-    }
-
-    private static @Nullable Payment payment(EntityPlayer player, World world, BlockPos pos, IBlockState desired, @Nullable String tileNbt) {
-        var block = desired.getBlock();
-        var fluid = FluidRegistry.lookupFluidForBlock(block);
-        if (fluid == null && desired.getMaterial() == Material.WATER) fluid = FluidRegistry.WATER;
-        if (fluid == null && desired.getMaterial() == Material.LAVA) fluid = FluidRegistry.LAVA;
-        if (fluid != null) return fluidPayment(player, fluid);
-        ItemStack required;
-        try (var picks = new StructurePickWorld(world, position -> world.isBlockLoaded(position, false)
-            ? world.getBlockState(position) : Blocks.AIR.getDefaultState())) {
-            required = picks.pick(desired, pos, player, tileNbt);
-        }
-        if (required.isEmpty()) return null;
-        for (int i = 0; i < player.inventory.getSizeInventory(); i++) {
-            int slot = i;
-            var stack = player.inventory.getStackInSlot(slot);
-            if (itemMatches(stack, required)) return new Payment() {
-                ItemStack taken = ItemStack.EMPTY;
-
-                public boolean commit() {
-                    if (player.inventory.getStackInSlot(slot) != stack || stack.isEmpty()) return false;
-                    taken = stack.splitStack(1);
-                    return true;
-                }
-
-                public void refund(EntityPlayer who) {
-                    give(who, taken);
-                }
-            };
-            var handler = stack.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, null);
-            if (handler == null) continue;
-            for (int j = 0; j < handler.getSlots(); j++) {
-                int inner = j;
-                if (!itemMatches(handler.extractItem(inner, 1, true), required)) continue;
-                return new Payment() {
-                    ItemStack taken = ItemStack.EMPTY;
-
-                    public boolean commit() {
-                        taken = handler.extractItem(inner, 1, false);
-                        if (itemMatches(taken, required) && taken.getCount() == 1) return true;
-                        refund(player);
-                        return false;
-                    }
-
-                    public void refund(EntityPlayer who) {
-                        give(who, handler.insertItem(inner, taken, false));
-                    }
-                };
-            }
-        }
-        return null;
-    }
-
-    private static @Nullable Payment fluidPayment(EntityPlayer player, Fluid fluid) {
-        var edits = new ObjectArrayList<FluidEdit>();
-        var direct = new PlayerInvWrapper(player.inventory);
-        int remaining = 1000;
-        for (int i = 0; i < direct.getSlots() && remaining > 0; i++) {
-            var stack = direct.getStackInSlot(i);
-            int amount = prepareFluid(direct, i, fluid, remaining, edits);
-            remaining -= amount;
-            if (amount > 0) continue;
-            var nested = stack.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, null);
-            if (nested instanceof IItemHandlerModifiable modifiable)
-                for (int j = 0; j < nested.getSlots() && remaining > 0; j++)
-                    remaining -= prepareFluid(modifiable, j, fluid, remaining, edits);
-        }
-        if (remaining != 0) return null;
-        return new Payment() {
-            public boolean commit() {
-                for (var edit : edits)
-                    if (!ItemStack.areItemStacksEqual(edit.handler().getStackInSlot(edit.slot()), edit.before()))
-                        return false;
-                for (var edit : edits) edit.handler().setStackInSlot(edit.slot(), edit.after());
-                return true;
-            }
-
-            public void refund(EntityPlayer who) {
-                for (var edit : edits) edit.handler().setStackInSlot(edit.slot(), edit.before());
-            }
-        };
-    }
-
-    private static int prepareFluid(IItemHandlerModifiable inventory, int slot, Fluid fluid, int limit, List<FluidEdit> edits) {
-        var original = inventory.getStackInSlot(slot);
-        if (original.isEmpty() || original.getCount() != 1) return 0;
-        var copy = original.copy();
-        var handler = copy.getCapability(CapabilityFluidHandler.FLUID_HANDLER_ITEM_CAPABILITY, null);
-        if (handler == null) return 0;
-        var drained = handler.drain(new FluidStack(fluid, limit), true);
-        if (drained == null || drained.getFluid() != fluid || drained.amount <= 0 || drained.amount > limit) return 0;
-        edits.add(new FluidEdit(inventory, slot, original.copy(), handler.getContainer()));
-        return drained.amount;
-    }
-
-    private static void give(EntityPlayer player, ItemStack stack) {
-        if (!stack.isEmpty() && !player.inventory.addItemStackToInventory(stack)) player.dropItem(stack, false);
-    }
-
-    private interface Payment {
-        Payment FREE = new Payment() {
-            public boolean commit() {
-                return true;
-            }
-
-            public void refund(EntityPlayer player) {
-            }
-        };
-
-        boolean commit();
-
-        void refund(EntityPlayer player);
-    }
-
     private record Target(BlockPos position, @Nullable IBlockState state, @Nullable String tileNbt) {
         Target(BlockPos position, @Nullable IBlockState state) { this(position, state, null); }
     }
@@ -377,14 +372,14 @@ public final class StructureBuildTasks {
         final World world;
         final int slot;
         final ItemStack tool;
-        final MachineControllerHost controller;
+        final ConstructionTarget controller;
         final BlockOrientation orientation;
         final boolean dismantle;
         final List<Target> targets;
         final boolean[] complete;
         int cursor, done;
 
-        Task(EntityPlayer player, int slot, ItemStack tool, MachineControllerHost controller, boolean dismantle, List<Target> targets) {
+        Task(EntityPlayer player, int slot, ItemStack tool, ConstructionTarget controller, boolean dismantle, List<Target> targets) {
             world = player.world;
             this.slot = slot;
             this.tool = tool;
@@ -397,17 +392,14 @@ public final class StructureBuildTasks {
 
         boolean valid(EntityPlayer player) {
             var tag = BuilderState.data(tool);
-            var pos = controller.blockEntity().getPos();
+            var pos = controller.position();
             return player.isEntityAlive() && player.world == world && player.inventory.getStackInSlot(slot) == tool
-                && !tool.isEmpty() && world.isBlockLoaded(pos) && world.getTileEntity(pos) == controller
-                && controller.orientation().equals(orientation) && tag.getBoolean("Bound")
+                && !tool.isEmpty() && controller.current() && tag.getBoolean("Bound")
                 && tag.getInteger("BoundDim") == world.provider.getDimension() && BuilderState.position(tag).equals(pos)
-                && tag.getString("BoundMachineId").equals(controller.type().id().toString())
-                && tag.getString("BoundStructureId").equals(controller.type().structureId().toString())
+                && tag.getString("BoundMachineId").equals(controller.binding().toString())
+                && tag.getString("BoundStructureId").equals(controller.structure().toString())
                 && BuilderState.state(tag) != BuilderState.State.IDLE;
         }
     }
 
-    private record FluidEdit(IItemHandlerModifiable handler, int slot, ItemStack before, ItemStack after) {
-    }
 }

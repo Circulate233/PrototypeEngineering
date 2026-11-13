@@ -3,11 +3,11 @@ package com.circulation.prototype_eng.item;
 import ae2.items.AEBaseItem;
 import com.circulation.prototype_eng.PrototypeEngineering;
 import com.circulation.prototype_eng.Tags;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.container.StructureToolContainer;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
 import com.circulation.prototype_eng.structure.tool.BuilderMiningTool;
+import com.circulation.prototype_eng.structure.tool.ConstructionTarget;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
 import net.minecraft.client.util.ITooltipFlag;
 import net.minecraft.entity.player.EntityPlayer;
@@ -92,25 +92,28 @@ public final class StructureToolItem extends AEBaseItem {
         var stack = player.getHeldItem(hand);
         if (builder) {
             if (!world.isBlockLoaded(pos, false)) return EnumActionResult.FAIL;
-            if (!(world.getTileEntity(pos) instanceof MachineControllerHost controller)) return EnumActionResult.PASS;
+            var target = ConstructionTarget.resolve(world, pos);
+            if (target == null) return EnumActionResult.PASS;
             if (!world.isBlockModifiable(player, pos) || !player.canPlayerEdit(pos, side, stack)) return EnumActionResult.FAIL;
             if (!world.isRemote) {
                 var position = pos.toImmutable();
                 var open = player.openContainer;
                 boolean sneaking = player.isSneaking();
-                controller.readGuiAtBoundary(() -> {
+                target.atBoundary(() -> {
+                    var current = ConstructionTarget.resolve(world, position);
+                    if (current == null || !target.current()) return;
                     if (player.world != world || !player.isEntityAlive() || player.getHeldItem(hand) != stack || stack.isEmpty()
-                        || player.openContainer != open || !world.isBlockLoaded(position, false) || world.getTileEntity(position) != controller
-                        || controller.blockEntity().isInvalid() || !world.isBlockModifiable(player, position) || !player.canPlayerEdit(position, side, stack)) return;
+                        || player.openContainer != open || !world.isBlockLoaded(position, false)
+                        || !world.isBlockModifiable(player, position) || !player.canPlayerEdit(position, side, stack))
+                        return;
                     var data = stack.getTagCompound();
-                    var machine = controller.type();
                     boolean same = data != null && data.getBoolean("Bound") && data.getInteger("BoundDim") == world.provider.getDimension()
-                        && BuilderState.position(data).equals(position) && data.getString("BoundMachineId").equals(machine.id().toString())
-                        && data.getString("BoundStructureId").equals(machine.structureId().toString());
+                        && BuilderState.position(data).equals(position) && data.getString("BoundMachineId").equals(current.binding().toString())
+                        && data.getString("BoundStructureId").equals(current.structure().toString());
                     if (!same || sneaking) {
-                        BuilderState.bind(stack, world.provider.getDimension(), position, machine);
+                        BuilderState.bind(stack, world.provider.getDimension(), position, current.binding().toString(), current.structure().toString());
                         player.inventory.markDirty();
-                        player.sendStatusMessage(StructureToolText.Bound.text(machine.id(), position.getX(), position.getY(), position.getZ()), true);
+                        player.sendStatusMessage(StructureToolText.Bound.text(current.name().text(), position.getX(), position.getY(), position.getZ()), true);
                     }
                     if (same || sneaking) {
                         int slot = hand == EnumHand.MAIN_HAND ? player.inventory.currentItem : 40;

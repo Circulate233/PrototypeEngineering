@@ -8,6 +8,7 @@ import com.circulation.prototype_eng.item.StructureToolItem;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.reload.ServerStructureReloads;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
+import com.circulation.prototype_eng.structure.tool.ConstructionTarget;
 import com.circulation.prototype_eng.structure.tool.ScannerState;
 import com.circulation.prototype_eng.structure.tool.StructureBuildTasks;
 import com.circulation.prototype_eng.structure.tool.StructureToolExport;
@@ -110,6 +111,11 @@ public final class StructureToolContainer extends AEBaseContainer {
         var tag = data();
         if (builder) {
             if (action.kind.equals("task")) StructureBuildTasks.toggle(getPlayer(), slot, tool);
+            else if (action.kind.equals("builder_setting") && BuilderState.state(tag) == BuilderState.State.IDLE) {
+                for (var setting : BuilderState.Setting.VALUES)
+                    if (setting.name().equals(action.key)) tag.setBoolean(setting.key, !setting.enabled(tag));
+                if (action.key.equals("ME")) BuilderState.cycleMeMode(tag);
+            }
             else if ((action.kind.equals("material") || action.kind.equals("cell_material") || action.kind.equals("slice"))
                 && action.key.length() <= 8192 && action.value.length() <= 8192)
                 chooseMaterial(action.kind, action.key, action.value);
@@ -171,27 +177,30 @@ public final class StructureToolContainer extends AEBaseContainer {
             selectedOption = value;
         }
         if (selectedMaterial.isBlank() || selectedOption.isEmpty()) return;
-        if (kind.equals("slice") && (BuilderState.slicePath(selectedMaterial) == null || !selectedOption.matches("0|[1-9][0-9]{0,8}"))) return;
+        if (kind.equals("slice") && (BuilderState.slicePath(selectedMaterial) == null || !selectedOption.matches("0|[1-9][0-9]{0,8}")))
+            return;
         var binding = data().copy();
         var anchor = BuilderState.position(binding);
-        if (!binding.getBoolean("Bound") || binding.getInteger("BoundDim") != world.provider.getDimension()
-            || !world.isBlockLoaded(anchor, false) || !(world.getTileEntity(anchor) instanceof MachineControllerHost host)) return;
-        host.readGuiAtBoundary(() -> {
+        var target = ConstructionTarget.resolve(world, anchor);
+        if (!binding.getBoolean("Bound") || binding.getInteger("BoundDim") != world.provider.getDimension() || target == null)
+            return;
+        target.atBoundary(() -> {
+            var host = ConstructionTarget.resolve(world, anchor);
+            if (host == null || !target.current()) return;
             var current = data();
-            if (!active() || !current.getBoolean("Bound") || !world.isBlockLoaded(anchor, false) || world.getTileEntity(anchor) != host || host.blockEntity().isInvalid()
-                || host.blockEntity().getWorld() != world || !host.blockEntity().getPos().equals(anchor)
+            if (!active() || !current.getBoolean("Bound") || !world.isBlockLoaded(anchor, false)
                 || current.getInteger("BoundDim") != world.provider.getDimension() || !BuilderState.position(current).equals(anchor)
                 || !current.getString("BuilderIdentity").equals(binding.getString("BuilderIdentity"))
-                || !current.getString("BoundMachineId").equals(host.type().id().toString())
-                || !current.getString("BoundStructureId").equals(host.type().structureId().toString())
+                || !current.getString("BoundMachineId").equals(host.binding().toString())
+                || !current.getString("BoundStructureId").equals(host.structure().toString())
                 || !current.getString("BoundMachineId").equals(binding.getString("BoundMachineId"))
                 || !current.getString("BoundStructureId").equals(binding.getString("BoundStructureId"))
                 || expectedOrientation != null && !expectedOrientation.equals(host.orientation().name())) return;
             var server = getPlayer().getServer();
             if (server == null) return;
             var catalog = ServerStructureReloads.view(server, MachineTypeRegistry.INSTANCE.structureCatalog());
-            if (catalog == null || !catalog.entries().containsKey(host.type().structureId())) return;
-            var plan = StructureBuildPlan.expand(catalog, host.type().structureId(), host.orientation(), BuilderState.sliceCounts(current));
+            if (catalog == null || !catalog.entries().containsKey(host.structure())) return;
+            var plan = StructureBuildPlan.expand(catalog, host.structure(), host.orientation(), BuilderState.sliceCounts(current));
             if (kind.equals("slice")) {
                 int count = Integer.parseInt(selectedOption);
                 for (var occurrence : plan.nodes()) {

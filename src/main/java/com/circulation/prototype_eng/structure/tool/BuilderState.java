@@ -22,6 +22,21 @@ import java.util.UUID;
 
 /** Original builder binding, task states and per-material choice persistence. */
 public final class BuilderState {
+    public enum Setting {
+        REQUIRE_MATERIALS("BuilderRequireMaterials", true), REQUIRE_SPACE("BuilderRequireSpace", true),
+        REPLACE_FLUIDS("BuilderReplaceFluids", false);
+        public static final Setting[] VALUES = values();
+        public final String key;
+        private final boolean fallback;
+
+        Setting(String key, boolean fallback) { this.key = key; this.fallback = fallback; }
+
+        public boolean enabled(NBTTagCompound tag) { return tag.hasKey(key) ? tag.getBoolean(key) : fallback; }
+    }
+
+    public static int meMode(NBTTagCompound tag) { return Math.clamp(tag.getInteger("BuilderMeMode"), 0, 2); }
+
+    public static void cycleMeMode(NBTTagCompound tag) { tag.setInteger("BuilderMeMode", (meMode(tag) + 1) % 3); }
     private BuilderState() {
     }
 
@@ -35,10 +50,14 @@ public final class BuilderState {
     }
 
     public static void bind(ItemStack stack, int dimension, BlockPos pos, MachineType machine) {
+        bind(stack, dimension, pos, machine.id().toString(), machine.structureId().toString());
+    }
+
+    public static void bind(ItemStack stack, int dimension, BlockPos pos, String binding, String structure) {
         var tag = data(stack);
         ensureIdentity(tag);
         if (!tag.getBoolean("Bound") || tag.getInteger("BoundDim") != dimension || !position(tag).equals(pos)
-            || !tag.getString("BoundMachineId").equals(machine.id().toString()) || !tag.getString("BoundStructureId").equals(machine.structureId().toString())) {
+            || !tag.getString("BoundMachineId").equals(binding) || !tag.getString("BoundStructureId").equals(structure)) {
             tag.removeTag("CellMaterialSelections");
             tag.removeTag("SliceSelections");
         }
@@ -47,8 +66,8 @@ public final class BuilderState {
         tag.setInteger("BoundX", pos.getX());
         tag.setInteger("BoundY", pos.getY());
         tag.setInteger("BoundZ", pos.getZ());
-        tag.setString("BoundMachineId", machine.id().toString());
-        tag.setString("BoundStructureId", machine.structureId().toString());
+        tag.setString("BoundMachineId", binding);
+        tag.setString("BoundStructureId", structure);
         state(tag, State.IDLE);
         progress(tag, 0, 0);
     }

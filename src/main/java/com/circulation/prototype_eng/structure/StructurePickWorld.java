@@ -1,5 +1,7 @@
 package com.circulation.prototype_eng.structure;
 
+import ae2.api.stacks.AEFluidKey;
+import ae2.api.stacks.GenericStack;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.block.state.IBlockState;
@@ -19,6 +21,7 @@ import net.minecraft.world.storage.WorldInfo;
 import net.minecraft.world.biome.Biome;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.IChunkProvider;
+import net.minecraftforge.fluids.Fluid;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -48,6 +51,12 @@ public final class StructurePickWorld extends World implements AutoCloseable {
     }
 
     public ItemStack pick(IBlockState state, BlockPos position, EntityPlayer player, @Nullable String tileNbt) {
+        var fluid = StructureMaterials.fluid(state);
+        if (fluid != null) {
+            var key = AEFluidKey.of(fluid);
+            return key == null ? ItemStack.EMPTY : GenericStack.wrapInItemStack(key, Fluid.BUCKET_VOLUME);
+        }
+        if (state.getMaterial().isLiquid()) return ItemStack.EMPTY;
         pickedPosition = position.toImmutable();
         pickedState = state;
         pickedNbt = tileNbt;

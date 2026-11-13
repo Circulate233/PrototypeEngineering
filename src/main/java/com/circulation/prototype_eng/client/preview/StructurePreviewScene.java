@@ -47,7 +47,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.client.MinecraftForgeClient;
-import net.minecraftforge.fluids.FluidRegistry;
+import com.circulation.prototype_eng.structure.StructureMaterials;
 import net.minecraftforge.fluids.Fluid;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.BufferUtils;
@@ -447,6 +447,7 @@ public final class StructurePreviewScene implements AutoCloseable {
             var state = access.represented(pos);
             if (state == null) return box;
             if (state.getMaterial() == Material.AIR) return Double.POSITIVE_INFINITY;
+            if (StructureMaterials.fluid(state) != null) return box;
             var hit = state.collisionRayTrace(pickWorld, pos, ray.origin(), end);
             return hit == null ? Double.POSITIVE_INFINITY : ray.origin().distanceTo(hit.hitVec);
         });
@@ -454,7 +455,7 @@ public final class StructurePreviewScene implements AutoCloseable {
 
     private AxisAlignedBB selectionBox(StructurePreviewModel.Cell cell) {
         var state = access == null ? null : access.represented(cell.position());
-        return state == null || pickWorld == null ? new AxisAlignedBB(cell.position())
+        return state == null || pickWorld == null || StructureMaterials.fluid(state) != null ? new AxisAlignedBB(cell.position())
             : state.getSelectedBoundingBox(pickWorld, cell.position());
     }
 
@@ -530,9 +531,7 @@ public final class StructurePreviewScene implements AutoCloseable {
                 var state = PreviewBlockStates.resolve(choice.display.options().get(choice.option), rotation);
                 if (state == null) return null;
                 if (state.getMaterial() == Material.AIR) continue;
-                var fluid = FluidRegistry.lookupFluidForBlock(state.getBlock());
-                if (fluid == null && state.getMaterial() == Material.WATER) fluid = FluidRegistry.WATER;
-                if (fluid == null && state.getMaterial() == Material.LAVA) fluid = FluidRegistry.LAVA;
+                var fluid = StructureMaterials.fluid(state);
                 AEKey key;
                 long amount = entry.getLongValue();
                 if (fluid != null) {

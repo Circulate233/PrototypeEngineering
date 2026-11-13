@@ -7,7 +7,7 @@ import net.minecraft.world.World;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
-/** Bounded owner callback compares published representatives only; NBT remains explicitly unknown. */
+/** Bounded owner callback compares the selected target block state, without granting formation authority. */
 public final class PreviewDisplayObservation {
     private PreviewDisplayObservation() {
     }
@@ -17,16 +17,17 @@ public final class PreviewDisplayObservation {
         if (world == null || model == null) return StructureProjectionState.Status.UNKNOWN;
         if (!world.isBlockLoaded(position, false)) return StructureProjectionState.Status.UNLOADED;
         var display = cell.display();
-        if (display == null || !display.complete() || display.tileNbt() != null) return StructureProjectionState.Status.UNKNOWN;
+        if (display == null || !display.complete())
+            return StructureProjectionState.Status.UNKNOWN;
         var root = model.generation().entries().get(model.structureId());
         var rotation = StructureTransform.between(model.generation().nodes().get(root.node()).orientation(), model.settings().orientation());
         var actual = world.getBlockState(position);
-        var chosen = model.settings().explicitOption(cell);
+        var chosen = model.settings().option(cell);
         boolean unresolved = false;
         for (int index = 0; index < display.options().size(); index++) {
-            if (chosen != null && chosen != index) continue;
+            if (chosen != index) continue;
             var option = display.options().get(index);
-            if (!ForgeRegistries.BLOCKS.containsKey(option.blockId()) || !option.nbt().isEmpty()) {
+            if (!ForgeRegistries.BLOCKS.containsKey(option.blockId())) {
                 unresolved = true;
                 continue;
             }
@@ -35,7 +36,7 @@ public final class PreviewDisplayObservation {
                 unresolved = true;
                 continue;
             }
-            if (actual == state)
+            if (actual.equals(state))
                 return StructureProjectionState.Status.DISPLAY_MATCH;
         }
         if (unresolved) return StructureProjectionState.Status.UNKNOWN;

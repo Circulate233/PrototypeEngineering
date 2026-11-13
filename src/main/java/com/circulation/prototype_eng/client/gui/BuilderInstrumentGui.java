@@ -4,7 +4,6 @@ import ae2.api.orientation.BlockOrientation;
 import ae2.client.gui.AEBaseGui;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewSettings;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviews;
-import com.circulation.prototype_eng.api.machine.MachineControllerHost;
 import com.circulation.prototype_eng.api.machine.MachineTypeRegistry;
 import com.circulation.prototype_eng.client.preview.StructurePreviewPanel;
 import com.circulation.prototype_eng.client.preview.PreviewNativeGui;
@@ -17,6 +16,7 @@ import org.lwjgl.input.Keyboard;
 import com.circulation.prototype_eng.container.StructureToolContainer;
 import com.circulation.prototype_eng.localization.StructureToolText;
 import com.circulation.prototype_eng.structure.tool.BuilderState;
+import com.circulation.prototype_eng.structure.tool.ConstructionTarget;
 import com.circulation.prototype_eng.api.structure.StructureDisplay;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
@@ -39,6 +39,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     private String appliedSelections = "";
     private boolean selectionsPending;
     private BlockOrientation orientation;
+    private int pressedSetting = -1;
 
     @Override
     public void prototype_eng$renderItemTooltip(ItemStack stack, int x, int y) {
@@ -56,7 +57,11 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
             if (preview != null) preview.openMaterialChoices(display);
         });
         tree.selections(() -> preview == null ? null : preview.view().settings());
-        tree.machineTitle(() -> preview == null || preview.view().machine() == null ? null : preview.view().machine().displayName());
+        tree.machineTitle(() -> {
+            if (preview != null && preview.view().machine() != null) return preview.view().machine().displayName();
+            var anchor = mc.world == null ? null : ConstructionTarget.resolve(mc.world, BuilderState.position(container.snapshot()));
+            return anchor == null ? null : anchor.name();
+        });
         tree.onSliceChanged((key, count) -> {
             if (preview == null) return;
             var path = BuilderState.slicePath(key);
@@ -77,7 +82,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         var next = new ResourceLocation(name);
         var anchor = BuilderState.position(tag);
         var host = mc.world != null && mc.world.provider.getDimension() == tag.getInteger("BoundDim")
-            && mc.world.isBlockLoaded(anchor) && mc.world.getTileEntity(anchor) instanceof MachineControllerHost machine ? machine : null;
+            ? ConstructionTarget.resolve(mc.world, anchor) : null;
         var nextOrientation = host == null ? BlockOrientation.NORTH_UP : host.orientation();
         if (next.equals(id) && nextOrientation == orientation) {
             preview.view().anchor(anchor);
@@ -176,6 +181,41 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
         };
         int u = taskHover(mx, my) ? 21 : 0;
         GuiAtlas.draw(GuiAtlas.texture("gui_build_instrument/button"), 357, 205, u, v, 20, 14, 80, 80);
+        settings(mx - x, my - y);
+    }
+
+    private void settings(int mouseX, int mouseY) {
+        var tag = container.snapshot();
+        boolean enabled = BuilderState.state(tag) == BuilderState.State.IDLE;
+        for (int index = 0; index < 4; index++) {
+            int x = 193 + index % 2 * 91, y = 154 + index / 2 * 23;
+            boolean hover = mouseX >= x && mouseX < x + 89 && mouseY >= y && mouseY < y + 22;
+            String variant = enabled && index == pressedSetting ? "pressed" : hover && enabled ? "selected" : "default";
+            StructureToolDraw.horizontal("gui_scanner_instrument/output_" + variant,
+                x, y, 89, 22, 130, 4, 8, 126, 4);
+            var label = settingLabel(index);
+            int mode = index == 1 ? BuilderState.meMode(tag) : setting(index).enabled(tag) ? 1 : 0;
+            var text = label.getLocal() + " " + (index == 1 ? meLabel(mode).getLocal()
+                : (mode == 1 ? StructureToolText.BuilderEnabled : StructureToolText.BuilderDisabled).getLocal());
+            GuiLabel.drawCentered(fontRenderer, text, x + 3, y + 3, 83, 16, enabled ? 0xffffff : 0xff969696, false);
+        }
+    }
+
+    private static BuilderState.Setting setting(int index) {
+        return index == 0 ? BuilderState.Setting.REQUIRE_MATERIALS : index == 2 ? BuilderState.Setting.REQUIRE_SPACE : BuilderState.Setting.REPLACE_FLUIDS;
+    }
+
+    private static StructureToolText settingLabel(int index) {
+        return switch (index) {
+            case 0 -> StructureToolText.BuilderRequireMaterials;
+            case 1 -> StructureToolText.BuilderMe;
+            case 2 -> StructureToolText.BuilderRequireSpace;
+            default -> StructureToolText.BuilderReplaceFluids;
+        };
+    }
+
+    private static StructureToolText meLabel(int mode) {
+        return mode == 0 ? StructureToolText.BuilderMeOff : mode == 1 ? StructureToolText.BuilderMeSupply : StructureToolText.BuilderMeCraft;
     }
 
     private boolean taskHover(int x, int y) {
@@ -185,6 +225,19 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
     @Override
     public void drawScreen(int x, int y, float partial) {
         super.drawScreen(x, y, partial);
+        for (int index = 0; index < 4; index++) {
+            int left = guiLeft + 193 + index % 2 * 91, top = guiTop + 154 + index / 2 * 23;
+            if (x >= left && x < left + 89 && y >= top && y < top + 22) {
+                var tip = switch (index) {
+                    case 0 -> StructureToolText.BuilderRequireMaterialsHelp;
+                    case 1 -> StructureToolText.BuilderMeHelp;
+                    case 2 -> StructureToolText.BuilderRequireSpaceHelp;
+                    default -> StructureToolText.BuilderReplaceFluidsHelp;
+                };
+                drawHoveringText(fontRenderer.listFormattedStringToWidth(tip.getLocal(), 260), x, y);
+                return;
+            }
+        }
         var materialSlot = preview == null ? null : preview.slotAt(x - guiLeft - 4, y - guiTop - 2, 4, 2);
         if (materialSlot != null) {
             boolean rendered = preview.ownsSlot(hoveredSlot);
@@ -201,6 +254,16 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     protected void mouseClicked(int x, int y, int button) throws IOException {
+        for (int index = 0; index < 4; index++) {
+            int left = guiLeft + 193 + index % 2 * 91, top = guiTop + 154 + index / 2 * 23;
+            if (x >= left && x < left + 89 && y >= top && y < top + 22) {
+                if (button == 0 && BuilderState.state(container.snapshot()) == BuilderState.State.IDLE) {
+                    pressedSetting = index;
+                    container.action("builder_setting", index == 1 ? "ME" : setting(index).name(), "");
+                }
+                return;
+            }
+        }
         if (preview != null) preview.dismissMaterialsOutside(x - guiLeft - 4, y - guiTop - 2);
         if (button == 0 && taskHover(x, y)) {
             container.action("task");
@@ -245,6 +308,7 @@ public final class BuilderInstrumentGui extends AEBaseGui<StructureToolContainer
 
     @Override
     protected void mouseReleased(int x, int y, int button) {
+        pressedSetting = -1;
         tree.release(x - guiLeft - 191, y - guiTop - 8, button);
         if (preview != null) preview.release(x - guiLeft - 4, y - guiTop - 2, button);
         super.mouseReleased(x, y, button);

@@ -1,5 +1,8 @@
 package com.circulation.prototype_eng.client.preview;
 
+import ae2.api.stacks.AEFluidKey;
+import ae2.api.stacks.GenericStack;
+import net.minecraftforge.fluids.Fluid;
 import it.unimi.dsi.fastutil.objects.ObjectLists;
 import it.unimi.dsi.fastutil.objects.ObjectIntBiConsumer;
 import com.circulation.prototype_eng.api.client.structure.StructurePreviewModel;
@@ -293,8 +296,8 @@ public final class StructurePreviewPanel implements AutoCloseable {
     private void project() {
         var anchor = construction ? view.anchor() : StructurePreviewScreensAnchor.current();
         view.anchor(anchor);
-        var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, false,
-            view.threeDimensional ? null : new StructurePreviewModel.Layer(view.layer), 2048, 0, 4096, 64);
+        var options = new StructureProjectionOptions(StructureProjectionOptions.Style.BLOCK_MODEL, true,
+            view.threeDimensional ? null : new StructurePreviewModel.Layer(view.layer), 2048, 2048, 4096, 64);
         boolean projected = construction && !builderTool.isEmpty()
             ? ProjectionInteractions.INSTANCE.projectBuilder(view.previews(), view.id(), view.settings(), anchor, options, builderTool, builderBinding.get())
             : view.previews().projectFor(view.id(), view.settings(), anchor, options, 30_000);
@@ -454,7 +457,10 @@ public final class StructurePreviewPanel implements AutoCloseable {
                 int index = first + visible;
                 var row = rows.get(index);
                 var stack = row.display == null ? ItemStack.EMPTY : optionStack(row.display, row.option);
-                if (!stack.isEmpty()) stack.setCount((int) Math.min(Integer.MAX_VALUE, row.amount));
+                var fluid = GenericStack.unwrapItemStack(stack);
+                if (fluid != null && fluid.what() instanceof AEFluidKey)
+                    stack = GenericStack.wrapInItemStack(fluid.what(), Math.multiplyExact(row.amount, Fluid.BUCKET_VOLUME));
+                else if (!stack.isEmpty()) stack.setCount((int) Math.min(Integer.MAX_VALUE, row.amount));
                 int option = row.option;
                 Runnable choose = display == null ? null : () -> chooseConstruction(display, cell, option);
                 int slotX = 33 + visible % MATERIAL_COLUMNS * MATERIAL_STEP, slotY = 35 + visible / MATERIAL_COLUMNS * MATERIAL_STEP;
